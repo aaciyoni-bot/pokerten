@@ -2,15 +2,18 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // חייב להיות מחובר עם חשבון גוגל (שיטת ההתחברות היחידה באפליקציה)
+    // Must be signed in with a Google account (the app's only sign-in method).
     function signedIn() { return request.auth != null; }
 
-    // יומני משחק/סוכנים — append-only: אפשר ליצור ולקרוא, אסור לערוך או למחוק
+    // Game / agent logs — append-only: create + read allowed, never edit/delete.
     match /gameLog/{id}   { allow read, create: if signedIn(); allow update, delete: if false; }
     match /agentLog/{id}  { allow read, create: if signedIn(); allow update, delete: if false; }
 
-    // ליבת הנתונים — כל גישה (קריאה/כתיבה/מחיקה) דורשת חשבון מחובר.
-    // זה חוסם לחלוטין גישה אנונימית מהאינטרנט, בלי לשבור אף פעולה של האפליקציה.
+    // Core data — every access (read/write/delete) requires a signed-in account.
+    // Fully blocks anonymous access from the internet without breaking any app action.
+    // NOTE (roadmap): this is the safe baseline for the current client-side engine.
+    // Field-level hardening (deny direct writes to balance/stack/cards/deck/rank, and
+    // keep hole cards out of the shared doc) lands with the server-authoritative rework.
     match /users/{id}        { allow read, write: if signedIn(); }
     match /memberships/{id}  { allow read, write: if signedIn(); }
     match /tables/{id}       { allow read, write: if signedIn(); }
@@ -18,7 +21,7 @@ service cloud.firestore {
     match /tournaments/{id}  { allow read, write: if signedIn(); }
     match /broadcasts/{id}   { allow read, write: if signedIn(); }
 
-    // כל דבר אחר שלא הוגדר במפורש — חסום
+    // Anything not explicitly matched above — denied.
     match /{document=**}     { allow read, write: if false; }
   }
 }

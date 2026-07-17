@@ -1,0 +1,29 @@
+name: Deploy Firestore Rules
+
+# Deploys Firestore security rules. Independent of Cloud Functions so rules
+# publish even on the free (Spark) plan. Requires repo secret FIREBASE_TOKEN.
+
+on:
+  push:
+    branches:
+      - main
+      - claude/pokerten-v1
+    paths:
+      - 'firestore.rules'
+      - 'firebase.json'
+  workflow_dispatch: {}
+
+jobs:
+  deploy-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy Firestore rules
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: firebase deploy --only firestore:rules --project pokerten --non-interactive --force

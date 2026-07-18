@@ -297,6 +297,9 @@
         .action-badge.badge-bottom { top: auto; bottom: -20px; }
         .badge-blind { background: linear-gradient(to bottom, #3b82f6, #2563eb); color: white; border: 1px solid #60a5fa; }
         .badge-win { background: linear-gradient(to bottom, #f5c860, #b98a3a); color: #422006; border: 1px solid #f8dc8f; }
+        .god-best-ring { position: absolute; inset: -5px; border: 2px solid #c084fc; border-radius: 9999px; box-shadow: 0 0 16px rgba(192,132,252,0.85); pointer-events: none; z-index: 70; animation: godBestPulse 1.4s ease-in-out infinite; }
+        @keyframes godBestPulse { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+        .god-best-tag { position: absolute; bottom: -9px; left: 50%; transform: translateX(-50%); background: linear-gradient(180deg, #a855f7, #7e22ce); color: #fff; font-size: 8px; font-weight: 900; padding: 1px 7px; border-radius: 99px; border: 1px solid #d8b4fe; z-index: 71; letter-spacing: 0.06em; pointer-events: none; white-space: nowrap; }
 
         .stack-capsule { background: rgba(5,8,14,0.78); border: 1px solid rgba(255,255,255,0.06); padding: 2px 12px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.5); }
         .btn-fold {
@@ -5109,6 +5112,29 @@
             };
             const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
             const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
+            // GOD view: mark who currently holds the strongest hand (evaluated exactly like the
+            // real showdown — Omaha uses 2 hole cards). Works on cash and tournament tables alike.
+            const godBestUid = useMemo(() => {
+                if (!godView) return null;
+                const board = gs.board || [];
+                if (board.length < 3 || gs.phase === 'waiting') return null;
+                const isOmaha = (gs.currentGameType || '').startsWith('Omaha');
+                let best = -1, uid = null, tie = false;
+                Object.values(players).forEach(p => {
+                    if (p.status !== 'active' || !(p.cards || []).length) return;
+                    let sc = 0;
+                    try {
+                        if (isOmaha) {
+                            getCombinations(p.cards, 2).forEach(h => getCombinations(board, 3).forEach(b => { const v = evaluate5Cards([...h, ...b]); if (v > sc) sc = v; }));
+                        } else {
+                            getCombinations([...p.cards, ...board], 5).forEach(c => { const v = evaluate5Cards(c); if (v > sc) sc = v; });
+                        }
+                    } catch(e) { return; }
+                    if (sc > best) { best = sc; uid = p.uid; tie = false; }
+                    else if (sc === best) tie = true;
+                });
+                return tie ? null : uid; // exact chop — no single best to mark
+            }, [godView, gs.phase, (gs.board || []).length, gs.currentGameType, tableState]);
             const myMaxBet = round2((myPlayer?.bet || 0) + (myPlayer?.stack || 0));
             const canShowBuyIn = !isSeated && !spectate;
             const tblCap = setts.maxPlayers || 6;
@@ -5264,6 +5290,7 @@
                                                 <div className="win-tag" dir="ltr">WIN{(gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''}</div>
                                             )}
                                             <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-16 h-16' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
+                                                {godView && godBestUid === p.uid && <React.Fragment><div className="god-best-ring"></div><div className="god-best-tag">👁 BEST</div></React.Fragment>}
                                                 {isTurn && (
                                                     <svg className="absolute inset-0 w-full h-full timer-ring" viewBox="0 0 40 40">
                                                         <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(245,200,96,0.9)" strokeWidth="3"
@@ -5476,10 +5503,10 @@
                         </div>
                     )}
 
-                    {/* צ'אט */}
-                    <button onClick={()=>ch.setChatOpen(!ch.chatOpen)} className="absolute bottom-[128px] left-3 z-[60] w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl">
+                    {/* Chat (spectators — seated players get it inside the left button column) */}
+                    {!isSeated && <button onClick={()=>ch.setChatOpen(!ch.chatOpen)} className="absolute bottom-20 left-3 z-[60] w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl">
                         <i className="fa-solid fa-comment-dots"></i>
-                    </button>
+                    </button>}
                     {ch.chatOpen && <ChatPanel chat={ch.chatArr} meUid={user.uid} onSend={ch.sendChat} onClose={()=>ch.setChatOpen(false)} className="bottom-[128px] left-3" targets={Object.values(players).filter(p => p.uid !== user.uid).map(p => ({ uid: p.uid, name: p.name }))} mutedUids={ch.mutedUids} onToggleMuteUid={ch.toggleMuteUid} canModerate={ch.canModerate} chatMuted={ch.chatMuted} onToggleTableMute={ch.toggleTableMute} onCallFloor={tableState?.tournamentId && isSeated ? ch.callFloor : null} />}
                     {ch.floorCall && ch.canModerate && (
                         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[210] bg-amber-500/95 text-slate-950 font-black text-xs px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-pulse">
@@ -5492,6 +5519,7 @@
                     )}
                     {isSeated && (
                         <div className="absolute bottom-20 left-3 z-[60] flex flex-col gap-2">
+                            <button onClick={()=>ch.setChatOpen(!ch.chatOpen)} title="Table chat" className="w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl text-lg"><i className="fa-solid fa-comment-dots"></i></button>
                             <button onClick={toggleSitOut} title={myPlayer?.sitOut ? 'Sit back in' : 'Sit out'} className={`w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`}>{myPlayer?.sitOut ? '✋' : '☕'}</button>
                             {!(tableState?.tournamentId) && <button onClick={topUpChips} title="Add chips" className="w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg">💰</button>}
                             {gs.phase === 'showdown' && (myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || (gs.earlyWin && myPlayer.status === 'active')) && (

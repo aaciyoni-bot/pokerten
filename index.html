@@ -7199,6 +7199,17 @@ function PokerTable({
     }
   };
   const selectDCGame = async (gameType, byUid = user.uid) => {
+    if (setts.serverEngine) {
+      if (byUid === user.uid) {
+        try {
+          await window.fb.fx('pkPickGame', {
+            tableId: tableDocId,
+            gameType
+          });
+        } catch (e) {}
+      }
+      return;
+    }
     const t = tableRef.current;
     if (!t) return;
     const g = t.gameState;
@@ -7208,6 +7219,17 @@ function PokerTable({
     }, clonePlayers(t.players), gameType);
   };
   const handleDiscardCard = async (uid, cardIdx) => {
+    if (setts.serverEngine) {
+      if (uid === user.uid) {
+        try {
+          await window.fb.fx('pkDiscard', {
+            tableId: tableDocId,
+            index: cardIdx
+          });
+        } catch (e) {}
+      }
+      return;
+    }
     const t = tableRef.current;
     if (!t) return;
     const g = {
@@ -13179,7 +13201,21 @@ function TournamentsTab({
     }, "Late register (", formatMoney(tourEntryOf(tor)), ")"), myTable && React.createElement("button", {
       onClick: () => onJoinTable(myTable),
       className: "flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg animate-pulse"
-    }, "🎲 To my table!"), tor.status === 'running' && me && me.out && React.createElement("span", {
+    }, "🎲 To my table!"), tor.status === 'running' && !myTable && (() => {
+      const torTables = (tables || []).filter(tb => tb.tournamentId === tor.id);
+      if (!torTables.length) return null;
+      return React.createElement("div", {
+        className: "w-full flex flex-wrap gap-1.5 items-center mt-1"
+      }, React.createElement("span", {
+        className: "text-[10px] text-slate-500 font-black uppercase tracking-widest"
+      }, "👁 Watch:"), torTables.map((tb, ti) => React.createElement("button", {
+        key: tb.docId,
+        onClick: () => onJoinTable(tb),
+        className: "text-[11px] bg-slate-800/80 hover:bg-slate-700 border border-white/10 text-slate-200 px-2.5 py-1 rounded-lg font-bold"
+      }, "Table ", ti + 1, " · ", Object.values(tb.players || {}).filter(q => (q.stack || 0) > 0).length, React.createElement("i", {
+        className: "fa-solid fa-user text-[8px] ml-1 opacity-60"
+      }), tb.tournament && tb.tournament.final ? ' 🏆' : '')));
+    })(), tor.status === 'running' && me && me.out && React.createElement("span", {
       className: "flex-1 text-center py-2.5 text-rose-300 font-bold text-sm"
     }, "Busted — place ", me.rank), tor.status === 'done' && (tor.results || []).length > 0 && React.createElement("button", {
       onClick: () => setChampTor(tor),

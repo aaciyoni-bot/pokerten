@@ -1,13 +1,13 @@
 name: Deploy Firebase Functions
 
-# פורס אוטומטית את פונקציות ה-Cloud בכל push שנוגע ב-functions/
-# דורש Secret בשם FIREBASE_TOKEN (מ-`firebase login:ci`)
+# Auto-deploys Cloud Functions on any push that touches functions/
+# Requires a repo secret named FIREBASE_TOKEN (from `firebase login:ci`)
 
 on:
   push:
     branches:
       - main
-      - claude/rummikube-clubs-app-fmfw67
+      - claude/pokerten-v1
     paths:
       - 'functions/**'
       - 'firebase.json'
@@ -35,4 +35,4 @@ jobs:
       - name: Deploy functions
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: firebase deploy --only functions --project rummikube-5c138 --non-interactive --force
+        run: firebase deploy --only functions --project pokerten --non-interactive --force

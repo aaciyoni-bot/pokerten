@@ -428,6 +428,50 @@
         .cube-emerald, .cube-rose, .cube-sky, .cube-amber, .cube-cyan, .cube-purple, .cube-indigo, .cube-teal, .cube-orange, .cube-lime, .cube-gold { --cubeA: #22d3ee; }
 
         /* לוגו נושם */
+        /* ═══ POKERTEN Design Tokens v2 ═══ */
+        :root {
+            --pt-bg: #07090F; --pt-card: #0E1219; --pt-raised: #141926;
+            --pt-line: rgba(255,255,255,0.06);
+            --pt-text: #EDF0F4; --pt-text-2: #8B95A7; --pt-text-3: #565F70;
+            --pt-gold: #D5B36B; --pt-gold-deep: #A98544;
+            --pt-green: #3DD68C; --pt-red: #F0556D;
+            --pt-shadow: 0 8px 28px rgba(0,0,0,0.45);
+        }
+        /* משקלים: אין 800-900. מספרים tabular */
+        .font-black, .font-extrabold { font-weight: 700 !important; letter-spacing: 0 !important; }
+        [dir="ltr"] .tbl-stakes, .tbl-buyin-val, .stack-capsule { font-variant-numeric: tabular-nums; }
+        /* כפתור זהב ראשי */
+        .btn-gold {
+            background: linear-gradient(180deg, #E2C685, #C9A45A);
+            color: #241A08 !important; font-weight: 700;
+            border: 1px solid rgba(255,236,195,0.5); border-radius: 10px;
+            box-shadow: var(--pt-shadow);
+        }
+        .btn-gold:hover { filter: brightness(1.05); }
+        .btn-outline {
+            background: transparent; color: var(--pt-text-2) !important; font-weight: 600;
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+        }
+        .btn-outline:hover { color: var(--pt-text) !important; border-color: rgba(255,255,255,0.25); }
+        /* כרטיס קלאב שקט */
+        .club-card {
+            background: var(--pt-card); border: 1px solid var(--pt-line); border-radius: 12px;
+            box-shadow: var(--pt-shadow);
+            transition: border-color 0.15s ease, transform 0.15s ease;
+        }
+        .club-card:hover { border-color: rgba(213,179,107,0.25); transform: translateY(-1px); }
+        .club-badge {
+            width: 44px; height: 44px; border-radius: 10px; flex: none;
+            background: var(--pt-raised); border: 1px solid rgba(213,179,107,0.35);
+            display: flex; align-items: center; justify-content: center;
+            color: var(--pt-gold); font-weight: 700; font-size: 18px; font-family: 'Rubik', sans-serif;
+        }
+        .pt-hero {
+            border-radius: 12px; border: 1px solid var(--pt-line);
+            background-image: url('assets/hero-clubs.jpg'); background-size: cover; background-position: center;
+            box-shadow: var(--pt-shadow);
+        }
+        @media (max-width: 640px) { .pt-hero { background-image: url('assets/hero-clubs-mobile.jpg'); } }
         .lobby-bonus-mini button { padding: 4px 10px !important; border-radius: 999px !important; font-size: 10px !important; }
         .lobby-bonus-mini button .text-lg, .lobby-bonus-mini button .text-xl { font-size: 13px !important; }
 
@@ -1866,14 +1910,14 @@
 
         function AuthView() {
             return (
-                <div className="h-full w-full flex flex-col items-center justify-center p-4 aurora-bg relative">
+                <div className="h-full w-full flex flex-col items-center justify-center p-4 relative" style={{ background: "linear-gradient(rgba(7,9,15,0.72), rgba(7,9,15,0.86)), url('assets/login-bg.jpg') center / cover no-repeat, #07090F" }}>
                     <div className="glass-panel p-10 sm:p-12 rounded-3xl text-center relative z-10 w-full max-w-md animate-fade-in">
-                        <div className="w-20 h-20 mx-auto mb-5 rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-[0_0_35px_rgba(6,182,212,0.4)]">
-                            <i className="fa-solid fa-diamond text-3xl text-white"></i>
+                        <div className="w-16 h-16 mx-auto mb-5 rounded-xl flex items-center justify-center" style={{ background: 'var(--pt-raised)', border: '1px solid rgba(213,179,107,0.35)', boxShadow: 'var(--pt-shadow)' }}>
+                            <SuitGlyph s={'♠'} color={'#D5B36B'} size="30px"/>
                         </div>
-                        <h2 className="text-4xl font-black mb-1 tracking-widest"><span className="logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400">POKER</span><span className="text-emerald-400">TEN</span></h2>
-                        <p className="text-slate-300 mb-10 font-bold tracking-[0.35em] uppercase text-xs">Poker with friends</p>
-                        <button onClick={()=>window.fb.signIn()} className="w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 font-black py-4 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-3">
+                        <h2 className="text-4xl mb-1 tracking-widest" style={{ fontWeight: 700 }}><span className="logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400">POKERTEN</span></h2>
+                        <p className="mb-10 tracking-[0.35em] uppercase text-xs" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }}>Poker with friends</p>
+                        <button onClick={()=>window.fb.signIn()} className="w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 py-4 px-6 rounded-xl shadow-xl flex items-center justify-center gap-3" style={{ fontWeight: 600 }}>
                             <i className="fa-brands fa-google text-blue-500 text-xl"></i> Sign in with Google
                         </button>
                         <InstallBanner variant="auth" />
@@ -2059,7 +2103,7 @@
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
                                 <input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="📞 Phone" className="bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold text-sm outline-none focus:border-emerald-500/60" dir="ltr" />
                                 <div className="flex gap-2">
-                                    <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="📝 Notes" className="flex-1 min-w-0 bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold text-sm outline-none focus:border-emerald-500/60" />
+                                    <input value={notes} onChange={e=>setNotes(e.target.value)} placeholder="📝 Notes" className="flex-1 min-w-0 bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold text-sm outline-none focus:border-gold-400/50" />
                                     <button onClick={saveDetails} className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 rounded-xl font-black text-xs shrink-0">Save</button>
                                 </div>
                             </div>
@@ -2225,32 +2269,24 @@
             const ClubCard = ({ c, action }) => {
                 const m = memOf(c.id);
                 const isOwner = c.ownerUid === user.uid;
-                const hue = clubHue(c.id);
                 return (
-                    <div className="rounded-3xl p-[1.5px] transition-transform hover:-translate-y-0.5"
-                         style={{ background: `linear-gradient(135deg, ${hue.a}66, rgba(255,255,255,0.04) 35%, rgba(255,255,255,0.04) 65%, ${hue.a}44)`, boxShadow: `0 12px 32px ${hue.glow}` }}>
-                        <div className="bg-slate-900/95 rounded-[22px] p-5 flex items-center justify-between gap-3 flex-wrap">
-                            <div className="flex items-center gap-3 min-w-0">
-                                {(isOwner || god) && c.id !== 'main' && (
-                                    <button onClick={(e) => { e.stopPropagation(); deleteClub(c); }} title="Delete club" className="w-9 h-9 rounded-full bg-slate-800/80 text-slate-500 hover:text-white hover:bg-rose-700 border border-white/5 flex items-center justify-center shrink-0 transition-colors">
-                                        <i className="fa-solid fa-trash text-xs"></i>
-                                    </button>
-                                )}
-                                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-lg text-white font-black text-xl"
-                                     style={{ background: `linear-gradient(135deg, ${hue.a}, ${hue.b})`, textShadow: '0 2px 6px rgba(0,0,0,0.4)' }}>
-                                    {(c.name || '?').trim().charAt(0)}
+                    <div className="club-card p-4 flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-3 min-w-0">
+                            {(isOwner || god) && c.id !== 'main' && (
+                                <button onClick={(e) => { e.stopPropagation(); deleteClub(c); }} title="Delete club" className="w-9 h-9 rounded-full text-slate-600 hover:text-rose-400 flex items-center justify-center shrink-0 transition-colors">
+                                    <i className="fa-solid fa-trash text-xs"></i>
+                                </button>
+                            )}
+                            <div className="club-badge">{(c.name || '?').trim().charAt(0)}</div>
+                            <div className="min-w-0">
+                                <div className="text-white text-base truncate flex items-center gap-2" style={{ fontWeight: 600 }}>
+                                    {c.name}
+                                    {isOwner && <span className="text-[9px] px-2 py-0.5 rounded-full border" style={{ color: 'var(--pt-gold)', borderColor: 'rgba(213,179,107,0.35)', fontWeight: 600 }}>Yours</span>}
                                 </div>
-                                <div className="min-w-0">
-                                    <div className="font-black text-white text-lg truncate flex items-center gap-2">
-                                        {c.name}
-                                        {isOwner && <span className="text-[9px] px-2 py-0.5 rounded-full font-black border" style={{ color: hue.a, borderColor: hue.a + '80', background: hue.a + '1f' }}>👑 Yours</span>}
-                                    </div>
-                                    <div className="text-[11px] text-slate-400 font-bold">Owner: {c.ownerName || ''}{m && m.status === 'approved' ? <span style={{ color: hue.a }}> · your balance:{formatMoney(m.balance || 0)}</span> : ''}</div>
-                                    <div className="text-[10px] text-slate-500 font-black tracking-wider mt-0.5" dir="ltr">🆔 {clubCode(c.id)}</div>
-                                </div>
+                                <div className="text-[11px] mt-0.5" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }} dir="ltr">ID {clubCode(c.id)} · Owner {c.ownerName || ''}{m && m.status === 'approved' && (m.balance || 0) > 0 ? <span style={{ color: 'var(--pt-green)', fontWeight: 600 }}> · {formatMoney(m.balance || 0)}</span> : ''}</div>
                             </div>
-                            {action}
                         </div>
+                        {action}
                     </div>
                 );
             };
@@ -2259,15 +2295,15 @@
                 <div style={{overflowX:"hidden"}} className="scrollable-content aurora-bg p-4 sm:p-8">
                     <div className="max-w-2xl mx-auto animate-fade-in relative z-10">
                         <div className="text-center mb-8 mt-6">
-                            <h1 className="logo-shine text-4xl sm:text-5xl font-black tracking-[0.15em] text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400 drop-shadow-[0_0_25px_rgba(6,182,212,0.3)]">POKERTEN</h1>
-                            <p className="text-slate-300 text-[11px] sm:text-xs font-bold tracking-[0.2em] mt-2">Poker · Chinese Poker (OFC) · Durak</p>
-                            <p className="text-emerald-400/80 text-[10px] sm:text-[11px] font-black tracking-[0.3em] uppercase mt-1">Private club games & tournaments</p>
-                            <p className="text-slate-400 text-sm font-bold mt-5">Hi {user.username} 👋 pick a club,Request to join, or create your own</p>
+                            <h1 className="logo-shine text-4xl sm:text-5xl tracking-[0.15em] text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400" style={{ fontWeight: 700 }}>POKERTEN</h1>
+                            <p className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase mt-2" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }}>Private club games & tournaments</p>
+                            <div className="pt-hero mt-5 h-32 sm:h-40 w-full"></div>
+                            <p className="text-sm mt-5" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }}>Hi {user.username} — pick a club, request to join, or create your own</p>
                             <button onClick={()=>window.fb.signOut(window.fb.auth)} className="text-xs text-slate-500 underline font-bold mt-2">Log out</button>
                             {!isStandalone && (canInstall || isIOS || isAndroidMob) && (
                                 <div className="mt-4">
-                                    <button onClick={() => { if (canInstall) doInstall(); else setIosGuide(true); }} className="bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-6 py-2.5 rounded-xl font-black text-sm shadow-[0_8px_24px_rgba(6,182,212,0.35)]">
-                                        📲 Install as app
+                                    <button onClick={() => { if (canInstall) doInstall(); else setIosGuide(true); }} className="btn-outline px-6 py-2.5 text-sm">
+                                        <i className="fa-solid fa-mobile-screen-button mr-2" style={{ color: 'var(--pt-gold)' }}></i>Install as app
                                     </button>
                                 </div>
                             )}
@@ -2320,11 +2356,10 @@
 
                         {myClubs.length > 0 && (
                             <div className="mb-8">
-                                <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-3"><i className="fa-solid fa-door-open ml-1"></i> My Clubs</h3>
+                                <h3 className="text-[11px] uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--pt-text-3)', fontWeight: 600 }}>My Clubs</h3>
                                 <div className="flex flex-col gap-3">
                                     {myClubs.map(c => <ClubCard key={c.id} c={c} action={
-                                        <button onClick={() => onEnter(c)} className="text-white px-6 py-2.5 rounded-xl font-black text-sm shadow-lg shrink-0 hover:brightness-110 transition-all"
-                                                style={{ background: `linear-gradient(180deg, ${clubHue(c.id).a}, ${clubHue(c.id).b})` }}>Enter</button>
+                                        <button onClick={() => onEnter(c)} className="btn-gold px-6 py-2.5 text-sm shrink-0">Enter</button>
                                     } />)}
                                 </div>
                             </div>
@@ -2332,26 +2367,26 @@
 
                         {pendingClubs.length > 0 && (
                             <div className="mb-8">
-                                <h3 className="text-sm font-black text-amber-400 uppercase tracking-widest mb-3"><i className="fa-solid fa-hourglass-half ml-1"></i> Pending approval</h3>
+                                <h3 className="text-[11px] uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--pt-text-3)', fontWeight: 600 }}>Pending approval</h3>
                                 <div className="flex flex-col gap-3">
                                     {pendingClubs.map(c => <ClubCard key={c.id} c={c} action={
-                                        <span className="text-amber-400 text-xs font-black bg-amber-500/10 border border-amber-500/30 px-4 py-2 rounded-xl shrink-0">⏳ Pending</span>
+                                        <span className="text-xs px-4 py-2 rounded-lg shrink-0 border" style={{ color: 'var(--pt-text-2)', borderColor: 'var(--pt-line)', fontWeight: 600 }}><i className="fa-solid fa-hourglass-half mr-1.5" style={{ color: 'var(--pt-gold)' }}></i>Pending</span>
                                     } />)}
                                 </div>
                             </div>
                         )}
 
                         <div className="mb-8">
-                            <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-3"><i className="fa-solid fa-magnifying-glass ml-1"></i> Find a club by code</h3>
+                            <h3 className="text-[11px] uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--pt-text-3)', fontWeight: 600 }}>Find a club by code</h3>
                             <div className="flex gap-2 mb-3">
-                                <input value={searchCode} onChange={e => setSearchCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} onKeyDown={e => e.key === 'Enter' && doClubSearch()} placeholder="6-digit code" dir="ltr" maxLength={6} className="flex-1 min-w-0 bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-black text-center tracking-[0.25em] text-base outline-none focus:border-emerald-500/60" />
-                                <button onClick={doClubSearch} className="bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-5 py-2.5 rounded-xl font-black text-sm shrink-0">Search</button>
+                                <input value={searchCode} onChange={e => setSearchCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} onKeyDown={e => e.key === 'Enter' && doClubSearch()} placeholder="6-digit code" dir="ltr" maxLength={6} className="flex-1 min-w-0 bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-black text-center tracking-[0.25em] text-base outline-none focus:border-gold-400/50" />
+                                <button onClick={doClubSearch} className="btn-gold px-5 py-2.5 text-sm shrink-0">Search</button>
                             </div>
                             {foundClub && (!memOf(foundClub.id) || memOf(foundClub.id).status === 'rejected') && (
                                 <ClubCard c={foundClub} action={
                                     <div className="flex flex-col items-end gap-1 shrink-0">
                                         {memOf(foundClub.id) && memOf(foundClub.id).status === 'rejected' && <span className="text-[10px] text-rose-300 font-bold">Previous request declined</span>}
-                                        <button onClick={() => requestJoin(foundClub)} className="bg-slate-800 hover:brightness-125 text-white px-5 py-2 rounded-xl font-bold text-sm border transition-all" style={{ borderColor: clubHue(foundClub.id).a + '66' }}>Request to join</button>
+                                        <button onClick={() => requestJoin(foundClub)} className="btn-outline px-5 py-2 text-sm">Request to join</button>
                                     </div>
                                 } />
                             )}
@@ -2386,12 +2421,12 @@
                             </div>
                         , document.body)}
 
-                        <div className="glass-panel rounded-3xl p-6 border border-emerald-500/20">
-                            <h3 className="text-sm font-black text-white uppercase tracking-widest mb-3"><i className="fa-solid fa-plus ml-1 text-emerald-400"></i> Create Club</h3>
+                        <div className="club-card p-6">
+                            <h3 className="text-[11px] uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--pt-text-3)', fontWeight: 600 }}>Create Club</h3>
                             <div className="flex gap-2">
-                                <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Club name..." maxLength={30} className="flex-1 bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-emerald-500/60" />
-                                <button onClick={createClub} disabled={creating || !newName.trim()} className="bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-40 text-white px-6 py-3 rounded-xl font-black shadow-lg">
-                                    {creating ? <i className="fa-solid fa-spinner fa-spin"></i> : 'Create 👑'}
+                                <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Club name..." maxLength={30} className="flex-1 bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-gold-400/50" />
+                                <button onClick={createClub} disabled={creating || !newName.trim()} className="btn-gold disabled:opacity-40 px-6 py-3 text-sm">
+                                    {creating ? <i className="fa-solid fa-spinner fa-spin"></i> : 'Create'}
                                 </button>
                             </div>
                             <p className="text-[11px] text-slate-500 font-bold mt-2">You'll be the club owner: you start with 100,000,000 chips to distribute, approve members, set the rules, appoint managers and agents - and the profits are yours.</p>
@@ -3601,7 +3636,7 @@
                                 <div className="flex items-end gap-4 flex-wrap mb-4 pb-4 border-b border-white/5">
                                     <div>
                                         <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Club name</label>
-                                        <input value={clubNameDraft} onChange={e=>setClubNameDraft(e.target.value)} maxLength={30} placeholder={clubSettings?.name || ''} className="bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white font-black w-56 outline-none focus:border-emerald-500/60" />
+                                        <input value={clubNameDraft} onChange={e=>setClubNameDraft(e.target.value)} maxLength={30} placeholder={clubSettings?.name || ''} className="bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white font-black w-56 outline-none focus:border-gold-400/50" />
                                     </div>
                                     <button onClick={async () => { const nm = clubNameDraft.trim(); if (nm.length < 2) return showToast("Name must be 2 to 30 characters", "error"); try { await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { name: nm }); setClubNameDraft(''); showToast("Club name updated!", "success"); } catch(e) { showToast("Error", "error"); } }} className="bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-6 py-3 rounded-xl font-bold shadow-lg">Change name</button>
                                 </div>

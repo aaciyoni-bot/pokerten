@@ -430,6 +430,44 @@
         /* לוגו נושם */
         .lobby-bonus-mini button { padding: 4px 10px !important; border-radius: 999px !important; font-size: 10px !important; }
         .lobby-bonus-mini button .text-lg, .lobby-bonus-mini button .text-xl { font-size: 13px !important; }
+
+        /* GG-style dense table rows */
+        .tbl-row {
+            position: relative; display: flex; align-items: center; gap: 12px;
+            background: linear-gradient(180deg, #10182a, #0b1220);
+            border: 1px solid rgba(255,255,255,0.05); border-radius: 14px;
+            padding: 12px 14px 12px 0; overflow: hidden; cursor: pointer;
+            transition: border-color 0.15s ease, transform 0.15s ease;
+        }
+        .tbl-row:hover { border-color: rgba(34,211,238,0.35); transform: translateY(-1px); }
+        .tbl-spine {
+            align-self: stretch; width: 34px; flex: none; display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 900; letter-spacing: 0.08em; color: #fff;
+            writing-mode: vertical-rl; transform: rotate(180deg);
+            border-radius: 0 12px 12px 0;
+            background: linear-gradient(180deg, #475569, #334155);
+        }
+        .tbl-seats { position: relative; width: 46px; height: 46px; flex: none; display: flex; align-items: center; justify-content: center; }
+        .tbl-seats .tbl-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+        .tbl-seats span { font-size: 11px; font-weight: 900; color: #e2e8f0; }
+        .tbl-main { flex: 1; min-width: 0; }
+        .tbl-name { font-size: 12px; font-weight: 700; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+        .tbl-dc { font-size: 9px; font-weight: 900; color: #fda4af; border: 1px solid rgba(244,63,94,0.4); border-radius: 4px; padding: 0 4px; flex: none; }
+        .tbl-me { font-size: 9px; font-weight: 900; color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); border-radius: 99px; padding: 0 6px; flex: none; }
+        .tbl-stakes { font-size: 20px; font-weight: 900; color: #fff; font-family: 'Rubik', sans-serif; line-height: 1.15; }
+        .tbl-sub { font-size: 10px; font-weight: 700; color: #64748b; }
+        .tbl-live { color: #34d399; }
+        .tbl-buyin { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; margin-right: 4px; }
+        .tbl-buyin-label { font-size: 10px; font-weight: 700; color: #64748b; }
+        .tbl-buyin-val { font-size: 19px; font-weight: 900; color: #fff; font-family: 'Rubik', sans-serif; }
+        .tbl-del { flex: none; width: 32px; height: 32px; border-radius: 9px; color: #475569; font-size: 11px; background: transparent; border: none; cursor: pointer; }
+        .tbl-del:hover { color: #fb7185; background: rgba(244,63,94,0.08); }
+
+        /* Variant tabs — underline style */
+        .vtab { flex: none; padding: 9px 14px; font-size: 13px; font-weight: 800; color: #64748b; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s ease; background: transparent; border-top: none; border-left: none; border-right: none; cursor: pointer; white-space: nowrap; }
+        .vtab:hover { color: #cbd5e1; }
+        .vtab-active { color: #fff; }
+        .vtab-count { font-size: 9px; font-weight: 900; background: rgba(255,255,255,0.1); border-radius: 99px; padding: 1px 6px; margin-left: 5px; vertical-align: middle; }
         .logo-shine { background-size: 200% auto !important; animation: logoShine 5.5s linear infinite; }
         @keyframes logoShine { to { background-position: -200% center; } }
 
@@ -800,11 +838,11 @@
         const GAME_LABEL = (g) => (GAMES.find(x => x.id === g) || {}).label || g;
         // Distinct color + short label per poker variant, so each is easy to spot on the tables board.
         const VARIANT_STYLE = {
-            'NLH':       { chip: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/50', ico: 'text-emerald-400', icoBg: 'bg-emerald-900/30 border-emerald-700/40', bar: 'from-emerald-500 to-emerald-700' },
-            'Omaha 4':   { chip: 'bg-sky-500/15 text-sky-300 border-sky-500/50',             ico: 'text-sky-400',     icoBg: 'bg-sky-900/30 border-sky-700/40',         bar: 'from-sky-500 to-sky-700' },
-            'Omaha 5':   { chip: 'bg-violet-500/15 text-violet-300 border-violet-500/50',    ico: 'text-violet-400',  icoBg: 'bg-violet-900/30 border-violet-700/40',   bar: 'from-violet-500 to-violet-700' },
-            'Omaha 6':   { chip: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/50', ico: 'text-fuchsia-400', icoBg: 'bg-fuchsia-900/30 border-fuchsia-700/40', bar: 'from-fuchsia-500 to-fuchsia-700' },
-            'Pineapple': { chip: 'bg-amber-500/15 text-amber-300 border-amber-500/50',       ico: 'text-amber-400',   icoBg: 'bg-amber-900/30 border-amber-700/40',     bar: 'from-amber-500 to-amber-700' },
+            'NLH':       { chip: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/50', ico: 'text-emerald-400', icoBg: 'bg-emerald-900/30 border-emerald-700/40', bar: 'from-emerald-500 to-emerald-700', spine: 'linear-gradient(180deg,#059669,#065f46)', hue: '#10b981' },
+            'Omaha 4':   { chip: 'bg-sky-500/15 text-sky-300 border-sky-500/50',             ico: 'text-sky-400',     icoBg: 'bg-sky-900/30 border-sky-700/40',         bar: 'from-sky-500 to-sky-700', spine: 'linear-gradient(180deg,#0ea5e9,#0369a1)', hue: '#38bdf8' },
+            'Omaha 5':   { chip: 'bg-violet-500/15 text-violet-300 border-violet-500/50',    ico: 'text-violet-400',  icoBg: 'bg-violet-900/30 border-violet-700/40',   bar: 'from-violet-500 to-violet-700', spine: 'linear-gradient(180deg,#7c3aed,#5b21b6)', hue: '#a78bfa' },
+            'Omaha 6':   { chip: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/50', ico: 'text-fuchsia-400', icoBg: 'bg-fuchsia-900/30 border-fuchsia-700/40', bar: 'from-fuchsia-500 to-fuchsia-700', spine: 'linear-gradient(180deg,#c026d3,#86198f)', hue: '#e879f9' },
+            'Pineapple': { chip: 'bg-amber-500/15 text-amber-300 border-amber-500/50',       ico: 'text-amber-400',   icoBg: 'bg-amber-900/30 border-amber-700/40',     bar: 'from-amber-500 to-amber-700', spine: 'linear-gradient(180deg,#d97706,#92400e)', hue: '#fbbf24' },
         };
         const variantStyle = (gt) => VARIANT_STYLE[gt] || VARIANT_STYLE['NLH'];
         const variantLabel = (gt) => ({ 'NLH': 'NLH', 'Omaha 4': 'PLO', 'Omaha 5': 'PLO5', 'Omaha 6': 'PLO6', 'Pineapple': 'Pineapple' }[gt] || gt);
@@ -2804,49 +2842,46 @@
                                         </button>
                                     )}
                                 </div>
-                                {/* Subtle variant filter — pick All / a variant (in its color) / Tournaments, so you don't scroll past 100 tables */}
-                                <div className="flex items-center gap-1.5 mb-5 flex-wrap">
-                                    <button onClick={() => setPokFilter('all')} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors ${pokFilter === 'all' ? 'bg-white/15 border-white/40 text-white' : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}>All</button>
+                                {/* Subtle variant filter — All / each variant (in its color) / Tournaments. All variants always shown so nothing is hidden. */}
+                                <div className="flex items-center gap-0.5 mb-4 border-b border-white/8 overflow-x-auto" style={{scrollbarWidth:"none"}}>
+                                    <button onClick={() => setPokFilter('all')} className={`vtab ${pokFilter === 'all' ? 'vtab-active' : ''}`} style={pokFilter === 'all' ? {borderBottomColor:'#22d3ee'} : {}}>All</button>
                                     {ALL_POKER_VARIANTS.map(v => { const vs = variantStyle(v); const active = pokFilter === v; const n = variantCount(v); return (
-                                        <button key={v} onClick={() => setPokFilter(v)} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors flex items-center gap-1 ${active ? vs.chip : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}>{variantLabel(v)}{n > 0 && <span className="text-[9px] bg-white/10 rounded-full px-1.5">{n}</span>}</button>
+                                        <button key={v} onClick={() => setPokFilter(v)} className={`vtab ${active ? 'vtab-active' : ''}`} style={active ? {borderBottomColor: vs.hue, color: vs.hue} : {}}>{variantLabel(v)}{n > 0 && <span className="vtab-count">{n}</span>}</button>
                                     ); })}
-                                    <button onClick={() => setPokFilter('tours')} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors ${pokFilter === 'tours' ? 'bg-amber-500/20 border-amber-400/60 text-amber-200' : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}><i className="fa-solid fa-trophy text-[10px] ml-1"></i>Tournaments</button>
+                                    <button onClick={() => setPokFilter('tours')} className={`vtab ${pokFilter === 'tours' ? 'vtab-active' : ''}`} style={pokFilter === 'tours' ? {borderBottomColor:'#fbbf24', color:'#fbbf24'} : {}}><i className="fa-solid fa-trophy text-[10px] mr-1"></i>Tournaments</button>
                                 </div>
-                                {pokFilter !== 'tours' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                {pokFilter !== 'tours' && <div className="flex flex-col gap-2.5">
                                     {shownPoker.map(t => {
                                         const s = t.settings || {};
                                         const gt = s.baseGameType || 'NLH';
                                         const vs = variantStyle(gt);
                                         const inHand = t.gameState && !['waiting','showdown'].includes(t.gameState.phase);
                                         const minBuy = round2((Number(s.minBuyInBB) || 40) * (Number(s.blinds) || 0.5) * 2);
+                                        const seated = Object.keys(t.players||{}).length;
+                                        const cap = s.maxPlayers || 6;
                                         return (
-                                            <div key={t.docId} className="grad-card cursor-pointer" onClick={()=>onJoinPoker(t)}>
-                                                <div className={`grad-card-inner p-5 relative border-l-4 ${vs.chip.split(' ').find(c=>c.startsWith('border-')) || 'border-emerald-500/50'}`}>
-                                                    {canManageGame(user, 'poker') && (
-                                                        <button onClick={(e) => handleDelete(e, t)} className="absolute top-3 left-3 w-8 h-8 rounded-lg bg-slate-800/80 text-slate-500 hover:text-rose-400 flex items-center justify-center z-10"><i className="fa-solid fa-trash text-xs"></i></button>
-                                                    )}
-                                                    {t.players && t.players[user.uid] && <div className="absolute top-3 right-3 bg-emerald-500/20 border border-emerald-500 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full animate-pulse font-bold z-10">🟢 You're seated here</div>}
-                                                    <div className="flex items-center gap-3 mb-4 mt-3">
-                                                        <div className={`w-11 h-11 rounded-xl border flex items-center justify-center ${vs.icoBg}`}><i className={`fa-solid fa-diamond ${vs.ico}`}></i></div>
-                                                        <div>
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className={`text-sm font-black px-2.5 py-0.5 rounded-lg border ${vs.chip}`}>{variantLabel(gt)}</span>
-                                                                {s.isDealerChoice && <span className="text-rose-400 text-[10px] font-black bg-rose-500/10 border border-rose-500/40 px-1.5 py-0.5 rounded">DC</span>}
-                                                            </div>
-                                                            <p className="text-white text-base font-black mt-1" dir="ltr">Blinds {formatShort(s.blinds)}/{formatShort(s.blinds*2)}</p>
-                                                            <p className="text-slate-500 text-[11px] font-bold" dir="ltr">Min buy-in {formatMoney(minBuy)}</p>
-                                                        </div>
-                                                        {inHand && <span className="mr-auto self-start text-[10px] text-amber-400 font-black bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-full">● LIVE</span>}
-                                                    </div>
-                                                    <div className="flex justify-between items-center">
-                                                        <AvatarsRow players={t.players} />
-                                                        <span className="text-slate-300 font-bold text-xs bg-slate-800/60 border border-white/10 px-3 py-1 rounded-full">{Object.keys(t.players||{}).length}/{s.maxPlayers || 6}</span>
-                                                    </div>
+                                            <div key={t.docId} className="tbl-row" onClick={()=>onJoinPoker(t)}>
+                                                <div className="tbl-spine" style={{background: vs.spine}}>{variantLabel(gt)}</div>
+                                                <div className="tbl-seats">
+                                                    <svg viewBox="0 0 44 44" className="tbl-ring"><circle cx="22" cy="22" r="19" fill="none" stroke="rgba(148,163,184,0.18)" strokeWidth="3.5"/><circle cx="22" cy="22" r="19" fill="none" stroke={seated > 0 ? vs.hue : 'rgba(148,163,184,0.28)'} strokeWidth="3.5" strokeDasharray={`${119 * seated / cap} 119`} strokeLinecap="round" transform="rotate(-90 22 22)"/></svg>
+                                                    <span dir="ltr">{seated}/{cap}</span>
                                                 </div>
+                                                <div className="tbl-main">
+                                                    <div className="tbl-name">{s.tableName || (variantLabel(gt) + ' table')}{s.isDealerChoice && <span className="tbl-dc">DC</span>}{t.players && t.players[user.uid] && <span className="tbl-me">You're seated</span>}</div>
+                                                    <div className="tbl-stakes" dir="ltr">{formatShort(s.blinds)}/{formatShort(s.blinds*2)}</div>
+                                                    <div className="tbl-sub">{inHand ? <span className="tbl-live">● Running</span> : 'Waiting'}</div>
+                                                </div>
+                                                <div className="tbl-buyin" dir="ltr">
+                                                    <span className="tbl-buyin-label">Buy-in</span>
+                                                    <span className="tbl-buyin-val">{formatMoney(minBuy)}</span>
+                                                </div>
+                                                {canManageGame(user, 'poker') && (
+                                                    <button onClick={(e) => handleDelete(e, t)} className="tbl-del"><i className="fa-solid fa-trash"></i></button>
+                                                )}
                                             </div>
                                         );
                                     })}
-                                    {shownPoker.length === 0 && <div className="col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed">No open {pokFilter === 'all' ? 'Poker' : variantLabel(pokFilter)} tables.</div>}
+                                    {shownPoker.length === 0 && <div className="text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed">No open {pokFilter === 'all' ? 'Poker' : variantLabel(pokFilter)} tables.</div>}
                                 </div>}
                                 {showPokerTours && <div className="border-t border-white/5 my-8"></div>}
                                 {showPokerTours && <TournamentsTab game="poker" user={user} tournaments={tournaments} tables={tables} clubSettings={clubSettings} showToast={showToast} onJoinTable={onJoinPoker} />}

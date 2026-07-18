@@ -2740,12 +2740,16 @@ function InstallBanner({
   const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
   const [installable, setInstallable] = useState(!!window.__installEvt);
   const [showGuide, setShowGuide] = useState(false);
+  const [stillInstalled, setStillInstalled] = useState(false);
   useEffect(() => {
     const on = () => setInstallable(true);
     const off = () => setInstallable(false);
     window.addEventListener('pwa-installable', on);
     window.addEventListener('beforeinstallprompt', on);
     window.addEventListener('appinstalled', off);
+    try {
+      navigator.getInstalledRelatedApps && navigator.getInstalledRelatedApps().then(apps => setStillInstalled((apps || []).length > 0)).catch(() => {});
+    } catch (e) {}
     return () => {
       window.removeEventListener('pwa-installable', on);
       window.removeEventListener('beforeinstallprompt', on);
@@ -2772,10 +2776,10 @@ function InstallBanner({
   };
   return React.createElement(React.Fragment, null, React.createElement("button", {
     onClick: doInstall,
-    className: variant === 'auth' ? "w-full mt-3 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white font-black py-3.5 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-2 animate-pulse" : "w-full mb-4 bg-gradient-to-b from-emerald-500/90 to-emerald-700 hover:from-emerald-400 text-white font-black py-3 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2"
+    className: variant === 'auth' ? "w-full mt-3 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white font-black py-3.5 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-2" : "w-full mb-4 bg-gradient-to-b from-emerald-500/90 to-emerald-700 hover:from-emerald-400 text-white font-black py-3 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2"
   }, React.createElement("i", {
     className: "fa-solid fa-circle-down text-lg"
-  }), React.createElement("span", null, "Install the app on your phone")), showGuide && ReactDOM.createPortal(React.createElement("div", {
+  }), React.createElement("span", null, stillInstalled ? 'App already installed — details' : 'Install the app on your phone')), showGuide && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4",
     onClick: () => setShowGuide(false)
@@ -2816,7 +2820,27 @@ function InstallBanner({
     className: "text-center pt-2 text-3xl text-sky-400 animate-bounce"
   }, "⬇️"), React.createElement("p", {
     className: "text-center text-[10px] text-slate-500 font-bold"
-  }, "The Share button is at the bottom of Safari")) : React.createElement("div", {
+  }, "The Share button is at the bottom of Safari")) : stillInstalled ? React.createElement("div", {
+    className: "text-left space-y-2.5"
+  }, React.createElement("div", {
+    className: "p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40"
+  }, React.createElement("p", {
+    className: "text-emerald-300 text-sm font-black mb-1"
+  }, "✅ PokerTen is already installed on this phone"), React.createElement("p", {
+    className: "text-slate-300 text-[11px] font-bold leading-relaxed"
+  }, "That's why Chrome won't offer a one-tap install — the app is here. If the icon is gone from your home screen, you only removed the shortcut.")), React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("span", {
+    className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
+  }, "1"), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "To open it: Chrome menu ", React.createElement("b", null, "⋮"), " → ", React.createElement("b", null, "Open app"), ", or find PokerTen in your app drawer")), React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("span", {
+    className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
+  }, "2"), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "To reinstall fresh: ", React.createElement("b", null, "Settings → Apps → PokerTen → Uninstall"), ", reopen Chrome — the one-tap install returns"))) : React.createElement("div", {
     className: "text-left space-y-2.5"
   }, React.createElement("div", {
     className: "flex items-center gap-3"
@@ -3292,6 +3316,12 @@ function ClubsView({
   const isIOSSafari = isIOS && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
   const isAndroidMob = /Android/i.test(navigator.userAgent || '');
   const [iosGuide, setIosGuide] = useState(false);
+  const [stillInstalled, setStillInstalled] = useState(false);
+  useEffect(() => {
+    try {
+      navigator.getInstalledRelatedApps && navigator.getInstalledRelatedApps().then(apps => setStillInstalled((apps || []).length > 0)).catch(() => {});
+    } catch (e) {}
+  }, []);
   const copySiteLink = async () => {
     try {
       await navigator.clipboard.writeText('https://pokerten.com');
@@ -3549,7 +3579,31 @@ function ClubsView({
     className: "text-4xl mb-2"
   }, "📲"), React.createElement("h3", {
     className: "text-xl font-black text-white mb-4"
-  }, isIOS ? 'Install on iPhone' : 'Install on Android'), !isIOS && React.createElement("div", {
+  }, isIOS ? 'Install on iPhone' : 'Install on Android'), !isIOS && stillInstalled && React.createElement("div", {
+    className: "text-left space-y-2.5 mb-4"
+  }, React.createElement("div", {
+    className: "p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/40"
+  }, React.createElement("p", {
+    className: "text-emerald-300 text-sm font-black mb-1"
+  }, "✅ PokerTen is already installed on this phone"), React.createElement("p", {
+    className: "text-slate-300 text-[11px] font-bold leading-relaxed"
+  }, "That's why there's no one-tap install — the app is here. If the icon is gone from your home screen, you only removed the shortcut, not the app.")), React.createElement("div", {
+    className: "flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"
+  }, React.createElement("span", {
+    className: "w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shrink-0"
+  }, React.createElement("i", {
+    className: "fa-solid fa-up-right-from-square"
+  })), React.createElement("span", {
+    className: "text-slate-200 font-bold text-sm"
+  }, "To open: Chrome menu ", React.createElement("b", null, "⋮"), " → ", React.createElement("b", null, "Open app"), ", or find PokerTen in your app drawer")), React.createElement("div", {
+    className: "flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"
+  }, React.createElement("span", {
+    className: "w-9 h-9 rounded-xl bg-slate-700 flex items-center justify-center text-white shrink-0"
+  }, React.createElement("i", {
+    className: "fa-solid fa-rotate"
+  })), React.createElement("span", {
+    className: "text-slate-200 font-bold text-sm"
+  }, "To reinstall fresh: ", React.createElement("b", null, "Settings → Apps → PokerTen → Uninstall"), ", reopen Chrome — the one-tap install returns"))), !isIOS && !stillInstalled && React.createElement("div", {
     className: "text-left space-y-2.5 mb-4"
   }, React.createElement("div", {
     className: "flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"

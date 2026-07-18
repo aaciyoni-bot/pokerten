@@ -4003,7 +4003,7 @@
             const [s, setS] = useState({
                 baseGameType: 'NLH', isDealerChoice: false, maxPlayers: 6,
                 blinds: 0.5, actionTime: 30, minBuyInBB: 40, maxBuyInBB: 200,
-                leaveNoticeMins: 0, serverEngine: false,
+                leaveNoticeMins: 0, leaveNoticeBB: 0, serverEngine: false,
                 rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT, autoStart: 2,
                 straddle: false, ante: 0
             });
@@ -4072,6 +4072,14 @@
                                         {[3,5,10].map(n => <option key={n} value={n}>{n} min notice</option>)}
                                     </select>
                                 </Field>
+                                {(s.leaveNoticeMins || 0) > 0 && (
+                                    <Field label="Notice applies when winning at least">
+                                        <select value={s.leaveNoticeBB || 0} onChange={e=>upd('leaveNoticeBB', parseInt(e.target.value))} className={sel}>
+                                            <option value={0}>Any profit / everyone</option>
+                                            {[10,20,25,30,50,100].map(n => <option key={n} value={n}>{n} BB over buy-in</option>)}
+                                        </select>
+                                    </Field>
+                                )}
                                 <Field label="🔒 Server-secured engine (beta)">
                                     <select value={s.serverEngine ? 1 : 0} onChange={e=>upd('serverEngine', parseInt(e.target.value) === 1)} className={sel}>
                                         <option value={0}>Off — classic</option>
@@ -4739,12 +4747,19 @@
                 const noticeMs = (Number(setts.leaveNoticeMins) || 0) * 60000;
                 if (!t.tournament && noticeMs > 0 && !forceNow) {
                     const meN = t.players[user.uid];
+                    // Profit threshold: notice only binds a player who's up ≥ N BB over their buy-in
+                    const bbV = (Number(setts.blinds) || 0.5) * 2;
+                    const thrBB = Number(setts.leaveNoticeBB) || 0;
+                    const profitBB = ((meN.stack || 0) + (meN.bet || 0) - (meN.buyTotal || 0)) / bbV;
+                    if (thrBB > 0 && profitBB < thrBB && !meN.leavingAt) {
+                        // below the threshold — free to leave
+                    } else {
                     if (!meN.leavingAt) {
                         try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leavingAt`]: Date.now() + noticeMs }); } catch(e) {}
                         showToast(`🚪 Leave announced — the table sees it. You can stand up in ${Number(setts.leaveNoticeMins)} min (you keep playing until then).`, "info");
                         return;
                     }
-                    if (Date.now() < meN.leavingAt) {
+                    if (meN.leavingAt && Date.now() < meN.leavingAt) {
                         if (window.confirm("Cancel leaving and stay at the table?")) {
                             try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leavingAt`]: null }); } catch(e) {}
                             showToast("Staying! 💪", "success");
@@ -4753,6 +4768,7 @@
                             showToast(`${Math.floor(leftS/60)}:${String(leftS%60).padStart(2,'0')} left before you can stand up`, "info");
                         }
                         return;
+                    }
                     }
                 }
                 if (t.tournament) {

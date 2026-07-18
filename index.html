@@ -2557,12 +2557,8 @@ function App() {
     className: "flex flex-col items-end cursor-pointer",
     onClick: () => changeView('lobby')
   }, React.createElement("h1", {
-    className: "text-xl font-black tracking-wider"
-  }, React.createElement("span", {
-    className: "logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400"
-  }, "POKER"), React.createElement("span", {
-    className: "text-emerald-400"
-  }, "TEN")), React.createElement("p", {
+    className: "text-xl font-black tracking-wider logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400"
+  }, "POKERTEN"), React.createElement("p", {
     className: "text-[10px] text-emerald-400/90 font-black tracking-widest leading-none flex items-center gap-1"
   }, clubSettings?.logo ? React.createElement("img", {
     src: clubSettings.logo,
@@ -4212,7 +4208,12 @@ function LobbyView({
     maxPlayers: 4,
     bluff: false
   });
-  const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const GAME_ORDER = ['NLH', 'Pineapple', 'Omaha 4', 'Omaha 5', 'Omaha 6'];
+  const gtRank = t => {
+    const idx = GAME_ORDER.indexOf((t.settings || {}).baseGameType || 'NLH');
+    return idx < 0 ? 99 : idx;
+  };
+  const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => gtRank(a) - gtRank(b) || (a.createdAt || 0) - (b.createdAt || 0));
   const [pokFilter, setPokFilter] = useState('all');
   const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
   const variantCount = v => pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === v).length;

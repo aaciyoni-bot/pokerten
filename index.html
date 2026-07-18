@@ -4102,12 +4102,8 @@ function LobbyView({
       setBonusSpin(null);
     }
   }))), React.createElement("div", {
-    className: "flex items-center gap-2 mb-7 flex-wrap"
-  }, React.createElement("span", {
-    className: "text-[10px] text-slate-500 font-black uppercase tracking-widest mr-1"
-  }, React.createElement("i", {
-    className: "fa-solid fa-dice ml-1"
-  }), "Game"), [{
+    className: "flex items-center gap-1.5 mb-7"
+  }, [{
     id: 'poker',
     label: 'Poker',
     suit: '♠',
@@ -4125,7 +4121,7 @@ function LobbyView({
   }].map(g => React.createElement("button", {
     key: g.id,
     onClick: () => setTab(g.id),
-    className: `px-4 py-2 rounded-xl font-black text-sm border transition-all flex items-center gap-1.5 ${tab === g.id ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200 shadow-[0_4px_16px_rgba(6,182,212,0.2)]' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:text-white'}`
+    className: `flex-1 justify-center px-2.5 py-2 rounded-xl font-black text-sm border transition-all flex items-center gap-1.5 whitespace-nowrap ${tab === g.id ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200 shadow-[0_4px_16px_rgba(6,182,212,0.2)]' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:text-white'}`
   }, g.suit ? React.createElement(SuitGlyph, {
     s: g.suit,
     color: "currentColor",
@@ -6619,6 +6615,109 @@ function PokerTable({
       showToast(typeof e === 'string' ? e : "Error taking a seat", "error");
     }
   };
+  const joinWaitlist = async () => {
+    if (tableState?.tournamentId) return;
+    try {
+      await window.fb.runTransaction(window.fb.db, async tr => {
+        const tSnap = await tr.get(tblRef());
+        if (!tSnap.exists()) throw "Table doesn't exist";
+        const t = tSnap.data();
+        if ((t.players || {})[user.uid]) throw "You're already seated";
+        const wl = Array.isArray(t.waitlist) ? t.waitlist.slice() : [];
+        if (wl.some(w => w.uid === user.uid)) throw "You're already on the waitlist";
+        wl.push({
+          uid: user.uid,
+          name: user.username,
+          at: Date.now(),
+          buyAmt: round2(buyAmt)
+        });
+        tr.update(tblRef(), {
+          waitlist: wl
+        });
+      });
+      showToast("Added to the waitlist — you'll be seated automatically when a spot opens 🪑", "success");
+    } catch (e) {
+      showToast(typeof e === 'string' ? e : "Waitlist error", "error");
+    }
+  };
+  const leaveWaitlist = async () => {
+    try {
+      await window.fb.runTransaction(window.fb.db, async tr => {
+        const tSnap = await tr.get(tblRef());
+        if (!tSnap.exists()) return;
+        const wl = (tSnap.data().waitlist || []).filter(w => w.uid !== user.uid);
+        tr.update(tblRef(), {
+          waitlist: wl
+        });
+      });
+      showToast("Removed from the waitlist", "info");
+    } catch (e) {}
+  };
+  const promotingRef = useRef(false);
+  useEffect(() => {
+    const t = tableState;
+    if (!t || t.tournamentId) return;
+    const pl = t.players || {};
+    const wl = t.waitlist || [];
+    if (pl[user.uid]) return;
+    if (!wl.length || wl[0].uid !== user.uid) return;
+    const cap = (t.settings || {}).maxPlayers || 6;
+    if (Object.keys(pl).length >= cap) return;
+    if (promotingRef.current) return;
+    promotingRef.current = true;
+    (async () => {
+      try {
+        const want = round2(wl[0].buyAmt || buyAmt);
+        await window.fb.runTransaction(window.fb.db, async tr => {
+          const uRef = memDoc(user.uid);
+          const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tblRef())];
+          if (!tSnap.exists()) throw "gone";
+          const td = tSnap.data();
+          const p2 = td.players || {};
+          const w2 = td.waitlist || [];
+          if (p2[user.uid]) throw "seated";
+          if (!w2.length || w2[0].uid !== user.uid) throw "not-first";
+          if (Object.keys(p2).length >= ((td.settings || {}).maxPlayers || 6)) throw "full";
+          if ((uSnap.data().balance || 0) < want) throw "You reached the top of the waitlist but don't have enough balance — removed from list";
+          let seatIndex = 0;
+          const taken = new Set(Object.values(p2).map(p => p.seatIndex));
+          while (taken.has(seatIndex)) seatIndex++;
+          const midHand = !['waiting', 'showdown'].includes(td.gameState.phase);
+          tr.update(uRef, {
+            balance: round2(uSnap.data().balance - want)
+          });
+          tr.update(tblRef(), {
+            waitlist: w2.slice(1),
+            [`leftStacks.${user.uid}`]: null,
+            [`players.${user.uid}`]: {
+              uid: user.uid,
+              name: user.username,
+              photo: user.photo || '',
+              avatarSeed: user.avatarSeed || '',
+              seatIndex,
+              stack: round2(want),
+              bet: 0,
+              buyTotal: round2(want),
+              status: midHand ? 'waiting' : 'active',
+              cards: [],
+              hasActed: false,
+              actionText: '',
+              isBot: false
+            }
+          });
+        });
+        setSpectate(false);
+        showToast("A seat opened up — you're in! 🎉", "success");
+      } catch (e) {
+        if (typeof e === 'string' && e.startsWith('You reached')) {
+          showToast(e, "error");
+          leaveWaitlist();
+        }
+      } finally {
+        promotingRef.current = false;
+      }
+    })();
+  }, [tableState, user.uid]);
   const handleRebuy = async () => {
     if (tableState?.tournament) return showToast("No standard Rebuy in a tournament - use Rebuy/Add-on per tournament rules", "error");
     try {
@@ -7335,6 +7434,11 @@ function PokerTable({
   const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
   const myMaxBet = round2((myPlayer?.bet || 0) + (myPlayer?.stack || 0));
   const canShowBuyIn = !isSeated && !spectate;
+  const tblCap = setts.maxPlayers || 6;
+  const isFull = Object.keys(players).length >= tblCap;
+  const waitlist = tableState.waitlist || [];
+  const myWaitPos = waitlist.findIndex(w => w.uid === user.uid);
+  const onWaitlist = myWaitPos >= 0;
   const baseMinBuy = (setts.minBuyInBB || 40) * BB;
   const baseMaxBuy = (setts.maxBuyInBB || 200) * BB;
   const leftLock = (tableState.leftStacks || {})[user.uid];
@@ -7881,7 +7985,23 @@ function PokerTable({
     dir: "ltr"
   }, React.createElement("span", null, "Min ", formatMoney(minBuy)), React.createElement("span", null, "Max ", formatMoney(maxBuy))), lockActive && !needRebuy && React.createElement("div", {
     className: "text-[10px] text-amber-400 font-bold mb-3"
-  }, "🔒 You left here with ", formatMoney(leftLock.amount), " - you must return with at least this"), React.createElement("button", {
+  }, "🔒 You left here with ", formatMoney(leftLock.amount), " - you must return with at least this"), !needRebuy && isFull && !onWaitlist && React.createElement("div", {
+    className: "mb-2"
+  }, React.createElement("div", {
+    className: "text-[11px] text-amber-300 font-bold mb-2"
+  }, "Table full (", tblCap, "/", tblCap, ")", waitlist.length > 0 ? ` · ${waitlist.length} waiting` : '', ". Join the waitlist and you'll be seated automatically with this buy-in when a spot opens."), React.createElement("button", {
+    onClick: joinWaitlist,
+    className: "w-full bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white py-3.5 rounded-2xl font-black shadow-lg"
+  }, React.createElement("i", {
+    className: "fa-solid fa-clock-rotate-left ml-1"
+  }), " Join waitlist")), !needRebuy && onWaitlist && React.createElement("div", {
+    className: "mb-2"
+  }, React.createElement("div", {
+    className: "text-sm text-sky-300 font-black mb-2"
+  }, "🪑 On the waitlist — position ", myWaitPos + 1, " of ", waitlist.length), React.createElement("button", {
+    onClick: leaveWaitlist,
+    className: "w-full bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 py-2.5 rounded-2xl font-black"
+  }, "Leave waitlist")), !(isFull && !needRebuy) && React.createElement("button", {
     onClick: needRebuy ? handleRebuy : handleSit,
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
   }, needRebuy ? 'Do Rebuy' : 'Sit back in'), !needRebuy && React.createElement("button", {

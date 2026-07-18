@@ -1300,6 +1300,22 @@
             const [fbReady, setFbReady] = useState(false);
             const [dbUser, setDbUser] = useState(null);
             const [currentView, setCurrentView] = useState('auth');
+            // App-wide install (Add to Home Screen) — reachable from the nav anytime, not only the opening screen
+            const [canInstallApp, setCanInstallApp] = useState(!!window.__installEvt);
+            const [showInstall, setShowInstall] = useState(false);
+            const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            const isStandaloneApp = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+            useEffect(() => {
+                const h = () => setCanInstallApp(true);
+                window.addEventListener('pwa-installable', h);
+                window.addEventListener('beforeinstallprompt', h);
+                return () => { window.removeEventListener('pwa-installable', h); window.removeEventListener('beforeinstallprompt', h); };
+            }, []);
+            const triggerInstall = async () => {
+                const evt = window.__installEvt;
+                if (evt) { try { evt.prompt(); const r = await evt.userChoice; if (r && r.outcome === 'accepted') { window.__installEvt = null; setCanInstallApp(false); } } catch(_) {} return; }
+                setShowInstall(true); // no native prompt (iOS, or Android after uninstall) → manual guide
+            };
             const [tablesDB, setTablesDB] = useState([]);
             const [toursDB, setToursDB] = useState([]);
             const toursRef = useRef([]); const tablesRef2 = useRef([]);
@@ -1601,6 +1617,11 @@
                                 <button onClick={() => changeView(currentView === 'leaders' ? 'lobby' : 'leaders')} className={`w-10 h-10 rounded-xl border transition-colors flex items-center justify-center ${currentView === 'leaders' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800/80 text-amber-400 border-white/5 hover:bg-amber-700 hover:text-white'}`} title="Leaderboard">
                                     <i className="fa-solid fa-ranking-star"></i>
                                 </button>
+                                {!isStandaloneApp && (
+                                    <button onClick={triggerInstall} className="w-10 h-10 rounded-xl border border-emerald-500/40 bg-emerald-600/15 text-emerald-300 hover:bg-emerald-600 hover:text-white flex items-center justify-center transition-colors animate-pulse" title="Install app">
+                                        <i className="fa-solid fa-circle-down"></i>
+                                    </button>
+                                )}
                                 <button onClick={() => changeView(currentView === 'profile' ? 'lobby' : 'profile')} className="w-10 h-10 rounded-full overflow-hidden border border-cyan-400/40 hover:border-emerald-400 transition-colors" title="My profile">
                                     <img src={avatarUrl(dbUser)} className="w-full h-full object-cover bg-slate-800" />
                                 </button>
@@ -1634,6 +1655,31 @@
                         {currentView === 'durak-table' && <DurakTable tableDocId={activeTable?.docId} user={effUser} clubSettings={clubSettings} onLeave={() => { setLobbyTab('durak'); changeView('lobby'); }} showToast={showToast} />}
                         {currentView === 'ofc-table' && <OFCTable tableDocId={activeTable?.docId} user={effUser} clubSettings={clubSettings} onLeave={() => { setLobbyTab('ofc'); changeView('lobby'); }} showToast={showToast} />}
                     </main>
+
+                    {showInstall && ReactDOM.createPortal(
+                        <div dir="ltr" className="fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setShowInstall(false)}>
+                            <div onClick={e=>e.stopPropagation()} className="bg-gradient-to-b from-slate-900 to-slate-950 border border-white/10 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl animate-pop-in mb-4">
+                                <div className="text-3xl mb-1">📲</div>
+                                <h3 className="text-lg font-black text-white mb-1">Install PokerTen</h3>
+                                <p className="text-slate-400 text-xs font-bold mb-4">Add it to your home screen — opens full-screen like a real app.</p>
+                                {isIOSDev ? (
+                                    <div className="text-left space-y-2.5">
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">1</span><span className="text-slate-200 text-sm font-bold">Tap the <b>Share</b> button <i className="fa-solid fa-arrow-up-from-bracket text-sky-400"></i> (bottom bar in Safari)</span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">2</span><span className="text-slate-200 text-sm font-bold">Scroll down → <b>Add to Home Screen</b> <i className="fa-solid fa-square-plus text-slate-300"></i></span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">3</span><span className="text-slate-200 text-sm font-bold">Tap <b>Add</b> — the P10 icon is on your home screen 🎉</span></div>
+                                        <div className="text-center pt-2 text-3xl text-sky-400 animate-bounce">⬇️</div>
+                                        <p className="text-center text-[10px] text-slate-500 font-bold">The Share button is at the bottom of Safari</p>
+                                    </div>
+                                ) : (
+                                    <div className="text-left space-y-2.5">
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">1</span><span className="text-slate-200 text-sm font-bold">Tap the menu <b>⋮</b> (top-right in Chrome)</span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">2</span><span className="text-slate-200 text-sm font-bold">Tap <b>Install app</b> / <b>Add to Home screen</b></span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">3</span><span className="text-slate-200 text-sm font-bold">Confirm <b>Install</b> 🎉</span></div>
+                                    </div>
+                                )}
+                                <button onClick={() => setShowInstall(false)} className="mt-5 text-slate-500 hover:text-white underline text-sm font-bold">Close</button>
+                            </div>
+                        </div>, document.body)}
 
                     <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-[99999] flex flex-col gap-2 pointer-events-none w-[90%] max-w-sm">
                         {clubMsg && !inTable && (

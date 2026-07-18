@@ -7148,6 +7148,16 @@
                     playSnd('deal');
                 } catch(e) { showToast(typeof e === 'string' ? e : "Error", "error"); }
             };
+            // התחלה אוטומטית: ברגע ש-2+ שחקנים יושבים (עם צ'יפים) היד מתחילה לבד.
+            // מריץ רק אצל מי שרשאי (מארח/סופר-אדמין/לבד-מול-בוטים); startGame נעול
+            // בטרנזקציה לפי status, כך שאם כמה לקוחות מריצים - רק אחד באמת מתחיל.
+            useEffect(() => {
+                if (!canStart || T.status !== 'setup') return;
+                const seated = Object.values(players).filter(p => (p.stack || 0) > 0).length;
+                if (seated < 2) return;
+                const tm = setTimeout(() => { startGame(); }, 1500);
+                return () => clearTimeout(tm);
+            }, [T.status, Object.keys(players).length, canStart]);
             const cashOutSeat = async () => {
                 // פדיון הסטאק Back לארנק + פינוי הכיסא
                 try {

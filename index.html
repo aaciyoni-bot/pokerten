@@ -164,6 +164,14 @@
         .board-invalid-group { animation: flashRed 1.5s infinite; border: 2px solid #ef4444 !important; background: rgba(239, 68, 68, 0.12); }
         @keyframes trophyPop { 0% { transform: scale(0) rotate(-20deg); } 70% { transform: scale(1.2) rotate(5deg); } 100% { transform: scale(1) rotate(0); } }
         .trophy-pop { animation: trophyPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+        /* Fantasyland celebration: a rainbow sweeps across the screen */
+        @keyframes rainbowSweep { 0% { transform: translateX(-120%) skewX(-12deg); opacity: 0; } 15% { opacity: 0.95; } 85% { opacity: 0.95; } 100% { transform: translateX(120%) skewX(-12deg); opacity: 0; } }
+        .rainbow-sweep { position: fixed; inset: -20% -60%; z-index: 99998; pointer-events: none; background: linear-gradient(100deg, transparent, #ff0040, #ff8a00, #ffe600, #37ff00, #00e5ff, #4d5bff, #b400ff, transparent); background-size: 100% 100%; filter: blur(6px); opacity: 0.9; animation: rainbowSweep 1.8s cubic-bezier(0.4,0,0.2,1) forwards; mix-blend-mode: screen; }
+        .rainbow-text { position: fixed; top: 32%; left: 0; right: 0; z-index: 99999; pointer-events: none; text-align: center; font-weight: 900; font-size: clamp(28px, 8vw, 64px); letter-spacing: 0.05em; background: linear-gradient(90deg, #ff0040, #ff8a00, #ffe600, #37ff00, #00e5ff, #4d5bff, #b400ff); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: 0 0 24px rgba(255,255,255,0.4); animation: trophyPop 0.7s cubic-bezier(0.34,1.56,0.64,1) forwards, oiFade2 0.4s ease 1.4s forwards; }
+        @keyframes oiFade2 { to { opacity: 0; } }
+        /* Bigger board while arranging Fantasyland's 14-16 cards */
+        .ofc-fantasy-board { transform: scale(1.4); transform-origin: top center; }
+        @media (max-width: 640px) { .ofc-fantasy-board { transform: scale(1.28); } }
 
         /* ===== רמיקוב: לוח עתידני כהה ===== */
         #felt-board {
@@ -6118,6 +6126,9 @@
             const [showSeen, setShowSeen] = useState(false);
             const tableRef = useRef(null);
             const settlingRef = useRef(false);
+            const [drag, setDrag] = useState(null);       // { id, x, y, card } — card being dragged from hand
+            const [rainbow, setRainbow] = useState(false); // Fantasyland celebration
+            const prevFlC = useRef(0);
             const tblRef = () => window.fb.doc(window.fb.db, "tables", tableDocId);
             const flashErr = (m) => { setErrMsg(m); setTimeout(() => setErrMsg(''), 3200); };
             const clonePl = (pl) => { const o = {}; Object.entries(pl || {}).forEach(([k, v]) => o[k] = { ...v, top: [...(v.top || [])], mid: [...(v.mid || [])], bot: [...(v.bot || [])], pending: [...(v.pending || [])], disc: [...(v.disc || [])] }); return o; };
@@ -6151,6 +6162,43 @@
             const targetFor = (p, street) => p.flC ? 13 : 5 + 2 * street;
             const needPlace = me ? (me.flC ? 13 : (T.street === 0 ? 5 : 2)) : 0;
             const stagedCount = Object.keys(stage).length;
+            const rowSize = (row) => row === 'top' ? 3 : 5;
+            // Place a card into a row (used by both tap and drag)
+            const placeInRow = (cardId, row) => {
+                if (!cardId || !isMyTurn || !me) return;
+                if (stage[cardId] === row) return;
+                const placed = (me[row] || []).length;
+                const stagedHere = Object.entries(stage).filter(([id, r]) => r === row && id !== cardId).length;
+                if (placed + stagedHere >= rowSize(row)) { flashErr("The row is full"); return; }
+                if (stagedCount >= needPlace && !stage[cardId]) { flashErr(`You already placed ${needPlace}`); return; }
+                setStage(s => ({ ...s, [cardId]: row })); setSelCard(null); playSnd('tile');
+            };
+            // Drag a card from the hand onto a row (pointer-based — works on touch)
+            const startDrag = (e, card) => {
+                if (!isMyTurn) return;
+                setSelCard(card.id);
+                setDrag({ id: card.id, x: e.clientX, y: e.clientY, card });
+            };
+            useEffect(() => {
+                if (!drag) return;
+                const move = (e) => { e.preventDefault(); setDrag(d => d ? { ...d, x: e.clientX, y: e.clientY } : d); };
+                const up = (e) => {
+                    const el = document.elementFromPoint(e.clientX, e.clientY);
+                    const rowEl = el && el.closest ? el.closest('[data-ofc-row]') : null;
+                    if (rowEl) placeInRow(drag.id, rowEl.getAttribute('data-ofc-row'));
+                    setDrag(null);
+                };
+                window.addEventListener('pointermove', move, { passive: false });
+                window.addEventListener('pointerup', up);
+                window.addEventListener('pointercancel', () => setDrag(null));
+                return () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+            }, [drag && drag.id]);
+            // Rainbow celebration when I enter Fantasyland
+            useEffect(() => {
+                const flc = (me && me.flC) || 0;
+                if (flc > 0 && prevFlC.current === 0) { setRainbow(true); setTimeout(() => setRainbow(false), 1900); }
+                prevFlC.current = flc;
+            }, [me && me.flC]);
 
             /* ---------- הצטרפות / התחלה / עזיבה ---------- */
             const handleJoin = async () => {
@@ -6468,7 +6516,7 @@
                 const stagedHere = mine ? Object.entries(stage).filter(([, r]) => r === row).map(([id]) => (me.pending || []).find(c => c.id === id)).filter(Boolean) : [];
                 const hidden = p.flC > 0 && T.status === 'playing' && !godView && p.uid !== user.uid;
                 return (
-                    <div className={`flex gap-1 justify-center ${mine && isMyTurn ? 'cursor-pointer' : ''}`}
+                    <div data-ofc-row={mine ? row : undefined} className={`flex gap-1 justify-center ${mine && isMyTurn ? 'cursor-pointer rounded-lg' : ''} ${mine && drag ? 'ring-2 ring-teal-400/70 bg-teal-500/10' : ''}`}
                          onClick={mine && isMyTurn && selCard ? () => {
                              const total = placedRow.length + stagedHere.length;
                              if (total >= size) { flashErr("The row is full"); return; }
@@ -6549,6 +6597,8 @@
                             ))}
                         </div>
                         {errMsg && <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-rose-950/95 border border-rose-500 text-rose-200 text-xs font-bold rounded-xl px-4 py-2">{errMsg}</div>}
+                        {rainbow && ReactDOM.createPortal(<React.Fragment><div className="rainbow-sweep"></div><div className="rainbow-text">🌈 FANTASYLAND!</div></React.Fragment>, document.body)}
+                        {drag && ReactDOM.createPortal(<div style={{ position: 'fixed', left: drag.x, top: drag.y, transform: 'translate(-50%, -60%) scale(1.15)', zIndex: 100000, pointerEvents: 'none' }}><OCard c={drag.card} sel /></div>, document.body)}
 
                         {/* לוח קלפים שנראו */}
                         {T.status === 'playing' && (
@@ -6596,7 +6646,7 @@
                                     const foulTM = tE && mE && ofcCmp(tE, mE) > 0, foulMB = mE && bE && ofcCmp(mE, bE) > 0;
                                     const lbl = (ev, full, isTop, foul) => <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${foul ? 'text-rose-300 border-rose-500/70 bg-rose-500/15 animate-pulse' : full ? 'text-teal-200 border-teal-500/40 bg-teal-500/10' : 'text-slate-600 border-white/8'}`}>{full ? ofcHandName(ev, isTop) : '···'}</span>;
                                     return (
-                                        <div className="space-y-1.5 mb-2">
+                                        <div className={`space-y-1.5 mb-2 transition-transform ${me.flC > 0 ? 'ofc-fantasy-board' : ''}`}>
                                             <div className="flex items-center justify-center gap-2"><RowSlots p={me} row="top" size={3} mine />{lbl(tE, !!tE, true, foulTM)}</div>
                                             <div className="flex items-center justify-center gap-2"><RowSlots p={me} row="mid" size={5} mine />{lbl(mE, !!mE, false, foulTM || foulMB)}</div>
                                             <div className="flex items-center justify-center gap-2"><RowSlots p={me} row="bot" size={5} mine />{lbl(bE, !!bE, false, foulMB)}</div>
@@ -6608,7 +6658,9 @@
                                     <React.Fragment>
                                         <div className="flex justify-center gap-1.5 flex-wrap mb-2" dir="ltr">
                                             {(me.pending || []).filter(c => !stage[c.id]).map(c => (
-                                                <OCard key={c.id} c={c} sel={selCard === c.id} onClick={() => setSelCard(selCard === c.id ? null : c.id)} />
+                                                <div key={c.id} onPointerDown={(e) => startDrag(e, c)} style={{ touchAction: 'none', opacity: drag && drag.id === c.id ? 0.3 : 1 }}>
+                                                    <OCard c={c} sel={selCard === c.id} onClick={() => setSelCard(selCard === c.id ? null : c.id)} />
+                                                </div>
                                             ))}
                                             {(me.pending || []).filter(c => !stage[c.id]).length === 0 && <span className="text-slate-600 text-[10px] font-bold py-3">All cards placed</span>}
                                         </div>

@@ -8485,22 +8485,42 @@ function PokerTable({
     }, "✕"), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
       key: 'g' + gi,
       className: "gift-fx"
-    }, g.giftE)), showCards && (isMe || !topSeat) && React.createElement("div", {
-      className: `flex ${isMe ? 'gap-1 mb-[-8px]' : 'gap-0.5 mb-[-10px]'} z-0`,
-      dir: "ltr"
-    }, dispCards.map((c, ci) => isMe && gs.phase === 'discard' && dispCards.length === 3 ? React.createElement("div", {
-      key: ci,
-      onClick: () => handleDiscardCard(user.uid, ci),
-      className: "cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"
-    }, React.createElement(PCard, {
-      card: c,
-      size: "xl"
-    })) : React.createElement(PCard, {
-      key: ci,
-      card: c,
-      hidden: hidden,
-      size: isMe ? dispCards.length > 4 ? 'lg' : 'xl' : 'sm'
-    }))), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && React.createElement("div", {
+    }, g.giftE)), showCards && (isMe || !topSeat) && (() => {
+      const nC = dispCards.length;
+      const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
+      const midC = (nC - 1) / 2;
+      const ovl = isMe ? nC > 4 ? -14 : -8 : nC > 4 ? -13 : -9;
+      const ang = isMe ? nC > 4 ? 6 : 5 : nC > 4 ? 8 : 7;
+      return React.createElement("div", {
+        className: `flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
+        dir: "ltr"
+      }, dispCards.map((c, ci) => isMe && gs.phase === 'discard' && dispCards.length === 3 ? React.createElement("div", {
+        key: ci,
+        onClick: () => handleDiscardCard(user.uid, ci),
+        className: "cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"
+      }, React.createElement(PCard, {
+        card: c,
+        size: "xl"
+      })) : doFan ? React.createElement("span", {
+        key: ci,
+        className: "inline-block",
+        style: {
+          marginLeft: ci === 0 ? 0 : ovl,
+          transform: `rotate(${(ci - midC) * ang}deg) translateY(${Math.abs(ci - midC) * (isMe ? 3.5 : 2.5)}px)`,
+          transformOrigin: '50% 115%',
+          zIndex: ci
+        }
+      }, React.createElement(PCard, {
+        card: c,
+        hidden: hidden,
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : 'sm'
+      })) : React.createElement(PCard, {
+        key: ci,
+        card: c,
+        hidden: hidden,
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : 'sm'
+      })));
+    })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && React.createElement("div", {
       className: "win-tag",
       dir: "ltr"
     }, "WIN", (gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''), React.createElement("div", {

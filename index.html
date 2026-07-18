@@ -1370,6 +1370,7 @@
                     const isGod = GOD_EMAILS.includes(email);
                     const newUser = {
                         username: user.displayName || 'Player', email: email,
+                        googleName: user.displayName || '',   // real Google name, immutable — owner always identifies by it
                         role: isSuper ? ROLES.SUPER_ADMIN : ROLES.PLAYER,
                         status: (isSuper || isGod) ? 'approved' : 'pending',
                         playerId: genPlayerId(),
@@ -1528,6 +1529,7 @@
                         const data = d.data();
                         setDbUser({ uid: d.id, ...data });
                         if (!data.playerId) { try { window.fb.updateDoc(d.ref, { playerId: genPlayerId() }); } catch(e) {} }
+                        if (!data.googleName && data.username) { try { window.fb.updateDoc(d.ref, { googleName: data.username }); } catch(e) {} }
                         if (viewRef.current === 'auth') changeView('clubs');
                     }
                 });
@@ -3310,10 +3312,11 @@
                                                 <div className="font-bold text-white truncate text-sm flex items-center gap-1.5">
                                                     {u.username}
                                                     {u.isBot && <span className="text-purple-400 text-[10px]">(Bot)</span>}
-                                                    {isGodUser(u) && <i className="fa-solid fa-eye text-purple-400 text-[10px]" title="GOD MODE"></i>}
+                                                    {isGodUser(u) && isGodUser(user) && <i className="fa-solid fa-eye text-purple-400 text-[10px]" title="GOD"></i>}
                                                     {u.role && u.role !== ROLES.PLAYER && <span className="text-[9px] bg-blue-500/15 border border-blue-500/40 text-blue-300 px-2 py-0.5 rounded-full font-bold">{ROLE_LABELS[u.role]}</span>}
                                                 </div>
                                                 <div className="text-[11px] text-slate-400 truncate" dir="ltr">{u.email} · <span className="text-slate-500 font-black">{u.playerId || ''}</span></div>
+                                                {u.googleName && u.googleName !== u.username && <div className="text-[10px] text-slate-500 font-bold truncate" dir="ltr">👤 {u.googleName}</div>}
                                                 {u.agentUid && <div className="text-[10px] text-purple-300/90 font-bold truncate">🤝 {agentName(u.agentUid)} ({u.agentPct || 0}%)</div>}
                                             </div>
                                         </div>

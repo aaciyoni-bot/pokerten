@@ -6798,7 +6798,8 @@ function PokerTable({
       winners: pl[winnerUid].name,
       ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({
         n: q.name,
-        c: q.cards,
+        c: q.reveal ? q.cards : null,
+        cc: (q.cards || []).length,
         w: q.uid === winnerUid,
         f: q.status === 'folded'
       }))
@@ -6887,7 +6888,8 @@ function PokerTable({
       winners: g.lastWinners,
       ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({
         n: q.name,
-        c: q.cards,
+        c: q.status === 'active' || q.reveal ? q.cards : null,
+        cc: (q.cards || []).length,
         w: winnerNames.has(q.name),
         f: q.status === 'folded'
       }))
@@ -8175,8 +8177,31 @@ function PokerTable({
   const godBestUid = (() => {
     if (!godView) return null;
     const board = gs.board || [];
-    if (board.length < 3 || gs.phase === 'waiting') return null;
+    if (gs.phase === 'waiting' || gs.phase === 'showdown' && !gs.lastWinners) return null;
+    const preflop = board.length < 3;
     const isOmaha = (gs.currentGameType || '').startsWith('Omaha');
+    const preScore = cards => {
+      const V = {
+        '2': 2,
+        '3': 3,
+        '4': 4,
+        '5': 5,
+        '6': 6,
+        '7': 7,
+        '8': 8,
+        '9': 9,
+        '10': 10,
+        'J': 11,
+        'Q': 12,
+        'K': 13,
+        'A': 14
+      };
+      const vs = cards.map(c => V[c.val]).sort((a, b) => b - a);
+      const cnt = {};
+      vs.forEach(v => cnt[v] = (cnt[v] || 0) + 1);
+      const pairs = Object.entries(cnt).filter(([, c]) => c >= 2).map(([v]) => Number(v)).sort((a, b) => b - a);
+      return pairs.length ? 1000000 + pairs[0] * 10000 + (vs[0] || 0) : (vs[0] || 0) * 10000 + (vs[1] || 0) * 100 + (vs[2] || 0);
+    };
     let best = -1,
       uid = null,
       tie = false;
@@ -8189,7 +8214,7 @@ function PokerTable({
       };
       let sc = 0;
       try {
-        if (isOmaha) {
+        if (preflop) sc = preScore(p.cards);else if (isOmaha) {
           getCombinations(p.cards, 2).forEach(h => getCombinations(board, 3).forEach(b => {
             const v = evaluate5Cards([...h, ...b]);
             if (v > sc) sc = v;
@@ -8745,9 +8770,19 @@ function PokerTable({
   }, q.w ? '🏆 ' : '', q.n, q.f ? ' (discarded)' : ''), React.createElement("div", {
     className: "flex gap-0.5",
     dir: "ltr"
-  }, (q.c || []).map((c, ci) => React.createElement(PCard, {
+  }, q.c && q.c.length ? q.c.map((c, ci) => React.createElement(PCard, {
     key: ci,
     card: c,
+    size: "sm"
+  })) : Array.from({
+    length: q.cc || 2
+  }).map((_, ci) => React.createElement(PCard, {
+    key: ci,
+    card: {
+      val: '',
+      suit: '♠'
+    },
+    hidden: true,
     size: "sm"
   })))))), React.createElement("div", {
     className: "text-[10px] text-slate-500 font-bold mt-2 text-center"

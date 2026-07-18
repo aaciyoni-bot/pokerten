@@ -4635,7 +4635,7 @@
                                 </div>
                             ) : (
                                 <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[90] bg-rose-900/90 border border-rose-500 text-white px-6 py-2.5 rounded-full font-black text-sm animate-pulse backdrop-blur">
-                                    <i className="fa-solid fa-crown ml-2 text-rose-300"></i>{players[gs.dcUid]?.name} בוחר את המשחק הבא...
+                                    <i className="fa-solid fa-crown ml-2 text-rose-300"></i>{players[gs.dcUid]?.name} is picking the next game...
                                 </div>
                             )
                         )}
@@ -4698,10 +4698,10 @@
                         const mm = Math.floor(nextIn / 60000), ss = Math.floor((nextIn % 60000) / 1000);
                         return (
                             <div className="bg-purple-950/80 border-b border-purple-500/30 px-3 py-1.5 flex items-center justify-center gap-3 text-[11px] font-black z-30 shrink-0 flex-wrap">
-                                <span className="text-purple-300">🏆 {tour.name} · סבב {tour.round}</span>
-                                <span className="text-white">רמה {lvl + 1}: {formatShort(sb)}/{formatShort(bb)}{lvl >= (tour.anteFromLevel ?? 4) ? ` + ante ${formatShort(sb)}` : ''}</span>
+                                <span className="text-purple-300">🏆 {tour.name} · Level {tour.round}</span>
+                                <span className="text-white">Level {lvl + 1}: {formatShort(sb)}/{formatShort(bb)}{lvl >= (tour.anteFromLevel ?? 4) ? ` + ante ${formatShort(sb)}` : ''}</span>
                                 <span className="text-purple-300 font-mono" dir="ltr">⏱ {mm}:{String(ss).padStart(2,'0')}</span>
-                                {tour.finished && <span className="text-amber-400 animate-pulse">🏆 {players[tour.tableWinner]?.name || ''} עלה שלב!</span>}
+                                {tour.finished && <span className="text-amber-400 animate-pulse">🏆 {players[tour.tableWinner]?.name || ''} advanced!</span>}
                                 {isSeated && myPlayer && lvl === (tour.addonAt ?? -1) && myPlayer.status !== 'out' && (
                                     <button onClick={tourAddon} className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg">🚀 Add-on</button>
                                 )}
@@ -4808,11 +4808,11 @@
                             <div className="glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/30">
                                 <i className="fa-solid fa-coins text-4xl text-gold-400 mb-3"></i>
                                 <h3 className="text-xl font-black text-white mb-1">{needRebuy ? 'Out of chips - Rebuy' : 'Table buy-in'}</h3>
-                                <p className="text-slate-400 text-xs font-bold mb-4" dir="ltr">Blinds {formatShort(setts.blinds)}/{formatShort(BB)} · יתרה: {formatMoney(user.balance)}</p>
+                                <p className="text-slate-400 text-xs font-bold mb-4" dir="ltr">Blinds {formatShort(setts.blinds)}/{formatShort(BB)} · Balance: {formatMoney(user.balance)}</p>
                                 <div className="text-3xl font-black text-gold-400 mb-2" dir="ltr">{formatMoney(buyAmt)}</div>
                                 <input type="range" min={minBuy} max={maxBuy} step={BB} value={Math.min(Math.max(buyAmt, minBuy), maxBuy)} onChange={e=>setBuyAmt(parseFloat(e.target.value))} className="w-full accent-amber-500 mb-1" dir="ltr" />
                                 <div className="flex justify-between text-[10px] text-slate-500 font-bold mb-2" dir="ltr"><span>Min {formatMoney(minBuy)}</span><span>Max {formatMoney(maxBuy)}</span></div>
-                                {lockActive && !needRebuy && <div className="text-[10px] text-amber-400 font-bold mb-3">🔒 קמת מכאן עם {formatMoney(leftLock.amount)} - חובה לחזור עם סכום זה לפחות</div>}
+                                {lockActive && !needRebuy && <div className="text-[10px] text-amber-400 font-bold mb-3">🔒 You left here with {formatMoney(leftLock.amount)} - you must return with at least this</div>}
                                 <button onClick={needRebuy ? handleRebuy : handleSit} className="w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">
                                     {needRebuy ? 'Do Rebuy' : 'Sit back in'}
                                 </button>
@@ -5555,7 +5555,7 @@
                                             </div>
                                         ))}
                                     </div>
-                                    {!isSeated && <button onClick={handleJoin} className="w-full bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">הצטרף ({formatMoney(setts.buyIn)})</button>}
+                                    {!isSeated && <button onClick={handleJoin} className="w-full bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">Join ({formatMoney(setts.buyIn)})</button>}
                                     {(isHost || isSuperAdmin) && Object.keys(players).length >= 2 && (
                                         <button onClick={startGame} className="w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"><i className="fa-solid fa-play ml-2"></i>Start game</button>
                                     )}
@@ -5571,7 +5571,7 @@
                                     {res.durakName ? (
                                         <React.Fragment>
                                             <div className="text-5xl mb-2">🤡</div>
-                                            <h3 className="text-2xl font-black text-rose-400 mb-1">{res.durakName} הוא הDurak!</h3>
+                                            <h3 className="text-2xl font-black text-rose-400 mb-1">{res.durakName} is the Durak!</h3>
                                         </React.Fragment>
                                     ) : (
                                         <React.Fragment>
@@ -5589,7 +5589,7 @@
                                     </div>
                                     <div className="flex gap-3">
                                         {(isHost || isSuperAdmin) && !tableState.tournamentId && Object.keys(players).length >= 2 && <button onClick={startGame} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black">New game</button>}
-                                        {isSeated && <button onClick={() => { window.fb.updateDoc(tblRef(), { [`players.${user.uid}.stayAt`]: Date.now() }).catch(() => {}); setResHide(true); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-black border border-slate-500">אני ממשיך 🔄 ({stayLeft})</button>}
+                                        {isSeated && <button onClick={() => { window.fb.updateDoc(tblRef(), { [`players.${user.uid}.stayAt`]: Date.now() }).catch(() => {}); setResHide(true); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-black border border-slate-500">I&apos;m staying 🔄 ({stayLeft})</button>}
                                         {isSeated && <button onClick={handleLeave} className="flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3 rounded-xl font-black border border-white/10">Stand up 🚪</button>}
                                         {!isSeated && <button onClick={() => setResHide(true)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-xl font-black border border-white/10">👁 Keep watching</button>}
                                     </div>
@@ -5620,26 +5620,26 @@
                                     {blindPending && (
                                         <React.Fragment>
                                             <button onClick={() => challengeBlind(user.uid)} className="bg-gradient-to-b from-rose-500 to-rose-700 hover:from-rose-400 text-white px-6 py-3 rounded-xl font-black text-sm shadow-[0_0_15px_rgba(244,63,94,0.4)] active:scale-95 transition-transform">
-                                                🔍 חשוד!
+                                                🔍 Doubt!
                                             </button>
                                             <button onClick={() => acceptBlind(user.uid)} className="btn-call text-white px-6 py-3 font-black text-sm shadow-lg active:scale-95 transition-transform">
-                                                👌 קבל
+                                                👌 Take
                                             </button>
                                         </React.Fragment>
                                     )}
                                     {iAmDefender && pairs.length > 0 && !blindPending && (
                                         <button onClick={() => takeCards(user.uid)} disabled={!myTurn || undefPairs.length === 0} className="btn-fold text-white px-8 py-3 font-black text-sm shadow-lg active:scale-95 transition-transform disabled:opacity-40">
-                                            לקחת 🃏
+                                            Take 🃏
                                         </button>
                                     )}
                                     {canBluff && (
                                         <button onClick={() => setBluffMode(!bluffMode)} className={`px-5 py-3 rounded-xl font-black text-sm border-2 transition-all active:scale-95 ${bluffMode ? 'bg-rose-700 border-rose-400 text-white shadow-[0_0_15px_rgba(244,63,94,0.5)]' : 'bg-slate-800 border-rose-800 text-rose-300'}`}>
-                                            🎭 בלוף
+                                            🎭 Bluff
                                         </button>
                                     )}
                                     {!iAmDefender && myTurn && allDefended && (
                                         <button onClick={() => passAttack(user.uid)} className="btn-call text-white px-8 py-3 font-black text-sm shadow-lg active:scale-95 transition-transform">
-                                            ביטה ✔ (סיימתי)
+                                            Beat ✔ (done)
                                         </button>
                                     )}
                                     <span className="text-[11px] font-bold text-slate-400 text-center">
@@ -6356,7 +6356,7 @@
                         </div>
                         <div className="flex-1 min-w-0 flex flex-col items-center px-1">
                             <span className="text-teal-300 font-black text-xs sm:text-sm tracking-wider truncate max-w-full">Chinese Poker (OFC) OFC {T.status === 'playing' ? `· round ${(T.street || 0) + 1}/5 · 🂠${(T.deck || []).length}` : ''}</span>
-                            <span className="text-slate-400 text-[9px] sm:text-[10px] font-bold truncate max-w-full" dir="ltr">משחקון {formatMoney(Number(setts.stake) || 5)} · 1pt = {formatMoney(Math.max(0.01, round2((Number(setts.stake) || 5) / 10)))}</span>
+                            <span className="text-slate-400 text-[9px] sm:text-[10px] font-bold truncate max-w-full" dir="ltr">Match {formatMoney(Number(setts.stake) || 5)} · 1pt = {formatMoney(Math.max(0.01, round2((Number(setts.stake) || 5) / 10)))}</span>
                         </div>
                         <div className="bg-slate-950/80 border border-teal-500/30 rounded-xl px-2.5 sm:px-3 py-1 text-center shrink-0">
                             <span className="text-[9px] text-teal-300 font-bold block leading-none mb-0.5">My Stack</span>
@@ -6374,7 +6374,7 @@
                                         <img src={avatarUrl(p)} className="w-7 h-7 rounded-lg bg-slate-800" />
                                         <span className="text-[10px] font-black text-white truncate max-w-[80px]">{p.name}</span>
                                         <span className="text-[9px] font-black text-emerald-300" dir="ltr">💰{formatShort(p.stack || 0)}</span>
-                                        {p.flC > 0 && <span className="text-[8px] font-black text-fuchsia-300 border border-fuchsia-500/50 rounded-full px-1.5 bg-fuchsia-500/10">🌈 פנטזי {p.flC}</span>}
+                                        {p.flC > 0 && <span className="text-[8px] font-black text-fuchsia-300 border border-fuchsia-500/50 rounded-full px-1.5 bg-fuchsia-500/10">🌈 Fantasy {p.flC}</span>}
                                         {T.turnUid === p.uid && T.status === 'playing' && <span className="text-amber-300 font-mono font-black text-[10px]">{timeLeft}</span>}
                                     </div>
                                     <div className="space-y-1">
@@ -6400,7 +6400,7 @@
                         {T.status === 'playing' && (
                             <div className="flex flex-col items-center gap-1">
                                 <button onClick={() => setShowSeen(!showSeen)} className={`px-4 py-1.5 rounded-full text-[10px] font-black border transition-colors ${showSeen ? 'bg-teal-500/20 border-teal-400/60 text-teal-200' : 'bg-slate-900/70 border-white/10 text-slate-400 hover:text-white'}`}>
-                                    🂠 קלפים שנראו ({seenSet.set.size + seenSet.jokers}/54) {showSeen ? '▲' : '▼'}
+                                    🂠 Cards seen ({seenSet.set.size + seenSet.jokers}/54) {showSeen ? '▲' : '▼'}
                                 </button>
                                 {showSeen && (
                                     <div className="bg-slate-900/90 border border-teal-500/25 rounded-2xl p-2.5 w-full max-w-md animate-fade-in">
@@ -6431,8 +6431,8 @@
                                 <div className="flex items-center justify-center gap-2 mb-2 flex-wrap">
                                     <span className="text-[11px] font-black text-white">{user.username}</span>
                                     <span className="text-[10px] font-black text-emerald-300" dir="ltr">💰 {formatMoney(me.stack || 0)}</span>
-                                    {me.flC > 0 && <span className="text-[9px] font-black text-fuchsia-300 border border-fuchsia-500/50 rounded-full px-2 py-0.5 bg-fuchsia-500/10">🌈 Fantasyland! {me.flC} קלפים</span>}
-                                    {isMyTurn && <span className="text-[10px] font-black text-amber-300 animate-pulse">תורך: בחר קלף ← הקש שורה · הנח {needPlace} · {timeLeft}s</span>}
+                                    {me.flC > 0 && <span className="text-[9px] font-black text-fuchsia-300 border border-fuchsia-500/50 rounded-full px-2 py-0.5 bg-fuchsia-500/10">🌈 Fantasyland! {me.flC} cards</span>}
+                                    {isMyTurn && <span className="text-[10px] font-black text-amber-300 animate-pulse">Your turn: pick a card ← tap a row · place {needPlace} · {timeLeft}s</span>}
                                     {!isMyTurn && T.status === 'playing' && <span className="text-[10px] font-bold text-slate-500">Waiting for {(players[T.turnUid] || {}).name || ''}...</span>}
                                 </div>
                                 {(() => {
@@ -6460,7 +6460,7 @@
                                         </div>
                                         <div className="flex justify-center items-center gap-2">
                                             <button onClick={() => doConfirm(user.uid, stage)} disabled={stagedCount !== needPlace}
-                                                    className={`px-7 py-2.5 rounded-full font-black text-sm border-2 ${stagedCount === needPlace ? 'bg-gradient-to-b from-teal-400 to-teal-600 text-slate-900 border-teal-200 shadow-lg animate-pulse' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>אשר מהלך ({stagedCount}/{needPlace})</button>
+                                                    className={`px-7 py-2.5 rounded-full font-black text-sm border-2 ${stagedCount === needPlace ? 'bg-gradient-to-b from-teal-400 to-teal-600 text-slate-900 border-teal-200 shadow-lg animate-pulse' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>Confirm move ({stagedCount}/{needPlace})</button>
                                             {stagedCount > 0 && <button onClick={() => { setStage({}); setSelCard(null); }} className="px-4 py-2.5 rounded-full font-bold text-xs bg-slate-800 text-slate-300 border border-white/10">Reset</button>}
                                             {T.street > 0 && !me.flC && <span className="text-[9px] text-slate-500 font-bold">The third card was discarded</span>}
                                         </div>
@@ -6475,18 +6475,18 @@
                                 <div className="glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-teal-500/40">
                                     <i className="fa-solid fa-table-cells text-4xl text-teal-400 mb-2"></i>
                                     <h3 className="text-xl font-black text-white mb-1">Chinese Poker (OFC) - waiting</h3>
-                                    <p className="text-slate-400 text-xs font-bold mb-1" dir="ltr">Stack: {formatMoney(setts.buyIn)} · משחקון: {formatMoney(Number(setts.stake) || 5)} · {list.length}/{maxP}</p>
+                                    <p className="text-slate-400 text-xs font-bold mb-1" dir="ltr">Stack: {formatMoney(setts.buyIn)} · Match: {formatMoney(Number(setts.stake) || 5)} · {list.length}/{maxP}</p>
                                     <p className="text-[10px] text-slate-500 font-bold mb-4">3 rows (3/5/5) · Pineapple: get 3, place 2 · Foul = top row stronger than allowed · Royalties · progressive Fantasyland QQ+</p>
                                     <div className="flex justify-center gap-3 mb-5 flex-wrap">
                                         {list.map(p => (
                                             <div key={p.uid} className="flex flex-col items-center">
                                                 <img src={avatarUrl(p)} className={`w-11 h-11 rounded-xl bg-slate-800 border-2 ${p.isBot ? 'border-purple-500' : 'border-teal-500'}`} />
                                                 <span className="text-[10px] text-white font-bold mt-1 max-w-[64px] truncate">{p.name}</span>
-                                                {p.flNext > 0 && <span className="text-[8px] font-black text-fuchsia-300">🌈 פנטזי {p.flNext}</span>}
+                                                {p.flNext > 0 && <span className="text-[8px] font-black text-fuchsia-300">🌈 Fantasy {p.flNext}</span>}
                                             </div>
                                         ))}
                                     </div>
-                                    {!isSeated && list.length < maxP && <button onClick={handleJoin} className="w-full bg-gradient-to-b from-teal-500 to-teal-700 hover:from-teal-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">שב עם סטאק {formatMoney(setts.buyIn)}</button>}
+                                    {!isSeated && list.length < maxP && <button onClick={handleJoin} className="w-full bg-gradient-to-b from-teal-500 to-teal-700 hover:from-teal-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">Sit with stack {formatMoney(setts.buyIn)}</button>}
                                     {isSuperAdmin && list.length < maxP && <button onClick={handleAddBot} className="w-full bg-slate-800 hover:bg-slate-700 text-purple-300 py-2.5 rounded-xl font-bold text-sm border border-white/10 mb-2"><i className="fa-solid fa-robot ml-1"></i>Add bot ({list.length}/{maxP})</button>}
                                     {(isHost || isSuperAdmin) && list.length >= 2 && <button onClick={startGame} className="w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"><i className="fa-solid fa-play ml-2"></i>Start game</button>}
                                     <button onClick={handleLeave} className="text-slate-400 hover:text-white text-xs font-bold underline">Back to lobby</button>
@@ -6513,15 +6513,15 @@
                                                 </div>
                                                 {r.hands && <div className="text-[9px] text-slate-400 font-bold mt-1 text-right">{r.hands.t} · {r.hands.m} · {r.hands.b}</div>}
                                                 <div className="flex justify-between items-center mt-1">
-                                                    <span className="text-[10px] text-slate-500 font-bold">{r.isBot ? '🤖' : r.busted ? '💥 Out of chips - stood up' : <span dir="ltr">💰 סטאק: {formatMoney(r.stack)}</span>}</span>
+                                                    <span className="text-[10px] text-slate-500 font-bold">{r.isBot ? '🤖' : r.busted ? '💥 Out of chips - stood up' : <span dir="ltr">💰 Stack: {formatMoney(r.stack)}</span>}</span>
                                                     <span className={`font-black text-sm ${r.money >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} dir="ltr">{r.money > 0 ? '+' : ''}{formatMoney(r.money)}</span>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                     <div className="flex gap-2 flex-wrap">
-                                        {(isHost || isSuperAdmin) && list.length >= 2 && <button onClick={startGame} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black">משחקון חדש ({formatMoney(Number(setts.stake) || 5)})</button>}
-                                        {isSeated && <button onClick={() => { window.fb.updateDoc(tblRef(), { [`players.${user.uid}.stayAt`]: Date.now() }).catch(() => {}); setResHide(true); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-black border border-slate-500">אני ממשיך 🔄 ({stayLeft})</button>}
+                                        {(isHost || isSuperAdmin) && list.length >= 2 && <button onClick={startGame} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black">New match ({formatMoney(Number(setts.stake) || 5)})</button>}
+                                        {isSeated && <button onClick={() => { window.fb.updateDoc(tblRef(), { [`players.${user.uid}.stayAt`]: Date.now() }).catch(() => {}); setResHide(true); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-black border border-slate-500">I&apos;m staying 🔄 ({stayLeft})</button>}
                                         {isSeated && <button onClick={handleLeave} className="flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3 rounded-xl font-black border border-white/10">Stand up 🚪</button>}
                                         {!isSeated && <button onClick={() => setResHide(true)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-xl font-black border border-white/10">👁 Keep watching</button>}
                                     </div>
@@ -6995,7 +6995,7 @@
                             <p className="text-white font-black text-base">{champTor.name}</p>
                             <p className="text-slate-400 text-xs font-bold mt-0.5">{GAME_LABEL(champTor.game)}{champTor.finishedAt ? ' · ' + new Date(champTor.finishedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</p>
                             {soloChamp.prize > 0 && <p className="text-emerald-400 font-black text-lg mt-1" dir="ltr">+{formatMoney(soloChamp.prize)}</p>}
-                            {soloChamp.bounties > 0 && <p className="text-rose-400 text-xs font-black mt-0.5">🎯 {soloChamp.bounties} באונטי</p>}
+                            {soloChamp.bounties > 0 && <p className="text-rose-400 text-xs font-black mt-0.5">🎯 {soloChamp.bounties} bounties</p>}
                         </div>
                         <div className="flex gap-2 mt-6 relative">
                             <button onClick={shareSolo} className="flex-1 btn-raise py-3 rounded-xl font-black text-sm">📤 Share</button>
@@ -7011,7 +7011,7 @@
                         <h2 className="text-xl font-black text-white">🏆 Tournaments</h2>
                         {canManageGame(user, 'poker') && (
                             <button onClick={() => setShowCreate(!showCreate)} className="bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(168,85,247,0.3)] text-sm">
-                                <i className="fa-solid fa-plus ml-2"></i>טורניר חדש
+                                <i className="fa-solid fa-plus ml-2"></i>New tournament
                             </button>
                         )}
                     </div>
@@ -7077,7 +7077,7 @@
                                 {isPoker && <div>
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Level length (min)</label>
                                     <select value={opts.levelMins} onChange={e=>setOpts({...opts, levelMins: parseInt(e.target.value)})} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold">
-                                        {[3,5,10].map(n => <option key={n} value={n}>{n} דקות</option>)}
+                                        {[3,5,10].map(n => <option key={n} value={n}>{n} min</option>)}
                                     </select>
                                 </div>}
                                 {isPoker && <div className="flex flex-col gap-2 justify-end">
@@ -7095,13 +7095,13 @@
                                         </select>
                                         {(opts.payouts || []).slice(0, opts.paidPlaces).map((p, i) => (
                                             <div key={i} className="flex items-center gap-1">
-                                                <span className="text-[10px] text-slate-500 font-black">מקום {i + 1}</span>
+                                                <span className="text-[10px] text-slate-500 font-black">Place {i + 1}</span>
                                                 <input type="number" min="0" max="100" value={p} onChange={e=>{ const arr = [...opts.payouts]; arr[i] = e.target.value; setOpts({ ...opts, payouts: arr }); }} className="w-16 bg-slate-900 text-white border border-slate-700 rounded-lg p-1.5 text-center font-bold outline-none" dir="ltr" />
                                                 <span className="text-slate-500 text-xs font-black">%</span>
                                             </div>
                                         ))}
                                         <span className={`text-xs font-black ${(opts.payouts || []).slice(0, opts.paidPlaces).reduce((sm, x) => sm + (Number(x) || 0), 0) === 100 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            סה"כ {(opts.payouts || []).slice(0, opts.paidPlaces).reduce((sm, x) => sm + (Number(x) || 0), 0)}%
+                                            Total {(opts.payouts || []).slice(0, opts.paidPlaces).reduce((sm, x) => sm + (Number(x) || 0), 0)}%
                                         </span>
                                     </div>
                                 </div>
@@ -7132,7 +7132,7 @@
                                                 <p className="text-slate-500 text-[10px] font-bold mt-0.5">{tor.rebuys ? 'Rebuy ✓ ' : ''}{tor.addon ? 'Add-on ✓ ' : ''}{tor.bounty > 0 ? 'Bounty ✓' : ''}</p>
                                             </div>
                                             {tor.status === 'reg' && <span className="text-[10px] text-emerald-400 font-black bg-emerald-500/10 border border-emerald-500/30 px-2 py-1 rounded-full">Registration open</span>}
-                                            {tor.status === 'running' && <span className="text-[10px] text-amber-400 font-black bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-full animate-pulse">● LIVE · סבב {tor.round}</span>}
+                                            {tor.status === 'running' && <span className="text-[10px] text-amber-400 font-black bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-full animate-pulse">● LIVE · Level {tor.round}</span>}
                                             {tor.status === 'done' && <span className="text-[10px] text-slate-400 font-black bg-slate-500/10 border border-slate-600/40 px-2 py-1 rounded-full">Ended</span>}
                                             {tor.status === 'cancelled' && <span className="text-[10px] text-rose-400 font-black bg-rose-500/10 border border-rose-500/30 px-2 py-1 rounded-full">Cancelled</span>}
                                         </div>
@@ -7158,7 +7158,7 @@
                                             </div>
                                         )}
                                         <div className="flex gap-2">
-                                            {tor.status === 'reg' && !me && <button onClick={() => tourRegister(tor, user, showToast)} className="flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg">הירשם ({formatMoney(tourEntryOf(tor))})</button>}
+                                            {tor.status === 'reg' && !me && <button onClick={() => tourRegister(tor, user, showToast)} className="flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg">Register ({formatMoney(tourEntryOf(tor))})</button>}
                                             {tor.status === 'reg' && me && <button onClick={() => tourUnregister(tor, user, showToast)} className="flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-2.5 rounded-xl font-bold text-sm border border-white/10">Registered ✓ · Unregister</button>}
                                             {myTable && <button onClick={() => onJoinTable(myTable)} className="flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg animate-pulse">🎲 To my table!</button>}
                                             {tor.status === 'running' && me && me.out && <span className="flex-1 text-center py-2.5 text-rose-300 font-bold text-sm">Busted — place {me.rank}</span>}
@@ -7168,7 +7168,7 @@
                                 </div>
                             );
                         })}
-                        {sorted.length === 0 && <div className="col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed">אין Tournaments כרגע. {canManageGame(user, 'poker') ? 'Open the first!' : ''}</div>}
+                        {sorted.length === 0 && <div className="col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed">No tournaments right now. {canManageGame(user, 'poker') ? 'Open the first!' : ''}</div>}
                     </div>
                     {champModal}
                     {soloModal}

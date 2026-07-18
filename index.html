@@ -2285,32 +2285,28 @@
                 setCreating(false);
             };
 
-            // GG-style club tile: square logo (owner-uploadable, falls back to the initial letter),
-            // name + meta, action on the right. Design dept styles via .club-card/.club-badge.
+            // GG-style SQUARE club tile: big centered logo (owner-uploadable, falls back to the
+            // initial letter), name + meta below, action at the bottom. Rendered in a grid.
             const ClubCard = ({ c, action }) => {
                 const m = memOf(c.id);
                 const isOwner = c.ownerUid === user.uid;
                 return (
-                    <div className="club-card p-4 flex items-center gap-3.5">
+                    <div className="club-card p-4 flex flex-col items-center text-center gap-2 relative">
+                        {(isOwner || god) && c.id !== 'main' && (
+                            <button onClick={(e) => { e.stopPropagation(); deleteClub(c); }} title="Delete club" className="absolute top-2 right-2 w-7 h-7 rounded-lg text-slate-600 hover:text-rose-400 transition-colors flex items-center justify-center">
+                                <i className="fa-solid fa-trash text-[10px]"></i>
+                            </button>
+                        )}
+                        {isOwner && <span className="absolute top-2 left-2 text-[9px] px-2 py-0.5 rounded-full border" style={{ color: 'var(--pt-gold)', borderColor: 'rgba(213,179,107,0.35)', fontWeight: 600 }}>Yours</span>}
                         {c.logo
-                            ? <img src={c.logo} alt="" className="rounded-xl object-cover shrink-0" style={{ width: 56, height: 56, border: '1px solid rgba(213,179,107,0.35)' }} />
-                            : <div className="club-badge" style={{ width: 56, height: 56, fontSize: 22 }}>{(c.name || '?').trim().charAt(0)}</div>}
-                        <div className="min-w-0 flex-1">
-                            <div className="text-white text-base truncate flex items-center gap-2" style={{ fontWeight: 600 }}>
-                                {c.name}
-                                {isOwner && <span className="text-[9px] px-2 py-0.5 rounded-full border" style={{ color: 'var(--pt-gold)', borderColor: 'rgba(213,179,107,0.35)', fontWeight: 600 }}>Yours</span>}
-                            </div>
-                            <div className="text-[11px] mt-1" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }} dir="ltr">ID {clubCode(c.id)} · Owner {c.ownerName || ''}</div>
-                            {m && m.status === 'approved' && (m.balance || 0) > 0 && <div className="text-[11px] mt-0.5" style={{ color: 'var(--pt-green)', fontWeight: 600 }} dir="ltr"><i className="fa-solid fa-coins mr-1 opacity-70"></i>{formatMoney(m.balance || 0)}</div>}
+                            ? <img src={c.logo} alt="" className="rounded-2xl object-cover mt-3" style={{ width: 72, height: 72, border: '1px solid rgba(213,179,107,0.35)' }} />
+                            : <div className="club-badge mt-3" style={{ width: 72, height: 72, fontSize: 28, borderRadius: 16 }}>{(c.name || '?').trim().charAt(0)}</div>}
+                        <div className="w-full min-w-0">
+                            <div className="text-white text-base truncate" style={{ fontWeight: 600 }}>{c.name}</div>
+                            <div className="text-[10px] mt-0.5 truncate" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }} dir="ltr">ID {clubCode(c.id)} · {c.ownerName || ''}</div>
+                            {m && m.status === 'approved' && (m.balance || 0) > 0 && <div className="text-[11px] mt-1" style={{ color: 'var(--pt-green)', fontWeight: 600 }} dir="ltr"><i className="fa-solid fa-coins mr-1 opacity-70"></i>{formatMoney(m.balance || 0)}</div>}
                         </div>
-                        <div className="shrink-0 flex flex-col items-end gap-1.5">
-                            {action}
-                            {(isOwner || god) && c.id !== 'main' && (
-                                <button onClick={(e) => { e.stopPropagation(); deleteClub(c); }} title="Delete club" className="text-slate-600 hover:text-rose-400 text-[10px] transition-colors" style={{ fontWeight: 600 }}>
-                                    <i className="fa-solid fa-trash mr-1"></i>Delete
-                                </button>
-                            )}
-                        </div>
+                        <div className="w-full mt-auto pt-1">{action}</div>
                     </div>
                 );
             };
@@ -2321,7 +2317,6 @@
                         <div className="text-center mb-8 mt-6">
                             <h1 className="logo-shine text-4xl sm:text-5xl tracking-[0.15em] text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400" style={{ fontWeight: 700 }}>POKERTEN</h1>
                             <p className="text-[10px] sm:text-[11px] tracking-[0.3em] uppercase mt-2" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }}>Private club games & tournaments</p>
-                            <div className="pt-hero mt-5 h-32 sm:h-40 w-full"></div>
                             <p className="text-sm mt-5" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }}>Hi {user.username} — pick a club, request to join, or create your own</p>
                             <button onClick={()=>window.fb.signOut(window.fb.auth)} className="text-xs text-slate-500 underline font-bold mt-2">Log out</button>
                             {!isStandalone && (canInstall || isIOS || isAndroidMob) && (
@@ -2391,9 +2386,9 @@
                         {myClubs.length > 0 && (
                             <div className="mb-8">
                                 <h3 className="text-[11px] uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--pt-text-3)', fontWeight: 600 }}>My Clubs</h3>
-                                <div className="flex flex-col gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                     {myClubs.map(c => <ClubCard key={c.id} c={c} action={
-                                        <button onClick={() => onEnter(c)} className="btn-gold px-6 py-2.5 text-sm shrink-0">Enter</button>
+                                        <button onClick={() => onEnter(c)} className="btn-gold w-full py-2.5 text-sm">Enter</button>
                                     } />)}
                                 </div>
                             </div>
@@ -2402,7 +2397,7 @@
                         {pendingClubs.length > 0 && (
                             <div className="mb-8">
                                 <h3 className="text-[11px] uppercase tracking-[0.18em] mb-3" style={{ color: 'var(--pt-text-3)', fontWeight: 600 }}>Pending approval</h3>
-                                <div className="flex flex-col gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                     {pendingClubs.map(c => <ClubCard key={c.id} c={c} action={
                                         <span className="text-xs px-4 py-2 rounded-lg shrink-0 border" style={{ color: 'var(--pt-text-2)', borderColor: 'var(--pt-line)', fontWeight: 600 }}><i className="fa-solid fa-hourglass-half mr-1.5" style={{ color: 'var(--pt-gold)' }}></i>Pending</span>
                                     } />)}
@@ -2465,6 +2460,9 @@
                             </div>
                             <p className="text-[11px] text-slate-500 font-bold mt-2">You'll be the club owner: you start with 100,000,000 chips to distribute, approve members, set the rules, appoint managers and agents - and the profits are yours.</p>
                         </div>
+
+                        {/* Brand banner — moved to the bottom so clubs are the first thing you see */}
+                        <div className="pt-hero mt-6 mb-4 h-32 sm:h-40 w-full"></div>
                     </div>
                 </div>
             );

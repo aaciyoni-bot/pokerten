@@ -8308,6 +8308,11 @@ function PokerTable({
   }, gs.currentGameType || setts.baseGameType, " ", setts.isDealerChoice && React.createElement("span", {
     className: "text-rose-400 text-[9px] align-middle"
   }, "DC")), React.createElement("span", {
+    className: "text-[8px] font-black tracking-[0.12em] text-emerald-400/90 whitespace-nowrap",
+    dir: "ltr"
+  }, React.createElement("i", {
+    className: "fa-solid fa-satellite-dish text-[7px] mr-0.5"
+  }), "GPS ON · IP ON"), React.createElement("span", {
     className: "text-slate-400 text-[9px] sm:text-[10px] font-bold truncate max-w-full",
     dir: "ltr"
   }, formatShort(setts.blinds), "/", formatShort(BB))), React.createElement("div", {
@@ -8392,7 +8397,7 @@ function PokerTable({
     className: "self-center w-9 h-9 rounded-full bg-slate-900/90 border border-white/15 text-lg hover:scale-110 transition-transform"
   }, "🐰")), React.createElement("div", {
     className: "absolute left-1/2 top-[64%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%]"
-  }, React.createElement("div", {
+  }, gs.phase === 'waiting' && React.createElement("div", {
     className: "text-slate-300/40 font-bold text-[11px] leading-relaxed",
     dir: "ltr"
   }, React.createElement("div", null, (gs.currentGameType || setts.baseGameType || 'NLH') + ' ' + formatShort(setts.blinds) + '/' + formatShort(BB)), React.createElement("div", null, 'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '')), React.createElement("div", {
@@ -8449,7 +8454,7 @@ function PokerTable({
     }), p.actionText && React.createElement("div", {
       className: `action-badge ${topSeat ? 'badge-bottom' : ''} ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`
     }, p.actionText), React.createElement("div", {
-      className: `relative flex flex-col items-center ${folded ? 'opacity-40 grayscale' : ''} ${p.sitOut ? 'opacity-50' : ''}`
+      className: `relative flex flex-col items-center ${folded ? isMe ? 'opacity-75' : 'opacity-40 grayscale' : ''} ${p.sitOut ? 'opacity-50' : ''}`
     }, ch.bubbles[p.uid] && React.createElement("div", {
       className: "chat-bubble"
     }, ch.bubbles[p.uid]), p.sitOut && (() => {

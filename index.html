@@ -773,6 +773,16 @@
         };
 
         const GAME_LABEL = (g) => (GAMES.find(x => x.id === g) || {}).label || g;
+        // Distinct color + short label per poker variant, so each is easy to spot on the tables board.
+        const VARIANT_STYLE = {
+            'NLH':       { chip: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/50', ico: 'text-emerald-400', icoBg: 'bg-emerald-900/30 border-emerald-700/40', bar: 'from-emerald-500 to-emerald-700' },
+            'Omaha 4':   { chip: 'bg-sky-500/15 text-sky-300 border-sky-500/50',             ico: 'text-sky-400',     icoBg: 'bg-sky-900/30 border-sky-700/40',         bar: 'from-sky-500 to-sky-700' },
+            'Omaha 5':   { chip: 'bg-violet-500/15 text-violet-300 border-violet-500/50',    ico: 'text-violet-400',  icoBg: 'bg-violet-900/30 border-violet-700/40',   bar: 'from-violet-500 to-violet-700' },
+            'Omaha 6':   { chip: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/50', ico: 'text-fuchsia-400', icoBg: 'bg-fuchsia-900/30 border-fuchsia-700/40', bar: 'from-fuchsia-500 to-fuchsia-700' },
+            'Pineapple': { chip: 'bg-amber-500/15 text-amber-300 border-amber-500/50',       ico: 'text-amber-400',   icoBg: 'bg-amber-900/30 border-amber-700/40',     bar: 'from-amber-500 to-amber-700' },
+        };
+        const variantStyle = (gt) => VARIANT_STYLE[gt] || VARIANT_STYLE['NLH'];
+        const variantLabel = (gt) => ({ 'NLH': 'NLH', 'Omaha 4': 'PLO', 'Omaha 5': 'PLO5', 'Omaha 6': 'PLO6', 'Pineapple': 'Pineapple' }[gt] || gt);
 
         // חלוקת רייק: חלקו של כל שחקן משויך-Agent הולך לAgent לפי האחוז, היתרה לבית
         const computeAgentCuts = async (rake, uids) => {
@@ -2722,25 +2732,32 @@
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                     {pokerTables.map(t => {
                                         const s = t.settings || {};
+                                        const gt = s.baseGameType || 'NLH';
+                                        const vs = variantStyle(gt);
                                         const inHand = t.gameState && !['waiting','showdown'].includes(t.gameState.phase);
+                                        const minBuy = round2((Number(s.minBuyInBB) || 40) * (Number(s.blinds) || 0.5) * 2);
                                         return (
                                             <div key={t.docId} className="grad-card cursor-pointer" onClick={()=>onJoinPoker(t)}>
-                                                <div className="grad-card-inner p-5 relative">
+                                                <div className={`grad-card-inner p-5 relative border-l-4 ${vs.chip.split(' ').find(c=>c.startsWith('border-')) || 'border-emerald-500/50'}`}>
                                                     {canManageGame(user, 'poker') && (
                                                         <button onClick={(e) => handleDelete(e, t)} className="absolute top-3 left-3 w-8 h-8 rounded-lg bg-slate-800/80 text-slate-500 hover:text-rose-400 flex items-center justify-center z-10"><i className="fa-solid fa-trash text-xs"></i></button>
                                                     )}
                                                     {t.players && t.players[user.uid] && <div className="absolute top-3 right-3 bg-emerald-500/20 border border-emerald-500 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full animate-pulse font-bold z-10">🟢 You're seated here</div>}
                                                     <div className="flex items-center gap-3 mb-4 mt-3">
-                                                        <div className="w-11 h-11 rounded-xl bg-amber-900/30 border border-amber-700/40 flex items-center justify-center"><i className="fa-solid fa-diamond text-amber-400"></i></div>
+                                                        <div className={`w-11 h-11 rounded-xl border flex items-center justify-center ${vs.icoBg}`}><i className={`fa-solid fa-diamond ${vs.ico}`}></i></div>
                                                         <div>
-                                                            <h3 className="text-lg font-black text-white leading-tight">{s.baseGameType || 'NLH'} {s.isDealerChoice && <span className="text-rose-400 text-[10px] font-black align-middle mr-1">DC</span>}</h3>
-                                                            <p className="text-slate-400 text-xs font-bold" dir="ltr">Blinds {formatShort(s.blinds)}/{formatShort(s.blinds*2)}</p>
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className={`text-sm font-black px-2.5 py-0.5 rounded-lg border ${vs.chip}`}>{variantLabel(gt)}</span>
+                                                                {s.isDealerChoice && <span className="text-rose-400 text-[10px] font-black bg-rose-500/10 border border-rose-500/40 px-1.5 py-0.5 rounded">DC</span>}
+                                                            </div>
+                                                            <p className="text-white text-base font-black mt-1" dir="ltr">Blinds {formatShort(s.blinds)}/{formatShort(s.blinds*2)}</p>
+                                                            <p className="text-slate-500 text-[11px] font-bold" dir="ltr">Min buy-in {formatMoney(minBuy)}</p>
                                                         </div>
-                                                        {inHand && <span className="mr-auto text-[10px] text-amber-400 font-black bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-full">● LIVE</span>}
+                                                        {inHand && <span className="mr-auto self-start text-[10px] text-amber-400 font-black bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-full">● LIVE</span>}
                                                     </div>
                                                     <div className="flex justify-between items-center">
                                                         <AvatarsRow players={t.players} />
-                                                        <span className="text-amber-400 font-bold text-xs bg-amber-900/20 border border-amber-700/40 px-3 py-1 rounded-full">{Object.keys(t.players||{}).length}/{s.maxPlayers || 6}</span>
+                                                        <span className="text-slate-300 font-bold text-xs bg-slate-800/60 border border-white/10 px-3 py-1 rounded-full">{Object.keys(t.players||{}).length}/{s.maxPlayers || 6}</span>
                                                     </div>
                                                 </div>
                                             </div>

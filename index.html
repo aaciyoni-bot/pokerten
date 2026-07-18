@@ -4599,6 +4599,8 @@
                         });
                         setSpectate(false);
                         showToast("A seat opened up — you're in! 🎉", "success");
+                        const tNow = tableRef.current;
+                        if (tNow && Object.keys(tNow.players || {}).length >= ((tNow.settings || {}).maxPlayers || 6)) spawnTwinTable(tNow);
                     } catch(e) {
                         if (typeof e === 'string' && e.startsWith('You reached')) { showToast(e, "error"); leaveWaitlist(); }
                     } finally { promotingRef.current = false; }
@@ -4858,6 +4860,8 @@
                     uid: botUid, name: BOT_NAMES[Math.floor(Math.random()*BOT_NAMES.length)] + Math.floor(Math.random()*99), seatIndex,
                     stack: round2(100 * BB), bet: 0, status: midHand ? 'waiting' : 'active', cards: [], hasActed: false, actionText: '', isBot: true
                 }});
+                // The agreed rule: a table that fills up spawns a fresh twin with the same settings
+                if (Object.keys(pl).length + 1 >= (setts.maxPlayers || 6)) spawnTwinTable(t);
             };
 
             /* ---------- מוח הBots (רץ רק אצל הסופר-אדמין) ---------- */

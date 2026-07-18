@@ -1739,6 +1739,66 @@
             );
         }
 
+        // Self-contained install prompt: shows when the app is NOT installed, hides once it is.
+        // Android/Chrome: beforeinstallprompt fires only when installable (not installed) and again
+        // after an uninstall, so it naturally reappears. iOS has no such API → we always show a
+        // manual "Add to Home Screen" guide when not running as the installed app.
+        function InstallBanner({ variant }) {
+            const isStandaloneApp = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+            const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            const [installable, setInstallable] = useState(!!window.__installEvt);
+            const [showGuide, setShowGuide] = useState(false);
+            useEffect(() => {
+                const on = () => setInstallable(true);
+                const off = () => setInstallable(false);
+                window.addEventListener('pwa-installable', on);
+                window.addEventListener('beforeinstallprompt', on);
+                window.addEventListener('appinstalled', off);
+                return () => { window.removeEventListener('pwa-installable', on); window.removeEventListener('beforeinstallprompt', on); window.removeEventListener('appinstalled', off); };
+            }, []);
+            if (isStandaloneApp) return null;                 // already running as the installed app
+            if (!installable && !isIOSDev) return null;       // desktop browser with no install option → nothing to offer
+            const doInstall = async () => {
+                const evt = window.__installEvt;
+                if (evt) { try { evt.prompt(); const r = await evt.userChoice; if (r && r.outcome === 'accepted') { window.__installEvt = null; setInstallable(false); } } catch(_) {} return; }
+                setShowGuide(true);
+            };
+            return (
+                <>
+                    <button onClick={doInstall} className={variant === 'auth'
+                        ? "w-full mt-3 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white font-black py-3.5 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-2 animate-pulse"
+                        : "w-full mb-4 bg-gradient-to-b from-emerald-500/90 to-emerald-700 hover:from-emerald-400 text-white font-black py-3 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2"}>
+                        <i className="fa-solid fa-circle-down text-lg"></i>
+                        <span>Install the app on your phone</span>
+                    </button>
+                    {showGuide && ReactDOM.createPortal(
+                        <div dir="ltr" className="fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setShowGuide(false)}>
+                            <div onClick={e=>e.stopPropagation()} className="bg-gradient-to-b from-slate-900 to-slate-950 border border-white/10 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl animate-pop-in mb-4">
+                                <div className="text-3xl mb-1">📲</div>
+                                <h3 className="text-lg font-black text-white mb-1">Install PokerTen</h3>
+                                <p className="text-slate-400 text-xs font-bold mb-4">Add it to your home screen — opens full-screen like a real app.</p>
+                                {isIOSDev ? (
+                                    <div className="text-left space-y-2.5">
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">1</span><span className="text-slate-200 text-sm font-bold">Tap the <b>Share</b> button <i className="fa-solid fa-arrow-up-from-bracket text-sky-400"></i> (bottom bar in Safari)</span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">2</span><span className="text-slate-200 text-sm font-bold">Scroll down → <b>Add to Home Screen</b> <i className="fa-solid fa-square-plus text-slate-300"></i></span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">3</span><span className="text-slate-200 text-sm font-bold">Tap <b>Add</b> — the icon lands on your home screen 🎉</span></div>
+                                        <div className="text-center pt-2 text-3xl text-sky-400 animate-bounce">⬇️</div>
+                                        <p className="text-center text-[10px] text-slate-500 font-bold">The Share button is at the bottom of Safari</p>
+                                    </div>
+                                ) : (
+                                    <div className="text-left space-y-2.5">
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">1</span><span className="text-slate-200 text-sm font-bold">Tap the menu <b>⋮</b> (top-right in Chrome)</span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">2</span><span className="text-slate-200 text-sm font-bold">Tap <b>Install app</b> / <b>Add to Home screen</b></span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">3</span><span className="text-slate-200 text-sm font-bold">Confirm <b>Install</b> 🎉</span></div>
+                                    </div>
+                                )}
+                                <button onClick={() => setShowGuide(false)} className="mt-5 text-slate-500 hover:text-white underline text-sm font-bold">Close</button>
+                            </div>
+                        </div>, document.body)}
+                </>
+            );
+        }
+
         function AuthView() {
             return (
                 <div className="h-full w-full flex flex-col items-center justify-center p-4 aurora-bg relative">
@@ -1751,6 +1811,7 @@
                         <button onClick={()=>window.fb.signIn()} className="w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 font-black py-4 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-3">
                             <i className="fa-brands fa-google text-blue-500 text-xl"></i> Sign in with Google
                         </button>
+                        <InstallBanner variant="auth" />
                     </div>
                     <div className="absolute bottom-4 inset-x-0 z-20 flex flex-col items-center gap-2">
                         <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-gold-400/25 bg-slate-950/60">
@@ -2678,6 +2739,9 @@
                                 )}
                             </div>
                         </div>
+
+                        {/* Install prompt on the home screen — visible only when the app isn't installed yet (see InstallBanner). */}
+                        <InstallBanner variant="lobby" />
 
                         {/* Poker-first: land on poker tables. Other games are a marginal switcher; tournaments live inside the Poker tab. */}
                         <div className="flex items-center gap-1.5 mb-7">

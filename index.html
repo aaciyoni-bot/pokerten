@@ -4136,6 +4136,7 @@
             const srvEngine = !!((tableState || {}).settings || {}).serverEngine;
             const [myPrivCards, setMyPrivCards] = useState([]);
             const [godHands, setGodHands] = useState({});
+            const [godFinal, setGodFinal] = useState([]);
             useEffect(() => {
                 if (!srvEngine) { setMyPrivCards([]); return; }
                 const unsub = window.fb.onSnapshot(window.fb.doc(window.fb.db, "tables", tableDocId, "priv", user.uid), (d) => {
@@ -4151,8 +4152,8 @@
             useEffect(() => { if ((tableState?.gameState?.phase) !== 'showdown') setRabbit([]); }, [tableState?.gameState?.phase]);
             const godPhaseKey = (tableState?.gameState?.phase || '') + ':' + ((tableState?.gameState?.board || []).length);
             useEffect(() => {
-                if (!srvEngine || !godView) { setGodHands({}); return; }
-                window.fb.fx('godPeek', { tableId: tableDocId }).then(r => setGodHands((r && r.hands) || {})).catch(() => setGodHands({}));
+                if (!srvEngine || !godView) { setGodHands({}); setGodFinal([]); return; }
+                window.fb.fx('godPeek', { tableId: tableDocId }).then(r => { setGodHands((r && r.hands) || {}); setGodFinal((r && r.finalBoard) || []); }).catch(() => { setGodHands({}); setGodFinal([]); });
             }, [srvEngine, godView, godPhaseKey, tableDocId]);
             const [spectate, setSpectate] = useState(false);
             const [buyAmt, setBuyAmt] = useState(0);
@@ -5221,17 +5222,23 @@
             const godBestUid = (() => {
                 if (!godView) return null;
                 const board = gs.board || [];
-                if (gs.phase === 'waiting' || gs.phase === 'showdown' && !gs.lastWinners) return null;
-                const preflop = board.length < 3;
+                if (gs.phase === 'waiting') return null;
                 const isOmaha = (gs.currentGameType || '').startsWith('Omaha');
-                // Preflop: rank by hole-card strength (pairs, then high cards) so GOD sees the favorite from the deal
-                const preScore = (cards) => {
-                    const V = { '2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14 };
-                    const vs = cards.map(c => V[c.val]).sort((a,b) => b-a);
-                    const cnt = {}; vs.forEach(v => cnt[v] = (cnt[v]||0)+1);
-                    const pairs = Object.entries(cnt).filter(([,c]) => c >= 2).map(([v]) => Number(v)).sort((a,b) => b-a);
-                    return pairs.length ? 1000000 + pairs[0]*10000 + (vs[0]||0) : (vs[0]||0)*10000 + (vs[1]||0)*100 + (vs[2]||0);
-                };
+                // The board's future is fixed at the shuffle — project it and mark the hand's
+                // ULTIMATE winner among the players still in. Stable street to street; changes
+                // only if the destined winner folds.
+                let proj = board;
+                if (srvEngine) {
+                    if ((godFinal || []).length === 5) proj = godFinal;
+                } else {
+                    // classic engine deals from the END of gs.deck with a burn before each street
+                    const d = [...(gs.deck || [])];
+                    const p2 = [...board];
+                    if (p2.length === 0 && d.length >= 4) { d.pop(); p2.push(d.pop(), d.pop(), d.pop()); }
+                    while (p2.length >= 3 && p2.length < 5 && d.length >= 2) { d.pop(); p2.push(d.pop()); }
+                    if (p2.length === 5) proj = p2;
+                }
+                if (proj.length < 3) return null;
                 let best = -1, uid = null, tie = false;
                 Object.values(players).forEach(p => {
                     const cardsOf = srvEngine ? ((p.cards || []).length ? p.cards : (godHands[p.uid] || [])) : (p.cards || []);
@@ -5239,11 +5246,10 @@
                     p = { ...p, cards: cardsOf };
                     let sc = 0;
                     try {
-                        if (preflop) sc = preScore(p.cards);
-                        else if (isOmaha) {
-                            getCombinations(p.cards, 2).forEach(h => getCombinations(board, 3).forEach(b => { const v = evaluate5Cards([...h, ...b]); if (v > sc) sc = v; }));
+                        if (isOmaha) {
+                            getCombinations(p.cards, 2).forEach(h => getCombinations(proj, 3).forEach(b => { const v = evaluate5Cards([...h, ...b]); if (v > sc) sc = v; }));
                         } else {
-                            getCombinations([...p.cards, ...board], 5).forEach(c => { const v = evaluate5Cards(c); if (v > sc) sc = v; });
+                            getCombinations([...p.cards, ...proj], 5).forEach(c => { const v = evaluate5Cards(c); if (v > sc) sc = v; });
                         }
                     } catch(e) { return; }
                     if (sc > best) { best = sc; uid = p.uid; tie = false; }
@@ -5432,7 +5438,7 @@
                                                 <div className="win-tag" dir="ltr">WIN{(gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''}</div>
                                             )}
                                             <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-16 h-16' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
-                                                {godView && godBestUid === p.uid && <React.Fragment><div className="god-best-ring"></div><div className="god-best-tag">👁 BEST</div></React.Fragment>}
+                                                {godView && godBestUid === p.uid && <React.Fragment><div className="god-best-ring"></div><div className="god-best-tag">👁 WINS</div></React.Fragment>}
                                                 {isTurn && (
                                                     <svg className="absolute inset-0 w-full h-full timer-ring" viewBox="0 0 40 40">
                                                         <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(245,200,96,0.9)" strokeWidth="3"

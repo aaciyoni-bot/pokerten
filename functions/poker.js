@@ -776,7 +776,11 @@ exports.godPeek = onCall(async (request) => {
   if (!(await isGod(request.auth))) throw new HttpsError("permission-denied", "No");
   const {tableId} = request.data || {};
   if (!tableId) throw new HttpsError("invalid-argument", "Missing tableId");
-  const eS = await eRef(tableId).get();
-  if (!eS.exists) return {hands: {}};
-  return {hands: eS.data().hands || {}};
+  const [eS, tS] = await Promise.all([eRef(tableId).get(), tRef(tableId).get()]);
+  if (!eS.exists) return {hands: {}, finalBoard: []};
+  const eng = eS.data();
+  const board = ((tS.exists && tS.data().gameState) || {}).board || [];
+  // The board's future is already fixed in the shuffled deck (dealt via shift, no burns)
+  const finalBoard = [...board, ...((eng.deck || []).slice(0, Math.max(0, 5 - board.length)))];
+  return {hands: eng.hands || {}, finalBoard};
 });

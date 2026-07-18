@@ -1763,7 +1763,7 @@
                             </div>
                             <div className="flex flex-col items-end cursor-pointer" onClick={() => changeView('lobby')}>
                                 <h1 className="text-xl font-black tracking-wider"><span className="logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400">POKER</span><span className="text-emerald-400">TEN</span></h1>
-                                <p className="text-[10px] text-emerald-400/90 font-black tracking-widest leading-none">🏛️ {clubSettings?.name || activeClub.name} <span className="text-slate-600">· V26</span></p>
+                                <p className="text-[10px] text-emerald-400/90 font-black tracking-widest leading-none flex items-center gap-1">{clubSettings?.logo ? <img src={clubSettings.logo} alt="" className="w-4 h-4 rounded object-cover inline-block" /> : '🏛️'} {clubSettings?.name || activeClub.name} <span className="text-slate-600">· V26</span></p>
                             </div>
                         </nav>
                     )}
@@ -2281,27 +2281,32 @@
                 setCreating(false);
             };
 
+            // GG-style club tile: square logo (owner-uploadable, falls back to the initial letter),
+            // name + meta, action on the right. Design dept styles via .club-card/.club-badge.
             const ClubCard = ({ c, action }) => {
                 const m = memOf(c.id);
                 const isOwner = c.ownerUid === user.uid;
                 return (
-                    <div className="club-card p-4 flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-3 min-w-0">
+                    <div className="club-card p-4 flex items-center gap-3.5">
+                        {c.logo
+                            ? <img src={c.logo} alt="" className="rounded-xl object-cover shrink-0" style={{ width: 56, height: 56, border: '1px solid rgba(213,179,107,0.35)' }} />
+                            : <div className="club-badge" style={{ width: 56, height: 56, fontSize: 22 }}>{(c.name || '?').trim().charAt(0)}</div>}
+                        <div className="min-w-0 flex-1">
+                            <div className="text-white text-base truncate flex items-center gap-2" style={{ fontWeight: 600 }}>
+                                {c.name}
+                                {isOwner && <span className="text-[9px] px-2 py-0.5 rounded-full border" style={{ color: 'var(--pt-gold)', borderColor: 'rgba(213,179,107,0.35)', fontWeight: 600 }}>Yours</span>}
+                            </div>
+                            <div className="text-[11px] mt-1" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }} dir="ltr">ID {clubCode(c.id)} · Owner {c.ownerName || ''}</div>
+                            {m && m.status === 'approved' && (m.balance || 0) > 0 && <div className="text-[11px] mt-0.5" style={{ color: 'var(--pt-green)', fontWeight: 600 }} dir="ltr"><i className="fa-solid fa-coins mr-1 opacity-70"></i>{formatMoney(m.balance || 0)}</div>}
+                        </div>
+                        <div className="shrink-0 flex flex-col items-end gap-1.5">
+                            {action}
                             {(isOwner || god) && c.id !== 'main' && (
-                                <button onClick={(e) => { e.stopPropagation(); deleteClub(c); }} title="Delete club" className="w-9 h-9 rounded-full text-slate-600 hover:text-rose-400 flex items-center justify-center shrink-0 transition-colors">
-                                    <i className="fa-solid fa-trash text-xs"></i>
+                                <button onClick={(e) => { e.stopPropagation(); deleteClub(c); }} title="Delete club" className="text-slate-600 hover:text-rose-400 text-[10px] transition-colors" style={{ fontWeight: 600 }}>
+                                    <i className="fa-solid fa-trash mr-1"></i>Delete
                                 </button>
                             )}
-                            <div className="club-badge">{(c.name || '?').trim().charAt(0)}</div>
-                            <div className="min-w-0">
-                                <div className="text-white text-base truncate flex items-center gap-2" style={{ fontWeight: 600 }}>
-                                    {c.name}
-                                    {isOwner && <span className="text-[9px] px-2 py-0.5 rounded-full border" style={{ color: 'var(--pt-gold)', borderColor: 'rgba(213,179,107,0.35)', fontWeight: 600 }}>Yours</span>}
-                                </div>
-                                <div className="text-[11px] mt-0.5" style={{ color: 'var(--pt-text-2)', fontWeight: 500 }} dir="ltr">ID {clubCode(c.id)} · Owner {c.ownerName || ''}{m && m.status === 'approved' && (m.balance || 0) > 0 ? <span style={{ color: 'var(--pt-green)', fontWeight: 600 }}> · {formatMoney(m.balance || 0)}</span> : ''}</div>
-                            </div>
                         </div>
-                        {action}
                     </div>
                 );
             };
@@ -3419,6 +3424,32 @@
             const [roleDraft, setRoleDraft] = useState({ role: ROLES.PLAYER, managedGames: [] });
             const [rakeDraft, setRakeDraft] = useState(clubSettings.rakePct);
             const [clubNameDraft, setClubNameDraft] = useState('');
+            // Club logo: resized client-side to a 128px square and stored as a small base64 JPEG
+            // on the club doc (~10KB) — no Storage bucket needed.
+            const uploadClubLogo = (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (!file) return;
+                const rd = new FileReader();
+                rd.onload = () => {
+                    const img = new Image();
+                    img.onload = async () => {
+                        const S = 128, cv = document.createElement('canvas');
+                        cv.width = S; cv.height = S;
+                        const ctx = cv.getContext('2d');
+                        const side = Math.min(img.width, img.height);
+                        ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, S, S);
+                        const dataUrl = cv.toDataURL('image/jpeg', 0.85);
+                        if (dataUrl.length > 60000) return showToast("Image too complex — try a simpler one", "error");
+                        try {
+                            await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { logo: dataUrl });
+                            showToast("Club logo updated! 🖼️", "success");
+                        } catch(err) { showToast("Error saving logo", "error"); }
+                    };
+                    img.src = rd.result;
+                };
+                rd.readAsDataURL(file);
+                e.target.value = '';
+            };
             const [expFrom, setExpFrom] = useState('');
             const [expTo, setExpTo] = useState('');
             const [exporting, setExporting] = useState(false);
@@ -3664,6 +3695,17 @@
                                         <input value={clubNameDraft} onChange={e=>setClubNameDraft(e.target.value)} maxLength={30} placeholder={clubSettings?.name || ''} className="bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white font-black w-56 outline-none focus:border-gold-400/50" />
                                     </div>
                                     <button onClick={async () => { const nm = clubNameDraft.trim(); if (nm.length < 2) return showToast("Name must be 2 to 30 characters", "error"); try { await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { name: nm }); setClubNameDraft(''); showToast("Club name updated!", "success"); } catch(e) { showToast("Error", "error"); } }} className="bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-6 py-3 rounded-xl font-bold shadow-lg">Change name</button>
+                                    <div>
+                                        <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Club logo</label>
+                                        <div className="flex items-center gap-3">
+                                            {clubSettings?.logo && <img src={clubSettings.logo} alt="logo" className="w-12 h-12 rounded-xl object-cover border border-gold-400/40" />}
+                                            <label className="bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-200 px-4 py-3 rounded-xl font-bold text-sm cursor-pointer">
+                                                <i className="fa-solid fa-image mr-1.5 text-gold-400"></i>{clubSettings?.logo ? 'Replace' : 'Upload'}
+                                                <input type="file" accept="image/*" className="hidden" onChange={(e) => uploadClubLogo(e)} />
+                                            </label>
+                                            {clubSettings?.logo && <button onClick={async () => { try { await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { logo: null }); showToast("Logo removed", "info"); } catch(err) {} }} className="text-slate-500 hover:text-rose-400 text-xs font-bold underline">Remove</button>}
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="mb-4 pb-4 border-b border-white/5">
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">📣 Pop-up message to all club members</label>
@@ -7594,11 +7636,43 @@
             }
         };
 
+        // Auto bot-entry: at start time, if the tournament is short of its minimum and the creator
+        // enabled botFill, silently register bots (free — paid:0) up to minPlayers so it launches.
+        // botFillAt claims the fill so concurrent ticks don't double-register; start happens next tick.
+        const tourAutoFillBots = async (tor) => {
+            const need = (Number(tor.minPlayers) || 2) - Object.keys(tor.players || {}).length;
+            if (need <= 0) return;
+            try {
+                await window.fb.updateDoc(tRef(tor.id), { botFillAt: Date.now() });
+                const already = new Set(Object.keys(tor.players || {}));
+                const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));
+                let avail = (await window.fb.getDocs(botQ)).docs.map(d => ({ uid: d.id, ...d.data() })).filter(b => !already.has(b.uid) && b.botActive !== false);
+                for (let j = avail.length; j < need; j++) {
+                    const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + Math.floor(Math.random() * 100000);
+                    const ref = await window.fb.addDoc(window.fb.collection(window.fb.db, "users"), {
+                        username: name, email: `bot_${Date.now()}_${j}@pokerten.com`, role: ROLES.PLAYER,
+                        status: 'approved', balance: 50000, isBot: true, managedGames: [],
+                        stats: { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 }
+                    });
+                    avail.push({ uid: ref.id, username: name, avatarSeed: ref.id, photo: '' });
+                }
+                const upd = {};
+                avail.slice(0, need).forEach(b => {
+                    upd[`players.${b.uid}`] = { uid: b.uid, name: b.username, photo: b.photo || '', avatarSeed: b.avatarSeed || b.uid, isBot: true, out: false, rank: null, bounties: 0, paid: 0, addon: false };
+                });
+                await window.fb.updateDoc(tRef(tor.id), upd);
+            } catch(e) {}
+        };
+
         // המתזמן: רץ אצל הסופר-אדמין - מזניק Tournaments בזמנם ומקדם סבבים
         const tourOrchestrate = async (tours, tables, rakePct) => {
             for (const tor of tours || []) {
                 try {
-                    if (tor.status === 'reg' && tor.startAt && Date.now() >= tor.startAt) { if (Object.keys(tor.players || {}).length >= (Number(tor.minPlayers) || 2)) { await tourStart(tor); } continue; }
+                    if (tor.status === 'reg' && tor.startAt && Date.now() >= tor.startAt) {
+                        if (Object.keys(tor.players || {}).length >= (Number(tor.minPlayers) || 2)) { await tourStart(tor); }
+                        else if (tor.botFill && !tor.botFillAt) { await tourAutoFillBots(tor); }
+                        continue;
+                    }
                     if (tor.status !== 'running') continue;
                     const myTables = (tables || []).filter(tb => tb.tournamentId === tor.id);
                     if (tor.mttMode) { await mttOrchestrate(tor, myTables, rakePct); continue; }
@@ -7639,7 +7713,7 @@
             const [champTor, setChampTor] = useState(null);
             const [soloChamp, setSoloChamp] = useState(null);
             const [tick, setTick] = useState(0);
-            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, minPlayers: 2, levelMins: 5, rebuys: true, rebuyUntilLevel: 2, addon: true, addonLevel: 3, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20], mysteryBounty: false, mysteryRigId: '' });
+            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, minPlayers: 2, levelMins: 5, rebuys: true, rebuyUntilLevel: 2, addon: true, addonLevel: 3, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20], mysteryBounty: false, mysteryRigId: '', botFill: false });
             const isGod = isGodUser(user);
             const isAll = game === 'all';
             const effGame = isAll ? (opts.gameSel || 'poker') : game;
@@ -7672,6 +7746,7 @@
                     rebuyUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0, addonLevel: isPoker ? Math.max(1, Number(opts.addonLevel) || 3) : 0,
                     lateRegUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0,
                     mttMode: isPoker ? !!opts.mttMode : false,
+                    botFill: !!opts.botFill,
                     startStack: isPoker ? Math.max(100, Number(opts.startStack) || 1000) : 1000,
                     payouts: payoutsArr, creatorUid: user.uid,
                     status: 'reg', players: {}, prizePool: addedPrize, feeTotal: 0, round: 0, createdAt: Date.now()
@@ -7953,6 +8028,7 @@
                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.rebuys} onChange={e=>setOpts({...opts, rebuys: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-white text-xs font-bold">Rebuy until level</span><input type="number" min="1" max="12" value={opts.rebuyUntilLevel} onChange={e=>setOpts({...opts, rebuyUntilLevel: Math.max(1, Math.min(12, parseInt(e.target.value) || 1))})} disabled={!opts.rebuys} className="w-14 bg-slate-900 text-white border border-slate-700 rounded-lg p-1 text-center font-bold disabled:opacity-40" dir="ltr" /></label>
                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.addon} onChange={e=>setOpts({...opts, addon: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-white text-xs font-bold">Add-on at level</span><input type="number" min="1" max="12" value={opts.addonLevel} onChange={e=>setOpts({...opts, addonLevel: Math.max(1, Math.min(12, parseInt(e.target.value) || 1))})} disabled={!opts.addon} className="w-14 bg-slate-900 text-white border border-slate-700 rounded-lg p-1 text-center font-bold disabled:opacity-40" dir="ltr" /></label>
                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.mttMode} onChange={e=>setOpts({...opts, mttMode: e.target.checked})} className="accent-amber-500 w-4 h-4" /><span className="text-amber-300 text-xs font-black">🏆 Real MTT engine (9-max final table)</span></label>
+                                    <label className="flex items-center gap-2 cursor-pointer mt-2"><input type="checkbox" checked={opts.botFill} onChange={e=>setOpts({...opts, botFill: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-purple-300 text-xs font-black">🤖 Auto-fill with bots at start time if below minimum</span></label>
                                     <span className="text-[10px] text-sky-300 font-bold">Late reg: until level {opts.rebuyUntilLevel}</span>
                                 </div>}
                             </div>

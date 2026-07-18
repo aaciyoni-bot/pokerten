@@ -1011,12 +1011,13 @@
         };
 
         // כשהשולחן מתמלא בשחקן אמיתי - נפתח אוטומטית שולחן זהה חדש בלובי
-        const spawnTwinTable = async (t) => {
+        const spawnTwinTable = async (t, force) => {
             try {
                 if (!t || !t.type || t.tournamentId) return; // Tables טורניר לא משתכפלים
                 const cid = t.clubId || CLUB_ID;
-                // הגנה מכפילויות: אם כבר קיים שולחן זהה (אותן Settings) עם מקום פנוי - לא פותחים עוד אחד
-                try {
+                // הגנה מכפילויות: אם כבר קיים שולחן זהה (אותן Settings) עם מקום פנוי - לא פותחים עוד אחד.
+                // force=true (נקרא כששולחן התמלא) מדלג על ההגנה כדי שתמיד ייפתח שולחן ריק חדש.
+                if (!force) try {
                     const q = window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("type", "==", t.type));
                     const snap = await window.fb.getDocs(q);
                     const keyOf = (x) => JSON.stringify([Number((x.settings || {}).buyIn) || 0, Number((x.settings || {}).blinds) || 0, (x.settings || {}).baseGameType || '', Number((x.settings || {}).maxPlayers) || 0, Number((x.settings || {}).deckSize) || 0, (x.settings || {}).variant || '', Number((x.settings || {}).target) || 0]);
@@ -4559,7 +4560,7 @@
                         if (Object.keys(pl).length + 1 >= (t.settings.maxPlayers || 6)) becameFull = true;
                     });
                     setSpectate(false);
-                    if (becameFull) spawnTwinTable(tableRef.current);
+                    if (becameFull) spawnTwinTable(tableRef.current, true);
                 } catch(e) { showToast(typeof e === 'string' ? e : "Error taking a seat", "error"); }
             };
 
@@ -4627,7 +4628,7 @@
                         setSpectate(false);
                         showToast("A seat opened up — you're in! 🎉", "success");
                         const tNow = tableRef.current;
-                        if (tNow && Object.keys(tNow.players || {}).length >= ((tNow.settings || {}).maxPlayers || 6)) spawnTwinTable(tNow);
+                        if (tNow && Object.keys(tNow.players || {}).length >= ((tNow.settings || {}).maxPlayers || 6)) spawnTwinTable(tNow, true);
                     } catch(e) {
                         if (typeof e === 'string' && e.startsWith('You reached')) { showToast(e, "error"); leaveWaitlist(); }
                     } finally { promotingRef.current = false; }
@@ -4888,7 +4889,7 @@
                     stack: round2(100 * BB), bet: 0, status: midHand ? 'waiting' : 'active', cards: [], hasActed: false, actionText: '', isBot: true
                 }});
                 // The agreed rule: a table that fills up spawns a fresh twin with the same settings
-                if (Object.keys(pl).length + 1 >= (setts.maxPlayers || 6)) spawnTwinTable(t);
+                if (Object.keys(pl).length + 1 >= (setts.maxPlayers || 6)) spawnTwinTable(t, true);
             };
 
             /* ---------- מוח הBots (רץ רק אצל הסופר-אדמין) ---------- */
@@ -6197,7 +6198,7 @@
                         tr.update(tblRef(), { [`players.${user.uid}`]: { uid: user.uid, name: user.username, photo: user.photo || '', avatarSeed: user.avatarSeed || '', seatIndex, cards: [], isBot: false, out: false, left: false } });
                         if (Object.keys(t.players).length + 1 >= (t.settings.maxPlayers || 6)) becameFull = true;
                     });
-                    if (becameFull) spawnTwinTable(tableRef.current);
+                    if (becameFull) spawnTwinTable(tableRef.current, true);
                 } catch(e) { toastErr(typeof e === 'string' ? e : "Error joining"); }
             };
 
@@ -7103,7 +7104,7 @@
                         becameFull = Object.keys(t.players).length + 1 >= mx;
                     });
                     playSnd('chip');
-                    if (becameFull) spawnTwinTable(tableRef.current);
+                    if (becameFull) spawnTwinTable(tableRef.current, true);
                 } catch(e) { showToast(typeof e === 'string' ? e : "Error", "error"); }
             };
             const handleAddBot = async () => {

@@ -441,25 +441,28 @@
         }
         .tbl-row:hover { border-color: rgba(34,211,238,0.35); transform: translateY(-1px); }
         .tbl-spine {
-            align-self: stretch; width: 34px; flex: none; display: flex; align-items: center; justify-content: center;
-            font-size: 10px; font-weight: 900; letter-spacing: 0.08em; color: #fff;
+            align-self: stretch; width: 26px; flex: none; display: flex; align-items: center; justify-content: center;
+            font-size: 8.5px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase;
             writing-mode: vertical-rl; transform: rotate(180deg);
-            border-radius: 0 12px 12px 0;
-            background: linear-gradient(180deg, #475569, #334155);
+            border-right: 2px solid var(--spineC, #64748b);
+            background: linear-gradient(90deg, color-mix(in srgb, var(--spineC, #64748b) 13%, transparent), transparent 85%);
+            color: color-mix(in srgb, var(--spineC, #64748b) 72%, #fff);
         }
+        .spine-ofc { --spineC: #2dd4bf; }
+        .spine-durak { --spineC: #60a5fa; }
         .tbl-seats { position: relative; width: 46px; height: 46px; flex: none; display: flex; align-items: center; justify-content: center; }
         .tbl-seats .tbl-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
-        .tbl-seats span { font-size: 11px; font-weight: 900; color: #e2e8f0; }
+        .tbl-seats span { font-size: 10.5px; font-weight: 600; color: #cbd5e1; }
         .tbl-main { flex: 1; min-width: 0; }
-        .tbl-name { font-size: 12px; font-weight: 700; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+        .tbl-name { font-size: 12px; font-weight: 500; color: #8b98ad; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
         .tbl-dc { font-size: 9px; font-weight: 900; color: #fda4af; border: 1px solid rgba(244,63,94,0.4); border-radius: 4px; padding: 0 4px; flex: none; }
         .tbl-me { font-size: 9px; font-weight: 900; color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); border-radius: 99px; padding: 0 6px; flex: none; }
-        .tbl-stakes { font-size: 20px; font-weight: 900; color: #fff; font-family: 'Rubik', sans-serif; line-height: 1.15; }
-        .tbl-sub { font-size: 10px; font-weight: 700; color: #64748b; }
+        .tbl-stakes { font-size: 18px; font-weight: 600; color: #f1f5f9; font-family: 'Rubik', sans-serif; line-height: 1.2; letter-spacing: 0.01em; }
+        .tbl-sub { font-size: 10px; font-weight: 500; color: #5b6779; }
         .tbl-live { color: #34d399; }
         .tbl-buyin { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; margin-right: 4px; }
-        .tbl-buyin-label { font-size: 10px; font-weight: 700; color: #64748b; }
-        .tbl-buyin-val { font-size: 19px; font-weight: 900; color: #fff; font-family: 'Rubik', sans-serif; }
+        .tbl-buyin-label { font-size: 9px; font-weight: 600; color: #556179; letter-spacing: 0.08em; text-transform: uppercase; }
+        .tbl-buyin-val { font-size: 16px; font-weight: 600; color: #e2e8f0; font-family: 'Rubik', sans-serif; }
         .tbl-del { flex: none; width: 32px; height: 32px; border-radius: 9px; color: #475569; font-size: 11px; background: transparent; border: none; cursor: pointer; }
         .tbl-del:hover { color: #fb7185; background: rgba(244,63,94,0.08); }
 
@@ -4539,33 +4542,68 @@ function LobbyView({
   }, "Open table")), React.createElement("p", {
     className: "text-xs text-slate-500 font-bold mt-2"
   }, "Like poker: buy a stack on entry and play hands on it · point = a tenth of the stake value (5 ₪ stake = half a ₪ per point) · stand up whenever you like and the stack returns to your wallet · Fantasyland QQ=14 KK=15 AA=16 · Jokers")), React.createElement("div", {
-    className: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
-  }, ofcTables.map(t => React.createElement("div", {
-    key: t.docId,
-    className: "grad-card rounded-3xl p-5 cursor-pointer relative",
-    onClick: () => onJoinOfc(t)
-  }, canManageGame(user, 'ofc') && React.createElement("button", {
-    onClick: e => handleDelete(e, t),
-    className: "absolute top-3 left-3 w-8 h-8 rounded-lg bg-slate-800/80 text-slate-500 hover:text-rose-400 flex items-center justify-center z-10"
-  }, React.createElement("i", {
-    className: "fa-solid fa-trash text-xs"
-  })), React.createElement("div", {
-    className: "flex justify-between items-start mb-3"
-  }, React.createElement("div", null, React.createElement("h3", {
-    className: "font-black text-white"
-  }, "Chinese Poker (OFC) 🀄"), React.createElement("p", {
-    className: "text-slate-400 text-xs font-bold",
-    dir: "ltr"
-  }, "Stack ", formatMoney((t.settings || {}).buyIn), " · stake ", formatMoney((t.settings || {}).stake || 5))), React.createElement("span", {
-    className: `text-[10px] font-black px-2.5 py-1 rounded-full border ${t.status === 'playing' ? 'text-amber-300 border-amber-500/50 bg-amber-500/10' : 'text-emerald-300 border-emerald-500/50 bg-emerald-500/10'}`
-  }, t.status === 'playing' ? 'Playing' : 'Waiting')), React.createElement("div", {
-    className: "flex justify-between items-center"
-  }, React.createElement(AvatarsRow, {
-    players: t.players
-  }), React.createElement("span", {
-    className: "text-slate-400 text-xs font-bold"
-  }, Object.keys(t.players || {}).length, "/", (t.settings || {}).maxPlayers || 2)))), ofcTables.length === 0 && React.createElement("div", {
-    className: "col-span-full text-center py-10 text-slate-500 font-bold glass-panel rounded-3xl"
+    className: "flex flex-col gap-2.5"
+  }, ofcTables.map(t => {
+    const seated = Object.keys(t.players || {}).length;
+    const cap = (t.settings || {}).maxPlayers || 2;
+    return React.createElement("div", {
+      key: t.docId,
+      className: "tbl-row",
+      onClick: () => onJoinOfc(t)
+    }, React.createElement("div", {
+      className: "tbl-spine spine-ofc"
+    }, "OFC"), React.createElement("div", {
+      className: "tbl-seats"
+    }, React.createElement("svg", {
+      viewBox: "0 0 44 44",
+      className: "tbl-ring"
+    }, React.createElement("circle", {
+      cx: "22",
+      cy: "22",
+      r: "19",
+      fill: "none",
+      stroke: "rgba(148,163,184,0.18)",
+      strokeWidth: "3.5"
+    }), React.createElement("circle", {
+      cx: "22",
+      cy: "22",
+      r: "19",
+      fill: "none",
+      stroke: seated > 0 ? '#2dd4bf' : 'rgba(148,163,184,0.28)',
+      strokeWidth: "3.5",
+      strokeDasharray: `${119 * seated / cap} 119`,
+      strokeLinecap: "round",
+      transform: "rotate(-90 22 22)"
+    })), React.createElement("span", {
+      dir: "ltr"
+    }, seated, "/", cap)), React.createElement("div", {
+      className: "tbl-main"
+    }, React.createElement("div", {
+      className: "tbl-name"
+    }, "Chinese Poker (OFC)", t.players && t.players[user.uid] && React.createElement("span", {
+      className: "tbl-me"
+    }, "You're seated")), React.createElement("div", {
+      className: "tbl-stakes",
+      dir: "ltr"
+    }, formatShort((t.settings || {}).stake || 5), " / pt"), React.createElement("div", {
+      className: "tbl-sub"
+    }, t.status === 'playing' ? React.createElement("span", {
+      className: "tbl-live"
+    }, "● Running") : 'Waiting')), React.createElement("div", {
+      className: "tbl-buyin",
+      dir: "ltr"
+    }, React.createElement("span", {
+      className: "tbl-buyin-label"
+    }, "Stack"), React.createElement("span", {
+      className: "tbl-buyin-val"
+    }, formatMoney((t.settings || {}).buyIn))), canManageGame(user, 'ofc') && React.createElement("button", {
+      onClick: e => handleDelete(e, t),
+      className: "tbl-del"
+    }, React.createElement("i", {
+      className: "fa-solid fa-trash"
+    })));
+  }), ofcTables.length === 0 && React.createElement("div", {
+    className: "text-center py-10 text-slate-500 font-bold glass-panel rounded-3xl"
   }, "No open Chinese Poker (OFC) tables."))), tab === 'tours' && React.createElement("div", {
     className: "animate-fade-in"
   }, React.createElement(TournamentsTab, {
@@ -4641,7 +4679,7 @@ function LobbyView({
     }, React.createElement("div", {
       className: "tbl-spine",
       style: {
-        background: vs.spine
+        '--spineC': vs.hue
       }
     }, variantLabel(gt)), React.createElement("div", {
       className: "tbl-seats"
@@ -4713,7 +4751,7 @@ function LobbyView({
     className: "flex justify-between items-center mb-5"
   }, React.createElement("h2", {
     className: "text-xl font-black text-white"
-  }, "Tables Durak"), canManageGame(user, 'durak') && React.createElement("button", {
+  }, "Durak"), canManageGame(user, 'durak') && React.createElement("button", {
     onClick: () => setShowCreateDurak(!showCreateDurak),
     className: "bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(59,130,246,0.3)] text-sm"
   }, React.createElement("i", {
@@ -4799,44 +4837,69 @@ function LobbyView({
     onClick: handleCreateDurak,
     className: "bg-blue-600 hover:bg-blue-500 text-white px-8 py-2 rounded-xl font-bold shadow-lg"
   }, "Confirm & open")))), React.createElement("div", {
-    className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+    className: "flex flex-col gap-2.5"
   }, durakTables.map(t => {
     const s = t.settings || {};
+    const seated = Object.keys(t.players || {}).length;
+    const cap = s.maxPlayers || 6;
     return React.createElement("div", {
       key: t.docId,
-      className: "grad-card cursor-pointer",
+      className: "tbl-row",
       onClick: () => onJoinDurak(t)
     }, React.createElement("div", {
-      className: "grad-card-inner p-5 relative"
-    }, canManageGame(user, 'durak') && React.createElement("button", {
-      onClick: e => handleDelete(e, t),
-      className: "absolute top-3 left-3 w-8 h-8 rounded-lg bg-slate-800/80 text-slate-500 hover:text-rose-400 flex items-center justify-center z-10"
-    }, React.createElement("i", {
-      className: "fa-solid fa-trash text-xs"
-    })), t.players && t.players[user.uid] && React.createElement("div", {
-      className: "absolute top-3 right-3 bg-emerald-500/20 border border-emerald-500 text-emerald-400 text-[10px] px-2 py-0.5 rounded-full animate-pulse font-bold z-10"
-    }, "🟢 You're seated here"), React.createElement("div", {
-      className: "flex items-center gap-3 mb-4 mt-3"
-    }, React.createElement("div", {
-      className: "w-11 h-11 rounded-xl bg-blue-900/30 border border-blue-700/40 flex items-center justify-center"
-    }, React.createElement("i", {
-      className: "fa-solid fa-chess-king text-blue-400"
-    })), React.createElement("div", null, React.createElement("h3", {
-      className: "text-lg font-black text-white leading-tight"
-    }, "Durak ", s.variant === 'perevodnoy' ? 'Transfer' : 'Classic'), React.createElement("p", {
-      className: "text-slate-400 text-xs font-bold",
+      className: "tbl-spine spine-durak"
+    }, "DRK"), React.createElement("div", {
+      className: "tbl-seats"
+    }, React.createElement("svg", {
+      viewBox: "0 0 44 44",
+      className: "tbl-ring"
+    }, React.createElement("circle", {
+      cx: "22",
+      cy: "22",
+      r: "19",
+      fill: "none",
+      stroke: "rgba(148,163,184,0.18)",
+      strokeWidth: "3.5"
+    }), React.createElement("circle", {
+      cx: "22",
+      cy: "22",
+      r: "19",
+      fill: "none",
+      stroke: seated > 0 ? '#60a5fa' : 'rgba(148,163,184,0.28)',
+      strokeWidth: "3.5",
+      strokeDasharray: `${119 * seated / cap} 119`,
+      strokeLinecap: "round",
+      transform: "rotate(-90 22 22)"
+    })), React.createElement("span", {
       dir: "ltr"
-    }, "Buy-in ", formatMoney(s.buyIn), " · ", s.deckSize, " cards")), t.status === 'playing' && React.createElement("span", {
-      className: "mr-auto text-[10px] text-amber-400 font-black bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-full"
-    }, "● LIVE")), React.createElement("div", {
-      className: "flex justify-between items-center"
-    }, React.createElement(AvatarsRow, {
-      players: t.players
-    }), React.createElement("span", {
-      className: "text-blue-400 font-bold text-xs bg-blue-900/20 border border-blue-700/40 px-3 py-1 rounded-full"
-    }, Object.keys(t.players || {}).length, "/", s.maxPlayers || 6))));
+    }, seated, "/", cap)), React.createElement("div", {
+      className: "tbl-main"
+    }, React.createElement("div", {
+      className: "tbl-name"
+    }, "Durak · ", s.variant === 'perevodnoy' ? 'Transfer' : 'Classic', " · ", s.deckSize, " cards", t.players && t.players[user.uid] && React.createElement("span", {
+      className: "tbl-me"
+    }, "You're seated")), React.createElement("div", {
+      className: "tbl-stakes",
+      dir: "ltr"
+    }, formatMoney(s.buyIn)), React.createElement("div", {
+      className: "tbl-sub"
+    }, t.status === 'playing' ? React.createElement("span", {
+      className: "tbl-live"
+    }, "● Running") : 'Waiting')), React.createElement("div", {
+      className: "tbl-buyin",
+      dir: "ltr"
+    }, React.createElement("span", {
+      className: "tbl-buyin-label"
+    }, "Buy-in"), React.createElement("span", {
+      className: "tbl-buyin-val"
+    }, formatMoney(s.buyIn))), canManageGame(user, 'durak') && React.createElement("button", {
+      onClick: e => handleDelete(e, t),
+      className: "tbl-del"
+    }, React.createElement("i", {
+      className: "fa-solid fa-trash"
+    })));
   }), durakTables.length === 0 && React.createElement("div", {
-    className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
+    className: "text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
   }, "No open Durak tables.")), React.createElement("div", {
     className: "border-t border-white/5 my-8"
   }), React.createElement(TournamentsTab, {

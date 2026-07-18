@@ -4149,6 +4149,17 @@
             const [myPrivCards, setMyPrivCards] = useState([]);
             const [godHands, setGodHands] = useState({});
             const [godFinal, setGodFinal] = useState([]);
+            // Keep the phone screen awake while at the table; released automatically on leave.
+            useEffect(() => {
+                let lock = null, released = false;
+                const acquire = async () => {
+                    try { if (!released && document.visibilityState === 'visible' && navigator.wakeLock) { lock = await navigator.wakeLock.request('screen'); } } catch (e) {}
+                };
+                const onVis = () => { if (document.visibilityState === 'visible') acquire(); };
+                acquire();
+                document.addEventListener('visibilitychange', onVis);
+                return () => { released = true; document.removeEventListener('visibilitychange', onVis); try { lock && lock.release(); } catch (e) {} lock = null; };
+            }, []);
             useEffect(() => {
                 if (!srvEngine) { setMyPrivCards([]); return; }
                 const unsub = window.fb.onSnapshot(window.fb.doc(window.fb.db, "tables", tableDocId, "priv", user.uid), (d) => {
@@ -5401,6 +5412,15 @@
                                 </div>
                             )}
 
+                            {/* כפתור דילר — על הלבד, פנימה לכיוון מושב הדילר (במקום לבלוט מהפוד) */}
+                            {gs.dealerUid && (() => {
+                                const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
+                                if (di < 0) return null;
+                                const ang = Math.PI / 2 + (di * 2 * Math.PI) / N;
+                                const rx = 28, ry = 26; // inner radius — sits on the felt, inside the seat ring
+                                return <div className="absolute z-30 w-6 h-6 rounded-full bg-white text-slate-900 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-slate-300" style={{ left: `${50 + rx * Math.cos(ang)}%`, top: `${50 + ry * Math.sin(ang)}%`, transform: 'translate(-50%,-50%)' }}>D</div>;
+                            })()}
+
                             {/* Players */}
                             {displayList.map((p, i) => {
                                 const isTurn = gs.activeTurnUid === p.uid && inBetting;
@@ -5474,7 +5494,7 @@
                                                 )}
                                             </div>
 
-                                            {gs.dealerUid === p.uid && <div className="absolute -left-3 top-0 w-5 h-5 rounded-full bg-white text-slate-900 text-[9px] font-black flex items-center justify-center shadow-lg border border-slate-300 z-30">D</div>}
+                                            {/* dealer button is now rendered on the felt (see above), not on the pod */}
                                             {setts.isDealerChoice && gs.dcUid === p.uid && <div className="absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30">DC</div>}
 
                                             <div className="text-[10px] font-bold text-white mt-1 max-w-[70px] truncate text-center">{isMe ? 'You' : p.name}</div>

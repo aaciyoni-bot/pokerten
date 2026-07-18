@@ -8580,15 +8580,35 @@ function PokerTable({
     }, isMe ? 'You' : p.name), React.createElement("div", {
       className: "stack-capsule text-gold-400 font-black text-[11px]",
       dir: "ltr"
-    }, formatShort(p.stack)), showCards && !isMe && topSeat && React.createElement("div", {
-      className: "flex gap-0.5 mt-1 z-20",
-      dir: "ltr"
-    }, p.cards.map((c, ci) => React.createElement(PCard, {
-      key: ci,
-      card: c,
-      hidden: hidden,
-      size: "sm"
-    }))), isMe && showCards && !gs.allInReveal && (myHand || myEquity !== null) && gs.phase !== 'showdown' && React.createElement("div", {
+    }, formatShort(p.stack)), showCards && !isMe && topSeat && (() => {
+      const nC = dispCards.length;
+      const doFan = nC >= 3;
+      const midC = (nC - 1) / 2;
+      const ovl = nC > 4 ? -13 : -9;
+      const ang = nC > 4 ? 8 : 7;
+      return React.createElement("div", {
+        className: `flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
+        dir: "ltr"
+      }, dispCards.map((c, ci) => doFan ? React.createElement("span", {
+        key: ci,
+        className: "inline-block",
+        style: {
+          marginLeft: ci === 0 ? 0 : ovl,
+          transform: `rotate(${(midC - ci) * ang}deg) translateY(${-Math.abs(ci - midC) * 2.5}px)`,
+          transformOrigin: '50% -15%',
+          zIndex: ci
+        }
+      }, React.createElement(PCard, {
+        card: c,
+        hidden: hidden,
+        size: "sm"
+      })) : React.createElement(PCard, {
+        key: ci,
+        card: c,
+        hidden: hidden,
+        size: "sm"
+      })));
+    })(), isMe && showCards && !gs.allInReveal && (myHand || myEquity !== null) && gs.phase !== 'showdown' && React.createElement("div", {
       className: "flex gap-1 mt-1 z-30"
     }, myHand && React.createElement("span", {
       className: "bg-slate-950/90 border border-white/15 text-white text-[10px] font-black px-2 py-0.5 rounded-md whitespace-nowrap"

@@ -10827,6 +10827,7 @@ const tourRegister = async (tor, user, showToast) => {
           name: user.username,
           photo: user.photo || '',
           avatarSeed: user.avatarSeed || '',
+          playerId: user.playerId || '',
           isBot: !!user.isBot,
           out: false,
           rank: null,
@@ -11055,11 +11056,20 @@ const tourStart = async tor => {
     return;
   }
   const startedAt = Date.now();
+  let rigUid = null;
+  if (tor.mysteryBounty && tor.mysteryRig && tor.mysteryRig.playerId) {
+    const want = String(tor.mysteryRig.playerId).trim().toUpperCase();
+    const hit = entrants.find(p => String(p.playerId || '').toUpperCase() === want);
+    if (hit) rigUid = hit.uid;
+  }
   try {
     await window.fb.updateDoc(tRef(tor.id), {
       status: 'running',
       startedAt,
-      round: 1
+      round: 1,
+      ...(rigUid ? {
+        mysteryRigUid: rigUid
+      } : {})
     });
   } catch (e) {
     return;
@@ -11069,8 +11079,19 @@ const tourStart = async tor => {
     startedAt
   }, entrants.map(p => p.uid), 1);
 };
+const MYSTERY_TIERS = [[0.5, 0.40], [1, 0.35], [2, 0.15], [3, 0.08], [25, 0.02]];
+const mysteryMult = () => {
+  let r = Math.random(),
+    acc = 0;
+  for (const [m, p] of MYSTERY_TIERS) {
+    acc += p;
+    if (r <= acc) return m;
+  }
+  return 1;
+};
 const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBounty) => {
   let bountyCuts = [];
+  let mysteryHit = null;
   try {
     await window.fb.runTransaction(window.fb.db, async tr => {
       const sn = await tr.get(tRef(torId));
@@ -11092,10 +11113,26 @@ const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBount
         alive--;
       }
       if (payBounty && bountyAmt > 0 && winnerUids.length && bustedUids.length) {
-        const total = round2(bountyAmt * bustedUids.length);
+        let total;
+        if (t.mysteryBounty) {
+          const rigUid = t.mysteryRigUid && winnerUids.includes(t.mysteryRigUid) ? t.mysteryRigUid : null;
+          let sum = 0;
+          for (let i = 0; i < bustedUids.length; i++) {
+            const mult = rigUid ? (t.mysteryRig || {}).mult || 25 : mysteryMult();
+            sum += bountyAmt * mult;
+            if (mult >= 10 && !mysteryHit) mysteryHit = {
+              uid: rigUid || winnerUids[0],
+              amount: round2(bountyAmt * mult)
+            };
+          }
+          total = round2(sum);
+        } else {
+          total = round2(bountyAmt * bustedUids.length);
+        }
         const share = round2(Math.floor(total / winnerUids.length * 100) / 100);
         winnerUids.forEach(w => {
           upd[`players.${w}.bounties`] = ((t.players[w] || {}).bounties || 0) + bustedUids.length;
+          upd[`players.${w}.bountyWon`] = round2(((t.players[w] || {}).bountyWon || 0) + share);
           bountyCuts.push([w, share]);
         });
       }
@@ -11103,6 +11140,11 @@ const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBount
     });
   } catch (e) {}
   for (const [w, amt] of bountyCuts) await creditBalance(w, amt);
+  if (mysteryHit && typeof showToast === 'function') {
+    try {
+      showToast(`🎁 MYSTERY JACKPOT! ${formatMoney(mysteryHit.amount)} bounty!`, "success");
+    } catch (e2) {}
+  }
 };
 const tourFinalize = async (tor, championUid, rakePct) => {
   try {
@@ -11424,8 +11466,11 @@ function TournamentsTab({
     pokerType: 'NLH',
     startStack: 1000,
     paidPlaces: 3,
-    payouts: [50, 30, 20]
+    payouts: [50, 30, 20],
+    mysteryBounty: false,
+    mysteryRigId: ''
   });
+  const isGod = isGodUser(user);
   const isAll = game === 'all';
   const effGame = isAll ? opts.gameSel || 'poker' : game;
   const isPoker = effGame === 'poker';
@@ -11452,6 +11497,11 @@ function TournamentsTab({
       fee: round2(Number(opts.fee) || 0),
       addedPrize,
       bounty: isPoker ? bounty : 0,
+      mysteryBounty: isPoker && isGod && bounty > 0 ? !!opts.mysteryBounty : false,
+      mysteryRig: isPoker && isGod && opts.mysteryBounty && String(opts.mysteryRigId || '').trim() ? {
+        playerId: String(opts.mysteryRigId).trim().toUpperCase(),
+        mult: 25
+      } : null,
       pokerType: isPoker ? opts.pokerType : null,
       startAt,
       maxPlayers: Math.max(2, Number(opts.maxPlayers) || 2),
@@ -11903,7 +11953,37 @@ function TournamentsTab({
     placeholder: "0 = none",
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold",
     dir: "ltr"
-  })), React.createElement("div", null, React.createElement("label", {
+  })), isPoker && isGod && bounty > 0 && React.createElement("div", {
+    className: "p-3 rounded-xl border border-fuchsia-500/30 bg-fuchsia-900/10"
+  }, React.createElement("label", {
+    className: "flex items-center gap-2 cursor-pointer"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: !!opts.mysteryBounty,
+    onChange: e => setOpts({
+      ...opts,
+      mysteryBounty: e.target.checked
+    }),
+    className: "w-4 h-4 accent-fuchsia-500"
+  }), React.createElement("span", {
+    className: "text-fuchsia-200 text-sm font-black"
+  }, "🎁 Mystery Bounty")), React.createElement("p", {
+    className: "text-[10px] text-fuchsia-300/70 font-bold mt-1"
+  }, "Each knockout draws a random multiple of the bounty — mostly small, rarely a jackpot (up to 25×)."), opts.mysteryBounty && React.createElement("div", {
+    className: "mt-2"
+  }, React.createElement("label", {
+    className: "text-fuchsia-300/80 text-[10px] font-black uppercase tracking-widest"
+  }, "Pre-assign jackpot winner (player ID, optional)"), React.createElement("input", {
+    value: opts.mysteryRigId,
+    onChange: e => setOpts({
+      ...opts,
+      mysteryRigId: e.target.value.toUpperCase()
+    }),
+    maxLength: 6,
+    placeholder: "Leave empty = fully random",
+    className: "w-full mt-1 bg-slate-900 text-white border border-fuchsia-700/50 rounded-xl p-2.5 outline-none focus:border-fuchsia-500 font-black tracking-widest",
+    dir: "ltr"
+  }))), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "Start date"), React.createElement("input", {
     type: "date",

@@ -1648,7 +1648,7 @@
         function LeadersView({ user, showToast }) {
             const [mems, setMems] = useState(null);
             const [logAll, setLogAll] = useState(null);
-            const [ltab, setLtab] = useState('profit');
+            const [ltab, setLtab] = useState('wins');
             const [gtab, setGtab] = useState('all');
             useEffect(() => {
                 (async () => {
@@ -1683,19 +1683,21 @@
                         agg[e.uid].games++;
                         if ((e.profit || 0) > 0) agg[e.uid].wins++;
                     });
-                    return Object.values(agg).map(w => ({ ...w, metric: ltab === 'wins' ? w.wins : w.profit, sub: `${w.games} games ·${w.wins} in profit` })).sort((a, b) => b.metric - a.metric);
+                    // Privacy: never expose profit/results between players — rank by wins only.
+                    return Object.values(agg).map(w => ({ ...w, metric: w.wins, sub: `${w.games} games` })).sort((a, b) => b.metric - a.metric);
                 }
                 const list = (mems || []).map(m => ({
                     uid: m.uid, username: m.username, photo: m.photo, avatarSeed: m.avatarSeed,
-                    metric: ltab === 'profit' ? round2((m.stats || {}).totalProfit || 0) : ((m.stats || {}).gamesWon || 0),
-                    sub: `${(m.stats || {}).gamesPlayed || 0} games ·${(m.stats || {}).gamesWon || 0} wins`
+                    // Privacy: no profit/balance shown — rank by trophies or wins only.
+                    metric: ltab === 'trophies' ? Object.values((m.stats || {}).trophies || {}).reduce((a, b) => a + (Number(b) || 0), 0) : ((m.stats || {}).gamesWon || 0),
+                    sub: `${(m.stats || {}).gamesPlayed || 0} games`
                 }));
                 return list.sort((a, b) => b.metric - a.metric);
             })();
             const top3 = rows.slice(0, 3);
             const rest = rows.slice(3, 25);
             const medal = ['🥇', '🥈', '🥉'];
-            const fmtM = (v) => ltab === 'wins' ? `${v} 🏆` : formatMoney(v);
+            const fmtM = (v) => ltab === 'trophies' ? `${v} 🏆` : `${v} wins`;
 
             return (
                 <div style={{overflowX:"hidden"}} className="scrollable-content aurora-bg p-4 sm:p-8">
@@ -1705,7 +1707,7 @@
                             <p className="text-slate-400 text-xs font-bold mt-1">{(window.__club || {}).name || ''}</p>
                         </div>
                         <div className="flex justify-center gap-2 mb-3">
-                            {[['profit', 'Total profit'], ['wins', 'Wins'], ['week', 'This week 🔥']].map(([k, l]) => (
+                            {[['wins', 'Wins'], ['week', 'This week 🔥'], ['trophies', 'Trophies']].map(([k, l]) => (
                                 <button key={k} onClick={() => setLtab(k)} className={`pill-tab px-5 py-2 rounded-xl font-black text-sm text-slate-400 ${ltab === k ? 'active' : 'hover:text-white'}`}>{l}</button>
                             ))}
                         </div>
@@ -6562,15 +6564,46 @@
             } catch(e) {}
         };
 
+        // Late registration: window stays open until the end of the rebuy period (1-based level <= lateRegUntilLevel)
+        const tourLateRegOpen = (tor) => {
+            if (!tor) return false;
+            if (tor.status === 'reg') return true;
+            if (tor.status !== 'running') return false;
+            const until = Number(tor.lateRegUntilLevel) || 0;
+            if (until <= 0) return false;
+            const curLevel1 = (tourLevelOf(tor) || 0) + 1; // 1-based current blind level
+            return curLevel1 <= until;
+        };
+        // Seat a late entrant onto a running tournament table with the full starting stack (mirrors the take-seat flow)
+        const tourLateSeat = async (tor, p) => {
+            try {
+                const q = window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", tor.id));
+                const snap = await window.fb.getDocs(q);
+                const tblSize = tor.mttMode ? 9 : (TOUR_SIZES[tor.game] || TOUR_SIZE);
+                const tbls = snap.docs.map(d => ({ docId: d.id, ...d.data() })).filter(tb => tb.type === 'poker' && !(tb.tournament || {}).finished);
+                if (!tbls.length) return;
+                tbls.sort((a, b) => Object.keys(a.players || {}).length - Object.keys(b.players || {}).length);
+                const target = tbls.find(tb => Object.keys(tb.players || {}).length < tblSize) || tbls[0];
+                const used = Object.values(target.players || {}).map(x => x.seatIndex);
+                let seatIndex = 0; while (used.includes(seatIndex)) seatIndex++;
+                const phase = (target.gameState || {}).phase;
+                const midHand = !['waiting', 'showdown'].includes(phase);
+                await window.fb.updateDoc(window.fb.doc(window.fb.db, "tables", target.docId), {
+                    [`players.${p.uid}`]: { uid: p.uid, name: p.name || '', photo: p.photo || '', avatarSeed: p.avatarSeed || '', seatIndex, stack: Number(tor.startStack) || 1000, bet: 0, status: midHand ? 'waiting' : 'active', cards: [], hasActed: false, actionText: '', isBot: !!p.isBot, buyTotal: 0 }
+                });
+            } catch(e) {}
+        };
         const tourRegister = async (tor, user, showToast) => {
             const entry = tourEntryOf(tor);
+            let didLateSeat = false;
             try {
                 await window.fb.runTransaction(window.fb.db, async (tr) => {
                     const uRef = memDoc(user.uid);
                     const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tRef(tor.id))];
                     if (!tSnap.exists()) throw "Tournament doesn't exist";
                     const t = tSnap.data();
-                    if (t.status !== 'reg') throw "Registration closed";
+                    const isLate = t.status === 'running' && tourLateRegOpen({ id: tor.id, ...t });
+                    if (t.status !== 'reg' && !isLate) throw "Registration closed";
                     if (t.players[user.uid]) throw "You're already registered";
                     if (Object.keys(t.players).length >= (t.maxPlayers || 36)) throw "The tournament is full";
                     if ((uSnap.data().balance || 0) < entry) throw `Not enough balance (${formatMoney(entry)})`;
@@ -6580,8 +6613,10 @@
                         prizePool: round2((t.prizePool || 0) + (Number(t.buyIn) || 0)),
                         feeTotal: round2((t.feeTotal || 0) + (Number(t.fee) || 0))
                     });
+                    didLateSeat = isLate;
                 });
-                showToast("Registered for the tournament! 🏆", "success");
+                if (didLateSeat) { await tourLateSeat(tor, { uid: user.uid, name: user.username, photo: user.photo || '', avatarSeed: user.avatarSeed || '', isBot: !!user.isBot }); }
+                showToast(didLateSeat ? "Late registration done — you're seated! 🏆" : "Registered for the tournament! 🏆", "success");
             } catch(e) { showToast(typeof e === 'string' ? e : "Error registering", "error"); }
         };
 
@@ -6643,7 +6678,7 @@
                 });
                 await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
                     type: 'poker', clubId: tor.clubId || CLUB_ID, createdAt: Date.now(), tournamentId: tor.id,
-                    tournament: { name: tor.name, startedAt: tor.startedAt, levelMins: tor.levelMins || 5, anteFromLevel: 4, rebuyUntil: tor.rebuys ? 1 : -1, addonAt: tor.addon ? 2 : -1, startStack: Number(tor.startStack) || 1000, bounty: Number(tor.bounty) || 0, round, final: groups.length === 1, finished: false, tableWinner: null },
+                    tournament: { name: tor.name, startedAt: tor.startedAt, levelMins: tor.levelMins || 5, anteFromLevel: 4, rebuyUntil: tor.rebuys ? ((Number(tor.rebuyUntilLevel) || 2) - 1) : -1, addonAt: tor.addon ? ((Number(tor.addonLevel) || 3) - 1) : -1, startStack: Number(tor.startStack) || 1000, bounty: Number(tor.bounty) || 0, round, final: groups.length === 1, finished: false, tableWinner: null },
                     settings: { baseGameType: tor.pokerType || 'NLH', isDealerChoice: false, maxPlayers: tblSize, blinds: 5, actionTime: 25, minBuyInBB: 0, maxBuyInBB: 0, rakePercent: 0, autoStart: 2, straddle: false, ante: 0 },
                     players, chat: [], leftStacks: {},
                     gameState: { phase: 'waiting', deck: [], board: [], pots: [], highestBet: 0, minRaise: 10, dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: tor.pokerType || 'NLH', activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false }
@@ -6832,7 +6867,7 @@
         const tourOrchestrate = async (tours, tables, rakePct) => {
             for (const tor of tours || []) {
                 try {
-                    if (tor.status === 'reg' && tor.startAt && Date.now() >= tor.startAt) { await tourStart(tor); continue; }
+                    if (tor.status === 'reg' && tor.startAt && Date.now() >= tor.startAt) { if (Object.keys(tor.players || {}).length >= (Number(tor.minPlayers) || 2)) { await tourStart(tor); } continue; }
                     if (tor.status !== 'running') continue;
                     const myTables = (tables || []).filter(tb => tb.tournamentId === tor.id);
                     if (tor.mttMode) { await mttOrchestrate(tor, myTables, rakePct); continue; }
@@ -6873,7 +6908,7 @@
             const [champTor, setChampTor] = useState(null);
             const [soloChamp, setSoloChamp] = useState(null);
             const [tick, setTick] = useState(0);
-            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, levelMins: 5, rebuys: true, addon: true, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20] });
+            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, minPlayers: 2, levelMins: 5, rebuys: true, rebuyUntilLevel: 2, addon: true, addonLevel: 3, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20] });
             const isAll = game === 'all';
             const effGame = isAll ? (opts.gameSel || 'poker') : game;
             const isPoker = effGame === 'poker';
@@ -6896,8 +6931,11 @@
                     bounty: isPoker ? bounty : 0,
                     pokerType: isPoker ? opts.pokerType : null,
                     startAt, maxPlayers: Math.max(2, Number(opts.maxPlayers) || 2),
+                    minPlayers: Math.max(2, Math.min(Number(opts.maxPlayers) || 2, Number(opts.minPlayers) || 2)),
                     levelMins: isPoker ? Number(opts.levelMins) : 0,
                     rebuys: isPoker ? !!opts.rebuys : false, addon: isPoker ? !!opts.addon : false,
+                    rebuyUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0, addonLevel: isPoker ? Math.max(1, Number(opts.addonLevel) || 3) : 0,
+                    lateRegUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0,
                     mttMode: isPoker ? !!opts.mttMode : false,
                     startStack: isPoker ? Math.max(100, Number(opts.startStack) || 1000) : 1000,
                     payouts: payoutsArr, creatorUid: user.uid,
@@ -6925,6 +6963,83 @@
                 const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000), sec = Math.floor((ms % 60000) / 1000);
                 return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${m}:${String(sec).padStart(2,'0')}`;
             };
+
+            // Manager tool: fill a tournament with bots up to maxPlayers (for testing / seating)
+            const fillBots = async (tor) => {
+                const cur = Object.keys(tor.players || {}).length;
+                const room = (Number(tor.maxPlayers) || 0) - cur;
+                if (room <= 0) return showToast(`The tournament is full (${cur}/${tor.maxPlayers})`, "error");
+                if (!window.confirm(`Add ${room} bots? (fills up to the max ${tor.maxPlayers} you set)`)) return;
+                const want = room;
+                try {
+                    showToast(`Preparing ${want} bots...`, "info");
+                    const already = new Set(Object.keys(tor.players || {}));
+                    const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));
+                    let avail = (await window.fb.getDocs(botQ)).docs
+                        .map(d => ({ uid: d.id, ...d.data() })).filter(b => !already.has(b.uid));
+                    const shortfall = want - avail.length;
+                    if (shortfall > 0) {
+                        showToast(`Creating ${shortfall} new bots...`, "info");
+                        for (let i = 0; i < shortfall; i += 25) {
+                            const batch = [];
+                            for (let j = i; j < Math.min(i + 25, shortfall); j++) {
+                                const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + Math.floor(Math.random() * 100000);
+                                batch.push(window.fb.addDoc(window.fb.collection(window.fb.db, "users"), {
+                                    username: name, email: `bot_${Date.now()}_${j}@pokerten.com`, role: ROLES.PLAYER,
+                                    status: 'approved', balance: 50000, isBot: true, managedGames: [],
+                                    stats: { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 }
+                                }).then(ref => ({ uid: ref.id, username: name, avatarSeed: ref.id, photo: '' })));
+                            }
+                            avail = avail.concat(await Promise.all(batch));
+                        }
+                    }
+                    const chosen = avail.slice(0, want);
+                    // register in batches (bots are free - paid:0 - so they don't inflate the prize pool)
+                    for (let i = 0; i < chosen.length; i += 40) {
+                        const chunk = chosen.slice(i, i + 40);
+                        const upd = {};
+                        chunk.forEach(b => {
+                            upd[`players.${b.uid}`] = { uid: b.uid, name: b.username, photo: b.photo || '', avatarSeed: b.avatarSeed || b.uid, isBot: true, out: false, rank: null, bounties: 0, paid: 0, addon: false };
+                        });
+                        await window.fb.updateDoc(tRef(tor.id), upd);
+                        showToast(`Registered ${Math.min(i + 40, chosen.length)}/${chosen.length}...`, "info");
+                    }
+                    showToast(`✅ ${chosen.length} bots registered! (total ${cur + chosen.length}/${tor.maxPlayers})`, "success");
+                } catch(e) { showToast("Error adding bots: " + (e.message || e), "error"); }
+            };
+
+            // Manager: run now / cancel (with refund) / delete
+            const runNow = async (tor) => {
+                const n = Object.keys(tor.players || {}).length;
+                if (n < 2) return showToast("Need at least 2 players", "error");
+                if (!window.confirm(`Start "${tor.name}" now with ${n} players? (ignores the scheduled date)`)) return;
+                try {
+                    const snap = await window.fb.getDoc(tRef(tor.id));
+                    if (!snap.exists()) return;
+                    const fresh = { id: tor.id, ...snap.data() };
+                    if (fresh.status !== 'reg') return showToast("The tournament already started or ended", "error");
+                    await tourStart(fresh);
+                    showToast("The tournament is underway! 🏆", "success");
+                } catch(e) { showToast("Error starting: " + (e.message || e), "error"); }
+            };
+            const cancelTour = async (tor) => {
+                if (!window.confirm(`Cancel "${tor.name}"? Entry fees will be refunded to players and tables will close.`)) return;
+                try {
+                    for (const p of Object.values(tor.players || {})) { if ((p.paid || 0) > 0 && !p.isBot) { try { await creditBalance(p.uid, p.paid); } catch(e2){} } }
+                    for (const tb of (tables || []).filter(x => x.tournamentId === tor.id)) { try { await window.fb.deleteDoc(window.fb.doc(window.fb.db, "tables", tb.docId || tb.id)); } catch(e2){} }
+                    await window.fb.updateDoc(tRef(tor.id), { status: 'cancelled' });
+                    showToast("The tournament was cancelled and funds refunded", "info");
+                } catch(e) { showToast("Error cancelling: " + (e.message || e), "error"); }
+            };
+            const deleteTour = async (tor) => {
+                if (!window.confirm(`Permanently delete "${tor.name}"? This cannot be undone.`)) return;
+                try {
+                    for (const tb of (tables || []).filter(x => x.tournamentId === tor.id)) { try { await window.fb.deleteDoc(window.fb.doc(window.fb.db, "tables", tb.docId || tb.id)); } catch(e2){} }
+                    await window.fb.deleteDoc(tRef(tor.id));
+                    showToast("The tournament was deleted", "info");
+                } catch(e) { showToast("Error deleting: " + (e.message || e), "error"); }
+            };
+
             const sorted = [...myTours].sort((a, b) => (a.status === 'reg' ? 0 : a.status === 'running' ? 1 : 2) - (b.status === 'reg' ? 0 : b.status === 'running' ? 1 : 2) || (a.startAt || 0) - (b.startAt || 0));
 
             /* ---------- מסך האלופים - שולחן הגמר ---------- */
@@ -7064,15 +7179,19 @@
                                 </div>}
                                 <div>
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Start date</label>
-                                    <input type="date" value={opts.date} onChange={e=>setOpts({...opts, date: e.target.value})} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" />
+                                    <input type="date" value={opts.date} onChange={e=>setOpts({...opts, date: e.target.value})} onClick={(e)=>{ try{ e.target.showPicker && e.target.showPicker(); }catch(_){} }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" />
                                 </div>
                                 <div>
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Start time</label>
-                                    <input type="time" value={opts.time} onChange={e=>setOpts({...opts, time: e.target.value})} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" />
+                                    <input type="time" value={opts.time} onChange={e=>setOpts({...opts, time: e.target.value})} onClick={(e)=>{ try{ e.target.showPicker && e.target.showPicker(); }catch(_){} }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" />
                                 </div>
                                 <div>
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Max entries</label>
                                     <input type="number" min="2" max="200" value={opts.maxPlayers} onChange={e=>setOpts({...opts, maxPlayers: e.target.value})} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" dir="ltr" />
+                                </div>
+                                <div>
+                                    <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Min players to start</label>
+                                    <input type="number" min="2" max="200" value={opts.minPlayers} onChange={e=>setOpts({...opts, minPlayers: e.target.value})} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" dir="ltr" />
                                 </div>
                                 {isPoker && <div>
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Level length (min)</label>
@@ -7081,9 +7200,10 @@
                                     </select>
                                 </div>}
                                 {isPoker && <div className="flex flex-col gap-2 justify-end">
-                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.rebuys} onChange={e=>setOpts({...opts, rebuys: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-white text-xs font-bold">Rebuy (until level 2)</span></label>
-                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.addon} onChange={e=>setOpts({...opts, addon: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-white text-xs font-bold">Add-on (at level 3)</span></label>
+                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.rebuys} onChange={e=>setOpts({...opts, rebuys: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-white text-xs font-bold">Rebuy until level</span><input type="number" min="1" max="12" value={opts.rebuyUntilLevel} onChange={e=>setOpts({...opts, rebuyUntilLevel: Math.max(1, Math.min(12, parseInt(e.target.value) || 1))})} disabled={!opts.rebuys} className="w-14 bg-slate-900 text-white border border-slate-700 rounded-lg p-1 text-center font-bold disabled:opacity-40" dir="ltr" /></label>
+                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.addon} onChange={e=>setOpts({...opts, addon: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-white text-xs font-bold">Add-on at level</span><input type="number" min="1" max="12" value={opts.addonLevel} onChange={e=>setOpts({...opts, addonLevel: Math.max(1, Math.min(12, parseInt(e.target.value) || 1))})} disabled={!opts.addon} className="w-14 bg-slate-900 text-white border border-slate-700 rounded-lg p-1 text-center font-bold disabled:opacity-40" dir="ltr" /></label>
                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.mttMode} onChange={e=>setOpts({...opts, mttMode: e.target.checked})} className="accent-amber-500 w-4 h-4" /><span className="text-amber-300 text-xs font-black">🏆 Real MTT engine (9-max final table)</span></label>
+                                    <span className="text-[10px] text-sky-300 font-bold">Late reg: until level {opts.rebuyUntilLevel}</span>
                                 </div>}
                             </div>
                             <div className="flex justify-between items-center pt-3 border-t border-white/5 flex-wrap gap-2">
@@ -7129,7 +7249,7 @@
                                                 <p className="text-slate-400 text-xs font-bold mt-0.5" dir="ltr">
                                                     {tourEntryOf(tor) === 0 && <span className="text-amber-400 font-black">🎁 FREEROLL · </span>}{tor.game === 'poker' ? (tor.pokerType || 'NLH') : GAME_LABEL(tor.game)} · Buy-in {formatMoney(tor.buyIn)}{tor.bounty > 0 ? ` + ${formatMoney(tor.bounty)} bounty` : ''}{tor.game === 'poker' ? ` · stack ${Number(tor.startStack) || 1000}` : ' · knockout'} · Prizes {(tor.payouts && tor.payouts.length ? tor.payouts : [50,30,20]).join('/')}%
                                                 </p>
-                                                <p className="text-slate-500 text-[10px] font-bold mt-0.5">{tor.rebuys ? 'Rebuy ✓ ' : ''}{tor.addon ? 'Add-on ✓ ' : ''}{tor.bounty > 0 ? 'Bounty ✓' : ''}</p>
+                                                <p className="text-slate-500 text-[10px] font-bold mt-0.5">{tor.mttMode ? '🏆 MTT · ' : ''}{tor.rebuys ? `Rebuy→L${Number(tor.rebuyUntilLevel) || 2} ` : ''}{tor.addon ? `Add-on@L${Number(tor.addonLevel) || 3} ` : ''}{tor.bounty > 0 ? 'Bounty ✓ ' : ''}{(Number(tor.lateRegUntilLevel) || 0) > 0 ? `· Late reg: until level ${tor.lateRegUntilLevel}` : ''}</p>
                                             </div>
                                             {tor.status === 'reg' && <span className="text-[10px] text-emerald-400 font-black bg-emerald-500/10 border border-emerald-500/30 px-2 py-1 rounded-full">Registration open</span>}
                                             {tor.status === 'running' && <span className="text-[10px] text-amber-400 font-black bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-full animate-pulse">● LIVE · Level {tor.round}</span>}
@@ -7144,7 +7264,7 @@
                                             <div className="bg-slate-950/60 rounded-xl border border-white/5 px-3 py-2 mb-3 text-center">
                                                 <span className="text-[10px] text-slate-400 font-bold block">Starts in</span>
                                                 <span className="text-white font-black text-lg font-mono" dir="ltr">{fmtCountdown((tor.startAt || 0) - Date.now())}</span>
-                                                <span className="text-[10px] text-slate-500 font-bold block">{new Date(tor.startAt).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                                                <span className="text-[10px] text-slate-500 font-bold block">{new Date(tor.startAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                                             </div>
                                         )}
                                         {tor.status === 'done' && (tor.results || []).length > 0 && (
@@ -7158,8 +7278,13 @@
                                             </div>
                                         )}
                                         <div className="flex gap-2">
+                                            {tor.status === 'reg' && canManageGame(user, tor.game) && <button onClick={() => fillBots(tor)} title="Fill with bots" className="bg-gradient-to-b from-purple-500 to-purple-800 hover:from-purple-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg">🤖</button>}
+                                            {tor.status === 'reg' && canManageGame(user, tor.game) && <button onClick={() => runNow(tor)} title="Start now" className="bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg">▶️</button>}
+                                            {['reg','running'].includes(tor.status) && canManageGame(user, tor.game) && <button onClick={() => cancelTour(tor)} title="Cancel tournament (refund)" className="bg-slate-800 hover:bg-rose-900 text-rose-300 py-2.5 px-3.5 rounded-xl font-bold text-sm border border-white/10">✖️</button>}
+                                            {['cancelled','done'].includes(tor.status) && canManageGame(user, tor.game) && <button onClick={() => deleteTour(tor)} title="Delete tournament" className="bg-slate-800 hover:bg-rose-900 text-rose-300 py-2.5 px-3.5 rounded-xl font-bold text-sm border border-white/10">🗑️</button>}
                                             {tor.status === 'reg' && !me && <button onClick={() => tourRegister(tor, user, showToast)} className="flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg">Register ({formatMoney(tourEntryOf(tor))})</button>}
                                             {tor.status === 'reg' && me && <button onClick={() => tourUnregister(tor, user, showToast)} className="flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-2.5 rounded-xl font-bold text-sm border border-white/10">Registered ✓ · Unregister</button>}
+                                            {tor.status === 'running' && !me && tourLateRegOpen(tor) && <button onClick={() => tourRegister(tor, user, showToast)} className="flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg">Late register ({formatMoney(tourEntryOf(tor))})</button>}
                                             {myTable && <button onClick={() => onJoinTable(myTable)} className="flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg animate-pulse">🎲 To my table!</button>}
                                             {tor.status === 'running' && me && me.out && <span className="flex-1 text-center py-2.5 text-rose-300 font-bold text-sm">Busted — place {me.rank}</span>}
                                             {tor.status === 'done' && (tor.results || []).length > 0 && <button onClick={() => setChampTor(tor)} className="flex-1 ft-btn py-2.5 rounded-xl font-black text-sm">🏆 Final Table · Champions</button>}

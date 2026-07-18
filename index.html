@@ -5360,12 +5360,12 @@
                         <div className={"poker-table w-full max-w-[440px] h-full max-h-[calc(100dvh-190px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : "")}>
                             {tableState.tournament && tableState.tournament.final && <div className="ft-banner" dir="ltr">FINAL TABLE</div>}
 
-                            {/* מרכז: קופות, קלפים, מנצח */}
-                            <div className="absolute left-1/2 top-[33%] -translate-x-1/2 flex gap-5 items-end z-10">
+                            {/* מרכז: קופות, קלפים, מנצח — z-30 כדי שתמיד יהיו מעל קלפי הגב של המושבים (z-20) */}
+                            <div className="absolute left-1/2 top-[33%] -translate-x-1/2 flex gap-5 items-end z-30">
                                 {(gs.pots || []).map((pot, i) => <CasinoChipStack key={i} amount={pot.amount} scale={1.1} />)}
                             </div>
 
-                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-10" dir="ltr">
+                            <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30 rounded-2xl ${gs.phase !== 'waiting' ? 'px-2 py-1.5 bg-black/35 backdrop-blur-[2px]' : ''}`} dir="ltr" style={gs.phase !== 'waiting' ? { boxShadow: '0 0 0 1px rgba(255,255,255,0.04)' } : {}}>
                                 {(gs.board || []).map((c, i) => <PCard key={i} card={c} size="lg" />)}
                                 {rabbit.length > 0 && rabbit.map((c, i) => (
                                     <div key={'rb'+i} className="relative opacity-75"><PCard card={c} size="lg" /><span className="absolute -top-2 -right-1 text-xs">🐰</span></div>

@@ -116,6 +116,9 @@ const gatherBetsToPots = (gs, playersObj) => {
 };
 
 // ── Helpers ──
+const TOUR_SCHEDULE = [[5, 10], [10, 20], [15, 30], [25, 50], [40, 80], [60, 120], [100, 200], [150, 300], [250, 500], [400, 800], [600, 1200], [1000, 2000]];
+const tourLevelOf = (tour) => Math.min(TOUR_SCHEDULE.length - 1, Math.floor((Date.now() - (tour.startedAt || Date.now())) / ((tour.levelMins || 5) * 60000)));
+
 const tRef = (id) => db.doc(`tables/${id}`);
 const eRef = (id) => db.doc(`tables/${id}/priv/_engine`);
 const pRef = (id, uid) => db.doc(`tables/${id}/priv/${uid}`);
@@ -183,6 +186,89 @@ async function distributeRake(clubId, rake, participantUids) {
       }
     }
   } catch (e) { /* rake distribution is best-effort, never blocks the hand */ }
+}
+
+// ── Tournament flow: mark busts, report ranks/bounties, detect table winner ──
+const MYSTERY_TIERS = [[0.5, 0.40], [1, 0.35], [2, 0.15], [3, 0.08], [25, 0.02]];
+const mysteryMult = () => { const r = Math.random(); let acc = 0; for (const [m, p] of MYSTERY_TIERS) { acc += p; if (r <= acc) return m; } return 1; };
+
+async function creditBalance(uid, clubId, amt) {
+  if (!uid || !(amt > 0)) return;
+  try {
+    const r = db.doc(`memberships/${uid}_${clubId}`);
+    await db.runTransaction(async (tx) => {
+      const sn = await tx.get(r);
+      if (sn.exists) tx.update(r, {balance: round2((sn.data().balance || 0) + amt)});
+    });
+  } catch (e) { /* best-effort */ }
+}
+
+async function tourAfterHand(tableId, t, plAfter, winnersUids) {
+  const tour = t.tournament || null;
+  if (!tour || !t.tournamentId) return;
+  const lvl = tourLevelOf(tour);
+  const bustedNow = [];
+  const upd = {};
+  for (const q of Object.values(plAfter)) {
+    if (q.status === "busted" && !q._reported) {
+      q._reported = true;
+      upd[`players.${q.uid}._reported`] = true;
+      bustedNow.push(q.uid);
+      if (lvl > (tour.rebuyUntil ?? -1)) { q.status = "out"; upd[`players.${q.uid}.status`] = "out"; }
+    }
+  }
+  const outsNow = bustedNow.filter((u) => plAfter[u].status === "out");
+  if (Object.keys(upd).length) await tRef(tableId).update(upd).catch(() => {});
+
+  // Report to the tournament doc (ranks + bounty bookkeeping) — mirrors the client's tourReportBust
+  if (outsNow.length || (tour.bounty > 0 && bustedNow.length && winnersUids.length)) {
+    const torRef = db.doc(`tournaments/${t.tournamentId}`);
+    const bountyCuts = [];
+    try {
+      await db.runTransaction(async (tx) => {
+        const sn = await tx.get(torRef);
+        if (!sn.exists) return;
+        const tor = sn.data();
+        const tp = {...tor.players};
+        let alive = Object.values(tp).filter((p) => !p.out).length;
+        const u2 = {};
+        for (const uid of outsNow) {
+          if (!tp[uid] || tp[uid].out) continue;
+          u2[`players.${uid}.out`] = true;
+          u2[`players.${uid}.rank`] = alive;
+          tp[uid] = {...tp[uid], out: true};
+          alive--;
+        }
+        const bountyAmt = Number(tour.bounty) || 0;
+        const liveWinners = winnersUids.filter((w) => !bustedNow.includes(w));
+        if (bountyAmt > 0 && liveWinners.length && bustedNow.length) {
+          let total;
+          if (tor.mysteryBounty) {
+            const rigUid = (tor.mysteryRigUid && liveWinners.includes(tor.mysteryRigUid)) ? tor.mysteryRigUid : null;
+            let sum = 0;
+            for (let i = 0; i < bustedNow.length; i++) sum += bountyAmt * (rigUid ? ((tor.mysteryRig || {}).mult || 25) : mysteryMult());
+            total = round2(sum);
+          } else {
+            total = round2(bountyAmt * bustedNow.length);
+          }
+          const share = round2(Math.floor((total / liveWinners.length) * 100) / 100);
+          liveWinners.forEach((w) => {
+            u2[`players.${w}.bounties`] = ((tp[w] || {}).bounties || 0) + bustedNow.length;
+            u2[`players.${w}.bountyWon`] = round2(((tp[w] || {}).bountyWon || 0) + share);
+            bountyCuts.push([w, share]);
+          });
+        }
+        if (Object.keys(u2).length) tx.update(torRef, u2);
+      });
+    } catch (e) { /* raced */ }
+    for (const [w, amt] of bountyCuts) await creditBalance(w, t.clubId || "main", amt);
+  }
+
+  // Single survivor → table finished (MTT non-final tables wait for the orchestrator instead)
+  const aliveHere = Object.values(plAfter).filter((q) => (q.stack || 0) > 0);
+  if (aliveHere.length === 1 && !(tour.mttMode && !tour.final)) {
+    await tRef(tableId).update({tournament: {...tour, finished: true, tableWinner: aliveHere[0].uid}}).catch(() => {});
+  }
 }
 
 async function logHandResults(t, eng, plAfter) {
@@ -331,13 +417,17 @@ async function dealHand(tableId, chosenType) {
     const t = tS.data();
     const s = t.settings || {};
     if (!s.serverEngine) throw new HttpsError("failed-precondition", "Not a server table");
-    if (t.tournamentId) throw new HttpsError("failed-precondition", "Tournaments not yet on the server engine");
+
     const g0 = t.gameState || {};
     if (!["waiting", "showdown"].includes(g0.phase)) throw new HttpsError("failed-precondition", "Hand in progress");
     const pl = JSON.parse(JSON.stringify(t.players || {}));
     Object.values(pl).forEach((p) => {
       p.cards = []; p.cardCount = 0; p.bet = 0; p.actionText = ""; p.hasActed = false; p.reveal = false;
-      p.status = p.stack > 0 ? (p.sitOut ? "sitout" : "active") : "sitout";
+      // Tournament: sit-out players are still dealt (blinds burn, auto-folded by the tick);
+      // out/busted stay out. Cash: sit-out means skipped.
+      p.status = p.stack > 0
+        ? ((p.sitOut && !t.tournamentId) ? "sitout" : "active")
+        : (["busted", "out"].includes(p.status) ? p.status : "sitout");
     });
     const acts = activesOf(pl);
     if (acts.length < 2) { tx.update(tRef(tableId), {players: pl, "gameState.phase": "waiting", "gameState.activeTurnUid": null}); return; }
@@ -376,8 +466,17 @@ async function dealHand(tableId, chosenType) {
     const prevSeat = (pl[g0.dealerUid] || {}).seatIndex ?? -1;
     const order = acts.filter((p) => p.seatIndex > prevSeat).concat(acts.filter((p) => p.seatIndex <= prevSeat));
     const dealer = order[0];
-    const sb = round2(Number(s.blinds) || 0.5);
-    const bb = round2(sb * 2);
+    let sb = round2(Number(s.blinds) || 0.5);
+    let bb = round2(sb * 2);
+    let anteAmt = 0;
+    const tour = t.tournament || null;
+    if (tour) {
+      const lvl = tourLevelOf(tour);
+      sb = TOUR_SCHEDULE[lvl][0]; bb = TOUR_SCHEDULE[lvl][1];
+      anteAmt = lvl >= (tour.anteFromLevel ?? 4) ? sb : 0;
+    }
+    let anteTotal = 0;
+    if (anteAmt > 0) acts.forEach((p) => { const a = Math.min(anteAmt, p.stack); p.stack = round2(p.stack - a); anteTotal = round2(anteTotal + a); });
     let sbP; let bbP; let firstUid;
     if (acts.length === 2) {
       sbP = dealer; bbP = order[1]; firstUid = dealer.uid;
@@ -387,7 +486,7 @@ async function dealHand(tableId, chosenType) {
     const post = (p, amt, label) => { const pay = Math.min(amt, p.stack); p.stack = round2(p.stack - pay); p.bet = round2(pay); p.actionText = label; };
     post(sbP, sb, "SB"); post(bbP, bb, "BB");
     const g = {
-      phase: "preflop", deck: [], board: [], pots: [], highestBet: bb, minRaise: bb,
+      phase: "preflop", deck: [], board: [], pots: anteTotal > 0 ? [{amount: anteTotal, eligible: acts.map((p) => p.uid)}] : [], highestBet: bb, minRaise: bb,
       dealerUid: dealer.uid, dcUid: g0.dcUid || null, dcAnchor: g0.dcAnchor || null, currentGameType: gameType,
       activeTurnUid: firstUid, turnStartedAt: Date.now(), lastWinners: null, lastWinAmount: 0,
       allInReveal: false, earlyWin: false, showdownAt: null,
@@ -406,8 +505,13 @@ async function afterFinish(tableId, t, finish, plAfter, eng) {
   if (!finish) return;
   markBusted(plAfter);
   await tRef(tableId).update({players: plAfter}).catch(() => {});
-  distributeRake(t.clubId || "main", finish.rake, finish.participants);
-  logHandResults(t, eng, plAfter);
+  if (t.tournamentId) {
+    const winnersUids = Object.values(plAfter).filter((q) => q.actionText === "WINNER").map((q) => q.uid);
+    await tourAfterHand(tableId, t, plAfter, winnersUids);
+  } else {
+    distributeRake(t.clubId || "main", finish.rake, finish.participants);
+    logHandResults(t, eng, plAfter);
+  }
 }
 
 // Run one engine step inside a transaction and persist. op(t, g, pl, eng) → finish|null
@@ -526,13 +630,15 @@ exports.pkTick = onCall(async (request) => {
 
   // 1) showdown pause over → next hand
   if (g.phase === "showdown" && g.showdownAt && Date.now() - g.showdownAt > (g.earlyWin ? 3500 : 5000)) {
-    const alive = Object.values(pl).filter((p) => (p.stack || 0) > 0 && !p.sitOut);
+    if (t.tournament && t.tournament.finished) return {ok: true};
+    const alive = Object.values(pl).filter((p) => (p.stack || 0) > 0 && (t.tournamentId ? !["busted", "out"].includes(p.status) : !p.sitOut));
     if (alive.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } }
     return {ok: true};
   }
   // 2) waiting + enough players → first deal
   if (g.phase === "waiting") {
-    const ready = Object.values(pl).filter((p) => (p.stack || 0) > 0 && !p.sitOut);
+    if (t.tournament && t.tournament.finished) return {ok: true};
+    const ready = Object.values(pl).filter((p) => (p.stack || 0) > 0 && (t.tournamentId ? !["busted", "out"].includes(p.status) : !p.sitOut));
     if (ready.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } }
     return {ok: true};
   }

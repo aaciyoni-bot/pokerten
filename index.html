@@ -2616,6 +2616,7 @@ function App() {
   }), currentView === 'poker-table' && React.createElement(PokerTable, {
     tableDocId: activeTable?.docId,
     user: effUser,
+    clubSettings: clubSettings,
     onLeave: () => {
       setLobbyTab('poker');
       changeView('lobby');
@@ -6682,6 +6683,7 @@ function PokerCreateView({
 function PokerTable({
   tableDocId,
   user,
+  clubSettings,
   onLeave,
   showToast
 }) {
@@ -7873,6 +7875,7 @@ function PokerTable({
   }, [gs.phase, playersCount, isSuperAdmin]);
   useEffect(() => {
     if (!isSuperAdmin || !tableState) return;
+    if (clubSettings?.botsAuto !== true) return;
     if (!['waiting', 'showdown'].includes(gs.phase)) return;
     const iv = setInterval(async () => {
       try {
@@ -7913,7 +7916,7 @@ function PokerTable({
       } catch (e) {}
     }, 3500);
     return () => clearInterval(iv);
-  }, [gs.phase, playersCount, isSuperAdmin]);
+  }, [gs.phase, playersCount, isSuperAdmin, clubSettings?.botsAuto]);
   useEffect(() => {
     let interval;
     if (inBetting && gs.turnStartedAt) {
@@ -8386,21 +8389,30 @@ function PokerTable({
     dir: "ltr"
   }, formatShort(totalPot)))), React.createElement("div", {
     className: "flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0"
-  }, godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (gs.deck || []).length >= 8 && (() => {
-    const d = gs.deck;
-    const L = d.length;
-    const bl = (gs.board || []).length;
-    const nxt = [];
-    if (bl === 0) {
-      nxt.push(['Flop', [d[L - 2], d[L - 3], d[L - 4]]]);
-      nxt.push(['Turn', [d[L - 6]]]);
-      nxt.push(['River', [d[L - 8]]]);
-    } else if (bl === 3) {
-      nxt.push(['Turn', [d[L - 2]]]);
-      nxt.push(['River', [d[L - 4]]]);
-    } else if (bl === 4) {
-      nxt.push(['River', [d[L - 2]]]);
+  }, godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (() => {
+    const board = gs.board || [];
+    const bl = board.length;
+    let fin = null;
+    if (srvEngine) {
+      if ((godFinal || []).length === 5) fin = godFinal;
+    } else if ((gs.deck || []).length >= 8) {
+      const d = [...gs.deck];
+      const p2 = [...board];
+      if (p2.length === 0) {
+        d.pop();
+        p2.push(d.pop(), d.pop(), d.pop());
+      }
+      while (p2.length >= 3 && p2.length < 5 && d.length >= 2) {
+        d.pop();
+        p2.push(d.pop());
+      }
+      if (p2.length === 5) fin = p2;
     }
+    if (!fin || fin.some(c => !c)) return null;
+    const nxt = [];
+    if (bl < 3) nxt.push(['Flop', fin.slice(bl, 3)]);
+    if (bl < 4) nxt.push(['Turn', [fin[3]]]);
+    if (bl < 5) nxt.push(['River', [fin[4]]]);
     if (!nxt.length) return null;
     return React.createElement("div", {
       className: "absolute top-1 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-purple-950/90 border border-purple-500/50 rounded-2xl px-4 py-1.5 backdrop-blur shadow-xl"
@@ -8484,13 +8496,18 @@ function PokerTable({
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
     if (di < 0) return null;
     const ang = Math.PI / 2 + di * 2 * Math.PI / N;
-    const rx = 28,
-      ry = 26;
+    const rx = 36,
+      ry = 35;
+    const tx = -Math.sin(ang),
+      ty = Math.cos(ang);
+    const off = 13;
+    const left = 50 + rx * Math.cos(ang) + off * tx;
+    const top = 50 + ry * Math.sin(ang) + off * ty;
     return React.createElement("div", {
       className: "absolute z-30 w-6 h-6 rounded-full bg-white text-slate-900 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-slate-300",
       style: {
-        left: `${50 + rx * Math.cos(ang)}%`,
-        top: `${50 + ry * Math.sin(ang)}%`,
+        left: `${left}%`,
+        top: `${top}%`,
         transform: 'translate(-50%,-50%)'
       }
     }, "D");
@@ -9814,6 +9831,7 @@ function DurakTable({
   const dPlayersCount = Object.keys(players).length;
   useEffect(() => {
     if (!isSuperAdmin || !tableState || T.status !== 'setup') return;
+    if (clubSettings?.botsAuto !== true) return;
     const iv = setInterval(async () => {
       const t = tableRef.current;
       if (!t || t.status !== 'setup') return;
@@ -9823,7 +9841,7 @@ function DurakTable({
       await handleAddBot();
     }, 3500);
     return () => clearInterval(iv);
-  }, [T.status, dPlayersCount, isSuperAdmin]);
+  }, [T.status, dPlayersCount, isSuperAdmin, clubSettings?.botsAuto]);
   useEffect(() => {
     if (!isSuperAdmin || !tableState || T.status !== 'playing') return;
     const iv = setInterval(() => {
@@ -10579,29 +10597,94 @@ const ofcEval3J = cards => {
 const ofcRoyalBot = ev => ev[0] === 8 ? ev[1] === 14 ? 25 : 15 : ev[0] === 7 ? 10 : ev[0] === 6 ? 6 : ev[0] === 5 ? 4 : ev[0] === 4 ? 2 : 0;
 const ofcRoyalMid = ev => ev[0] === 8 ? ev[1] === 14 ? 50 : 30 : ev[0] === 7 ? 20 : ev[0] === 6 ? 12 : ev[0] === 5 ? 8 : ev[0] === 4 ? 4 : ev[0] === 3 ? 2 : 0;
 const ofcRoyalTop = ev => ev[0] === 3 ? ev[1] - 2 + 10 : ev[0] === 1 && ev[1] >= 6 ? ev[1] - 5 : 0;
+const ofcBoardBetter = (A, B) => {
+  if (!B) return true;
+  if (!A) return false;
+  if (A.foul !== B.foul) return !A.foul;
+  if (A.roy !== B.roy) return A.roy > B.roy;
+  let c = ofcCmp(A.b, B.b);
+  if (c) return c > 0;
+  c = ofcCmp(A.m, B.m);
+  if (c) return c > 0;
+  c = ofcCmp(A.t, B.t);
+  if (c) return c > 0;
+  return (A.flNext || 0) > (B.flNext || 0);
+};
 const ofcBoard = p => {
-  const t = ofcEval3J(p.top || []),
-    m = ofcEval5J(p.mid || []),
-    b = ofcEval5J(p.bot || []);
-  const m5 = [m[0] >= 3 ? m[0] : m[0], ...m.slice(1)];
-  const topAs5 = [t[0] === 3 ? 3 : t[0], ...t.slice(1)];
-  const foul = ofcCmp(topAs5, m) > 0 || ofcCmp(m, b) > 0;
-  const roy = foul ? 0 : ofcRoyalTop(t) + ofcRoyalMid(m) + ofcRoyalBot(b);
-  let flNext = 0;
-  if (!foul) {
-    if (p.flC) {
-      if (t[0] === 3 || b[0] >= 7) flNext = 14;
-    } else {
-      if (t[0] === 3) flNext = 16;else if (t[0] === 1 && t[1] >= 12) flNext = t[1] === 12 ? 14 : t[1] === 13 ? 15 : 16;
+  const top = [...(p.top || [])],
+    mid = [...(p.mid || [])],
+    bot = [...(p.bot || [])];
+  const slots = [];
+  top.forEach((c, i) => {
+    if (c.v === 0) slots.push(['top', i, c.id]);
+  });
+  mid.forEach((c, i) => {
+    if (c.v === 0) slots.push(['mid', i, c.id]);
+  });
+  bot.forEach((c, i) => {
+    if (c.v === 0) slots.push(['bot', i, c.id]);
+  });
+  const scoreOf = assign => {
+    const T = [...top],
+      M = [...mid],
+      B = [...bot],
+      byRow = {
+        top: T,
+        mid: M,
+        bot: B
+      };
+    slots.forEach((s, k) => {
+      byRow[s[0]][s[1]] = assign[k];
+    });
+    const t = T.length === 3 ? ofcEval3(T) : ofcEval3J(T);
+    const m = M.length === 5 ? ofcEval5(M) : ofcEval5J(M);
+    const b = B.length === 5 ? ofcEval5(B) : ofcEval5J(B);
+    const foul = ofcCmp(t, m) > 0 || ofcCmp(m, b) > 0;
+    const roy = foul ? 0 : ofcRoyalTop(t) + ofcRoyalMid(m) + ofcRoyalBot(b);
+    let flNext = 0;
+    if (!foul) {
+      if (p.flC) {
+        if (t[0] === 3 || b[0] >= 7) flNext = 14;
+      } else if (t[0] === 3) flNext = 16;else if (t[0] === 1 && t[1] >= 12) flNext = t[1] === 12 ? 14 : t[1] === 13 ? 15 : 16;
     }
+    return {
+      t,
+      m,
+      b,
+      foul,
+      roy,
+      flNext,
+      assign
+    };
+  };
+  let best = null;
+  if (!slots.length) best = scoreOf([]);else {
+    const rec = (k, cur) => {
+      if (k === slots.length) {
+        const r = scoreOf(cur);
+        if (ofcBoardBetter(r, best)) best = r;
+        return;
+      }
+      for (const c of OFC_ALL52) {
+        cur.push(c);
+        rec(k + 1, cur);
+        cur.pop();
+      }
+    };
+    rec(0, []);
   }
+  const resolved = {};
+  slots.forEach((s, k) => {
+    resolved[s[2]] = best.assign[k];
+  });
   return {
-    t,
-    m,
-    b,
-    foul,
-    roy,
-    flNext
+    t: best.t,
+    m: best.m,
+    b: best.b,
+    foul: best.foul,
+    roy: best.roy,
+    flNext: best.flNext,
+    resolved
   };
 };
 const ofcHandName = (ev, isTop) => {
@@ -10721,6 +10804,8 @@ function OFCTable({
   const isGod = isGodUser(user);
   const isMyTurn = T.status === 'playing' && T.turnUid === user.uid;
   const maxP = Number(setts.maxPlayers) || 2;
+  const aloneWithBots = isSeated && Object.values(players).filter(p => !p.isBot && p.uid !== user.uid).length === 0;
+  const canStart = isHost || isSuperAdmin || aloneWithBots;
   const ch = useTableChat(tableState, tableDocId, user, 'ofc', showToast);
   useEffect(() => {
     setResHide(false);
@@ -10780,6 +10865,15 @@ function OFCTable({
     }
   }, [godView, isGod, T.status, T.street, T.turnUid, (T.deck || []).length, JSON.stringify(Object.values(T.players || {}).map(p => [p.uid, placedCount(p), p.flC, p.left]))]);
   const stagedCount = Object.keys(stage).length;
+  const jokerViz = useMemo(() => {
+    const map = {};
+    list.forEach(p => {
+      if (placedCount(p) !== 13) return;
+      const hasJoker = [...(p.top || []), ...(p.mid || []), ...(p.bot || [])].some(c => c.v === 0);
+      if (hasJoker) map[p.uid] = ofcBoard(p).resolved || {};
+    });
+    return map;
+  }, [JSON.stringify(list.map(p => [p.uid, placedCount(p), (p.top || []).map(c => c.suit + c.v).join(), (p.mid || []).map(c => c.suit + c.v).join(), (p.bot || []).map(c => c.suit + c.v).join()]))]);
   const rowSize = row => row === 'top' ? 3 : 5;
   const placeInRow = (cardId, row) => {
     if (!cardId || !isMyTurn || !me) return;
@@ -10925,7 +11019,7 @@ function OFCTable({
   const startGame = async () => {
     const t = tableRef.current;
     if (!t) return;
-    if (!(t.hostUid === user.uid || isSuperAdmin)) return;
+    if (!canStart) return;
     if (!['setup', 'showdown'].includes(t.status)) return;
     if (Object.keys(t.players).length < 2) return showToast("Need at least 2 players", "error");
     try {
@@ -11298,13 +11392,13 @@ function OFCTable({
     await doConfirm(uid, greedyStage(p, t.street));
   };
   useEffect(() => {
-    if (!isSuperAdmin || !tableState || T.status !== 'playing') return;
+    if (!(isSuperAdmin || isHost || isSeated) || !tableState || T.status !== 'playing') return;
     const p = players[T.turnUid];
     if (p && p.isBot) {
       const tm = setTimeout(() => autoAct(T.turnUid), 1200);
       return () => clearTimeout(tm);
     }
-  }, [T.turnUid, T.status, T.street, isSuperAdmin]);
+  }, [T.turnUid, T.status, T.street, isSuperAdmin, isHost, isSeated]);
   useEffect(() => {
     let iv,
       armed = false,
@@ -11332,29 +11426,33 @@ function OFCTable({
     sel,
     dim,
     onClick,
-    tiny
+    tiny,
+    wildResolved
   }) => {
     const jk = c.v === 0;
     return React.createElement("div", {
       onClick: onClick,
-      className: `${tiny ? 'w-6 h-9 text-[9px] rounded gap-0' : 'w-9 h-12 sm:w-10 sm:h-14 text-xs sm:text-sm rounded-lg gap-0.5'} ${jk ? 'bg-gradient-to-b from-amber-100 to-amber-200 border border-amber-400 ring-1 ring-amber-300/60 rounded-lg' : 'card-face'} shadow-md flex flex-col items-center justify-center font-black shrink-0 transition-transform ${sel ? '-translate-y-2 ring-2 ring-amber-400 border-amber-400' : ''} ${dim ? 'opacity-35' : ''} ${onClick ? 'cursor-pointer hover:-translate-y-1' : ''} ${jk ? 'text-amber-800' : c.suit === '♥' || c.suit === '♦' ? 'text-rose-600' : 'text-slate-900'}`
-    }, jk ? React.createElement(React.Fragment, null, React.createElement("span", {
-      className: `${tiny ? 'text-xs' : 'text-lg sm:text-xl'} leading-none`
+      className: `relative ${tiny ? 'w-8 h-11 text-[11px] rounded gap-0' : 'w-11 h-[3.85rem] sm:w-14 sm:h-[4.9rem] text-base sm:text-lg rounded-lg gap-0.5'} ${jk ? 'bg-gradient-to-b from-amber-100 to-amber-200 border border-amber-400 ring-1 ring-amber-300/60 rounded-lg' : 'card-face'} ${wildResolved ? 'ring-2 ring-amber-400/80' : ''} shadow-md flex flex-col items-center justify-center font-black shrink-0 transition-transform ${sel ? '-translate-y-2 ring-2 ring-amber-400 border-amber-400' : ''} ${dim ? 'opacity-35' : ''} ${onClick ? 'cursor-pointer hover:-translate-y-1' : ''} ${jk ? 'text-amber-800' : c.suit === '♥' || c.suit === '♦' ? 'text-rose-600' : 'text-slate-900'}`
+    }, wildResolved && React.createElement("span", {
+      className: `absolute -top-1 -right-1 ${tiny ? 'text-[8px]' : 'text-[10px]'} leading-none bg-amber-400 text-amber-900 rounded-full px-1 font-black shadow`,
+      title: "Wild became this card"
+    }, "★"), jk ? React.createElement(React.Fragment, null, React.createElement("span", {
+      className: `${tiny ? 'text-sm' : 'text-2xl sm:text-3xl'} leading-none`
     }, "★"), !tiny && React.createElement("span", {
-      className: "text-[7px] leading-none tracking-widest"
+      className: "text-[8px] leading-none tracking-widest"
     }, "WILD")) : React.createElement(React.Fragment, null, React.createElement("span", {
       className: "leading-none"
     }, ofcName(c.v)), React.createElement("span", {
       className: "leading-none"
     }, React.createElement(SuitGlyph, {
       s: c.suit,
-      size: "1.2em"
+      size: "1.15em"
     }))));
   };
   const Back = ({
     tiny
   }) => React.createElement("div", {
-    className: `${tiny ? 'w-6 h-9 rounded' : 'w-9 h-12 rounded-lg'} bg-gradient-to-b from-teal-800 to-teal-950 border border-teal-400/40 shadow shrink-0`
+    className: `${tiny ? 'w-8 h-11 rounded' : 'w-11 h-[3.85rem] sm:w-14 sm:h-[4.9rem] rounded-lg'} bg-gradient-to-b from-teal-800 to-teal-950 border border-teal-400/40 shadow shrink-0`
   });
   const RowSlots = ({
     p,
@@ -11385,14 +11483,27 @@ function OFCTable({
         setSelCard(null);
         playSnd('tile');
       } : null
-    }, placedRow.map(c => hidden ? React.createElement(Back, {
-      key: c.id,
-      tiny: !mine
-    }) : React.createElement(OCard, {
-      key: c.id,
-      c: c,
-      tiny: !mine
-    })), stagedHere.map(c => React.createElement(OCard, {
+    }, placedRow.map(c => {
+      if (hidden) return React.createElement(Back, {
+        key: c.id,
+        tiny: !mine
+      });
+      const rz = (jokerViz[p.uid] || {})[c.id];
+      if (c.v === 0 && rz) return React.createElement(OCard, {
+        key: c.id,
+        c: {
+          ...rz,
+          id: c.id
+        },
+        tiny: !mine,
+        wildResolved: true
+      });
+      return React.createElement(OCard, {
+        key: c.id,
+        c: c,
+        tiny: !mine
+      });
+    }), stagedHere.map(c => React.createElement(OCard, {
       key: c.id,
       c: c,
       sel: true,
@@ -11407,7 +11518,7 @@ function OFCTable({
       }
     })), Array(Math.max(0, size - placedRow.length - stagedHere.length)).fill(0).map((_, i) => React.createElement("div", {
       key: i,
-      className: `${mine ? 'w-9 h-12 sm:w-10 sm:h-14 rounded-lg' : 'w-6 h-9 rounded'} border-2 border-dashed ${mine && isMyTurn && selCard ? 'border-teal-400/70 bg-teal-500/10' : 'border-white/10'} shrink-0`
+      className: `${mine ? 'w-11 h-[3.85rem] sm:w-14 sm:h-[4.9rem] rounded-lg' : 'w-8 h-11 rounded'} border-2 border-dashed ${mine && isMyTurn && selCard ? 'border-teal-400/70 bg-teal-500/10' : 'border-white/10'} shrink-0`
     })));
   };
   const res = T.lastResults;
@@ -11664,7 +11775,21 @@ function OFCTable({
     }), lbl(bE, !!bE, false, foulMB)), (foulTM || foulMB) && React.createElement("div", {
       className: "text-center text-[10px] font-black text-rose-300 animate-pulse"
     }, "⚠️ Careful - the current arrangement is a foul!"));
-  })(), isMyTurn && (() => {
+  })(), (me.disc || []).length > 0 && React.createElement("div", {
+    className: "flex items-center justify-center gap-1.5 mb-1 mt-0.5"
+  }, React.createElement("span", {
+    className: "text-[9px] text-slate-500 font-black shrink-0"
+  }, React.createElement("i", {
+    className: "fa-solid fa-trash-can mr-0.5"
+  }), "Discarded (", (me.disc || []).length, ")"), React.createElement("div", {
+    className: "flex gap-0.5 flex-wrap justify-center rounded-lg bg-slate-950/50 border border-white/10 px-1.5 py-1",
+    dir: "ltr"
+  }, (me.disc || []).map(c => React.createElement(OCard, {
+    key: c.id,
+    c: c,
+    tiny: true,
+    dim: true
+  })))), isMyTurn && (() => {
     const SUIT_ORD = {
       '♠': 0,
       '♣': 1,
@@ -11750,7 +11875,7 @@ function OFCTable({
     className: "w-full bg-slate-800 hover:bg-slate-700 text-purple-300 py-2.5 rounded-xl font-bold text-sm border border-white/10 mb-2"
   }, React.createElement("i", {
     className: "fa-solid fa-robot ml-1"
-  }), "Add bot (", list.length, "/", maxP, ")"), (isHost || isSuperAdmin) && list.length >= 2 && React.createElement("button", {
+  }), "Add bot (", list.length, "/", maxP, ")"), canStart && list.length >= 2 && React.createElement("button", {
     onClick: startGame,
     className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
   }, React.createElement("i", {
@@ -11817,7 +11942,7 @@ function OFCTable({
       }, "💰 stack ", formatMoney(r.stack)))));
     })), React.createElement("div", {
       className: "flex gap-2 flex-wrap"
-    }, (isHost || isSuperAdmin) && list.length >= 2 && React.createElement("button", {
+    }, canStart && list.length >= 2 && React.createElement("button", {
       onClick: startGame,
       className: "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-black"
     }, "New match (", formatMoney(Number(setts.stake) || 5), ")"), isSeated && React.createElement("button", {

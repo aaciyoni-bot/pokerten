@@ -1578,7 +1578,7 @@
                                 </div>
                             </div>
                             <div className="flex flex-col items-end cursor-pointer" onClick={() => changeView('lobby')}>
-                                <h1 className="logo-shine text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400">POKERTEN</h1>
+                                <h1 className="text-xl font-black tracking-wider"><span className="logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400">POKER</span><span className="text-emerald-400">TEN</span></h1>
                                 <p className="text-[10px] text-emerald-400/90 font-black tracking-widest leading-none">🏛️ {clubSettings?.name || activeClub.name} <span className="text-slate-600">· V24</span></p>
                             </div>
                         </nav>
@@ -1625,8 +1625,8 @@
                         <div className="w-20 h-20 mx-auto mb-5 rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-[0_0_35px_rgba(6,182,212,0.4)]">
                             <i className="fa-solid fa-diamond text-3xl text-white"></i>
                         </div>
-                        <h2 className="logo-shine text-4xl font-black mb-1 tracking-widest text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400">POKERTEN</h2>
-                        <p className="text-emerald-400 mb-10 font-bold tracking-[0.35em] uppercase text-xs">POKERTEN · by ORIZIS TECHNOLOGY</p>
+                        <h2 className="text-4xl font-black mb-1 tracking-widest"><span className="logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400">POKER</span><span className="text-emerald-400">TEN</span></h2>
+                        <p className="text-slate-300 mb-10 font-bold tracking-[0.35em] uppercase text-xs">Poker with friends</p>
                         <button onClick={()=>window.fb.signInWithPopup(window.fb.auth, window.fb.googleProvider)} className="w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 font-black py-4 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-3">
                             <i className="fa-brands fa-google text-blue-500 text-xl"></i> Sign in with Google
                         </button>
@@ -2205,7 +2205,7 @@
                 const rows = [['Date', 'Time', 'Game', 'Profit/Loss']];
                 filtered.forEach(l => {
                     const d = new Date(l.at);
-                    rows.push([d.toLocaleDateString('he-IL'), d.toLocaleTimeString('he-IL'), GAME_LABEL(l.game), l.profit]);
+                    rows.push([d.toLocaleDateString('en-GB'), d.toLocaleTimeString('he-IL'), GAME_LABEL(l.game), l.profit]);
                 });
                 rows.push([]); rows.push(['Total', '', filtered.length + ' games', round2(filtered.reduce((s, l) => s + (l.profit || 0), 0))]);
                 downloadCSV(rows, `my-report-${new Date().toISOString().slice(0,10)}.csv`);
@@ -2329,7 +2329,7 @@
                                         {filtered.slice(0, 200).map((l, i) => (
                                             <div key={i} className="flex items-center justify-between bg-slate-900/60 rounded-xl px-4 py-2 border border-white/5 text-sm">
                                                 <span className="font-bold text-slate-300">
-                                                    <span className="text-slate-500 text-xs ml-2">{new Date(l.at).toLocaleDateString('he-IL')} {new Date(l.at).toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'})}</span>
+                                                    <span className="text-slate-500 text-xs ml-2">{new Date(l.at).toLocaleDateString('en-GB')} {new Date(l.at).toLocaleTimeString('he-IL', {hour:'2-digit',minute:'2-digit'})}</span>
                                                     {GAME_LABEL(l.game)}
                                                 </span>
                                                 <span className={`font-black ${(l.profit||0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} dir="ltr">{(l.profit||0) >= 0 ? '+' : ''}{formatMoney(l.profit)}</span>
@@ -2894,7 +2894,7 @@
                     const rows = [['Date', 'Time', 'Player', 'Game', 'Profit/Loss']];
                     all.forEach(l => {
                         const d = new Date(l.at);
-                        rows.push([d.toLocaleDateString('he-IL'), d.toLocaleTimeString('he-IL'), l.username || l.uid, GAME_LABEL(l.game), l.profit]);
+                        rows.push([d.toLocaleDateString('en-GB'), d.toLocaleTimeString('he-IL'), l.username || l.uid, GAME_LABEL(l.game), l.profit]);
                     });
                     rows.push([]);
                     rows.push(['Summary by player', '', '', '', '']);
@@ -3421,7 +3421,7 @@
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Field label="Base game type">
                                     <select value={s.baseGameType} onChange={e=>upd('baseGameType', e.target.value)} className={sel}>
-                                        {Object.keys(GAME_CARDS).map(g => <option key={g} value={g}>{g} ({GAME_CARDS[g]} קלפים)</option>)}
+                                        {Object.keys(GAME_CARDS).map(g => <option key={g} value={g}>{g} ({GAME_CARDS[g]} cards)</option>)}
                                     </select>
                                 </Field>
                                 <Field label="Dealer's Choice">
@@ -3442,7 +3442,7 @@
                                 </Field>
                                 <Field label="Action time (seconds)">
                                     <select value={s.actionTime} onChange={e=>upd('actionTime', parseInt(e.target.value))} className={sel}>
-                                        {[15,30,45,60].map(n => <option key={n} value={n}>{n} שניות</option>)}
+                                        {[15,30,45,60].map(n => <option key={n} value={n}>{n} sec</option>)}
                                     </select>
                                 </Field>
                                 <Field label="Rake (%)">
@@ -4627,7 +4627,7 @@
                                         <div className="grid grid-cols-2 gap-3">
                                             {Object.keys(GAME_CARDS).map(g => (
                                                 <button key={g} onClick={() => selectDCGame(g)} className="bg-gradient-to-b from-slate-700 to-slate-900 hover:from-rose-600 hover:to-rose-800 border border-white/10 text-white py-4 rounded-2xl font-black transition-all">
-                                                    {g}<div className="text-[10px] text-slate-400 font-bold mt-1">{GAME_CARDS[g]} קלפים</div>
+                                                    {g}<div className="text-[10px] text-slate-400 font-bold mt-1">{GAME_CARDS[g]} cards</div>
                                                 </button>
                                             ))}
                                         </div>
@@ -5804,7 +5804,7 @@
                 const r = cv.getBoundingClientRect();
                 const x = (e.clientX - r.left), y = (e.clientY - r.top);
                 const ctx = cv.getContext('2d');
-                ctx.beginPath(); ctx.arc(x, y, 20, 0, 7); ctx.fill();
+                ctx.beginPath(); ctx.arc(x, y, 30, 0, 7); ctx.fill();
             };
             const checkDone = () => {
                 const cv = cvRef.current; if (!cv || doneRef.current) return;
@@ -5813,7 +5813,7 @@
                     const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
                     let clear = 0;
                     for (let i = 3; i < data.length; i += 64) if (data[i] === 0) clear++;
-                    if (clear / (data.length / 64) > 0.5) {
+                    if (clear / (data.length / 64) > 0.3) {
                         doneRef.current = true;
                         cv.style.transition = 'opacity 0.5s';
                         cv.style.opacity = '0';
@@ -6943,7 +6943,7 @@
                         <div className="ft-rays"></div>
                         <p className="text-[11px] font-black tracking-[0.5em] text-gold-400/90 relative" dir="ltr">FINAL TABLE</p>
                         <h2 className="text-2xl font-black text-white mt-1 relative">🏆 {champTor.name}</h2>
-                        <p className="text-slate-400 text-xs font-bold mt-1 relative">{GAME_LABEL(champTor.game)}{champTor.finishedAt ? ' · ' + new Date(champTor.finishedAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''} · Prize pool {formatMoney(champTor.prizePool || 0)}</p>
+                        <p className="text-slate-400 text-xs font-bold mt-1 relative">{GAME_LABEL(champTor.game)}{champTor.finishedAt ? ' · ' + new Date(champTor.finishedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''} · Prize pool {formatMoney(champTor.prizePool || 0)}</p>
                         <div className="flex items-end justify-center gap-2 mt-8 relative">
                             {[top3[1], top3[0], top3[2]].filter(Boolean).map(r => {
                                 const m = r.rank === 1 ? 'gold' : r.rank === 2 ? 'silver' : 'bronze';
@@ -6993,7 +6993,7 @@
                         <p className="text-[10px] text-slate-500 font-bold relative">{sm === 'gold' ? 'Championship Bracelet · Gold' : sm === 'silver' ? 'Championship Bracelet · Silver' : 'Championship Bracelet · Bronze'}</p>
                         <div className="mt-5 pt-4 border-t border-white/10 relative">
                             <p className="text-white font-black text-base">{champTor.name}</p>
-                            <p className="text-slate-400 text-xs font-bold mt-0.5">{GAME_LABEL(champTor.game)}{champTor.finishedAt ? ' · ' + new Date(champTor.finishedAt).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</p>
+                            <p className="text-slate-400 text-xs font-bold mt-0.5">{GAME_LABEL(champTor.game)}{champTor.finishedAt ? ' · ' + new Date(champTor.finishedAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}</p>
                             {soloChamp.prize > 0 && <p className="text-emerald-400 font-black text-lg mt-1" dir="ltr">+{formatMoney(soloChamp.prize)}</p>}
                             {soloChamp.bounties > 0 && <p className="text-rose-400 text-xs font-black mt-0.5">🎯 {soloChamp.bounties} באונטי</p>}
                         </div>
@@ -7105,7 +7105,7 @@
                                         </span>
                                     </div>
                                 </div>
-                                <span className="text-xs text-slate-500 font-bold">כניסה: {formatMoney(round2((Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) + (isPoker ? bounty : 0)))} ({formatMoney(Number(opts.buyIn) || 0)} לקופה + {formatMoney(Number(opts.fee) || 0)} למועדון{isPoker && bounty > 0 ? ` + ${formatMoney(bounty)} bounty` : ''}){(Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) === 0 ? ' · 🎁 Freeroll!' : ''}{isPoker ? ` · stack ${Number(opts.startStack) || 1000}` : ' · נוק-אאוט'}</span>
+                                <span className="text-xs text-slate-500 font-bold">Entry: {formatMoney(round2((Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) + (isPoker ? bounty : 0)))} ({formatMoney(Number(opts.buyIn) || 0)} to pool + {formatMoney(Number(opts.fee) || 0)} to club{isPoker && bounty > 0 ? ` + ${formatMoney(bounty)} bounty` : ''}){(Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) === 0 ? ' · 🎁 Freeroll!' : ''}{isPoker ? ` · stack ${Number(opts.startStack) || 1000}` : ' · knockout'}</span>
                                 <div className="flex gap-3">
                                     <button onClick={()=>setShowCreate(false)} className="px-6 py-2 text-slate-400 hover:text-white font-bold">Cancel</button>
                                     <button onClick={handleCreate} className="bg-purple-600 hover:bg-purple-500 text-white px-8 py-2 rounded-xl font-bold shadow-lg">Open registration</button>
@@ -7127,7 +7127,7 @@
                                             <div>
                                                 <h3 className="text-lg font-black text-white leading-tight">🏆 {tor.name}</h3>
                                                 <p className="text-slate-400 text-xs font-bold mt-0.5" dir="ltr">
-                                                    {tourEntryOf(tor) === 0 && <span className="text-amber-400 font-black">🎁 FREEROLL · </span>}{tor.game === 'poker' ? (tor.pokerType || 'NLH') : GAME_LABEL(tor.game)} · Buy-in {formatMoney(tor.buyIn)}{tor.bounty > 0 ? ` + ${formatMoney(tor.bounty)} bounty` : ''}{tor.game === 'poker' ? ` · stack ${Number(tor.startStack) || 1000}` : ' · נוק-אאוט'} · Prizes {(tor.payouts && tor.payouts.length ? tor.payouts : [50,30,20]).join('/')}%
+                                                    {tourEntryOf(tor) === 0 && <span className="text-amber-400 font-black">🎁 FREEROLL · </span>}{tor.game === 'poker' ? (tor.pokerType || 'NLH') : GAME_LABEL(tor.game)} · Buy-in {formatMoney(tor.buyIn)}{tor.bounty > 0 ? ` + ${formatMoney(tor.bounty)} bounty` : ''}{tor.game === 'poker' ? ` · stack ${Number(tor.startStack) || 1000}` : ' · knockout'} · Prizes {(tor.payouts && tor.payouts.length ? tor.payouts : [50,30,20]).join('/')}%
                                                 </p>
                                                 <p className="text-slate-500 text-[10px] font-bold mt-0.5">{tor.rebuys ? 'Rebuy ✓ ' : ''}{tor.addon ? 'Add-on ✓ ' : ''}{tor.bounty > 0 ? 'Bounty ✓' : ''}</p>
                                             </div>

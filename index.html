@@ -618,6 +618,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyC1MuCmX0bUAW6XakFzkqS8LHVxkDRTrfo",
@@ -631,6 +632,8 @@
         const app = initializeApp(firebaseConfig);
         const _auth = getAuth(app);
         window.fb = { auth: _auth, db: getFirestore(app), googleProvider: new GoogleAuthProvider(), signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction };
+        const _fx = getFunctions(app);
+        window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
         // Robust Google sign-in: popup on desktop, redirect on mobile (popups are blocked on mobile browsers), with popup→redirect fallback.
         window.fb.signIn = async () => {
             const isMobile = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent || '');
@@ -4000,6 +4003,7 @@
             const [s, setS] = useState({
                 baseGameType: 'NLH', isDealerChoice: false, maxPlayers: 6,
                 blinds: 0.5, actionTime: 30, minBuyInBB: 40, maxBuyInBB: 200,
+                leaveNoticeMins: 0, serverEngine: false,
                 rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT, autoStart: 2,
                 straddle: false, ante: 0
             });
@@ -4062,6 +4066,18 @@
                                 <Field label="Rake (%)">
                                     <input type="number" min="0" max="20" step="0.5" value={s.rakePercent} onChange={e=>upd('rakePercent', e.target.value)} className={sel} dir="ltr" />
                                 </Field>
+                                <Field label="Leave notice (stand-up delay)">
+                                    <select value={s.leaveNoticeMins || 0} onChange={e=>upd('leaveNoticeMins', parseInt(e.target.value))} className={sel}>
+                                        <option value={0}>Off — leave anytime</option>
+                                        {[3,5,10].map(n => <option key={n} value={n}>{n} min notice</option>)}
+                                    </select>
+                                </Field>
+                                <Field label="🔒 Server-secured engine (beta)">
+                                    <select value={s.serverEngine ? 1 : 0} onChange={e=>upd('serverEngine', parseInt(e.target.value) === 1)} className={sel}>
+                                        <option value={0}>Off — classic</option>
+                                        <option value={1}>On — cards dealt on the server</option>
+                                    </select>
+                                </Field>
                                 <Field label="Min buy-in (BB)">
                                     <select value={s.minBuyInBB} onChange={e=>upd('minBuyInBB', parseInt(e.target.value))} className={sel}>
                                         {[20,40,50,100].map(n => <option key={n} value={n}>{n} BB ({formatMoney(n*s.blinds*2)})</option>)}
@@ -4107,6 +4123,29 @@
             const [tableState, setTableState] = useState(null);
             const [loading, setLoading] = useState(true);
             const [godView, setGodView] = useState(false);
+            const [rabbit, setRabbit] = useState([]); // rabbit-hunt cards revealed locally after a fold-win
+            // ── Server-engine (settings.serverEngine) support ──
+            const srvEngine = !!((tableState || {}).settings || {}).serverEngine;
+            const [myPrivCards, setMyPrivCards] = useState([]);
+            const [godHands, setGodHands] = useState({});
+            useEffect(() => {
+                if (!srvEngine) { setMyPrivCards([]); return; }
+                const unsub = window.fb.onSnapshot(window.fb.doc(window.fb.db, "tables", tableDocId, "priv", user.uid), (d) => {
+                    setMyPrivCards(d.exists() ? (d.data().cards || []) : []);
+                });
+                return () => unsub();
+            }, [srvEngine, tableDocId]);
+            useEffect(() => {
+                if (!srvEngine) return;
+                const iv = setInterval(() => { window.fb.fx('pkTick', { tableId: tableDocId }).catch(() => {}); }, 4000);
+                return () => clearInterval(iv);
+            }, [srvEngine, tableDocId]);
+            useEffect(() => { if ((tableState?.gameState?.phase) !== 'showdown') setRabbit([]); }, [tableState?.gameState?.phase]);
+            const godPhaseKey = (tableState?.gameState?.phase || '') + ':' + ((tableState?.gameState?.board || []).length);
+            useEffect(() => {
+                if (!srvEngine || !godView) { setGodHands({}); return; }
+                window.fb.fx('godPeek', { tableId: tableDocId }).then(r => setGodHands((r && r.hands) || {})).catch(() => setGodHands({}));
+            }, [srvEngine, godView, godPhaseKey, tableDocId]);
             const [spectate, setSpectate] = useState(false);
             const [buyAmt, setBuyAmt] = useState(0);
             const [raiseAmt, setRaiseAmt] = useState(0);
@@ -4272,6 +4311,15 @@
             };
 
             const performAction = async (actorUid, type, targetBet, autoTimeout) => {
+                if (setts.serverEngine) {
+                    // Server-authoritative table: only MY OWN action goes up (as a request);
+                    // bots/timeouts/other actors are the server's job via pkTick.
+                    if (actorUid === user.uid) {
+                        try { await window.fb.fx('pkAct', { tableId: tableDocId, action: type === 'raise' ? 'raise' : type, amount: targetBet }); }
+                        catch(e) { showToast((e && e.message) || 'Action failed', 'error'); }
+                    }
+                    return;
+                }
                 const t = tableRef.current; if (!t) return;
                 const g = { ...t.gameState };
                 if (g.activeTurnUid !== actorUid || !BETTING.includes(g.phase)) return;
@@ -4361,6 +4409,7 @@
             };
 
             const startHand = async () => {
+                if (setts.serverEngine) { try { await window.fb.fx('pkDeal', { tableId: tableDocId }); } catch(e) {} return; }
                 if (startingRef.current) return;
                 startingRef.current = true;
                 try {
@@ -4684,8 +4733,28 @@
                 } catch(e) { showToast(typeof e === 'string' ? e : "Error", "error"); }
             };
 
-            const handleStandUp = async () => {
+            const handleStandUp = async (forceNow) => {
                 const t = tableRef.current; if (!t || !t.players[user.uid]) { onLeave(); return; }
+                // Leave notice (table option): standing up must be announced N minutes ahead.
+                const noticeMs = (Number(setts.leaveNoticeMins) || 0) * 60000;
+                if (!t.tournament && noticeMs > 0 && !forceNow) {
+                    const meN = t.players[user.uid];
+                    if (!meN.leavingAt) {
+                        try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leavingAt`]: Date.now() + noticeMs }); } catch(e) {}
+                        showToast(`🚪 Leave announced — the table sees it. You can stand up in ${Number(setts.leaveNoticeMins)} min (you keep playing until then).`, "info");
+                        return;
+                    }
+                    if (Date.now() < meN.leavingAt) {
+                        if (window.confirm("Cancel leaving and stay at the table?")) {
+                            try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leavingAt`]: null }); } catch(e) {}
+                            showToast("Staying! 💪", "success");
+                        } else {
+                            const leftS = Math.ceil((meN.leavingAt - Date.now()) / 1000);
+                            showToast(`${Math.floor(leftS/60)}:${String(leftS%60).padStart(2,'0')} left before you can stand up`, "info");
+                        }
+                        return;
+                    }
+                }
                 if (t.tournament) {
                     const meT = t.players[user.uid];
                     if (meT.status !== 'out') {
@@ -4970,6 +5039,16 @@
                 } catch(e) { showToast(typeof e === 'string' ? e : "Error", "error"); }
             };
 
+            // Leave notice matured → actually stand up (from my own client)
+            useEffect(() => {
+                const la = tableState?.players?.[user.uid]?.leavingAt;
+                if (!la || tableState?.tournamentId) return;
+                const ms = la - Date.now();
+                if (ms <= 0) { handleStandUp(true); return; }
+                const tm = setTimeout(() => handleStandUp(true), ms + 500);
+                return () => clearTimeout(tm);
+            }, [tableState?.players?.[user.uid]?.leavingAt]);
+
             // 30 שניות להחליט על קנייה נוספת אחרי הדחה
             useEffect(() => {
                 const me = tableState?.players?.[user.uid];
@@ -4988,7 +5067,7 @@
             // Watchdog against stuck hands (player logged out mid-discard, DC pick, orphan turn).
             // Runs on the super-admin's client immediately; any manager or seated player also
             // guards (with a longer grace) so a table never hangs just because the admin left.
-            const canGuardTable = isSuperAdmin || canManageGame(user, 'poker') || !!(tableState?.players?.[user.uid]);
+            const canGuardTable = !srvEngine && (isSuperAdmin || canManageGame(user, 'poker') || !!(tableState?.players?.[user.uid]));
             useEffect(() => {
                 if (!canGuardTable) return;
                 const iv = setInterval(async () => {
@@ -5114,14 +5193,16 @@
             const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
             // GOD view: mark who currently holds the strongest hand (evaluated exactly like the
             // real showdown — Omaha uses 2 hole cards). Works on cash and tournament tables alike.
-            const godBestUid = useMemo(() => {
+            const godBestUid = (() => {
                 if (!godView) return null;
                 const board = gs.board || [];
                 if (board.length < 3 || gs.phase === 'waiting') return null;
                 const isOmaha = (gs.currentGameType || '').startsWith('Omaha');
                 let best = -1, uid = null, tie = false;
                 Object.values(players).forEach(p => {
-                    if (p.status !== 'active' || !(p.cards || []).length) return;
+                    const cardsOf = srvEngine ? ((p.cards || []).length ? p.cards : (godHands[p.uid] || [])) : (p.cards || []);
+                    if (p.status !== 'active' || !cardsOf.length) return;
+                    p = { ...p, cards: cardsOf };
                     let sc = 0;
                     try {
                         if (isOmaha) {
@@ -5134,7 +5215,7 @@
                     else if (sc === best) tie = true;
                 });
                 return tie ? null : uid; // exact chop — no single best to mark
-            }, [godView, gs.phase, (gs.board || []).length, gs.currentGameType, tableState]);
+            })();
             const myMaxBet = round2((myPlayer?.bet || 0) + (myPlayer?.stack || 0));
             const canShowBuyIn = !isSeated && !spectate;
             const tblCap = setts.maxPlayers || 6;
@@ -5228,9 +5309,15 @@
 
                             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-10" dir="ltr">
                                 {(gs.board || []).map((c, i) => <PCard key={i} card={c} size="lg" />)}
-                                {gs.phase !== 'waiting' && [...Array(Math.max(0, 5 - (gs.board || []).length))].map((_, i) => (
+                                {rabbit.length > 0 && rabbit.map((c, i) => (
+                                    <div key={'rb'+i} className="relative opacity-75"><PCard card={c} size="lg" /><span className="absolute -top-2 -right-1 text-xs">🐰</span></div>
+                                ))}
+                                {gs.phase !== 'waiting' && [...Array(Math.max(0, 5 - (gs.board || []).length - rabbit.length))].map((_, i) => (
                                     <div key={'ph'+i} className="w-11 sm:w-12 rounded-lg border border-dashed border-white/15 bg-white/[0.02]" style={{ height: '4.4rem' }}></div>
                                 ))}
+                                {gs.phase === 'showdown' && gs.earlyWin && !srvEngine && rabbit.length === 0 && (gs.board || []).length < 5 && (gs.deck || []).length >= (5 - (gs.board || []).length) && (
+                                    <button onClick={() => setRabbit((gs.deck || []).slice(0, 5 - (gs.board || []).length))} title="Rabbit hunt — see what would have come" className="self-center w-9 h-9 rounded-full bg-slate-900/90 border border-white/15 text-lg hover:scale-110 transition-transform">🐰</button>
+                                )}
                             </div>
 
                             <div className="absolute left-1/2 top-[64%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%]">
@@ -5258,8 +5345,17 @@
                                 const isTurn = gs.activeTurnUid === p.uid && inBetting;
                                 const isMe = p.uid === user.uid;
                                 const topSeat = parseFloat(seatPos(i).top) < 34;
-                                const hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
-                                const showCards = (p.cards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout';
+                                let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
+                                // Server tables: cards live server-side. Mine come from my private doc; others
+                                // render backs by cardCount until made public (showdown/all-in/reveal) or GOD-peeked.
+                                let dispCards = p.cards || [];
+                                if (srvEngine) {
+                                    if (isMe) { dispCards = myPrivCards; hidden = false; }
+                                    else if ((p.cards || []).length) { dispCards = p.cards; hidden = false; }
+                                    else if (godView && (godHands[p.uid] || []).length) { dispCards = godHands[p.uid]; hidden = false; }
+                                    else { dispCards = Array(p.cardCount || 0).fill({ val: '', suit: '♠' }); hidden = true; }
+                                }
+                                const showCards = (dispCards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout';
                                 const folded = p.status === 'folded';
                                 const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
                                 return (
@@ -5268,7 +5364,15 @@
                                         {p.actionText && <div className={`action-badge ${topSeat ? 'badge-bottom' : ''} ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB','BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`}>{p.actionText}</div>}
                                         <div className={`relative flex flex-col items-center ${folded ? 'opacity-40 grayscale' : ''} ${p.sitOut ? 'opacity-50' : ''}`}>
                                             {ch.bubbles[p.uid] && <div className="chat-bubble">{ch.bubbles[p.uid]}</div>}
-                                            {p.sitOut && <div className="absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5">☕ Sit out{p.sitAuto ? ' 📵' : ''}</div>}
+                                            {p.sitOut && (() => {
+                                                const leftMs = tableState.tournamentId ? 0 : Math.max(0, 600000 - (Date.now() - (p.sitOutAt || Date.now())));
+                                                const mm = Math.floor(leftMs / 60000), ss = Math.floor((leftMs % 60000) / 1000);
+                                                return <div className="absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5" dir="ltr">☕ {tableState.tournamentId ? 'Sit out' : `${mm}:${String(ss).padStart(2,'0')}`}{p.sitAuto ? ' 📵' : ''}</div>;
+                                            })()}
+                                            {p.leavingAt && !tableState.tournamentId && (() => {
+                                                const lms = Math.max(0, p.leavingAt - Date.now());
+                                                return <div className="absolute right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5" style={{ top: p.sitOut ? 12 : -8 }} dir="ltr">🚪 {Math.floor(lms/60000)}:{String(Math.floor((lms%60000)/1000)).padStart(2,'0')}</div>;
+                                            })()}
                                             {!isMe && canManageGame(user, 'poker') && (
                                                 <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${p.name} from the table? Their stack returns to their wallet.`)) kickSeat(p.uid, true); }}
                                                         className="absolute bottom-0 -left-6 z-30 w-5 h-5 rounded-full bg-slate-900/90 border border-rose-500/50 text-rose-400 hover:bg-rose-800 hover:text-white text-[9px] font-black flex items-center justify-center opacity-60 hover:opacity-100">✕</button>
@@ -5278,10 +5382,10 @@
                                             {/* קלפים מעל הפוד - שלי מוגדלים; במושב עליון עוברים מתחת לפוד כדי שלא ייחתכו */}
                                             {showCards && (isMe || !topSeat) && (
                                                 <div className={`flex ${isMe ? 'gap-1 mb-[-8px]' : 'gap-0.5 mb-[-10px]'} z-0`} dir="ltr">
-                                                    {p.cards.map((c, ci) => (
-                                                        isMe && gs.phase === 'discard' && p.cards.length === 3
+                                                    {dispCards.map((c, ci) => (
+                                                        isMe && gs.phase === 'discard' && dispCards.length === 3
                                                         ? <div key={ci} onClick={() => handleDiscardCard(user.uid, ci)} className="cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"><PCard card={c} size="xl" /></div>
-                                                        : <PCard key={ci} card={c} hidden={hidden} size={isMe ? (p.cards.length > 4 ? 'lg' : 'xl') : 'sm'} />
+                                                        : <PCard key={ci} card={c} hidden={hidden} size={isMe ? (dispCards.length > 4 ? 'lg' : 'xl') : 'sm'} />
                                                     ))}
                                                 </div>
                                             )}
@@ -5522,8 +5626,8 @@
                             <button onClick={()=>ch.setChatOpen(!ch.chatOpen)} title="Table chat" className="w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl text-lg"><i className="fa-solid fa-comment-dots"></i></button>
                             <button onClick={toggleSitOut} title={myPlayer?.sitOut ? 'Sit back in' : 'Sit out'} className={`w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`}>{myPlayer?.sitOut ? '✋' : '☕'}</button>
                             {!(tableState?.tournamentId) && <button onClick={topUpChips} title="Add chips" className="w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg">💰</button>}
-                            {gs.phase === 'showdown' && (myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || (gs.earlyWin && myPlayer.status === 'active')) && (
-                                <button onClick={async () => { try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.reveal`]: true }); } catch(e) {} }}
+                            {gs.phase === 'showdown' && ((srvEngine ? myPrivCards : (myPlayer?.cards || [])).length > 0) && !myPlayer.reveal && (myPlayer.status === 'folded' || (gs.earlyWin && myPlayer.status === 'active')) && (
+                                <button onClick={async () => { try { if (srvEngine) { await window.fb.fx('pkReveal', { tableId: tableDocId }); } else { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.reveal`]: true }); } } catch(e) {} }}
                                         title="Show your cards to the table" className="px-3 h-11 rounded-2xl border border-sky-400/50 bg-sky-600/20 text-sky-200 shadow-xl text-xs font-black animate-pulse">SHOW 🃏</button>
                             )}
                         </div>

@@ -17,6 +17,17 @@ service cloud.firestore {
     match /users/{id}        { allow read, write: if signedIn(); }
     match /memberships/{id}  { allow read, write: if signedIn(); }
     match /tables/{id}       { allow read, write: if signedIn(); }
+
+    // Server-engine private data: a player may read ONLY their own hole cards.
+    // The deck/engine doc (_engine) and everyone else's cards are server-only.
+    // No client ever writes here — only Cloud Functions (admin SDK bypasses rules).
+    match /tables/{id}/priv/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Admin-only config (e.g. the GOD list) — no client access whatsoever.
+    match /admin/{doc=**} { allow read, write: if false; }
     match /clubs/{id}        { allow read, write: if signedIn(); }
     match /tournaments/{id}  { allow read, write: if signedIn(); }
     match /broadcasts/{id}   { allow read, write: if signedIn(); }

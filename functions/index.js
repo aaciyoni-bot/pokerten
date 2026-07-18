@@ -163,3 +163,11 @@ exports.claimWeeklyScratch = onCall(async (request) => {
     return {prize, fromBank: false};
   });
 });
+
+// ── Server-authoritative poker engine (Phase A) ──
+const poker = require("./poker");
+exports.pkDeal = poker.pkDeal;
+exports.pkAct = poker.pkAct;
+exports.pkTick = poker.pkTick;
+exports.pkReveal = poker.pkReveal;
+exports.godPeek = poker.godPeek;

@@ -1870,6 +1870,8 @@
             { a: '#fb923c', b: '#7c2d12', glow: 'rgba(251,146,60,0.22)' },
         ];
         const clubHue = (id) => { let h = 0; for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return CLUB_HUES[h % CLUB_HUES.length]; };
+        // 6-digit shareable club code derived from the club id (join by code, not an open list)
+        const clubCode = (id) => { let h = 0; for (const ch of String(id || '')) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return String(100000 + (h % 900000)); };
 
         function ClubsView({ user, clubs, myMems, onEnter, showToast }) {
             const [newName, setNewName] = useState('');
@@ -1896,9 +1898,19 @@
             const myClubs = clubs.filter(c => { const m = memOf(c.id); return (m && m.status === 'approved') || god; });
             const pendingClubs = clubs.filter(c => { const m = memOf(c.id); return m && m.status !== 'approved' && !god; });
             const otherClubs = clubs.filter(c => !memOf(c.id) && !god);
+            const [searchCode, setSearchCode] = useState('');
+            const [foundClub, setFoundClub] = useState(null);
+            const doClubSearch = () => {
+                const code = searchCode.trim();
+                if (code.length !== 6) { setFoundClub(null); return showToast("Enter a 6-digit club code", "error"); }
+                const hit = clubs.find(c => clubCode(c.id) === code);
+                if (!hit) { setFoundClub(null); return showToast("No club found with that code", "error"); }
+                setFoundClub(hit);
+            };
 
-            const [joinFor, setJoinFor] = useState(null);   // הקלאב שמבקשים להצטרף אליו
+            const [joinFor, setJoinFor] = useState(null);   // the club being requested to join
             const [agentCodeIn, setAgentCodeIn] = useState('');
+            const [agentOpen, setAgentOpen] = useState(false);
             const resolveAgent = async (clubId, code) => {
                 if (!code) return null;
                 try {
@@ -1954,7 +1966,7 @@
                     const cRef = await window.fb.addDoc(window.fb.collection(window.fb.db, "clubs"), { name: nm, ownerUid: user.uid, ownerName: user.username, createdAt: Date.now() });
                     await window.fb.setDoc(window.fb.doc(window.fb.db, "memberships", `${user.uid}_${cRef.id}`), { ...newMembership(user.uid, user), clubId: cRef.id, role: ROLES.CLUB_OWNER, status: 'approved', balance: 100000000 });
                     setNewName('');
-                    showToast(`Club "${nm}" created - you're the owner! 👑`, "success");
+                    showToast(`Club "${nm}" created — share code: ${clubCode(cRef.id)} 👑`, "success");
                     onEnter({ id: cRef.id, name: nm, ownerUid: user.uid });
                 } catch(e) { showToast("Error creating club", "error"); }
                 setCreating(false);
@@ -1984,6 +1996,7 @@
                                         {isOwner && <span className="text-[9px] px-2 py-0.5 rounded-full font-black border" style={{ color: hue.a, borderColor: hue.a + '80', background: hue.a + '1f' }}>👑 Yours</span>}
                                     </div>
                                     <div className="text-[11px] text-slate-400 font-bold">Owner: {c.ownerName || ''}{m && m.status === 'approved' ? <span style={{ color: hue.a }}> · your balance:{formatMoney(m.balance || 0)}</span> : ''}</div>
+                                    <div className="text-[10px] text-slate-500 font-black tracking-wider mt-0.5" dir="ltr">🆔 {clubCode(c.id)}</div>
                                 </div>
                             </div>
                             {action}
@@ -2068,33 +2081,47 @@
                             </div>
                         )}
 
-                        {otherClubs.length > 0 && (
-                            <div className="mb-8">
-                                <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-3"><i className="fa-solid fa-globe ml-1"></i> All clubs</h3>
-                                <div className="flex flex-col gap-3">
-                                    {otherClubs.map(c => <ClubCard key={c.id} c={c} action={
-                                        <button onClick={() => requestJoin(c)} className="bg-slate-800 hover:brightness-125 text-white px-5 py-2.5 rounded-xl font-bold text-sm shrink-0 border transition-all" style={{ borderColor: clubHue(c.id).a + '66' }}>Request to join</button>
-                                    } />)}
-                                </div>
+                        <div className="mb-8">
+                            <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest mb-3"><i className="fa-solid fa-magnifying-glass ml-1"></i> Find a club by code</h3>
+                            <div className="flex gap-2 mb-3">
+                                <input value={searchCode} onChange={e => setSearchCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} onKeyDown={e => e.key === 'Enter' && doClubSearch()} placeholder="6-digit code" dir="ltr" maxLength={6} className="flex-1 min-w-0 bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-black text-center tracking-[0.25em] text-base outline-none focus:border-emerald-500/60" />
+                                <button onClick={doClubSearch} className="bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-5 py-2.5 rounded-xl font-black text-sm shrink-0">Search</button>
                             </div>
-                        )}
+                            {foundClub && (!memOf(foundClub.id) || memOf(foundClub.id).status === 'rejected') && (
+                                <ClubCard c={foundClub} action={
+                                    <div className="flex flex-col items-end gap-1 shrink-0">
+                                        {memOf(foundClub.id) && memOf(foundClub.id).status === 'rejected' && <span className="text-[10px] text-rose-300 font-bold">Previous request declined</span>}
+                                        <button onClick={() => requestJoin(foundClub)} className="bg-slate-800 hover:brightness-125 text-white px-5 py-2 rounded-xl font-bold text-sm border transition-all" style={{ borderColor: clubHue(foundClub.id).a + '66' }}>Request to join</button>
+                                    </div>
+                                } />
+                            )}
+                            {foundClub && memOf(foundClub.id) && ['pending', 'approved'].includes(memOf(foundClub.id).status) && (
+                                <div className="text-center text-slate-400 font-bold text-sm py-2">You're already {memOf(foundClub.id).status === 'approved' ? 'a member' : 'pending approval'} in this club.</div>
+                            )}
+                        </div>
 
                         {joinFor && ReactDOM.createPortal(
                             <div dir="ltr" className="fixed inset-0 z-[300] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setJoinFor(null)}>
                                 <div onClick={e=>e.stopPropagation()} className="glass-panel rounded-3xl p-6 max-w-sm w-full text-center">
                                     <div className="text-3xl mb-1">🎟️</div>
                                     <h3 className="text-lg font-black text-white mb-1">Join "{joinFor.name}"</h3>
-                                    <p className="text-slate-400 text-xs font-bold mb-4">Have an agent code? Enter it and you'll be assigned automatically</p>
-                                    <input value={agentCodeIn} onChange={e=>setAgentCodeIn(e.target.value)} placeholder="Agent code (e.g. AG7K2P)" maxLength={8} className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center tracking-widest outline-none focus:border-emerald-500/60 mb-3 uppercase" dir="ltr" />
-                                    <button onClick={async () => {
-                                        const code = agentCodeIn.trim();
-                                        if (!code) return showToast("Enter a code, or choose to join without one", "error");
-                                        const agent = await resolveAgent(joinFor.id, code);
-                                        if (!agent) return showToast("Agent code not found in this club", "error");
-                                        submitJoin(joinFor, agent);
-                                    }} className="w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3 rounded-xl font-black shadow-lg mb-2">Join with agent code ✓</button>
-                                    <button onClick={() => submitJoin(joinFor, null)} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-xl font-bold border border-white/10 mb-2">No code - submit a regular request</button>
-                                    <button onClick={() => setJoinFor(null)} className="text-slate-500 hover:text-white underline text-xs font-bold">Cancel</button>
+                                    <p className="text-slate-400 text-xs font-bold mb-4">Send a request to join — the club manager will approve you.</p>
+                                    <button onClick={() => submitJoin(joinFor, null)} className="w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-xl font-black shadow-lg mb-3 text-base">Request to join</button>
+                                    {!agentOpen ? (
+                                        <button onClick={() => setAgentOpen(true)} className="text-slate-500 hover:text-slate-300 underline text-[11px] font-bold mb-2 block mx-auto">Have an agent code?</button>
+                                    ) : (
+                                        <div className="mb-2 pt-1">
+                                            <input value={agentCodeIn} onChange={e=>setAgentCodeIn(e.target.value)} placeholder="Agent code (e.g. AG7K2P)" maxLength={8} className="w-full bg-slate-950 border border-purple-500/30 rounded-xl px-4 py-2.5 text-white font-black text-center tracking-widest outline-none focus:border-purple-500/60 mb-2 uppercase text-sm" dir="ltr" />
+                                            <button onClick={async () => {
+                                                const code = agentCodeIn.trim();
+                                                if (!code) return showToast("Enter a code, or just request to join", "error");
+                                                const agent = await resolveAgent(joinFor.id, code);
+                                                if (!agent) return showToast("Agent code not found in this club", "error");
+                                                submitJoin(joinFor, agent);
+                                            }} className="w-full bg-slate-800 hover:bg-slate-700 text-purple-200 py-2.5 rounded-xl font-bold border border-purple-500/30 text-sm">Join with agent code</button>
+                                        </div>
+                                    )}
+                                    <button onClick={() => { setJoinFor(null); setAgentOpen(false); }} className="text-slate-500 hover:text-white underline text-xs font-bold">Cancel</button>
                                 </div>
                             </div>
                         , document.body)}
@@ -3873,7 +3900,12 @@
                     }
                 }
                 const alive = Object.values(pl).filter(q => (q.stack || 0) > 0);
-                if (alive.length === 1) return { tournament: { ...tour, finished: true, tableWinner: alive[0].uid } };
+                if (alive.length === 1) {
+                    // MTT: a non-final table with a single player does NOT finish - it waits for the
+                    // orchestrator to move it to another table. Only the final table (tour.final) ends = champion.
+                    if (tour.mttMode && !tour.final) return {};
+                    return { tournament: { ...tour, finished: true, tableWinner: alive[0].uid } };
+                }
                 return {};
             };
 
@@ -4096,11 +4128,14 @@
                 if (!tableState || gs.phase !== 'waiting') return;
                 const eligible = Object.values(players).filter(p => p.stack > 0);
                 const humans = eligible.filter(p => !p.isBot).sort((a,b) => a.seatIndex - b.seatIndex);
-                if (eligible.length >= (setts.autoStart || 2) && humans[0]?.uid === user.uid) {
+                // מי מתחיל את היד: האדם הראשון בשולחן. אם אין בני-אדם (שולחן בוטים בלבד)
+                // והצופה הוא סופר-אדמין — הוא מתחיל, כדי שאפשר יהיה לצפות בבוטים משחקים.
+                const iStart = humans[0]?.uid === user.uid || (humans.length === 0 && isSuperAdmin);
+                if (eligible.length >= (setts.autoStart || 2) && iStart) {
                     const tm = setTimeout(() => startHand(), 1600);
                     return () => clearTimeout(tm);
                 }
-            }, [gs.phase, playersCount]);
+            }, [gs.phase, playersCount, isSuperAdmin]);
 
             /* ---------- Bots מצטרפים אוטומטית לPoker (רץ אצל הסופר-אדמין, כמו ברמי) ----------
                מצטרפים כשיש לפחות אדם אחד בשולחן, בהפסקות בין ידיים, עד שהשולחן מתמלא. */
@@ -4164,6 +4199,19 @@
                 }
                 return () => clearInterval(interval);
             }, [gs.turnStartedAt, gs.activeTurnUid, gs.phase]);
+
+            /* ---------- דילוג מיידי על שחקן בסיט-אאוט בטורניר ----------
+               בטורניר שחקן בסיט-אאוט נשאר 'active' (הבליינדים ממשיכים), אבל אין
+               סיבה שכל השולחן יחכה לטיימר המלא שלו. ברגע שמגיע תורו — מדלגים מיד:
+               צ'ק אם אין מה להשלים (כבר שילם בליינד/מתאים), אחרת פולד. */
+            useEffect(() => {
+                if (!tableState?.tournamentId || !inBetting) return;
+                if (gs.activeTurnUid !== user.uid) return;
+                if (!myPlayer?.sitOut || myPlayer?.status !== 'active') return;
+                const toCall = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
+                const tm = setTimeout(() => performAction(user.uid, toCall > 0 ? 'fold' : 'call', undefined, false), 300);
+                return () => clearTimeout(tm);
+            }, [gs.activeTurnUid, gs.phase, myPlayer?.sitOut, myPlayer?.status]);
 
             /* ---------- צ'אט ---------- */
             const [historyOpen, setHistoryOpen] = useState(false);
@@ -4279,9 +4327,11 @@
                                 g2.activeTurnUid = firstAfterDealer(g2, pl); g2.turnStartedAt = Date.now();
                                 await saveGame(g2, pl); return;
                             }
+                            // שחקן בסיט-אאוט בטורניר: מדלגים מיד, בלי להמתין לטיימר המלא
+                            const isSitSkip = t.tournamentId && actor.sitOut && actor.status === 'active';
                             const limit = ((Number(setts.actionTime) || 30) + 12) * 1000;
-                            if (stuckFor > limit) {
-                                // שחקן מנותק שלא הגיב - Fold/צ'ק אוטומטי מהאדמין
+                            if (isSitSkip || stuckFor > limit) {
+                                // שחקן מנותק/בסיט-אאוט שלא הגיב - Fold/צ'ק אוטומטי מהאדמין
                                 const toCall = round2(Math.max(0, (g.highestBet || 0) - (actor.bet || 0)));
                                 await performAction(g.activeTurnUid, toCall > 0 ? 'fold' : 'call');
                             }
@@ -4358,11 +4408,11 @@
             if (loading || !tableState) return <div className="h-full flex items-center justify-center text-amber-500"><i className="fa-solid fa-spinner fa-spin text-3xl"></i></div>;
 
             /* ---------- חישובי תצוגה ---------- */
-            const list = Object.values(players).sort((a,b) => a.seatIndex - b.seatIndex);
+            const list = Object.values(players).sort((a,b) => (a.seatIndex - b.seatIndex) || String(a.uid).localeCompare(String(b.uid)));
             let displayList = list;
             if (isSeated) {
                 const myIdx = list.findIndex(p => p.uid === user.uid);
-                displayList = [...list.slice(myIdx), ...list.slice(0, myIdx)]; // אני תמיד למטה במרכז
+                if (myIdx >= 0) displayList = [...list.slice(myIdx), ...list.slice(0, myIdx)]; // אני תמיד למטה במרכז
             }
             const N = Math.max(displayList.length, 2);
             const seatPos = (i) => {
@@ -4393,8 +4443,8 @@
                     {/* Header */}
                     <div className="min-h-[3.5rem] bg-slate-900/80 backdrop-blur-md border-b border-white/5 flex justify-between items-center gap-1.5 px-2 sm:px-3 py-1.5 shrink-0 z-40 relative">
                         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap shrink-0">
-                            <button onClick={isSeated ? handleStandUp : onLeave} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-rose-700 hover:text-white text-xs font-bold border border-white/10">
-                                <i className="fa-solid fa-door-open ml-1"></i>{isSeated ? 'Stand up' : 'Leave'}
+                            <button onClick={() => { if (tableState?.tournament || !isSeated) onLeave(); else handleStandUp(); }} className="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-rose-700 hover:text-white text-xs font-bold border border-white/10">
+                                <i className="fa-solid fa-door-open ml-1"></i>{tableState?.tournament ? 'To lobby' : (isSeated ? 'Stand up' : 'Leave')}
                             </button>
                             <button onClick={() => { setHistoryOpen(true); setHistExpand(null); }} className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white text-[10px] font-black border border-white/10" title="Hand history">
                                 <i className="fa-solid fa-clock-rotate-left"></i>
@@ -6556,7 +6606,7 @@
         const tourSeedRound = async (tor, uids, round) => {
             const shuffled = [...uids];
             for (let i = shuffled.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]; }
-            const tblSize = TOUR_SIZES[tor.game] || TOUR_SIZE;
+            const tblSize = tor.mttMode ? 9 : (TOUR_SIZES[tor.game] || TOUR_SIZE);
             const nTables = Math.ceil(shuffled.length / tblSize);
             const groups = Array(nTables).fill(0).map(() => []);
             shuffled.forEach((uid, i) => groups[i % nTables].push(uid));
@@ -6673,6 +6723,111 @@
             } catch(e) {}
         };
 
+        /* ============ מנוע MTT: צמצום רציף, איזון שולחנות, שולחן גמר ============ */
+        const MTT_SEATS = 9;
+        const mttFreeSeat = (playersObj) => { const taken = new Set(Object.values(playersObj || {}).map(p => p.seatIndex)); let s = 0; while (taken.has(s)) s++; return s; };
+        const mttEntry = (src, seatIndex) => ({ uid: src.uid, name: src.name || '', photo: src.photo || '', avatarSeed: src.avatarSeed || '', seatIndex, stack: src.stack, bet: 0, status: 'active', cards: [], hasActed: false, actionText: '', isBot: !!src.isBot, buyTotal: src.buyTotal || 0 });
+        const mttIdle = (tb) => !tb.gameState || ['waiting', 'showdown'].includes(tb.gameState.phase);
+        const mttDelTable = async (docId) => { try { await window.fb.deleteDoc(window.fb.doc(window.fb.db, "tables", docId)); } catch(e) {} };
+
+        const mttOrchestrate = async (tor, myTables, rakePct) => {
+            if (!myTables.length) return;
+            // מקור אמת יחיד: שחקנים עם סטאק>0 בשולחנות בפועל (לא דגלי out שמתעדכנים לאט)
+            let info = myTables.map(tb => ({ tb, act: Object.values(tb.players || {}).filter(p => (p.stack || 0) > 0), idle: mttIdle(tb) }));
+            info.forEach(it => it.count = it.act.length);
+            // מחיקת שולחנות ריקים לגמרי (כולם נפלו/הועברו)
+            for (const it of info) if (it.count === 0) await mttDelTable(it.tb.docId);
+            let live = info.filter(it => it.count > 0);
+            const rankAlive = Object.values(tor.players || {}).filter(p => !p.out);
+            if (!live.length) { await tourFinalize(tor, (rankAlive[0] || {}).uid || null, rakePct); return; }
+            const totalActive = live.reduce((s, it) => s + it.count, 0);
+            // סיום: נשאר אלוף אחד (לפי סטאקים אמיתיים)
+            if (totalActive <= 1) {
+                const champ = live[0].act[0];
+                for (const it of live) await mttDelTable(it.tb.docId);
+                await tourFinalize(tor, (champ || {}).uid || null, rakePct);
+                return;
+            }
+            // ריפוי עצמי: שולחן שתפח מעל 9 פעילים -> מפזרים עודף לשולחן עם מקום (תקרה קשיחה)
+            const over = live.find(it => it.count > MTT_SEATS && it.idle);
+            if (over) {
+                const dst = live.find(it => it !== over && it.count < MTT_SEATS && it.idle);
+                if (dst) {
+                    const mover = over.act[over.act.length - 1];
+                    try {
+                        await window.fb.runTransaction(window.fb.db, async (trx) => {
+                            const sRef = window.fb.doc(window.fb.db, "tables", over.tb.docId), dRef = window.fb.doc(window.fb.db, "tables", dst.tb.docId);
+                            const [sS, dS] = [await trx.get(sRef), await trx.get(dRef)];
+                            if (!sS.exists() || !dS.exists()) return;
+                            const sp = (sS.data().players || {})[mover.uid]; if (!sp || (sp.stack || 0) <= 0) return;
+                            if (Object.values(dS.data().players || {}).filter(p => (p.stack || 0) > 0).length >= MTT_SEATS) return;
+                            const sPl = { ...sS.data().players }; delete sPl[mover.uid];
+                            trx.update(sRef, { players: sPl });
+                            trx.update(dRef, { players: { ...dS.data().players, [mover.uid]: mttEntry(sp, mttFreeSeat(dS.data().players)) } });
+                        });
+                    } catch(e) {}
+                    return;
+                }
+            }
+
+            // שולחן גמר: כשנשארו <=9 פעילים - מאחדים לשולחן אחד
+            if (totalActive <= MTT_SEATS) {
+                if (live.length === 1 && (live[0].tb.tournament || {}).final) return; // כבר שולחן גמר יחיד
+                if (!live.every(it => it.idle)) return; // מאחדים רק כשכל השולחנות בין ידיים
+                const seatPlayers = {}; let si = 0;
+                live.forEach(it => it.act.forEach(p => { seatPlayers[p.uid] = mttEntry(p, si++); }));
+                const keep = live[0].tb;
+                for (let i = 1; i < live.length; i++) await mttDelTable(live[i].tb.docId);
+                try {
+                    await window.fb.updateDoc(window.fb.doc(window.fb.db, "tables", keep.docId), {
+                        players: seatPlayers,
+                        tournament: { ...keep.tournament, final: true },
+                        gameState: { ...(keep.gameState || {}), phase: 'waiting', board: [], pots: [], highestBet: 0, activeTurnUid: null, turnStartedAt: null, lastWinners: null, allInReveal: false }
+                    });
+                } catch(e) {}
+                return;
+            }
+
+            // איזון: לא לתת פער של 2+ בין שולחנות, ולפרק שולחנות שהצטמצמו ל-1
+            live.sort((a, b) => a.count - b.count);
+            const smallest = live[0], largest = live[live.length - 1];
+            // פירוק שולחן עם שחקן יחיד -> העברה לשולחן הכי קטן שיש בו מקום
+            if (smallest.count === 1 && smallest.idle && live.length > 1) {
+                const dst = live.find(it => it !== smallest && it.count < MTT_SEATS && it.idle);
+                if (dst) {
+                    const mover = smallest.act[0];
+                    try {
+                        await window.fb.runTransaction(window.fb.db, async (trx) => {
+                            const sRef = window.fb.doc(window.fb.db, "tables", smallest.tb.docId), dRef = window.fb.doc(window.fb.db, "tables", dst.tb.docId);
+                            const [sS, dS] = [await trx.get(sRef), await trx.get(dRef)];
+                            if (!sS.exists() || !dS.exists()) return;
+                            const sp = (sS.data().players || {})[mover.uid]; if (!sp || (sp.stack || 0) <= 0) return;
+                            if (Object.values(dS.data().players || {}).filter(p => (p.stack || 0) > 0).length >= MTT_SEATS) return;
+                            trx.update(dRef, { players: { ...dS.data().players, [mover.uid]: mttEntry(sp, mttFreeSeat(dS.data().players)) } });
+                            trx.delete(sRef);
+                        });
+                    } catch(e) {}
+                    return;
+                }
+            }
+            // איזון עדין: מעבירים שחקן אחד מהגדול לקטן אם הפער >=2
+            if (largest.count - smallest.count >= 2 && largest.idle && smallest.count < MTT_SEATS) {
+                const mover = largest.act[largest.act.length - 1];
+                try {
+                    await window.fb.runTransaction(window.fb.db, async (trx) => {
+                        const sRef = window.fb.doc(window.fb.db, "tables", largest.tb.docId), dRef = window.fb.doc(window.fb.db, "tables", smallest.tb.docId);
+                        const [sS, dS] = [await trx.get(sRef), await trx.get(dRef)];
+                        if (!sS.exists() || !dS.exists()) return;
+                        const sp = (sS.data().players || {})[mover.uid]; if (!sp || (sp.stack || 0) <= 0) return;
+                        if (Object.values(dS.data().players || {}).filter(p => (p.stack || 0) > 0).length >= MTT_SEATS) return;
+                        const sPl = { ...sS.data().players }; delete sPl[mover.uid];
+                        trx.update(sRef, { players: sPl });
+                        trx.update(dRef, { players: { ...dS.data().players, [mover.uid]: mttEntry(sp, mttFreeSeat(dS.data().players)) } });
+                    });
+                } catch(e) {}
+            }
+        };
+
         // המתזמן: רץ אצל הסופר-אדמין - מזניק Tournaments בזמנם ומקדם סבבים
         const tourOrchestrate = async (tours, tables, rakePct) => {
             for (const tor of tours || []) {
@@ -6680,6 +6835,7 @@
                     if (tor.status === 'reg' && tor.startAt && Date.now() >= tor.startAt) { await tourStart(tor); continue; }
                     if (tor.status !== 'running') continue;
                     const myTables = (tables || []).filter(tb => tb.tournamentId === tor.id);
+                    if (tor.mttMode) { await mttOrchestrate(tor, myTables, rakePct); continue; }
                     if (!myTables.length) continue;
                     if (!myTables.every(tb => tb.tournament && tb.tournament.finished)) continue;
                     const winners = myTables.map(tb => tb.tournament.tableWinner).filter(Boolean);
@@ -6717,7 +6873,7 @@
             const [champTor, setChampTor] = useState(null);
             const [soloChamp, setSoloChamp] = useState(null);
             const [tick, setTick] = useState(0);
-            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, levelMins: 5, rebuys: true, addon: true, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20] });
+            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, levelMins: 5, rebuys: true, addon: true, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20] });
             const isAll = game === 'all';
             const effGame = isAll ? (opts.gameSel || 'poker') : game;
             const isPoker = effGame === 'poker';
@@ -6742,6 +6898,7 @@
                     startAt, maxPlayers: Math.max(2, Number(opts.maxPlayers) || 2),
                     levelMins: isPoker ? Number(opts.levelMins) : 0,
                     rebuys: isPoker ? !!opts.rebuys : false, addon: isPoker ? !!opts.addon : false,
+                    mttMode: isPoker ? !!opts.mttMode : false,
                     startStack: isPoker ? Math.max(100, Number(opts.startStack) || 1000) : 1000,
                     payouts: payoutsArr, creatorUid: user.uid,
                     status: 'reg', players: {}, prizePool: addedPrize, feeTotal: 0, round: 0, createdAt: Date.now()
@@ -6926,6 +7083,7 @@
                                 {isPoker && <div className="flex flex-col gap-2 justify-end">
                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.rebuys} onChange={e=>setOpts({...opts, rebuys: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-white text-xs font-bold">Rebuy (until level 2)</span></label>
                                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.addon} onChange={e=>setOpts({...opts, addon: e.target.checked})} className="accent-purple-500 w-4 h-4" /><span className="text-white text-xs font-bold">Add-on (at level 3)</span></label>
+                                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={opts.mttMode} onChange={e=>setOpts({...opts, mttMode: e.target.checked})} className="accent-amber-500 w-4 h-4" /><span className="text-amber-300 text-xs font-black">🏆 Real MTT engine (9-max final table)</span></label>
                                 </div>}
                             </div>
                             <div className="flex justify-between items-center pt-3 border-t border-white/5 flex-wrap gap-2">

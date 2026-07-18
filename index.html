@@ -1384,6 +1384,53 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
       });
     } catch (e) {}
   };
+  const callFloor = async () => {
+    const lastCall = [...rawChat].reverse().find(m => m.uid === user.uid && m.floor);
+    if (lastCall && Date.now() - lastCall.at < 60000) {
+      showToast("Floor already called — hold on, a manager is on the way", "info");
+      return;
+    }
+    const msg = {
+      uid: user.uid,
+      name: user.username,
+      text: '',
+      emoji: '',
+      gift: '',
+      giftE: '',
+      to: '',
+      floor: true,
+      at: Date.now()
+    };
+    try {
+      await window.fb.updateDoc(ref(), {
+        chat: [...rawChat, msg].slice(-40),
+        floorCall: {
+          uid: user.uid,
+          name: user.username,
+          at: Date.now()
+        }
+      });
+    } catch (e) {}
+    showToast("🟡 Floor called — the manager has been notified", "success");
+    playSnd('msg');
+  };
+  const clearFloor = async () => {
+    if (!canModerate) return;
+    try {
+      await window.fb.updateDoc(ref(), {
+        floorCall: null
+      });
+    } catch (e) {}
+  };
+  const floorSeenRef = useRef(0);
+  useEffect(() => {
+    const fc = tableState?.floorCall;
+    if (!fc || !canModerate || fc.uid === user.uid) return;
+    if (fc.at <= floorSeenRef.current) return;
+    floorSeenRef.current = fc.at;
+    showToast(`🟡 FLOOR: ${fc.name} is calling the manager!`, "error");
+    playSnd('msg');
+  }, [tableState?.floorCall?.at]);
   return {
     chatArr,
     chatOpen,
@@ -1395,7 +1442,10 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
     toggleMuteUid,
     chatMuted,
     canModerate,
-    toggleTableMute
+    toggleTableMute,
+    callFloor,
+    clearFloor,
+    floorCall: tableState?.floorCall || null
   };
 }
 function ChatPanel({
@@ -1409,7 +1459,8 @@ function ChatPanel({
   onToggleMuteUid,
   canModerate,
   chatMuted,
-  onToggleTableMute
+  onToggleTableMute,
+  onCallFloor
 }) {
   const [text, setText] = useState('');
   const [giftPick, setGiftPick] = useState(null);
@@ -1445,7 +1496,11 @@ function ChatPanel({
     className: "text-rose-400"
   }, "· muted")), React.createElement("div", {
     className: "flex items-center gap-1"
-  }, canModerate && React.createElement("button", {
+  }, onCallFloor && React.createElement("button", {
+    onClick: onCallFloor,
+    title: "Call the floor manager",
+    className: "h-7 px-2 rounded-lg text-[10px] font-black bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
+  }, "FLOOR 🟡"), canModerate && React.createElement("button", {
     onClick: onToggleTableMute,
     title: chatMuted ? 'Unmute table' : 'Mute the whole table (manager)',
     className: `w-7 h-7 rounded-lg text-xs transition-colors ${chatMuted ? 'bg-rose-700 text-white' : 'text-slate-500 hover:text-rose-400'}`
@@ -1474,7 +1529,9 @@ function ChatPanel({
     className: "min-w-0"
   }, React.createElement("span", {
     className: "font-black"
-  }, m.uid === meUid ? 'You' : m.name, ":"), ' ', m.gift ? React.createElement("span", {
+  }, m.uid === meUid ? 'You' : m.name, ":"), ' ', m.floor ? React.createElement("span", {
+    className: "text-amber-300 font-black"
+  }, "🟡 called the FLOOR — manager to the table!") : m.gift ? React.createElement("span", {
     className: "text-amber-300"
   }, "sent ", giftInfo(m), " ", targetName(m.to)) : m.emoji ? React.createElement("span", {
     className: "text-lg align-middle"
@@ -2242,6 +2299,28 @@ function App() {
       if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission();
     } catch (e) {}
   };
+  const inboxUnread = activeMem && Array.isArray(activeMem.inbox) ? activeMem.inbox.filter(m => (m.at || 0) > (activeMem.inboxReadAt || 0)) : [];
+  const dismissInbox = async () => {
+    if (!activeMem) return;
+    try {
+      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", activeMem.id), {
+        inboxReadAt: Date.now()
+      });
+    } catch (e) {}
+  };
+  const inboxSndRef = useRef(0);
+  useEffect(() => {
+    if (!inboxUnread.length) return;
+    const newest = Math.max(...inboxUnread.map(m => m.at || 0));
+    if (newest <= inboxSndRef.current) return;
+    inboxSndRef.current = newest;
+    playSnd('msg');
+    try {
+      if ('Notification' in window && Notification.permission === 'granted' && document.hidden) new Notification('✉️ Personal message', {
+        body: inboxUnread[inboxUnread.length - 1].text
+      });
+    } catch (e) {}
+  }, [inboxUnread.length]);
   useEffect(() => {
     if (!fbReady || !dbUser?.uid || !activeClub) {
       setActiveMem(null);
@@ -2575,7 +2654,34 @@ function App() {
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-10 py-3 rounded-xl font-black shadow-lg"
   }, "Got it 👍"), 'Notification' in window && Notification.permission === 'default' && React.createElement("p", {
     className: "text-[10px] text-slate-500 font-bold mt-3"
-  }, "You'll be asked to allow notifications - to receive messages even when the site is in the background"))), toasts.map(t => React.createElement("div", {
+  }, "You'll be asked to allow notifications - to receive messages even when the site is in the background"))), !clubMsg && inboxUnread.length > 0 && !inTable && React.createElement("div", {
+    className: "fixed inset-0 z-[300] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 pointer-events-auto",
+    onClick: dismissInbox
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "bg-gradient-to-b from-slate-900 to-slate-950 border border-sky-500/30 rounded-3xl p-7 max-w-md w-full text-center shadow-2xl animate-pop-in"
+  }, React.createElement("div", {
+    className: "text-4xl mb-2"
+  }, "✉️"), React.createElement("div", {
+    className: "text-sky-300 font-black text-xs uppercase tracking-widest mb-3"
+  }, "Personal message", inboxUnread.length > 1 ? `s (${inboxUnread.length})` : ''), React.createElement("div", {
+    className: "space-y-3 max-h-72 overflow-y-auto"
+  }, inboxUnread.map((m, i) => React.createElement("div", {
+    key: i,
+    className: "bg-slate-900/70 border border-white/10 rounded-2xl p-4 text-left"
+  }, React.createElement("div", {
+    className: "text-[10px] text-slate-500 font-black mb-1"
+  }, "From ", m.from || 'the club', " · ", new Date(m.at).toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })), React.createElement("div", {
+    className: "text-white font-bold text-sm leading-relaxed whitespace-pre-wrap"
+  }, m.text)))), React.createElement("button", {
+    onClick: dismissInbox,
+    className: "mt-5 bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white px-10 py-3 rounded-xl font-black shadow-lg"
+  }, "Got it 👍"))), toasts.map(t => React.createElement("div", {
     key: t.id,
     className: `animate-fade-in px-6 py-3 rounded-2xl font-bold text-sm text-center border backdrop-blur-md ${t.type === 'error' ? 'bg-rose-900/95 border-rose-500 text-white' : 'bg-slate-800/95 border-emerald-500/50 text-emerald-400'}`
   }, t.msg))));
@@ -5213,6 +5319,23 @@ function BackofficeView({
       showToast("Decline error", "error");
     }
   };
+  const sendDirectMsg = async target => {
+    const txt = (window.prompt(`Personal message to ${target.username}:`) || '').trim();
+    if (txt.length < 2) return;
+    try {
+      const cur = Array.isArray(target.inbox) ? target.inbox : [];
+      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", target.id), {
+        inbox: [...cur, {
+          text: txt.slice(0, 300),
+          from: user.username,
+          at: Date.now()
+        }].slice(-10)
+      });
+      showToast(`Message sent to ${target.username} ✉️`, "success");
+    } catch (e) {
+      showToast("Error sending message", "error");
+    }
+  };
   const adjustBalance = async (target, isDeposit) => {
     const raw = window.prompt(isDeposit ? `How many chips to deposit to ${target.username}? (deducted from your balance)` : `How many chips to withdraw from ${target.username}? (added to your balance)`, "100");
     const amount = parseFloat(raw);
@@ -5836,7 +5959,13 @@ function BackofficeView({
     onClick: () => adjustBalance(u, false),
     className: "w-9 h-9 rounded-full bg-slate-800 hover:bg-rose-900 text-white font-black border border-white/10",
     title: "Withdraw chips"
-  }, "−"), isOwner && !u.isBot && React.createElement("button", {
+  }, "−"), !u.isBot && u.uid !== user.uid && React.createElement("button", {
+    onClick: () => sendDirectMsg(u),
+    className: "w-9 h-9 rounded-full bg-slate-800 hover:bg-sky-900 text-slate-300 hover:text-white border border-white/10",
+    title: "Send a personal message"
+  }, React.createElement("i", {
+    className: "fa-solid fa-envelope text-xs"
+  })), isOwner && !u.isBot && React.createElement("button", {
     onClick: () => openRoleEditor(u),
     className: "w-9 h-9 rounded-full bg-slate-800 hover:bg-blue-900 text-slate-300 hover:text-white border border-white/10",
     title: "Set role and agent assignment"
@@ -6244,6 +6373,7 @@ function PokerTable({
     g.pots = [];
     g.phase = 'showdown';
     g.activeTurnUid = null;
+    g.earlyWin = true;
     g.lastWinAmount = round2(pot - rake);
     g.lastWinners = pl[winnerUid].name;
     Object.values(pl).forEach(q => {
@@ -6331,6 +6461,7 @@ function PokerTable({
     g.pots = [];
     g.phase = 'showdown';
     g.activeTurnUid = null;
+    g.earlyWin = false;
     g.lastWinAmount = winTotal;
     g.lastWinners = [...winnerNames].join(', ');
     Object.values(pl).forEach(q => {
@@ -6587,6 +6718,7 @@ function PokerTable({
         p.bet = 0;
         p.actionText = '';
         p.hasActed = false;
+        p.reveal = false;
         p.status = p.stack > 0 ? p.sitOut && !t.tournamentId ? 'sitout' : 'active' : ['busted', 'out'].includes(p.status) ? p.status : 'sitout';
       });
       const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
@@ -7713,7 +7845,7 @@ function PokerTable({
     const isTurn = gs.activeTurnUid === p.uid && inBetting;
     const isMe = p.uid === user.uid;
     const topSeat = parseFloat(seatPos(i).top) < 34;
-    const hidden = !godView && !isMe && !(gs.phase === 'showdown' && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
+    const hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
     const showCards = (p.cards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout';
     const folded = p.status === 'folded';
     const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
@@ -8058,8 +8190,14 @@ function PokerTable({
     onToggleMuteUid: ch.toggleMuteUid,
     canModerate: ch.canModerate,
     chatMuted: ch.chatMuted,
-    onToggleTableMute: ch.toggleTableMute
-  }), isSeated && myPlayer?.sitOut && React.createElement("div", {
+    onToggleTableMute: ch.toggleTableMute,
+    onCallFloor: tableState?.tournamentId && isSeated ? ch.callFloor : null
+  }), ch.floorCall && ch.canModerate && React.createElement("div", {
+    className: "absolute top-16 left-1/2 -translate-x-1/2 z-[210] bg-amber-500/95 text-slate-950 font-black text-xs px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-pulse"
+  }, "🟡 FLOOR: ", ch.floorCall.name, " needs a manager", React.createElement("button", {
+    onClick: ch.clearFloor,
+    className: "bg-slate-950/20 hover:bg-slate-950/40 rounded-full px-2 py-0.5"
+  }, "Resolve ✓")), isSeated && myPlayer?.sitOut && React.createElement("div", {
     className: "absolute top-16 left-1/2 -translate-x-1/2 z-[70] bg-amber-500/95 text-slate-900 font-black text-xs rounded-full px-4 py-2 shadow-xl cursor-pointer",
     onClick: toggleSitOut
   }, "☕ You're in Sit out - tap to return ✋"), isSeated && React.createElement("div", {
@@ -8072,7 +8210,17 @@ function PokerTable({
     onClick: topUpChips,
     title: "Add chips",
     className: "w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg"
-  }, "💰")), (canShowBuyIn || needRebuy) && React.createElement("div", {
+  }, "💰"), gs.phase === 'showdown' && (myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
+    onClick: async () => {
+      try {
+        await window.fb.updateDoc(tblRef(), {
+          [`players.${user.uid}.reveal`]: true
+        });
+      } catch (e) {}
+    },
+    title: "Show your cards to the table",
+    className: "px-3 h-11 rounded-2xl border border-sky-400/50 bg-sky-600/20 text-sky-200 shadow-xl text-xs font-black animate-pulse"
+  }, "SHOW 🃏")), (canShowBuyIn || needRebuy) && React.createElement("div", {
     className: "absolute inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
     className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/30"

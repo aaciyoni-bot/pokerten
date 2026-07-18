@@ -515,7 +515,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -528,7 +528,20 @@
             measurementId: "G-DSZNTQMZV6"
         };
         const app = initializeApp(firebaseConfig);
-        window.fb = { auth: getAuth(app), db: getFirestore(app), googleProvider: new GoogleAuthProvider(), signInWithPopup, onAuthStateChanged, signOut, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction };
+        const _auth = getAuth(app);
+        window.fb = { auth: _auth, db: getFirestore(app), googleProvider: new GoogleAuthProvider(), signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction };
+        // Robust Google sign-in: popup on desktop, redirect on mobile (popups are blocked on mobile browsers), with popup→redirect fallback.
+        window.fb.signIn = async () => {
+            const isMobile = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent || '');
+            try {
+                if (isMobile) return await signInWithRedirect(_auth, window.fb.googleProvider);
+                return await signInWithPopup(_auth, window.fb.googleProvider);
+            } catch (e) {
+                try { return await signInWithRedirect(_auth, window.fb.googleProvider); } catch (e2) { alert('Sign-in failed: ' + (e2 && e2.message ? e2.message : e2)); }
+            }
+        };
+        // Complete any pending redirect sign-in on load (onAuthStateChanged then fires).
+        getRedirectResult(_auth).catch(() => {});
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
 </head>
@@ -769,6 +782,8 @@
                         clubProfits: round2((s.data().clubProfits || 0) + amount)
                     });
                 });
+                // Club rake-share log (per-cycle settlement). agentLog is append-only + allowed by rules.
+                try { await window.fb.addDoc(window.fb.collection(window.fb.db, "agentLog"), { clubId: cid, amount: round2(amount), at: Date.now(), kind: 'club' }); } catch(e2) {}
             } catch(e) {}
         };
 
@@ -1639,7 +1654,7 @@
                         </div>
                         <h2 className="text-4xl font-black mb-1 tracking-widest"><span className="logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400">POKER</span><span className="text-emerald-400">TEN</span></h2>
                         <p className="text-slate-300 mb-10 font-bold tracking-[0.35em] uppercase text-xs">Poker with friends</p>
-                        <button onClick={()=>window.fb.signInWithPopup(window.fb.auth, window.fb.googleProvider)} className="w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 font-black py-4 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-3">
+                        <button onClick={()=>window.fb.signIn()} className="w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 font-black py-4 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-3">
                             <i className="fa-brands fa-google text-blue-500 text-xl"></i> Sign in with Google
                         </button>
                     </div>
@@ -2869,6 +2884,115 @@
         /* ================================================================
            Backoffice - דשבורד, Roles לפי משחקים, Settings רייק
            ================================================================ */
+        /* Weekly Settlement (read-only view). Owner/super-admin see all agents; an agent sees only their own players (read-only).
+           Agent = % of the rake their players generate. Owner rake = gross rake − agent cuts. In clubs owned by the super-admin
+           an extra 10% house-expenses line is shown ONLY to the super-admin. No mutations here — pure accounting view. */
+        function SettlementSection({ user }) {
+            const [cyc, setCyc] = useState(0);
+            const [aLog, setALog] = useState(null);
+            const [gLog, setGLog] = useState(null);
+            const [mems, setMems] = useState(null);
+            useEffect(() => {
+                (async () => {
+                    try {
+                        const clubWhere = window.fb.where("clubId", "==", CLUB_ID);
+                        const [aS, gS, mS] = await Promise.all([
+                            window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "agentLog"), clubWhere)),
+                            window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "gameLog"), clubWhere)),
+                            window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "memberships"), clubWhere)),
+                        ]);
+                        setALog(aS.docs.map(d => d.data()));
+                        setGLog(gS.docs.map(d => d.data()));
+                        setMems(mS.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !m.isBot));
+                    } catch (e) { setALog([]); setGLog([]); setMems([]); }
+                })();
+            }, []);
+            if (aLog === null || gLog === null || mems === null) return <div className="text-center py-8 text-amber-500"><i className="fa-solid fa-spinner fa-spin text-2xl"></i></div>;
+
+            const start = cycleStartIL(cyc), end = cyc === 0 ? Infinity : cycleStartIL(cyc - 1);
+            const inCyc = (at) => (at || 0) >= start && (at || 0) < end;
+            const cuts = {}; let houseGross = 0;
+            aLog.forEach(e => { if (!inCyc(e.at)) return; if (e.kind === 'club') houseGross = round2(houseGross + (e.amount || 0)); else if (e.agentUid) cuts[e.agentUid] = round2((cuts[e.agentUid] || 0) + (e.amount || 0)); });
+            const pres = {};
+            gLog.forEach(e => { if (!inCyc(e.at) || !e.uid) return; pres[e.uid] = round2((pres[e.uid] || 0) + (e.profit || 0)); });
+            const totalCuts = round2(Object.values(cuts).reduce((a, b) => a + b, 0));
+            const grossRake = round2(houseGross + totalCuts);
+            const club = window.__club || {};
+            const iOwn = club.ownerUid === user.uid;
+            const isOwnerView = iOwn || user.email === SUPER_ADMIN_EMAIL || user.role === ROLES.SUPER_ADMIN;
+            const showHouse = isGodUser(user) && iOwn;
+            const houseCut = showHouse ? round2(grossRake * 0.10) : 0;
+            const ownerNet = round2(houseGross - houseCut);
+            const playersByAgent = {};
+            mems.forEach(m => { if (!m.agentUid) return; (playersByAgent[m.agentUid] = playersByAgent[m.agentUid] || []).push(m); });
+            let agents = mems.filter(m => [ROLES.AGENT, ROLES.MANAGER, ROLES.CLUB_OWNER].includes(m.role) || cuts[m.uid] || playersByAgent[m.uid]);
+            if (!isOwnerView) agents = agents.filter(a => a.uid === user.uid); // an agent sees only themselves
+            agents.sort((a, b) => (cuts[b.uid] || 0) - (cuts[a.uid] || 0));
+            const cycLabel = cyc === 0 ? 'Current week' : cyc === 1 ? 'Previous week' : `${cyc} weeks ago`;
+
+            const exportCSV = () => {
+                const rows = [['Cycle', cycLabel], [], ['Agent', 'Player', 'Player ID', 'Real name', 'Result', 'Agent %']];
+                agents.forEach(a => {
+                    (playersByAgent[a.uid] || []).forEach(p => rows.push([a.username, p.username, p.playerId || '', p.googleName || '', formatMoney(pres[p.uid] || 0), (p.agentPct || 0) + '%']));
+                    rows.push([a.username, '→ agent cut (rake)', '', '', formatMoney(cuts[a.uid] || 0), '']);
+                });
+                rows.push([], ['Gross rake', formatMoney(grossRake)], ['Agent cuts', formatMoney(totalCuts)], ['Owner rake share', formatMoney(houseGross)]);
+                if (showHouse) { rows.push(['House expenses (10%)', formatMoney(houseCut)], ['Owner net', formatMoney(ownerNet)]); }
+                downloadCSV(rows, `settlement_${cycLabel.replace(/ /g, '_')}.csv`);
+            };
+
+            return (
+                <div className="mb-8">
+                    <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
+                        <h3 className="text-sm font-black text-emerald-400 uppercase tracking-widest"><i className="fa-solid fa-file-invoice-dollar ml-1"></i> Weekly Settlement</h3>
+                        <button onClick={exportCSV} className="text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-emerald-300 px-3 py-1.5 rounded-lg font-black"><i className="fa-solid fa-file-csv ml-1"></i> Export CSV</button>
+                    </div>
+                    <div className="flex gap-1.5 mb-4 flex-wrap">
+                        {[[0, 'This week'], [1, 'Last week'], [2, '2 wks'], [3, '3 wks']].map(([k, l]) => (
+                            <button key={k} onClick={() => setCyc(k)} className={`px-3 py-1.5 rounded-lg font-bold text-xs border transition-colors ${cyc === k ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:text-white'}`}>{l}</button>
+                        ))}
+                    </div>
+                    {isOwnerView && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5">
+                            <div className="glass-panel rounded-2xl p-3"><div className="text-[9px] text-slate-500 font-black uppercase">Gross rake</div><div className="text-lg font-black text-amber-300" dir="ltr">{formatMoney(grossRake)}</div></div>
+                            <div className="glass-panel rounded-2xl p-3"><div className="text-[9px] text-slate-500 font-black uppercase">Agent cuts</div><div className="text-lg font-black text-purple-300" dir="ltr">{formatMoney(totalCuts)}</div></div>
+                            <div className="glass-panel rounded-2xl p-3"><div className="text-[9px] text-slate-500 font-black uppercase">Owner rake</div><div className="text-lg font-black text-emerald-300" dir="ltr">{formatMoney(houseGross)}</div></div>
+                            {showHouse
+                                ? <div className="glass-panel rounded-2xl p-3 border border-rose-500/30"><div className="text-[9px] text-rose-400 font-black uppercase">Expenses 10% · net</div><div className="text-sm font-black text-rose-300" dir="ltr">-{formatMoney(houseCut)} · <span className="text-white">{formatMoney(ownerNet)}</span></div></div>
+                                : <div className="glass-panel rounded-2xl p-3"><div className="text-[9px] text-slate-500 font-black uppercase">Agents</div><div className="text-lg font-black text-white" dir="ltr">{agents.length}</div></div>}
+                        </div>
+                    )}
+                    <div className="space-y-3">
+                        {agents.length === 0 && <div className="text-center py-8 text-slate-500 font-bold glass-panel rounded-2xl text-sm">No agents / no activity this cycle.</div>}
+                        {agents.map(a => {
+                            const pls = playersByAgent[a.uid] || [];
+                            return (
+                                <div key={a.uid} className="glass-panel rounded-2xl p-4">
+                                    <div className="flex items-center justify-between mb-2 flex-wrap gap-1">
+                                        <div className="font-black text-white text-sm">{a.username} <span className="text-[9px] bg-blue-500/15 border border-blue-500/40 text-blue-300 px-1.5 py-0.5 rounded-full">{ROLE_LABELS[a.role] || 'Agent'}</span></div>
+                                        <div className="text-xs font-black text-purple-300" dir="ltr">cut {formatMoney(cuts[a.uid] || 0)}</div>
+                                    </div>
+                                    {pls.length === 0 ? <div className="text-[11px] text-slate-500 font-bold">No players assigned.</div> : (
+                                        <div className="space-y-1">
+                                            {pls.map(p => (
+                                                <div key={p.uid} className="flex items-center justify-between text-xs border-t border-white/5 pt-1">
+                                                    <div className="min-w-0 truncate"><span className="text-slate-200 font-bold">{p.username}</span> <span className="text-slate-600 font-black">{p.playerId || ''}</span>{isOwnerView && p.googleName && p.googleName !== p.username && <span className="text-slate-600"> · {p.googleName}</span>}</div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <span className="text-slate-500">{p.agentPct || 0}%</span>
+                                                        <span className={`font-black ${((pres[p.uid] || 0) >= 0) ? 'text-emerald-300' : 'text-rose-300'}`} dir="ltr">{formatMoney(pres[p.uid] || 0)}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
         function BackofficeView({ user, clubSettings, showToast }) {
             const [usersList, setUsersList] = useState([]);
             const [botsList, setBotsList] = useState([]);

@@ -2580,6 +2580,113 @@ function App() {
     className: `animate-fade-in px-6 py-3 rounded-2xl font-bold text-sm text-center border backdrop-blur-md ${t.type === 'error' ? 'bg-rose-900/95 border-rose-500 text-white' : 'bg-slate-800/95 border-emerald-500/50 text-emerald-400'}`
   }, t.msg))));
 }
+function InstallBanner({
+  variant
+}) {
+  const isStandaloneApp = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  const [installable, setInstallable] = useState(!!window.__installEvt);
+  const [showGuide, setShowGuide] = useState(false);
+  useEffect(() => {
+    const on = () => setInstallable(true);
+    const off = () => setInstallable(false);
+    window.addEventListener('pwa-installable', on);
+    window.addEventListener('beforeinstallprompt', on);
+    window.addEventListener('appinstalled', off);
+    return () => {
+      window.removeEventListener('pwa-installable', on);
+      window.removeEventListener('beforeinstallprompt', on);
+      window.removeEventListener('appinstalled', off);
+    };
+  }, []);
+  if (isStandaloneApp) return null;
+  if (!installable && !isIOSDev) return null;
+  const doInstall = async () => {
+    const evt = window.__installEvt;
+    if (evt) {
+      try {
+        evt.prompt();
+        const r = await evt.userChoice;
+        if (r && r.outcome === 'accepted') {
+          window.__installEvt = null;
+          setInstallable(false);
+        }
+      } catch (_) {}
+      return;
+    }
+    setShowGuide(true);
+  };
+  return React.createElement(React.Fragment, null, React.createElement("button", {
+    onClick: doInstall,
+    className: variant === 'auth' ? "w-full mt-3 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white font-black py-3.5 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-2 animate-pulse" : "w-full mb-4 bg-gradient-to-b from-emerald-500/90 to-emerald-700 hover:from-emerald-400 text-white font-black py-3 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2"
+  }, React.createElement("i", {
+    className: "fa-solid fa-circle-down text-lg"
+  }), React.createElement("span", null, "Install the app on your phone")), showGuide && ReactDOM.createPortal(React.createElement("div", {
+    dir: "ltr",
+    className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4",
+    onClick: () => setShowGuide(false)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "bg-gradient-to-b from-slate-900 to-slate-950 border border-white/10 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl animate-pop-in mb-4"
+  }, React.createElement("div", {
+    className: "text-3xl mb-1"
+  }, "📲"), React.createElement("h3", {
+    className: "text-lg font-black text-white mb-1"
+  }, "Install PokerTen"), React.createElement("p", {
+    className: "text-slate-400 text-xs font-bold mb-4"
+  }, "Add it to your home screen — opens full-screen like a real app."), isIOSDev ? React.createElement("div", {
+    className: "text-left space-y-2.5"
+  }, React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("span", {
+    className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
+  }, "1"), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "Tap the ", React.createElement("b", null, "Share"), " button ", React.createElement("i", {
+    className: "fa-solid fa-arrow-up-from-bracket text-sky-400"
+  }), " (bottom bar in Safari)")), React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("span", {
+    className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
+  }, "2"), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "Scroll down → ", React.createElement("b", null, "Add to Home Screen"), " ", React.createElement("i", {
+    className: "fa-solid fa-square-plus text-slate-300"
+  }))), React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("span", {
+    className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
+  }, "3"), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "Tap ", React.createElement("b", null, "Add"), " — the icon lands on your home screen 🎉")), React.createElement("div", {
+    className: "text-center pt-2 text-3xl text-sky-400 animate-bounce"
+  }, "⬇️"), React.createElement("p", {
+    className: "text-center text-[10px] text-slate-500 font-bold"
+  }, "The Share button is at the bottom of Safari")) : React.createElement("div", {
+    className: "text-left space-y-2.5"
+  }, React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("span", {
+    className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
+  }, "1"), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "Tap the menu ", React.createElement("b", null, "⋮"), " (top-right in Chrome)")), React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("span", {
+    className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
+  }, "2"), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "Tap ", React.createElement("b", null, "Install app"), " / ", React.createElement("b", null, "Add to Home screen"))), React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, React.createElement("span", {
+    className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
+  }, "3"), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "Confirm ", React.createElement("b", null, "Install"), " 🎉"))), React.createElement("button", {
+    onClick: () => setShowGuide(false),
+    className: "mt-5 text-slate-500 hover:text-white underline text-sm font-bold"
+  }, "Close"))), document.body));
+}
 function AuthView() {
   return React.createElement("div", {
     className: "h-full w-full flex flex-col items-center justify-center p-4 aurora-bg relative"
@@ -2602,7 +2709,9 @@ function AuthView() {
     className: "w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 font-black py-4 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-3"
   }, React.createElement("i", {
     className: "fa-brands fa-google text-blue-500 text-xl"
-  }), " Sign in with Google")), React.createElement("div", {
+  }), " Sign in with Google"), React.createElement(InstallBanner, {
+    variant: "auth"
+  })), React.createElement("div", {
     className: "absolute bottom-4 inset-x-0 z-20 flex flex-col items-center gap-2"
   }, React.createElement("div", {
     className: "flex items-center gap-2 px-4 py-2 rounded-full border border-gold-400/25 bg-slate-950/60"
@@ -4101,7 +4210,9 @@ function LobbyView({
       setBonusOpen(true);
       setBonusSpin(null);
     }
-  }))), React.createElement("div", {
+  }))), React.createElement(InstallBanner, {
+    variant: "lobby"
+  }), React.createElement("div", {
     className: "flex items-center gap-1.5 mb-7"
   }, [{
     id: 'poker',

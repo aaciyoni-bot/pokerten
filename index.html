@@ -3719,6 +3719,12 @@
                                     </div>
                                 </div>
                                 <div className="mb-4 pb-4 border-b border-white/5">
+                                    <label className="flex items-center gap-2.5 cursor-pointer">
+                                        <input type="checkbox" checked={clubSettings?.botsAuto === true} onChange={async (e) => { try { await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { botsAuto: e.target.checked }, { merge: true }); showToast(e.target.checked ? "Automatic bots enabled 🤖" : "Automatic bots blocked — bots enter only when you add them manually", "success"); } catch(err) { showToast("Error", "error"); } }} className="accent-purple-500 w-4 h-4" />
+                                        <span className="text-slate-200 text-sm font-bold">🤖 Allow automatic bot entry <span className="text-slate-500 text-xs">(tournament auto-fill; off = bots only when added manually)</span></span>
+                                    </label>
+                                </div>
+                                <div className="mb-4 pb-4 border-b border-white/5">
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">📣 Pop-up message to all club members</label>
                                     <div className="flex gap-2 items-start flex-wrap">
                                         <textarea value={bcText} onChange={e=>setBcText(e.target.value)} rows={2} maxLength={300} placeholder="e.g. Friday night tournament at 21:00! First prize 5,000 🏆" className="flex-1 min-w-[240px] bg-slate-900 border border-white/10 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-amber-500/60 resize-none" />
@@ -7841,6 +7847,9 @@
             const need = (Number(tor.minPlayers) || 2) - Object.keys(tor.players || {}).length;
             if (need <= 0) return;
             try {
+                // Club master switch: bots NEVER enter automatically unless the owner enabled it
+                const clubSnap = await window.fb.getDoc(window.fb.doc(window.fb.db, "clubs", tor.clubId || CLUB_ID));
+                if (!clubSnap.exists() || clubSnap.data().botsAuto !== true) return;
                 await window.fb.updateDoc(tRef(tor.id), { botFillAt: Date.now() });
                 const already = new Set(Object.keys(tor.players || {}));
                 const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));

@@ -7414,6 +7414,8 @@ function PokerTable({
         });
         setSpectate(false);
         showToast("A seat opened up — you're in! 🎉", "success");
+        const tNow = tableRef.current;
+        if (tNow && Object.keys(tNow.players || {}).length >= ((tNow.settings || {}).maxPlayers || 6)) spawnTwinTable(tNow);
       } catch (e) {
         if (typeof e === 'string' && e.startsWith('You reached')) {
           showToast(e, "error");
@@ -7757,6 +7759,7 @@ function PokerTable({
         isBot: true
       }
     });
+    if (Object.keys(pl).length + 1 >= (setts.maxPlayers || 6)) spawnTwinTable(t);
   };
   useEffect(() => {
     if (!isSuperAdmin || !tableState || !gs.phase) return;

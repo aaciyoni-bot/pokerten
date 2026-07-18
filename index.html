@@ -2544,8 +2544,12 @@ function App() {
   }, "POKER"), React.createElement("span", {
     className: "text-emerald-400"
   }, "TEN")), React.createElement("p", {
-    className: "text-[10px] text-emerald-400/90 font-black tracking-widest leading-none"
-  }, "🏛️ ", clubSettings?.name || activeClub.name, " ", React.createElement("span", {
+    className: "text-[10px] text-emerald-400/90 font-black tracking-widest leading-none flex items-center gap-1"
+  }, clubSettings?.logo ? React.createElement("img", {
+    src: clubSettings.logo,
+    alt: "",
+    className: "w-4 h-4 rounded object-cover inline-block"
+  }) : '🏛️', " ", clubSettings?.name || activeClub.name, " ", React.createElement("span", {
     className: "text-slate-600"
   }, "· V26")))), React.createElement("main", {
     className: "flex-1 overflow-hidden relative z-0"
@@ -3483,22 +3487,25 @@ function ClubsView({
     const m = memOf(c.id);
     const isOwner = c.ownerUid === user.uid;
     return React.createElement("div", {
-      className: "club-card p-4 flex items-center justify-between gap-3 flex-wrap"
-    }, React.createElement("div", {
-      className: "flex items-center gap-3 min-w-0"
-    }, (isOwner || god) && c.id !== 'main' && React.createElement("button", {
-      onClick: e => {
-        e.stopPropagation();
-        deleteClub(c);
-      },
-      title: "Delete club",
-      className: "w-9 h-9 rounded-full text-slate-600 hover:text-rose-400 flex items-center justify-center shrink-0 transition-colors"
-    }, React.createElement("i", {
-      className: "fa-solid fa-trash text-xs"
-    })), React.createElement("div", {
-      className: "club-badge"
+      className: "club-card p-4 flex items-center gap-3.5"
+    }, c.logo ? React.createElement("img", {
+      src: c.logo,
+      alt: "",
+      className: "rounded-xl object-cover shrink-0",
+      style: {
+        width: 56,
+        height: 56,
+        border: '1px solid rgba(213,179,107,0.35)'
+      }
+    }) : React.createElement("div", {
+      className: "club-badge",
+      style: {
+        width: 56,
+        height: 56,
+        fontSize: 22
+      }
     }, (c.name || '?').trim().charAt(0)), React.createElement("div", {
-      className: "min-w-0"
+      className: "min-w-0 flex-1"
     }, React.createElement("div", {
       className: "text-white text-base truncate flex items-center gap-2",
       style: {
@@ -3512,18 +3519,36 @@ function ClubsView({
         fontWeight: 600
       }
     }, "Yours")), React.createElement("div", {
-      className: "text-[11px] mt-0.5",
+      className: "text-[11px] mt-1",
       style: {
         color: 'var(--pt-text-2)',
         fontWeight: 500
       },
       dir: "ltr"
-    }, "ID ", clubCode(c.id), " · Owner ", c.ownerName || '', m && m.status === 'approved' && (m.balance || 0) > 0 ? React.createElement("span", {
+    }, "ID ", clubCode(c.id), " · Owner ", c.ownerName || ''), m && m.status === 'approved' && (m.balance || 0) > 0 && React.createElement("div", {
+      className: "text-[11px] mt-0.5",
       style: {
         color: 'var(--pt-green)',
         fontWeight: 600
+      },
+      dir: "ltr"
+    }, React.createElement("i", {
+      className: "fa-solid fa-coins mr-1 opacity-70"
+    }), formatMoney(m.balance || 0))), React.createElement("div", {
+      className: "shrink-0 flex flex-col items-end gap-1.5"
+    }, action, (isOwner || god) && c.id !== 'main' && React.createElement("button", {
+      onClick: e => {
+        e.stopPropagation();
+        deleteClub(c);
+      },
+      title: "Delete club",
+      className: "text-slate-600 hover:text-rose-400 text-[10px] transition-colors",
+      style: {
+        fontWeight: 600
       }
-    }, " · ", formatMoney(m.balance || 0)) : ''))), action);
+    }, React.createElement("i", {
+      className: "fa-solid fa-trash mr-1"
+    }), "Delete")));
   };
   return React.createElement("div", {
     style: {
@@ -5454,6 +5479,36 @@ function BackofficeView({
   });
   const [rakeDraft, setRakeDraft] = useState(clubSettings.rakePct);
   const [clubNameDraft, setClubNameDraft] = useState('');
+  const uploadClubLogo = e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      const img = new Image();
+      img.onload = async () => {
+        const S = 128,
+          cv = document.createElement('canvas');
+        cv.width = S;
+        cv.height = S;
+        const ctx = cv.getContext('2d');
+        const side = Math.min(img.width, img.height);
+        ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, S, S);
+        const dataUrl = cv.toDataURL('image/jpeg', 0.85);
+        if (dataUrl.length > 60000) return showToast("Image too complex — try a simpler one", "error");
+        try {
+          await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+            logo: dataUrl
+          });
+          showToast("Club logo updated! 🖼️", "success");
+        } catch (err) {
+          showToast("Error saving logo", "error");
+        }
+      };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(file);
+    e.target.value = '';
+  };
   const [expFrom, setExpFrom] = useState('');
   const [expTo, setExpTo] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -5839,7 +5894,34 @@ function BackofficeView({
       }
     },
     className: "bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-6 py-3 rounded-xl font-bold shadow-lg"
-  }, "Change name")), React.createElement("div", {
+  }, "Change name"), React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Club logo"), React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, clubSettings?.logo && React.createElement("img", {
+    src: clubSettings.logo,
+    alt: "logo",
+    className: "w-12 h-12 rounded-xl object-cover border border-gold-400/40"
+  }), React.createElement("label", {
+    className: "bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-200 px-4 py-3 rounded-xl font-bold text-sm cursor-pointer"
+  }, React.createElement("i", {
+    className: "fa-solid fa-image mr-1.5 text-gold-400"
+  }), clubSettings?.logo ? 'Replace' : 'Upload', React.createElement("input", {
+    type: "file",
+    accept: "image/*",
+    className: "hidden",
+    onChange: e => uploadClubLogo(e)
+  })), clubSettings?.logo && React.createElement("button", {
+    onClick: async () => {
+      try {
+        await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+          logo: null
+        });
+        showToast("Logo removed", "info");
+      } catch (err) {}
+    },
+    className: "text-slate-500 hover:text-rose-400 text-xs font-bold underline"
+  }, "Remove")))), React.createElement("div", {
     className: "mb-4 pb-4 border-b border-white/5"
   }, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
@@ -11866,12 +11948,68 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
     } catch (e) {}
   }
 };
+const tourAutoFillBots = async tor => {
+  const need = (Number(tor.minPlayers) || 2) - Object.keys(tor.players || {}).length;
+  if (need <= 0) return;
+  try {
+    await window.fb.updateDoc(tRef(tor.id), {
+      botFillAt: Date.now()
+    });
+    const already = new Set(Object.keys(tor.players || {}));
+    const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));
+    let avail = (await window.fb.getDocs(botQ)).docs.map(d => ({
+      uid: d.id,
+      ...d.data()
+    })).filter(b => !already.has(b.uid) && b.botActive !== false);
+    for (let j = avail.length; j < need; j++) {
+      const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + Math.floor(Math.random() * 100000);
+      const ref = await window.fb.addDoc(window.fb.collection(window.fb.db, "users"), {
+        username: name,
+        email: `bot_${Date.now()}_${j}@pokerten.com`,
+        role: ROLES.PLAYER,
+        status: 'approved',
+        balance: 50000,
+        isBot: true,
+        managedGames: [],
+        stats: {
+          gamesPlayed: 0,
+          gamesWon: 0,
+          totalProfit: 0
+        }
+      });
+      avail.push({
+        uid: ref.id,
+        username: name,
+        avatarSeed: ref.id,
+        photo: ''
+      });
+    }
+    const upd = {};
+    avail.slice(0, need).forEach(b => {
+      upd[`players.${b.uid}`] = {
+        uid: b.uid,
+        name: b.username,
+        photo: b.photo || '',
+        avatarSeed: b.avatarSeed || b.uid,
+        isBot: true,
+        out: false,
+        rank: null,
+        bounties: 0,
+        paid: 0,
+        addon: false
+      };
+    });
+    await window.fb.updateDoc(tRef(tor.id), upd);
+  } catch (e) {}
+};
 const tourOrchestrate = async (tours, tables, rakePct) => {
   for (const tor of tours || []) {
     try {
       if (tor.status === 'reg' && tor.startAt && Date.now() >= tor.startAt) {
         if (Object.keys(tor.players || {}).length >= (Number(tor.minPlayers) || 2)) {
           await tourStart(tor);
+        } else if (tor.botFill && !tor.botFillAt) {
+          await tourAutoFillBots(tor);
         }
         continue;
       }
@@ -11961,7 +12099,8 @@ function TournamentsTab({
     paidPlaces: 3,
     payouts: [50, 30, 20],
     mysteryBounty: false,
-    mysteryRigId: ''
+    mysteryRigId: '',
+    botFill: false
   });
   const isGod = isGodUser(user);
   const isAll = game === 'all';
@@ -12006,6 +12145,7 @@ function TournamentsTab({
       addonLevel: isPoker ? Math.max(1, Number(opts.addonLevel) || 3) : 0,
       lateRegUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0,
       mttMode: isPoker ? !!opts.mttMode : false,
+      botFill: !!opts.botFill,
       startStack: isPoker ? Math.max(100, Number(opts.startStack) || 1000) : 1000,
       payouts: payoutsArr,
       creatorUid: user.uid,
@@ -12606,7 +12746,19 @@ function TournamentsTab({
     className: "accent-amber-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-amber-300 text-xs font-black"
-  }, "🏆 Real MTT engine (9-max final table)")), React.createElement("span", {
+  }, "🏆 Real MTT engine (9-max final table)")), React.createElement("label", {
+    className: "flex items-center gap-2 cursor-pointer mt-2"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: opts.botFill,
+    onChange: e => setOpts({
+      ...opts,
+      botFill: e.target.checked
+    }),
+    className: "accent-purple-500 w-4 h-4"
+  }), React.createElement("span", {
+    className: "text-purple-300 text-xs font-black"
+  }, "🤖 Auto-fill with bots at start time if below minimum")), React.createElement("span", {
     className: "text-[10px] text-sky-300 font-bold"
   }, "Late reg: until level ", opts.rebuyUntilLevel))), React.createElement("div", {
     className: "flex justify-between items-center pt-3 border-t border-white/5 flex-wrap gap-2"

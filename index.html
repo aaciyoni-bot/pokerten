@@ -6691,6 +6691,30 @@ function PokerTable({
   const [godHands, setGodHands] = useState({});
   const [godFinal, setGodFinal] = useState([]);
   useEffect(() => {
+    let lock = null,
+      released = false;
+    const acquire = async () => {
+      try {
+        if (!released && document.visibilityState === 'visible' && navigator.wakeLock) {
+          lock = await navigator.wakeLock.request('screen');
+        }
+      } catch (e) {}
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') acquire();
+    };
+    acquire();
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      released = true;
+      document.removeEventListener('visibilitychange', onVis);
+      try {
+        lock && lock.release();
+      } catch (e) {}
+      lock = null;
+    };
+  }, []);
+  useEffect(() => {
     if (!srvEngine) {
       setMyPrivCards([]);
       return;
@@ -8453,7 +8477,21 @@ function PokerTable({
   }, gs.lastWinners), (gs.lastWinAmount || 0) > 0 && React.createElement("div", {
     className: "text-amber-400 font-black text-lg",
     dir: "ltr"
-  }, "+", formatMoney(gs.lastWinAmount)))), displayList.map((p, i) => {
+  }, "+", formatMoney(gs.lastWinAmount)))), gs.dealerUid && (() => {
+    const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
+    if (di < 0) return null;
+    const ang = Math.PI / 2 + di * 2 * Math.PI / N;
+    const rx = 28,
+      ry = 26;
+    return React.createElement("div", {
+      className: "absolute z-30 w-6 h-6 rounded-full bg-white text-slate-900 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-slate-300",
+      style: {
+        left: `${50 + rx * Math.cos(ang)}%`,
+        top: `${50 + ry * Math.sin(ang)}%`,
+        transform: 'translate(-50%,-50%)'
+      }
+    }, "D");
+  })(), displayList.map((p, i) => {
     const isTurn = gs.activeTurnUid === p.uid && inBetting;
     const isMe = p.uid === user.uid;
     const topSeat = parseFloat(seatPos(i).top) < 34;
@@ -8580,9 +8618,7 @@ function PokerTable({
       strokeWidth: "3",
       strokeDasharray: `${113 * timerPct} 113`,
       strokeLinecap: "round"
-    }))), gs.dealerUid === p.uid && React.createElement("div", {
-      className: "absolute -left-3 top-0 w-5 h-5 rounded-full bg-white text-slate-900 text-[9px] font-black flex items-center justify-center shadow-lg border border-slate-300 z-30"
-    }, "D"), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
+    }))), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
       className: "absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30"
     }, "DC"), React.createElement("div", {
       className: "text-[10px] font-bold text-white mt-1 max-w-[70px] truncate text-center"

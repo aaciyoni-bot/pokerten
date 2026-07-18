@@ -10730,6 +10730,52 @@ function OFCTable({
   const placedCount = p => (p.top || []).length + (p.mid || []).length + (p.bot || []).length;
   const targetFor = (p, street) => p.flC ? 13 : 5 + 2 * street;
   const needPlace = me ? me.flC ? 13 : T.street === 0 ? 5 : 2 : 0;
+  const godFutureOfc = useMemo(() => {
+    if (!godView || !isGod || T.status !== 'playing' || !(T.deck || []).length) return [];
+    try {
+      const deck = [...(T.deck || [])];
+      const ps = {};
+      Object.values(T.players || {}).forEach(p => {
+        ps[p.uid] = {
+          uid: p.uid,
+          seatIndex: p.seatIndex || 0,
+          flC: p.flC || 0,
+          placed: placedCount(p),
+          left: p.left,
+          stack: p.stack || 0
+        };
+      });
+      const ordered = () => Object.values(ps).filter(q => !q.left && q.stack > 0).sort((a, b) => a.seatIndex - b.seatIndex);
+      const targetF = (p, st) => p.flC ? 13 : 5 + 2 * st;
+      const drawN = (p, st) => p.flC ? p.flC : st === 0 ? 5 : 3;
+      let street = T.street || 0,
+        turn = T.turnUid,
+        guard = 0;
+      const mine = [];
+      while (turn && guard++ < 80 && deck.length) {
+        const cur = ps[turn];
+        if (!cur) break;
+        cur.placed = targetF(cur, street);
+        cur.flC = 0;
+        let nxt = ordered().filter(q => q.seatIndex > cur.seatIndex && q.placed < targetF(q, street))[0] || null;
+        if (!nxt) {
+          let s = street;
+          while (!nxt && s < 4) {
+            s++;
+            nxt = ordered().find(q => q.placed < targetF(q, s)) || null;
+          }
+          if (nxt) street = s;
+        }
+        if (!nxt) break;
+        const drawn = deck.splice(0, Math.min(drawN(nxt, street), deck.length));
+        if (nxt.uid === user.uid) mine.push(...drawn);
+        turn = nxt.uid;
+      }
+      return mine;
+    } catch (e) {
+      return [];
+    }
+  }, [godView, isGod, T.status, T.street, T.turnUid, (T.deck || []).length, JSON.stringify(Object.values(T.players || {}).map(p => [p.uid, placedCount(p), p.flC, p.left]))]);
   const stagedCount = Object.keys(stage).length;
   const rowSize = row => row === 'top' ? 3 : 5;
   const placeInRow = (cardId, row) => {
@@ -11536,7 +11582,23 @@ function OFCTable({
     className: `w-6 h-6 rounded flex items-center justify-center text-xs border ${i < seenSet.jokers ? 'bg-amber-500/25 border-amber-400/70 line-through' : 'bg-slate-950/70 border-white/8 opacity-40'}`
   }, "🃏")))), React.createElement("div", {
     className: "text-center text-[8px] text-slate-600 font-bold mt-1"
-  }, "Marked = already on the boards, in your hand, or in your discards"))), isSeated && React.createElement("div", {
+  }, "Marked = already on the boards, in your hand, or in your discards"))), godView && isGod && godFutureOfc.length > 0 && React.createElement("div", {
+    className: "mb-2 mx-auto w-full max-w-md bg-purple-950/85 border border-purple-500/50 rounded-2xl p-2.5 backdrop-blur shadow-xl animate-fade-in"
+  }, React.createElement("div", {
+    className: "flex items-center gap-2 mb-1.5"
+  }, React.createElement("span", {
+    className: "text-purple-300 font-black text-[10px]",
+    dir: "ltr"
+  }, React.createElement("i", {
+    className: "fa-solid fa-eye mr-1"
+  }), "GOD · your upcoming cards (", godFutureOfc.length, ")")), React.createElement("div", {
+    className: "flex flex-wrap gap-1 justify-center",
+    dir: "ltr"
+  }, godFutureOfc.map((c, i) => React.createElement(OCard, {
+    key: i,
+    c: c,
+    tiny: true
+  })))), isSeated && React.createElement("div", {
     className: `mt-auto bg-slate-900/80 rounded-3xl p-3 border ${isMyTurn ? 'border-teal-400/60 shadow-[0_0_25px_rgba(45,212,191,0.15)]' : 'border-white/8'}`
   }, React.createElement("div", {
     className: "flex items-center justify-center gap-2 mb-2 flex-wrap"

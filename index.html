@@ -2390,6 +2390,10 @@
             const [durakOpts, setDurakOpts] = useState({ deckSize: 36, variant: 'podkidnoy', buyIn: 500, maxPlayers: 4, bluff: false });
 
             const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+            const [pokFilter, setPokFilter] = useState('all'); // all | <variant> | tours
+            const variantsOpen = [...new Set(pokerTables.map(t => (t.settings || {}).baseGameType || 'NLH'))];
+            const shownPoker = pokFilter === 'all' ? pokerTables : pokFilter === 'tours' ? [] : pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === pokFilter);
+            const showPokerTours = pokFilter === 'all' || pokFilter === 'tours';
             const durakTables = tables.filter(t => t.type === 'durak' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
             const ofcTables = tables.filter(t => t.type === 'ofc' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
             const [showCreateOfc, setShowCreateOfc] = useState(false);
@@ -2747,16 +2751,24 @@
 
                         {tab === 'poker' && (
                             <div className="animate-fade-in">
-                                <div className="flex justify-between items-center mb-5">
-                                    <h2 className="text-xl font-black text-white">Tables Poker</h2>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h2 className="text-xl font-black text-white">Poker</h2>
                                     {canManageGame(user, 'poker') && (
                                         <button onClick={onCreatePoker} className="bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(245,158,11,0.3)] text-sm">
                                             <i className="fa-solid fa-plus ml-2"></i>New table
                                         </button>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                    {pokerTables.map(t => {
+                                {/* Subtle variant filter — pick All / a variant (in its color) / Tournaments, so you don't scroll past 100 tables */}
+                                <div className="flex items-center gap-1.5 mb-5 flex-wrap">
+                                    <button onClick={() => setPokFilter('all')} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors ${pokFilter === 'all' ? 'bg-white/15 border-white/40 text-white' : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}>All</button>
+                                    {variantsOpen.map(v => { const vs = variantStyle(v); const active = pokFilter === v; return (
+                                        <button key={v} onClick={() => setPokFilter(v)} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors ${active ? vs.chip : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}>{variantLabel(v)}</button>
+                                    ); })}
+                                    <button onClick={() => setPokFilter('tours')} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors ${pokFilter === 'tours' ? 'bg-amber-500/20 border-amber-400/60 text-amber-200' : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}><i className="fa-solid fa-trophy text-[10px] ml-1"></i>Tournaments</button>
+                                </div>
+                                {pokFilter !== 'tours' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                    {shownPoker.map(t => {
                                         const s = t.settings || {};
                                         const gt = s.baseGameType || 'NLH';
                                         const vs = variantStyle(gt);
@@ -2789,10 +2801,10 @@
                                             </div>
                                         );
                                     })}
-                                    {pokerTables.length === 0 && <div className="col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed">No open Poker tables.</div>}
-                                </div>
-                                <div className="border-t border-white/5 my-8"></div>
-                                <TournamentsTab game="poker" user={user} tournaments={tournaments} tables={tables} clubSettings={clubSettings} showToast={showToast} onJoinTable={onJoinPoker} />
+                                    {shownPoker.length === 0 && <div className="col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed">No open {pokFilter === 'all' ? 'Poker' : variantLabel(pokFilter)} tables.</div>}
+                                </div>}
+                                {showPokerTours && <div className="border-t border-white/5 my-8"></div>}
+                                {showPokerTours && <TournamentsTab game="poker" user={user} tournaments={tournaments} tables={tables} clubSettings={clubSettings} showToast={showToast} onJoinTable={onJoinPoker} />}
                             </div>
                         )}
 

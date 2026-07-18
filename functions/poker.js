@@ -297,7 +297,7 @@ function finishEarlyWin(t, g, pl, winnerUid) {
   g.lastWinAmount = round2(pot - rake);
   g.lastWinners = pl[winnerUid].name;
   g.showdownAt = Date.now();
-  return {rake, participants: Object.values(pl).filter((q) => (q.cardCount || 0) > 0).map((q) => q.uid)};
+  return {rake, g, participants: Object.values(pl).filter((q) => (q.cardCount || 0) > 0).map((q) => q.uid)};
 }
 
 function runShowdown(t, g, pl, hands) {
@@ -325,7 +325,7 @@ function runShowdown(t, g, pl, hands) {
   g.showdownAt = Date.now();
   // showdown is public: reveal every remaining hand in the public doc
   acts.forEach((p) => { pl[p.uid].cards = hands[p.uid] || []; });
-  return {rake: rakeTotal, participants: Object.values(pl).filter((q) => (q.cardCount || 0) > 0).map((q) => q.uid)};
+  return {rake: rakeTotal, g, participants: Object.values(pl).filter((q) => (q.cardCount || 0) > 0).map((q) => q.uid)};
 }
 
 function dealBoard(g, deck, n) {
@@ -504,7 +504,19 @@ async function dealHand(tableId, chosenType) {
 async function afterFinish(tableId, t, finish, plAfter, eng) {
   if (!finish) return;
   markBusted(plAfter);
-  await tRef(tableId).update({players: plAfter}).catch(() => {});
+  // Hand history — muck-safe by construction: plAfter[uid].cards is only populated for
+  // hands made public (showdown/all-in/voluntary reveal); everyone else stores a count only.
+  const g2 = finish.g || {};
+  const histEntry = {
+    at: Date.now(), game: g2.currentGameType || "NLH", board: g2.board || [],
+    rake: finish.rake || 0, amount: g2.lastWinAmount || 0, winners: g2.lastWinners || "",
+    ps: Object.values(plAfter).filter((q) => (q.cardCount || 0) > 0).map((q) => ({
+      n: q.name || "", c: (q.cards && q.cards.length) ? q.cards : null, cc: q.cardCount || 0,
+      w: q.actionText === "WINNER", f: q.status === "folded",
+    })),
+  };
+  const hist = [...(t.history || []), histEntry].slice(-100);
+  await tRef(tableId).update({players: plAfter, history: hist}).catch(() => {});
   if (t.tournamentId) {
     const winnersUids = Object.values(plAfter).filter((q) => q.actionText === "WINNER").map((q) => q.uid);
     await tourAfterHand(tableId, t, plAfter, winnersUids);

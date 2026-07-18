@@ -4229,7 +4229,8 @@
                 const histT = tableRef.current;
                 const histEntry = {
                     at: Date.now(), game: g.currentGameType, board: g.board || [], rake, amount: round2(pot - rake), winners: pl[winnerUid].name,
-                    ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({ n: q.name, c: q.cards, w: q.uid === winnerUid, f: q.status === 'folded' }))
+                    // Muck integrity: unrevealed cards are NOT stored — the doc is readable by every client
+                    ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({ n: q.name, c: q.reveal ? q.cards : null, cc: (q.cards || []).length, w: q.uid === winnerUid, f: q.status === 'folded' }))
                 };
                 await saveGame(g, pl, { history: [...((histT && histT.history) || []), histEntry].slice(-100), ...tourExtra });
                 distributeRake(rake, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
@@ -4274,7 +4275,7 @@
                 const histT = tableRef.current;
                 const histEntry = {
                     at: Date.now(), game: g.currentGameType, board: g.board || [], rake: rakeTotal, amount: winTotal, winners: g.lastWinners,
-                    ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({ n: q.name, c: q.cards, w: winnerNames.has(q.name), f: q.status === 'folded' }))
+                    ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({ n: q.name, c: (q.status === 'active' || q.reveal) ? q.cards : null, cc: (q.cards || []).length, w: winnerNames.has(q.name), f: q.status === 'folded' }))
                 };
                 await saveGame(g, pl, { history: [...((histT && histT.history) || []), histEntry].slice(-100), ...tourExtra });
                 distributeRake(rakeTotal, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
@@ -5220,8 +5221,17 @@
             const godBestUid = (() => {
                 if (!godView) return null;
                 const board = gs.board || [];
-                if (board.length < 3 || gs.phase === 'waiting') return null;
+                if (gs.phase === 'waiting' || gs.phase === 'showdown' && !gs.lastWinners) return null;
+                const preflop = board.length < 3;
                 const isOmaha = (gs.currentGameType || '').startsWith('Omaha');
+                // Preflop: rank by hole-card strength (pairs, then high cards) so GOD sees the favorite from the deal
+                const preScore = (cards) => {
+                    const V = { '2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14 };
+                    const vs = cards.map(c => V[c.val]).sort((a,b) => b-a);
+                    const cnt = {}; vs.forEach(v => cnt[v] = (cnt[v]||0)+1);
+                    const pairs = Object.entries(cnt).filter(([,c]) => c >= 2).map(([v]) => Number(v)).sort((a,b) => b-a);
+                    return pairs.length ? 1000000 + pairs[0]*10000 + (vs[0]||0) : (vs[0]||0)*10000 + (vs[1]||0)*100 + (vs[2]||0);
+                };
                 let best = -1, uid = null, tie = false;
                 Object.values(players).forEach(p => {
                     const cardsOf = srvEngine ? ((p.cards || []).length ? p.cards : (godHands[p.uid] || [])) : (p.cards || []);
@@ -5229,7 +5239,8 @@
                     p = { ...p, cards: cardsOf };
                     let sc = 0;
                     try {
-                        if (isOmaha) {
+                        if (preflop) sc = preScore(p.cards);
+                        else if (isOmaha) {
                             getCombinations(p.cards, 2).forEach(h => getCombinations(board, 3).forEach(b => { const v = evaluate5Cards([...h, ...b]); if (v > sc) sc = v; }));
                         } else {
                             getCombinations([...p.cards, ...board], 5).forEach(c => { const v = evaluate5Cards(c); if (v > sc) sc = v; });
@@ -5616,7 +5627,7 @@
                                                         {(h.ps || []).map((q, qi) => (
                                                             <div key={qi} className={`flex items-center justify-between bg-slate-950/60 rounded-lg px-2 py-1.5 ${q.f ? 'opacity-45' : ''}`}>
                                                                 <span className="text-[11px] font-bold text-white">{q.w ? '🏆 ' : ''}{q.n}{q.f ? ' (discarded)' : ''}</span>
-                                                                <div className="flex gap-0.5" dir="ltr">{(q.c || []).map((c, ci) => <PCard key={ci} card={c} size="sm" />)}</div>
+                                                                <div className="flex gap-0.5" dir="ltr">{(q.c && q.c.length) ? q.c.map((c, ci) => <PCard key={ci} card={c} size="sm" />) : Array.from({ length: q.cc || 2 }).map((_, ci) => <PCard key={ci} card={{ val: '', suit: '♠' }} hidden={true} size="sm" />)}</div>
                                                             </div>
                                                         ))}
                                                     </div>

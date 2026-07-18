@@ -5946,6 +5946,30 @@ function BackofficeView({
   }, "Remove")))), React.createElement("div", {
     className: "mb-4 pb-4 border-b border-white/5"
   }, React.createElement("label", {
+    className: "flex items-center gap-2.5 cursor-pointer"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: clubSettings?.botsAuto === true,
+    onChange: async e => {
+      try {
+        await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+          botsAuto: e.target.checked
+        }, {
+          merge: true
+        });
+        showToast(e.target.checked ? "Automatic bots enabled 🤖" : "Automatic bots blocked — bots enter only when you add them manually", "success");
+      } catch (err) {
+        showToast("Error", "error");
+      }
+    },
+    className: "accent-purple-500 w-4 h-4"
+  }), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "🤖 Allow automatic bot entry ", React.createElement("span", {
+    className: "text-slate-500 text-xs"
+  }, "(tournament auto-fill; off = bots only when added manually)")))), React.createElement("div", {
+    className: "mb-4 pb-4 border-b border-white/5"
+  }, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "📣 Pop-up message to all club members"), React.createElement("div", {
     className: "flex gap-2 items-start flex-wrap"
@@ -12300,6 +12324,8 @@ const tourAutoFillBots = async tor => {
   const need = (Number(tor.minPlayers) || 2) - Object.keys(tor.players || {}).length;
   if (need <= 0) return;
   try {
+    const clubSnap = await window.fb.getDoc(window.fb.doc(window.fb.db, "clubs", tor.clubId || CLUB_ID));
+    if (!clubSnap.exists() || clubSnap.data().botsAuto !== true) return;
     await window.fb.updateDoc(tRef(tor.id), {
       botFillAt: Date.now()
     });

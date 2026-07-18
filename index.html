@@ -5468,8 +5468,10 @@
                                                 const nC = dispCards.length;
                                                 const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
                                                 const midC = (nC - 1) / 2;
-                                                const ovl = isMe ? (nC > 4 ? -14 : -8) : (nC > 4 ? -13 : -9);
-                                                const ang = isMe ? (nC > 4 ? 6 : 5) : (nC > 4 ? 8 : 7);
+                                                // fewer cards → looser/roomier; more cards → tighter overlap so all fit
+                                                // on the narrow mobile edges and every card's corner stays visible.
+                                                const ovl = isMe ? (nC >= 5 ? -26 : nC === 4 ? -22 : -16) : (nC >= 5 ? -18 : nC === 4 ? -15 : -11);
+                                                const ang = isMe ? (nC >= 5 ? 5 : 6) : (nC >= 5 ? 6 : 7);
                                                 return (
                                                 <div className={`flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : (isMe ? 'gap-1' : 'gap-0.5')}`} dir="ltr">
                                                     {dispCards.map((c, ci) => (
@@ -5509,8 +5511,8 @@
                                                 const nC = dispCards.length;
                                                 const doFan = nC >= 3;
                                                 const midC = (nC - 1) / 2;
-                                                const ovl = nC > 4 ? -13 : -9;
-                                                const ang = nC > 4 ? 8 : 7;
+                                                const ovl = nC >= 5 ? -18 : nC === 4 ? -15 : -11;
+                                                const ang = nC >= 5 ? 6 : 7;
                                                 return (
                                                 <div className={`flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`} dir="ltr">
                                                     {dispCards.map((c, ci) => (

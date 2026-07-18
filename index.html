@@ -5473,11 +5473,22 @@
                                             <div className="text-[10px] font-bold text-white mt-1 max-w-[70px] truncate text-center">{isMe ? 'You' : p.name}</div>
                                             <div className="stack-capsule text-gold-400 font-black text-[11px]" dir="ltr">{formatShort(p.stack)}</div>
 
-                                            {showCards && !isMe && topSeat && (
-                                                <div className="flex gap-0.5 mt-1 z-20" dir="ltr">
-                                                    {p.cards.map((c, ci) => <PCard key={ci} card={c} hidden={hidden} size="sm" />)}
+                                            {showCards && !isMe && topSeat && (() => {
+                                                const nC = dispCards.length;
+                                                const doFan = nC >= 3;
+                                                const midC = (nC - 1) / 2;
+                                                const ovl = nC > 4 ? -13 : -9;
+                                                const ang = nC > 4 ? 8 : 7;
+                                                return (
+                                                <div className={`flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`} dir="ltr">
+                                                    {dispCards.map((c, ci) => (
+                                                        doFan
+                                                        ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(midC - ci) * ang}deg) translateY(${-Math.abs(ci - midC) * 2.5}px)`, transformOrigin: '50% -15%', zIndex: ci }}><PCard card={c} hidden={hidden} size="sm" /></span>
+                                                        : <PCard key={ci} card={c} hidden={hidden} size="sm" />
+                                                    ))}
                                                 </div>
-                                            )}
+                                                );
+                                            })()}
                                             {isMe && showCards && !gs.allInReveal && (myHand || myEquity !== null) && gs.phase !== 'showdown' && (
                                                 <div className="flex gap-1 mt-1 z-30">
                                                     {myHand && <span className="bg-slate-950/90 border border-white/15 text-white text-[10px] font-black px-2 py-0.5 rounded-md whitespace-nowrap">{myHand}</span>}

@@ -4460,6 +4460,10 @@
             };
 
             const selectDCGame = async (gameType, byUid = user.uid) => {
+                if (setts.serverEngine) {
+                    if (byUid === user.uid) { try { await window.fb.fx('pkPickGame', { tableId: tableDocId, gameType }); } catch(e) {} }
+                    return;
+                }
                 const t = tableRef.current; if (!t) return;
                 const g = t.gameState;
                 if (g.phase !== 'dc_selection' || g.dcUid !== byUid) return;
@@ -4467,6 +4471,10 @@
             };
 
             const handleDiscardCard = async (uid, cardIdx) => {
+                if (setts.serverEngine) {
+                    if (uid === user.uid) { try { await window.fb.fx('pkDiscard', { tableId: tableDocId, index: cardIdx }); } catch(e) {} }
+                    return;
+                }
                 const t = tableRef.current; if (!t) return;
                 const g = { ...t.gameState };
                 if (g.phase !== 'discard') return;
@@ -8268,6 +8276,20 @@
                                             {tor.status === 'reg' && me && <button onClick={() => tourUnregister(tor, user, showToast)} className="flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-2.5 rounded-xl font-bold text-sm border border-white/10">Registered ✓ · Unregister</button>}
                                             {tor.status === 'running' && !me && tourLateRegOpen(tor) && <button onClick={() => tourRegister(tor, user, showToast)} className="flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg">Late register ({formatMoney(tourEntryOf(tor))})</button>}
                                             {myTable && <button onClick={() => onJoinTable(myTable)} className="flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg animate-pulse">🎲 To my table!</button>}
+                                            {tor.status === 'running' && !myTable && (() => {
+                                                const torTables = (tables || []).filter(tb => tb.tournamentId === tor.id);
+                                                if (!torTables.length) return null;
+                                                return (
+                                                    <div className="w-full flex flex-wrap gap-1.5 items-center mt-1">
+                                                        <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">👁 Watch:</span>
+                                                        {torTables.map((tb, ti) => (
+                                                            <button key={tb.docId} onClick={() => onJoinTable(tb)} className="text-[11px] bg-slate-800/80 hover:bg-slate-700 border border-white/10 text-slate-200 px-2.5 py-1 rounded-lg font-bold">
+                                                                Table {ti + 1} · {Object.values(tb.players || {}).filter(q => (q.stack || 0) > 0).length}<i className="fa-solid fa-user text-[8px] ml-1 opacity-60"></i>{tb.tournament && tb.tournament.final ? ' 🏆' : ''}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })()}
                                             {tor.status === 'running' && me && me.out && <span className="flex-1 text-center py-2.5 text-rose-300 font-bold text-sm">Busted — place {me.rank}</span>}
                                             {tor.status === 'done' && (tor.results || []).length > 0 && <button onClick={() => setChampTor(tor)} className="flex-1 ft-btn py-2.5 rounded-xl font-black text-sm">🏆 Final Table · Champions</button>}
                                         </div>

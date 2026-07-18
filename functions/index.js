@@ -171,3 +171,5 @@ exports.pkAct = poker.pkAct;
 exports.pkTick = poker.pkTick;
 exports.pkReveal = poker.pkReveal;
 exports.godPeek = poker.godPeek;
+exports.pkDiscard = poker.pkDiscard;
+exports.pkPickGame = poker.pkPickGame;

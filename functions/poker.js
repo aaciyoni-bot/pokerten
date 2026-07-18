@@ -34,7 +34,7 @@ async function isGod(auth) {
 // ── Cards ──
 const SUITS = ["♠", "♥", "♦", "♣"];
 const CARD_VALUES = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
-const GAME_CARDS = {"NLH": 2, "Omaha 4": 4, "Omaha 5": 5, "Omaha 6": 6};
+const GAME_CARDS = {"NLH": 2, "Pineapple": 3, "Omaha 4": 4, "Omaha 5": 5, "Omaha 6": 6};
 
 function pokerDeck() {
   const deck = [];
@@ -252,7 +252,15 @@ function advancePhase(t, g, pl, eng) {
   g.highestBet = 0;
   g.minRaise = round2((Number((t.settings || {}).blinds) || 0.5) * 2);
   const deck = eng.deck;
-  if (g.phase === "preflop") { dealBoard(g, deck, 3); g.phase = "flop"; }
+  if (g.phase === "preflop") {
+    dealBoard(g, deck, 3);
+    if (g.currentGameType === "Pineapple" && !g.allInReveal) {
+      // Pineapple: every active player throws one of their 3 cards before flop betting
+      const needs = activesOf(pl).some((p) => ((eng.hands || {})[p.uid] || []).length === 3);
+      if (needs) { g.phase = "discard"; g.activeTurnUid = null; g.turnStartedAt = Date.now(); return null; }
+    }
+    g.phase = "flop";
+  } else if (g.phase === "discard") { g.phase = "flop"; }
   else if (g.phase === "flop") { dealBoard(g, deck, 1); g.phase = "turn"; }
   else if (g.phase === "turn") { dealBoard(g, deck, 1); g.phase = "river"; }
   else if (g.phase === "river") return runShowdown(t, g, pl, eng.hands);
@@ -315,7 +323,7 @@ function markBusted(pl) {
 }
 
 // ── Deal a fresh hand (internal; caller must hold nothing — runs its own tx) ──
-async function dealHand(tableId) {
+async function dealHand(tableId, chosenType) {
   let finishInfo = null;
   await db.runTransaction(async (tx) => {
     const tS = await tx.get(tRef(tableId));
@@ -333,7 +341,33 @@ async function dealHand(tableId) {
     });
     const acts = activesOf(pl);
     if (acts.length < 2) { tx.update(tRef(tableId), {players: pl, "gameState.phase": "waiting", "gameState.activeTurnUid": null}); return; }
-    const gameType = s.baseGameType || "NLH";
+    let gameType = chosenType || g0.currentGameType || s.baseGameType || "NLH";
+    if (!GAME_CARDS[gameType]) gameType = s.baseGameType || "NLH";
+    // Dealer's Choice: the choosing seat rotates backwards; when it's the dealer's
+    // pick and no game was chosen yet this hand → pause in dc_selection.
+    if (s.isDealerChoice) {
+      const uids = acts.map((p) => p.uid);
+      const prevSeat0 = (pl[g0.dealerUid] || {}).seatIndex ?? -1;
+      const ord0 = acts.filter((p) => p.seatIndex > prevSeat0).concat(acts.filter((p) => p.seatIndex <= prevSeat0));
+      const nextDealerUid = ord0[0].uid;
+      let dcUid = g0.dcUid || null;
+      let dcAnchor = g0.dcAnchor || null;
+      if (!dcUid || uids.indexOf(dcUid) === -1 || !dcAnchor || uids.indexOf(dcAnchor) === -1) {
+        dcAnchor = nextDealerUid;
+        dcUid = uids[(uids.indexOf(nextDealerUid) - 1 + uids.length) % uids.length];
+      } else if (nextDealerUid === dcAnchor) {
+        dcUid = uids[(uids.indexOf(dcUid) - 1 + uids.length) % uids.length];
+      }
+      if (nextDealerUid === dcUid && !chosenType) {
+        tx.update(tRef(tableId), {players: pl, gameState: {
+          ...g0, phase: "dc_selection", dealerUid: nextDealerUid, dcUid, dcAnchor,
+          board: [], pots: [], activeTurnUid: null, turnStartedAt: Date.now(),
+          lastWinners: null, lastWinAmount: 0, allInReveal: false, earlyWin: false,
+        }});
+        return;
+      }
+      g0.dcUid = dcUid; g0.dcAnchor = dcAnchor;
+    }
     const nCards = GAME_CARDS[gameType] || 2;
     const deck = pokerDeck();
     const hands = {};
@@ -354,7 +388,7 @@ async function dealHand(tableId) {
     post(sbP, sb, "SB"); post(bbP, bb, "BB");
     const g = {
       phase: "preflop", deck: [], board: [], pots: [], highestBet: bb, minRaise: bb,
-      dealerUid: dealer.uid, dcUid: null, dcAnchor: null, currentGameType: gameType,
+      dealerUid: dealer.uid, dcUid: g0.dcUid || null, dcAnchor: g0.dcAnchor || null, currentGameType: gameType,
       activeTurnUid: firstUid, turnStartedAt: Date.now(), lastWinners: null, lastWinAmount: 0,
       allInReveal: false, earlyWin: false, showdownAt: null,
     };
@@ -502,6 +536,37 @@ exports.pkTick = onCall(async (request) => {
     if (ready.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } }
     return {ok: true};
   }
+  // Dealer's Choice pick stalled (bot chooser or 25s human timeout) → default game
+  if (g.phase === "dc_selection") {
+    const stuck = Date.now() - (g.turnStartedAt || 0);
+    const chooser = pl[g.dcUid];
+    if (chooser && (chooser.isBot || stuck > 25000)) {
+      try { await dealHand(tableId, s.baseGameType || "NLH"); } catch (e) { /* raced */ }
+    }
+    return {ok: true};
+  }
+  // Pineapple discard: bots throw after ~1.5s; humans time out at 25s
+  if (g.phase === "discard") {
+    const stuck = Date.now() - (g.turnStartedAt || 0);
+    let out = null;
+    try {
+      out = await engineStep(tableId, (t2, g2, pl2, eng) => {
+        if (g2.phase !== "discard") return null;
+        for (const p of activesOf(pl2)) {
+          const h = ((eng.hands || {})[p.uid] || []);
+          if (h.length !== 3) continue;
+          if (p.isBot ? stuck > 1500 : stuck > 25000) applyDiscard(t2, g2, pl2, eng, p.uid, crypto.randomInt(3));
+        }
+        return null;
+      });
+    } catch (e) { /* raced */ }
+    if (out && out.eng && out.eng.dirtyPriv) {
+      for (const duid of [...new Set(out.eng.dirtyPriv)]) {
+        await pRef(tableId, duid).set({cards: out.eng.hands[duid], at: Date.now()}).catch(() => {});
+      }
+    }
+    return {ok: true};
+  }
   if (!BETTING.includes(g.phase) || !g.activeTurnUid) return {ok: true};
 
   const actor = pl[g.activeTurnUid];
@@ -539,6 +604,51 @@ exports.pkTick = onCall(async (request) => {
       });
     } catch (e) { /* raced */ }
   }
+  return {ok: true};
+});
+
+// Pineapple: apply one discard for uid; when everyone is down to 2 cards, resume flop betting.
+function applyDiscard(t, g, pl, eng, uid, index) {
+  if (g.phase !== "discard") throw new HttpsError("failed-precondition", "Not discard time");
+  const hand = (eng.hands || {})[uid] || [];
+  if (hand.length !== 3) return null; // already discarded (or not in hand)
+  const idx = Math.max(0, Math.min(2, Number(index) || 0));
+  hand.splice(idx, 1);
+  eng.hands[uid] = hand;
+  if (pl[uid]) pl[uid].cardCount = 2;
+  eng.dirtyPriv = eng.dirtyPriv || [];
+  eng.dirtyPriv.push(uid);
+  const pending = activesOf(pl).some((p) => ((eng.hands || {})[p.uid] || []).length === 3);
+  if (!pending) {
+    g.phase = "flop";
+    g.activeTurnUid = firstAfterDealer(g, pl);
+    g.turnStartedAt = Date.now();
+  }
+  return null;
+}
+
+exports.pkDiscard = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in");
+  const {tableId, index} = request.data || {};
+  if (!tableId) throw new HttpsError("invalid-argument", "Missing tableId");
+  const out = await engineStep(tableId, (t, g, pl, eng) => applyDiscard(t, g, pl, eng, uid, index));
+  if (out && out.eng && (out.eng.dirtyPriv || []).includes(uid)) {
+    await pRef(tableId, uid).set({cards: out.eng.hands[uid], at: Date.now()}).catch(() => {});
+  }
+  return {ok: true};
+});
+
+exports.pkPickGame = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in");
+  const {tableId, gameType} = request.data || {};
+  if (!tableId || !gameType) throw new HttpsError("invalid-argument", "Missing args");
+  const tS = await tRef(tableId).get();
+  if (!tS.exists) throw new HttpsError("not-found", "Table gone");
+  const g = (tS.data().gameState || {});
+  if (g.phase !== "dc_selection" || g.dcUid !== uid) throw new HttpsError("permission-denied", "Not your pick");
+  await dealHand(tableId, String(gameType));
   return {ok: true};
 });
 

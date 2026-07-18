@@ -6429,7 +6429,7 @@ function PokerCreateView({
     maxBuyInBB: 200,
     leaveNoticeMins: 0,
     leaveNoticeBB: 0,
-    serverEngine: false,
+    serverEngine: true,
     rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT,
     autoStart: 2,
     straddle: false,
@@ -11876,7 +11876,8 @@ const tourSeedRound = async (tor, uids, round) => {
         rakePercent: 0,
         autoStart: 2,
         straddle: false,
-        ante: 0
+        ante: 0,
+        serverEngine: !!tor.serverEngine
       },
       players,
       chat: [],
@@ -12297,6 +12298,13 @@ const tourOrchestrate = async (tours, tables, rakePct) => {
       }
       if (tor.status !== 'running') continue;
       const myTables = (tables || []).filter(tb => tb.tournamentId === tor.id);
+      myTables.filter(tb => (tb.settings || {}).serverEngine).forEach(tb => {
+        try {
+          window.fb.fx('pkTick', {
+            tableId: tb.docId
+          }).catch(() => {});
+        } catch (e) {}
+      });
       if (tor.mttMode) {
         await mttOrchestrate(tor, myTables, rakePct);
         continue;
@@ -12382,7 +12390,8 @@ function TournamentsTab({
     payouts: [50, 30, 20],
     mysteryBounty: false,
     mysteryRigId: '',
-    botFill: false
+    botFill: false,
+    serverEngine: true
   });
   const isGod = isGodUser(user);
   const isAll = game === 'all';
@@ -12427,6 +12436,7 @@ function TournamentsTab({
       addonLevel: isPoker ? Math.max(1, Number(opts.addonLevel) || 3) : 0,
       lateRegUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0,
       mttMode: isPoker ? !!opts.mttMode : false,
+      serverEngine: isPoker ? !!opts.serverEngine : false,
       botFill: !!opts.botFill,
       startStack: isPoker ? Math.max(100, Number(opts.startStack) || 1000) : 1000,
       payouts: payoutsArr,
@@ -13040,7 +13050,19 @@ function TournamentsTab({
     className: "accent-purple-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-purple-300 text-xs font-black"
-  }, "🤖 Auto-fill with bots at start time if below minimum")), React.createElement("span", {
+  }, "🤖 Auto-fill with bots at start time if below minimum")), React.createElement("label", {
+    className: "flex items-center gap-2 cursor-pointer mt-2"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: opts.serverEngine,
+    onChange: e => setOpts({
+      ...opts,
+      serverEngine: e.target.checked
+    }),
+    className: "accent-emerald-500 w-4 h-4"
+  }), React.createElement("span", {
+    className: "text-emerald-300 text-xs font-black"
+  }, "🔒 Server-secured engine (cards dealt on the server)")), React.createElement("span", {
     className: "text-[10px] text-sky-300 font-bold"
   }, "Late reg: until level ", opts.rebuyUntilLevel))), React.createElement("div", {
     className: "flex justify-between items-center pt-3 border-t border-white/5 flex-wrap gap-2"

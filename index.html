@@ -2439,7 +2439,9 @@
 
             const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
             const [pokFilter, setPokFilter] = useState('all'); // all | <variant> | tours
-            const variantsOpen = [...new Set(pokerTables.map(t => (t.settings || {}).baseGameType || 'NLH'))];
+            // Always show the full variant set (incl. all Omaha types) so players can filter by any game, even with no open table right now
+            const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
+            const variantCount = (v) => pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === v).length;
             const shownPoker = pokFilter === 'all' ? pokerTables : pokFilter === 'tours' ? [] : pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === pokFilter);
             const showPokerTours = pokFilter === 'all' || pokFilter === 'tours';
             const durakTables = tables.filter(t => t.type === 'durak' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
@@ -2805,8 +2807,8 @@
                                 {/* Subtle variant filter — pick All / a variant (in its color) / Tournaments, so you don't scroll past 100 tables */}
                                 <div className="flex items-center gap-1.5 mb-5 flex-wrap">
                                     <button onClick={() => setPokFilter('all')} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors ${pokFilter === 'all' ? 'bg-white/15 border-white/40 text-white' : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}>All</button>
-                                    {variantsOpen.map(v => { const vs = variantStyle(v); const active = pokFilter === v; return (
-                                        <button key={v} onClick={() => setPokFilter(v)} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors ${active ? vs.chip : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}>{variantLabel(v)}</button>
+                                    {ALL_POKER_VARIANTS.map(v => { const vs = variantStyle(v); const active = pokFilter === v; const n = variantCount(v); return (
+                                        <button key={v} onClick={() => setPokFilter(v)} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors flex items-center gap-1 ${active ? vs.chip : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}>{variantLabel(v)}{n > 0 && <span className="text-[9px] bg-white/10 rounded-full px-1.5">{n}</span>}</button>
                                     ); })}
                                     <button onClick={() => setPokFilter('tours')} className={`px-3 py-1 rounded-lg font-black text-xs border transition-colors ${pokFilter === 'tours' ? 'bg-amber-500/20 border-amber-400/60 text-amber-200' : 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white'}`}><i className="fa-solid fa-trophy text-[10px] ml-1"></i>Tournaments</button>
                                 </div>

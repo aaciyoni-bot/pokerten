@@ -1047,10 +1047,30 @@
                 setTimeout(() => setChatOpen(false), 1600);
             };
             const toggleTableMute = async () => { if (!canModerate) return; try { await window.fb.updateDoc(ref(), { chatMuted: !chatMuted }); } catch(e) {} };
-            return { chatArr, chatOpen, setChatOpen, bubbles, gifts, sendChat, mutedUids, toggleMuteUid, chatMuted, canModerate, toggleTableMute };
+            // Floor call: bypasses chat mute (a player must always be able to reach the manager). 1/min per player.
+            const callFloor = async () => {
+                const lastCall = [...rawChat].reverse().find(m => m.uid === user.uid && m.floor);
+                if (lastCall && Date.now() - lastCall.at < 60000) { showToast("Floor already called — hold on, a manager is on the way", "info"); return; }
+                const msg = { uid: user.uid, name: user.username, text: '', emoji: '', gift: '', giftE: '', to: '', floor: true, at: Date.now() };
+                try { await window.fb.updateDoc(ref(), { chat: [...rawChat, msg].slice(-40), floorCall: { uid: user.uid, name: user.username, at: Date.now() } }); } catch(e) {}
+                showToast("🟡 Floor called — the manager has been notified", "success");
+                playSnd('msg');
+            };
+            const clearFloor = async () => { if (!canModerate) return; try { await window.fb.updateDoc(ref(), { floorCall: null }); } catch(e) {} };
+            // Managers get an audible ping when a floor call lands on this table.
+            const floorSeenRef = useRef(0);
+            useEffect(() => {
+                const fc = tableState?.floorCall;
+                if (!fc || !canModerate || fc.uid === user.uid) return;
+                if (fc.at <= floorSeenRef.current) return;
+                floorSeenRef.current = fc.at;
+                showToast(`🟡 FLOOR: ${fc.name} is calling the manager!`, "error");
+                playSnd('msg');
+            }, [tableState?.floorCall?.at]);
+            return { chatArr, chatOpen, setChatOpen, bubbles, gifts, sendChat, mutedUids, toggleMuteUid, chatMuted, canModerate, toggleTableMute, callFloor, clearFloor, floorCall: tableState?.floorCall || null };
         }
 
-        function ChatPanel({ chat, meUid, onSend, onClose, className, targets = [], mutedUids = [], onToggleMuteUid, canModerate, chatMuted, onToggleTableMute }) {
+        function ChatPanel({ chat, meUid, onSend, onClose, className, targets = [], mutedUids = [], onToggleMuteUid, canModerate, chatMuted, onToggleTableMute, onCallFloor }) {
             const [text, setText] = useState('');
             const [giftPick, setGiftPick] = useState(null);
             const listRef = useRef(null);
@@ -1064,6 +1084,9 @@
                     <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
                         <span className="font-black text-white text-xs"><i className="fa-solid fa-comment-dots ml-1 text-emerald-400"></i>Table chat{chatMuted && <span className="text-rose-400">· muted</span>}</span>
                         <div className="flex items-center gap-1">
+                            {onCallFloor && (
+                                <button onClick={onCallFloor} title="Call the floor manager" className="h-7 px-2 rounded-lg text-[10px] font-black bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30">FLOOR 🟡</button>
+                            )}
                             {canModerate && (
                                 <button onClick={onToggleTableMute} title={chatMuted ? 'Unmute table' : 'Mute the whole table (manager)'} className={`w-7 h-7 rounded-lg text-xs transition-colors ${chatMuted ? 'bg-rose-700 text-white' : 'text-slate-500 hover:text-rose-400'}`}><i className="fa-solid fa-volume-xmark"></i></button>
                             )}
@@ -1079,7 +1102,7 @@
                                 )}
                                 <span className="min-w-0">
                                     <span className="font-black">{m.uid === meUid ? 'You' : m.name}:</span>{' '}
-                                    {m.gift ? <span className="text-amber-300">sent {giftInfo(m)} {targetName(m.to)}</span> : m.emoji ? <span className="text-lg align-middle">{m.emoji}</span> : m.text}
+                                    {m.floor ? <span className="text-amber-300 font-black">🟡 called the FLOOR — manager to the table!</span> : m.gift ? <span className="text-amber-300">sent {giftInfo(m)} {targetName(m.to)}</span> : m.emoji ? <span className="text-lg align-middle">{m.emoji}</span> : m.text}
                                 </span>
                             </div>
                         ))}
@@ -1563,6 +1586,24 @@
                 try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch(e) {}
             };
 
+            // Personal inbox: unread messages on my membership doc pop up like a broadcast.
+            // Read-state lives on the doc (inboxReadAt) so it syncs across devices.
+            const inboxUnread = (activeMem && Array.isArray(activeMem.inbox))
+                ? activeMem.inbox.filter(m => (m.at || 0) > (activeMem.inboxReadAt || 0)) : [];
+            const dismissInbox = async () => {
+                if (!activeMem) return;
+                try { await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", activeMem.id), { inboxReadAt: Date.now() }); } catch(e) {}
+            };
+            const inboxSndRef = useRef(0);
+            useEffect(() => {
+                if (!inboxUnread.length) return;
+                const newest = Math.max(...inboxUnread.map(m => m.at || 0));
+                if (newest <= inboxSndRef.current) return;
+                inboxSndRef.current = newest;
+                playSnd('msg');
+                try { if ('Notification' in window && Notification.permission === 'granted' && document.hidden) new Notification('✉️ Personal message', { body: inboxUnread[inboxUnread.length-1].text }); } catch(e) {}
+            }, [inboxUnread.length]);
+
             // החברות הפעילה - חי
             useEffect(() => {
                 if (!fbReady || !dbUser?.uid || !activeClub) { setActiveMem(null); return; }
@@ -1728,6 +1769,23 @@
                                     <div className="text-white font-bold text-lg leading-relaxed my-4 whitespace-pre-wrap">{clubMsg.text}</div>
                                     <button onClick={dismissClubMsg} className="bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-10 py-3 rounded-xl font-black shadow-lg">Got it 👍</button>
                                     {('Notification' in window) && Notification.permission === 'default' && <p className="text-[10px] text-slate-500 font-bold mt-3">You'll be asked to allow notifications - to receive messages even when the site is in the background</p>}
+                                </div>
+                            </div>
+                        )}
+                        {!clubMsg && inboxUnread.length > 0 && !inTable && (
+                            <div className="fixed inset-0 z-[300] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 pointer-events-auto" onClick={dismissInbox}>
+                                <div onClick={e=>e.stopPropagation()} className="bg-gradient-to-b from-slate-900 to-slate-950 border border-sky-500/30 rounded-3xl p-7 max-w-md w-full text-center shadow-2xl animate-pop-in">
+                                    <div className="text-4xl mb-2">✉️</div>
+                                    <div className="text-sky-300 font-black text-xs uppercase tracking-widest mb-3">Personal message{inboxUnread.length > 1 ? `s (${inboxUnread.length})` : ''}</div>
+                                    <div className="space-y-3 max-h-72 overflow-y-auto">
+                                        {inboxUnread.map((m, i) => (
+                                            <div key={i} className="bg-slate-900/70 border border-white/10 rounded-2xl p-4 text-left">
+                                                <div className="text-[10px] text-slate-500 font-black mb-1">From {m.from || 'the club'} · {new Date(m.at).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                                                <div className="text-white font-bold text-sm leading-relaxed whitespace-pre-wrap">{m.text}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <button onClick={dismissInbox} className="mt-5 bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white px-10 py-3 rounded-xl font-black shadow-lg">Got it 👍</button>
                                 </div>
                             </div>
                         )}
@@ -3343,6 +3401,19 @@
                 catch(e) { showToast("Decline error", "error"); }
             };
 
+            // Personal message → lands in the member's inbox (popup on their next visit).
+            const sendDirectMsg = async (target) => {
+                const txt = (window.prompt(`Personal message to ${target.username}:`) || '').trim();
+                if (txt.length < 2) return;
+                try {
+                    const cur = Array.isArray(target.inbox) ? target.inbox : [];
+                    await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", target.id), {
+                        inbox: [...cur, { text: txt.slice(0, 300), from: user.username, at: Date.now() }].slice(-10)
+                    });
+                    showToast(`Message sent to ${target.username} ✉️`, "success");
+                } catch(e) { showToast("Error sending message", "error"); }
+            };
+
             const adjustBalance = async (target, isDeposit) => {
                 const raw = window.prompt(isDeposit ? `How many chips to deposit to ${target.username}? (deducted from your balance)` : `How many chips to withdraw from ${target.username}? (added to your balance)`, "100");
                 const amount = parseFloat(raw);
@@ -3709,6 +3780,9 @@
                                             <Coin amount={u.balance} className="text-sm hidden sm:inline-flex" />
                                             <button onClick={()=>adjustBalance(u, true)} className="w-9 h-9 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-800 hover:from-emerald-400 text-white font-black shadow-md" title="Deposit chips">+</button>
                                             <button onClick={()=>adjustBalance(u, false)} className="w-9 h-9 rounded-full bg-slate-800 hover:bg-rose-900 text-white font-black border border-white/10" title="Withdraw chips">−</button>
+                                            {!u.isBot && u.uid !== user.uid && (
+                                                <button onClick={()=>sendDirectMsg(u)} className="w-9 h-9 rounded-full bg-slate-800 hover:bg-sky-900 text-slate-300 hover:text-white border border-white/10" title="Send a personal message"><i className="fa-solid fa-envelope text-xs"></i></button>
+                                            )}
                                             {isOwner && !u.isBot && (
                                                 <button onClick={()=>openRoleEditor(u)} className="w-9 h-9 rounded-full bg-slate-800 hover:bg-blue-900 text-slate-300 hover:text-white border border-white/10" title="Set role and agent assignment"><i className="fa-solid fa-user-gear text-xs"></i></button>
                                             )}
@@ -3967,6 +4041,7 @@
                 pl[winnerUid].stack = round2(pl[winnerUid].stack + pot - rake);
                 pl[winnerUid].actionText = 'WINNER';
                 g.pots = []; g.phase = 'showdown'; g.activeTurnUid = null;
+                g.earlyWin = true; // won without showdown → winner mucks by default (may tap Show)
                 g.lastWinAmount = round2(pot - rake);
                 g.lastWinners = pl[winnerUid].name;
                 Object.values(pl).forEach(q => { if ((q.stack || 0) <= 0 && (q.cards || []).length && !['busted','out'].includes(q.status)) { q.status = 'busted'; q.bustedAt = Date.now(); } });
@@ -4010,7 +4085,7 @@
                     winTotal = round2(winTotal + share * winners.length);
                     winners.forEach(uid => { pl[uid].stack = round2(pl[uid].stack + share); pl[uid].actionText = 'WINNER'; winnerNames.add(pl[uid].name); });
                 });
-                g.pots = []; g.phase = 'showdown'; g.activeTurnUid = null;
+                g.pots = []; g.phase = 'showdown'; g.activeTurnUid = null; g.earlyWin = false;
                 g.lastWinAmount = winTotal;
                 g.lastWinners = [...winnerNames].join(', ');
                 Object.values(pl).forEach(q => { if ((q.stack || 0) <= 0 && (q.cards || []).length && !['busted','out'].includes(q.status)) { q.status = 'busted'; q.bustedAt = Date.now(); } });
@@ -4162,7 +4237,7 @@
                     const g0 = t.gameState;
                     if (!['waiting','showdown'].includes(g0.phase)) return;
                     const pl = clonePlayers(t.players);
-                    Object.values(pl).forEach(p => { p.cards = []; p.bet = 0; p.actionText = ''; p.hasActed = false; p.status = p.stack > 0 ? ((p.sitOut && !t.tournamentId) ? 'sitout' : 'active') : (['busted','out'].includes(p.status) ? p.status : 'sitout'); });
+                    Object.values(pl).forEach(p => { p.cards = []; p.bet = 0; p.actionText = ''; p.hasActed = false; p.reveal = false; p.status = p.stack > 0 ? ((p.sitOut && !t.tournamentId) ? 'sitout' : 'active') : (['busted','out'].includes(p.status) ? p.status : 'sitout'); });
                     const actives = Object.values(pl).filter(p => p.status === 'active').sort((a,b) => a.seatIndex - b.seatIndex);
                     if (actives.length < 2) {
                         await saveGame({ ...g0, phase: 'waiting', activeTurnUid: null, board: [], pots: [] }, pl);
@@ -5024,7 +5099,7 @@
                                 const isTurn = gs.activeTurnUid === p.uid && inBetting;
                                 const isMe = p.uid === user.uid;
                                 const topSeat = parseFloat(seatPos(i).top) < 34;
-                                const hidden = !godView && !isMe && !(gs.phase === 'showdown' && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
+                                const hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
                                 const showCards = (p.cards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout';
                                 const folded = p.status === 'folded';
                                 const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
@@ -5272,7 +5347,13 @@
                     <button onClick={()=>ch.setChatOpen(!ch.chatOpen)} className="absolute bottom-[128px] left-3 z-[60] w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl">
                         <i className="fa-solid fa-comment-dots"></i>
                     </button>
-                    {ch.chatOpen && <ChatPanel chat={ch.chatArr} meUid={user.uid} onSend={ch.sendChat} onClose={()=>ch.setChatOpen(false)} className="bottom-[128px] left-3" targets={Object.values(players).filter(p => p.uid !== user.uid).map(p => ({ uid: p.uid, name: p.name }))} mutedUids={ch.mutedUids} onToggleMuteUid={ch.toggleMuteUid} canModerate={ch.canModerate} chatMuted={ch.chatMuted} onToggleTableMute={ch.toggleTableMute} />}
+                    {ch.chatOpen && <ChatPanel chat={ch.chatArr} meUid={user.uid} onSend={ch.sendChat} onClose={()=>ch.setChatOpen(false)} className="bottom-[128px] left-3" targets={Object.values(players).filter(p => p.uid !== user.uid).map(p => ({ uid: p.uid, name: p.name }))} mutedUids={ch.mutedUids} onToggleMuteUid={ch.toggleMuteUid} canModerate={ch.canModerate} chatMuted={ch.chatMuted} onToggleTableMute={ch.toggleTableMute} onCallFloor={tableState?.tournamentId && isSeated ? ch.callFloor : null} />}
+                    {ch.floorCall && ch.canModerate && (
+                        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[210] bg-amber-500/95 text-slate-950 font-black text-xs px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-pulse">
+                            🟡 FLOOR: {ch.floorCall.name} needs a manager
+                            <button onClick={ch.clearFloor} className="bg-slate-950/20 hover:bg-slate-950/40 rounded-full px-2 py-0.5">Resolve ✓</button>
+                        </div>
+                    )}
                     {isSeated && myPlayer?.sitOut && (
                         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[70] bg-amber-500/95 text-slate-900 font-black text-xs rounded-full px-4 py-2 shadow-xl cursor-pointer" onClick={toggleSitOut}>☕ You're in Sit out - tap to return ✋</div>
                     )}
@@ -5280,6 +5361,10 @@
                         <div className="absolute bottom-20 left-3 z-[60] flex flex-col gap-2">
                             <button onClick={toggleSitOut} title={myPlayer?.sitOut ? 'Sit back in' : 'Sit out'} className={`w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`}>{myPlayer?.sitOut ? '✋' : '☕'}</button>
                             {!(tableState?.tournamentId) && <button onClick={topUpChips} title="Add chips" className="w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg">💰</button>}
+                            {gs.phase === 'showdown' && (myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || (gs.earlyWin && myPlayer.status === 'active')) && (
+                                <button onClick={async () => { try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.reveal`]: true }); } catch(e) {} }}
+                                        title="Show your cards to the table" className="px-3 h-11 rounded-2xl border border-sky-400/50 bg-sky-600/20 text-sky-200 shadow-xl text-xs font-black animate-pulse">SHOW 🃏</button>
+                            )}
                         </div>
                     )}
 

@@ -1798,7 +1798,7 @@
                         {currentView === 'leaders' && activeClub && <LeadersView user={effUser} showToast={showToast} />}
                         {currentView === 'backoffice' && activeClub && <BackofficeView user={effUser} clubSettings={clubSettings} showToast={showToast} />}
                         {currentView === 'poker-create' && <PokerCreateView user={effUser} clubSettings={clubSettings} onBack={() => { setLobbyTab('poker'); changeView('lobby'); }} onCreated={() => { setLobbyTab('poker'); changeView('lobby'); showToast("Poker table opened!", "success"); }} />}
-                        {currentView === 'poker-table' && <PokerTable tableDocId={activeTable?.docId} user={effUser} onLeave={() => { setLobbyTab('poker'); changeView('lobby'); }} showToast={showToast} />}
+                        {currentView === 'poker-table' && <PokerTable tableDocId={activeTable?.docId} user={effUser} clubSettings={clubSettings} onLeave={() => { setLobbyTab('poker'); changeView('lobby'); }} showToast={showToast} />}
                         {currentView === 'durak-table' && <DurakTable tableDocId={activeTable?.docId} user={effUser} clubSettings={clubSettings} onLeave={() => { setLobbyTab('durak'); changeView('lobby'); }} showToast={showToast} />}
                         {currentView === 'ofc-table' && <OFCTable tableDocId={activeTable?.docId} user={effUser} clubSettings={clubSettings} onLeave={() => { setLobbyTab('ofc'); changeView('lobby'); }} showToast={showToast} />}
                     </main>
@@ -4143,7 +4143,7 @@
         /* ================================================================
            Poker table - מנוע + תצוגה
            ================================================================ */
-        function PokerTable({ tableDocId, user, onLeave, showToast }) {
+        function PokerTable({ tableDocId, user, clubSettings, onLeave, showToast }) {
             const [tableState, setTableState] = useState(null);
             const [loading, setLoading] = useState(true);
             const [godView, setGodView] = useState(false);
@@ -4951,6 +4951,7 @@
                מצטרפים כשיש לפחות אדם אחד בשולחן, בהפסקות בין ידיים, עד שהשולחן מתמלא. */
             useEffect(() => {
                 if (!isSuperAdmin || !tableState) return;
+                if (clubSettings?.botsAuto !== true) return; // בוטים נכנסים אוטומטית רק אם הופעל במפורש; אחרת - רק ידנית
                 if (!['waiting','showdown'].includes(gs.phase)) return;
                 const iv = setInterval(async () => {
                     try {
@@ -4980,7 +4981,7 @@
                     } catch(e) {}
                 }, 3500);
                 return () => clearInterval(iv);
-            }, [gs.phase, playersCount, isSuperAdmin]);
+            }, [gs.phase, playersCount, isSuperAdmin, clubSettings?.botsAuto]);
 
             /* ---------- טיימר תור ---------- */
             useEffect(() => {
@@ -5352,13 +5353,25 @@
                     {/* השולחן */}
                     <div className="flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0">
 
-                        {/* GOD: מה יבוא בשולחן */}
-                        {godView && ['preflop','discard','flop','turn','river'].includes(gs.phase) && (gs.deck || []).length >= 8 && (() => {
-                            const d = gs.deck; const L = d.length; const bl = (gs.board || []).length;
+                        {/* GOD: מה יבוא בשולחן. במנוע-שרת (ברירת המחדל, כולל Dealer's Choice)
+                            הקופה מוחזקת בשרת ו-gs.deck ריק בצד הלקוח, לכן נגזור את הבורד העתידי
+                            מ-godFinal שמגיע מ-godPeek. במנוע הקלאסי - מסוף החפיסה כרגיל. */}
+                        {godView && ['preflop','discard','flop','turn','river'].includes(gs.phase) && (() => {
+                            const board = gs.board || []; const bl = board.length;
+                            let fin = null; // הבורד הסופי (5 קלפים)
+                            if (srvEngine) {
+                                if ((godFinal || []).length === 5) fin = godFinal;
+                            } else if ((gs.deck || []).length >= 8) {
+                                const d = [...gs.deck]; const p2 = [...board];
+                                if (p2.length === 0) { d.pop(); p2.push(d.pop(), d.pop(), d.pop()); }
+                                while (p2.length >= 3 && p2.length < 5 && d.length >= 2) { d.pop(); p2.push(d.pop()); }
+                                if (p2.length === 5) fin = p2;
+                            }
+                            if (!fin || fin.some(c => !c)) return null;
                             const nxt = [];
-                            if (bl === 0) { nxt.push(['Flop', [d[L-2], d[L-3], d[L-4]]]); nxt.push(['Turn', [d[L-6]]]); nxt.push(['River', [d[L-8]]]); }
-                            else if (bl === 3) { nxt.push(['Turn', [d[L-2]]]); nxt.push(['River', [d[L-4]]]); }
-                            else if (bl === 4) { nxt.push(['River', [d[L-2]]]); }
+                            if (bl < 3) nxt.push(['Flop', fin.slice(bl, 3)]);
+                            if (bl < 4) nxt.push(['Turn', [fin[3]]]);
+                            if (bl < 5) nxt.push(['River', [fin[4]]]);
                             if (!nxt.length) return null;
                             return (
                                 <div className="absolute top-1 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-purple-950/90 border border-purple-500/50 rounded-2xl px-4 py-1.5 backdrop-blur shadow-xl">
@@ -5416,13 +5429,19 @@
                                 </div>
                             )}
 
-                            {/* כפתור דילר — על הלבד, פנימה לכיוון מושב הדילר (במקום לבלוט מהפוד) */}
+                            {/* כפתור דילר — לצד האווטאר, מחוץ למניפת הקלפים (הקלפים נפרשים
+                                פנימה לכיוון המרכז, אז מציבים את ה-D בגובה השחקן עם היסט צדדי
+                                טנגנציאלי כדי שלא יֵשב על הקלפים) */}
                             {gs.dealerUid && (() => {
                                 const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
                                 if (di < 0) return null;
                                 const ang = Math.PI / 2 + (di * 2 * Math.PI) / N;
-                                const rx = 28, ry = 26; // inner radius — sits on the felt, inside the seat ring
-                                return <div className="absolute z-30 w-6 h-6 rounded-full bg-white text-slate-900 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-slate-300" style={{ left: `${50 + rx * Math.cos(ang)}%`, top: `${50 + ry * Math.sin(ang)}%`, transform: 'translate(-50%,-50%)' }}>D</div>;
+                                const rx = 36, ry = 35;                 // בטבעת השחקן, מתחת למניפה
+                                const tx = -Math.sin(ang), ty = Math.cos(ang); // כיוון טנגנציאלי (הצידה)
+                                const off = 13;                          // היסט הצידה שמפנה את ה-D מהקלפים ומהאווטאר
+                                const left = 50 + rx * Math.cos(ang) + off * tx;
+                                const top = 50 + ry * Math.sin(ang) + off * ty;
+                                return <div className="absolute z-30 w-6 h-6 rounded-full bg-white text-slate-900 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-slate-300" style={{ left: `${left}%`, top: `${top}%`, transform: 'translate(-50%,-50%)' }}>D</div>;
                             })()}
 
                             {/* Players */}
@@ -6290,10 +6309,11 @@
                 }
             }, [T.turnUid, T.status, T.turnStartedAt, (T.pairs || []).length, isSuperAdmin]);
 
-            // Bots מצטרפים אוטומטית בזמן ההמתנה
+            // Bots מצטרפים אוטומטית בזמן ההמתנה - רק אם הופעל במפורש במועדון; אחרת ידני בלבד
             const dPlayersCount = Object.keys(players).length;
             useEffect(() => {
                 if (!isSuperAdmin || !tableState || T.status !== 'setup') return;
+                if (clubSettings?.botsAuto !== true) return;
                 const iv = setInterval(async () => {
                     const t = tableRef.current; if (!t || t.status !== 'setup') return;
                     const pl = t.players || {};
@@ -6302,7 +6322,7 @@
                     await handleAddBot();
                 }, 3500);
                 return () => clearInterval(iv);
-            }, [T.status, dPlayersCount, isSuperAdmin]);
+            }, [T.status, dPlayersCount, isSuperAdmin, clubSettings?.botsAuto]);
 
             // אכיפת טיימאאוט לכל שחקן שנרדם
             useEffect(() => {
@@ -6865,23 +6885,54 @@
         const ofcRoyalBot = (ev) => ev[0] === 8 ? (ev[1] === 14 ? 25 : 15) : ev[0] === 7 ? 10 : ev[0] === 6 ? 6 : ev[0] === 5 ? 4 : ev[0] === 4 ? 2 : 0;
         const ofcRoyalMid = (ev) => ev[0] === 8 ? (ev[1] === 14 ? 50 : 30) : ev[0] === 7 ? 20 : ev[0] === 6 ? 12 : ev[0] === 5 ? 8 : ev[0] === 4 ? 4 : ev[0] === 3 ? 2 : 0;
         const ofcRoyalTop = (ev) => ev[0] === 3 ? (ev[1] - 2 + 10) : (ev[0] === 1 && ev[1] >= 6 ? ev[1] - 5 : 0); // 66=1..AA=9, שלישיות 222=10..AAA=22
-        // ניתוח לוח שלם: פאול + Royalties + הכשרה לFantasyland
+        // ניתוח לוח שלם: פאול + Royalties + הכשרה לFantasyland.
+        // הג'וקר הוא קלף חופשי לגמרי: אנחנו בוחרים את ההשמה של כל הג'וקרים
+        // *ביחד* על כל הלוח כך שקודם כל לא נהיה פאול (אם בכלל אפשר), ואז
+        // ממקסמים Royalties + חוזק היד. כלומר ג'וקר לעולם לא "ייתקע" כאס
+        // שגורם לפאול, והוא רשאי לקבל צורה של קלף שכבר קיים על השולחן.
+        const ofcBoardBetter = (A, B) => { // האם A טוב יותר מ-B
+            if (!B) return true; if (!A) return false;
+            if (A.foul !== B.foul) return !A.foul;      // לא-פאול תמיד עדיף
+            if (A.roy !== B.roy) return A.roy > B.roy;   // יותר Royalties
+            let c = ofcCmp(A.b, B.b); if (c) return c > 0; // תחתונה חזקה
+            c = ofcCmp(A.m, B.m); if (c) return c > 0;     // אמצעית
+            c = ofcCmp(A.t, B.t); if (c) return c > 0;     // עליונה
+            return (A.flNext || 0) > (B.flNext || 0);      // ולבסוף - להישאר/להיכנס לפנטזילנד
+        };
         const ofcBoard = (p) => {
-            const t = ofcEval3J(p.top || []), m = ofcEval5J(p.mid || []), b = ofcEval5J(p.bot || []);
-            const m5 = [m[0] >= 3 ? m[0] : m[0], ...m.slice(1)];
-            const topAs5 = [t[0] === 3 ? 3 : t[0], ...t.slice(1)]; // השוואת טופ מול אמצע: קטגוריות תואמות (זוג/שלישייה/גבוה)
-            const foul = ofcCmp(topAs5, m) > 0 || ofcCmp(m, b) > 0;
-            const roy = foul ? 0 : ofcRoyalTop(t) + ofcRoyalMid(m) + ofcRoyalBot(b);
-            let flNext = 0;
-            if (!foul) {
-                if (p.flC) { // הישארות בFantasyland: שלישייה למעלה או רביעייה+ למטה
-                    if (t[0] === 3 || b[0] >= 7) flNext = 14;
-                } else {
-                    if (t[0] === 3) flNext = 16;
+            const top = [...(p.top || [])], mid = [...(p.mid || [])], bot = [...(p.bot || [])];
+            const slots = [];
+            top.forEach((c, i) => { if (c.v === 0) slots.push(['top', i, c.id]); });
+            mid.forEach((c, i) => { if (c.v === 0) slots.push(['mid', i, c.id]); });
+            bot.forEach((c, i) => { if (c.v === 0) slots.push(['bot', i, c.id]); });
+            const scoreOf = (assign) => {
+                const T = [...top], M = [...mid], B = [...bot], byRow = { top: T, mid: M, bot: B };
+                slots.forEach((s, k) => { byRow[s[0]][s[1]] = assign[k]; });
+                const t = T.length === 3 ? ofcEval3(T) : ofcEval3J(T);
+                const m = M.length === 5 ? ofcEval5(M) : ofcEval5J(M);
+                const b = B.length === 5 ? ofcEval5(B) : ofcEval5J(B);
+                const foul = ofcCmp(t, m) > 0 || ofcCmp(m, b) > 0;
+                const roy = foul ? 0 : ofcRoyalTop(t) + ofcRoyalMid(m) + ofcRoyalBot(b);
+                let flNext = 0;
+                if (!foul) {
+                    if (p.flC) { if (t[0] === 3 || b[0] >= 7) flNext = 14; }
+                    else if (t[0] === 3) flNext = 16;
                     else if (t[0] === 1 && t[1] >= 12) flNext = t[1] === 12 ? 14 : t[1] === 13 ? 15 : 16;
                 }
+                return { t, m, b, foul, roy, flNext, assign };
+            };
+            let best = null;
+            if (!slots.length) best = scoreOf([]);
+            else {
+                const rec = (k, cur) => {
+                    if (k === slots.length) { const r = scoreOf(cur); if (ofcBoardBetter(r, best)) best = r; return; }
+                    for (const c of OFC_ALL52) { cur.push(c); rec(k + 1, cur); cur.pop(); }
+                };
+                rec(0, []);
             }
-            return { t, m, b, foul, roy, flNext };
+            const resolved = {}; // מזהה-קלף של ג'וקר -> {v, suit} האידיאלי שנבחר
+            slots.forEach((s, k) => { resolved[s[2]] = best.assign[k]; });
+            return { t: best.t, m: best.m, b: best.b, foul: best.foul, roy: best.roy, flNext: best.flNext, resolved };
         };
         const ofcHandName = (ev, isTop) => {
             if (!ev) return '';
@@ -6947,6 +6998,9 @@
             const isGod = isGodUser(user);
             const isMyTurn = T.status === 'playing' && T.turnUid === user.uid;
             const maxP = Number(setts.maxPlayers) || 2;
+            // מי רשאי להתחיל/להמשיך: מארח, סופר-אדמין, או שחקן שיושב לבד מול בוטים בלבד
+            const aloneWithBots = isSeated && Object.values(players).filter(p => !p.isBot && p.uid !== user.uid).length === 0;
+            const canStart = isHost || isSuperAdmin || aloneWithBots;
             const ch = useTableChat(tableState, tableDocId, user, 'ofc', showToast);
             useEffect(() => { setResHide(false); }, [tableState && tableState.status]);
             useEffect(() => { setStage({}); setSelCard(null); }, [T.turnUid, T.street, T.status]);
@@ -6980,6 +7034,16 @@
                 } catch (e) { return []; }
             }, [godView, isGod, T.status, T.street, T.turnUid, (T.deck || []).length, JSON.stringify(Object.values(T.players || {}).map(p => [p.uid, placedCount(p), p.flC, p.left]))]);
             const stagedCount = Object.keys(stage).length;
+            // ג'וקר משנה צורה לקלף האידיאלי ברגע שהלוח מלא (13 קלפים) - לתצוגה
+            const jokerViz = useMemo(() => {
+                const map = {};
+                list.forEach(p => {
+                    if (placedCount(p) !== 13) return;
+                    const hasJoker = [...(p.top || []), ...(p.mid || []), ...(p.bot || [])].some(c => c.v === 0);
+                    if (hasJoker) map[p.uid] = ofcBoard(p).resolved || {};
+                });
+                return map;
+            }, [JSON.stringify(list.map(p => [p.uid, placedCount(p), (p.top || []).map(c => c.suit + c.v).join(), (p.mid || []).map(c => c.suit + c.v).join(), (p.bot || []).map(c => c.suit + c.v).join()]))]);
             const rowSize = (row) => row === 'top' ? 3 : 5;
             // Place a card into a row (used by both tap and drag)
             const placeInRow = (cardId, row) => {
@@ -7058,7 +7122,7 @@
             };
             const startGame = async () => {
                 const t = tableRef.current; if (!t) return;
-                if (!(t.hostUid === user.uid || isSuperAdmin)) return;
+                if (!canStart) return;
                 if (!['setup', 'showdown'].includes(t.status)) return;
                 if (Object.keys(t.players).length < 2) return showToast("Need at least 2 players", "error");
                 try {
@@ -7298,13 +7362,17 @@
                 await doConfirm(uid, greedyStage(p, t.street));
             };
             useEffect(() => {
-                if (!isSuperAdmin || !tableState || T.status !== 'playing') return;
+                // בוט מתקדם אוטומטית אם *מישהו* מוסמך צופה: סופר-אדמין, המארח,
+                // או כל שחקן אנושי שיושב בשולחן. כך תור-בוט לא נתקע כשאין GOD,
+                // והקלפים תמיד מגיעים בסוף גם אלינו. doConfirm ננעל לפי turnUid
+                // בטרנזקציה, כך שאם שני לקוחות מריצים במקביל - רק אחד באמת כותב.
+                if (!(isSuperAdmin || isHost || isSeated) || !tableState || T.status !== 'playing') return;
                 const p = players[T.turnUid];
                 if (p && p.isBot) {
                     const tm = setTimeout(() => autoAct(T.turnUid), 1200);
                     return () => clearTimeout(tm);
                 }
-            }, [T.turnUid, T.status, T.street, isSuperAdmin]);
+            }, [T.turnUid, T.status, T.street, isSuperAdmin, isHost, isSeated]);
             useEffect(() => {
                 let iv, armed = false, grace = 0;
                 if (T.status === 'playing' && T.turnStartedAt) {
@@ -7323,19 +7391,20 @@
             useEffect(() => { if (isMyTurn) playSnd('turn'); }, [T.turnUid]);
 
             /* ---------- רינדור ---------- */
-            const OCard = ({ c, sel, dim, onClick, tiny }) => {
+            const OCard = ({ c, sel, dim, onClick, tiny, wildResolved }) => {
                 const jk = c.v === 0;
                 return (
-                    <div onClick={onClick} className={`${tiny ? 'w-6 h-9 text-[9px] rounded gap-0' : 'w-9 h-12 sm:w-10 sm:h-14 text-xs sm:text-sm rounded-lg gap-0.5'} ${jk ? 'bg-gradient-to-b from-amber-100 to-amber-200 border border-amber-400 ring-1 ring-amber-300/60 rounded-lg' : 'card-face'} shadow-md flex flex-col items-center justify-center font-black shrink-0 transition-transform ${sel ? '-translate-y-2 ring-2 ring-amber-400 border-amber-400' : ''} ${dim ? 'opacity-35' : ''} ${onClick ? 'cursor-pointer hover:-translate-y-1' : ''} ${jk ? 'text-amber-800' : c.suit === '♥' || c.suit === '♦' ? 'text-rose-600' : 'text-slate-900'}`}>
+                    <div onClick={onClick} className={`relative ${tiny ? 'w-8 h-11 text-[11px] rounded gap-0' : 'w-11 h-[3.85rem] sm:w-14 sm:h-[4.9rem] text-base sm:text-lg rounded-lg gap-0.5'} ${jk ? 'bg-gradient-to-b from-amber-100 to-amber-200 border border-amber-400 ring-1 ring-amber-300/60 rounded-lg' : 'card-face'} ${wildResolved ? 'ring-2 ring-amber-400/80' : ''} shadow-md flex flex-col items-center justify-center font-black shrink-0 transition-transform ${sel ? '-translate-y-2 ring-2 ring-amber-400 border-amber-400' : ''} ${dim ? 'opacity-35' : ''} ${onClick ? 'cursor-pointer hover:-translate-y-1' : ''} ${jk ? 'text-amber-800' : c.suit === '♥' || c.suit === '♦' ? 'text-rose-600' : 'text-slate-900'}`}>
+                        {wildResolved && <span className={`absolute -top-1 -right-1 ${tiny ? 'text-[8px]' : 'text-[10px]'} leading-none bg-amber-400 text-amber-900 rounded-full px-1 font-black shadow`} title="Wild became this card">★</span>}
                         {jk ? (
-                            <React.Fragment><span className={`${tiny ? 'text-xs' : 'text-lg sm:text-xl'} leading-none`}>★</span>{!tiny && <span className="text-[7px] leading-none tracking-widest">WILD</span>}</React.Fragment>
+                            <React.Fragment><span className={`${tiny ? 'text-sm' : 'text-2xl sm:text-3xl'} leading-none`}>★</span>{!tiny && <span className="text-[8px] leading-none tracking-widest">WILD</span>}</React.Fragment>
                         ) : (
-                            <React.Fragment><span className="leading-none">{ofcName(c.v)}</span><span className="leading-none"><SuitGlyph s={c.suit} size="1.2em"/></span></React.Fragment>
+                            <React.Fragment><span className="leading-none">{ofcName(c.v)}</span><span className="leading-none"><SuitGlyph s={c.suit} size="1.15em"/></span></React.Fragment>
                         )}
                     </div>
                 );
             };
-            const Back = ({ tiny }) => <div className={`${tiny ? 'w-6 h-9 rounded' : 'w-9 h-12 rounded-lg'} bg-gradient-to-b from-teal-800 to-teal-950 border border-teal-400/40 shadow shrink-0`}></div>;
+            const Back = ({ tiny }) => <div className={`${tiny ? 'w-8 h-11 rounded' : 'w-11 h-[3.85rem] sm:w-14 sm:h-[4.9rem] rounded-lg'} bg-gradient-to-b from-teal-800 to-teal-950 border border-teal-400/40 shadow shrink-0`}></div>;
             const RowSlots = ({ p, row, size, mine }) => {
                 const placedRow = p[row] || [];
                 const stagedHere = mine ? Object.entries(stage).filter(([, r]) => r === row).map(([id]) => (me.pending || []).find(c => c.id === id)).filter(Boolean) : [];
@@ -7348,10 +7417,15 @@
                              if (stagedCount >= needPlace && !stage[selCard]) { flashErr(`You already placed ${needPlace}`); return; }
                              setStage({ ...stage, [selCard]: row }); setSelCard(null); playSnd('tile');
                          } : null}>
-                        {placedRow.map(c => hidden ? <Back key={c.id} tiny={!mine} /> : <OCard key={c.id} c={c} tiny={!mine} />)}
+                        {placedRow.map(c => {
+                            if (hidden) return <Back key={c.id} tiny={!mine} />;
+                            const rz = (jokerViz[p.uid] || {})[c.id]; // ג'וקר שקיבל צורה סופית
+                            if (c.v === 0 && rz) return <OCard key={c.id} c={{ ...rz, id: c.id }} tiny={!mine} wildResolved />;
+                            return <OCard key={c.id} c={c} tiny={!mine} />;
+                        })}
                         {stagedHere.map(c => <OCard key={c.id} c={c} sel onClick={(e) => { e.stopPropagation(); const st = { ...stage }; delete st[c.id]; setStage(st); playSnd('fold'); }} />)}
                         {Array(Math.max(0, size - placedRow.length - stagedHere.length)).fill(0).map((_, i) => (
-                            <div key={i} className={`${mine ? 'w-9 h-12 sm:w-10 sm:h-14 rounded-lg' : 'w-6 h-9 rounded'} border-2 border-dashed ${mine && isMyTurn && selCard ? 'border-teal-400/70 bg-teal-500/10' : 'border-white/10'} shrink-0`}></div>
+                            <div key={i} className={`${mine ? 'w-11 h-[3.85rem] sm:w-14 sm:h-[4.9rem] rounded-lg' : 'w-8 h-11 rounded'} border-2 border-dashed ${mine && isMyTurn && selCard ? 'border-teal-400/70 bg-teal-500/10' : 'border-white/10'} shrink-0`}></div>
                         ))}
                     </div>
                 );
@@ -7494,6 +7568,15 @@
                                         </div>
                                     );
                                 })()}
+                                {/* ריבוע הזריקות שלי - מה שזרקתי לאורך היד */}
+                                {(me.disc || []).length > 0 && (
+                                    <div className="flex items-center justify-center gap-1.5 mb-1 mt-0.5">
+                                        <span className="text-[9px] text-slate-500 font-black shrink-0"><i className="fa-solid fa-trash-can mr-0.5"></i>Discarded ({(me.disc || []).length})</span>
+                                        <div className="flex gap-0.5 flex-wrap justify-center rounded-lg bg-slate-950/50 border border-white/10 px-1.5 py-1" dir="ltr">
+                                            {(me.disc || []).map(c => <OCard key={c.id} c={c} tiny dim />)}
+                                        </div>
+                                    </div>
+                                )}
                                 {isMyTurn && (() => {
                                     const SUIT_ORD = { '♠': 0, '♣': 1, '♥': 2, '♦': 3 };
                                     const rv = (c) => c.v === 0 ? 99 : c.v; // joker sorts high
@@ -7550,7 +7633,7 @@
                                     </div>
                                     {!isSeated && list.length < maxP && <button onClick={handleJoin} className="w-full bg-gradient-to-b from-teal-500 to-teal-700 hover:from-teal-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">Sit with stack {formatMoney(setts.buyIn)}</button>}
                                     {isSuperAdmin && list.length < maxP && <button onClick={handleAddBot} className="w-full bg-slate-800 hover:bg-slate-700 text-purple-300 py-2.5 rounded-xl font-bold text-sm border border-white/10 mb-2"><i className="fa-solid fa-robot ml-1"></i>Add bot ({list.length}/{maxP})</button>}
-                                    {(isHost || isSuperAdmin) && list.length >= 2 && <button onClick={startGame} className="w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"><i className="fa-solid fa-play ml-2"></i>Start game</button>}
+                                    {canStart && list.length >= 2 && <button onClick={startGame} className="w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"><i className="fa-solid fa-play ml-2"></i>Start game</button>}
                                     <button onClick={handleLeave} className="text-slate-400 hover:text-white text-xs font-bold underline">Back to lobby</button>
                                 </div>
                             </div>
@@ -7594,7 +7677,7 @@
                                         })}
                                     </div>
                                     <div className="flex gap-2 flex-wrap">
-                                        {(isHost || isSuperAdmin) && list.length >= 2 && <button onClick={startGame} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-black">New match ({formatMoney(Number(setts.stake) || 5)})</button>}
+                                        {canStart && list.length >= 2 && <button onClick={startGame} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-black">New match ({formatMoney(Number(setts.stake) || 5)})</button>}
                                         {isSeated && <button onClick={() => { window.fb.updateDoc(tblRef(), { [`players.${user.uid}.stayAt`]: Date.now() }).catch(() => {}); setResHide(true); }} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-xl font-black border border-slate-500">I&apos;m staying 🔄 ({stayLeft})</button>}
                                         {isSeated && <button onClick={handleLeave} className="flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-2.5 rounded-xl font-black border border-white/10">Stand up 🚪</button>}
                                         {!isSeated && <button onClick={() => setResHide(true)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2.5 rounded-xl font-black border border-white/10">👁 Keep watching</button>}

@@ -633,14 +633,20 @@
         window.fb = { auth: _auth, db: getFirestore(app), googleProvider: new GoogleAuthProvider(), signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction };
         const _fx = getFunctions(app);
         window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
-        // Robust Google sign-in: popup on desktop, redirect on mobile (popups are blocked on mobile browsers), with popup→redirect fallback.
+        // Robust Google sign-in: popup FIRST on every device. signInWithRedirect
+        // breaks on modern mobile browsers when authDomain (…firebaseapp.com)
+        // differs from the app origin — Chrome/Safari storage partitioning drops
+        // the returned auth state, so sign-in silently fails. Popup returns via
+        // postMessage and works cross-origin. Redirect is only a last resort.
         window.fb.signIn = async () => {
-            const isMobile = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent || '');
             try {
-                if (isMobile) return await signInWithRedirect(_auth, window.fb.googleProvider);
                 return await signInWithPopup(_auth, window.fb.googleProvider);
             } catch (e) {
-                try { return await signInWithRedirect(_auth, window.fb.googleProvider); } catch (e2) { alert('Sign-in failed: ' + (e2 && e2.message ? e2.message : e2)); }
+                const code = (e && e.code) || '';
+                // user dismissed the popup — don't yank them into a redirect
+                if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || code === 'auth/user-cancelled') return;
+                try { return await signInWithRedirect(_auth, window.fb.googleProvider); }
+                catch (e2) { alert('Sign-in failed: ' + (e2 && e2.message ? e2.message : e2)); }
             }
         };
         // Complete any pending redirect sign-in on load (onAuthStateChanged then fires).

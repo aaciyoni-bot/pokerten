@@ -7077,7 +7077,7 @@
                     if ((uSnap.data().balance || 0) < entry) throw `Not enough balance (${formatMoney(entry)})`;
                     tr.update(uRef, { balance: round2((uSnap.data().balance || 0) - entry) });
                     tr.update(tRef(tor.id), {
-                        [`players.${user.uid}`]: { uid: user.uid, name: user.username, photo: user.photo || '', avatarSeed: user.avatarSeed || '', isBot: !!user.isBot, out: false, rank: null, bounties: 0, paid: entry, addon: false },
+                        [`players.${user.uid}`]: { uid: user.uid, name: user.username, photo: user.photo || '', avatarSeed: user.avatarSeed || '', playerId: user.playerId || '', isBot: !!user.isBot, out: false, rank: null, bounties: 0, paid: entry, addon: false },
                         prizePool: round2((t.prizePool || 0) + (Number(t.buyIn) || 0)),
                         feeTotal: round2((t.feeTotal || 0) + (Number(t.fee) || 0))
                     });
@@ -7162,13 +7162,26 @@
                 return;
             }
             const startedAt = Date.now();
-            try { await window.fb.updateDoc(tRef(tor.id), { status: 'running', startedAt, round: 1 }); } catch(e) { return; }
+            // Mystery Bounty owner override: resolve the pre-assigned winner's 6-char ID to a uid now that entrants are known.
+            let rigUid = null;
+            if (tor.mysteryBounty && tor.mysteryRig && tor.mysteryRig.playerId) {
+                const want = String(tor.mysteryRig.playerId).trim().toUpperCase();
+                const hit = entrants.find(p => String(p.playerId || '').toUpperCase() === want);
+                if (hit) rigUid = hit.uid;
+            }
+            try { await window.fb.updateDoc(tRef(tor.id), { status: 'running', startedAt, round: 1, ...(rigUid ? { mysteryRigUid: rigUid } : {}) }); } catch(e) { return; }
             await tourSeedRound({ ...tor, startedAt }, entrants.map(p => p.uid), 1);
         };
 
         // דיווח הדחות: דירוג + תשלום באונטי אמיתי לצייד
+        // Mystery Bounty (GOD-only feature): each knockout draws a random multiplier of the
+        // base bounty. Weighted so the mean is ~1.3x — mostly small, rarely a jackpot.
+        const MYSTERY_TIERS = [[0.5, 0.40], [1, 0.35], [2, 0.15], [3, 0.08], [25, 0.02]];
+        const mysteryMult = () => { let r = Math.random(), acc = 0; for (const [m, p] of MYSTERY_TIERS) { acc += p; if (r <= acc) return m; } return 1; };
+
         const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBounty) => {
             let bountyCuts = [];
+            let mysteryHit = null; // {uid, amount} for a jackpot toast
             try {
                 await window.fb.runTransaction(window.fb.db, async (tr) => {
                     const sn = await tr.get(tRef(torId));
@@ -7185,10 +7198,24 @@
                         alive--;
                     }
                     if (payBounty && bountyAmt > 0 && winnerUids.length && bustedUids.length) {
-                        const total = round2(bountyAmt * bustedUids.length);
+                        let total;
+                        if (t.mysteryBounty) {
+                            // Owner override: a pre-assigned winner (by 6-char player ID) always draws the jackpot.
+                            const rigUid = (t.mysteryRigUid && winnerUids.includes(t.mysteryRigUid)) ? t.mysteryRigUid : null;
+                            let sum = 0;
+                            for (let i = 0; i < bustedUids.length; i++) {
+                                const mult = rigUid ? ((t.mysteryRig || {}).mult || 25) : mysteryMult();
+                                sum += bountyAmt * mult;
+                                if (mult >= 10 && !mysteryHit) mysteryHit = { uid: rigUid || winnerUids[0], amount: round2(bountyAmt * mult) };
+                            }
+                            total = round2(sum);
+                        } else {
+                            total = round2(bountyAmt * bustedUids.length);
+                        }
                         const share = round2(Math.floor((total / winnerUids.length) * 100) / 100);
                         winnerUids.forEach(w => {
                             upd[`players.${w}.bounties`] = ((t.players[w] || {}).bounties || 0) + bustedUids.length;
+                            upd[`players.${w}.bountyWon`] = round2(((t.players[w] || {}).bountyWon || 0) + share);
                             bountyCuts.push([w, share]);
                         });
                     }
@@ -7196,6 +7223,7 @@
                 });
             } catch(e) {}
             for (const [w, amt] of bountyCuts) await creditBalance(w, amt);
+            if (mysteryHit && typeof showToast === 'function') { try { showToast(`🎁 MYSTERY JACKPOT! ${formatMoney(mysteryHit.amount)} bounty!`, "success"); } catch(e2) {} }
         };
 
         const tourFinalize = async (tor, championUid, rakePct) => {
@@ -7376,7 +7404,8 @@
             const [champTor, setChampTor] = useState(null);
             const [soloChamp, setSoloChamp] = useState(null);
             const [tick, setTick] = useState(0);
-            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, minPlayers: 2, levelMins: 5, rebuys: true, rebuyUntilLevel: 2, addon: true, addonLevel: 3, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20] });
+            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, minPlayers: 2, levelMins: 5, rebuys: true, rebuyUntilLevel: 2, addon: true, addonLevel: 3, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20], mysteryBounty: false, mysteryRigId: '' });
+            const isGod = isGodUser(user);
             const isAll = game === 'all';
             const effGame = isAll ? (opts.gameSel || 'poker') : game;
             const isPoker = effGame === 'poker';
@@ -7397,6 +7426,9 @@
                     clubId: CLUB_ID, game: effGame, name: opts.name.trim(),
                     buyIn: round2(Number(opts.buyIn) || 0), fee: round2(Number(opts.fee) || 0), addedPrize,
                     bounty: isPoker ? bounty : 0,
+                    // Mystery Bounty (GOD-only): random per-knockout multiplier; optional pre-assigned jackpot winner by player ID.
+                    mysteryBounty: isPoker && isGod && bounty > 0 ? !!opts.mysteryBounty : false,
+                    mysteryRig: (isPoker && isGod && opts.mysteryBounty && String(opts.mysteryRigId || '').trim()) ? { playerId: String(opts.mysteryRigId).trim().toUpperCase(), mult: 25 } : null,
                     pokerType: isPoker ? opts.pokerType : null,
                     startAt, maxPlayers: Math.max(2, Number(opts.maxPlayers) || 2),
                     minPlayers: Math.max(2, Math.min(Number(opts.maxPlayers) || 2, Number(opts.minPlayers) || 2)),
@@ -7645,6 +7677,21 @@
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Bounty (per knockout)</label>
                                     <input type="number" min="0" step="10" value={opts.bounty} onChange={e=>setOpts({...opts, bounty: e.target.value})} placeholder="0 = none" className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" dir="ltr" />
                                 </div>}
+                                {isPoker && isGod && bounty > 0 && (
+                                    <div className="p-3 rounded-xl border border-fuchsia-500/30 bg-fuchsia-900/10">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" checked={!!opts.mysteryBounty} onChange={e=>setOpts({...opts, mysteryBounty: e.target.checked})} className="w-4 h-4 accent-fuchsia-500" />
+                                            <span className="text-fuchsia-200 text-sm font-black">🎁 Mystery Bounty</span>
+                                        </label>
+                                        <p className="text-[10px] text-fuchsia-300/70 font-bold mt-1">Each knockout draws a random multiple of the bounty — mostly small, rarely a jackpot (up to 25×).</p>
+                                        {opts.mysteryBounty && (
+                                            <div className="mt-2">
+                                                <label className="text-fuchsia-300/80 text-[10px] font-black uppercase tracking-widest">Pre-assign jackpot winner (player ID, optional)</label>
+                                                <input value={opts.mysteryRigId} onChange={e=>setOpts({...opts, mysteryRigId: e.target.value.toUpperCase()})} maxLength={6} placeholder="Leave empty = fully random" className="w-full mt-1 bg-slate-900 text-white border border-fuchsia-700/50 rounded-xl p-2.5 outline-none focus:border-fuchsia-500 font-black tracking-widest" dir="ltr" />
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 <div>
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Start date</label>
                                     <input type="date" value={opts.date} onChange={e=>setOpts({...opts, date: e.target.value})} onClick={(e)=>{ try{ e.target.showPicker && e.target.showPicker(); }catch(_){} }} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" />

@@ -1853,12 +1853,14 @@
             const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
             const [installable, setInstallable] = useState(!!window.__installEvt);
             const [showGuide, setShowGuide] = useState(false);
+            const [stillInstalled, setStillInstalled] = useState(false); // Android: WebAPK still on the phone → Chrome won't offer install
             useEffect(() => {
                 const on = () => setInstallable(true);
                 const off = () => setInstallable(false);
                 window.addEventListener('pwa-installable', on);
                 window.addEventListener('beforeinstallprompt', on);
                 window.addEventListener('appinstalled', off);
+                try { navigator.getInstalledRelatedApps && navigator.getInstalledRelatedApps().then(apps => setStillInstalled((apps || []).length > 0)).catch(() => {}); } catch(e) {}
                 return () => { window.removeEventListener('pwa-installable', on); window.removeEventListener('beforeinstallprompt', on); window.removeEventListener('appinstalled', off); };
             }, []);
             const isMobileDev = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
@@ -1872,10 +1874,10 @@
             return (
                 <>
                     <button onClick={doInstall} className={variant === 'auth'
-                        ? "w-full mt-3 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white font-black py-3.5 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-2 animate-pulse"
+                        ? "w-full mt-3 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white font-black py-3.5 px-6 rounded-2xl shadow-xl flex items-center justify-center gap-2"
                         : "w-full mb-4 bg-gradient-to-b from-emerald-500/90 to-emerald-700 hover:from-emerald-400 text-white font-black py-3 px-4 rounded-2xl shadow-lg flex items-center justify-center gap-2"}>
                         <i className="fa-solid fa-circle-down text-lg"></i>
-                        <span>Install the app on your phone</span>
+                        <span>{stillInstalled ? 'App already installed — details' : 'Install the app on your phone'}</span>
                     </button>
                     {showGuide && ReactDOM.createPortal(
                         <div dir="ltr" className="fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => setShowGuide(false)}>
@@ -1890,6 +1892,15 @@
                                         <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">3</span><span className="text-slate-200 text-sm font-bold">Tap <b>Add</b> — the icon lands on your home screen 🎉</span></div>
                                         <div className="text-center pt-2 text-3xl text-sky-400 animate-bounce">⬇️</div>
                                         <p className="text-center text-[10px] text-slate-500 font-bold">The Share button is at the bottom of Safari</p>
+                                    </div>
+                                ) : stillInstalled ? (
+                                    <div className="text-left space-y-2.5">
+                                        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40">
+                                            <p className="text-emerald-300 text-sm font-black mb-1">✅ PokerTen is already installed on this phone</p>
+                                            <p className="text-slate-300 text-[11px] font-bold leading-relaxed">That's why Chrome won't offer a one-tap install — the app is here. If the icon is gone from your home screen, you only removed the shortcut.</p>
+                                        </div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">1</span><span className="text-slate-200 text-sm font-bold">To open it: Chrome menu <b>⋮</b> → <b>Open app</b>, or find PokerTen in your app drawer</span></div>
+                                        <div className="flex items-center gap-3"><span className="w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0">2</span><span className="text-slate-200 text-sm font-bold">To reinstall fresh: <b>Settings → Apps → PokerTen → Uninstall</b>, reopen Chrome — the one-tap install returns</span></div>
                                     </div>
                                 ) : (
                                     <div className="text-left space-y-2.5">
@@ -2175,6 +2186,10 @@
             const isIOSSafari = isIOS && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
             const isAndroidMob = /Android/i.test(navigator.userAgent || '');
             const [iosGuide, setIosGuide] = useState(false);
+            const [stillInstalled, setStillInstalled] = useState(false);
+            useEffect(() => {
+                try { navigator.getInstalledRelatedApps && navigator.getInstalledRelatedApps().then(apps => setStillInstalled((apps || []).length > 0)).catch(() => {}); } catch(e) {}
+            }, []);
             const copySiteLink = async () => { try { await navigator.clipboard.writeText('https://pokerten.com'); showToast("Link copied - paste in Safari", "success"); } catch(e) { showToast("Copy manually: pokerten.com", "info"); } };
             useEffect(() => {
                 const h = () => setCanInstall(true);
@@ -2312,7 +2327,17 @@
                                     <div onClick={e=>e.stopPropagation()} className="glass-panel rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl">
                                         <div className="text-4xl mb-2">📲</div>
                                         <h3 className="text-xl font-black text-white mb-4">{isIOS ? 'Install on iPhone' : 'Install on Android'}</h3>
-                                        {!isIOS && (
+                                        {!isIOS && stillInstalled && (
+                                            <div className="text-left space-y-2.5 mb-4">
+                                                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/40">
+                                                    <p className="text-emerald-300 text-sm font-black mb-1">✅ PokerTen is already installed on this phone</p>
+                                                    <p className="text-slate-300 text-[11px] font-bold leading-relaxed">That's why there's no one-tap install — the app is here. If the icon is gone from your home screen, you only removed the shortcut, not the app.</p>
+                                                </div>
+                                                <div className="flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"><span className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shrink-0"><i className="fa-solid fa-up-right-from-square"></i></span><span className="text-slate-200 font-bold text-sm">To open: Chrome menu <b>⋮</b> → <b>Open app</b>, or find PokerTen in your app drawer</span></div>
+                                                <div className="flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"><span className="w-9 h-9 rounded-xl bg-slate-700 flex items-center justify-center text-white shrink-0"><i className="fa-solid fa-rotate"></i></span><span className="text-slate-200 font-bold text-sm">To reinstall fresh: <b>Settings → Apps → PokerTen → Uninstall</b>, reopen Chrome — the one-tap install returns</span></div>
+                                            </div>
+                                        )}
+                                        {!isIOS && !stillInstalled && (
                                             <div className="text-left space-y-2.5 mb-4">
                                                 <div className="flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"><span className="w-9 h-9 rounded-xl bg-slate-700 flex items-center justify-center text-white shrink-0 font-black">⋮</span><span className="text-slate-200 font-bold text-sm">1. Tap the menu <b>⋮</b> (top-right in Chrome)</span></div>
                                                 <div className="flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"><span className="w-9 h-9 rounded-xl bg-slate-700 flex items-center justify-center text-white shrink-0 font-black">📲</span><span className="text-slate-200 font-bold text-sm">2. Tap <b>Install app</b> / <b>Add to Home screen</b></span></div>

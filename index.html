@@ -11066,6 +11066,15 @@ function OFCTable({
       showToast(typeof e === 'string' ? e : "Error", "error");
     }
   };
+  useEffect(() => {
+    if (!canStart || T.status !== 'setup') return;
+    const seated = Object.values(players).filter(p => (p.stack || 0) > 0).length;
+    if (seated < 2) return;
+    const tm = setTimeout(() => {
+      startGame();
+    }, 1500);
+    return () => clearTimeout(tm);
+  }, [T.status, Object.keys(players).length, canStart]);
   const cashOutSeat = async () => {
     try {
       const myStack = tableRef.current?.players?.[user.uid]?.stack || 0;

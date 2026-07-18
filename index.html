@@ -4633,12 +4633,17 @@ function LobbyView({
   }))));
 }
 function SettlementSection({
-  user
+  user,
+  showToast
 }) {
+  const showToastG = showToast || (m => {});
   const [cyc, setCyc] = useState(0);
   const [aLog, setALog] = useState(null);
   const [gLog, setGLog] = useState(null);
   const [mems, setMems] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [transferFor, setTransferFor] = useState(null);
+  const [closed, setClosed] = useState((window.__club || {}).closedWeeks || {});
   useEffect(() => {
     (async () => {
       try {
@@ -4705,6 +4710,106 @@ function SettlementSection({
     }
     downloadCSV(rows, `settlement_${cycLabel.replace(/ /g, '_')}.csv`);
   };
+  const weekLocked = !!closed[String(start)];
+  const editResult = async p => {
+    if (!isOwnerView || weekLocked) return;
+    const cur = round2(pres[p.uid] || 0);
+    const raw = window.prompt(`Corrected result for ${p.username} this cycle (currently ${formatMoney(cur)}):`, String(cur));
+    if (raw === null) return;
+    const next = Number(raw);
+    if (isNaN(next)) return showToastG("Invalid amount", "error");
+    const delta = round2(next - cur);
+    if (delta === 0) return;
+    setBusy(true);
+    try {
+      const entry = {
+        uid: p.uid,
+        username: p.username,
+        clubId: CLUB_ID,
+        game: 'adjust',
+        profit: delta,
+        at: Date.now(),
+        by: user.username,
+        note: 'settlement correction'
+      };
+      await window.fb.addDoc(window.fb.collection(window.fb.db, "gameLog"), entry);
+      setGLog(prev => [...(prev || []), entry]);
+      showToastG(`Result corrected (${delta > 0 ? '+' : ''}${formatMoney(delta)})`, "success");
+    } catch (e) {
+      showToastG("Correction failed", "error");
+    }
+    setBusy(false);
+  };
+  const editPct = async p => {
+    if (!isOwnerView || weekLocked) return;
+    const raw = window.prompt(`Agent % for ${p.username} (0-100):`, String(p.agentPct || 0));
+    if (raw === null) return;
+    const pct = Math.max(0, Math.min(100, Number(raw)));
+    if (isNaN(pct)) return showToastG("Invalid %", "error");
+    setBusy(true);
+    try {
+      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", p.id), {
+        agentPct: pct
+      });
+      setMems(prev => prev.map(m => m.id === p.id ? {
+        ...m,
+        agentPct: pct
+      } : m));
+      showToastG(`Agent % set to ${pct}%`, "success");
+    } catch (e) {
+      showToastG("Update failed", "error");
+    }
+    setBusy(false);
+  };
+  const reassign = async (p, agentUid) => {
+    if (!isOwnerView || weekLocked) return;
+    setBusy(true);
+    try {
+      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", p.id), {
+        agentUid: agentUid || null
+      });
+      setMems(prev => prev.map(m => m.id === p.id ? {
+        ...m,
+        agentUid: agentUid || null
+      } : m));
+      setTransferFor(null);
+      showToastG(agentUid ? "Player transferred" : "Player unassigned", "success");
+    } catch (e) {
+      showToastG("Transfer failed", "error");
+    }
+    setBusy(false);
+  };
+  const closeWeek = async () => {
+    if (!isOwnerView || weekLocked) return;
+    if (!window.confirm(`Close ${cycLabel} and lock its results? This freezes the settlement so figures can't change afterward.`)) return;
+    setBusy(true);
+    try {
+      const rec = {
+        at: Date.now(),
+        by: user.username,
+        grossRake,
+        totalCuts,
+        houseGross,
+        houseCut,
+        ownerNet
+      };
+      const upd = {
+        ...(closed || {}),
+        [String(start)]: rec
+      };
+      await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+        closedWeeks: upd
+      }, {
+        merge: true
+      });
+      setClosed(upd);
+      if (window.__club) window.__club.closedWeeks = upd;
+      showToastG(`${cycLabel} closed & locked`, "success");
+    } catch (e) {
+      showToastG("Close failed", "error");
+    }
+    setBusy(false);
+  };
   return React.createElement("div", {
     className: "mb-8"
   }, React.createElement("div", {
@@ -4713,12 +4818,24 @@ function SettlementSection({
     className: "text-sm font-black text-emerald-400 uppercase tracking-widest"
   }, React.createElement("i", {
     className: "fa-solid fa-file-invoice-dollar ml-1"
-  }), " Weekly Settlement"), React.createElement("button", {
+  }), " Weekly Settlement ", weekLocked && React.createElement("span", {
+    className: "text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded-full align-middle"
+  }, React.createElement("i", {
+    className: "fa-solid fa-lock"
+  }), " Locked")), React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, isOwnerView && !weekLocked && React.createElement("button", {
+    disabled: busy,
+    onClick: closeWeek,
+    className: "text-xs bg-rose-900/40 hover:bg-rose-900/70 border border-rose-500/40 text-rose-200 px-3 py-1.5 rounded-lg font-black disabled:opacity-50"
+  }, React.createElement("i", {
+    className: "fa-solid fa-lock ml-1"
+  }), " Close week"), React.createElement("button", {
     onClick: exportCSV,
     className: "text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-emerald-300 px-3 py-1.5 rounded-lg font-black"
   }, React.createElement("i", {
     className: "fa-solid fa-file-csv ml-1"
-  }), " Export CSV")), React.createElement("div", {
+  }), " Export CSV"))), React.createElement("div", {
     className: "flex gap-1.5 mb-4 flex-wrap"
   }, [[0, 'This week'], [1, 'Last week'], [2, '2 wks'], [3, '3 wks']].map(([k, l]) => React.createElement("button", {
     key: k,
@@ -4787,7 +4904,7 @@ function SettlementSection({
       className: "space-y-1"
     }, pls.map(p => React.createElement("div", {
       key: p.uid,
-      className: "flex items-center justify-between text-xs border-t border-white/5 pt-1"
+      className: "flex items-center justify-between text-xs border-t border-white/5 pt-1.5"
     }, React.createElement("div", {
       className: "min-w-0 truncate"
     }, React.createElement("span", {
@@ -4798,12 +4915,43 @@ function SettlementSection({
       className: "text-slate-600"
     }, " · ", p.googleName)), React.createElement("div", {
       className: "flex items-center gap-2 shrink-0"
-    }, React.createElement("span", {
+    }, isOwnerView && !weekLocked ? React.createElement("button", {
+      onClick: () => editPct(p),
+      className: "text-slate-400 hover:text-white bg-slate-800/60 border border-white/10 rounded px-1.5 py-0.5"
+    }, p.agentPct || 0, "%") : React.createElement("span", {
       className: "text-slate-500"
-    }, p.agentPct || 0, "%"), React.createElement("span", {
+    }, p.agentPct || 0, "%"), isOwnerView && !weekLocked ? React.createElement("button", {
+      onClick: () => editResult(p),
+      className: `font-black hover:underline ${(pres[p.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`,
+      dir: "ltr"
+    }, formatMoney(pres[p.uid] || 0)) : React.createElement("span", {
       className: `font-black ${(pres[p.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`,
       dir: "ltr"
-    }, formatMoney(pres[p.uid] || 0)))))));
+    }, formatMoney(pres[p.uid] || 0)), isOwnerView && !weekLocked && React.createElement("button", {
+      onClick: () => setTransferFor(transferFor === p.id ? null : p.id),
+      title: "Transfer / remove",
+      className: "text-slate-500 hover:text-amber-300 w-6 text-center"
+    }, React.createElement("i", {
+      className: "fa-solid fa-right-left text-[10px]"
+    }))))), isOwnerView && transferFor && pls.some(p => p.id === transferFor) && (() => {
+      const p = pls.find(x => x.id === transferFor);
+      return React.createElement("div", {
+        className: "mt-2 p-2 bg-slate-900/70 border border-white/10 rounded-lg"
+      }, React.createElement("div", {
+        className: "text-[10px] text-slate-400 font-black mb-1.5"
+      }, "Move ", p.username, " to:"), React.createElement("div", {
+        className: "flex flex-wrap gap-1.5"
+      }, agents.filter(x => x.uid !== a.uid).map(x => React.createElement("button", {
+        key: x.uid,
+        disabled: busy,
+        onClick: () => reassign(p, x.uid),
+        className: "text-[11px] bg-slate-800 hover:bg-emerald-900/60 border border-white/10 text-slate-200 px-2 py-1 rounded font-bold disabled:opacity-50"
+      }, x.username)), React.createElement("button", {
+        disabled: busy,
+        onClick: () => reassign(p, null),
+        className: "text-[11px] bg-slate-800 hover:bg-rose-900/60 border border-rose-500/30 text-rose-300 px-2 py-1 rounded font-bold disabled:opacity-50"
+      }, "Unassign")));
+    })()));
   })));
 }
 function BackofficeView({
@@ -5337,7 +5485,8 @@ function BackofficeView({
   }, "Every result of every player, in all games - one row per game, with a total per player at the end of the file."))), [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER, ROLES.MANAGER, ROLES.AGENT].includes(user.role) && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6"
   }, React.createElement(SettlementSection, {
-    user: user
+    user: user,
+    showToast: showToast
   })), React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6"
   }, React.createElement("h3", {

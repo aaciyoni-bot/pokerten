@@ -1379,7 +1379,8 @@
 
         /* ===== קלף Poker מקצועי - חפיסה תקנית ===== */
         const PCard = ({ card, hidden, size }) => {
-            const D = size === 'xl' ? { w: 'w-14', h: '5.1rem', rank: '1.85rem', big: '2.65rem' }
+            const D = size === 'xxl' ? { w: 'w-16 sm:w-[4.6rem]', h: '6.3rem', rank: '2.2rem', big: '3.35rem' }
+                    : size === 'xl' ? { w: 'w-14', h: '5.1rem', rank: '1.85rem', big: '2.65rem' }
                     : size === 'lg' ? { w: 'w-11 sm:w-12', h: '4.4rem', rank: '1.6rem', big: '2.3rem' }
                     : size === 'sm' ? { w: 'w-7', h: '2.6rem', rank: '0.95rem', big: '1.35rem' }
                     : { w: 'w-9 sm:w-10', h: '3.4rem', rank: '1.25rem', big: '1.75rem' };
@@ -5500,7 +5501,7 @@
                                                 const midC = (nC - 1) / 2;
                                                 // fewer cards → looser/roomier; more cards → tighter overlap so all fit
                                                 // on the narrow mobile edges and every card's corner stays visible.
-                                                const ovl = isMe ? (nC >= 5 ? -26 : nC === 4 ? -22 : -16) : (nC >= 5 ? -18 : nC === 4 ? -15 : -11);
+                                                const ovl = isMe ? (nC >= 5 ? -30 : nC === 4 ? -24 : -18) : (nC >= 5 ? -18 : nC === 4 ? -15 : -11);
                                                 const ang = isMe ? (nC >= 5 ? 5 : 6) : (nC >= 5 ? 6 : 7);
                                                 return (
                                                 <div className={`flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : (isMe ? 'gap-1' : 'gap-0.5')}`} dir="ltr">
@@ -5508,8 +5509,8 @@
                                                         isMe && gs.phase === 'discard' && dispCards.length === 3
                                                         ? <div key={ci} onClick={() => handleDiscardCard(user.uid, ci)} className="cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"><PCard card={c} size="xl" /></div>
                                                         : doFan
-                                                        ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(ci - midC) * ang}deg) translateY(${Math.abs(ci - midC) * (isMe ? 3.5 : 2.5)}px)`, transformOrigin: '50% 115%', zIndex: ci }}><PCard card={c} hidden={hidden} size={isMe ? (nC > 4 ? 'lg' : 'xl') : 'sm'} /></span>
-                                                        : <PCard key={ci} card={c} hidden={hidden} size={isMe ? (nC > 4 ? 'lg' : 'xl') : 'sm'} />
+                                                        ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(ci - midC) * ang}deg) translateY(${Math.abs(ci - midC) * (isMe ? 3.5 : 2.5)}px)`, transformOrigin: '50% 115%', zIndex: ci }}><PCard card={c} hidden={hidden} size={isMe ? 'xxl' : 'sm'} /></span>
+                                                        : <PCard key={ci} card={c} hidden={hidden} size={isMe ? 'xxl' : 'sm'} />
                                                     ))}
                                                 </div>
                                                 );

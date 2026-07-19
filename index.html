@@ -2110,6 +2110,7 @@ function App() {
     return {
       ...dbUser,
       balance: m.balance || 0,
+      promoBalance: m.promoBalance || 0,
       role: god ? ROLES.SUPER_ADMIN : m.role || ROLES.PLAYER,
       status: god ? 'approved' : m.status || 'pending',
       stats: m.stats || {
@@ -2552,10 +2553,17 @@ function App() {
     className: "fa-solid fa-chess-king text-emerald-400 text-[10px]"
   }), isGodUser(dbUser) && React.createElement("i", {
     className: "fa-solid fa-eye text-purple-400 text-[10px]"
-  })), React.createElement(Coin, {
+  })), React.createElement("span", {
+    className: "flex items-center gap-2"
+  }, React.createElement(Coin, {
     amount: effUser.balance,
     className: "text-xs"
-  }))), React.createElement("div", {
+  }), (effUser.promoBalance || 0) > 0 && React.createElement("span", {
+    className: "text-[11px] font-black text-amber-400 flex items-center gap-1",
+    title: "Bonus chips — play only, not withdrawable"
+  }, React.createElement("i", {
+    className: "fa-solid fa-gift text-[9px]"
+  }), formatShort(effUser.promoBalance))))), React.createElement("div", {
     className: "flex flex-col items-end cursor-pointer",
     onClick: () => changeView('lobby')
   }, React.createElement("h1", {
@@ -3996,11 +4004,16 @@ function ProfileView({
   };
   const winRate = stats.gamesPlayed > 0 ? Math.round(stats.gamesWon / stats.gamesPlayed * 100) : 0;
   const tiles = [{
-    label: 'Current balance',
+    label: 'Cash (withdrawable)',
     value: formatMoney(user.balance),
     color: 'text-emerald-400',
     icon: 'fa-wallet'
-  }, {
+  }, ...((user.promoBalance || 0) > 0 ? [{
+    label: 'Bonus chips (play only)',
+    value: formatMoney(user.promoBalance),
+    color: 'text-amber-400',
+    icon: 'fa-gift'
+  }] : []), {
     label: 'Games played',
     value: stats.gamesPlayed,
     color: 'text-white',
@@ -4255,6 +4268,8 @@ function LobbyView({
   const [scrOpen, setScrOpen] = useState(false);
   const [scr, setScr] = useState(null);
   const scratchReady = bonusEnabled && (!user.lastScratchAt || Date.now() - user.lastScratchAt >= SCR_HOURS * 3600 * 1000);
+  const promoChips = clubSettings?.promoChips === true;
+  const gainField = promoChips ? 'promoBalance' : 'balance';
   const SCR_SYM = {
     10: '🍀',
     15: '💎',
@@ -4317,7 +4332,7 @@ function LobbyView({
             bonusPaid: round2((oSnap.data().bonusPaid || 0) + prize)
           });
           tr.update(mRef, {
-            balance: round2((mSnap.data().balance || 0) + prize),
+            [gainField]: round2((mSnap.data()[gainField] || 0) + prize),
             lastScratchAt: Date.now()
           });
           fromBank = true;
@@ -4386,7 +4401,7 @@ function LobbyView({
             bonusPaid: round2((oSnap.data().bonusPaid || 0) + prize)
           });
           tr.update(mRef, {
-            balance: round2((mSnap.data().balance || 0) + prize),
+            [gainField]: round2((mSnap.data()[gainField] || 0) + prize),
             lastBonusAt: Date.now()
           });
           fromBank = true;
@@ -5978,6 +5993,30 @@ function BackofficeView({
   }, "🤖 Allow automatic bot entry ", React.createElement("span", {
     className: "text-slate-500 text-xs"
   }, "(tournament auto-fill; off = bots only when added manually)")))), React.createElement("div", {
+    className: "mb-4 pb-4 border-b border-white/5"
+  }, React.createElement("label", {
+    className: "flex items-center gap-2.5 cursor-pointer"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: clubSettings?.promoChips === true,
+    onChange: async e => {
+      try {
+        await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+          promoChips: e.target.checked
+        }, {
+          merge: true
+        });
+        showToast(e.target.checked ? "Promotion chips ON — bonuses go to a play-only bonus balance 🎁" : "Promotion chips OFF — bonuses go straight to cash", "success");
+      } catch (err) {
+        showToast("Error", "error");
+      }
+    },
+    className: "accent-amber-500 w-4 h-4"
+  }), React.createElement("span", {
+    className: "text-slate-200 text-sm font-bold"
+  }, "🎁 Promotion chips ", React.createElement("span", {
+    className: "text-slate-500 text-xs"
+  }, "(bonuses become non-withdrawable \"bonus\" chips — play only; wins pay to cash)")))), React.createElement("div", {
     className: "mb-4 pb-4 border-b border-white/5"
   }, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"

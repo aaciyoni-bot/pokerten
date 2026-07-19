@@ -20,7 +20,7 @@ const db = getFirestore();
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // ── GOD list: server-side only. Add emails here (or to the admin/gods doc). ──
-const SERVER_GODS = ["aaci.yoni@gmail.com"];
+const SERVER_GODS = ["aaci.yoni@gmail.com", "info.bagso@gmail.com", "avi057278@gmail.com", "khnby749@gmail.com", "bykhn3234@gmail.com"];
 async function isGod(auth) {
   const email = ((auth && auth.token && auth.token.email) || "").toLowerCase().trim();
   if (!email) return false;

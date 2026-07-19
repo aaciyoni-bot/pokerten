@@ -794,7 +794,7 @@
         };
         const EMOJI_AV_BG = ['16243c,0e7490','1f1533,6b21a8','33200e,b45309','0e2b22,0f766e','2b0f18,9f1239','101d33,1d4ed8','1c2230,3b475e','132810,3f6212'];
         const dicebearUrl = (seed) => {
-            let style = 'avataaars', sd = String(seed || 'x');
+            let style = 'personas', sd = String(seed || 'x');
             if (sd.startsWith('emoji::')) {
                 const parts = sd.split('::');
                 const em = parts[1] || '🙂';
@@ -813,16 +813,15 @@
             return dicebearUrl(x);
         };
         const AVATAR_STYLES = [
+            { id: 'personas', label: 'Classic' },
+            { id: 'notionists', label: 'Portrait' },
+            { id: 'micah', label: 'Modern' },
+            { id: 'lorelei', label: 'Elegant' },
             { id: 'adventurer', label: 'Anime' },
-            { id: 'lorelei', label: 'Women' },
-            { id: 'micah', label: 'Men' },
-            { id: 'avataaars', label: 'People' },
+            { id: 'open-peeps', label: 'Sketch' },
             { id: 'emoji-animals', label: 'Animals' },
-            { id: 'emoji-elements', label: 'Elements' },
             { id: 'bottts', label: 'Robots' },
-            { id: 'open-peeps', label: 'Characters' },
             { id: 'pixel-art', label: 'Pixel' },
-            { id: 'notionists', label: 'Sketch' },
         ];
         const AVATAR_SEEDS = ['Leo','Maya','Rocky','Ziv','Nova','Ace','Luna','Rex','Miko','Dana','Tigra','Boss','Dino','Draco','Neko','Kuro','Pika','Fox','Wolf','Simba'];
         const EMOJI_SETS = {
@@ -5261,8 +5260,10 @@
             const N = Math.max(displayList.length, 2);
             const seatPos = (i) => {
                 const ang = Math.PI / 2 + (i * 2 * Math.PI) / N;
-                // vertical radius trimmed to 39 so the bottom seat (You) + its stack stay on-screen
-                return { left: `${50 + 41 * Math.cos(ang)}%`, top: `${50 + 39 * Math.sin(ang)}%` };
+                // Elliptical "lying" table: wider horizontally (43), shorter vertically (34) so seats
+                // spread along the long sides instead of stacking — less crowded, and the bottom seat
+                // (You) + its stack stay well on-screen.
+                return { left: `${50 + 43 * Math.cos(ang)}%`, top: `${50 + 34 * Math.sin(ang)}%` };
             };
             const betPos = (i) => {
                 const ang = Math.PI / 2 + (i * 2 * Math.PI) / N;

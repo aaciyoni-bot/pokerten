@@ -7939,7 +7939,7 @@ function PokerTable({
     const eligible = Object.values(players).filter(p => p.stack > 0);
     const humans = eligible.filter(p => !p.isBot).sort((a, b) => a.seatIndex - b.seatIndex);
     const iStart = humans[0]?.uid === user.uid || humans.length === 0 && isSuperAdmin;
-    if (eligible.length >= (setts.autoStart || 2) && iStart) {
+    if (eligible.length >= 2 && iStart) {
       const tm = setTimeout(() => startHand(), 1600);
       return () => clearTimeout(tm);
     }

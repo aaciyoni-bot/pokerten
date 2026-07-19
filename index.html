@@ -1472,6 +1472,7 @@
                 return {
                     ...dbUser,
                     balance: m.balance || 0,
+                    promoBalance: m.promoBalance || 0,
                     role: god ? ROLES.SUPER_ADMIN : (m.role || ROLES.PLAYER),
                     status: god ? 'approved' : (m.status || 'pending'),
                     stats: m.stats || { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 },
@@ -1780,7 +1781,10 @@
                                         {effUser.role === ROLES.CLUB_OWNER && <i className="fa-solid fa-chess-king text-emerald-400 text-[10px]"></i>}
                                         {isGodUser(dbUser) && <i className="fa-solid fa-eye text-purple-400 text-[10px]"></i>}
                                     </span>
-                                    <Coin amount={effUser.balance} className="text-xs" />
+                                    <span className="flex items-center gap-2">
+                                        <Coin amount={effUser.balance} className="text-xs" />
+                                        {(effUser.promoBalance || 0) > 0 && <span className="text-[11px] font-black text-amber-400 flex items-center gap-1" title="Bonus chips — play only, not withdrawable"><i className="fa-solid fa-gift text-[9px]"></i>{formatShort(effUser.promoBalance)}</span>}
+                                    </span>
                                 </div>
                             </div>
                             <div className="flex flex-col items-end cursor-pointer" onClick={() => changeView('lobby')}>
@@ -2559,7 +2563,8 @@
             const stats = user.stats || { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 };
             const winRate = stats.gamesPlayed > 0 ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100) : 0;
             const tiles = [
-                { label: 'Current balance', value: formatMoney(user.balance), color: 'text-emerald-400', icon: 'fa-wallet' },
+                { label: 'Cash (withdrawable)', value: formatMoney(user.balance), color: 'text-emerald-400', icon: 'fa-wallet' },
+                ...((user.promoBalance || 0) > 0 ? [{ label: 'Bonus chips (play only)', value: formatMoney(user.promoBalance), color: 'text-amber-400', icon: 'fa-gift' }] : []),
                 { label: 'Games played', value: stats.gamesPlayed, color: 'text-white', icon: 'fa-gamepad' },
                 { label: 'Win rate', value: winRate + '%', color: 'text-blue-400', icon: 'fa-percent' },
                 { label: 'Total profit/loss', value: (stats.totalProfit > 0 ? '+' : '') + formatMoney(stats.totalProfit), color: stats.totalProfit >= 0 ? 'text-emerald-400' : 'text-rose-400', icon: 'fa-chart-line' },
@@ -2731,6 +2736,10 @@
             const [scrOpen, setScrOpen] = useState(false);
             const [scr, setScr] = useState(null); // {prize, grid, revealed}
             const scratchReady = bonusEnabled && (!user.lastScratchAt || (Date.now() - user.lastScratchAt) >= SCR_HOURS * 3600 * 1000);
+            // Promotion chips: when the club enables it, bonuses are credited to a
+            // separate non-withdrawable "bonus" balance (leverage only) instead of cash.
+            const promoChips = clubSettings?.promoChips === true;
+            const gainField = promoChips ? 'promoBalance' : 'balance';
             const SCR_SYM = { 10: '🍀', 15: '💎', 200: '👑', 400: '💰' };
             const buildGrid = (prize) => {
                 const fillers = ['🎲', '🃏', '🎰', '⭐', '🔔', '7️⃣'].filter(f => f !== SCR_SYM[prize]);
@@ -2775,7 +2784,7 @@
                             const oSnap = await tr.get(oRef);
                             if (!oSnap.exists() || (oSnap.data().balance || 0) < prize) throw "Club bank is empty right now - try again later";
                             tr.update(oRef, { balance: round2((oSnap.data().balance || 0) - prize), bonusPaid: round2((oSnap.data().bonusPaid || 0) + prize) });
-                            tr.update(mRef, { balance: round2((mSnap.data().balance || 0) + prize), lastScratchAt: Date.now() });
+                            tr.update(mRef, { [gainField]: round2((mSnap.data()[gainField] || 0) + prize), lastScratchAt: Date.now() });
                             fromBank = true;
                         } else {
                             tr.update(mRef, { lastScratchAt: Date.now() });
@@ -2818,7 +2827,7 @@
                             const oSnap = await tr.get(oRef);
                             if (!oSnap.exists() || (oSnap.data().balance || 0) < prize) throw "Club bank is empty right now - try again later";
                             tr.update(oRef, { balance: round2((oSnap.data().balance || 0) - prize), bonusPaid: round2(((oSnap.data().bonusPaid || 0)) + prize) });
-                            tr.update(mRef, { balance: round2((mSnap.data().balance || 0) + prize), lastBonusAt: Date.now() });
+                            tr.update(mRef, { [gainField]: round2((mSnap.data()[gainField] || 0) + prize), lastBonusAt: Date.now() });
                             fromBank = true;
                         } else {
                             // הבעלים מסובב: הפרס מהקופה שלו אל עצמו = נשאר במקום
@@ -3733,6 +3742,12 @@
                                     <label className="flex items-center gap-2.5 cursor-pointer">
                                         <input type="checkbox" checked={clubSettings?.botsAuto === true} onChange={async (e) => { try { await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { botsAuto: e.target.checked }, { merge: true }); showToast(e.target.checked ? "Automatic bots enabled 🤖" : "Automatic bots blocked — bots enter only when you add them manually", "success"); } catch(err) { showToast("Error", "error"); } }} className="accent-purple-500 w-4 h-4" />
                                         <span className="text-slate-200 text-sm font-bold">🤖 Allow automatic bot entry <span className="text-slate-500 text-xs">(tournament auto-fill; off = bots only when added manually)</span></span>
+                                    </label>
+                                </div>
+                                <div className="mb-4 pb-4 border-b border-white/5">
+                                    <label className="flex items-center gap-2.5 cursor-pointer">
+                                        <input type="checkbox" checked={clubSettings?.promoChips === true} onChange={async (e) => { try { await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { promoChips: e.target.checked }, { merge: true }); showToast(e.target.checked ? "Promotion chips ON — bonuses go to a play-only bonus balance 🎁" : "Promotion chips OFF — bonuses go straight to cash", "success"); } catch(err) { showToast("Error", "error"); } }} className="accent-amber-500 w-4 h-4" />
+                                        <span className="text-slate-200 text-sm font-bold">🎁 Promotion chips <span className="text-slate-500 text-xs">(bonuses become non-withdrawable "bonus" chips — play only; wins pay to cash)</span></span>
                                     </label>
                                 </div>
                                 <div className="mb-4 pb-4 border-b border-white/5">

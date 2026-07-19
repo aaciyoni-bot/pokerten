@@ -4917,20 +4917,34 @@
             };
 
             const handleAddBot = async () => {
-                const t = tableRef.current; if (!t) return;
-                const pl = t.players || {};
-                if (Object.keys(pl).length >= (setts.maxPlayers || 6)) return showToast("The table is full", "error");
-                let seatIndex = 0;
-                const taken = new Set(Object.values(pl).map(p => p.seatIndex));
-                while (taken.has(seatIndex)) seatIndex++;
-                const botUid = `bot_${Date.now()}`;
-                const midHand = !['waiting','showdown'].includes(t.gameState.phase);
-                await window.fb.updateDoc(tblRef(), { [`players.${botUid}`]: {
-                    uid: botUid, name: BOT_NAMES[Math.floor(Math.random()*BOT_NAMES.length)] + Math.floor(Math.random()*99), seatIndex,
-                    stack: round2(100 * BB), bet: 0, status: midHand ? 'waiting' : 'active', cards: [], hasActed: false, actionText: '', isBot: true
-                }});
+                // Atomic add: read fresh state inside a transaction so rapid/successive adds each
+                // land on a distinct free seat with a unique id — otherwise stale reads + a
+                // millisecond-resolution id collide and most bots get silently overwritten/lost.
+                const ref = tblRef();
+                let full = false;
+                try {
+                    await window.fb.runTransaction(window.fb.db, async (tx) => {
+                        const snap = await tx.get(ref);
+                        if (!snap.exists()) return;
+                        const t = snap.data();
+                        const pl = t.players || {};
+                        const max = (t.settings || {}).maxPlayers || 6;
+                        if (Object.keys(pl).length >= max) { full = true; return; }
+                        const taken = new Set(Object.values(pl).map(p => p.seatIndex));
+                        let seatIndex = 0; while (taken.has(seatIndex)) seatIndex++;
+                        const botUid = `bot_${Date.now()}_${Math.floor(Math.random()*1e9).toString(36)}`;
+                        const midHand = !['waiting','showdown'].includes((t.gameState || {}).phase);
+                        const bb = (Number((t.settings || {}).blinds) || 0.5) * 2;
+                        tx.update(ref, { [`players.${botUid}`]: {
+                            uid: botUid, name: BOT_NAMES[Math.floor(Math.random()*BOT_NAMES.length)] + Math.floor(Math.random()*99), seatIndex,
+                            stack: round2(100 * bb), bet: 0, status: midHand ? 'waiting' : 'active', cards: [], hasActed: false, actionText: '', isBot: true
+                        }});
+                    });
+                } catch(e) {}
+                if (full) return showToast("The table is full", "error");
                 // The agreed rule: a table that fills up spawns a fresh twin with the same settings
-                if (Object.keys(pl).length + 1 >= (setts.maxPlayers || 6)) spawnTwinTable(t, true);
+                const cur = tableRef.current;
+                if (cur && Object.keys(cur.players || {}).length >= ((cur.settings || {}).maxPlayers || 6)) spawnTwinTable(cur, true);
             };
 
             /* ---------- מוח הBots (רץ רק אצל הסופר-אדמין) ---------- */
@@ -7142,16 +7156,29 @@
             };
             const handleAddBot = async () => {
                 try {
-                    if (list.length >= maxP) return;
                     const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));
                     const bs = await window.fb.getDocs(botQ);
-                    const used = new Set(Object.keys(players));
-                    const bots = bs.docs.filter(d => !used.has(d.id));
-                    if (!bots.length) return showToast("No bots available", "error");
-                    const b = bots[Math.floor(Math.random() * bots.length)];
-                    const taken = new Set(list.map(p => p.seatIndex));
-                    let seatIndex = 0; while (taken.has(seatIndex)) seatIndex++;
-                    await window.fb.updateDoc(tblRef(), { [`players.${b.id}`]: { uid: b.id, name: b.data().username, photo: '', avatarSeed: b.data().avatarSeed || b.id, seatIndex, stack: Number((tableRef.current?.settings || {}).buyIn) || 100, top: [], mid: [], bot: [], pending: [], flC: 0, flNext: 0, isBot: true, left: false } });
+                    if (!bs.docs.length) return showToast("No bots available", "error");
+                    const ref = tblRef();
+                    let noneLeft = false;
+                    // Atomic: read fresh players inside the tx so rapid adds each pick a DIFFERENT
+                    // bot + a distinct free seat, instead of colliding on a stale snapshot.
+                    await window.fb.runTransaction(window.fb.db, async (tr) => {
+                        const snap = await tr.get(ref);
+                        if (!snap.exists()) return;
+                        const t = snap.data();
+                        const pl = t.players || {};
+                        const mx = (t.settings || {}).maxPlayers || 3;
+                        if (Object.keys(pl).length >= mx) { noneLeft = true; return; }
+                        const used = new Set(Object.keys(pl));
+                        const avail = bs.docs.filter(d => !used.has(d.id));
+                        if (!avail.length) { noneLeft = true; return; }
+                        const b = avail[Math.floor(Math.random() * avail.length)];
+                        const taken = new Set(Object.values(pl).map(p => p.seatIndex));
+                        let seatIndex = 0; while (taken.has(seatIndex)) seatIndex++;
+                        tr.update(ref, { [`players.${b.id}`]: { uid: b.id, name: b.data().username, photo: '', avatarSeed: b.data().avatarSeed || b.id, seatIndex, stack: Number((t.settings || {}).buyIn) || 100, top: [], mid: [], bot: [], pending: [], flC: 0, flNext: 0, isBot: true, left: false } });
+                    });
+                    if (noneLeft) showToast("The table is full", "error");
                 } catch(e) {}
             };
             const startGame = async () => {

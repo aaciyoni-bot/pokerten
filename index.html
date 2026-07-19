@@ -261,7 +261,8 @@
         .card-face {
             background: #ffffff;
             border: none; border-radius: 8px;
-            box-shadow: 0 3px 10px rgba(2,6,23,0.45);
+            /* hairline edge so overlapping cards in a fan stay visually separated (GG-style) */
+            box-shadow: 0 3px 10px rgba(2,6,23,0.45), inset 0 0 0 1px rgba(15,23,42,0.14), 1px 0 2px rgba(2,6,23,0.30);
             font-family: 'Rubik', sans-serif;
         }
         .card-back {
@@ -1935,23 +1936,27 @@ const PCard = ({
   const D = size === 'xl' ? {
     w: 'w-14',
     h: '5.1rem',
-    rank: '1.85rem',
-    big: '2.65rem'
+    rank: '1.55rem',
+    suit: '1.05rem',
+    big: '2.15rem'
   } : size === 'lg' ? {
     w: 'w-11 sm:w-12',
     h: '4.4rem',
-    rank: '1.6rem',
-    big: '2.3rem'
+    rank: '1.35rem',
+    suit: '0.92rem',
+    big: '1.85rem'
   } : size === 'sm' ? {
-    w: 'w-7',
-    h: '2.6rem',
-    rank: '0.95rem',
+    w: 'w-8',
+    h: '2.85rem',
+    rank: '1.02rem',
+    suit: '0.72rem',
     big: '1.35rem'
   } : {
     w: 'w-9 sm:w-10',
     h: '3.4rem',
-    rank: '1.25rem',
-    big: '1.75rem'
+    rank: '1.18rem',
+    suit: '0.82rem',
+    big: '1.6rem'
   };
   if (!card || hidden) return React.createElement("div", {
     className: `${D.w} card-back shadow-md`,
@@ -1960,6 +1965,7 @@ const PCard = ({
     }
   });
   const col = SUIT_COLORS[card.suit] || '#111827';
+  const showBig = size !== 'sm';
   return React.createElement("div", {
     className: `${D.w} card-face relative overflow-hidden`,
     style: {
@@ -1967,18 +1973,35 @@ const PCard = ({
     },
     dir: "ltr"
   }, React.createElement("div", {
-    className: "absolute leading-none font-bold",
+    className: "absolute flex flex-col items-center",
     style: {
-      top: '4%',
+      top: '5%',
       left: '8%',
-      fontSize: D.rank,
-      color: col,
-      letterSpacing: '-0.05em',
-      fontFamily: card.val === 'J' ? "Arial, 'Helvetica Neue', Roboto, sans-serif" : "'Rubik', sans-serif",
-      fontWeight: 700
+      lineHeight: 0.82,
+      color: col
     }
-  }, card.val), React.createElement("div", {
-    className: "absolute inset-x-0 bottom-[3%] flex justify-center pointer-events-none"
+  }, React.createElement("span", {
+    style: {
+      fontSize: D.rank,
+      fontFamily: card.val === 'J' ? "Arial,'Helvetica Neue',Roboto,sans-serif" : "'Rubik',sans-serif",
+      fontWeight: 800,
+      letterSpacing: '-0.04em'
+    }
+  }, card.val), React.createElement("span", {
+    className: "leading-none",
+    style: {
+      marginTop: '0.04em'
+    }
+  }, React.createElement(SuitGlyph, {
+    s: card.suit,
+    color: col,
+    size: D.suit
+  }))), showBig && React.createElement("div", {
+    className: "absolute flex items-center justify-center pointer-events-none",
+    style: {
+      right: '6%',
+      bottom: '5%'
+    }
   }, React.createElement(SuitGlyph, {
     s: card.suit,
     color: col,
@@ -8597,7 +8620,7 @@ function PokerTable({
       const nC = dispCards.length;
       const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
       const midC = (nC - 1) / 2;
-      const ovl = isMe ? nC >= 5 ? -12 : nC === 4 ? -13 : -14 : nC >= 5 ? -18 : nC === 4 ? -15 : -11;
+      const ovl = isMe ? nC >= 5 ? -28 : -32 : hidden ? nC >= 5 ? -16 : -13 : nC >= 5 ? -22 : -18;
       const ang = isMe ? nC >= 5 ? 5 : 6 : nC >= 5 ? 6 : 7;
       return React.createElement("div", {
         className: `flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
@@ -8621,12 +8644,12 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : 'sm'
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : 'md'
       })) : React.createElement(PCard, {
         key: ci,
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : 'sm'
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : 'md'
       })));
     })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && React.createElement("div", {
       className: "win-tag",

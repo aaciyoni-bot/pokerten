@@ -4488,7 +4488,7 @@
             };
 
             const startHand = async () => {
-                if (setts.serverEngine) { try { await window.fb.fx('pkDeal', { tableId: tableDocId }); } catch(e) {} return; }
+                if (setts.serverEngine) { try { await window.fb.fx('pkDeal', { tableId: tableDocId }); } catch(e) { console.error('pkDeal failed', e); showToast('Deal: ' + ((e && e.message) || e), 'error'); } return; }
                 if (startingRef.current) return;
                 startingRef.current = true;
                 try {
@@ -4996,7 +4996,7 @@
                 const humans = eligible.filter(p => !p.isBot).sort((a,b) => a.seatIndex - b.seatIndex);
                 // מי מתחיל את היד: האדם הראשון בשולחן. אם אין בני-אדם (שולחן בוטים בלבד)
                 // והצופה הוא סופר-אדמין — הוא מתחיל, כדי שאפשר יהיה לצפות בבוטים משחקים.
-                const iStart = humans[0]?.uid === user.uid || (humans.length === 0 && isSuperAdmin);
+                const iStart = humans[0]?.uid === user.uid || isSuperAdmin;
                 // Seat count is a CAP, not a requirement: a poker hand starts as soon as 2 players
                 // have chips — never wait for the table to fill (that's what left it stuck at "2/6").
                 if (eligible.length >= 2 && iStart) {

@@ -1932,7 +1932,12 @@ const PCard = ({
   hidden,
   size
 }) => {
-  const D = size === 'xl' ? {
+  const D = size === 'xxl' ? {
+    w: 'w-16 sm:w-[4.6rem]',
+    h: '6.3rem',
+    rank: '2.2rem',
+    big: '3.35rem'
+  } : size === 'xl' ? {
     w: 'w-14',
     h: '5.1rem',
     rank: '1.85rem',
@@ -8597,7 +8602,7 @@ function PokerTable({
       const nC = dispCards.length;
       const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
       const midC = (nC - 1) / 2;
-      const ovl = isMe ? nC >= 5 ? -26 : nC === 4 ? -22 : -16 : nC >= 5 ? -18 : nC === 4 ? -15 : -11;
+      const ovl = isMe ? nC >= 5 ? -30 : nC === 4 ? -24 : -18 : nC >= 5 ? -18 : nC === 4 ? -15 : -11;
       const ang = isMe ? nC >= 5 ? 5 : 6 : nC >= 5 ? 6 : 7;
       return React.createElement("div", {
         className: `flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
@@ -8621,12 +8626,12 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : 'sm'
+        size: isMe ? 'xxl' : 'sm'
       })) : React.createElement(PCard, {
         key: ci,
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : 'sm'
+        size: isMe ? 'xxl' : 'sm'
       })));
     })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && React.createElement("div", {
       className: "win-tag",

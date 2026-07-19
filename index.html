@@ -6808,6 +6808,7 @@ function PokerTable({
   const [buyAmt, setBuyAmt] = useState(0);
   const [raiseAmt, setRaiseAmt] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
+  const [acting, setActing] = useState(false);
   const tableRef = useRef(null);
   const advanceRef = useRef(null);
   const nextHandRef = useRef(null);
@@ -6872,8 +6873,15 @@ function PokerTable({
     if (buyAmt < minB) setBuyAmt(round2(minB));
   }, [tableState]);
   useEffect(() => {
+    setActing(false);
     if (isMyTurn) setRaiseAmt(round2(Math.min((gs.highestBet || 0) + (gs.minRaise || BB), (myPlayer?.bet || 0) + (myPlayer?.stack || 0))));
   }, [gs.activeTurnUid, gs.turnStartedAt]);
+  const myAct = (type, amt) => {
+    if (acting || !isMyTurn) return;
+    setActing(true);
+    setTimeout(() => setActing(false), 3500);
+    performAction(user.uid, type, amt);
+  };
   const firstAfterDealer = (g, pl) => {
     const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
     const dSeat = pl[g.dealerUid]?.seatIndex ?? -1;
@@ -7079,7 +7087,10 @@ function PokerTable({
             amount: targetBet
           });
         } catch (e) {
-          showToast(e && e.message || 'Action failed', 'error');
+          const m = e && e.message || '';
+          if (!/turn|not your/i.test(m)) showToast(m || 'Action failed', 'error');
+        } finally {
+          setActing(false);
         }
       }
       return;
@@ -8482,7 +8493,7 @@ function PokerTable({
     amount: pot.amount,
     scale: 1.1
   }))), React.createElement("div", {
-    className: `absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30 rounded-2xl ${gs.phase !== 'waiting' ? 'px-2 py-1.5 bg-black/35 backdrop-blur-[2px]' : ''}`,
+    className: `absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 z-30 rounded-2xl ${gs.phase !== 'waiting' ? 'px-2 py-1.5 bg-black/35 backdrop-blur-[2px]' : ''}`,
     dir: "ltr",
     style: gs.phase !== 'waiting' ? {
       boxShadow: '0 0 0 1px rgba(255,255,255,0.04)'
@@ -8491,7 +8502,7 @@ function PokerTable({
     key: i,
     className: "card-reveal",
     style: {
-      animationDelay: `${i % 3 * 70}ms`
+      animationDelay: `${i % 3 * 100}ms`
     }
   }, React.createElement(PCard, {
     card: c,
@@ -8817,18 +8828,21 @@ function PokerTable({
     onClick: () => setRaiseAmt(myMaxBet),
     className: "text-[9px] bg-slate-800 border border-white/10 px-2 py-1 rounded font-black text-rose-300"
   }, "MAX"))), React.createElement("div", {
-    className: "grid grid-cols-3 gap-2.5"
+    className: `grid grid-cols-3 gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`
   }, React.createElement("button", {
-    onClick: () => performAction(user.uid, 'fold'),
+    disabled: acting,
+    onClick: () => myAct('fold'),
     className: "btn-fold text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform"
   }, "FOLD"), React.createElement("button", {
-    onClick: () => performAction(user.uid, 'call'),
+    disabled: acting,
+    onClick: () => myAct('call'),
     className: "btn-call text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform"
   }, toCallMe > 0 ? React.createElement("span", null, "CALL ", React.createElement("span", {
     dir: "ltr",
     className: "block text-[10px] opacity-90"
   }, formatShort(Math.min(toCallMe, myPlayer?.stack || 0)))) : 'CHECK'), React.createElement("button", {
-    onClick: () => performAction(user.uid, 'raise', raiseAmt),
+    disabled: acting,
+    onClick: () => myAct('raise', raiseAmt),
     className: "btn-raise text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform"
   }, "RAISE ", React.createElement("span", {
     dir: "ltr",

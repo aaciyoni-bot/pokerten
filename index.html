@@ -4217,6 +4217,7 @@
             const [buyAmt, setBuyAmt] = useState(0);
             const [raiseAmt, setRaiseAmt] = useState(0);
             const [timeLeft, setTimeLeft] = useState(30);
+            const [acting, setActing] = useState(false); // optimistic: disable action buttons the instant you tap
 
             const tableRef = useRef(null);
             const advanceRef = useRef(null);
@@ -4260,8 +4261,17 @@
             }, [tableState]);
 
             useEffect(() => {
+                setActing(false); // every new turn (or turn hand-off) re-enables the buttons
                 if (isMyTurn) setRaiseAmt(round2(Math.min((gs.highestBet || 0) + (gs.minRaise || BB), (myPlayer?.bet || 0) + (myPlayer?.stack || 0))));
             }, [gs.activeTurnUid, gs.turnStartedAt]);
+
+            // Guarded action: instant visual feedback, prevents double-submits and stale "not your turn" clicks.
+            const myAct = (type, amt) => {
+                if (acting || !isMyTurn) return;
+                setActing(true);
+                setTimeout(() => setActing(false), 3500); // safety re-enable if the turn didn't advance (error/slow net)
+                performAction(user.uid, type, amt);
+            };
 
             /* ---------- מנוע ---------- */
             const firstAfterDealer = (g, pl) => {
@@ -4384,7 +4394,8 @@
                     // bots/timeouts/other actors are the server's job via pkTick.
                     if (actorUid === user.uid) {
                         try { await window.fb.fx('pkAct', { tableId: tableDocId, action: type === 'raise' ? 'raise' : type, amount: targetBet }); }
-                        catch(e) { showToast((e && e.message) || 'Action failed', 'error'); }
+                        catch(e) { const m = (e && e.message) || ''; if (!/turn|not your/i.test(m)) showToast(m || 'Action failed', 'error'); }
+                        finally { setActing(false); }
                     }
                     return;
                 }
@@ -5420,8 +5431,8 @@
                                 {(gs.pots || []).map((pot, i) => <CasinoChipStack key={i} amount={pot.amount} scale={1.1} />)}
                             </div>
 
-                            <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30 rounded-2xl ${gs.phase !== 'waiting' ? 'px-2 py-1.5 bg-black/35 backdrop-blur-[2px]' : ''}`} dir="ltr" style={gs.phase !== 'waiting' ? { boxShadow: '0 0 0 1px rgba(255,255,255,0.04)' } : {}}>
-                                {(gs.board || []).map((c, i) => <span key={i} className="card-reveal" style={{ animationDelay: `${(i % 3) * 70}ms` }}><PCard card={c} size="md" /></span>)}
+                            <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 z-30 rounded-2xl ${gs.phase !== 'waiting' ? 'px-2 py-1.5 bg-black/35 backdrop-blur-[2px]' : ''}`} dir="ltr" style={gs.phase !== 'waiting' ? { boxShadow: '0 0 0 1px rgba(255,255,255,0.04)' } : {}}>
+                                {(gs.board || []).map((c, i) => <span key={i} className="card-reveal" style={{ animationDelay: `${(i % 3) * 100}ms` }}><PCard card={c} size="md" /></span>)}
                                 {rabbit.length > 0 && rabbit.map((c, i) => (
                                     <div key={'rb'+i} className="relative opacity-75"><PCard card={c} size="md" /><span className="absolute -top-2 -right-1 text-xs">🐰</span></div>
                                 ))}
@@ -5645,12 +5656,12 @@
                                         <button onClick={()=>setRaiseAmt(myMaxBet)} className="text-[9px] bg-slate-800 border border-white/10 px-2 py-1 rounded font-black text-rose-300">MAX</button>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-3 gap-2.5">
-                                    <button onClick={()=>performAction(user.uid,'fold')} className="btn-fold text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform">FOLD</button>
-                                    <button onClick={()=>performAction(user.uid,'call')} className="btn-call text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform">
+                                <div className={`grid grid-cols-3 gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <button disabled={acting} onClick={()=>myAct('fold')} className="btn-fold text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform">FOLD</button>
+                                    <button disabled={acting} onClick={()=>myAct('call')} className="btn-call text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform">
                                         {toCallMe > 0 ? <span>CALL <span dir="ltr" className="block text-[10px] opacity-90">{formatShort(Math.min(toCallMe, myPlayer?.stack||0))}</span></span> : 'CHECK'}
                                     </button>
-                                    <button onClick={()=>performAction(user.uid,'raise', raiseAmt)} className="btn-raise text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform">
+                                    <button disabled={acting} onClick={()=>myAct('raise', raiseAmt)} className="btn-raise text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform">
                                         RAISE <span dir="ltr" className="block text-[10px] opacity-90">{formatShort(raiseAmt)}</span>
                                     </button>
                                 </div>

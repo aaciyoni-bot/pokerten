@@ -7254,7 +7254,10 @@ function PokerTable({
         await window.fb.fx('pkDeal', {
           tableId: tableDocId
         });
-      } catch (e) {}
+      } catch (e) {
+        console.error('pkDeal failed', e);
+        showToast('Deal: ' + (e && e.message || e), 'error');
+      }
       return;
     }
     if (startingRef.current) return;
@@ -7938,7 +7941,7 @@ function PokerTable({
     if (!tableState || gs.phase !== 'waiting') return;
     const eligible = Object.values(players).filter(p => p.stack > 0);
     const humans = eligible.filter(p => !p.isBot).sort((a, b) => a.seatIndex - b.seatIndex);
-    const iStart = humans[0]?.uid === user.uid || humans.length === 0 && isSuperAdmin;
+    const iStart = humans[0]?.uid === user.uid || isSuperAdmin;
     if (eligible.length >= 2 && iStart) {
       const tm = setTimeout(() => startHand(), 1600);
       return () => clearTimeout(tm);

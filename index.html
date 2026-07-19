@@ -2736,10 +2736,9 @@
             const [scrOpen, setScrOpen] = useState(false);
             const [scr, setScr] = useState(null); // {prize, grid, revealed}
             const scratchReady = bonusEnabled && (!user.lastScratchAt || (Date.now() - user.lastScratchAt) >= SCR_HOURS * 3600 * 1000);
-            // Promotion chips: when the club enables it, bonuses are credited to a
-            // separate non-withdrawable "bonus" balance (leverage only) instead of cash.
-            const promoChips = clubSettings?.promoChips === true;
-            const gainField = promoChips ? 'promoBalance' : 'balance';
+            // Promotion chips: ALL bonuses (spin, scratch, …) are always credited to a
+            // separate non-withdrawable "bonus" balance (leverage only), never cash.
+            const gainField = 'promoBalance';
             const SCR_SYM = { 10: '🍀', 15: '💎', 200: '👑', 400: '💰' };
             const buildGrid = (prize) => {
                 const fillers = ['🎲', '🃏', '🎰', '⭐', '🔔', '7️⃣'].filter(f => f !== SCR_SYM[prize]);
@@ -3742,12 +3741,6 @@
                                     <label className="flex items-center gap-2.5 cursor-pointer">
                                         <input type="checkbox" checked={clubSettings?.botsAuto === true} onChange={async (e) => { try { await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { botsAuto: e.target.checked }, { merge: true }); showToast(e.target.checked ? "Automatic bots enabled 🤖" : "Automatic bots blocked — bots enter only when you add them manually", "success"); } catch(err) { showToast("Error", "error"); } }} className="accent-purple-500 w-4 h-4" />
                                         <span className="text-slate-200 text-sm font-bold">🤖 Allow automatic bot entry <span className="text-slate-500 text-xs">(tournament auto-fill; off = bots only when added manually)</span></span>
-                                    </label>
-                                </div>
-                                <div className="mb-4 pb-4 border-b border-white/5">
-                                    <label className="flex items-center gap-2.5 cursor-pointer">
-                                        <input type="checkbox" checked={clubSettings?.promoChips === true} onChange={async (e) => { try { await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { promoChips: e.target.checked }, { merge: true }); showToast(e.target.checked ? "Promotion chips ON — bonuses go to a play-only bonus balance 🎁" : "Promotion chips OFF — bonuses go straight to cash", "success"); } catch(err) { showToast("Error", "error"); } }} className="accent-amber-500 w-4 h-4" />
-                                        <span className="text-slate-200 text-sm font-bold">🎁 Promotion chips <span className="text-slate-500 text-xs">(bonuses become non-withdrawable "bonus" chips — play only; wins pay to cash)</span></span>
                                     </label>
                                 </div>
                                 <div className="mb-4 pb-4 border-b border-white/5">
@@ -7727,14 +7720,15 @@
         const tourLevelOf = (tour) => Math.min(TOUR_SCHEDULE.length - 1, Math.floor((Date.now() - (tour.startedAt || Date.now())) / ((tour.levelMins || 5) * 60000)));
         const tRef = (id) => window.fb.doc(window.fb.db, "tournaments", id);
 
-        const creditBalance = async (uid, amt, statsPatch) => {
+        const creditBalance = async (uid, amt, statsPatch, asBonus) => {
             if (!uid || !amt) return;
             try {
                 await window.fb.runTransaction(window.fb.db, async (tr) => {
                     const r = memDoc(uid);
                     const sn = await tr.get(r);
                     if (!sn.exists()) return;
-                    const upd = { balance: round2((sn.data().balance || 0) + amt) };
+                    const field = asBonus ? 'promoBalance' : 'balance'; // freeroll prize can pay as bonus chips
+                    const upd = { [field]: round2((sn.data()[field] || 0) + amt) };
                     if (statsPatch) {
                         const st = sn.data().stats || { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 };
                         if (statsPatch.played) upd['stats.gamesPlayed'] = (st.gamesPlayed || 0) + 1;
@@ -7959,7 +7953,7 @@
                 for (let i = 0; i < ranked.length; i++) {
                     const prize = i < scheme.length ? round2(Math.floor(net * scheme[i] * 100) / 100) : 0;
                     results.push({ name: ranked[i].name, rank: ranked[i].rank, prize, bounties: ranked[i].bounties || 0 });
-                    if (prize > 0) await creditBalance(ranked[i].uid, prize, { played: true, won: ranked[i].rank === 1, profit: round2(prize - (ranked[i].paid || 0)) });
+                    if (prize > 0) await creditBalance(ranked[i].uid, prize, { played: true, won: ranked[i].rank === 1, profit: round2(prize - (ranked[i].paid || 0)) }, t.prizeAsBonus === true);
                     else if (!ranked[i].isBot) await creditBalance(ranked[i].uid, 0, { played: true, profit: -(ranked[i].paid || 0) });
                     if (!ranked[i].isBot) logGameResult([{ uid: ranked[i].uid, username: ranked[i].name, game: 'poker', profit: round2(prize - (ranked[i].paid || 0)) }], 'tournament:' + tor.id);
                 }
@@ -8155,7 +8149,7 @@
             const [champTor, setChampTor] = useState(null);
             const [soloChamp, setSoloChamp] = useState(null);
             const [tick, setTick] = useState(0);
-            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, minPlayers: 2, levelMins: 5, rebuys: true, rebuyUntilLevel: 2, addon: true, addonLevel: 3, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20], mysteryBounty: false, mysteryRigId: '', botFill: false, serverEngine: true });
+            const [opts, setOpts] = useState({ name: '', gameSel: 'poker', buyIn: 500, fee: 50, addedPrize: 0, bounty: 0, date: '', time: '20:00', maxPlayers: 12, minPlayers: 2, levelMins: 5, rebuys: true, rebuyUntilLevel: 2, addon: true, addonLevel: 3, mttMode: false, pokerType: 'NLH', startStack: 1000, paidPlaces: 3, payouts: [50, 30, 20], mysteryBounty: false, mysteryRigId: '', botFill: false, serverEngine: true, prizeAsBonus: false });
             const isGod = isGodUser(user);
             const isAll = game === 'all';
             const effGame = isAll ? (opts.gameSel || 'poker') : game;
@@ -8191,7 +8185,7 @@
                     serverEngine: isPoker ? !!opts.serverEngine : false,
                     botFill: !!opts.botFill,
                     startStack: isPoker ? Math.max(100, Number(opts.startStack) || 1000) : 1000,
-                    payouts: payoutsArr, creatorUid: user.uid,
+                    payouts: payoutsArr, creatorUid: user.uid, prizeAsBonus: !!opts.prizeAsBonus,
                     status: 'reg', players: {}, prizePool: addedPrize, feeTotal: 0, round: 0, createdAt: Date.now()
                 };
                 try {
@@ -8425,6 +8419,12 @@
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Guaranteed prize from the house 🎁</label>
                                     <input type="number" min="0" step="50" value={opts.addedPrize} onChange={e=>setOpts({...opts, addedPrize: e.target.value})} placeholder="For freeroll / guaranteed pot" className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold" dir="ltr" />
                                     <p className="text-[10px] text-amber-400/80 font-bold mt-1">Charged from your balance now and added to the prize pool</p>
+                                </div>
+                                <div className="sm:col-span-2">
+                                    <label className={`flex items-center justify-between rounded-xl px-4 py-3 border cursor-pointer ${opts.prizeAsBonus ? 'bg-amber-500/10 border-amber-500/60' : 'bg-slate-900 border-slate-700'}`}>
+                                        <span className="text-sm font-bold text-white">🎁 Prize pays as <b>bonus chips</b> <span className="text-slate-500 text-xs">(play-only, not withdrawable — ideal for a freeroll)</span></span>
+                                        <input type="checkbox" checked={opts.prizeAsBonus} onChange={e=>setOpts({...opts, prizeAsBonus: e.target.checked})} className="w-5 h-5 accent-amber-500" />
+                                    </label>
                                 </div>
                                 {isPoker && <div>
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Bounty (per knockout)</label>

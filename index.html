@@ -265,6 +265,15 @@
             box-shadow: 0 3px 10px rgba(2,6,23,0.45), inset 0 0 0 1px rgba(15,23,42,0.14), 1px 0 2px rgba(2,6,23,0.30);
             font-family: 'Rubik', sans-serif;
         }
+        /* Smooth (but quick) reveal: board flop/turn/river + dealt hole cards flip-slide in.
+           Applied to a WRAPPER so it composes with the fan's own rotate transform. */
+        @keyframes cardReveal {
+            0%   { opacity: 0; transform: translateY(-15px) scale(0.66) rotateY(38deg); }
+            55%  { opacity: 1; }
+            100% { opacity: 1; transform: none; }
+        }
+        .card-reveal { display: inline-block; animation: cardReveal 0.32s cubic-bezier(0.2,0.85,0.25,1) both; transform-origin: 50% 50%; }
+        @media (prefers-reduced-motion: reduce) { .card-reveal { animation-duration: 0.01s; } }
         .card-back {
             border-radius: 9px;
             background:
@@ -963,13 +972,13 @@ const playSnd = type => {
           sustain: 0
         }
       }).connect(SND.lim);
-      SND.m.volume.value = -12;
+      SND.m.volume.value = -14;
       SND.pl = new window.Tone.PluckSynth({
         attackNoise: 0.6,
         dampening: 5200,
         resonance: 0.86
       }).connect(SND.lim);
-      SND.pl.volume.value = -10;
+      SND.pl.volume.value = -13;
       SND.nz = new window.Tone.NoiseSynth({
         noise: {
           type: 'pink'
@@ -1005,6 +1014,9 @@ const playSnd = type => {
       case 'turn':
         SND.bell.triggerAttackRelease('G5', '16n', t);
         SND.bell.triggerAttackRelease('C6', '8n', t + 0.09);
+        break;
+      case 'tick':
+        SND.bell.triggerAttackRelease('C6', '32n', t);
         break;
       case 'win':
         ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => SND.s.triggerAttackRelease(n, '16n', t + i * 0.085));
@@ -7960,16 +7972,7 @@ function PokerTable({
         setTimeLeft(remaining);
         if (remaining <= 5 && remaining > 0 && gs.activeTurnUid === user.uid) {
           try {
-            if (window.Tone && window.Tone.context.state !== 'running') window.Tone.context.resume();
-            if (!synthRef.current && window.Tone) {
-              synthRef.current = new window.Tone.Synth({
-                oscillator: {
-                  type: 'square'
-                }
-              }).toDestination();
-              synthRef.current.volume.value = -14;
-            }
-            synthRef.current?.triggerAttackRelease("E6", "0.05");
+            playSnd('tick');
           } catch (e) {}
         }
         if (remaining === 0 && gs.activeTurnUid === user.uid) {
@@ -8484,11 +8487,16 @@ function PokerTable({
     style: gs.phase !== 'waiting' ? {
       boxShadow: '0 0 0 1px rgba(255,255,255,0.04)'
     } : {}
-  }, (gs.board || []).map((c, i) => React.createElement(PCard, {
+  }, (gs.board || []).map((c, i) => React.createElement("span", {
     key: i,
+    className: "card-reveal",
+    style: {
+      animationDelay: `${i % 3 * 70}ms`
+    }
+  }, React.createElement(PCard, {
     card: c,
     size: "md"
-  })), rabbit.length > 0 && rabbit.map((c, i) => React.createElement("div", {
+  }))), rabbit.length > 0 && rabbit.map((c, i) => React.createElement("div", {
     key: 'rb' + i,
     className: "relative opacity-75"
   }, React.createElement(PCard, {
@@ -8638,16 +8646,26 @@ function PokerTable({
           transformOrigin: '50% 115%',
           zIndex: ci
         }
+      }, React.createElement("span", {
+        className: "card-reveal",
+        style: {
+          animationDelay: `${ci * 45}ms`
+        }
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
         size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : 'md'
-      })) : React.createElement(PCard, {
+      }))) : React.createElement("span", {
         key: ci,
+        className: "card-reveal",
+        style: {
+          animationDelay: `${ci * 45}ms`
+        }
+      }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
         size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : 'md'
-      })));
+      }))));
     })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && React.createElement("div", {
       className: "win-tag",
       dir: "ltr"
@@ -9893,16 +9911,7 @@ function DurakTable({
         setTimeLeft(remaining);
         if (remaining <= 5 && remaining > 0 && T.turnUid === user.uid) {
           try {
-            if (window.Tone && window.Tone.context.state !== 'running') window.Tone.context.resume();
-            if (!synthRef.current && window.Tone) {
-              synthRef.current = new window.Tone.Synth({
-                oscillator: {
-                  type: 'square'
-                }
-              }).toDestination();
-              synthRef.current.volume.value = -14;
-            }
-            synthRef.current?.triggerAttackRelease("E6", "0.05");
+            playSnd('tick');
           } catch (e) {}
         }
         if (remaining === 0 && T.turnUid === user.uid) {

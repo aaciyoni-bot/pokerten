@@ -4997,7 +4997,9 @@
                 // מי מתחיל את היד: האדם הראשון בשולחן. אם אין בני-אדם (שולחן בוטים בלבד)
                 // והצופה הוא סופר-אדמין — הוא מתחיל, כדי שאפשר יהיה לצפות בבוטים משחקים.
                 const iStart = humans[0]?.uid === user.uid || (humans.length === 0 && isSuperAdmin);
-                if (eligible.length >= (setts.autoStart || 2) && iStart) {
+                // Seat count is a CAP, not a requirement: a poker hand starts as soon as 2 players
+                // have chips — never wait for the table to fill (that's what left it stuck at "2/6").
+                if (eligible.length >= 2 && iStart) {
                     const tm = setTimeout(() => startHand(), 1600);
                     return () => clearTimeout(tm);
                 }

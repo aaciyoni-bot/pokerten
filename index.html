@@ -7323,6 +7323,9 @@ function PokerTable({
       } else {
         await executeDeal(g, pl, setts.isDealerChoice ? g.currentGameType || setts.baseGameType : setts.baseGameType);
       }
+    } catch (e) {
+      console.error('client deal failed', e);
+      showToast('Deal: ' + (e && e.message || e), 'error');
     } finally {
       startingRef.current = false;
     }

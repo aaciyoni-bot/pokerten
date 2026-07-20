@@ -430,14 +430,7 @@ async function dealHand(tableId, chosenType) {
         : (["busted", "out"].includes(p.status) ? p.status : "sitout");
     });
     const acts = activesOf(pl);
-    if (acts.length < 2) {
-      tx.update(tRef(tableId), {players: pl, "gameState.phase": "waiting", "gameState.activeTurnUid": null});
-      // Diagnostic: report exactly what the server sees so a stuck "waiting" is explainable.
-      const seated = Object.keys(pl).length;
-      const zero = Object.values(pl).filter((p) => !(p.stack > 0)).length;
-      const so = Object.values(pl).filter((p) => p.sitOut).length;
-      throw new HttpsError("failed-precondition", `Need 2 active — server sees ${acts.length} active of ${seated} seated (no-stack:${zero}, sit-out:${so})`);
-    }
+    if (acts.length < 2) { tx.update(tRef(tableId), {players: pl, "gameState.phase": "waiting", "gameState.activeTurnUid": null}); return; }
     let gameType = chosenType || g0.currentGameType || s.baseGameType || "NLH";
     if (!GAME_CARDS[gameType]) gameType = s.baseGameType || "NLH";
     // Dealer's Choice: the choosing seat rotates backwards; when it's the dealer's

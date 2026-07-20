@@ -4527,7 +4527,7 @@
                     } else {
                         await executeDeal(g, pl, setts.isDealerChoice ? (g.currentGameType || setts.baseGameType) : setts.baseGameType);
                     }
-                } finally { startingRef.current = false; }
+                } catch(e) { console.error('client deal failed', e); showToast('Deal: ' + ((e && e.message) || e), 'error'); } finally { startingRef.current = false; }
             };
 
             const selectDCGame = async (gameType, byUid = user.uid) => {

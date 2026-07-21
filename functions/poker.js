@@ -716,6 +716,7 @@ exports.pkTick = onCall(async (request) => {
       await engineStep(tableId, (t2, g2, pl2, eng) => {
         const acts = Object.values(pl2).filter((q) => q.status === "active");
         if (acts.length === 1) return finishEarlyWin(t2, g2, pl2, acts[0].uid);
+        if (acts.length === 0) { g2.phase = "waiting"; g2.activeTurnUid = null; g2.board = []; g2.pots = []; return null; } // hand voided (everyone left)
         g2.activeTurnUid = firstAfterDealer(g2, pl2); g2.turnStartedAt = Date.now();
         return null;
       });
@@ -825,19 +826,22 @@ exports.pkLeave = onCall(async (request) => {
     await engineStep(tableId, (t2, g2, pl2, eng) => {
       const p2 = pl2[uid];
       if (!p2 || p2.status !== "active") return null;
+      const others = Object.values(pl2).filter((q) => q.status === "active" && q.uid !== uid);
       if (BETTING.includes(g2.phase)) {
+        // He's the LAST one still in the hand (everyone else folded/left) → the pot
+        // is his; settle the hand for him, then the removal below cashes it out.
+        if (others.length === 0) return finishEarlyWin(t2, g2, pl2, uid);
         if (g2.activeTurnUid === uid) return applyAction(t2, g2, pl2, eng, uid, "fold");
         p2.status = "folded"; p2.actionText = "Fold"; p2.hasActed = true;
-        const rem = Object.values(pl2).filter((q) => q.status === "active");
-        if (rem.length === 1) return finishEarlyWin(t2, g2, pl2, rem[0].uid);
+        if (others.length === 1) return finishEarlyWin(t2, g2, pl2, others[0].uid);
         return null;
       }
       if (g2.phase === "discard") {
+        if (others.length === 0) return finishEarlyWin(t2, g2, pl2, uid);
         p2.status = "folded"; p2.actionText = "Fold";
-        const rem = activesOf(pl2);
-        if (rem.length === 1) return finishEarlyWin(t2, g2, pl2, rem[0].uid);
+        if (others.length === 1) return finishEarlyWin(t2, g2, pl2, others[0].uid);
         // If he was the last one still holding 3 cards, resume the flop betting round.
-        const pending = rem.some((q) => (((eng.hands || {})[q.uid]) || []).length === 3);
+        const pending = others.some((q) => (((eng.hands || {})[q.uid]) || []).length === 3);
         if (!pending) { g2.phase = "flop"; g2.activeTurnUid = firstAfterDealer(g2, pl2); g2.turnStartedAt = Date.now(); }
         return null;
       }
@@ -855,11 +859,15 @@ exports.pkLeave = onCall(async (request) => {
     const pl = {...(t.players || {})};
     const p = pl[uid];
     if (!p) return;
-    if ([...BETTING, "discard"].includes(g.phase) && p.status === "active") throw new HttpsError("aborted", "Mid-action, try again");
+    const othersLive = Object.values(pl).filter((q) => q.uid !== uid && q.status === "active");
+    // Only wait for step 1 when there are OTHER live players whose hand we'd disturb;
+    // a lone leaver must never be trapped by his own "active" status.
+    if ([...BETTING, "discard"].includes(g.phase) && p.status === "active" && othersLive.length > 0) throw new HttpsError("aborted", "Mid-action, try again");
     refund = round2((p.stack || 0) + (p.pendingTopUp || 0));
     const pots = [...(g.pots || [])];
     if ((p.bet || 0) > 0) {
-      pots.push({amount: round2(p.bet), eligible: Object.values(pl).filter((q) => q.uid !== uid && q.status === "active").map((q) => q.uid)});
+      if (othersLive.length > 0) pots.push({amount: round2(p.bet), eligible: othersLive.map((q) => q.uid)});
+      else refund = round2(refund + p.bet); // no one left to win it — back to his wallet
     }
     delete pl[uid];
     if (Object.keys(pl).length === 0) {

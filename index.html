@@ -5030,13 +5030,18 @@
                     const tNow = tableRef.current || t;
                     const gNow = tNow.gameState || g;
                     if (BETTING.includes(gNow.phase) && tNow.players[user.uid] && tNow.players[user.uid].status === 'active') {
-                        if (gNow.activeTurnUid === user.uid) {
+                        const othersIn = Object.values(tNow.players).filter(q => q.status === 'active' && q.uid !== user.uid);
+                        if (othersIn.length === 0) {
+                            // Last one still in the hand — the pot is his; settle, then cash out below.
+                            await finishEarlyWin({ ...gNow }, clonePlayers(tNow.players), user.uid);
+                        } else if (gNow.activeTurnUid === user.uid) {
                             await performAction(user.uid, 'fold');
                         } else {
                             const g2 = { ...gNow }; const pl = clonePlayers(tNow.players);
                             pl[user.uid].status = 'folded'; pl[user.uid].actionText = 'Fold'; pl[user.uid].hasActed = true;
                             const actives = Object.values(pl).filter(q => q.status === 'active');
                             if (actives.length === 1) await finishEarlyWin(g2, pl, actives[0].uid);
+                            else if (actives.length === 0) { g2.phase = 'waiting'; g2.activeTurnUid = null; await saveGame(g2, pl); }
                             else await saveGame(g2, pl);
                         }
                     }

@@ -288,7 +288,7 @@
         .casino-chip-inner { border-radius: 50%; border: 1px solid rgba(255,255,255,0.35); display: flex; align-items: center; justify-content: center; font-weight: 900; font-family: 'Rubik', sans-serif; background: rgba(2,6,15,0.32); color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.6); }
         .chip-1000 { background-color: #7c3aed; border-color: #ede9fe; } .chip-100 { background-color: #111827; border-color: #94a3b8; } .chip-25 { background-color: #0f766e; border-color: #ccfbf1; } .chip-5 { background-color: #b91c1c; border-color: #fecaca; } .chip-1 { background-color: #64748b; border-color: #f1f5f9; }
 
-        .player-pod { width: 56px; height: 56px; border-radius: 50%; background-color: #121a2a; border: 2px solid #283552; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.6); background-size: cover; background-position: center; position: relative; }
+        .player-pod { width: 48px; height: 48px; border-radius: 50%; background-color: #121a2a; border: 2px solid #283552; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.6); background-size: cover; background-position: center; position: relative; }
         .active-glow { border-color: #f5c860 !important; animation: pulseBorder 1.5s infinite; }
         @keyframes pulseBorder { 0%,100% { box-shadow: 0 0 10px rgba(245,200,96,0.4); } 50% { box-shadow: 0 0 24px rgba(245,200,96,0.85); } }
 
@@ -7341,9 +7341,8 @@ function PokerTable({
     const p = pl[actorUid];
     if (!p || p.status !== 'active') return;
     p.missed = autoTimeout ? (p.missed || 0) + 1 : 0;
-    if (autoTimeout && p.missed >= 2 && !p.sitOut) {
-      p.sitOut = true;
-      p.sitOutAt = Date.now();
+    if (autoTimeout && p.missed >= 2 && !p.sitOut && !p.sitOutNext) {
+      p.sitOutNext = true;
       p.sitAuto = true;
     }
     if (type === 'fold') {
@@ -7515,6 +7514,12 @@ function PokerTable({
       if (!['waiting', 'showdown'].includes(g0.phase)) return;
       const pl = clonePlayers(t.players);
       Object.values(pl).forEach(p => {
+        if (p.sitOutNext) {
+          p.sitOut = true;
+          p.sitOutAt = Date.now();
+          p.sitAuto = false;
+          p.sitOutNext = false;
+        }
         p.cards = [];
         p.bet = 0;
         p.actionText = '';
@@ -7857,23 +7862,38 @@ function PokerTable({
     return {};
   };
   const toggleSitOut = async () => {
-    const meP = tableRef.current?.players?.[user.uid];
+    const t = tableRef.current;
+    const meP = t?.players?.[user.uid];
     if (!meP) return;
     try {
       if (meP.sitOut) {
         await window.fb.updateDoc(tblRef(), {
           [`players.${user.uid}.sitOut`]: false,
           [`players.${user.uid}.missed`]: 0,
-          [`players.${user.uid}.sitAuto`]: false
+          [`players.${user.uid}.sitAuto`]: false,
+          [`players.${user.uid}.sitOutNext`]: false
         });
         showToast("You're back at the table! Dealt in next hand 💪", "success");
-      } else {
+      } else if (meP.sitOutNext) {
         await window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.sitOut`]: true,
-          [`players.${user.uid}.sitOutAt`]: Date.now(),
-          [`players.${user.uid}.sitAuto`]: false
+          [`players.${user.uid}.sitOutNext`]: false
         });
-        showToast(tableRef.current?.tournamentId ? "Sit out ☕ blinds keep going down in the tournament!" : "Sit out ☕ you have 10 minutes to return", "info");
+        showToast("Sit-out canceled — you stay in 💪", "success");
+      } else {
+        const inHand = !['waiting', 'showdown', 'dc_selection'].includes((t.gameState || {}).phase) && meP.status === 'active';
+        if (inHand) {
+          await window.fb.updateDoc(tblRef(), {
+            [`players.${user.uid}.sitOutNext`]: true
+          });
+          showToast("Sit out at the END of this hand ☕ (tap again to cancel)", "info");
+        } else {
+          await window.fb.updateDoc(tblRef(), {
+            [`players.${user.uid}.sitOut`]: true,
+            [`players.${user.uid}.sitOutAt`]: Date.now(),
+            [`players.${user.uid}.sitAuto`]: false
+          });
+          showToast(t?.tournamentId ? "Sit out ☕ blinds keep going down in the tournament!" : "Sit out ☕ you have 10 minutes to return", "info");
+        }
       }
     } catch (e) {}
   };
@@ -7921,6 +7941,17 @@ function PokerTable({
     }
   };
   const kickSeat = async (uid, byAdmin) => {
+    if (byAdmin && setts.serverEngine && !tableState?.tournamentId) {
+      try {
+        await window.fb.fx('pkLeave', {
+          tableId: tableDocId,
+          targetUid: uid
+        });
+      } catch (e) {
+        showToast(e && e.message || 'Could not remove the player', 'error');
+      }
+      return;
+    }
     try {
       await window.fb.runTransaction(window.fb.db, async tr => {
         const ts2 = await tr.get(tblRef());
@@ -8037,6 +8068,26 @@ function PokerTable({
     }
     const g = t.gameState;
     const inHand = !['waiting', 'showdown'].includes(g.phase) && t.players[user.uid].status === 'active';
+    if (setts.serverEngine) {
+      if (inHand && !(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
+      const meS = t.players[user.uid] || {};
+      try {
+        await window.fb.fx('pkLeave', {
+          tableId: tableDocId
+        });
+      } catch (e) {
+        showToast(e && e.message || 'Could not leave — try again', 'error');
+        return;
+      }
+      logGameResult([{
+        uid: user.uid,
+        username: user.username,
+        game: 'poker',
+        profit: round2((meS.stack || 0) - (meS.buyTotal || meS.stack || 0))
+      }], tableDocId);
+      onLeave();
+      return;
+    }
     if (inHand) {
       if (!(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
       if (g.phase === 'discard' && (t.players[user.uid].cards || []).length === 3) {
@@ -8453,7 +8504,7 @@ function PokerTable({
           const limit = ((Number(setts.actionTime) || 30) + (isSuperAdmin ? 12 : 22)) * 1000;
           if (isSitSkip || stuckFor > limit) {
             const toCall = round2(Math.max(0, (g.highestBet || 0) - (actor.bet || 0)));
-            await performAction(g.activeTurnUid, toCall > 0 ? 'fold' : 'call');
+            await performAction(g.activeTurnUid, toCall > 0 ? 'fold' : 'call', undefined, !isSitSkip);
           }
         }
       } catch (e) {}
@@ -8563,8 +8614,8 @@ function PokerTable({
   const betPos = i => {
     const ang = Math.PI / 2 + i * 2 * Math.PI / N;
     return {
-      left: `${50 + 21 * Math.cos(ang)}%`,
-      top: `${50 + 24 * Math.sin(ang)}%`
+      left: `${50 + 31 * Math.cos(ang)}%`,
+      top: `${50 + 27 * Math.sin(ang)}%`
     };
   };
   const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
@@ -9004,7 +9055,7 @@ function PokerTable({
         hidden = true;
       }
     }
-    const showCards = (dispCards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout';
+    const showCards = (dispCards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout' && !(p.status === 'folded' && hidden && !isMe);
     const folded = p.status === 'folded';
     const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
     return React.createElement("div", {
@@ -9030,7 +9081,10 @@ function PokerTable({
         className: "absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5",
         dir: "ltr"
       }, "☕ ", tableState.tournamentId ? 'Sit out' : `${mm}:${String(ss).padStart(2, '0')}`, p.sitAuto ? ' 📵' : '');
-    })(), p.leavingAt && !tableState.tournamentId && (() => {
+    })(), !p.sitOut && p.sitOutNext && React.createElement("div", {
+      className: "absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5",
+      dir: "ltr"
+    }, "☕ after hand"), p.leavingAt && !tableState.tournamentId && (() => {
       const lms = Math.max(0, p.leavingAt - Date.now());
       return React.createElement("div", {
         className: "absolute right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5",
@@ -9040,9 +9094,9 @@ function PokerTable({
         dir: "ltr"
       }, "🚪 ", Math.floor(lms / 60000), ":", String(Math.floor(lms % 60000 / 1000)).padStart(2, '0'));
     })(), !isMe && canManageGame(user, 'poker') && React.createElement("button", {
-      onClick: e => {
+      onClick: async e => {
         e.stopPropagation();
-        if (window.confirm(`Remove ${p.name} from the table? Their stack returns to their wallet.`)) kickSeat(p.uid, true);
+        if (await askConfirm(`Remove ${p.name} from the table? Their stack returns to their wallet.`)) kickSeat(p.uid, true);
       },
       className: "absolute bottom-0 -left-6 z-30 w-5 h-5 rounded-full bg-slate-900/90 border border-rose-500/50 text-rose-400 hover:bg-rose-800 hover:text-white text-[9px] font-black flex items-center justify-center opacity-60 hover:opacity-100"
     }, "✕"), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
@@ -9097,7 +9151,7 @@ function PokerTable({
       className: "win-tag",
       dir: "ltr"
     }, "WIN", (gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''), React.createElement("div", {
-      className: `player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-16 h-16' : ''}`,
+      className: `player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }
@@ -9172,7 +9226,7 @@ function PokerTable({
     }, realEq[p.uid], "%")));
   }), displayList.map((p, i) => (p.bet || 0) > 0 && React.createElement("div", {
     key: 'bet' + p.uid,
-    className: "absolute z-10",
+    className: "absolute z-[35]",
     style: {
       ...betPos(i),
       transform: 'translate(-50%, -50%)'
@@ -9455,8 +9509,8 @@ function PokerTable({
     className: "fa-solid fa-comment-dots"
   })), React.createElement("button", {
     onClick: toggleSitOut,
-    title: myPlayer?.sitOut ? 'Sit back in' : 'Sit out',
-    className: `w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`
+    title: myPlayer?.sitOut ? 'Sit back in' : myPlayer?.sitOutNext ? 'Cancel sit-out (queued for end of hand)' : 'Sit out',
+    className: `w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : myPlayer?.sitOutNext ? 'bg-amber-500/40 text-amber-200 border-amber-400/60 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`
   }, myPlayer?.sitOut ? '✋' : '☕'), !tableState?.tournamentId && React.createElement("button", {
     onClick: topUpChips,
     title: "Add chips",
@@ -10561,7 +10615,7 @@ function DurakTable({
       hidden: !showAll,
       size: "sm"
     })))), React.createElement("div", {
-      className: `player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-16 h-16' : ''}`,
+      className: `player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }

@@ -4056,6 +4056,14 @@
         /* ================================================================
            פתיחת Poker table - כל הSettings ניתנות לבחירה
            ================================================================ */
+        // Module-scope so its identity is stable across renders — otherwise every keystroke
+        // remounts the inputs (focus lost, scroll jumps to top).
+        const Field = ({ label, children }) => (
+            <div>
+                <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">{label}</label>
+                {children}
+            </div>
+        );
         function PokerCreateView({ user, clubSettings, onBack, onCreated }) {
             const [s, setS] = useState({
                 baseGameType: 'NLH', isDealerChoice: false, maxPlayers: 6,
@@ -4076,12 +4084,6 @@
                 onCreated();
             };
 
-            const Field = ({ label, children }) => (
-                <div>
-                    <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">{label}</label>
-                    {children}
-                </div>
-            );
             const sel = "w-full bg-slate-900 text-white border border-white/10 rounded-xl p-3 outline-none focus:border-amber-500/60 font-bold";
 
             return (

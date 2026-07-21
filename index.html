@@ -4578,7 +4578,7 @@ function LobbyView({
         const refunds = [];
         for (const uid of humanUids) {
           const uSnap = await tr.get(memDoc(uid));
-          if (uSnap.exists()) refunds.push([uSnap.ref, round2((uSnap.data().balance || 0) + (players[uid].stack || 0) + (players[uid].bet || 0) + potShare)]);
+          if (uSnap.exists()) refunds.push([uSnap.ref, round2((uSnap.data().balance || 0) + (players[uid].stack || 0) + (players[uid].bet || 0) + (players[uid].pendingTopUp || 0) + potShare)]);
         }
         refunds.forEach(([ref, bal]) => tr.update(ref, {
           balance: bal
@@ -7035,6 +7035,7 @@ function PokerTable({
   const [acting, setActing] = useState(false);
   const [buyinEdit, setBuyinEdit] = useState(null);
   const tableRef = useRef(null);
+  const actedTurnRef = useRef(null);
   const advanceRef = useRef(null);
   const nextHandRef = useRef(null);
   const startingRef = useRef(false);
@@ -7050,7 +7051,7 @@ function PokerTable({
   const BB = (Number(setts.blinds) || 0.5) * 2;
   const BETTING = ['preflop', 'flop', 'turn', 'river'];
   const inBetting = BETTING.includes(gs.phase);
-  const isMyTurn = gs.activeTurnUid === user.uid && inBetting;
+  const isMyTurn = gs.activeTurnUid === user.uid && inBetting && actedTurnRef.current !== gs.turnStartedAt;
   const clonePlayers = pl => {
     const o = {};
     Object.entries(pl || {}).forEach(([k, v]) => o[k] = {
@@ -7104,7 +7105,11 @@ function PokerTable({
   const myAct = (type, amt) => {
     if (acting || !isMyTurn) return;
     setActing(true);
-    setTimeout(() => setActing(false), 3500);
+    actedTurnRef.current = gs.turnStartedAt;
+    setTimeout(() => {
+      setActing(false);
+      if (tableRef.current?.gameState?.turnStartedAt === actedTurnRef.current) actedTurnRef.current = null;
+    }, 3500);
     performAction(user.uid, type, amt);
   };
   const firstAfterDealer = (g, pl) => {
@@ -7313,7 +7318,7 @@ function PokerTable({
           });
         } catch (e) {
           const m = e && e.message || '';
-          if (!/turn|not your/i.test(m)) showToast(m || 'Action failed', 'error');
+          if (!/turn|not your|in the hand|no betting|betting now/i.test(m)) showToast(m || 'Action failed', 'error');
         } finally {
           setActing(false);
         }
@@ -7397,6 +7402,15 @@ function PokerTable({
     const tour = (tableRef.current || {}).tournament || null;
     const deck = pokerDeck();
     const pl = clonePlayers(plBase);
+    const capBuy = buyInMax(setts);
+    Object.values(pl).forEach(p => {
+      if (p.pendingTopUp && p.pendingTopUp > 0 && !['busted', 'out'].includes(p.status)) {
+        const room2 = capBuy ? Math.max(0, round2(capBuy - (p.stack || 0))) : p.pendingTopUp || 0;
+        const add2 = Math.min(round2(p.pendingTopUp), room2);
+        if (add2 > 0) p.stack = round2((p.stack || 0) + add2);
+        p.pendingTopUp = 0;
+      }
+    });
     const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
     const n = GAME_CARDS[gameType] || 2;
     actives.forEach(p => {
@@ -7563,7 +7577,10 @@ function PokerTable({
             tableId: tableDocId,
             gameType
           });
-        } catch (e) {}
+        } catch (e) {
+          const m = e && e.message || '';
+          if (!/your pick|dc_selection/i.test(m)) showToast(m || 'Could not start that game — try again', 'error');
+        }
       }
       return;
     }
@@ -7861,11 +7878,11 @@ function PokerTable({
     const maxBuy2 = buyInMax(setts);
     const meP = t.players[user.uid];
     if (!meP) return;
-    const room = round2(maxBuy2 - (meP.stack || 0) - (meP.bet || 0));
+    const pend = round2(meP.pendingTopUp || 0);
+    const room = round2(maxBuy2 - (meP.stack || 0) - (meP.bet || 0) - pend);
     if (room <= 0) return showToast(`You're at the table cap (${formatMoney(maxBuy2)})`, "info");
-    const inHand = !['waiting', 'showdown'].includes((t.gameState || {}).phase) && meP.status === 'active';
-    if (inHand) return showToast("Chips can only be added between hands", "info");
-    const amt = Number(window.prompt(`How much to add? (max ${formatMoney(room)})`, String(Math.min(room, BBv * 50))));
+    const inHand = !['waiting', 'showdown', 'dc_selection'].includes((t.gameState || {}).phase) && meP.status === 'active';
+    const amt = Number(window.prompt(inHand ? `Add chips (applied at the end of this hand). Max ${formatMoney(room)}:` : `How much to add? (max ${formatMoney(room)})`, String(Math.min(room, BBv * 50))));
     if (!amt || amt <= 0) return;
     const add = Math.min(round2(amt), room);
     try {
@@ -7879,12 +7896,14 @@ function PokerTable({
         tr.update(ms.ref, {
           balance: round2((ms.data().balance || 0) - add)
         });
-        tr.update(tblRef(), {
+        if (inHand) tr.update(tblRef(), {
+          [`players.${user.uid}.pendingTopUp`]: round2((cur.pendingTopUp || 0) + add)
+        });else tr.update(tblRef(), {
           [`players.${user.uid}.stack`]: round2((cur.stack || 0) + add)
         });
       });
       playSnd('chip');
-      showToast(`${formatMoney(add)} added to your stack 💰`, "success");
+      showToast(inHand ? `${formatMoney(add)} queued — added to your stack at the end of the hand 💰` : `${formatMoney(add)} added to your stack 💰`, "success");
     } catch (e) {
       showToast(typeof e === 'string' ? e : "Error", "error");
     }
@@ -7906,7 +7925,7 @@ function PokerTable({
         };
         delete pl[uid];
         if (ms && ms.exists()) tr.update(ms.ref, {
-          balance: round2((ms.data().balance || 0) + (p.stack || 0) + (inHand ? 0 : p.bet || 0))
+          balance: round2((ms.data().balance || 0) + (p.stack || 0) + (p.pendingTopUp || 0) + (inHand ? 0 : p.bet || 0))
         });
         tr.update(tblRef(), {
           players: pl
@@ -9358,8 +9377,12 @@ function PokerTable({
   }, myPlayer?.sitOut ? '✋' : '☕'), !tableState?.tournamentId && React.createElement("button", {
     onClick: topUpChips,
     title: "Add chips",
-    className: "w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg"
-  }, "💰"), gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
+    className: "relative w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg"
+  }, "💰", (myPlayer?.pendingTopUp || 0) > 0 && React.createElement("span", {
+    className: "absolute -top-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full shadow",
+    dir: "ltr",
+    title: "Queued — added at end of hand"
+  }, "+", formatShort(myPlayer.pendingTopUp))), gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
     onClick: async () => {
       try {
         if (srvEngine) {
@@ -11480,8 +11503,9 @@ function OFCTable({
           ...t.players
         };
         delete pl[user.uid];
-        if (ms.exists() && (p.stack || 0) > 0) tr.update(ms.ref, {
-          balance: round2((ms.data().balance || 0) + (p.stack || 0))
+        const backAmt = round2((p.stack || 0) + (p.pendingTopUp || 0));
+        if (ms.exists() && backAmt > 0) tr.update(ms.ref, {
+          balance: round2((ms.data().balance || 0) + backAmt)
         });
         if (Object.keys(pl).length === 0) {
           tr.delete(tblRef());

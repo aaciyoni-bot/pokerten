@@ -2802,9 +2802,10 @@
             const [scrOpen, setScrOpen] = useState(false);
             const [scr, setScr] = useState(null); // {prize, grid, revealed}
             const scratchReady = bonusEnabled && (!user.lastScratchAt || (Date.now() - user.lastScratchAt) >= SCR_HOURS * 3600 * 1000);
-            // Promotion chips: ALL bonuses (spin, scratch, …) are always credited to a
-            // separate non-withdrawable "bonus" balance (leverage only), never cash.
-            const gainField = 'promoBalance';
+            // Promotion chips: spin/scratch prizes go straight into the PLAYING balance
+            // (usable everywhere); bonusTotal tracks the cumulative bonus part so the
+            // final settlement can show how much of a player's balance came from bonuses.
+            const gainField = 'balance';
             const SCR_SYM = { 10: '🍀', 15: '💎', 200: '👑', 400: '💰' };
             const buildGrid = (prize) => {
                 const fillers = ['🎲', '🃏', '🎰', '⭐', '🔔', '7️⃣'].filter(f => f !== SCR_SYM[prize]);
@@ -2849,7 +2850,7 @@
                             const oSnap = await tr.get(oRef);
                             if (!oSnap.exists() || (oSnap.data().balance || 0) < prize) throw "Club bank is empty right now - try again later";
                             tr.update(oRef, { balance: round2((oSnap.data().balance || 0) - prize), bonusPaid: round2((oSnap.data().bonusPaid || 0) + prize) });
-                            tr.update(mRef, { [gainField]: round2((mSnap.data()[gainField] || 0) + prize), lastScratchAt: Date.now() });
+                            tr.update(mRef, { [gainField]: round2((mSnap.data()[gainField] || 0) + prize), bonusTotal: round2((mSnap.data().bonusTotal || 0) + prize), lastScratchAt: Date.now() });
                             fromBank = true;
                         } else {
                             tr.update(mRef, { lastScratchAt: Date.now() });
@@ -2892,7 +2893,7 @@
                             const oSnap = await tr.get(oRef);
                             if (!oSnap.exists() || (oSnap.data().balance || 0) < prize) throw "Club bank is empty right now - try again later";
                             tr.update(oRef, { balance: round2((oSnap.data().balance || 0) - prize), bonusPaid: round2(((oSnap.data().bonusPaid || 0)) + prize) });
-                            tr.update(mRef, { [gainField]: round2((mSnap.data()[gainField] || 0) + prize), lastBonusAt: Date.now() });
+                            tr.update(mRef, { [gainField]: round2((mSnap.data()[gainField] || 0) + prize), bonusTotal: round2((mSnap.data().bonusTotal || 0) + prize), lastBonusAt: Date.now() });
                             fromBank = true;
                         } else {
                             // הבעלים מסובב: הפרס מהקופה שלו אל עצמו = נשאר במקום
@@ -3479,12 +3480,15 @@
                         const q = pq.trim().toLowerCase();
                         if (q) rows = rows.filter(m => (m.username || '').toLowerCase().includes(q) || (m.playerId || '').toLowerCase().includes(q) || (m.googleName || '').toLowerCase().includes(q));
                         rows = [...rows].sort((a, b) => (b.balance || 0) - (a.balance || 0));
-                        const tot = { bal: 0, cyc: 0, all: 0 };
-                        rows.forEach(m => { tot.bal = round2(tot.bal + (m.balance || 0)); tot.cyc = round2(tot.cyc + (pres[m.uid] || 0)); tot.all = round2(tot.all + (presAll[m.uid] || 0)); });
+                        // "Of which bonus" = spin/scratch prizes credited into the balance (bonusTotal)
+                        // + any legacy play-only bonus chips (promoBalance).
+                        const bonusOf = (m) => round2((m.bonusTotal || 0) + (m.promoBalance || 0));
+                        const tot = { bal: 0, bon: 0, cyc: 0, all: 0 };
+                        rows.forEach(m => { tot.bal = round2(tot.bal + (m.balance || 0)); tot.bon = round2(tot.bon + bonusOf(m)); tot.cyc = round2(tot.cyc + (pres[m.uid] || 0)); tot.all = round2(tot.all + (presAll[m.uid] || 0)); });
                         const csvPlayers = () => {
-                            const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Bonus', `Result (${cycLabel})`, 'Result (all time)']];
-                            rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(m.promoBalance || 0), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
-                            out.push(['TOTAL', '', '', '', formatMoney(tot.bal), '', formatMoney(tot.cyc), formatMoney(tot.all)]);
+                            const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Of which bonus', `Result (${cycLabel})`, 'Result (all time)']];
+                            rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(bonusOf(m)), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
+                            out.push(['TOTAL', '', '', '', formatMoney(tot.bal), formatMoney(tot.bon), formatMoney(tot.cyc), formatMoney(tot.all)]);
                             downloadCSV(out, 'players_report.csv');
                         };
                         return (
@@ -3502,6 +3506,7 @@
                                             <th className="text-left py-1.5 pr-2">Player</th>
                                             {isOwnerView && <th className="text-left py-1.5 pr-2">Agent</th>}
                                             <th className="text-right py-1.5 pr-2">Balance</th>
+                                            <th className="text-right py-1.5 pr-2" title="Spin/scratch prizes included in the balance">🎁 Bonus</th>
                                             <th className="text-right py-1.5 pr-2">{cycLabel}</th>
                                             <th className="text-right py-1.5">All time</th>
                                         </tr></thead>
@@ -3511,16 +3516,18 @@
                                                     <td className="py-1.5 pr-2 whitespace-nowrap"><span className="text-white font-bold">{m.username}</span> <span className="text-slate-600 font-black text-[10px]">{m.playerId || ''}</span>{(m.promoBalance || 0) > 0 && <span className="text-amber-400 text-[9px] font-black" title="Bonus chips"> 🎁{formatShort(m.promoBalance)}</span>}</td>
                                                     {isOwnerView && <td className="py-1.5 pr-2 text-slate-400 font-bold">{(byUid[m.agentUid] || {}).username || '—'}</td>}
                                                     <td className="py-1.5 pr-2 text-right font-black text-amber-300">{formatMoney(m.balance || 0)}</td>
+                                                    <td className="py-1.5 pr-2 text-right font-bold text-amber-500/80">{bonusOf(m) > 0 ? formatMoney(bonusOf(m)) : '—'}</td>
                                                     <td className={`py-1.5 pr-2 text-right font-black ${(pres[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(pres[m.uid] || 0)}</td>
                                                     <td className={`py-1.5 text-right font-black ${(presAll[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(presAll[m.uid] || 0)}</td>
                                                 </tr>
                                             ))}
-                                            {rows.length === 0 && <tr><td colSpan={isOwnerView ? 5 : 4} className="text-center py-6 text-slate-500 font-bold">No players.</td></tr>}
+                                            {rows.length === 0 && <tr><td colSpan={isOwnerView ? 6 : 5} className="text-center py-6 text-slate-500 font-bold">No players.</td></tr>}
                                         </tbody>
                                         <tfoot><tr className="text-[11px] font-black border-t border-white/15">
                                             <td className="py-2 pr-2 text-slate-400 uppercase">Total</td>
                                             {isOwnerView && <td></td>}
                                             <td className="py-2 pr-2 text-right text-amber-300">{formatMoney(tot.bal)}</td>
+                                            <td className="py-2 pr-2 text-right text-amber-500/80">{formatMoney(tot.bon)}</td>
                                             <td className={`py-2 pr-2 text-right ${tot.cyc >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(tot.cyc)}</td>
                                             <td className={`py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(tot.all)}</td>
                                         </tr></tfoot>
@@ -4998,8 +5005,9 @@
                 // Manager kick on a server table: pkLeave folds the seat out of the live hand
                 // correctly (turn advance, pot, refund) instead of yanking an active player.
                 if (byAdmin && setts.serverEngine && !tableState?.tournamentId) {
+                    try { await window.fb.updateDoc(tblRef(), { [`players.${uid}.leaveReq`]: Date.now() }); } catch(e) {}
                     try { await window.fb.fx('pkLeave', { tableId: tableDocId, targetUid: uid }); }
-                    catch(e) { showToast((e && e.message) || 'Could not remove the player', 'error'); }
+                    catch(e) { showToast('Removal queued — the seat clears within a few seconds', 'info'); }
                     return;
                 }
                 try {
@@ -5099,8 +5107,15 @@
                 if (setts.serverEngine) {
                     if (inHand && !(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
                     const meS = t.players[user.uid] || {};
-                    try { await window.fb.fx('pkLeave', { tableId: tableDocId }); }
-                    catch(e) { showToast((e && e.message) || 'Could not leave — try again', 'error'); return; }
+                    // Flag first: even if the pkLeave call below fails (network hiccup, stale
+                    // client), any viewer's next pkTick finishes the removal server-side —
+                    // so the door ALWAYS takes you out.
+                    try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leaveReq`]: Date.now() }); } catch(e) {}
+                    let left = false;
+                    for (let i = 0; i < 2 && !left; i++) {
+                        try { await window.fb.fx('pkLeave', { tableId: tableDocId }); left = true; }
+                        catch(e) { await new Promise(r => setTimeout(r, 700)); }
+                    }
                     logGameResult([{ uid: user.uid, username: user.username, game: 'poker', profit: round2((meS.stack || 0) - (meS.buyTotal || meS.stack || 0)) }], tableDocId);
                     onLeave(); return;
                 }

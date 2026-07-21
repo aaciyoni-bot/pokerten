@@ -671,6 +671,17 @@ exports.pkTick = onCall(async (request) => {
   const g = t.gameState || {};
   const pl = t.players || {};
 
+  // Door backstop: a seat flagged leaveReq (a client whose exit call failed or
+  // never arrived) is removed by whichever viewer ticks first — the door always
+  // ends with the seat gone and the wallet refunded.
+  if (!t.tournamentId) {
+    const lv = Object.values(pl).find((p) => p && p.leaveReq);
+    if (lv) {
+      try { await leaveSeat(tableId, lv.uid, t.clubId || "main"); } catch (e) { /* retried next tick */ }
+      return {ok: true};
+    }
+  }
+
   // 1) showdown pause over → next hand
   if (g.phase === "showdown" && g.showdownAt && Date.now() - g.showdownAt > (g.earlyWin ? 3500 : 5000)) {
     if (t.tournament && t.tournament.finished) return {ok: true};
@@ -831,6 +842,13 @@ exports.pkLeave = onCall(async (request) => {
     const role = (mS.exists && mS.data().role) || "";
     if (!["super_admin", "club_owner", "manager"].includes(role)) throw new HttpsError("permission-denied", "Managers only");
   }
+  const refund = await leaveSeat(tableId, uid, clubId);
+  return {ok: true, refund};
+});
+
+// The actual seat removal — also invoked by pkTick as a backstop for seats the
+// client flagged with leaveReq (its own pkLeave call failed / never arrived).
+async function leaveSeat(tableId, uid, clubId) {
   // Step 1: fold the seat out of the live hand (server-authoritative, turn-aware).
   try {
     await engineStep(tableId, (t2, g2, pl2, eng) => {
@@ -889,8 +907,8 @@ exports.pkLeave = onCall(async (request) => {
     }
     if (!p.isBot && refund > 0 && mS.exists) tx.update(mS.ref, {balance: round2((mS.data().balance || 0) + refund)});
   });
-  return {ok: true, refund};
-});
+  return refund;
+}
 
 // GOD-only: return all live hands for a table. Validated server-side; the god
 // list never ships to the browser.

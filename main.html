@@ -338,13 +338,24 @@
         }
         .btn-raise:not(:disabled):hover { filter: brightness(1.06); }
         .timer-ring { transform: rotate(-90deg); transition: stroke-dashoffset 1s linear; }
+        /* Subtle winner marker above the player's pod (replaces the big center banner
+           that used to cover the revealed cards). */
         .win-tag {
-            position: absolute; top: -26px; left: 50%; transform: translateX(-50%); z-index: 70;
-            font-family: 'Rubik', sans-serif; font-weight: 900; font-size: 14px; letter-spacing: 0.06em; white-space: nowrap; pointer-events: none;
+            position: absolute; top: -32px; left: 50%; transform: translateX(-50%); z-index: 70;
+            display: flex; flex-direction: column; align-items: center; gap: 1px;
+            font-family: 'Rubik', sans-serif; font-weight: 900; white-space: nowrap; pointer-events: none;
+            animation: popIn 0.3s ease-out;
+        }
+        .win-tag .win-amt {
+            font-size: 13px; letter-spacing: 0.05em;
             background: linear-gradient(180deg, #fbe7ae, #e3ae4e 60%, #a9761f);
             -webkit-background-clip: text; background-clip: text; color: transparent;
             filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)) drop-shadow(0 0 10px rgba(245,200,96,0.5));
-            animation: popIn 0.3s ease-out;
+        }
+        .win-tag .win-hand {
+            font-size: 9px; letter-spacing: 0.05em; color: #fde68a;
+            background: rgba(2,6,23,0.88); border: 1px solid rgba(245,200,96,0.45);
+            border-radius: 9999px; padding: 1px 8px;
         }
 
         /* ===== שש-בש: לוח גרפיט עתידני ===== */
@@ -4376,7 +4387,7 @@ function LobbyView({
   const [scrOpen, setScrOpen] = useState(false);
   const [scr, setScr] = useState(null);
   const scratchReady = bonusEnabled && (!user.lastScratchAt || Date.now() - user.lastScratchAt >= SCR_HOURS * 3600 * 1000);
-  const gainField = 'promoBalance';
+  const gainField = 'balance';
   const SCR_SYM = {
     10: '🍀',
     15: '💎',
@@ -4440,6 +4451,7 @@ function LobbyView({
           });
           tr.update(mRef, {
             [gainField]: round2((mSnap.data()[gainField] || 0) + prize),
+            bonusTotal: round2((mSnap.data().bonusTotal || 0) + prize),
             lastScratchAt: Date.now()
           });
           fromBank = true;
@@ -4509,6 +4521,7 @@ function LobbyView({
           });
           tr.update(mRef, {
             [gainField]: round2((mSnap.data()[gainField] || 0) + prize),
+            bonusTotal: round2((mSnap.data().bonusTotal || 0) + prize),
             lastBonusAt: Date.now()
           });
           fromBank = true;
@@ -5607,20 +5620,23 @@ function SettlementSection({
     const q = pq.trim().toLowerCase();
     if (q) rows = rows.filter(m => (m.username || '').toLowerCase().includes(q) || (m.playerId || '').toLowerCase().includes(q) || (m.googleName || '').toLowerCase().includes(q));
     rows = [...rows].sort((a, b) => (b.balance || 0) - (a.balance || 0));
+    const bonusOf = m => round2((m.bonusTotal || 0) + (m.promoBalance || 0));
     const tot = {
       bal: 0,
+      bon: 0,
       cyc: 0,
       all: 0
     };
     rows.forEach(m => {
       tot.bal = round2(tot.bal + (m.balance || 0));
+      tot.bon = round2(tot.bon + bonusOf(m));
       tot.cyc = round2(tot.cyc + (pres[m.uid] || 0));
       tot.all = round2(tot.all + (presAll[m.uid] || 0));
     });
     const csvPlayers = () => {
-      const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Bonus', `Result (${cycLabel})`, 'Result (all time)']];
-      rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(m.promoBalance || 0), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
-      out.push(['TOTAL', '', '', '', formatMoney(tot.bal), '', formatMoney(tot.cyc), formatMoney(tot.all)]);
+      const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Of which bonus', `Result (${cycLabel})`, 'Result (all time)']];
+      rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(bonusOf(m)), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
+      out.push(['TOTAL', '', '', '', formatMoney(tot.bal), formatMoney(tot.bon), formatMoney(tot.cyc), formatMoney(tot.all)]);
       downloadCSV(out, 'players_report.csv');
     };
     return React.createElement("div", {
@@ -5658,6 +5674,9 @@ function SettlementSection({
     }, "Agent"), React.createElement("th", {
       className: "text-right py-1.5 pr-2"
     }, "Balance"), React.createElement("th", {
+      className: "text-right py-1.5 pr-2",
+      title: "Spin/scratch prizes included in the balance"
+    }, "🎁 Bonus"), React.createElement("th", {
       className: "text-right py-1.5 pr-2"
     }, cycLabel), React.createElement("th", {
       className: "text-right py-1.5"
@@ -5678,11 +5697,13 @@ function SettlementSection({
     }, (byUid[m.agentUid] || {}).username || '—'), React.createElement("td", {
       className: "py-1.5 pr-2 text-right font-black text-amber-300"
     }, formatMoney(m.balance || 0)), React.createElement("td", {
+      className: "py-1.5 pr-2 text-right font-bold text-amber-500/80"
+    }, bonusOf(m) > 0 ? formatMoney(bonusOf(m)) : '—'), React.createElement("td", {
       className: `py-1.5 pr-2 text-right font-black ${(pres[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
     }, formatMoney(pres[m.uid] || 0)), React.createElement("td", {
       className: `py-1.5 text-right font-black ${(presAll[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
     }, formatMoney(presAll[m.uid] || 0)))), rows.length === 0 && React.createElement("tr", null, React.createElement("td", {
-      colSpan: isOwnerView ? 5 : 4,
+      colSpan: isOwnerView ? 6 : 5,
       className: "text-center py-6 text-slate-500 font-bold"
     }, "No players."))), React.createElement("tfoot", null, React.createElement("tr", {
       className: "text-[11px] font-black border-t border-white/15"
@@ -5691,6 +5712,8 @@ function SettlementSection({
     }, "Total"), isOwnerView && React.createElement("td", null), React.createElement("td", {
       className: "py-2 pr-2 text-right text-amber-300"
     }, formatMoney(tot.bal)), React.createElement("td", {
+      className: "py-2 pr-2 text-right text-amber-500/80"
+    }, formatMoney(tot.bon)), React.createElement("td", {
       className: `py-2 pr-2 text-right ${tot.cyc >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
     }, formatMoney(tot.cyc)), React.createElement("td", {
       className: `py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
@@ -8079,12 +8102,17 @@ function PokerTable({
   const kickSeat = async (uid, byAdmin) => {
     if (byAdmin && setts.serverEngine && !tableState?.tournamentId) {
       try {
+        await window.fb.updateDoc(tblRef(), {
+          [`players.${uid}.leaveReq`]: Date.now()
+        });
+      } catch (e) {}
+      try {
         await window.fb.fx('pkLeave', {
           tableId: tableDocId,
           targetUid: uid
         });
       } catch (e) {
-        showToast(e && e.message || 'Could not remove the player', 'error');
+        showToast('Removal queued — the seat clears within a few seconds', 'info');
       }
       return;
     }
@@ -8208,12 +8236,20 @@ function PokerTable({
       if (inHand && !(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
       const meS = t.players[user.uid] || {};
       try {
-        await window.fb.fx('pkLeave', {
-          tableId: tableDocId
+        await window.fb.updateDoc(tblRef(), {
+          [`players.${user.uid}.leaveReq`]: Date.now()
         });
-      } catch (e) {
-        showToast(e && e.message || 'Could not leave — try again', 'error');
-        return;
+      } catch (e) {}
+      let left = false;
+      for (let i = 0; i < 2 && !left; i++) {
+        try {
+          await window.fb.fx('pkLeave', {
+            tableId: tableDocId
+          });
+          left = true;
+        } catch (e) {
+          await new Promise(r => setTimeout(r, 700));
+        }
       }
       logGameResult([{
         uid: user.uid,
@@ -9148,18 +9184,7 @@ function PokerTable({
     className: "tracking-[0.15em] text-[9px] text-slate-400/30 uppercase mt-0.5"
   }, "POKERTEN")), gs.phase === 'discard' && React.createElement("div", {
     className: "text-amber-300 font-black text-xs animate-pulse"
-  }, "🍍 Pineapple - discard one card...")), gs.phase === 'showdown' && gs.lastWinners && React.createElement("div", {
-    className: "absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
-  }, React.createElement("div", {
-    className: "bg-slate-950/90 backdrop-blur-md border border-amber-500/50 rounded-2xl px-8 py-4 text-center animate-pop-in shadow-[0_10px_50px_rgba(0,0,0,0.8)]"
-  }, React.createElement("i", {
-    className: "fa-solid fa-trophy text-3xl text-amber-400 drop-shadow-[0_0_12px_#f59e0b]"
-  }), React.createElement("div", {
-    className: "text-white font-black text-base mt-1.5"
-  }, gs.lastWinners), (gs.lastWinAmount || 0) > 0 && React.createElement("div", {
-    className: "text-amber-400 font-black text-lg",
-    dir: "ltr"
-  }, "+", formatMoney(gs.lastWinAmount)))), gs.dealerUid && (() => {
+  }, "🍍 Pineapple - discard one card...")), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
     if (di < 0) return null;
     const ang = Math.PI / 2 + di * 2 * Math.PI / N;
@@ -9294,10 +9319,20 @@ function PokerTable({
         hidden: hidden,
         size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : 'md'
       }))));
-    })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && React.createElement("div", {
-      className: "win-tag",
-      dir: "ltr"
-    }, "WIN", (gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''), React.createElement("div", {
+    })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && (() => {
+      let hn = null;
+      try {
+        if (!gs.earlyWin && !hidden && (dispCards || []).length >= 2 && (gs.board || []).length >= 3) hn = handName(bestScoreNow(dispCards, gs.board || [], gs.currentGameType));
+      } catch (e) {}
+      return React.createElement("div", {
+        className: "win-tag",
+        dir: "ltr"
+      }, React.createElement("span", {
+        className: "win-amt"
+      }, "🏆 ", (gs.lastWinAmount || 0) > 0 ? '+' + formatShort(gs.lastWinAmount) : 'WIN'), hn && React.createElement("span", {
+        className: "win-hand"
+      }, hn));
+    })(), React.createElement("div", {
       className: `player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
       style: {
         backgroundImage: `url(${avatarUrl(p)})`

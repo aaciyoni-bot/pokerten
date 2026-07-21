@@ -4304,6 +4304,11 @@
             const [timeLeft, setTimeLeft] = useState(30);
             const [acting, setActing] = useState(false); // optimistic: disable action buttons the instant you tap
             const [buyinEdit, setBuyinEdit] = useState(null); // manager: live-adjust the table's min/max buy-in
+            // In-app confirm — native window.confirm is suppressed inside iOS standalone PWAs,
+            // which silently trapped players at the table ("exit button does nothing").
+            const [confirmBox, setConfirmBox] = useState(null); // { msg, resolve }
+            const askConfirm = (msg) => new Promise((resolve) => setConfirmBox({ msg, resolve }));
+            const [topUpBox, setTopUpBox] = useState(null); // add-chips sheet: { room, inHand, val }
 
             const tableRef = useRef(null);
             const actedTurnRef = useRef(null); // turnStartedAt of the turn I already acted on — hides buttons until a genuinely new turn
@@ -4851,7 +4856,8 @@
                     }
                 } catch(e) {}
             };
-            const topUpChips = async () => {
+            // Opens the in-app add-chips sheet (native window.prompt is suppressed in iOS PWAs).
+            const topUpChips = () => {
                 const t = tableRef.current; if (!t || t.tournamentId) return;
                 const BBv = round2((Number(setts.blinds) || 1) * 2);
                 const maxBuy2 = buyInMax(setts);
@@ -4863,13 +4869,11 @@
                 // Mid-hand you don't touch chips that are in play — the add is QUEUED and lands
                 // on your stack automatically at the end of the hand, so you never miss the window.
                 const inHand = !['waiting', 'showdown', 'dc_selection'].includes((t.gameState || {}).phase) && meP.status === 'active';
-                const amt = Number(window.prompt(
-                    inHand
-                        ? `Add chips (applied at the end of this hand). Max ${formatMoney(room)}:`
-                        : `How much to add? (max ${formatMoney(room)})`,
-                    String(Math.min(room, BBv * 50))));
-                if (!amt || amt <= 0) return;
-                const add = Math.min(round2(amt), room);
+                setTopUpBox({ room, inHand, val: String(Math.min(room, BBv * 50)) });
+            };
+            const doTopUp = async (amount, inHand, room) => {
+                const add = Math.min(round2(Number(amount) || 0), room);
+                if (!add || add <= 0) return;
                 try {
                     await window.fb.runTransaction(window.fb.db, async (tr) => {
                         const ms = await tr.get(memDoc(user.uid));
@@ -4961,7 +4965,7 @@
                         return;
                     }
                     if (meN.leavingAt && Date.now() < meN.leavingAt) {
-                        if (window.confirm("Cancel leaving and stay at the table?")) {
+                        if (await askConfirm("Cancel leaving and stay at the table?")) {
                             try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leavingAt`]: null }); } catch(e) {}
                             showToast("Staying! 💪", "success");
                         } else {
@@ -4975,7 +4979,7 @@
                 if (t.tournament) {
                     const meT = t.players[user.uid];
                     if (meT.status !== 'out') {
-                        if (!window.confirm("⚠️ Leaving a tournament table = knocking out of the tournament (no refund). Sure?")) return;
+                        if (!(await askConfirm("⚠️ Leaving a tournament table = knocking out of the tournament (no refund). Sure?"))) return;
                         try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.status`]: 'out' }); } catch(e) {}
                         tourReportBust(t.tournamentId, [user.uid], [], 0, false);
                     }
@@ -4984,7 +4988,7 @@
                 const g = t.gameState;
                 const inHand = !['waiting','showdown'].includes(g.phase) && t.players[user.uid].status === 'active';
                 if (inHand) {
-                    if (!window.confirm("Standing up mid hand = Fold the hand. Continue?")) return;
+                    if (!(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
                     // פיינאפל: אם טרם זרקתי קלף - זורקים אחד לפני היציאה, אחרת שלב הזריקה נתקע לנצח
                     if (g.phase === 'discard' && (t.players[user.uid].cards || []).length === 3) {
                         await handleDiscardCard(user.uid, 0);
@@ -5500,6 +5504,36 @@
                                         catch(e) { showToast('Could not update buy-in', 'error'); }
                                     }} className="flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg">Save</button>
                                     <button onClick={() => setBuyinEdit(null)} className="px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10">Cancel</button>
+                                </div>
+                            </div>
+                        </div>, document.body)}
+
+                    {/* In-app confirm (replaces native window.confirm, which iOS PWAs suppress) */}
+                    {confirmBox && ReactDOM.createPortal(
+                        <div className="fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { confirmBox.resolve(false); setConfirmBox(null); }}>
+                            <div className="glass-panel rounded-3xl p-6 w-full max-w-xs text-center border border-white/10 animate-pop-in" onClick={e => e.stopPropagation()}>
+                                <p className="text-white font-bold text-sm mb-5 whitespace-pre-line">{confirmBox.msg}</p>
+                                <div className="flex gap-2.5">
+                                    <button onClick={() => { confirmBox.resolve(false); setConfirmBox(null); }} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10">Cancel</button>
+                                    <button onClick={() => { confirmBox.resolve(true); setConfirmBox(null); }} className="flex-1 bg-gradient-to-b from-rose-600 to-rose-800 hover:from-rose-500 text-white py-3 rounded-2xl font-black shadow-lg">Yes</button>
+                                </div>
+                            </div>
+                        </div>, document.body)}
+
+                    {/* In-app add-chips sheet (replaces native window.prompt) */}
+                    {topUpBox && ReactDOM.createPortal(
+                        <div className="fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setTopUpBox(null)}>
+                            <div className="glass-panel rounded-3xl p-6 w-full max-w-xs text-center border border-emerald-500/30 animate-pop-in" onClick={e => e.stopPropagation()}>
+                                <div className="text-2xl mb-1">💰</div>
+                                <h3 className="text-white font-black text-lg mb-1">Add chips</h3>
+                                <p className="text-slate-400 text-xs font-bold mb-4">{topUpBox.inHand ? 'Applied to your stack at the end of this hand' : 'Added to your stack now'} · max {formatMoney(topUpBox.room)}</p>
+                                <input type="number" inputMode="decimal" autoFocus value={topUpBox.val} min={0} max={topUpBox.room} onChange={e => setTopUpBox({ ...topUpBox, val: e.target.value })} className="w-full bg-slate-900 text-white text-center text-xl font-black border border-emerald-600/40 rounded-2xl p-3 outline-none focus:border-emerald-400 mb-2" dir="ltr" />
+                                <div className="flex gap-1.5 mb-4 justify-center">
+                                    {[0.25, 0.5, 1].map(fr => <button key={fr} onClick={() => setTopUpBox({ ...topUpBox, val: String(round2(topUpBox.room * fr)) })} className="flex-1 text-[10px] bg-slate-800 border border-white/10 px-2 py-1.5 rounded-lg font-black text-slate-300">{fr === 1 ? 'MAX' : `${fr * 100}%`}</button>)}
+                                </div>
+                                <div className="flex gap-2.5">
+                                    <button onClick={() => setTopUpBox(null)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10">Cancel</button>
+                                    <button onClick={() => { const b = topUpBox; setTopUpBox(null); doTopUp(b.val, b.inHand, b.room); }} className="flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg">Add</button>
                                 </div>
                             </div>
                         </div>, document.body)}

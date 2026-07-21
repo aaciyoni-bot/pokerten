@@ -4271,6 +4271,7 @@ function LobbyView({
   };
   const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => gtRank(a) - gtRank(b) || (a.createdAt || 0) - (b.createdAt || 0));
   const [pokFilter, setPokFilter] = useState('all');
+  const [buyinEdit, setBuyinEdit] = useState(null);
   const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
   const variantCount = v => pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === v).length;
   const shownPoker = pokFilter === 'all' ? pokerTables : pokFilter === 'tours' ? [] : pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === pokFilter);
@@ -4566,7 +4567,67 @@ function LobbyView({
       overflowX: "hidden"
     },
     className: "scrollable-content aurora-bg p-4 sm:p-6"
+  }, buyinEdit && ReactDOM.createPortal(React.createElement("div", {
+    dir: "ltr",
+    className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => setBuyinEdit(null)
   }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "glass-panel rounded-3xl p-6 w-full max-w-sm border border-white/10 animate-pop-in"
+  }, React.createElement("h3", {
+    className: "text-lg font-black text-white mb-1 flex items-center gap-2"
+  }, React.createElement("i", {
+    className: "fa-solid fa-coins text-amber-400"
+  }), "Buy-in — ", buyinEdit.name), React.createElement("p", {
+    className: "text-slate-400 text-xs font-bold mb-4"
+  }, "Adjust this table's buy-in from the lobby — no need to enter it."), React.createElement("label", {
+    className: "text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block"
+  }, "Min buy-in (₪)"), React.createElement("input", {
+    type: "number",
+    min: "0",
+    step: "any",
+    value: buyinEdit.min,
+    onChange: e => setBuyinEdit({
+      ...buyinEdit,
+      min: e.target.value
+    }),
+    className: "w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-3",
+    dir: "ltr"
+  }), React.createElement("label", {
+    className: "text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block"
+  }, "Max buy-in (₪)"), React.createElement("input", {
+    type: "number",
+    min: "0",
+    step: "any",
+    value: buyinEdit.max,
+    onChange: e => setBuyinEdit({
+      ...buyinEdit,
+      max: e.target.value
+    }),
+    className: "w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-5",
+    dir: "ltr"
+  }), React.createElement("div", {
+    className: "flex gap-2"
+  }, React.createElement("button", {
+    onClick: async () => {
+      const mn = Math.max(0.01, Number(buyinEdit.min) || 0);
+      const mx = Math.max(mn, Number(buyinEdit.max) || 0);
+      try {
+        await window.fb.updateDoc(window.fb.doc(window.fb.db, "tables", buyinEdit.id), {
+          'settings.minBuyIn': round2(mn),
+          'settings.maxBuyIn': round2(mx)
+        });
+        showToast(`Buy-in updated: ${formatMoney(mn)}–${formatMoney(mx)}`, 'success');
+        setBuyinEdit(null);
+      } catch (e) {
+        showToast('Could not update buy-in', 'error');
+      }
+    },
+    className: "flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
+  }, "Save"), React.createElement("button", {
+    onClick: () => setBuyinEdit(null),
+    className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+  }, "Cancel")))), document.body), React.createElement("div", {
     className: "max-w-6xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
     className: "flex items-center justify-between gap-3 mb-5"
@@ -5005,7 +5066,24 @@ function LobbyView({
       className: "tbl-buyin-label"
     }, "Buy-in"), React.createElement("span", {
       className: "tbl-buyin-val"
-    }, formatMoney(minBuy))), canManageGame(user, 'poker') && React.createElement("button", {
+    }, formatMoney(minBuy))), canManageGame(user, 'poker') && !t.tournamentId && React.createElement("button", {
+      onClick: e => {
+        e.stopPropagation();
+        setBuyinEdit({
+          id: t.docId,
+          name: s.tableName || variantLabel(gt) + ' table',
+          min: String(buyInMin(s)),
+          max: String(buyInMax(s))
+        });
+      },
+      className: "tbl-del",
+      title: "Edit buy-in",
+      style: {
+        color: '#fbbf24'
+      }
+    }, React.createElement("i", {
+      className: "fa-solid fa-coins"
+    })), canManageGame(user, 'poker') && React.createElement("button", {
       onClick: e => handleDelete(e, t),
       className: "tbl-del"
     }, React.createElement("i", {
@@ -9218,8 +9296,10 @@ function PokerTable({
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
   }, needRebuy ? 'Do Rebuy' : 'Sit back in'), !needRebuy && React.createElement("button", {
     onClick: () => setSpectate(true),
-    className: "text-slate-400 hover:text-white text-xs font-bold underline"
-  }, "Spectate"), needRebuy && React.createElement("button", {
+    className: "w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 border border-cyan-500/30 text-cyan-200 hover:text-white py-3 rounded-2xl font-black text-sm shadow-lg mb-2"
+  }, React.createElement("i", {
+    className: "fa-solid fa-eye text-base"
+  }), "Spectate the table"), needRebuy && React.createElement("button", {
     onClick: handleStandUp,
     className: "text-slate-400 hover:text-white text-xs font-bold underline"
   }, "Stand up"), React.createElement("button", {

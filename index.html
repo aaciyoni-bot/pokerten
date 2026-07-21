@@ -7034,6 +7034,12 @@ function PokerTable({
   const [timeLeft, setTimeLeft] = useState(30);
   const [acting, setActing] = useState(false);
   const [buyinEdit, setBuyinEdit] = useState(null);
+  const [confirmBox, setConfirmBox] = useState(null);
+  const askConfirm = msg => new Promise(resolve => setConfirmBox({
+    msg,
+    resolve
+  }));
+  const [topUpBox, setTopUpBox] = useState(null);
   const tableRef = useRef(null);
   const actedTurnRef = useRef(null);
   const advanceRef = useRef(null);
@@ -7871,7 +7877,7 @@ function PokerTable({
       }
     } catch (e) {}
   };
-  const topUpChips = async () => {
+  const topUpChips = () => {
     const t = tableRef.current;
     if (!t || t.tournamentId) return;
     const BBv = round2((Number(setts.blinds) || 1) * 2);
@@ -7882,9 +7888,15 @@ function PokerTable({
     const room = round2(maxBuy2 - (meP.stack || 0) - (meP.bet || 0) - pend);
     if (room <= 0) return showToast(`You're at the table cap (${formatMoney(maxBuy2)})`, "info");
     const inHand = !['waiting', 'showdown', 'dc_selection'].includes((t.gameState || {}).phase) && meP.status === 'active';
-    const amt = Number(window.prompt(inHand ? `Add chips (applied at the end of this hand). Max ${formatMoney(room)}:` : `How much to add? (max ${formatMoney(room)})`, String(Math.min(room, BBv * 50))));
-    if (!amt || amt <= 0) return;
-    const add = Math.min(round2(amt), room);
+    setTopUpBox({
+      room,
+      inHand,
+      val: String(Math.min(room, BBv * 50))
+    });
+  };
+  const doTopUp = async (amount, inHand, room) => {
+    const add = Math.min(round2(Number(amount) || 0), room);
+    if (!add || add <= 0) return;
     try {
       await window.fb.runTransaction(window.fb.db, async tr => {
         const ms = await tr.get(memDoc(user.uid));
@@ -7994,7 +8006,7 @@ function PokerTable({
           return;
         }
         if (meN.leavingAt && Date.now() < meN.leavingAt) {
-          if (window.confirm("Cancel leaving and stay at the table?")) {
+          if (await askConfirm("Cancel leaving and stay at the table?")) {
             try {
               await window.fb.updateDoc(tblRef(), {
                 [`players.${user.uid}.leavingAt`]: null
@@ -8012,7 +8024,7 @@ function PokerTable({
     if (t.tournament) {
       const meT = t.players[user.uid];
       if (meT.status !== 'out') {
-        if (!window.confirm("⚠️ Leaving a tournament table = knocking out of the tournament (no refund). Sure?")) return;
+        if (!(await askConfirm("⚠️ Leaving a tournament table = knocking out of the tournament (no refund). Sure?"))) return;
         try {
           await window.fb.updateDoc(tblRef(), {
             [`players.${user.uid}.status`]: 'out'
@@ -8026,7 +8038,7 @@ function PokerTable({
     const g = t.gameState;
     const inHand = !['waiting', 'showdown'].includes(g.phase) && t.players[user.uid].status === 'active';
     if (inHand) {
-      if (!window.confirm("Standing up mid hand = Fold the hand. Continue?")) return;
+      if (!(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
       if (g.phase === 'discard' && (t.players[user.uid].cards || []).length === 3) {
         await handleDiscardCard(user.uid, 0);
         await new Promise(r => setTimeout(r, 400));
@@ -8694,7 +8706,78 @@ function PokerTable({
   }, "Save"), React.createElement("button", {
     onClick: () => setBuyinEdit(null),
     className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
-  }, "Cancel")))), document.body), React.createElement("div", {
+  }, "Cancel")))), document.body), confirmBox && ReactDOM.createPortal(React.createElement("div", {
+    className: "fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => {
+      confirmBox.resolve(false);
+      setConfirmBox(null);
+    }
+  }, React.createElement("div", {
+    className: "glass-panel rounded-3xl p-6 w-full max-w-xs text-center border border-white/10 animate-pop-in",
+    onClick: e => e.stopPropagation()
+  }, React.createElement("p", {
+    className: "text-white font-bold text-sm mb-5 whitespace-pre-line"
+  }, confirmBox.msg), React.createElement("div", {
+    className: "flex gap-2.5"
+  }, React.createElement("button", {
+    onClick: () => {
+      confirmBox.resolve(false);
+      setConfirmBox(null);
+    },
+    className: "flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+  }, "Cancel"), React.createElement("button", {
+    onClick: () => {
+      confirmBox.resolve(true);
+      setConfirmBox(null);
+    },
+    className: "flex-1 bg-gradient-to-b from-rose-600 to-rose-800 hover:from-rose-500 text-white py-3 rounded-2xl font-black shadow-lg"
+  }, "Yes")))), document.body), topUpBox && ReactDOM.createPortal(React.createElement("div", {
+    className: "fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => setTopUpBox(null)
+  }, React.createElement("div", {
+    className: "glass-panel rounded-3xl p-6 w-full max-w-xs text-center border border-emerald-500/30 animate-pop-in",
+    onClick: e => e.stopPropagation()
+  }, React.createElement("div", {
+    className: "text-2xl mb-1"
+  }, "💰"), React.createElement("h3", {
+    className: "text-white font-black text-lg mb-1"
+  }, "Add chips"), React.createElement("p", {
+    className: "text-slate-400 text-xs font-bold mb-4"
+  }, topUpBox.inHand ? 'Applied to your stack at the end of this hand' : 'Added to your stack now', " · max ", formatMoney(topUpBox.room)), React.createElement("input", {
+    type: "number",
+    inputMode: "decimal",
+    autoFocus: true,
+    value: topUpBox.val,
+    min: 0,
+    max: topUpBox.room,
+    onChange: e => setTopUpBox({
+      ...topUpBox,
+      val: e.target.value
+    }),
+    className: "w-full bg-slate-900 text-white text-center text-xl font-black border border-emerald-600/40 rounded-2xl p-3 outline-none focus:border-emerald-400 mb-2",
+    dir: "ltr"
+  }), React.createElement("div", {
+    className: "flex gap-1.5 mb-4 justify-center"
+  }, [0.25, 0.5, 1].map(fr => React.createElement("button", {
+    key: fr,
+    onClick: () => setTopUpBox({
+      ...topUpBox,
+      val: String(round2(topUpBox.room * fr))
+    }),
+    className: "flex-1 text-[10px] bg-slate-800 border border-white/10 px-2 py-1.5 rounded-lg font-black text-slate-300"
+  }, fr === 1 ? 'MAX' : `${fr * 100}%`))), React.createElement("div", {
+    className: "flex gap-2.5"
+  }, React.createElement("button", {
+    onClick: () => setTopUpBox(null),
+    className: "flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+  }, "Cancel"), React.createElement("button", {
+    onClick: () => {
+      const b = topUpBox;
+      setTopUpBox(null);
+      doTopUp(b.val, b.inHand, b.room);
+    },
+    className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
+  }, "Add")))), document.body), React.createElement("div", {
     className: "min-h-[3.5rem] bg-slate-900/80 backdrop-blur-md border-b border-white/5 flex justify-between items-center gap-1.5 px-2 sm:px-3 py-1.5 shrink-0 z-40 relative"
   }, React.createElement("div", {
     className: "flex items-center gap-1.5 sm:gap-2 flex-wrap shrink-0"

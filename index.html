@@ -3318,6 +3318,7 @@
             const [gLog, setGLog] = useState(null);
             const [mems, setMems] = useState(null);
             const [busy, setBusy] = useState(false);
+            const [pq, setPq] = useState(''); // players-report search
             const [transferFor, setTransferFor] = useState(null); // player membership being reassigned
             const [closed, setClosed] = useState((window.__club || {}).closedWeeks || {});
             useEffect(() => {
@@ -3454,6 +3455,65 @@
                                 : <div className="glass-panel rounded-2xl p-3"><div className="text-[9px] text-slate-500 font-black uppercase">Agents</div><div className="text-lg font-black text-white" dir="ltr">{agents.length}</div></div>}
                         </div>
                     )}
+                    {/* Players report: every player, balance + results — owner sees all, an agent sees only his referrals */}
+                    {(() => {
+                        const presAll = {};
+                        gLog.forEach(e => { if (e.uid) presAll[e.uid] = round2((presAll[e.uid] || 0) + (e.profit || 0)); });
+                        const byUid = {}; mems.forEach(m => byUid[m.uid] = m);
+                        let rows = isOwnerView ? mems : mems.filter(m => m.agentUid === user.uid);
+                        const q = pq.trim().toLowerCase();
+                        if (q) rows = rows.filter(m => (m.username || '').toLowerCase().includes(q) || (m.playerId || '').toLowerCase().includes(q) || (m.googleName || '').toLowerCase().includes(q));
+                        rows = [...rows].sort((a, b) => (b.balance || 0) - (a.balance || 0));
+                        const tot = { bal: 0, cyc: 0, all: 0 };
+                        rows.forEach(m => { tot.bal = round2(tot.bal + (m.balance || 0)); tot.cyc = round2(tot.cyc + (pres[m.uid] || 0)); tot.all = round2(tot.all + (presAll[m.uid] || 0)); });
+                        const csvPlayers = () => {
+                            const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Bonus', `Result (${cycLabel})`, 'Result (all time)']];
+                            rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(m.promoBalance || 0), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
+                            out.push(['TOTAL', '', '', '', formatMoney(tot.bal), '', formatMoney(tot.cyc), formatMoney(tot.all)]);
+                            downloadCSV(out, 'players_report.csv');
+                        };
+                        return (
+                            <div className="glass-panel rounded-2xl p-4 mb-5">
+                                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                                    <h4 className="text-xs font-black text-amber-300 uppercase tracking-widest"><i className="fa-solid fa-table-list ml-1"></i> Players report ({rows.length})</h4>
+                                    <div className="flex items-center gap-2">
+                                        <input value={pq} onChange={e => setPq(e.target.value)} placeholder="Search name / ID..." className="bg-slate-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-amber-500/60 w-36" />
+                                        <button onClick={csvPlayers} title="Export players CSV" className="text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-amber-300 px-2.5 py-1.5 rounded-lg font-black"><i className="fa-solid fa-file-csv"></i></button>
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-xs" dir="ltr">
+                                        <thead><tr className="text-slate-500 font-black text-[10px] uppercase border-b border-white/10">
+                                            <th className="text-left py-1.5 pr-2">Player</th>
+                                            {isOwnerView && <th className="text-left py-1.5 pr-2">Agent</th>}
+                                            <th className="text-right py-1.5 pr-2">Balance</th>
+                                            <th className="text-right py-1.5 pr-2">{cycLabel}</th>
+                                            <th className="text-right py-1.5">All time</th>
+                                        </tr></thead>
+                                        <tbody>
+                                            {rows.map(m => (
+                                                <tr key={m.uid} className="border-b border-white/5">
+                                                    <td className="py-1.5 pr-2 whitespace-nowrap"><span className="text-white font-bold">{m.username}</span> <span className="text-slate-600 font-black text-[10px]">{m.playerId || ''}</span>{(m.promoBalance || 0) > 0 && <span className="text-amber-400 text-[9px] font-black" title="Bonus chips"> 🎁{formatShort(m.promoBalance)}</span>}</td>
+                                                    {isOwnerView && <td className="py-1.5 pr-2 text-slate-400 font-bold">{(byUid[m.agentUid] || {}).username || '—'}</td>}
+                                                    <td className="py-1.5 pr-2 text-right font-black text-amber-300">{formatMoney(m.balance || 0)}</td>
+                                                    <td className={`py-1.5 pr-2 text-right font-black ${(pres[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(pres[m.uid] || 0)}</td>
+                                                    <td className={`py-1.5 text-right font-black ${(presAll[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(presAll[m.uid] || 0)}</td>
+                                                </tr>
+                                            ))}
+                                            {rows.length === 0 && <tr><td colSpan={isOwnerView ? 5 : 4} className="text-center py-6 text-slate-500 font-bold">No players.</td></tr>}
+                                        </tbody>
+                                        <tfoot><tr className="text-[11px] font-black border-t border-white/15">
+                                            <td className="py-2 pr-2 text-slate-400 uppercase">Total</td>
+                                            {isOwnerView && <td></td>}
+                                            <td className="py-2 pr-2 text-right text-amber-300">{formatMoney(tot.bal)}</td>
+                                            <td className={`py-2 pr-2 text-right ${tot.cyc >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(tot.cyc)}</td>
+                                            <td className={`py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(tot.all)}</td>
+                                        </tr></tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        );
+                    })()}
                     <div className="space-y-3">
                         {agents.length === 0 && <div className="text-center py-8 text-slate-500 font-bold glass-panel rounded-2xl text-sm">No agents / no activity this cycle.</div>}
                         {agents.map(a => {

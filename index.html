@@ -338,13 +338,24 @@
         }
         .btn-raise:not(:disabled):hover { filter: brightness(1.06); }
         .timer-ring { transform: rotate(-90deg); transition: stroke-dashoffset 1s linear; }
+        /* Subtle winner marker above the player's pod (replaces the big center banner
+           that used to cover the revealed cards). */
         .win-tag {
-            position: absolute; top: -26px; left: 50%; transform: translateX(-50%); z-index: 70;
-            font-family: 'Rubik', sans-serif; font-weight: 900; font-size: 14px; letter-spacing: 0.06em; white-space: nowrap; pointer-events: none;
+            position: absolute; top: -32px; left: 50%; transform: translateX(-50%); z-index: 70;
+            display: flex; flex-direction: column; align-items: center; gap: 1px;
+            font-family: 'Rubik', sans-serif; font-weight: 900; white-space: nowrap; pointer-events: none;
+            animation: popIn 0.3s ease-out;
+        }
+        .win-tag .win-amt {
+            font-size: 13px; letter-spacing: 0.05em;
             background: linear-gradient(180deg, #fbe7ae, #e3ae4e 60%, #a9761f);
             -webkit-background-clip: text; background-clip: text; color: transparent;
             filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)) drop-shadow(0 0 10px rgba(245,200,96,0.5));
-            animation: popIn 0.3s ease-out;
+        }
+        .win-tag .win-hand {
+            font-size: 9px; letter-spacing: 0.05em; color: #fde68a;
+            background: rgba(2,6,23,0.88); border: 1px solid rgba(245,200,96,0.45);
+            border-radius: 9999px; padding: 1px 8px;
         }
 
         /* ===== שש-בש: לוח גרפיט עתידני ===== */
@@ -9148,18 +9159,7 @@ function PokerTable({
     className: "tracking-[0.15em] text-[9px] text-slate-400/30 uppercase mt-0.5"
   }, "POKERTEN")), gs.phase === 'discard' && React.createElement("div", {
     className: "text-amber-300 font-black text-xs animate-pulse"
-  }, "🍍 Pineapple - discard one card...")), gs.phase === 'showdown' && gs.lastWinners && React.createElement("div", {
-    className: "absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
-  }, React.createElement("div", {
-    className: "bg-slate-950/90 backdrop-blur-md border border-amber-500/50 rounded-2xl px-8 py-4 text-center animate-pop-in shadow-[0_10px_50px_rgba(0,0,0,0.8)]"
-  }, React.createElement("i", {
-    className: "fa-solid fa-trophy text-3xl text-amber-400 drop-shadow-[0_0_12px_#f59e0b]"
-  }), React.createElement("div", {
-    className: "text-white font-black text-base mt-1.5"
-  }, gs.lastWinners), (gs.lastWinAmount || 0) > 0 && React.createElement("div", {
-    className: "text-amber-400 font-black text-lg",
-    dir: "ltr"
-  }, "+", formatMoney(gs.lastWinAmount)))), gs.dealerUid && (() => {
+  }, "🍍 Pineapple - discard one card...")), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
     if (di < 0) return null;
     const ang = Math.PI / 2 + di * 2 * Math.PI / N;
@@ -9294,10 +9294,20 @@ function PokerTable({
         hidden: hidden,
         size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : 'md'
       }))));
-    })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && React.createElement("div", {
-      className: "win-tag",
-      dir: "ltr"
-    }, "WIN", (gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''), React.createElement("div", {
+    })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && (() => {
+      let hn = null;
+      try {
+        if (!gs.earlyWin && !hidden && (dispCards || []).length >= 2 && (gs.board || []).length >= 3) hn = handName(bestScoreNow(dispCards, gs.board || [], gs.currentGameType));
+      } catch (e) {}
+      return React.createElement("div", {
+        className: "win-tag",
+        dir: "ltr"
+      }, React.createElement("span", {
+        className: "win-amt"
+      }, "🏆 ", (gs.lastWinAmount || 0) > 0 ? '+' + formatShort(gs.lastWinAmount) : 'WIN'), hn && React.createElement("span", {
+        className: "win-hand"
+      }, hn));
+    })(), React.createElement("div", {
       className: `player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
       style: {
         backgroundImage: `url(${avatarUrl(p)})`

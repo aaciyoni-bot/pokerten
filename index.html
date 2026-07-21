@@ -4387,7 +4387,7 @@ function LobbyView({
   const [scrOpen, setScrOpen] = useState(false);
   const [scr, setScr] = useState(null);
   const scratchReady = bonusEnabled && (!user.lastScratchAt || Date.now() - user.lastScratchAt >= SCR_HOURS * 3600 * 1000);
-  const gainField = 'promoBalance';
+  const gainField = 'balance';
   const SCR_SYM = {
     10: '🍀',
     15: '💎',
@@ -4451,6 +4451,7 @@ function LobbyView({
           });
           tr.update(mRef, {
             [gainField]: round2((mSnap.data()[gainField] || 0) + prize),
+            bonusTotal: round2((mSnap.data().bonusTotal || 0) + prize),
             lastScratchAt: Date.now()
           });
           fromBank = true;
@@ -4520,6 +4521,7 @@ function LobbyView({
           });
           tr.update(mRef, {
             [gainField]: round2((mSnap.data()[gainField] || 0) + prize),
+            bonusTotal: round2((mSnap.data().bonusTotal || 0) + prize),
             lastBonusAt: Date.now()
           });
           fromBank = true;
@@ -5618,20 +5620,23 @@ function SettlementSection({
     const q = pq.trim().toLowerCase();
     if (q) rows = rows.filter(m => (m.username || '').toLowerCase().includes(q) || (m.playerId || '').toLowerCase().includes(q) || (m.googleName || '').toLowerCase().includes(q));
     rows = [...rows].sort((a, b) => (b.balance || 0) - (a.balance || 0));
+    const bonusOf = m => round2((m.bonusTotal || 0) + (m.promoBalance || 0));
     const tot = {
       bal: 0,
+      bon: 0,
       cyc: 0,
       all: 0
     };
     rows.forEach(m => {
       tot.bal = round2(tot.bal + (m.balance || 0));
+      tot.bon = round2(tot.bon + bonusOf(m));
       tot.cyc = round2(tot.cyc + (pres[m.uid] || 0));
       tot.all = round2(tot.all + (presAll[m.uid] || 0));
     });
     const csvPlayers = () => {
-      const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Bonus', `Result (${cycLabel})`, 'Result (all time)']];
-      rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(m.promoBalance || 0), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
-      out.push(['TOTAL', '', '', '', formatMoney(tot.bal), '', formatMoney(tot.cyc), formatMoney(tot.all)]);
+      const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Of which bonus', `Result (${cycLabel})`, 'Result (all time)']];
+      rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(bonusOf(m)), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
+      out.push(['TOTAL', '', '', '', formatMoney(tot.bal), formatMoney(tot.bon), formatMoney(tot.cyc), formatMoney(tot.all)]);
       downloadCSV(out, 'players_report.csv');
     };
     return React.createElement("div", {
@@ -5669,6 +5674,9 @@ function SettlementSection({
     }, "Agent"), React.createElement("th", {
       className: "text-right py-1.5 pr-2"
     }, "Balance"), React.createElement("th", {
+      className: "text-right py-1.5 pr-2",
+      title: "Spin/scratch prizes included in the balance"
+    }, "🎁 Bonus"), React.createElement("th", {
       className: "text-right py-1.5 pr-2"
     }, cycLabel), React.createElement("th", {
       className: "text-right py-1.5"
@@ -5689,11 +5697,13 @@ function SettlementSection({
     }, (byUid[m.agentUid] || {}).username || '—'), React.createElement("td", {
       className: "py-1.5 pr-2 text-right font-black text-amber-300"
     }, formatMoney(m.balance || 0)), React.createElement("td", {
+      className: "py-1.5 pr-2 text-right font-bold text-amber-500/80"
+    }, bonusOf(m) > 0 ? formatMoney(bonusOf(m)) : '—'), React.createElement("td", {
       className: `py-1.5 pr-2 text-right font-black ${(pres[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
     }, formatMoney(pres[m.uid] || 0)), React.createElement("td", {
       className: `py-1.5 text-right font-black ${(presAll[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
     }, formatMoney(presAll[m.uid] || 0)))), rows.length === 0 && React.createElement("tr", null, React.createElement("td", {
-      colSpan: isOwnerView ? 5 : 4,
+      colSpan: isOwnerView ? 6 : 5,
       className: "text-center py-6 text-slate-500 font-bold"
     }, "No players."))), React.createElement("tfoot", null, React.createElement("tr", {
       className: "text-[11px] font-black border-t border-white/15"
@@ -5702,6 +5712,8 @@ function SettlementSection({
     }, "Total"), isOwnerView && React.createElement("td", null), React.createElement("td", {
       className: "py-2 pr-2 text-right text-amber-300"
     }, formatMoney(tot.bal)), React.createElement("td", {
+      className: "py-2 pr-2 text-right text-amber-500/80"
+    }, formatMoney(tot.bon)), React.createElement("td", {
       className: `py-2 pr-2 text-right ${tot.cyc >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
     }, formatMoney(tot.cyc)), React.createElement("td", {
       className: `py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
@@ -8090,12 +8102,17 @@ function PokerTable({
   const kickSeat = async (uid, byAdmin) => {
     if (byAdmin && setts.serverEngine && !tableState?.tournamentId) {
       try {
+        await window.fb.updateDoc(tblRef(), {
+          [`players.${uid}.leaveReq`]: Date.now()
+        });
+      } catch (e) {}
+      try {
         await window.fb.fx('pkLeave', {
           tableId: tableDocId,
           targetUid: uid
         });
       } catch (e) {
-        showToast(e && e.message || 'Could not remove the player', 'error');
+        showToast('Removal queued — the seat clears within a few seconds', 'info');
       }
       return;
     }
@@ -8219,12 +8236,20 @@ function PokerTable({
       if (inHand && !(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
       const meS = t.players[user.uid] || {};
       try {
-        await window.fb.fx('pkLeave', {
-          tableId: tableDocId
+        await window.fb.updateDoc(tblRef(), {
+          [`players.${user.uid}.leaveReq`]: Date.now()
         });
-      } catch (e) {
-        showToast(e && e.message || 'Could not leave — try again', 'error');
-        return;
+      } catch (e) {}
+      let left = false;
+      for (let i = 0; i < 2 && !left; i++) {
+        try {
+          await window.fb.fx('pkLeave', {
+            tableId: tableDocId
+          });
+          left = true;
+        } catch (e) {
+          await new Promise(r => setTimeout(r, 700));
+        }
       }
       logGameResult([{
         uid: user.uid,

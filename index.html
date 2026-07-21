@@ -5981,7 +5981,9 @@ function BackofficeView({
       showToast("Error deleting Bots", "error");
     }
   };
-  const pendingUsers = usersList.filter(u => u.status !== 'approved' && !u.isBot);
+  const canApproveAll = isOwner || user.role === ROLES.MANAGER;
+  const isAgentApprover = !canApproveAll && user.role === ROLES.AGENT;
+  const pendingUsers = usersList.filter(u => u.status !== 'approved' && !u.isBot && (!isAgentApprover || u.agentUid === user.uid));
   const agents = usersList.filter(u => u.status === 'approved' && u.role === ROLES.AGENT && !u.isBot);
   const agentName = uid => (usersList.find(x => x.uid === uid) || {}).username || '';
   useEffect(() => {
@@ -6313,7 +6315,9 @@ function BackofficeView({
   }, u.username), React.createElement("div", {
     className: "text-xs text-slate-400 truncate",
     dir: "ltr"
-  }, u.email))), React.createElement("div", {
+  }, u.email), u.agentUid && React.createElement("div", {
+    className: "text-[10px] text-purple-300 font-black truncate"
+  }, "🤝 ", u.agentUid === user.uid ? 'Your referral' : 'Agent: ' + agentName(u.agentUid)))), React.createElement("div", {
     className: "flex gap-2 shrink-0"
   }, React.createElement("button", {
     onClick: () => handleApprove(u.id),

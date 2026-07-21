@@ -1242,6 +1242,10 @@
         const SUITS = ['♠', '♥', '♦', '♣'];
         const CARD_VALUES = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
         const GAME_CARDS = { 'NLH': 2, 'Pineapple': 3, 'Omaha 4': 4, 'Omaha 5': 5, 'Omaha 6': 6 };
+        // Hole cards are dealt sorted high→low so the hand always reads tidily;
+        // stored sorted (not display-sorted) so discard-by-index stays consistent.
+        const HOLE_ORD = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14 };
+        const sortHoleCards = (h) => [...h].sort((a, b) => ((HOLE_ORD[b.val] || 0) - (HOLE_ORD[a.val] || 0)) || String(a.suit).localeCompare(String(b.suit)));
         const getCardColor = (suit) => (suit === '♥' || suit === '♦' ? 'text-rose-600' : 'text-slate-900');
 
         function pokerDeck() {
@@ -4643,7 +4647,7 @@
                 });
                 const actives = Object.values(pl).filter(p => p.status === 'active').sort((a,b) => a.seatIndex - b.seatIndex);
                 const n = GAME_CARDS[gameType] || 2;
-                actives.forEach(p => { p.cards = deck.splice(0, n); p.bet = 0; p.hasActed = false; p.actionText = ''; });
+                actives.forEach(p => { p.cards = sortHoleCards(deck.splice(0, n)); p.bet = 0; p.hasActed = false; p.actionText = ''; });
                 // Blinds ואנטה: רגיל מהSettings, טורניר לפי הרמה
                 let sbAmt = Number(setts.blinds), bbAmt = BB, anteAmt = round2(Number(setts.ante) || 0), lvl = 0;
                 if (tour) {

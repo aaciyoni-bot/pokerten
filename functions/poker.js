@@ -488,7 +488,10 @@ async function dealHand(tableId, chosenType) {
     const nCards = GAME_CARDS[gameType] || 2;
     const deck = pokerDeck();
     const hands = {};
-    acts.forEach((p) => { hands[p.uid] = deck.splice(0, nCards); p.cardCount = nCards; });
+    // Hole cards are stored sorted high→low, so every consumer (player view,
+    // GOD peek, showdown reveal, discard-by-index) sees the same tidy order.
+    const ORD = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14};
+    acts.forEach((p) => { hands[p.uid] = deck.splice(0, nCards).sort((a, b) => ((ORD[b.val] || 0) - (ORD[a.val] || 0)) || String(a.suit).localeCompare(String(b.suit))); p.cardCount = nCards; });
     // dealer rotation
     const prevSeat = (pl[g0.dealerUid] || {}).seatIndex ?? -1;
     const order = acts.filter((p) => p.seatIndex > prevSeat).concat(acts.filter((p) => p.seatIndex <= prevSeat));

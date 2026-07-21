@@ -1679,6 +1679,22 @@ const GAME_CARDS = {
   'Omaha 5': 5,
   'Omaha 6': 6
 };
+const HOLE_ORD = {
+  '2': 2,
+  '3': 3,
+  '4': 4,
+  '5': 5,
+  '6': 6,
+  '7': 7,
+  '8': 8,
+  '9': 9,
+  '10': 10,
+  'J': 11,
+  'Q': 12,
+  'K': 13,
+  'A': 14
+};
+const sortHoleCards = h => [...h].sort((a, b) => (HOLE_ORD[b.val] || 0) - (HOLE_ORD[a.val] || 0) || String(a.suit).localeCompare(String(b.suit)));
 const getCardColor = suit => suit === '♥' || suit === '♦' ? 'text-rose-600' : 'text-slate-900';
 function pokerDeck() {
   let deck = [];
@@ -5341,6 +5357,7 @@ function SettlementSection({
   const [gLog, setGLog] = useState(null);
   const [mems, setMems] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [pq, setPq] = useState('');
   const [transferFor, setTransferFor] = useState(null);
   const [closed, setClosed] = useState((window.__club || {}).closedWeeks || {});
   useEffect(() => {
@@ -5579,7 +5596,106 @@ function SettlementSection({
   }, "Agents"), React.createElement("div", {
     className: "text-lg font-black text-white",
     dir: "ltr"
-  }, agents.length))), React.createElement("div", {
+  }, agents.length))), (() => {
+    const presAll = {};
+    gLog.forEach(e => {
+      if (e.uid) presAll[e.uid] = round2((presAll[e.uid] || 0) + (e.profit || 0));
+    });
+    const byUid = {};
+    mems.forEach(m => byUid[m.uid] = m);
+    let rows = isOwnerView ? mems : mems.filter(m => m.agentUid === user.uid);
+    const q = pq.trim().toLowerCase();
+    if (q) rows = rows.filter(m => (m.username || '').toLowerCase().includes(q) || (m.playerId || '').toLowerCase().includes(q) || (m.googleName || '').toLowerCase().includes(q));
+    rows = [...rows].sort((a, b) => (b.balance || 0) - (a.balance || 0));
+    const tot = {
+      bal: 0,
+      cyc: 0,
+      all: 0
+    };
+    rows.forEach(m => {
+      tot.bal = round2(tot.bal + (m.balance || 0));
+      tot.cyc = round2(tot.cyc + (pres[m.uid] || 0));
+      tot.all = round2(tot.all + (presAll[m.uid] || 0));
+    });
+    const csvPlayers = () => {
+      const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Bonus', `Result (${cycLabel})`, 'Result (all time)']];
+      rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(m.promoBalance || 0), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
+      out.push(['TOTAL', '', '', '', formatMoney(tot.bal), '', formatMoney(tot.cyc), formatMoney(tot.all)]);
+      downloadCSV(out, 'players_report.csv');
+    };
+    return React.createElement("div", {
+      className: "glass-panel rounded-2xl p-4 mb-5"
+    }, React.createElement("div", {
+      className: "flex items-center justify-between flex-wrap gap-2 mb-3"
+    }, React.createElement("h4", {
+      className: "text-xs font-black text-amber-300 uppercase tracking-widest"
+    }, React.createElement("i", {
+      className: "fa-solid fa-table-list ml-1"
+    }), " Players report (", rows.length, ")"), React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, React.createElement("input", {
+      value: pq,
+      onChange: e => setPq(e.target.value),
+      placeholder: "Search name / ID...",
+      className: "bg-slate-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-amber-500/60 w-36"
+    }), React.createElement("button", {
+      onClick: csvPlayers,
+      title: "Export players CSV",
+      className: "text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-amber-300 px-2.5 py-1.5 rounded-lg font-black"
+    }, React.createElement("i", {
+      className: "fa-solid fa-file-csv"
+    })))), React.createElement("div", {
+      className: "overflow-x-auto"
+    }, React.createElement("table", {
+      className: "w-full text-xs",
+      dir: "ltr"
+    }, React.createElement("thead", null, React.createElement("tr", {
+      className: "text-slate-500 font-black text-[10px] uppercase border-b border-white/10"
+    }, React.createElement("th", {
+      className: "text-left py-1.5 pr-2"
+    }, "Player"), isOwnerView && React.createElement("th", {
+      className: "text-left py-1.5 pr-2"
+    }, "Agent"), React.createElement("th", {
+      className: "text-right py-1.5 pr-2"
+    }, "Balance"), React.createElement("th", {
+      className: "text-right py-1.5 pr-2"
+    }, cycLabel), React.createElement("th", {
+      className: "text-right py-1.5"
+    }, "All time"))), React.createElement("tbody", null, rows.map(m => React.createElement("tr", {
+      key: m.uid,
+      className: "border-b border-white/5"
+    }, React.createElement("td", {
+      className: "py-1.5 pr-2 whitespace-nowrap"
+    }, React.createElement("span", {
+      className: "text-white font-bold"
+    }, m.username), " ", React.createElement("span", {
+      className: "text-slate-600 font-black text-[10px]"
+    }, m.playerId || ''), (m.promoBalance || 0) > 0 && React.createElement("span", {
+      className: "text-amber-400 text-[9px] font-black",
+      title: "Bonus chips"
+    }, " 🎁", formatShort(m.promoBalance))), isOwnerView && React.createElement("td", {
+      className: "py-1.5 pr-2 text-slate-400 font-bold"
+    }, (byUid[m.agentUid] || {}).username || '—'), React.createElement("td", {
+      className: "py-1.5 pr-2 text-right font-black text-amber-300"
+    }, formatMoney(m.balance || 0)), React.createElement("td", {
+      className: `py-1.5 pr-2 text-right font-black ${(pres[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
+    }, formatMoney(pres[m.uid] || 0)), React.createElement("td", {
+      className: `py-1.5 text-right font-black ${(presAll[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
+    }, formatMoney(presAll[m.uid] || 0)))), rows.length === 0 && React.createElement("tr", null, React.createElement("td", {
+      colSpan: isOwnerView ? 5 : 4,
+      className: "text-center py-6 text-slate-500 font-bold"
+    }, "No players."))), React.createElement("tfoot", null, React.createElement("tr", {
+      className: "text-[11px] font-black border-t border-white/15"
+    }, React.createElement("td", {
+      className: "py-2 pr-2 text-slate-400 uppercase"
+    }, "Total"), isOwnerView && React.createElement("td", null), React.createElement("td", {
+      className: "py-2 pr-2 text-right text-amber-300"
+    }, formatMoney(tot.bal)), React.createElement("td", {
+      className: `py-2 pr-2 text-right ${tot.cyc >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
+    }, formatMoney(tot.cyc)), React.createElement("td", {
+      className: `py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
+    }, formatMoney(tot.all)))))));
+  })(), React.createElement("div", {
     className: "space-y-3"
   }, agents.length === 0 && React.createElement("div", {
     className: "text-center py-8 text-slate-500 font-bold glass-panel rounded-2xl text-sm"
@@ -7439,7 +7555,7 @@ function PokerTable({
     const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
     const n = GAME_CARDS[gameType] || 2;
     actives.forEach(p => {
-      p.cards = deck.splice(0, n);
+      p.cards = sortHoleCards(deck.splice(0, n));
       p.bet = 0;
       p.hasActed = false;
       p.actionText = '';

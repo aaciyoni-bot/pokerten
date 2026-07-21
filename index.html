@@ -943,57 +943,63 @@ const playSnd = type => {
     if (window.Tone.context.state !== 'running') window.Tone.context.resume();
     if (!SND.rv) {
       SND.rv = new window.Tone.Reverb({
-        decay: 1.6,
-        wet: 0.22
+        decay: 1.9,
+        wet: 0.15
       }).toDestination();
-      SND.lim = new window.Tone.Limiter(-3).connect(SND.rv);
+      SND.lp = new window.Tone.Filter(3200, 'lowpass').connect(SND.rv);
+      SND.lim = new window.Tone.Limiter(-8).connect(SND.lp);
       SND.s = new window.Tone.PolySynth(window.Tone.Synth, {
         oscillator: {
           type: 'sine'
         },
         envelope: {
-          attack: 0.004,
-          decay: 0.18,
-          sustain: 0.06,
-          release: 0.35
-        }
-      }).connect(SND.lim);
-      SND.s.volume.value = -14;
-      SND.bell = new window.Tone.PolySynth(window.Tone.Synth, {
-        oscillator: {
-          type: 'triangle'
-        },
-        envelope: {
-          attack: 0.002,
-          decay: 0.3,
-          sustain: 0,
+          attack: 0.012,
+          decay: 0.22,
+          sustain: 0.02,
           release: 0.5
         }
       }).connect(SND.lim);
-      SND.bell.volume.value = -16;
+      SND.s.volume.value = -18;
+      SND.bell = new window.Tone.PolySynth(window.Tone.FMSynth, {
+        harmonicity: 2,
+        modulationIndex: 2.5,
+        oscillator: {
+          type: 'sine'
+        },
+        envelope: {
+          attack: 0.006,
+          decay: 0.5,
+          sustain: 0,
+          release: 0.9
+        },
+        modulation: {
+          type: 'sine'
+        },
+        modulationEnvelope: {
+          attack: 0.006,
+          decay: 0.2,
+          sustain: 0,
+          release: 0.2
+        }
+      }).connect(SND.lim);
+      SND.bell.volume.value = -19;
       SND.m = new window.Tone.MembraneSynth({
-        pitchDecay: 0.02,
-        octaves: 5,
+        pitchDecay: 0.03,
+        octaves: 2,
         envelope: {
           attack: 0.001,
-          decay: 0.25,
+          decay: 0.16,
           sustain: 0
         }
       }).connect(SND.lim);
-      SND.m.volume.value = -14;
-      SND.pl = new window.Tone.PluckSynth({
-        attackNoise: 0.6,
-        dampening: 5200,
-        resonance: 0.86
-      }).connect(SND.lim);
-      SND.pl.volume.value = -13;
+      SND.m.volume.value = -13;
       SND.nz = new window.Tone.NoiseSynth({
         noise: {
           type: 'pink'
         },
         envelope: {
-          attack: 0.002,
-          decay: 0.09,
+          attack: 0.006,
+          decay: 0.16,
           sustain: 0
         }
       }).connect(SND.lim);
@@ -1002,46 +1008,40 @@ const playSnd = type => {
     const t = window.Tone.now();
     switch (type) {
       case 'deal':
-        SND.nz.triggerAttackRelease('16n', t);
-        SND.pl.triggerAttackRelease('C5', t + 0.03);
-        SND.pl.triggerAttackRelease('E5', t + 0.1);
-        SND.pl.triggerAttackRelease('G5', t + 0.17);
+        SND.nz.triggerAttackRelease('8n', t);
+        SND.nz.triggerAttackRelease('16n', t + 0.13);
         break;
       case 'chip':
-        SND.m.triggerAttackRelease('G3', '32n', t);
-        SND.pl.triggerAttackRelease('D6', t + 0.02);
+        SND.m.triggerAttackRelease('A2', '16n', t);
+        SND.bell.triggerAttackRelease('A4', '32n', t + 0.02);
         break;
       case 'check':
-        SND.m.triggerAttackRelease('C3', '32n', t);
-        SND.m.triggerAttackRelease('C3', '32n', t + 0.1);
+        SND.m.triggerAttackRelease('D2', '16n', t);
+        SND.m.triggerAttackRelease('D2', '16n', t + 0.13);
         break;
       case 'fold':
-        SND.s.triggerAttackRelease('E4', '16n', t);
-        SND.s.triggerAttackRelease('B3', '16n', t + 0.09);
+        SND.nz.triggerAttackRelease('8n', t);
+        SND.s.triggerAttackRelease('A3', '8n', t);
+        SND.s.triggerAttackRelease('E3', '4n', t + 0.09);
         break;
       case 'turn':
-        SND.bell.triggerAttackRelease('G5', '16n', t);
-        SND.bell.triggerAttackRelease('C6', '8n', t + 0.09);
+        SND.bell.triggerAttackRelease('E4', '8n', t);
+        SND.bell.triggerAttackRelease('A4', '4n', t + 0.13);
         break;
       case 'tick':
-        SND.bell.triggerAttackRelease('C6', '32n', t);
+        SND.bell.triggerAttackRelease('A4', '32n', t);
         break;
       case 'win':
-        ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => SND.s.triggerAttackRelease(n, '16n', t + i * 0.085));
-        SND.bell.triggerAttackRelease('E6', '8n', t + 0.36);
-        SND.bell.triggerAttackRelease('G6', '4n', t + 0.46);
+        ['C4', 'E4', 'G4', 'C5'].forEach((n, i) => SND.bell.triggerAttackRelease(n, '4n', t + i * 0.12));
         break;
       case 'msg':
-        SND.bell.triggerAttackRelease('A5', '32n', t);
-        SND.bell.triggerAttackRelease('C6', '32n', t + 0.05);
+        SND.bell.triggerAttackRelease('G4', '32n', t);
         break;
       case 'tile':
-        SND.pl.triggerAttackRelease('A4', t);
-        SND.nz.triggerAttackRelease('32n', t);
+        SND.m.triggerAttackRelease('G2', '32n', t);
         break;
       case 'dice':
-        [['C3', 0], ['E3', 0.07], ['G3', 0.14], ['A3', 0.2]].forEach(([n, d]) => SND.m.triggerAttackRelease(n, '32n', t + d));
-        SND.bell.triggerAttackRelease('B5', '16n', t + 0.28);
+        [['C2', 0], ['E2', 0.06], ['G2', 0.12], ['C3', 0.18]].forEach(([n, d]) => SND.m.triggerAttackRelease(n, '32n', t + d));
         break;
     }
   } catch (e) {}

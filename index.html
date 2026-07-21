@@ -856,6 +856,14 @@ const canManageGame = (u, gameId) => {
   if (u.role === ROLES.MANAGER) return (u.managedGames || []).includes(gameId);
   return false;
 };
+const buyInMin = s => {
+  s = s || {};
+  return s.minBuyIn != null ? round2(Number(s.minBuyIn) || 0) : round2((Number(s.minBuyInBB) || 40) * (Number(s.blinds) || 0.5) * 2);
+};
+const buyInMax = s => {
+  s = s || {};
+  return s.maxBuyIn != null ? round2(Number(s.maxBuyIn) || 0) : round2((Number(s.maxBuyInBB) || 200) * (Number(s.blinds) || 0.5) * 2);
+};
 const round2 = n => Math.round(n * 100) / 100;
 const formatMoney = amount => {
   if (amount === undefined || amount === null) return '0.00';
@@ -4939,7 +4947,7 @@ function LobbyView({
     const gt = s.baseGameType || 'NLH';
     const vs = variantStyle(gt);
     const inHand = t.gameState && !['waiting', 'showdown'].includes(t.gameState.phase);
-    const minBuy = round2((Number(s.minBuyInBB) || 40) * (Number(s.blinds) || 0.5) * 2);
+    const minBuy = buyInMin(s);
     const seated = Object.keys(t.players || {}).length;
     const cap = s.maxPlayers || 6;
     return React.createElement("div", {
@@ -6507,6 +6515,8 @@ function PokerCreateView({
     actionTime: 30,
     minBuyInBB: 40,
     maxBuyInBB: 200,
+    minBuyIn: 40,
+    maxBuyIn: 200,
     leaveNoticeMins: 0,
     leaveNoticeBB: 0,
     serverEngine: true,
@@ -6526,8 +6536,10 @@ function PokerCreateView({
       createdAt: Date.now(),
       settings: {
         ...s,
-        blinds: Number(s.blinds),
-        rakePercent: Number(s.rakePercent)
+        blinds: Math.max(0.01, Number(s.blinds) || 0.5),
+        rakePercent: Number(s.rakePercent),
+        minBuyIn: Math.max(0.01, Number(s.minBuyIn) || 1),
+        maxBuyIn: Math.max(Number(s.minBuyIn) || 1, Number(s.maxBuyIn) || 1)
       },
       players: {},
       chat: [],
@@ -6600,15 +6612,17 @@ function PokerCreateView({
     onChange: e => upd('isDealerChoice', e.target.checked),
     className: "w-5 h-5 accent-rose-500"
   }))), React.createElement(Field, {
-    label: "Blinds (SB)"
-  }, React.createElement("select", {
+    label: "Blinds — SB (BB = ×2)"
+  }, React.createElement("input", {
+    type: "number",
+    min: "0",
+    step: "any",
     value: s.blinds,
-    onChange: e => upd('blinds', parseFloat(e.target.value)),
-    className: sel
-  }, [0.25, 0.5, 1, 2, 5, 10, 25].map(b => React.createElement("option", {
-    key: b,
-    value: b
-  }, formatMoney(b), " / ", formatMoney(b * 2))))), React.createElement(Field, {
+    onChange: e => upd('blinds', e.target.value),
+    className: sel,
+    dir: "ltr",
+    placeholder: "e.g. 0.5"
+  })), React.createElement(Field, {
     label: "Max players"
   }, React.createElement("select", {
     value: s.maxPlayers,
@@ -6670,24 +6684,28 @@ function PokerCreateView({
   }, "Off — classic"), React.createElement("option", {
     value: 1
   }, "On — cards dealt on the server"))), React.createElement(Field, {
-    label: "Min buy-in (BB)"
-  }, React.createElement("select", {
-    value: s.minBuyInBB,
-    onChange: e => upd('minBuyInBB', parseInt(e.target.value)),
-    className: sel
-  }, [20, 40, 50, 100].map(n => React.createElement("option", {
-    key: n,
-    value: n
-  }, n, " BB (", formatMoney(n * s.blinds * 2), ")")))), React.createElement(Field, {
-    label: "Max buy-in (BB)"
-  }, React.createElement("select", {
-    value: s.maxBuyInBB,
-    onChange: e => upd('maxBuyInBB', parseInt(e.target.value)),
-    className: sel
-  }, [100, 150, 200, 300, 500, 750, 1000, 1500, 2000, 3000].map(n => React.createElement("option", {
-    key: n,
-    value: n
-  }, n, " BB (", formatMoney(n * s.blinds * 2), ")")))), React.createElement(Field, {
+    label: "Min buy-in (₪) — type any amount"
+  }, React.createElement("input", {
+    type: "number",
+    min: "0",
+    step: "any",
+    value: s.minBuyIn,
+    onChange: e => upd('minBuyIn', e.target.value),
+    className: sel,
+    dir: "ltr",
+    placeholder: "e.g. 100"
+  })), React.createElement(Field, {
+    label: "Max buy-in (₪) — type any amount"
+  }, React.createElement("input", {
+    type: "number",
+    min: "0",
+    step: "any",
+    value: s.maxBuyIn,
+    onChange: e => upd('maxBuyIn', e.target.value),
+    className: sel,
+    dir: "ltr",
+    placeholder: "e.g. 1000"
+  })), React.createElement(Field, {
     label: "Auto-start from "
   }, React.createElement("select", {
     value: s.autoStart,
@@ -6809,6 +6827,7 @@ function PokerTable({
   const [raiseAmt, setRaiseAmt] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
   const [acting, setActing] = useState(false);
+  const [buyinEdit, setBuyinEdit] = useState(null);
   const tableRef = useRef(null);
   const advanceRef = useRef(null);
   const nextHandRef = useRef(null);
@@ -6869,7 +6888,7 @@ function PokerTable({
     if (!tableState) return;
     const left = (tableState.leftStacks || {})[user.uid];
     const lock = left && Date.now() - left.at < 12 * 60 * 60 * 1000 ? left.amount : 0;
-    const minB = Math.max((setts.minBuyInBB || 40) * BB, lock);
+    const minB = Math.max(buyInMin(setts), lock);
     if (buyAmt < minB) setBuyAmt(round2(minB));
   }, [tableState]);
   useEffect(() => {
@@ -7557,7 +7576,7 @@ function PokerTable({
         if (!tSnap.exists()) throw "err";
         const t = tSnap.data();
         if (!t.players[user.uid]) throw "You're not seated at the table";
-        const capMax = (Number(t.settings.maxBuyInBB) || 200) * (Number(t.settings.blinds) || 0.5) * 2;
+        const capMax = buyInMax(t.settings);
         const room = round2(capMax - (t.players[user.uid].stack || 0));
         if (room <= 0) throw `You're already at the max table buy-in (${formatMoney(capMax)})`;
         const addAmt = Math.min(round2(buyAmt), room);
@@ -7633,7 +7652,7 @@ function PokerTable({
     const t = tableRef.current;
     if (!t || t.tournamentId) return;
     const BBv = round2((Number(setts.blinds) || 1) * 2);
-    const maxBuy2 = round2(BBv * (Number(setts.maxBuyInBB) || 100));
+    const maxBuy2 = buyInMax(setts);
     const meP = t.players[user.uid];
     if (!meP) return;
     const room = round2(maxBuy2 - (meP.stack || 0) - (meP.bet || 0));
@@ -8376,8 +8395,8 @@ function PokerTable({
   const waitlist = tableState.waitlist || [];
   const myWaitPos = waitlist.findIndex(w => w.uid === user.uid);
   const onWaitlist = myWaitPos >= 0;
-  const baseMinBuy = (setts.minBuyInBB || 40) * BB;
-  const baseMaxBuy = (setts.maxBuyInBB || 200) * BB;
+  const baseMinBuy = buyInMin(setts);
+  const baseMaxBuy = buyInMax(setts);
   const leftLock = (tableState.leftStacks || {})[user.uid];
   const lockActive = leftLock && Date.now() - leftLock.at < 12 * 60 * 60 * 1000 && leftLock.amount > baseMinBuy;
   const minBuy = lockActive ? round2(Math.max(baseMinBuy, leftLock.amount)) : baseMinBuy;
@@ -8390,7 +8409,67 @@ function PokerTable({
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
     }
+  }, buyinEdit && ReactDOM.createPortal(React.createElement("div", {
+    dir: "ltr",
+    className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => setBuyinEdit(null)
   }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "glass-panel rounded-3xl p-6 w-full max-w-sm border border-white/10 animate-pop-in"
+  }, React.createElement("h3", {
+    className: "text-lg font-black text-white mb-1 flex items-center gap-2"
+  }, React.createElement("i", {
+    className: "fa-solid fa-coins text-amber-400"
+  }), "Table buy-in limits"), React.createElement("p", {
+    className: "text-slate-400 text-xs font-bold mb-4"
+  }, "Raise the stakes when the game heats up — applies to new sit-downs and top-ups."), React.createElement("label", {
+    className: "text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block"
+  }, "Min buy-in (₪)"), React.createElement("input", {
+    type: "number",
+    min: "0",
+    step: "any",
+    value: buyinEdit.min,
+    onChange: e => setBuyinEdit({
+      ...buyinEdit,
+      min: e.target.value
+    }),
+    className: "w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-3",
+    dir: "ltr"
+  }), React.createElement("label", {
+    className: "text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block"
+  }, "Max buy-in (₪)"), React.createElement("input", {
+    type: "number",
+    min: "0",
+    step: "any",
+    value: buyinEdit.max,
+    onChange: e => setBuyinEdit({
+      ...buyinEdit,
+      max: e.target.value
+    }),
+    className: "w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-5",
+    dir: "ltr"
+  }), React.createElement("div", {
+    className: "flex gap-2"
+  }, React.createElement("button", {
+    onClick: async () => {
+      const mn = Math.max(0.01, Number(buyinEdit.min) || 0);
+      const mx = Math.max(mn, Number(buyinEdit.max) || 0);
+      try {
+        await window.fb.updateDoc(tblRef(), {
+          'settings.minBuyIn': round2(mn),
+          'settings.maxBuyIn': round2(mx)
+        });
+        showToast(`Buy-in updated: ${formatMoney(mn)}–${formatMoney(mx)}`, 'success');
+        setBuyinEdit(null);
+      } catch (e) {
+        showToast('Could not update buy-in', 'error');
+      }
+    },
+    className: "flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
+  }, "Save"), React.createElement("button", {
+    onClick: () => setBuyinEdit(null),
+    className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+  }, "Cancel")))), document.body), React.createElement("div", {
     className: "min-h-[3.5rem] bg-slate-900/80 backdrop-blur-md border-b border-white/5 flex justify-between items-center gap-1.5 px-2 sm:px-3 py-1.5 shrink-0 z-40 relative"
   }, React.createElement("div", {
     className: "flex items-center gap-1.5 sm:gap-2 flex-wrap shrink-0"
@@ -8434,7 +8513,16 @@ function PokerTable({
   })), ['waiting', 'showdown'].includes(gs.phase) && eligibleCount >= 2 && React.createElement("button", {
     onClick: () => startHand(),
     className: "px-2.5 py-1.5 rounded-lg bg-emerald-700 text-white text-[10px] font-black border border-emerald-500"
-  }, "Deal"))), React.createElement("div", {
+  }, "Deal")), (isSuperAdmin || canManageGame(user, 'poker')) && !tableState?.tournamentId && React.createElement("button", {
+    onClick: () => setBuyinEdit({
+      min: String(buyInMin(setts)),
+      max: String(buyInMax(setts))
+    }),
+    className: "px-2.5 py-1.5 rounded-lg bg-slate-800 text-amber-300 text-[10px] font-black border border-white/10",
+    title: "Adjust table buy-in (min/max)"
+  }, React.createElement("i", {
+    className: "fa-solid fa-coins"
+  }))), React.createElement("div", {
     className: "flex-1 min-w-0 flex flex-col items-center px-1"
   }, React.createElement("span", {
     className: "text-amber-400 font-black text-xs sm:text-sm tracking-wider truncate max-w-full"

@@ -1679,6 +1679,22 @@ const GAME_CARDS = {
   'Omaha 5': 5,
   'Omaha 6': 6
 };
+const HOLE_ORD = {
+  '2': 2,
+  '3': 3,
+  '4': 4,
+  '5': 5,
+  '6': 6,
+  '7': 7,
+  '8': 8,
+  '9': 9,
+  '10': 10,
+  'J': 11,
+  'Q': 12,
+  'K': 13,
+  'A': 14
+};
+const sortHoleCards = h => [...h].sort((a, b) => (HOLE_ORD[b.val] || 0) - (HOLE_ORD[a.val] || 0) || String(a.suit).localeCompare(String(b.suit)));
 const getCardColor = suit => suit === '♥' || suit === '♦' ? 'text-rose-600' : 'text-slate-900';
 function pokerDeck() {
   let deck = [];
@@ -7539,7 +7555,7 @@ function PokerTable({
     const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
     const n = GAME_CARDS[gameType] || 2;
     actives.forEach(p => {
-      p.cards = deck.splice(0, n);
+      p.cards = sortHoleCards(deck.splice(0, n));
       p.bet = 0;
       p.hasActed = false;
       p.actionText = '';

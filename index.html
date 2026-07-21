@@ -288,7 +288,7 @@
         .casino-chip-inner { border-radius: 50%; border: 1px solid rgba(255,255,255,0.35); display: flex; align-items: center; justify-content: center; font-weight: 900; font-family: 'Rubik', sans-serif; background: rgba(2,6,15,0.32); color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.6); }
         .chip-1000 { background-color: #7c3aed; border-color: #ede9fe; } .chip-100 { background-color: #111827; border-color: #94a3b8; } .chip-25 { background-color: #0f766e; border-color: #ccfbf1; } .chip-5 { background-color: #b91c1c; border-color: #fecaca; } .chip-1 { background-color: #64748b; border-color: #f1f5f9; }
 
-        .player-pod { width: 56px; height: 56px; border-radius: 50%; background-color: #121a2a; border: 2px solid #283552; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.6); background-size: cover; background-position: center; position: relative; }
+        .player-pod { width: 48px; height: 48px; border-radius: 50%; background-color: #121a2a; border: 2px solid #283552; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.6); background-size: cover; background-position: center; position: relative; }
         .active-glow { border-color: #f5c860 !important; animation: pulseBorder 1.5s infinite; }
         @keyframes pulseBorder { 0%,100% { box-shadow: 0 0 10px rgba(245,200,96,0.4); } 50% { box-shadow: 0 0 24px rgba(245,200,96,0.85); } }
 
@@ -4506,7 +4506,7 @@
                 const p = pl[actorUid]; if (!p || p.status !== 'active') return;
                 // Sit out אוטומטי: שתי החמצות טיימר רצופות
                 p.missed = autoTimeout ? (p.missed || 0) + 1 : 0;
-                if (autoTimeout && p.missed >= 2 && !p.sitOut) { p.sitOut = true; p.sitOutAt = Date.now(); p.sitAuto = true; }
+                if (autoTimeout && p.missed >= 2 && !p.sitOut && !p.sitOutNext) { p.sitOutNext = true; p.sitAuto = true; } // takes effect between hands
 
                 if (type === 'fold') { p.status = 'folded'; p.actionText = 'Fold'; p.hasActed = true; }
                 else if (type === 'call') {
@@ -4608,7 +4608,7 @@
                     const g0 = t.gameState;
                     if (!['waiting','showdown'].includes(g0.phase)) return;
                     const pl = clonePlayers(t.players);
-                    Object.values(pl).forEach(p => { p.cards = []; p.bet = 0; p.actionText = ''; p.hasActed = false; p.reveal = false; p.status = p.stack > 0 ? ((p.sitOut && !t.tournamentId) ? 'sitout' : 'active') : (['busted','out'].includes(p.status) ? p.status : 'sitout'); });
+                    Object.values(pl).forEach(p => { if (p.sitOutNext) { p.sitOut = true; p.sitOutAt = Date.now(); p.sitAuto = false; p.sitOutNext = false; } p.cards = []; p.bet = 0; p.actionText = ''; p.hasActed = false; p.reveal = false; p.status = p.stack > 0 ? ((p.sitOut && !t.tournamentId) ? 'sitout' : 'active') : (['busted','out'].includes(p.status) ? p.status : 'sitout'); });
                     const actives = Object.values(pl).filter(p => p.status === 'active').sort((a,b) => a.seatIndex - b.seatIndex);
                     if (actives.length < 2) {
                         await saveGame({ ...g0, phase: 'waiting', activeTurnUid: null, board: [], pots: [] }, pl);
@@ -4845,14 +4845,25 @@
             };
 
             const toggleSitOut = async () => {
-                const meP = tableRef.current?.players?.[user.uid]; if (!meP) return;
+                const t = tableRef.current; const meP = t?.players?.[user.uid]; if (!meP) return;
                 try {
                     if (meP.sitOut) {
-                        await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.sitOut`]: false, [`players.${user.uid}.missed`]: 0, [`players.${user.uid}.sitAuto`]: false });
+                        await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.sitOut`]: false, [`players.${user.uid}.missed`]: 0, [`players.${user.uid}.sitAuto`]: false, [`players.${user.uid}.sitOutNext`]: false });
                         showToast("You're back at the table! Dealt in next hand 💪", "success");
+                    } else if (meP.sitOutNext) {
+                        await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.sitOutNext`]: false });
+                        showToast("Sit-out canceled — you stay in 💪", "success");
                     } else {
-                        await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.sitOut`]: true, [`players.${user.uid}.sitOutAt`]: Date.now(), [`players.${user.uid}.sitAuto`]: false });
-                        showToast(tableRef.current?.tournamentId ? "Sit out ☕ blinds keep going down in the tournament!" : "Sit out ☕ you have 10 minutes to return", "info");
+                        // Rule: state changes apply BETWEEN hands. Mid-hand ☕ queues the sit-out
+                        // for the end of the hand; you keep playing this one out.
+                        const inHand = !['waiting', 'showdown', 'dc_selection'].includes((t.gameState || {}).phase) && meP.status === 'active';
+                        if (inHand) {
+                            await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.sitOutNext`]: true });
+                            showToast("Sit out at the END of this hand ☕ (tap again to cancel)", "info");
+                        } else {
+                            await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.sitOut`]: true, [`players.${user.uid}.sitOutAt`]: Date.now(), [`players.${user.uid}.sitAuto`]: false });
+                            showToast(t?.tournamentId ? "Sit out ☕ blinds keep going down in the tournament!" : "Sit out ☕ you have 10 minutes to return", "info");
+                        }
                     }
                 } catch(e) {}
             };
@@ -4895,6 +4906,13 @@
             };
             // בעיטת 10 דקות (קאש בלבד) - כל לקוח צופה בודק; מנהל יכול לבעוט ידנית
             const kickSeat = async (uid, byAdmin) => {
+                // Manager kick on a server table: pkLeave folds the seat out of the live hand
+                // correctly (turn advance, pot, refund) instead of yanking an active player.
+                if (byAdmin && setts.serverEngine && !tableState?.tournamentId) {
+                    try { await window.fb.fx('pkLeave', { tableId: tableDocId, targetUid: uid }); }
+                    catch(e) { showToast((e && e.message) || 'Could not remove the player', 'error'); }
+                    return;
+                }
                 try {
                     await window.fb.runTransaction(window.fb.db, async (tr) => {
                         const ts2 = await tr.get(tblRef());
@@ -4987,6 +5005,16 @@
                 }
                 const g = t.gameState;
                 const inHand = !['waiting','showdown'].includes(g.phase) && t.players[user.uid].status === 'active';
+                // Server-authoritative table: the whole fold-out + seat removal + refund runs
+                // atomically in pkLeave, so blinds/turn logic never waits on a ghost player.
+                if (setts.serverEngine) {
+                    if (inHand && !(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
+                    const meS = t.players[user.uid] || {};
+                    try { await window.fb.fx('pkLeave', { tableId: tableDocId }); }
+                    catch(e) { showToast((e && e.message) || 'Could not leave — try again', 'error'); return; }
+                    logGameResult([{ uid: user.uid, username: user.username, game: 'poker', profit: round2((meS.stack || 0) - (meS.buyTotal || meS.stack || 0)) }], tableDocId);
+                    onLeave(); return;
+                }
                 if (inHand) {
                     if (!(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
                     // פיינאפל: אם טרם זרקתי קלף - זורקים אחד לפני היציאה, אחרת שלב הזריקה נתקע לנצח
@@ -5332,7 +5360,7 @@
                             if (isSitSkip || stuckFor > limit) {
                                 // שחקן מנותק/בסיט-אאוט שלא הגיב - Fold/צ'ק אוטומטי מהאדמין
                                 const toCall = round2(Math.max(0, (g.highestBet || 0) - (actor.bet || 0)));
-                                await performAction(g.activeTurnUid, toCall > 0 ? 'fold' : 'call');
+                                await performAction(g.activeTurnUid, toCall > 0 ? 'fold' : 'call', undefined, !isSitSkip);
                             }
                         }
                     } catch(e) {}
@@ -5423,7 +5451,9 @@
             };
             const betPos = (i) => {
                 const ang = Math.PI / 2 + (i * 2 * Math.PI) / N;
-                return { left: `${50 + 21 * Math.cos(ang)}%`, top: `${50 + 24 * Math.sin(ang)}%` };
+                // Pushed clear of the community-card strip (~±28% of felt width) so bet
+                // chips never hide behind the board template.
+                return { left: `${50 + 31 * Math.cos(ang)}%`, top: `${50 + 27 * Math.sin(ang)}%` };
             };
             const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
             const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
@@ -5690,7 +5720,9 @@
                                     else if (godView && (godHands[p.uid] || []).length) { dispCards = godHands[p.uid]; hidden = false; }
                                     else { dispCards = Array(p.cardCount || 0).fill({ val: '', suit: '♠' }); hidden = true; }
                                 }
-                                const showCards = (dispCards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout';
+                                // Face-down cards mean "still in the hand": a folded player's backs disappear
+                                // (his own revealed/shown cards still render face-up).
+                                const showCards = (dispCards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout' && !(p.status === 'folded' && hidden && !isMe);
                                 const folded = p.status === 'folded';
                                 const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
                                 return (
@@ -5704,12 +5736,13 @@
                                                 const mm = Math.floor(leftMs / 60000), ss = Math.floor((leftMs % 60000) / 1000);
                                                 return <div className="absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5" dir="ltr">☕ {tableState.tournamentId ? 'Sit out' : `${mm}:${String(ss).padStart(2,'0')}`}{p.sitAuto ? ' 📵' : ''}</div>;
                                             })()}
+                                            {!p.sitOut && p.sitOutNext && <div className="absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5" dir="ltr">☕ after hand</div>}
                                             {p.leavingAt && !tableState.tournamentId && (() => {
                                                 const lms = Math.max(0, p.leavingAt - Date.now());
                                                 return <div className="absolute right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5" style={{ top: p.sitOut ? 12 : -8 }} dir="ltr">🚪 {Math.floor(lms/60000)}:{String(Math.floor((lms%60000)/1000)).padStart(2,'0')}</div>;
                                             })()}
                                             {!isMe && canManageGame(user, 'poker') && (
-                                                <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Remove ${p.name} from the table? Their stack returns to their wallet.`)) kickSeat(p.uid, true); }}
+                                                <button onClick={async (e) => { e.stopPropagation(); if (await askConfirm(`Remove ${p.name} from the table? Their stack returns to their wallet.`)) kickSeat(p.uid, true); }}
                                                         className="absolute bottom-0 -left-6 z-30 w-5 h-5 rounded-full bg-slate-900/90 border border-rose-500/50 text-rose-400 hover:bg-rose-800 hover:text-white text-[9px] font-black flex items-center justify-center opacity-60 hover:opacity-100">✕</button>
                                             )}
                                             {ch.gifts.filter(g => g.to === p.uid).map((g, gi) => <div key={'g'+gi} className="gift-fx">{g.giftE}</div>)}
@@ -5741,7 +5774,7 @@
                                             {gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && (
                                                 <div className="win-tag" dir="ltr">WIN{(gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''}</div>
                                             )}
-                                            <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-16 h-16' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
+                                            <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
                                                 {godView && godBestUid === p.uid && <React.Fragment><div className="god-best-ring"></div><div className="god-best-tag">👁 WINS</div></React.Fragment>}
                                                 {isTurn && (
                                                     <svg className="absolute inset-0 w-full h-full timer-ring" viewBox="0 0 40 40">
@@ -5792,7 +5825,7 @@
 
                             {/* הימורים על השולחן */}
                             {displayList.map((p, i) => (p.bet || 0) > 0 && (
-                                <div key={'bet' + p.uid} className="absolute z-10" style={{ ...betPos(i), transform: 'translate(-50%, -50%)' }}>
+                                <div key={'bet' + p.uid} className="absolute z-[35]" style={{ ...betPos(i), transform: 'translate(-50%, -50%)' }}>
                                     <CasinoChipStack amount={p.bet} scale={0.85} />
                                 </div>
                             ))}
@@ -5986,7 +6019,7 @@
                     {isSeated && (
                         <div className="absolute bottom-20 left-3 z-[60] flex flex-col gap-2">
                             <button onClick={()=>ch.setChatOpen(!ch.chatOpen)} title="Table chat" className="w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl text-lg"><i className="fa-solid fa-comment-dots"></i></button>
-                            <button onClick={toggleSitOut} title={myPlayer?.sitOut ? 'Sit back in' : 'Sit out'} className={`w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`}>{myPlayer?.sitOut ? '✋' : '☕'}</button>
+                            <button onClick={toggleSitOut} title={myPlayer?.sitOut ? 'Sit back in' : myPlayer?.sitOutNext ? 'Cancel sit-out (queued for end of hand)' : 'Sit out'} className={`w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : myPlayer?.sitOutNext ? 'bg-amber-500/40 text-amber-200 border-amber-400/60 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`}>{myPlayer?.sitOut ? '✋' : '☕'}</button>
                             {!(tableState?.tournamentId) && <button onClick={topUpChips} title="Add chips" className="relative w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg">💰{(myPlayer?.pendingTopUp || 0) > 0 && <span className="absolute -top-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full shadow" dir="ltr" title="Queued — added at end of hand">+{formatShort(myPlayer.pendingTopUp)}</span>}</button>}
                             {gs.phase === 'showdown' && ((srvEngine ? myPrivCards : (myPlayer?.cards || [])).length > 0) && !myPlayer.reveal && (myPlayer.status === 'folded' || (gs.earlyWin && myPlayer.status === 'active')) && (
                                 <button onClick={async () => { try { if (srvEngine) { await window.fb.fx('pkReveal', { tableId: tableDocId }); } else { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.reveal`]: true }); } } catch(e) {} }}
@@ -6719,7 +6752,7 @@
                                                 </div>
                                             )}
 
-                                            <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-16 h-16' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
+                                            <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
                                                 {isTurn && (
                                                     <svg className="absolute inset-0 w-full h-full timer-ring" viewBox="0 0 40 40">
                                                         <circle cx="20" cy="20" r="18" fill="none" stroke="rgba(245,200,96,0.9)" strokeWidth="3" strokeDasharray={`${113 * timerPct} 113`} strokeLinecap="round" />

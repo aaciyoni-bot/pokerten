@@ -18,6 +18,11 @@ const crypto = require("crypto");
 
 const db = getFirestore();
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+// Table max buy-in (money-first, legacy BB fallback) — mirrors the client's buyInMax().
+const maxBuyOf = (s) => {
+  s = s || {};
+  return s.maxBuyIn != null ? round2(Number(s.maxBuyIn) || 0) : round2((Number(s.maxBuyInBB) || 200) * (Number(s.blinds) || 0.5) * 2);
+};
 
 // ── GOD list: server-side only. Add emails here (or to the admin/gods doc). ──
 const SERVER_GODS = ["aaci.yoni@gmail.com", "info.bagso@gmail.com", "avi057278@gmail.com", "khnby749@gmail.com", "bykhn3234@gmail.com"];
@@ -419,9 +424,21 @@ async function dealHand(tableId, chosenType) {
     if (!s.serverEngine) throw new HttpsError("failed-precondition", "Not a server table");
 
     const g0 = t.gameState || {};
-    if (!["waiting", "showdown"].includes(g0.phase)) throw new HttpsError("failed-precondition", "Hand in progress");
+    // "dc_selection" is allowed here too: when a Dealer's-Choice pick comes in
+    // (pkPickGame) or the pick times out (pkTick), we deal straight from that phase.
+    if (!["waiting", "showdown", "dc_selection"].includes(g0.phase)) throw new HttpsError("failed-precondition", "Hand in progress");
     const pl = JSON.parse(JSON.stringify(t.players || {}));
     Object.values(pl).forEach((p) => {
+      // Queued top-up (player asked to add chips mid-hand): apply it now, at the
+      // start of the next hand, capped to the table's max buy-in. Wallet was
+      // already debited when the request was made.
+      if (p.pendingTopUp && p.pendingTopUp > 0 && !["busted", "out"].includes(p.status)) {
+        const cap = maxBuyOf(s);
+        const room = cap ? Math.max(0, round2(cap - (p.stack || 0))) : (p.pendingTopUp || 0);
+        const add = Math.min(round2(p.pendingTopUp), room);
+        if (add > 0) p.stack = round2((p.stack || 0) + add);
+        p.pendingTopUp = 0;
+      }
       p.cards = []; p.cardCount = 0; p.bet = 0; p.actionText = ""; p.hasActed = false; p.reveal = false;
       // Tournament: sit-out players are still dealt (blinds burn, auto-folded by the tick);
       // out/busted stay out. Cash: sit-out means skipped.

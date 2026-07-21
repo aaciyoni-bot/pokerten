@@ -2918,7 +2918,7 @@
                         const refunds = [];
                         for (const uid of humanUids) {
                             const uSnap = await tr.get(memDoc(uid));
-                            if (uSnap.exists()) refunds.push([uSnap.ref, round2((uSnap.data().balance || 0) + (players[uid].stack || 0) + (players[uid].bet || 0) + potShare)]);
+                            if (uSnap.exists()) refunds.push([uSnap.ref, round2((uSnap.data().balance || 0) + (players[uid].stack || 0) + (players[uid].bet || 0) + (players[uid].pendingTopUp || 0) + potShare)]);
                         }
                         refunds.forEach(([ref, bal]) => tr.update(ref, { balance: bal }));
                         tr.delete(tblRef);
@@ -4306,6 +4306,7 @@
             const [buyinEdit, setBuyinEdit] = useState(null); // manager: live-adjust the table's min/max buy-in
 
             const tableRef = useRef(null);
+            const actedTurnRef = useRef(null); // turnStartedAt of the turn I already acted on — hides buttons until a genuinely new turn
             const advanceRef = useRef(null);
             const nextHandRef = useRef(null);
             const startingRef = useRef(false);
@@ -4323,7 +4324,10 @@
             const BB = (Number(setts.blinds) || 0.5) * 2;
             const BETTING = ['preflop','flop','turn','river'];
             const inBetting = BETTING.includes(gs.phase);
-            const isMyTurn = gs.activeTurnUid === user.uid && inBetting;
+            // Only "my turn" when the server says so AND I haven't already acted on THIS turn.
+            // The second clause stops a lagging snapshot from re-showing the action buttons after
+            // I've acted (the classic "buttons opened but it says not my turn" race).
+            const isMyTurn = gs.activeTurnUid === user.uid && inBetting && actedTurnRef.current !== gs.turnStartedAt;
 
             const clonePlayers = (pl) => { const o = {}; Object.entries(pl || {}).forEach(([k,v]) => o[k] = { ...v, cards: [...(v.cards||[])] }); return o; };
             const saveGame = async (g, pl, extra = {}) => { try { await window.fb.updateDoc(tblRef(), { gameState: g, players: pl, ...extra }); } catch(e) {} };
@@ -4355,7 +4359,12 @@
             const myAct = (type, amt) => {
                 if (acting || !isMyTurn) return;
                 setActing(true);
-                setTimeout(() => setActing(false), 3500); // safety re-enable if the turn didn't advance (error/slow net)
+                actedTurnRef.current = gs.turnStartedAt; // remember which turn I acted on → buttons hide until a new turn arrives
+                setTimeout(() => {
+                    setActing(false);
+                    // If the turn genuinely never advanced (error / slow net), release the guard so I can retry.
+                    if (tableRef.current?.gameState?.turnStartedAt === actedTurnRef.current) actedTurnRef.current = null;
+                }, 3500);
                 performAction(user.uid, type, amt);
             };
 
@@ -4480,7 +4489,7 @@
                     // bots/timeouts/other actors are the server's job via pkTick.
                     if (actorUid === user.uid) {
                         try { await window.fb.fx('pkAct', { tableId: tableDocId, action: type === 'raise' ? 'raise' : type, amount: targetBet }); }
-                        catch(e) { const m = (e && e.message) || ''; if (!/turn|not your/i.test(m)) showToast(m || 'Action failed', 'error'); }
+                        catch(e) { const m = (e && e.message) || ''; if (!/turn|not your|in the hand|no betting|betting now/i.test(m)) showToast(m || 'Action failed', 'error'); }
                         finally { setActing(false); }
                     }
                     return;
@@ -4543,6 +4552,16 @@
                 const tour = (tableRef.current || {}).tournament || null;
                 const deck = pokerDeck();
                 const pl = clonePlayers(plBase);
+                // Fold in any chips a player queued mid-hand (top-up), capped to the table max buy-in.
+                const capBuy = buyInMax(setts);
+                Object.values(pl).forEach(p => {
+                    if (p.pendingTopUp && p.pendingTopUp > 0 && !['busted','out'].includes(p.status)) {
+                        const room2 = capBuy ? Math.max(0, round2(capBuy - (p.stack || 0))) : (p.pendingTopUp || 0);
+                        const add2 = Math.min(round2(p.pendingTopUp), room2);
+                        if (add2 > 0) p.stack = round2((p.stack || 0) + add2);
+                        p.pendingTopUp = 0;
+                    }
+                });
                 const actives = Object.values(pl).filter(p => p.status === 'active').sort((a,b) => a.seatIndex - b.seatIndex);
                 const n = GAME_CARDS[gameType] || 2;
                 actives.forEach(p => { p.cards = deck.splice(0, n); p.bet = 0; p.hasActed = false; p.actionText = ''; });
@@ -4618,7 +4637,10 @@
 
             const selectDCGame = async (gameType, byUid = user.uid) => {
                 if (setts.serverEngine) {
-                    if (byUid === user.uid) { try { await window.fb.fx('pkPickGame', { tableId: tableDocId, gameType }); } catch(e) {} }
+                    if (byUid === user.uid) {
+                        try { await window.fb.fx('pkPickGame', { tableId: tableDocId, gameType }); }
+                        catch(e) { const m = (e && e.message) || ''; if (!/your pick|dc_selection/i.test(m)) showToast(m || 'Could not start that game — try again', 'error'); }
+                    }
                     return;
                 }
                 const t = tableRef.current; if (!t) return;
@@ -4834,11 +4856,18 @@
                 const BBv = round2((Number(setts.blinds) || 1) * 2);
                 const maxBuy2 = buyInMax(setts);
                 const meP = t.players[user.uid]; if (!meP) return;
-                const room = round2(maxBuy2 - (meP.stack || 0) - (meP.bet || 0));
+                const pend = round2(meP.pendingTopUp || 0);
+                // Room left up to the table cap, accounting for chips in play + anything already queued.
+                const room = round2(maxBuy2 - (meP.stack || 0) - (meP.bet || 0) - pend);
                 if (room <= 0) return showToast(`You're at the table cap (${formatMoney(maxBuy2)})`, "info");
-                const inHand = !['waiting', 'showdown'].includes((t.gameState || {}).phase) && meP.status === 'active';
-                if (inHand) return showToast("Chips can only be added between hands", "info");
-                const amt = Number(window.prompt(`How much to add? (max ${formatMoney(room)})`, String(Math.min(room, BBv * 50))));
+                // Mid-hand you don't touch chips that are in play — the add is QUEUED and lands
+                // on your stack automatically at the end of the hand, so you never miss the window.
+                const inHand = !['waiting', 'showdown', 'dc_selection'].includes((t.gameState || {}).phase) && meP.status === 'active';
+                const amt = Number(window.prompt(
+                    inHand
+                        ? `Add chips (applied at the end of this hand). Max ${formatMoney(room)}:`
+                        : `How much to add? (max ${formatMoney(room)})`,
+                    String(Math.min(room, BBv * 50))));
                 if (!amt || amt <= 0) return;
                 const add = Math.min(round2(amt), room);
                 try {
@@ -4848,11 +4877,16 @@
                         if (!ms.exists() || !ts2.exists()) throw "err";
                         if ((ms.data().balance || 0) < add) throw "Not enough in wallet";
                         const cur = ts2.data().players[user.uid]; if (!cur) throw "err";
+                        // Debit the wallet immediately either way; mid-hand we park it in pendingTopUp
+                        // and the engine folds it into the stack when the next hand is dealt.
                         tr.update(ms.ref, { balance: round2((ms.data().balance || 0) - add) });
-                        tr.update(tblRef(), { [`players.${user.uid}.stack`]: round2((cur.stack || 0) + add) });
+                        if (inHand) tr.update(tblRef(), { [`players.${user.uid}.pendingTopUp`]: round2((cur.pendingTopUp || 0) + add) });
+                        else tr.update(tblRef(), { [`players.${user.uid}.stack`]: round2((cur.stack || 0) + add) });
                     });
                     playSnd('chip');
-                    showToast(`${formatMoney(add)} added to your stack 💰`, "success");
+                    showToast(inHand
+                        ? `${formatMoney(add)} queued — added to your stack at the end of the hand 💰`
+                        : `${formatMoney(add)} added to your stack 💰`, "success");
                 } catch(e) { showToast(typeof e === 'string' ? e : "Error", "error"); }
             };
             // בעיטת 10 דקות (קאש בלבד) - כל לקוח צופה בודק; מנהל יכול לבעוט ידנית
@@ -4868,7 +4902,7 @@
                         if (inHand && !byAdmin) return; // לא בועטים באמצע יד
                         const ms = p.isBot ? null : await tr.get(memDoc(uid));
                         const pl = { ...t.players }; delete pl[uid];
-                        if (ms && ms.exists()) tr.update(ms.ref, { balance: round2((ms.data().balance || 0) + (p.stack || 0) + (inHand ? 0 : (p.bet || 0))) });
+                        if (ms && ms.exists()) tr.update(ms.ref, { balance: round2((ms.data().balance || 0) + (p.stack || 0) + (p.pendingTopUp || 0) + (inHand ? 0 : (p.bet || 0))) });
                         tr.update(tblRef(), { players: pl });
                     });
                 } catch(e) {}
@@ -5919,7 +5953,7 @@
                         <div className="absolute bottom-20 left-3 z-[60] flex flex-col gap-2">
                             <button onClick={()=>ch.setChatOpen(!ch.chatOpen)} title="Table chat" className="w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl text-lg"><i className="fa-solid fa-comment-dots"></i></button>
                             <button onClick={toggleSitOut} title={myPlayer?.sitOut ? 'Sit back in' : 'Sit out'} className={`w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`}>{myPlayer?.sitOut ? '✋' : '☕'}</button>
-                            {!(tableState?.tournamentId) && <button onClick={topUpChips} title="Add chips" className="w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg">💰</button>}
+                            {!(tableState?.tournamentId) && <button onClick={topUpChips} title="Add chips" className="relative w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg">💰{(myPlayer?.pendingTopUp || 0) > 0 && <span className="absolute -top-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full shadow" dir="ltr" title="Queued — added at end of hand">+{formatShort(myPlayer.pendingTopUp)}</span>}</button>}
                             {gs.phase === 'showdown' && ((srvEngine ? myPrivCards : (myPlayer?.cards || [])).length > 0) && !myPlayer.reveal && (myPlayer.status === 'folded' || (gs.earlyWin && myPlayer.status === 'active')) && (
                                 <button onClick={async () => { try { if (srvEngine) { await window.fb.fx('pkReveal', { tableId: tableDocId }); } else { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.reveal`]: true }); } } catch(e) {} }}
                                         title="Show your cards to the table" className="px-3 h-11 rounded-2xl border border-sky-400/50 bg-sky-600/20 text-sky-200 shadow-xl text-xs font-black animate-pulse">SHOW 🃏</button>
@@ -7344,7 +7378,9 @@
                         if (!p) return;
                         const ms = await tr.get(memDoc(user.uid));
                         const pl = { ...t.players }; delete pl[user.uid];
-                        if (ms.exists() && (p.stack || 0) > 0) tr.update(ms.ref, { balance: round2((ms.data().balance || 0) + (p.stack || 0)) });
+                        // Return the stack AND any queued-but-not-yet-applied top-up (wallet was already debited for it).
+                        const backAmt = round2((p.stack || 0) + (p.pendingTopUp || 0));
+                        if (ms.exists() && backAmt > 0) tr.update(ms.ref, { balance: round2((ms.data().balance || 0) + backAmt) });
                         if (Object.keys(pl).length === 0) { tr.delete(tblRef()); respawn = true; }
                         else tr.update(tblRef(), { players: pl });
                     });

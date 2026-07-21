@@ -382,6 +382,13 @@ function applyAction(t, g, pl, eng, actorUid, type, targetBet) {
   } else if (type === "raise") {
     let target = round2(Number(targetBet) || 0);
     const maxBet = round2((p.bet || 0) + p.stack);
+    // Pot-Limit (the Omaha default; omahaPotLimit=false → NLO plays no-limit):
+    // max raise-to = highestBet + toCall + pot-after-call.
+    if (String(g.currentGameType || "").startsWith("Omaha") && ((t.settings || {}).omahaPotLimit !== false)) {
+      const potNow = round2((g.pots || []).reduce((s2, x) => s2 + x.amount, 0) + Object.values(pl).reduce((s2, q) => s2 + (q.bet || 0), 0));
+      const cap = round2((g.highestBet || 0) + potNow + toCall);
+      if (target > cap) target = cap;
+    }
     if (target >= maxBet) target = maxBet; // all-in
     else {
       const minTarget = round2((g.highestBet || 0) + (g.minRaise || 0));

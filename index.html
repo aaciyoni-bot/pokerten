@@ -3722,7 +3722,11 @@
                 } catch(e) { showToast("Error deleting Bots", "error"); }
             };
 
-            const pendingUsers = usersList.filter(u => u.status !== 'approved' && !u.isBot);
+            // Owners & managers approve everyone; a plain agent approves ONLY their own referrals
+            // (players who joined with that agent's code → agentUid === the agent's uid).
+            const canApproveAll = isOwner || user.role === ROLES.MANAGER;
+            const isAgentApprover = !canApproveAll && user.role === ROLES.AGENT;
+            const pendingUsers = usersList.filter(u => u.status !== 'approved' && !u.isBot && (!isAgentApprover || u.agentUid === user.uid));
             const agents = usersList.filter(u => u.status === 'approved' && u.role === ROLES.AGENT && !u.isBot);
             const agentName = (uid) => (usersList.find(x => x.uid === uid) || {}).username || '';
             // השלמת קוד לסוכנים ותיקים שאין להם (אצל הבעלים בלבד)
@@ -3904,6 +3908,7 @@
                                             <div className="min-w-0">
                                                 <div className="font-bold text-white truncate">{u.username}</div>
                                                 <div className="text-xs text-slate-400 truncate" dir="ltr">{u.email}</div>
+                                                {u.agentUid && <div className="text-[10px] text-purple-300 font-black truncate">🤝 {u.agentUid === user.uid ? 'Your referral' : ('Agent: ' + agentName(u.agentUid))}</div>}
                                             </div>
                                         </div>
                                         <div className="flex gap-2 shrink-0">

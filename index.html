@@ -2738,6 +2738,7 @@
             const gtRank = (t) => { const idx = GAME_ORDER.indexOf((t.settings || {}).baseGameType || 'NLH'); return idx < 0 ? 99 : idx; };
             const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a,b)=> gtRank(a) - gtRank(b) || (a.createdAt||0)-(b.createdAt||0));
             const [pokFilter, setPokFilter] = useState('all'); // all | <variant> | tours
+            const [buyinEdit, setBuyinEdit] = useState(null); // manager: edit a table's buy-in from the lobby (without entering)
             // Always show the full variant set (incl. all Omaha types) so players can filter by any game, even with no open table right now
             const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
             const variantCount = (v) => pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === v).length;
@@ -2926,6 +2927,26 @@
 
             return (
                 <div style={{overflowX:"hidden"}} className="scrollable-content aurora-bg p-4 sm:p-6">
+                    {buyinEdit && ReactDOM.createPortal(
+                        <div dir="ltr" className="fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setBuyinEdit(null)}>
+                            <div onClick={e => e.stopPropagation()} className="glass-panel rounded-3xl p-6 w-full max-w-sm border border-white/10 animate-pop-in">
+                                <h3 className="text-lg font-black text-white mb-1 flex items-center gap-2"><i className="fa-solid fa-coins text-amber-400"></i>Buy-in — {buyinEdit.name}</h3>
+                                <p className="text-slate-400 text-xs font-bold mb-4">Adjust this table's buy-in from the lobby — no need to enter it.</p>
+                                <label className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block">Min buy-in (₪)</label>
+                                <input type="number" min="0" step="any" value={buyinEdit.min} onChange={e => setBuyinEdit({ ...buyinEdit, min: e.target.value })} className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-3" dir="ltr" />
+                                <label className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block">Max buy-in (₪)</label>
+                                <input type="number" min="0" step="any" value={buyinEdit.max} onChange={e => setBuyinEdit({ ...buyinEdit, max: e.target.value })} className="w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-5" dir="ltr" />
+                                <div className="flex gap-2">
+                                    <button onClick={async () => {
+                                        const mn = Math.max(0.01, Number(buyinEdit.min) || 0);
+                                        const mx = Math.max(mn, Number(buyinEdit.max) || 0);
+                                        try { await window.fb.updateDoc(window.fb.doc(window.fb.db, "tables", buyinEdit.id), { 'settings.minBuyIn': round2(mn), 'settings.maxBuyIn': round2(mx) }); showToast(`Buy-in updated: ${formatMoney(mn)}–${formatMoney(mx)}`, 'success'); setBuyinEdit(null); }
+                                        catch(e) { showToast('Could not update buy-in', 'error'); }
+                                    }} className="flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg">Save</button>
+                                    <button onClick={() => setBuyinEdit(null)} className="px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10">Cancel</button>
+                                </div>
+                            </div>
+                        </div>, document.body)}
                     <div className="max-w-6xl mx-auto animate-fade-in relative z-10">
 
                         <div className="flex items-center justify-between gap-3 mb-5">
@@ -3148,6 +3169,9 @@
                                                     <span className="tbl-buyin-label">Buy-in</span>
                                                     <span className="tbl-buyin-val">{formatMoney(minBuy)}</span>
                                                 </div>
+                                                {canManageGame(user, 'poker') && !t.tournamentId && (
+                                                    <button onClick={(e) => { e.stopPropagation(); setBuyinEdit({ id: t.docId, name: s.tableName || (variantLabel(gt) + ' table'), min: String(buyInMin(s)), max: String(buyInMax(s)) }); }} className="tbl-del" title="Edit buy-in" style={{ color: '#fbbf24' }}><i className="fa-solid fa-coins"></i></button>
+                                                )}
                                                 {canManageGame(user, 'poker') && (
                                                     <button onClick={(e) => handleDelete(e, t)} className="tbl-del"><i className="fa-solid fa-trash"></i></button>
                                                 )}
@@ -5874,7 +5898,7 @@
                                 {!(isFull && !needRebuy) && <button onClick={needRebuy ? handleRebuy : handleSit} className="w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">
                                     {needRebuy ? 'Do Rebuy' : 'Sit back in'}
                                 </button>}
-                                {!needRebuy && <button onClick={()=>setSpectate(true)} className="text-slate-400 hover:text-white text-xs font-bold underline">Spectate</button>}
+                                {!needRebuy && <button onClick={()=>setSpectate(true)} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 border border-cyan-500/30 text-cyan-200 hover:text-white py-3 rounded-2xl font-black text-sm shadow-lg mb-2"><i className="fa-solid fa-eye text-base"></i>Spectate the table</button>}
                                 {needRebuy && <button onClick={handleStandUp} className="text-slate-400 hover:text-white text-xs font-bold underline">Stand up</button>}
                                 <button onClick={onLeave} className="block mx-auto mt-2 text-slate-500 hover:text-white text-xs font-bold underline">Back to lobby</button>
                             </div>

@@ -8101,7 +8101,12 @@ function PokerTable({
       const tNow = tableRef.current || t;
       const gNow = tNow.gameState || g;
       if (BETTING.includes(gNow.phase) && tNow.players[user.uid] && tNow.players[user.uid].status === 'active') {
-        if (gNow.activeTurnUid === user.uid) {
+        const othersIn = Object.values(tNow.players).filter(q => q.status === 'active' && q.uid !== user.uid);
+        if (othersIn.length === 0) {
+          await finishEarlyWin({
+            ...gNow
+          }, clonePlayers(tNow.players), user.uid);
+        } else if (gNow.activeTurnUid === user.uid) {
           await performAction(user.uid, 'fold');
         } else {
           const g2 = {
@@ -8112,7 +8117,11 @@ function PokerTable({
           pl[user.uid].actionText = 'Fold';
           pl[user.uid].hasActed = true;
           const actives = Object.values(pl).filter(q => q.status === 'active');
-          if (actives.length === 1) await finishEarlyWin(g2, pl, actives[0].uid);else await saveGame(g2, pl);
+          if (actives.length === 1) await finishEarlyWin(g2, pl, actives[0].uid);else if (actives.length === 0) {
+            g2.phase = 'waiting';
+            g2.activeTurnUid = null;
+            await saveGame(g2, pl);
+          } else await saveGame(g2, pl);
         }
       }
       await new Promise(r => setTimeout(r, 500));

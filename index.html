@@ -1834,7 +1834,7 @@
                         {currentView === 'profile' && activeClub && <ProfileView user={effUser} showToast={showToast} />}
                         {currentView === 'leaders' && activeClub && <LeadersView user={effUser} showToast={showToast} />}
                         {currentView === 'backoffice' && activeClub && <BackofficeView user={effUser} clubSettings={clubSettings} showToast={showToast} />}
-                        {currentView === 'poker-create' && <PokerCreateView user={effUser} clubSettings={clubSettings} onBack={() => { setLobbyTab('poker'); changeView('lobby'); }} onCreated={() => { setLobbyTab('poker'); changeView('lobby'); showToast("Poker table opened!", "success"); }} />}
+                        {currentView === 'poker-create' && <PokerCreateView user={effUser} clubSettings={clubSettings} showToast={showToast} onBack={() => { setLobbyTab('poker'); changeView('lobby'); }} onCreated={() => { setLobbyTab('poker'); changeView('lobby'); showToast("Poker table opened!", "success"); }} />}
                         {currentView === 'poker-table' && <PokerTable tableDocId={activeTable?.docId} user={effUser} clubSettings={clubSettings} onLeave={() => { setLobbyTab('poker'); changeView('lobby'); }} showToast={showToast} />}
                         {currentView === 'durak-table' && <DurakTable tableDocId={activeTable?.docId} user={effUser} clubSettings={clubSettings} onLeave={() => { setLobbyTab('durak'); changeView('lobby'); }} showToast={showToast} />}
                         {currentView === 'ofc-table' && <OFCTable tableDocId={activeTable?.docId} user={effUser} clubSettings={clubSettings} onLeave={() => { setLobbyTab('ofc'); changeView('lobby'); }} showToast={showToast} />}
@@ -2739,6 +2739,20 @@
             const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a,b)=> gtRank(a) - gtRank(b) || (a.createdAt||0)-(b.createdAt||0));
             const [pokFilter, setPokFilter] = useState('all'); // all | <variant> | tours
             const [buyinEdit, setBuyinEdit] = useState(null); // manager: edit a table's buy-in from the lobby (without entering)
+            // Quick-open saved table templates straight from the lobby (no going through the form)
+            const pokerTpls = (() => { try { return JSON.parse(localStorage.getItem('pokerTpl_' + CLUB_ID) || '[]'); } catch(e) { return []; } })();
+            const createFromTpl = async (tp) => {
+                const st = tp.settings || {};
+                try {
+                    await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
+                        type: 'poker', clubId: CLUB_ID, createdAt: Date.now(),
+                        settings: { ...st, blinds: Math.max(0.01, Number(st.blinds) || 0.5), rakePercent: Number(st.rakePercent) || 0, minBuyIn: Math.max(0.01, Number(st.minBuyIn) || 1), maxBuyIn: Math.max(Number(st.minBuyIn) || 1, Number(st.maxBuyIn) || 1) },
+                        players: {}, chat: [], leftStacks: {},
+                        gameState: { phase: 'waiting', deck: [], board: [], pots: [], highestBet: 0, minRaise: (Number(st.blinds) || 0.5) * 2, dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: st.baseGameType || 'NLH', activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false }
+                    });
+                    showToast('Table opened from "' + tp.name + '"', 'success');
+                } catch(e) { showToast('Could not open table', 'error'); }
+            };
             // Always show the full variant set (incl. all Omaha types) so players can filter by any game, even with no open table right now
             const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
             const variantCount = (v) => pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === v).length;
@@ -3136,6 +3150,14 @@
                                         </button>
                                     )}
                                 </div>
+                                {canManageGame(user, 'poker') && pokerTpls.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 items-center mb-4">
+                                        <span className="text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"><i className="fa-solid fa-bolt ml-1"></i>Quick open</span>
+                                        {pokerTpls.map(tp => (
+                                            <button key={tp.name} onClick={() => createFromTpl(tp)} className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-amber-600 hover:text-slate-900 border border-amber-500/40 text-amber-200 rounded-full px-3 py-1.5 text-xs font-black transition-colors"><i className="fa-solid fa-bookmark"></i>{tp.name}</button>
+                                        ))}
+                                    </div>
+                                )}
                                 {/* Subtle variant filter — All / each variant (in its color) / Tournaments. All variants always shown so nothing is hidden. */}
                                 <div className="flex items-center gap-0.5 mb-4 border-b border-white/8 overflow-x-auto" style={{scrollbarWidth:"none"}}>
                                     <button onClick={() => setPokFilter('all')} className={`vtab ${pokFilter === 'all' ? 'vtab-active' : ''}`} style={pokFilter === 'all' ? {borderBottomColor:'#22d3ee'} : {}}>All</button>
@@ -4088,7 +4110,7 @@
                 {children}
             </div>
         );
-        function PokerCreateView({ user, clubSettings, onBack, onCreated }) {
+        function PokerCreateView({ user, clubSettings, onBack, onCreated, showToast }) {
             const [s, setS] = useState({
                 baseGameType: 'NLH', isDealerChoice: false, maxPlayers: 6,
                 blinds: 0.5, actionTime: 30, minBuyInBB: 40, maxBuyInBB: 200, minBuyIn: 40, maxBuyIn: 200,
@@ -4108,6 +4130,19 @@
                 onCreated();
             };
 
+            // ── Saved table templates (per club, on this device) ──
+            const TPL_KEY = 'pokerTpl_' + CLUB_ID;
+            const [tpls, setTpls] = useState(() => { try { return JSON.parse(localStorage.getItem(TPL_KEY) || '[]'); } catch(e) { return []; } });
+            const [tplName, setTplName] = useState('');
+            const persistTpls = (arr) => { setTpls(arr); try { localStorage.setItem(TPL_KEY, JSON.stringify(arr)); } catch(e) {} };
+            const saveTpl = () => {
+                const nm = (tplName.trim()) || (s.baseGameType + ' · ' + formatShort(s.blinds) + '/' + formatShort(s.blinds * 2));
+                persistTpls([...tpls.filter(x => x.name !== nm), { name: nm, settings: { ...s } }]);
+                setTplName(''); showToast && showToast('Template saved: ' + nm, 'success');
+            };
+            const loadTpl = (tp) => { setS(prev => ({ ...prev, ...tp.settings })); showToast && showToast('Loaded template: ' + tp.name, 'info'); };
+            const delTpl = (nm) => persistTpls(tpls.filter(x => x.name !== nm));
+
             const sel = "w-full bg-slate-900 text-white border border-white/10 rounded-xl p-3 outline-none focus:border-amber-500/60 font-bold";
 
             return (
@@ -4119,6 +4154,17 @@
                         </div>
 
                         <div className="glass-panel p-6 rounded-3xl flex flex-col gap-5">
+                            {tpls.length > 0 && (
+                                <div className="flex flex-wrap gap-2 items-center pb-4 border-b border-white/8">
+                                    <span className="text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"><i className="fa-solid fa-bookmark ml-1"></i>Templates</span>
+                                    {tpls.map(tp => (
+                                        <span key={tp.name} className="inline-flex items-center gap-1 bg-slate-800 border border-amber-500/30 rounded-full pr-1 pl-3 py-1">
+                                            <button onClick={() => loadTpl(tp)} className="text-xs font-black text-amber-200 hover:text-white">{tp.name}</button>
+                                            <button onClick={() => delTpl(tp.name)} className="w-5 h-5 rounded-full text-slate-500 hover:text-rose-400 text-[10px] flex items-center justify-center"><i className="fa-solid fa-xmark"></i></button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <Field label="Base game type">
                                     <select value={s.baseGameType} onChange={e=>upd('baseGameType', e.target.value)} className={sel}>
@@ -4191,6 +4237,10 @@
                                         <span className="text-white text-sm font-bold">Allow straddle (2xBB blind from UTG)</span>
                                     </label>
                                 </Field>
+                            </div>
+                            <div className="flex gap-2 items-center pt-1">
+                                <input value={tplName} onChange={e=>setTplName(e.target.value)} placeholder="Template name (optional)" className="flex-1 bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-amber-500/60" />
+                                <button onClick={saveTpl} className="bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-xl font-black text-sm whitespace-nowrap"><i className="fa-solid fa-bookmark ml-1"></i>Save as template</button>
                             </div>
                             <button onClick={handleCreate} className="w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-4 rounded-2xl font-black text-lg shadow-[0_8px_25px_rgba(245,158,11,0.35)]">
                                 <i className="fa-solid fa-diamond ml-2"></i>Open table

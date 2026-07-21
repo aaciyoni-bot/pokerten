@@ -2652,6 +2652,7 @@ function App() {
   }), currentView === 'poker-create' && React.createElement(PokerCreateView, {
     user: effUser,
     clubSettings: clubSettings,
+    showToast: showToast,
     onBack: () => {
       setLobbyTab('poker');
       changeView('lobby');
@@ -4272,6 +4273,53 @@ function LobbyView({
   const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => gtRank(a) - gtRank(b) || (a.createdAt || 0) - (b.createdAt || 0));
   const [pokFilter, setPokFilter] = useState('all');
   const [buyinEdit, setBuyinEdit] = useState(null);
+  const pokerTpls = (() => {
+    try {
+      return JSON.parse(localStorage.getItem('pokerTpl_' + CLUB_ID) || '[]');
+    } catch (e) {
+      return [];
+    }
+  })();
+  const createFromTpl = async tp => {
+    const st = tp.settings || {};
+    try {
+      await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
+        type: 'poker',
+        clubId: CLUB_ID,
+        createdAt: Date.now(),
+        settings: {
+          ...st,
+          blinds: Math.max(0.01, Number(st.blinds) || 0.5),
+          rakePercent: Number(st.rakePercent) || 0,
+          minBuyIn: Math.max(0.01, Number(st.minBuyIn) || 1),
+          maxBuyIn: Math.max(Number(st.minBuyIn) || 1, Number(st.maxBuyIn) || 1)
+        },
+        players: {},
+        chat: [],
+        leftStacks: {},
+        gameState: {
+          phase: 'waiting',
+          deck: [],
+          board: [],
+          pots: [],
+          highestBet: 0,
+          minRaise: (Number(st.blinds) || 0.5) * 2,
+          dealerUid: null,
+          dcUid: null,
+          dcAnchor: null,
+          currentGameType: st.baseGameType || 'NLH',
+          activeTurnUid: null,
+          turnStartedAt: null,
+          lastWinners: null,
+          lastWinAmount: 0,
+          allInReveal: false
+        }
+      });
+      showToast('Table opened from "' + tp.name + '"', 'success');
+    } catch (e) {
+      showToast('Could not open table', 'error');
+    }
+  };
   const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
   const variantCount = v => pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === v).length;
   const shownPoker = pokFilter === 'all' ? pokerTables : pokFilter === 'tours' ? [] : pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === pokFilter);
@@ -4966,7 +5014,19 @@ function LobbyView({
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(245,158,11,0.3)] text-sm"
   }, React.createElement("i", {
     className: "fa-solid fa-plus ml-2"
-  }), "New table")), React.createElement("div", {
+  }), "New table")), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
+    className: "flex flex-wrap gap-2 items-center mb-4"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bolt ml-1"
+  }), "Quick open"), pokerTpls.map(tp => React.createElement("button", {
+    key: tp.name,
+    onClick: () => createFromTpl(tp),
+    className: "inline-flex items-center gap-1.5 bg-slate-800 hover:bg-amber-600 hover:text-slate-900 border border-amber-500/40 text-amber-200 rounded-full px-3 py-1.5 text-xs font-black transition-colors"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark"
+  }), tp.name))), React.createElement("div", {
     className: "flex items-center gap-0.5 mb-4 border-b border-white/8 overflow-x-auto",
     style: {
       scrollbarWidth: "none"
@@ -6589,7 +6649,8 @@ function PokerCreateView({
   user,
   clubSettings,
   onBack,
-  onCreated
+  onCreated,
+  showToast
 }) {
   const [s, setS] = useState({
     baseGameType: 'NLH',
@@ -6648,6 +6709,40 @@ function PokerCreateView({
     });
     onCreated();
   };
+  const TPL_KEY = 'pokerTpl_' + CLUB_ID;
+  const [tpls, setTpls] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(TPL_KEY) || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+  const [tplName, setTplName] = useState('');
+  const persistTpls = arr => {
+    setTpls(arr);
+    try {
+      localStorage.setItem(TPL_KEY, JSON.stringify(arr));
+    } catch (e) {}
+  };
+  const saveTpl = () => {
+    const nm = tplName.trim() || s.baseGameType + ' · ' + formatShort(s.blinds) + '/' + formatShort(s.blinds * 2);
+    persistTpls([...tpls.filter(x => x.name !== nm), {
+      name: nm,
+      settings: {
+        ...s
+      }
+    }]);
+    setTplName('');
+    showToast && showToast('Template saved: ' + nm, 'success');
+  };
+  const loadTpl = tp => {
+    setS(prev => ({
+      ...prev,
+      ...tp.settings
+    }));
+    showToast && showToast('Loaded template: ' + tp.name, 'info');
+  };
+  const delTpl = nm => persistTpls(tpls.filter(x => x.name !== nm));
   const sel = "w-full bg-slate-900 text-white border border-white/10 rounded-xl p-3 outline-none focus:border-amber-500/60 font-bold";
   return React.createElement("div", {
     style: {
@@ -6667,7 +6762,24 @@ function PokerCreateView({
     className: "text-2xl font-black text-white"
   }, "New poker table")), React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl flex flex-col gap-5"
-  }, React.createElement("div", {
+  }, tpls.length > 0 && React.createElement("div", {
+    className: "flex flex-wrap gap-2 items-center pb-4 border-b border-white/8"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark ml-1"
+  }), "Templates"), tpls.map(tp => React.createElement("span", {
+    key: tp.name,
+    className: "inline-flex items-center gap-1 bg-slate-800 border border-amber-500/30 rounded-full pr-1 pl-3 py-1"
+  }, React.createElement("button", {
+    onClick: () => loadTpl(tp),
+    className: "text-xs font-black text-amber-200 hover:text-white"
+  }, tp.name), React.createElement("button", {
+    onClick: () => delTpl(tp.name),
+    className: "w-5 h-5 rounded-full text-slate-500 hover:text-rose-400 text-[10px] flex items-center justify-center"
+  }, React.createElement("i", {
+    className: "fa-solid fa-xmark"
+  }))))), React.createElement("div", {
     className: "grid grid-cols-1 sm:grid-cols-2 gap-4"
   }, React.createElement(Field, {
     label: "Base game type"
@@ -6815,7 +6927,19 @@ function PokerCreateView({
     className: "accent-amber-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-white text-sm font-bold"
-  }, "Allow straddle (2xBB blind from UTG)")))), React.createElement("button", {
+  }, "Allow straddle (2xBB blind from UTG)")))), React.createElement("div", {
+    className: "flex gap-2 items-center pt-1"
+  }, React.createElement("input", {
+    value: tplName,
+    onChange: e => setTplName(e.target.value),
+    placeholder: "Template name (optional)",
+    className: "flex-1 bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white text-sm outline-none focus:border-amber-500/60"
+  }), React.createElement("button", {
+    onClick: saveTpl,
+    className: "bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-xl font-black text-sm whitespace-nowrap"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark ml-1"
+  }), "Save as template")), React.createElement("button", {
     onClick: handleCreate,
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-4 rounded-2xl font-black text-lg shadow-[0_8px_25px_rgba(245,158,11,0.35)]"
   }, React.createElement("i", {

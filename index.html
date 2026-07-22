@@ -8067,8 +8067,9 @@ function PokerTable({
     }).catch(() => {});
   }, [!!tableState?.gameState?.ritOffer]);
   useEffect(() => {
-    if (setts.spinMode && tableState?.spin && !isSeated && !spectate) setSpectate(true);
-  }, [!!tableState?.spin, isSeated]);
+    const noWayIn = setts.spinMode && tableState?.spin || !!tableState?.tournamentId;
+    if (noWayIn && !isSeated && !spectate) setSpectate(true);
+  }, [!!tableState?.spin, !!tableState?.tournamentId, isSeated]);
   const [spinShow, setSpinShow] = useState(false);
   useEffect(() => {
     const t2 = tableState;
@@ -10993,7 +10994,7 @@ function PokerTable({
     className: `px-6 py-2.5 rounded-xl font-black text-sm border transition-all active:scale-95 ${preCF ? 'bg-gradient-to-b from-amber-500 to-amber-700 text-white border-amber-300 ring-2 ring-amber-300/60' : 'bg-slate-800/90 text-slate-300 border-white/10 hover:text-white'}`
   }, preCF ? '✓ CHECK/FOLD armed — tap to cancel' : 'CHECK / FOLD'), React.createElement("div", {
     className: "text-center text-slate-500 font-bold text-xs"
-  }, inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...')), spectate && !isSeated && !(setts.spinMode && tableState.spin) && React.createElement("button", {
+  }, inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...')), spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
     onClick: () => setSpectate(false),
     className: "mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg"
   }, "Sit back in")), tour && (() => {

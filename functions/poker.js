@@ -363,12 +363,17 @@ function advancePhase(t, g, pl, eng) {
   else if (g.phase === "flop") { dealBoard(g, deck, 1); g.phase = "turn"; }
   else if (g.phase === "turn") { dealBoard(g, deck, 1); g.phase = "river"; }
   else if (g.phase === "river") return runShowdown(t, g, pl, eng.hands);
-  // all-in runout: fewer than 2 players can still act → keep dealing to the end
+  // All-in runout: fewer than 2 players can still act → reveal everyone's hands
+  // and deal the rest of the board ONE STREET AT A TIME. The tick brings the next
+  // street after a dramatic pause, so players actually SEE the turn and the river
+  // land before the showdown — never a jump-cut from all-in to "hand over".
   const canAct = activesOf(pl).filter((p) => (p.stack || 0) > 0);
   if (canAct.length < 2) {
     g.allInReveal = true;
     Object.values(pl).forEach((p) => { if (p.status === "active") p.cards = eng.hands[p.uid] || []; });
-    return advancePhase(t, g, pl, eng);
+    g.activeTurnUid = null;
+    g.runoutAt = Date.now();
+    return null;
   }
   g.activeTurnUid = firstAfterDealer(g, pl);
   g.turnStartedAt = Date.now();
@@ -766,9 +771,12 @@ exports.pkTick = onCall(async (request) => {
   // Self-heal: a betting phase with no active turn (corrupted during a freeze /
   // legacy write) would otherwise stall forever — reassign the turn or settle.
   if (BETTING.includes(g.phase) && !g.activeTurnUid) {
+    // Staged all-in runout: hold each street on screen before dealing the next.
+    if (g.allInReveal && Date.now() - (g.runoutAt || 0) < 1600) return {ok: true};
     try {
       await engineStep(tableId, (t2, g2, pl2, eng) => {
         if (!BETTING.includes(g2.phase) || g2.activeTurnUid) return null;
+        if (g2.allInReveal && Date.now() - (g2.runoutAt || 0) < 1600) return null;
         const acts = Object.values(pl2).filter((q) => q.status === "active");
         if (acts.length === 0) { g2.phase = "waiting"; g2.board = []; g2.pots = []; return null; }
         if (acts.length === 1) return finishEarlyWin(t2, g2, pl2, acts[0].uid, eng);

@@ -4595,7 +4595,15 @@
                 const iv = setInterval(() => { window.fb.fx('pkTick', { tableId: tableDocId }).catch(() => {}); }, 4000);
                 return () => clearInterval(iv);
             }, [srvEngine, tableDocId]);
-            useEffect(() => { if ((tableState?.gameState?.phase) !== 'showdown') setRabbit([]); }, [tableState?.gameState?.phase]);
+
+            // All-in runout: tick faster so the turn/river land on a tight, dramatic beat.
+            useEffect(() => {
+                if (!srvEngine) return;
+                const g0 = tableState?.gameState || {};
+                if (!(g0.allInReveal && ['preflop', 'flop', 'turn', 'river'].includes(g0.phase))) return;
+                const iv = setInterval(() => { window.fb.fx('pkTick', { tableId: tableDocId }).catch(() => {}); }, 1800);
+                return () => clearInterval(iv);
+            }, [srvEngine, tableState?.gameState?.allInReveal, tableState?.gameState?.phase]);            useEffect(() => { if ((tableState?.gameState?.phase) !== 'showdown') setRabbit([]); }, [tableState?.gameState?.phase]);
             const godPhaseKey = (tableState?.gameState?.phase || '') + ':' + ((tableState?.gameState?.board || []).length);
             useEffect(() => {
                 if (!srvEngine || !godView) { setGodHands({}); setGodFinal([]); return; }

@@ -2289,6 +2289,32 @@ const BetCollect = ({
     showLabel: false
   }));
 };
+const PotAward = ({
+  to,
+  amount,
+  dur,
+  snd
+}) => {
+  const [go, setGo] = React.useState(false);
+  React.useEffect(() => {
+    if (snd) playSnd('chip', 9, dur / 9);
+    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+    return () => cancelAnimationFrame(r);
+  }, []);
+  return React.createElement("div", {
+    className: "absolute z-[55] pointer-events-none",
+    style: {
+      left: go ? to.left : '50%',
+      top: go ? to.top : '63.5%',
+      opacity: go ? 0.2 : 1,
+      transform: 'translate(-50%, -50%)',
+      transition: `left ${dur}s ease-in-out, top ${dur}s ease-in-out, opacity ${dur}s ease-in`
+    }
+  }, React.createElement(CasinoChipStack, {
+    amount: amount,
+    scale: 0.95
+  }));
+};
 function App() {
   const [fbReady, setFbReady] = useState(false);
   const [dbUser, setDbUser] = useState(null);
@@ -9695,19 +9721,6 @@ function PokerTable({
         hidden: hidden,
         size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'sm'
       }))));
-    })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && (() => {
-      let hn = null;
-      try {
-        if (!gs.earlyWin && !hidden && (dispCards || []).length >= 2 && (gs.board || []).length >= 3) hn = handName(bestScoreNow(dispCards, gs.board || [], gs.currentGameType));
-      } catch (e) {}
-      return React.createElement("div", {
-        className: 'win-tag' + (topSeat ? ' win-top' : ''),
-        dir: "ltr"
-      }, React.createElement("span", {
-        className: "win-amt"
-      }, "WIN", (gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''), hn && React.createElement("span", {
-        className: "win-hand"
-      }, hn));
     })(), React.createElement("div", {
       className: `player-pod ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
       style: {
@@ -9823,7 +9836,20 @@ function PokerTable({
       top: '63.5%'
     },
     amount: fx.amount
-  })), (() => {
+  })), gs.phase === 'showdown' && (gs.lastWinAmount || 0) > 0 && gs.lastWinners && (() => {
+    const names = String(gs.lastWinners).split(', ');
+    const wIdx = displayList.map((p, i) => names.includes(p.name) ? i : -1).filter(ix => ix >= 0);
+    if (!wIdx.length) return null;
+    const share = round2((gs.lastWinAmount || 0) / wIdx.length);
+    const dur = Math.min(3.2, 0.9 + Math.log10(1 + share) * 0.55);
+    return wIdx.map((ix, k) => React.createElement(PotAward, {
+      key: 'pa' + ix + '_' + (gs.showdownAt || 0),
+      to: seatPos(ix),
+      amount: share,
+      dur: dur,
+      snd: k === 0
+    }));
+  })(), (() => {
     if (!(gs.phase === 'showdown' && gs.earlyWin && rabbit.length === 0 && (gs.board || []).length < 5)) return null;
     const need = 5 - (gs.board || []).length;
     const src = srvEngine ? gs.rabbit || [] : gs.deck || [];

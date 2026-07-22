@@ -342,14 +342,19 @@
             writing-mode: vertical-lr; direction: rtl;
             width: 48px; height: 250px; accent-color: #f59e0b; touch-action: none; cursor: pointer;
         }
-        /* Subtle winner marker above the player's pod (replaces the big center banner
-           that used to cover the revealed cards). */
+        /* Winner marker: sits OVER the name pill (below the avatar) so the revealed
+           winning cards stay fully visible; on top seats (cards below the pod) it
+           flips above the pod instead. */
         .win-tag {
-            position: absolute; top: -32px; left: 50%; transform: translateX(-50%); z-index: 70;
+            position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); z-index: 80;
             display: flex; flex-direction: column; align-items: center; gap: 1px;
+            background: rgba(2,6,23,0.94); border: 1px solid rgba(245,200,96,0.55);
+            border-radius: 12px; padding: 3px 12px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.6), 0 0 18px rgba(245,200,96,0.22);
             font-family: 'Rubik', sans-serif; font-weight: 900; white-space: nowrap; pointer-events: none;
             animation: popIn 0.3s ease-out;
         }
+        .win-tag.win-top { bottom: auto; top: -30px; }
         .win-tag .win-amt {
             font-size: 13px; letter-spacing: 0.05em;
             background: linear-gradient(180deg, #fbe7ae, #e3ae4e 60%, #a9761f);
@@ -6024,7 +6029,7 @@
                                                     let hn = null; // the winning hand's name — visible whenever the winner's cards are revealed
                                                     try { if (!gs.earlyWin && !hidden && (dispCards || []).length >= 2 && (gs.board || []).length >= 3) hn = handName(bestScoreNow(dispCards, gs.board || [], gs.currentGameType)); } catch(e) {}
                                                     return (
-                                                        <div className="win-tag" dir="ltr">
+                                                        <div className={'win-tag' + (topSeat ? ' win-top' : '')} dir="ltr">
                                                             <span className="win-amt">🏆 {(gs.lastWinAmount || 0) > 0 ? '+' + formatShort(gs.lastWinAmount) : 'WIN'}</span>
                                                             {hn && <span className="win-hand">{hn}</span>}
                                                         </div>

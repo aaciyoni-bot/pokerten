@@ -5252,7 +5252,8 @@
                         try { await window.fb.fx('pkLeave', { tableId: tableDocId }); left = true; }
                         catch(e) { await new Promise(r => setTimeout(r, 700)); }
                     }
-                    logGameResult([{ uid: user.uid, username: user.username, game: 'poker', profit: round2((meS.stack || 0) - (meS.buyTotal || meS.stack || 0)) }], tableDocId);
+                    // NOTE: no client-side session log here — the SERVER already logs every
+                    // hand's result on server tables; logging the session too doubled losses.
                     onLeave(); return;
                 }
                 try {

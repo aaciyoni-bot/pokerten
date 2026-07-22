@@ -2447,6 +2447,9 @@ function App() {
   const changeView = (view, tableObj = null) => {
     setCurrentView(view);
     setActiveTable(tableObj);
+    try {
+      if (view === 'poker-table' && tableObj?.docId) localStorage.setItem('pkResume', tableObj.docId);
+    } catch (e) {}
     if (view !== 'auth' && view !== 'pending') {
       window.history.pushState({
         view,
@@ -2454,6 +2457,30 @@ function App() {
       }, "", `?v=${view}`);
     }
   };
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (resumedRef.current || !dbUser || dbUser.status !== 'approved') return;
+    resumedRef.current = true;
+    let saved = null;
+    try {
+      saved = localStorage.getItem('pkResume');
+    } catch (e) {}
+    if (!saved) return;
+    (async () => {
+      try {
+        const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'tables', saved));
+        if (snap.exists() && (snap.data().players || {})[dbUser.uid] && !snap.data().tournamentId) {
+          changeView('poker-table', {
+            docId: saved
+          });
+        } else {
+          try {
+            localStorage.removeItem('pkResume');
+          } catch (e) {}
+        }
+      } catch (e) {}
+    })();
+  }, [dbUser]);
   useEffect(() => {
     const handlePopState = event => {
       if (event.state && event.state.view && !['poker-table', 'durak-table', 'ofc-table'].includes(event.state.view)) {
@@ -2933,6 +2960,9 @@ function App() {
     user: effUser,
     clubSettings: clubSettings,
     onLeave: () => {
+      try {
+        localStorage.removeItem('pkResume');
+      } catch (e) {}
       setLobbyTab('poker');
       changeView('lobby');
     },
@@ -5385,9 +5415,12 @@ function LobbyView({
       dir: "ltr"
     }, formatShort(s.blinds), "/", formatShort(s.blinds * 2)), React.createElement("div", {
       className: "tbl-sub"
-    }, inHand ? React.createElement("span", {
-      className: "tbl-live"
-    }, "● Running") : 'Waiting')), React.createElement("div", {
+    }, (() => {
+      const h10 = (t.history || []).filter(h => Date.now() - (h.at || 0) < 600000).length;
+      return inHand ? React.createElement("span", {
+        className: "tbl-live"
+      }, "● Running", h10 > 0 ? ` · 🔥 ${h10} hands/10m` : '') : h10 > 0 ? `🔥 ${h10} hands/10m` : 'Waiting';
+    })())), React.createElement("div", {
       className: "tbl-buyin",
       dir: "ltr"
     }, React.createElement("span", {
@@ -9263,7 +9296,11 @@ function PokerTable({
     }
     if (gs.phase === 'showdown' && ps.phase !== 'showdown') playSnd((gs.lastWinAmount || 0) >= (Number(setts.blinds) || 0.5) * 2 * 40 ? 'bigwin' : 'win');
     const mine = gs.activeTurnUid === user.uid && BETTING.includes(gs.phase);
-    if (mine && !ps.turnMine) playSnd('turn');
+    if (mine && !ps.turnMine) {
+      try {
+        navigator.vibrate && navigator.vibrate([90, 60, 90]);
+      } catch (e) {}
+    }
     const cl = (tableState.chat || []).length;
     if (ps.chatLen && cl > ps.chatLen) playSnd('msg');
     Object.values(players).forEach(p => {
@@ -10738,7 +10775,11 @@ function DurakTable({
     const pn = (T.pairs || []).length;
     if (pn > ps.pairsN) playSnd('tile');
     const mine = T.turnUid === user.uid && T.status === 'playing';
-    if (mine && !ps.turnMine) playSnd('turn');
+    if (mine && !ps.turnMine) {
+      try {
+        navigator.vibrate && navigator.vibrate([90, 60, 90]);
+      } catch (e) {}
+    }
     const cl = (T.chat || []).length;
     if (ps.chatLen && cl > ps.chatLen) playSnd('msg');
     prevDSnd.current = {

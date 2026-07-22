@@ -881,7 +881,7 @@
             chip: ['chips_slide_1', 'chips_slide_2', 'chips_slide_3'],
             chip1: ['chip_single_1', 'chip_single_2'],
             check: ['check_knock'], fold: ['fold_toss_1', 'fold_toss_2'],
-            turn: ['my_turn'], tick: ['timer_tick_1', 'timer_tick_2'],
+            tick: ['timer_tick_1', 'timer_tick_2'],
             win: ['win_pot'], bigwin: ['big_win'], msg: ['chat_msg'],
             shuffle: ['shuffle'], join: ['player_join'], allin: ['all_in'], bust: ['bust'],
             tile: ['chip_single_1'], dice: ['chips_slide_2'],
@@ -915,6 +915,7 @@
         };
         const SND = {};
         const playSnd = (type, times = 1) => {
+            if (type === 'turn') return; // no gratuitous sounds — your turn is shown visually, not beeped
             try {
                 // Sample engine first — random variant per repeat, like a real dealer
                 const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);

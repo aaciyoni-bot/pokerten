@@ -699,7 +699,7 @@ exports.pkTick = onCall(async (request) => {
   }
 
   // 1) showdown pause over → next hand
-  if (g.phase === "showdown" && Date.now() - (g.showdownAt || 0) > (g.earlyWin ? 3500 : 5000)) {
+  if (g.phase === "showdown" && Date.now() - (g.showdownAt || 0) > (g.earlyWin ? 4000 : 9000)) {
     if (t.tournament && t.tournament.finished) return {ok: true};
     const alive = Object.values(pl).filter((p) => (p.stack || 0) > 0 && (t.tournamentId ? !["busted", "out"].includes(p.status) : !p.sitOut));
     if (alive.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } }

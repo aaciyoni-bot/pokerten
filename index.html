@@ -4597,7 +4597,7 @@
                 await saveGame(g, pl, { history: [...((histT && histT.history) || []), histEntry].slice(-100), ...tourExtra });
                 distributeRake(rake, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
                 clearTimeout(nextHandRef.current);
-                nextHandRef.current = setTimeout(() => startHand(), 3500);
+                nextHandRef.current = setTimeout(() => startHand(), 4000);
             };
 
             const runShowdown = async (g, pl) => {
@@ -4642,7 +4642,7 @@
                 await saveGame(g, pl, { history: [...((histT && histT.history) || []), histEntry].slice(-100), ...tourExtra });
                 distributeRake(rakeTotal, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
                 clearTimeout(nextHandRef.current);
-                nextHandRef.current = setTimeout(() => startHand(), 5000);
+                nextHandRef.current = setTimeout(() => startHand(), 9000);
             };
 
             const advancePhase = async (gIn, plIn) => {
@@ -5450,7 +5450,7 @@
             useEffect(() => {
                 const bust = isSeated && (myPlayer?.stack || 0) <= 0 && ['waiting', 'showdown'].includes(gs.phase);
                 if (!bust) { setRebuyGate(false); return; }
-                const tm = setTimeout(() => setRebuyGate(true), gs.phase === 'showdown' ? 4200 : 400);
+                const tm = setTimeout(() => setRebuyGate(true), gs.phase === 'showdown' ? 6000 : 400);
                 return () => clearTimeout(tm);
             }, [isSeated, (myPlayer?.stack || 0) <= 0, gs.phase]);
             const [tourTick, setTourTick] = useState(0);

@@ -457,6 +457,7 @@ async function dealHand(tableId, chosenType) {
     // "dc_selection" is allowed here too: when a Dealer's-Choice pick comes in
     // (pkPickGame) or the pick times out (pkTick), we deal straight from that phase.
     if (!["waiting", "showdown", "dc_selection"].includes(g0.phase)) throw new HttpsError("failed-precondition", "Hand in progress");
+    if (s.spinMode && (!t.spin || Date.now() < (t.spinStartAt || 0))) throw new HttpsError("failed-precondition", "Waiting for the wheel");
     const pl = JSON.parse(JSON.stringify(t.players || {}));
     Object.values(pl).forEach((p) => {
       // Queued top-up (player asked to add chips mid-hand): apply it now, at the
@@ -549,6 +550,12 @@ async function dealHand(tableId, chosenType) {
     const dealer = order[0];
     let sb = round2(Number(s.blinds) || 0.5);
     let bb = round2(sb * 2);
+    if (s.spinMode && t.spinStartAt) {
+      // Hyper structure: blinds double every 4 minutes (cap ×32) so a spin game always ends
+      const lvl2 = Math.max(0, Math.floor((Date.now() - t.spinStartAt) / 240000));
+      const esc = Math.min(32, Math.pow(2, lvl2));
+      sb = round2(sb * esc); bb = round2(sb * 2);
+    }
     let anteAmt = 0;
     const tour = t.tournament || null;
     if (tour) {
@@ -613,6 +620,8 @@ async function afterFinish(tableId, t, finish, plAfter, eng) {
   if (t.tournamentId) {
     const winnersUids = Object.values(plAfter).filter((q) => q.actionText === "WINNER").map((q) => q.uid);
     await tourAfterHand(tableId, t, plAfter, winnersUids);
+  } else if ((t.settings || {}).spinMode) {
+    await spinAfterHand(tableId, t, plAfter); // no rake, no per-hand money log — chips are tournament chips
   } else {
     distributeRake(t.clubId || "main", finish.rake, finish.participants);
     logHandResults(t, eng, plAfter, finish);
@@ -717,6 +726,75 @@ function botOracle(g, pl, eng) {
     if (sc > best) { best = sc; winners = [q.uid]; } else if (sc === best) winners.push(q.uid);
   });
   return winners;
+}
+
+// ── Spin & Cash: 3-player hyper SNG. The wheel decides the prize BEFORE play.
+// House math (pool = 3×buy-in): ×2 @50% (+1 buy-in to house), ×3 @40% (even),
+// ×4 @5%, ×5 @2.8%, ×10 @1.2%, ×20 @0.5%, free-ticket @0.5%. The ×100 slice is
+// pure display — probability zero. House EV ≈ +0.22 buy-ins per game, always
+// positive long-term. No rake, no agent cut — the edge IS the wheel curve. ──
+const SPIN_WHEEL = [
+  {m: 2, p: 0.50}, {m: 3, p: 0.40}, {m: 4, p: 0.05}, {m: 5, p: 0.028},
+  {m: 10, p: 0.012}, {m: 20, p: 0.005}, {m: "ticket", p: 0.005},
+];
+async function armSpin(tableId) {
+  try {
+    await db.runTransaction(async (tx) => {
+      const sn = await tx.get(tRef(tableId));
+      if (!sn.exists) return;
+      const t = sn.data();
+      const s = t.settings || {};
+      if (!s.spinMode || t.spin || (t.gameState || {}).phase !== "waiting") return;
+      if (Object.keys(t.players || {}).length < (Number(s.maxPlayers) || 3)) return;
+      const r = crypto.randomInt(100000) / 100000;
+      let acc = 0; let out = SPIN_WHEEL[0];
+      for (const o of SPIN_WHEEL) { acc += o.p; if (r < acc) { out = o; break; } }
+      const mult = out.m === "ticket" ? 3 : out.m;
+      const buy = round2(Number(s.spinBuyIn) || 50);
+      tx.update(tRef(tableId), {
+        spin: {mult, ticket: out.m === "ticket", prize: round2(buy * mult), at: Date.now(), near: mult <= 3 && crypto.randomInt(4) === 0},
+        spinStartAt: Date.now() + 9000,
+      });
+    });
+  } catch (e) { /* raced */ }
+}
+async function spinAfterHand(tableId, t, plAfter) {
+  const s = t.settings || {};
+  const alive = Object.values(plAfter).filter((q) => (q.stack || 0) > 0);
+  if (alive.length !== 1 || !t.spin || t.spinDone) return;
+  let won = false;
+  try {
+    await db.runTransaction(async (tx) => {
+      const sn = await tx.get(tRef(tableId));
+      if (!sn.exists || sn.data().spinDone) return;
+      tx.update(tRef(tableId), {spinDone: true, spinWinner: alive[0].uid});
+      won = true;
+    });
+  } catch (e) { return; }
+  if (!won) return;
+  const w = alive[0];
+  const clubId = t.clubId || "main";
+  const buy = round2(Number(s.spinBuyIn) || 50);
+  await creditBalance(w.uid, clubId, t.spin.prize);
+  if (t.spin.ticket && !w.isBot) {
+    try {
+      const r = db.doc(`memberships/${w.uid}_${clubId}`);
+      await db.runTransaction(async (tx) => { const sn = await tx.get(r); if (sn.exists) tx.update(r, {spinTickets: (sn.data().spinTickets || 0) + 1}); });
+    } catch (e) { /* best-effort */ }
+  }
+  // Results (settlement-visible, dedup-safe via the tournament: prefix). No rake, no agent cut.
+  const now = Date.now();
+  for (const q of Object.values(plAfter)) {
+    const profit = q.uid === w.uid ? round2(t.spin.prize - buy) : -buy;
+    db.collection("gameLog").add({uid: q.uid, username: q.name || "", clubId, game: "poker", profit, rake: 0, tableId: `tournament:spin_${tableId}`, at: now}).catch(() => {});
+  }
+  // Respawn: a fresh Spin & Cash table with the SAME settings opens immediately.
+  db.collection("tables").add({
+    type: "poker", clubId, createdAt: Date.now(),
+    settings: {...s},
+    players: {}, chat: [], leftStacks: {},
+    gameState: {phase: "waiting", deck: [], board: [], pots: [], highestBet: 0, minRaise: round2((Number(s.blinds) || 0.5) * 2), dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: s.baseGameType || "NLH", activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false},
+  }).catch(() => {});
 }
 
 // ── Bot rotation (cash): every ~20-45 min one bot stands up between hands and a
@@ -946,6 +1024,15 @@ exports.pkTick = onCall(async (request) => {
       const upd = {};
       bad.forEach((q) => { upd[`players.${q.uid}.sitOut`] = false; upd[`players.${q.uid}.sitOutNext`] = true; });
       await tRef(tableId).update(upd).catch(() => {});
+    }
+  }
+
+  // Spin & Cash: table filled → spin the wheel; wheel done → auto-deal hands.
+  if (s.spinMode && !t.tournamentId) {
+    if (!t.spin && g.phase === "waiting" && Object.keys(pl).length >= (Number(s.maxPlayers) || 3)) { await armSpin(tableId); return {ok: true}; }
+    if (t.spin && !t.spinDone && g.phase === "waiting" && Date.now() > (t.spinStartAt || 0)) {
+      const alive = Object.values(pl).filter((q) => (q.stack || 0) > 0);
+      if (alive.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } return {ok: true}; }
     }
   }
 
@@ -1211,7 +1298,9 @@ async function leaveSeat(tableId, uid, clubId) {
     // Only wait for step 1 when there are OTHER live players whose hand we'd disturb;
     // a lone leaver must never be trapped by his own "active" status.
     if ([...BETTING, "discard"].includes(g.phase) && p.status === "active" && othersLive.length > 0) throw new HttpsError("aborted", "Mid-action, try again");
-    refund = round2((p.stack || 0) + (p.pendingTopUp || 0));
+    refund = (t.settings || {}).spinMode
+      ? (t.spin ? 0 : round2(p.spinPaid || 0)) // spin chips aren't money; pre-wheel exit refunds the entry
+      : round2((p.stack || 0) + (p.pendingTopUp || 0));
     const pots = [...(g.pots || [])];
     if ((p.bet || 0) > 0) {
       if (othersLive.length > 0) pots.push({amount: round2(p.bet), eligible: othersLive.map((q) => q.uid)});
@@ -1222,7 +1311,7 @@ async function leaveSeat(tableId, uid, clubId) {
       tx.delete(tRef(tableId)); tx.delete(eRef(tableId));
     } else {
       const upd = {players: pl, "gameState.pots": pots};
-      if (!p.isBot && (p.stack || 0) > 0) upd[`leftStacks.${uid}`] = {amount: round2(p.stack), at: Date.now()};
+      if (!p.isBot && (p.stack || 0) > 0 && !(t.settings || {}).spinMode) upd[`leftStacks.${uid}`] = {amount: round2(p.stack), at: Date.now()};
       tx.update(tRef(tableId), upd);
     }
     if (!p.isBot && refund > 0 && mS.exists) tx.update(mS.ref, {balance: round2((mS.data().balance || 0) + refund)});

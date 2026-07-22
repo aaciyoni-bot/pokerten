@@ -1598,6 +1598,53 @@
             );
         };
 
+        /* Spin & Cash roulette: painted wheel + orbiting ball. The landing slice is
+           decided by the SERVER (the ×100 slice is display-only, probability zero);
+           near-miss spins park one slot past the ×100. */
+        const SPIN_SEGS = [2, 3, 100, 2, 5, 3, 10, 2, 3, 20, 4, 3];
+        const SEG_COL = { 2: '#334155', 3: '#0f766e', 4: '#7c3aed', 5: '#b45309', 10: '#be185d', 20: '#b91c1c', 100: '#eab308' };
+        const SpinWheel = ({ mult, near, prize }) => {
+            const [go, setGo] = React.useState(false);
+            const [done, setDone] = React.useState(false);
+            const target = React.useMemo(() => {
+                const idxs = SPIN_SEGS.map((m, i) => m === mult ? i : -1).filter(i => i >= 0);
+                if (near) return SPIN_SEGS[1] === mult ? 1 : (SPIN_SEGS[3] === mult ? 3 : idxs[0]); // parks right beside the ×100
+                const pool = idxs.filter(i => i !== 1 && i !== 3);
+                return pool.length ? pool[Math.floor(Math.random() * pool.length)] : idxs[0];
+            }, []);
+            React.useEffect(() => {
+                const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+                const tm = setTimeout(() => { setDone(true); try { playSnd('chip', 5, 0.1); } catch (e) {} }, 6600);
+                return () => { cancelAnimationFrame(r); clearTimeout(tm); };
+            }, []);
+            const n = SPIN_SEGS.length, segAng = 360 / n;
+            const grad = SPIN_SEGS.map((m, i) => `${SEG_COL[m]} ${i * segAng}deg ${(i + 1) * segAng}deg`).join(', ');
+            const finalRot = 6 * 360 + (360 - (target * segAng + segAng / 2));
+            return (
+                <div className="fixed inset-0 z-[400] bg-slate-950/92 backdrop-blur-sm flex flex-col items-center justify-center" dir="ltr">
+                    <div className="text-amber-300 font-black text-xl mb-4 tracking-widest animate-pulse">🎡 SPIN & CASH</div>
+                    <div className="relative" style={{ width: '280px', height: '280px' }}>
+                        <div className="absolute inset-0 rounded-full border-[10px] border-amber-700 shadow-[0_0_45px_rgba(245,158,11,0.35),inset_0_0_25px_rgba(0,0,0,0.6)]" style={{ background: `conic-gradient(${grad})` }}>
+                            {SPIN_SEGS.map((m, i) => (
+                                <div key={i} className="absolute left-1/2 top-1/2 text-white font-black" style={{ transform: `rotate(${i * segAng + segAng / 2}deg) translateY(-108px) translateX(-50%)`, transformOrigin: '0 0', fontSize: m === 100 ? '15px' : '13px', textShadow: '0 1px 3px rgba(0,0,0,0.9)', color: m === 100 ? '#fff7cc' : '#fff' }}>×{m}</div>
+                            ))}
+                        </div>
+                        <div className="absolute inset-[86px] rounded-full bg-slate-950 border-4 border-amber-600/60 flex items-center justify-center">
+                            <span className={`font-black text-2xl ${done ? 'text-amber-300 animate-pop-in' : 'text-slate-600'}`}>{done ? `×${mult}` : '?'}</span>
+                        </div>
+                        {/* the ball orbits inside the rim and settles on the landing slice */}
+                        <div className="absolute inset-0" style={{ transform: `rotate(${go ? finalRot : 0}deg)`, transition: go ? 'transform 6.5s cubic-bezier(0.13, 0.82, 0.16, 1)' : 'none' }}>
+                            <div className="absolute left-1/2 -translate-x-1/2" style={{ top: '16px', width: '17px', height: '17px', borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 70%, #64748b)', boxShadow: '0 2px 6px rgba(0,0,0,0.7)' }}></div>
+                        </div>
+                    </div>
+                    <div className={`mt-5 text-center transition-opacity duration-500 ${done ? 'opacity-100' : 'opacity-0'}`}>
+                        <div className="text-3xl font-black text-amber-300" dir="ltr">Prize: {formatShort(prize)}</div>
+                        <div className="text-slate-400 text-xs font-bold mt-1">Winner takes all · good luck! 🍀</div>
+                    </div>
+                </div>
+            );
+        };
+
         /* Pineapple discard: the thrown card visibly flies out of MY trio toward the
            muck/pot, spinning and shrinking — no doubt about what just happened. */
         const DiscardFly = ({ card }) => {
@@ -3387,7 +3434,7 @@
                                                     <span dir="ltr">{seated}/{cap}</span>
                                                 </div>
                                                 <div className="tbl-main">
-                                                    <div className="tbl-name">{s.tableName || variantLabel(gt, s)}{s.isDealerChoice && <span className="tbl-dc">DC</span>}{t.players && t.players[user.uid] && <span className="tbl-me">You're seated</span>}</div>
+                                                    <div className="tbl-name">{s.spinMode ? `🎡 Spin & Cash ${formatShort(s.spinBuyIn || 50)}` : (s.tableName || variantLabel(gt, s))}{s.isDealerChoice && <span className="tbl-dc">DC</span>}{t.players && t.players[user.uid] && <span className="tbl-me">You're seated</span>}</div>
                                                     <div className="tbl-stakes" dir="ltr">{formatShort(s.blinds)}/{formatShort(s.blinds*2)}</div>
                                                     <div className="tbl-sub">{(() => {
                                                         const h10 = (t.history || []).filter(h => Date.now() - (h.at || 0) < 600000).length;
@@ -4460,7 +4507,7 @@
                 blinds: 0.5, actionTime: 30, minBuyInBB: 40, maxBuyInBB: 200, minBuyIn: 40, maxBuyIn: 200,
                 leaveNoticeMins: 0, leaveNoticeBB: 0, serverEngine: true,
                 rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT, autoStart: 2,
-                straddle: false, ante: 0, omahaPotLimit: true, bombEvery: 0, bombAnte: 2, aofEvery: 0
+                straddle: false, ante: 0, omahaPotLimit: true, bombEvery: 0, bombAnte: 2, aofEvery: 0, spinMode: false, spinBuyIn: 50, spinStack: 1000
             });
             const upd = (k, v) => setS(prev => ({ ...prev, [k]: v }));
 
@@ -4585,6 +4632,24 @@
                                         <span className="text-white text-sm font-bold">Omaha plays <b className="text-amber-400">POT LIMIT</b> (PLO) — uncheck for No-Limit (NLO)</span>
                                     </label>
                                 </Field>
+                                <Field label="🎡 Spin & Cash">
+                                    <label className="flex items-center gap-2 cursor-pointer bg-slate-900 border border-amber-500/30 rounded-xl p-3">
+                                        <input type="checkbox" checked={!!s.spinMode} onChange={e => { const on = e.target.checked; setS(prev => ({ ...prev, spinMode: on, ...(on ? { maxPlayers: 3, rakePercent: 0 } : {}) })); }} className="accent-amber-500 w-4 h-4" />
+                                        <span className="text-white text-sm font-bold">3 players · the wheel picks the prize (×2–×20, jackpot on display) · winner takes all · no rake</span>
+                                    </label>
+                                    {s.spinMode && (
+                                        <div className="grid grid-cols-2 gap-2 mt-2">
+                                            <div>
+                                                <div className="text-[10px] text-slate-400 font-black mb-1">Entry price</div>
+                                                <input type="number" value={s.spinBuyIn ?? 50} onChange={e=>upd('spinBuyIn', Number(e.target.value))} className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm outline-none focus:border-amber-500/60" dir="ltr" />
+                                            </div>
+                                            <div>
+                                                <div className="text-[10px] text-slate-400 font-black mb-1">Starting chips</div>
+                                                <input type="number" value={s.spinStack ?? 1000} onChange={e=>upd('spinStack', Number(e.target.value))} className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm outline-none focus:border-amber-500/60" dir="ltr" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </Field>
                                 <Field label="Action hands 💣">
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
@@ -4633,6 +4698,16 @@
             // drops to 0 (street closed / hand ended) a ghost stack glides into the pot.
             const [betFx, setBetFx] = useState([]);
             const [discFx, setDiscFx] = useState(null); // pineapple discard fly-out
+            // Spin & Cash: show the roulette while the wheel window is open
+            const [spinShow, setSpinShow] = useState(false);
+            useEffect(() => {
+                const t2 = tableState;
+                if (t2?.spin && !t2.spinDone && Date.now() < (t2.spinStartAt || 0)) {
+                    setSpinShow(true);
+                    const tm = setTimeout(() => setSpinShow(false), Math.max(500, (t2.spinStartAt || 0) - Date.now() + 1000));
+                    return () => clearTimeout(tm);
+                }
+            }, [!!tableState?.spin]);
             // After a discard my fan shrinks 3→2 — do NOT replay the deal animation;
             // the remaining cards simply stay in place.
             const noRedealRef = useRef({ prev: 0, hold: false });
@@ -5136,6 +5211,24 @@
                         const pl = t.players || {};
                         if (pl[user.uid]) throw "You're already seated";
                         if (Object.keys(pl).length >= (t.settings.maxPlayers || 6)) throw "The table is full";
+                        const sSp = t.settings || {};
+                        if (sSp.spinMode) {
+                            // Spin & Cash: fixed entry, tournament chips, no top-ups. A free
+                            // ticket (won on the wheel) pays the entry instead of the wallet.
+                            if (t.spin) throw "This spin already started — a fresh table is open in the lobby";
+                            const entry = round2(Number(sSp.spinBuyIn) || 50);
+                            const tickets = Number(uSnap.data().spinTickets || 0);
+                            if (tickets > 0) tr.update(uRef, { spinTickets: tickets - 1 });
+                            else if ((uSnap.data().balance || 0) >= entry) tr.update(uRef, { balance: round2((uSnap.data().balance || 0) - entry) });
+                            else throw "Not enough balance in wallet";
+                            let si2 = 0; const tk2 = new Set(Object.values(pl).map(p => p.seatIndex));
+                            while (tk2.has(si2)) si2++;
+                            tr.update(tblRef(), { [`players.${user.uid}`]: {
+                                uid: user.uid, name: user.username, photo: user.photo || '', avatarSeed: user.avatarSeed || '', seatIndex: si2, stack: round2(Number(sSp.spinStack) || 1000), bet: 0, buyTotal: 0, spinPaid: tickets > 0 ? 0 : entry,
+                                status: 'active', cards: [], hasActed: false, actionText: '', isBot: false
+                            }});
+                            return;
+                        }
                         if ((uSnap.data().balance || 0) < buyAmt) throw "Not enough balance in wallet";
                         const left = (t.leftStacks || {})[user.uid];
                         if (left && Date.now() - left.at < 12 * 60 * 60 * 1000 && buyAmt < round2(left.amount)) throw `You left this table with ${formatMoney(left.amount)} - you must return with at least this amount`;
@@ -5317,6 +5410,7 @@
             // Opens the in-app add-chips sheet (native window.prompt is suppressed in iOS PWAs).
             const topUpChips = () => {
                 const t = tableRef.current; if (!t || t.tournamentId) return;
+                if ((t.settings || {}).spinMode) return showToast("Spin & Cash plays with tournament chips — no top-ups", "info");
                 const BBv = round2((Number(setts.blinds) || 1) * 2);
                 const maxBuy2 = buyInMax(setts);
                 const meP = t.players[user.uid]; if (!meP) return;
@@ -6614,6 +6708,17 @@
                         </div>
                     )}
 
+                    {spinShow && tableState.spin && <SpinWheel mult={tableState.spin.mult} near={!!tableState.spin.near} prize={tableState.spin.prize} />}
+                    {setts.spinMode && tableState.spinDone && (
+                        <div className="absolute inset-x-0 top-[38%] z-[80] flex justify-center pointer-events-none">
+                            <div className="bg-slate-950/95 border-2 border-amber-400/70 rounded-2xl px-6 py-3 text-center animate-pop-in">
+                                <div className="text-2xl">🏆</div>
+                                <div className="text-amber-300 font-black text-lg" dir="ltr">{players[tableState.spinWinner]?.name || '...'} wins {formatShort(tableState.spin?.prize || 0)}!</div>
+                                <div className="text-slate-400 text-[11px] font-bold">A fresh Spin & Cash table is open in the lobby</div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Leave notice: a BIG visible clock — you asked to stand up while in
                         profit, so you play out the notice. Pauses while sitting out. */}
                     {myPlayer && myPlayer.leavingAt && !tableState.tournament && (() => {
@@ -6636,7 +6741,7 @@
                     {/* Busted (cash): NO popup — the table stays fully visible, you watch the
                         showdown and who took the pot. A 10-minute clock + Rebuy sit in the
                         bottom bar, right where the action buttons normally are. */}
-                    {myPlayer && myPlayer.status === 'busted' && (myPlayer.stack || 0) <= 0 && !tableState.tournament && (
+                    {myPlayer && myPlayer.status === 'busted' && (myPlayer.stack || 0) <= 0 && !tableState.tournament && !setts.spinMode && (
                         <div className="absolute bottom-0 left-0 right-0 z-[60] px-3 pb-2 pointer-events-none">
                             <div className="glass-panel rounded-2xl border border-rose-500/30 px-3 py-2 flex items-center gap-3 animate-pop-in pointer-events-auto" dir="ltr">
                                 <div className="text-center shrink-0">

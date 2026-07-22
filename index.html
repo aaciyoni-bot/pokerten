@@ -9434,9 +9434,6 @@ function PokerTable({
     const isMe = p.uid === user.uid;
     const topSeat = parseFloat(seatPos(i).top) < 34;
     const angI = Math.PI / 2 + i * 2 * Math.PI / N;
-    const cardsInStyle = {
-      transform: `translateX(${Math.round(-Math.cos(angI) * 36)}px)`
-    };
     let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
     let dispCards = p.cards || [];
     if (srvEngine) {
@@ -9515,7 +9512,9 @@ function PokerTable({
       const ang = isMe ? nC >= 5 ? 5 : 6 : nC >= 5 ? 6 : 7;
       return React.createElement("div", {
         className: `flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
-        style: cardsInStyle,
+        style: {
+          transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 36 : 14))}px)`
+        },
         dir: "ltr"
       }, dispCards.map((c, ci) => isMe && gs.phase === 'discard' && dispCards.length === 3 ? React.createElement("div", {
         key: ci,
@@ -9541,7 +9540,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'md'
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'sm'
       }))) : React.createElement("span", {
         key: ci,
         className: "card-reveal",
@@ -9551,7 +9550,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'md'
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'sm'
       }))));
     })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && (() => {
       let hn = null;
@@ -9609,7 +9608,9 @@ function PokerTable({
       const ang = nC >= 5 ? 6 : 7;
       return React.createElement("div", {
         className: `flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
-        style: cardsInStyle,
+        style: {
+          transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 36 : 14))}px)`
+        },
         dir: "ltr"
       }, dispCards.map((c, ci) => doFan ? React.createElement("span", {
         key: ci,
@@ -11041,9 +11042,6 @@ function DurakTable({
     const isDef = T.defenderUid === p.uid && T.status === 'playing';
     const topSeat = parseFloat(seatPos(i).top) < 34;
     const angI = Math.PI / 2 + i * 2 * Math.PI / N;
-    const cardsInStyle = {
-      transform: `translateX(${Math.round(-Math.cos(angI) * 36)}px)`
-    };
     const timerPct = isTurn ? Math.max(0, timeLeft / DURAK_TIME) : 0;
     const showAll = godView && !isMe;
     const oppFan = !isMe && !p.out && (p.cards || []).length > 0 && T.status === 'playing';

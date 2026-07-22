@@ -694,6 +694,56 @@ function botOracle(g, pl, eng) {
   return winners;
 }
 
+// ── Bot rotation (cash): every ~20-45 min one bot stands up between hands and a
+// fresh face sits down, so a table never shows the same lineup for days. The
+// swap is 1:1 ONLY while the table keeps ≥2 seats open for real players —
+// otherwise the leaver isn't replaced and the bots thin out. ──
+const SRV_BOT_FIRST = ["יוסי", "דודו", "אבי", "שלומי", "רמי", "קובי", "אלי", "מאיר", "אורן", "נדב", "מוטי", "דורון", "רועי", "עידן", "ליאור", "תומר", "אסף", "ניר", "גיא", "ברק", "Roy", "Idan", "Lior", "Tomer", "Omer", "Assaf", "Alon", "Barak", "Tal", "Yuval", "Eyal", "Ronen", "Shay", "Eran", "Danny", "Rafi"];
+const SRV_BOT_LAST = ["כהן", "לוי", "מזרחי", "פרץ", "ביטון", "אוחיון", "דהן", "חדד", "גבאי", "אזולאי", "מלכה", "עמר", "שרעבי", "אלבז", "אמסלם", "אדרי", "סבן", "טולדנו", "בוזגלו", "ממן", "Cohen", "Levi", "Mizrahi", "Peretz", "Biton", "Ohayon", "Dahan", "Hadad", "Gabay", "Azulay", "Malka", "Amar", "Elbaz", "Saban", "Toledano", "Maman", "Hazan", "Vaknin", "Avitan", "Shitrit"];
+async function rotateBots(tableId) {
+  try {
+    await db.runTransaction(async (tx) => {
+      const sn = await tx.get(tRef(tableId));
+      if (!sn.exists) return;
+      const t = sn.data();
+      const g = t.gameState || {};
+      if (t.tournamentId || !["waiting", "showdown"].includes(g.phase)) return;
+      const pl = {...(t.players || {})};
+      const bots = Object.values(pl).filter((q) => q.isBot);
+      if (!bots.length) return;
+      const now = Date.now();
+      const next = now + (20 + crypto.randomInt(25)) * 60000;
+      if (!t.botRotAt) { tx.update(tRef(tableId), {botRotAt: next}); return; }
+      if (now < t.botRotAt) return;
+      const maxP = Number((t.settings || {}).maxPlayers) || 9;
+      const seats = Object.keys(pl).length;
+      const out = bots[crypto.randomInt(bots.length)];
+      delete pl[out.uid];
+      const upd = {botRotAt: next, [`players.${out.uid}`]: FieldValue.delete()};
+      if (maxP - seats >= 2) {
+        const names = new Set(Object.values(pl).map((q) => q.name));
+        const keys = new Set(Object.values(pl).map((q) => String(q.name || "").split(" ").pop()));
+        let nm = null;
+        for (let i = 0; i < 60 && !nm; i++) {
+          const cand = SRV_BOT_FIRST[crypto.randomInt(SRV_BOT_FIRST.length)] + " " + SRV_BOT_LAST[crypto.randomInt(SRV_BOT_LAST.length)];
+          if (!names.has(cand) && !keys.has(cand.split(" ").pop())) nm = cand;
+        }
+        if (nm) {
+          const taken = new Set(Object.values(pl).map((q) => q.seatIndex));
+          let si = 0; while (taken.has(si)) si++;
+          const bb2 = round2((Number((t.settings || {}).blinds) || 0.5) * 2);
+          const live = Object.values(pl).filter((q) => (q.stack || 0) > 0).map((q) => q.stack);
+          const avg = live.length ? live.reduce((a2, b2) => a2 + b2, 0) / live.length : bb2 * 100;
+          const cap = maxBuyOf(t.settings) || avg;
+          const uid2 = `bot_${now}_${crypto.randomInt(1e9).toString(36)}`;
+          upd[`players.${uid2}`] = {uid: uid2, name: nm, seatIndex: si, stack: round2(Math.max(bb2 * 40, Math.min(avg, cap))), bet: 0, status: "waiting", cards: [], cardCount: 0, hasActed: false, actionText: "", isBot: true};
+        }
+      }
+      tx.update(tRef(tableId), upd);
+    });
+  } catch (e) { /* raced — next tick retries */ }
+}
+
 function botDecide(t, g, pl, eng, uid) {
   const p = pl[uid];
   const toCall = round2(Math.max(0, (g.highestBet || 0) - (p.bet || 0)));
@@ -719,6 +769,33 @@ function botDecide(t, g, pl, eng, uid) {
   const split = iWin && winners.length > 1;
   const visEq = street >= 3 ? botEquity(hole, board, g.currentGameType) : botPreflop(hole, g.currentGameType);
 
+  // ── PREFLOP: the standard starting-hands chart RULES the optics, winner or not.
+  // KK never limps. A destined-loser premium raises like a human and escapes on
+  // later streets ("cooler avoided" discipline); a destined-winner with junk
+  // mostly limps/defends — sneaking in cheap is exactly how junk wins big pots.
+  if (street === 0) {
+    const premium = visEq >= 0.8;     // AA/KK/QQ
+    const strong = visEq >= 0.62;     // JJ-99, AK/AQ, big broadways
+    const playable = visEq >= 0.45;   // suited connectors, Ax, mid pairs
+    if (premium) {
+      if (toCall >= stack) return {type: "call"};
+      return rnd < 0.9 ? {type: "raise", amount: raiseTo(0.55 + rnd * 0.25)} : {type: "call"};
+    }
+    if (iWin && !split) {
+      if (toCall >= stack) return {type: "call"};
+      if (strong) return rnd < 0.65 ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
+      return rnd < 0.25 ? {type: "raise", amount: raiseTo(0.45)} : {type: "call"}; // limp in quietly
+    }
+    if (split) return toCall === 0 || potOdds <= 0.34 || toCall >= stack ? {type: "call"} : {type: "fold"};
+    // destined loser — chart-honest, price-aware, minimum damage
+    if (toCall === 0) return strong && rnd < 0.5 ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
+    if (stack <= bb * 1.5) return {type: "call"};
+    if (strong && potOdds <= 0.34 && rnd < 0.8) return {type: "call"};
+    if (playable && potOdds <= 0.25 && rnd < 0.6) return {type: "call"};
+    if (toCall <= bb && rnd < 0.5) return {type: "call"};           // blind defense optics
+    return {type: "fold"};
+  }
+
   if (iWin && !split) {
     // Guaranteed winner: never folds, builds the pot. All-in only where a strong
     // human would naturally jam — late streets or when the pot got big.
@@ -728,7 +805,6 @@ function botDecide(t, g, pl, eng, uid) {
       if (rnd < (street >= 4 ? 0.55 : 0.4)) return {type: "raise", amount: raiseTo(0.6 + rnd * 0.3)};
       return {type: "call"};
     }
-    if (street === 0) return rnd < 0.55 ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
     if (street === 5) {
       if (rnd < 0.3 && stack <= pot * 1.6) return {type: "raise", amount: maxTo};                // river jam, pot-sized story
       return rnd < 0.85 ? {type: "raise", amount: raiseTo(0.65 + rnd * 0.3)} : {type: "call"};
@@ -744,13 +820,16 @@ function botDecide(t, g, pl, eng, uid) {
 
   // Destined loser: fold-for-free discipline. A runner-runner hope with no price
   // per the odds table is exactly what a solid player dumps — so it dumps.
-  if (toCall === 0) return {type: "call"};                          // free card: check it down
+  if (toCall === 0) {
+    // Flop with a big VISIBLE hand (overpair look): one believable stab, then slow down
+    if (street === 3 && visEq >= 0.7 && rnd < 0.55) return {type: "raise", amount: raiseTo(0.45)};
+    return {type: "call"};                                          // check it down
+  }
   if (stack <= bb * 1.5) return {type: "call"};                     // crumb stack — humans always call that
   // Theater calls (feed the pot ONLY when the visible story truly justifies it):
-  if (street === 0 && visEq >= 0.55 && potOdds <= 0.3 && rnd < 0.7) return {type: "call"};
+  if (street === 3 && visEq >= 0.6 && potOdds <= 0.3 && rnd < 0.7) return {type: "call"};
   if (street >= 3 && street < 5 && visEq >= 0.5 && potOdds <= 0.22 && rnd < 0.55) return {type: "call"};
   if (visEq >= 0.3 && potOdds <= 0.1 && rnd < 0.45) return {type: "call"};
-  if (toCall <= bb && street === 0 && rnd < 0.5) return {type: "call"}; // blind defense optics
   return {type: "fold"};
 }
 
@@ -832,6 +911,11 @@ exports.pkTick = onCall(async (request) => {
       bad.forEach((q) => { upd[`players.${q.uid}.sitOut`] = false; upd[`players.${q.uid}.sitOutNext`] = true; });
       await tRef(tableId).update(upd).catch(() => {});
     }
+  }
+
+  // Bot rotation: between hands, when its timer matured (or to arm the timer)
+  if (!t.tournamentId && ["waiting", "showdown"].includes(g.phase) && Object.values(pl).some((q) => q && q.isBot) && (!t.botRotAt || Date.now() > t.botRotAt)) {
+    await rotateBots(tableId);
   }
 
   // Door rule: leaving takes effect at the END of the hand, never inside one.

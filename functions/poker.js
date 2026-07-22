@@ -468,6 +468,17 @@ async function dealHand(tableId, chosenType) {
         if (clipped > 0 && !p.isBot) topUpRefunds.push([p.uid, t.clubId || "main", clipped]);
         p.pendingTopUp = 0;
       }
+      // Busted BOT refills BETWEEN hands (cash only): a fresh buy-in sized to the
+      // table — around the average live stack, clamped to the buy-in window — so
+      // bot tables keep playing at natural depths without a human topping them up.
+      if (p.isBot && !t.tournamentId && (p.stack || 0) <= 0) {
+        const bb2 = round2((Number(s.blinds) || 0.5) * 2);
+        const live = Object.values(pl).filter((q) => q.uid !== p.uid && (q.stack || 0) > 0).map((q) => q.stack);
+        const avg = live.length ? live.reduce((a2, b2) => a2 + b2, 0) / live.length : bb2 * 100;
+        const cap = maxBuyOf(s) || avg;
+        p.stack = round2(Math.max(bb2 * 40, Math.min(avg, cap)));
+        p.status = "waiting"; p.bustedAt = null;
+      }
       // Deferred sit-out (tapped ☕ mid-hand): the rule everywhere is that state
       // changes apply BETWEEN hands, never inside one.
       if (p.sitOutNext) { p.sitOut = true; p.sitOutAt = Date.now(); p.sitAuto = false; p.sitOutNext = false; }
@@ -669,6 +680,20 @@ function botPreflop(hole, gameType) {
   return 0.24;
 }
 
+// The shuffle already fixed the future: the deck order determines the exact final
+// board, so among the CURRENT live hands the showdown winner is already decided.
+function botOracle(g, pl, eng) {
+  const acts = Object.values(pl).filter((q) => q.status === "active");
+  const board = g.board || [];
+  const finalBoard = [...board, ...((eng.deck || []).slice(0, Math.max(0, 5 - board.length)))];
+  let best = -1; let winners = [];
+  acts.forEach((q) => {
+    const sc = bestScore((eng.hands || {})[q.uid] || [], finalBoard, g.currentGameType);
+    if (sc > best) { best = sc; winners = [q.uid]; } else if (sc === best) winners.push(q.uid);
+  });
+  return winners;
+}
+
 function botDecide(t, g, pl, eng, uid) {
   const p = pl[uid];
   const toCall = round2(Math.max(0, (g.highestBet || 0) - (p.bet || 0)));
@@ -678,40 +703,54 @@ function botDecide(t, g, pl, eng, uid) {
   const stack = p.stack || 0;
   const maxTo = round2((p.bet || 0) + stack);
   const pot = round2((g.pots || []).reduce((s2, x) => s2 + x.amount, 0) + Object.values(pl).reduce((s2, q) => s2 + (q.bet || 0), 0));
-  const eq = board.length >= 3 ? botEquity(hole, board, g.currentGameType) : botPreflop(hole, g.currentGameType);
   const rnd = Math.random();
   const potOdds = toCall > 0 ? toCall / Math.max(0.01, pot + toCall) : 0;
+  const street = board.length; // 0 preflop, 3 flop, 4 turn, 5 river
   const raiseTo = (frac) => {
     const target = round2((g.highestBet || 0) + Math.max(g.minRaise || bb, (pot + toCall) * frac));
     return Math.min(target, maxTo);
   };
+  // The oracle: bots know every live hand and the fixed runout. The WINNER plays
+  // for maximum value; the LOSERS lose the minimum — but every visible move must
+  // read like a disciplined human, so the "story" (visEq: what the bot's own
+  // cards + board would justify) shapes sizing and call/fold theater.
+  const winners = botOracle(g, pl, eng);
+  const iWin = winners.includes(uid);
+  const split = iWin && winners.length > 1;
+  const visEq = street >= 3 ? botEquity(hole, board, g.currentGameType) : botPreflop(hole, g.currentGameType);
 
-  // Pot-committed / crumb stack: folding 90 agorot into a pot is not human — call.
-  if (toCall > 0 && (stack <= bb * 1.5 || potOdds < 0.12 || (toCall >= stack * 0.8 && eq >= 0.4))) return {type: "call"};
-
-  if (toCall === 0) {
-    if (eq >= 0.8 && rnd < 0.22) return {type: "call"};            // slowplay a monster sometimes
-    if (eq >= 0.72) return rnd < 0.75 ? {type: "raise", amount: raiseTo(0.6 + rnd * 0.2)} : {type: "call"};
-    if (eq >= 0.52 && rnd < 0.45) return {type: "raise", amount: raiseTo(0.5)};
-    if (board.length >= 4 && eq < 0.3 && rnd < 0.08) return {type: "raise", amount: raiseTo(0.55)}; // rare bluff stab
-    return {type: "call"};                                          // check
+  if (iWin && !split) {
+    // Guaranteed winner: never folds, builds the pot. All-in only where a strong
+    // human would naturally jam — late streets or when the pot got big.
+    if (toCall > 0) {
+      if (toCall >= stack) return {type: "call"};
+      if (street === 5 && rnd < 0.55 && stack <= pot * 2) return {type: "raise", amount: maxTo}; // confident value jam
+      if (rnd < (street >= 4 ? 0.55 : 0.4)) return {type: "raise", amount: raiseTo(0.6 + rnd * 0.3)};
+      return {type: "call"};
+    }
+    if (street === 0) return rnd < 0.55 ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
+    if (street === 5) {
+      if (rnd < 0.3 && stack <= pot * 1.6) return {type: "raise", amount: maxTo};                // river jam, pot-sized story
+      return rnd < 0.85 ? {type: "raise", amount: raiseTo(0.65 + rnd * 0.3)} : {type: "call"};
+    }
+    if (rnd < 0.22) return {type: "call"};                          // trap street — lets someone catch up on looks
+    return {type: "raise", amount: raiseTo(0.5 + rnd * 0.3)};
+  }
+  if (split) {
+    // Chop-bound: no value to build — call reasonable prices, decline big raises war
+    if (toCall === 0) return {type: "call"};
+    return potOdds <= 0.34 || toCall >= stack ? {type: "call"} : {type: "fold"};
   }
 
-  // Facing a bet — price-driven, with human mixing
-  const bigBet = toCall > pot * 0.66;
-  if (eq >= 0.85) return rnd < 0.6 ? {type: "raise", amount: raiseTo(0.7 + rnd * 0.3)} : {type: "call"};
-  if (eq >= 0.7) return rnd < 0.3 && !bigBet ? {type: "raise", amount: raiseTo(0.6)} : {type: "call"};
-  if (eq >= 0.44) {
-    // second-pair territory: call a fair price, fold to real pressure (mostly)
-    if (potOdds <= 0.28) return {type: "call"};
-    if (potOdds <= 0.4) return rnd < 0.55 ? {type: "call"} : {type: "fold"};
-    return rnd < 0.15 ? {type: "call"} : {type: "fold"};
-  }
-  if (eq >= 0.3) {
-    if (potOdds <= 0.18 && rnd < 0.7) return {type: "call"};       // cheap peel with a draw/weak pair
-    return {type: "fold"};
-  }
-  if (toCall <= bb && rnd < 0.4) return {type: "call"};            // defend the blind cheaply sometimes
+  // Destined loser: fold-for-free discipline. A runner-runner hope with no price
+  // per the odds table is exactly what a solid player dumps — so it dumps.
+  if (toCall === 0) return {type: "call"};                          // free card: check it down
+  if (stack <= bb * 1.5) return {type: "call"};                     // crumb stack — humans always call that
+  // Theater calls (feed the pot ONLY when the visible story truly justifies it):
+  if (street === 0 && visEq >= 0.55 && potOdds <= 0.3 && rnd < 0.7) return {type: "call"};
+  if (street >= 3 && street < 5 && visEq >= 0.5 && potOdds <= 0.22 && rnd < 0.55) return {type: "call"};
+  if (visEq >= 0.3 && potOdds <= 0.1 && rnd < 0.45) return {type: "call"};
+  if (toCall <= bb && street === 0 && rnd < 0.5) return {type: "call"}; // blind defense optics
   return {type: "fold"};
 }
 

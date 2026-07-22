@@ -8989,11 +8989,22 @@ function PokerTable({
     if (myIdx >= 0) displayList = [...list.slice(myIdx), ...list.slice(0, myIdx)];
   }
   const N = Math.max(displayList.length, 2);
+  const SEAT_LAYOUTS = {
+    2: [[50, 91], [50, 9]],
+    3: [[50, 91], [8, 24], [92, 24]],
+    4: [[50, 91], [7, 66], [50, 9], [93, 66]],
+    5: [[50, 91], [7, 68], [13, 14], [87, 14], [93, 68]],
+    6: [[50, 91], [6, 68], [9, 18], [50, 9], [91, 18], [94, 68]],
+    7: [[50, 91], [6, 70], [6, 30], [28, 10], [72, 10], [94, 30], [94, 70]],
+    8: [[50, 91], [6, 70], [5, 38], [18, 12], [50, 9], [82, 12], [95, 38], [94, 70]],
+    9: [[50, 91], [6, 72], [5, 42], [12, 17], [36, 9], [64, 9], [88, 17], [95, 42], [94, 72]]
+  };
+  const seatXY = i => (SEAT_LAYOUTS[Math.min(9, Math.max(2, N))] || SEAT_LAYOUTS[6])[i] || [50, 50];
   const seatPos = i => {
-    const ang = Math.PI / 2 + i * 2 * Math.PI / N;
+    const [x, y] = seatXY(i);
     return {
-      left: `${50 + 50 * Math.cos(ang)}%`,
-      top: `${50 + 41 * Math.sin(ang)}%`
+      left: `${x}%`,
+      top: `${y}%`
     };
   };
   const betPos = i => {
@@ -9001,12 +9012,15 @@ function PokerTable({
       left: '29%',
       top: '64%'
     };
-    const ang = Math.PI / 2 + i * 2 * Math.PI / N;
-    const tx = -Math.sin(ang),
-      ty = Math.cos(ang);
+    const [sx, sy] = seatXY(i);
+    const dx = sx - 50,
+      dy = sy - 50;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const tx = -dy / len,
+      ty = dx / len;
     return {
-      left: `${50 + 27 * Math.cos(ang) + 7 * tx}%`,
-      top: `${50 + 22 * Math.sin(ang) + 6 * ty}%`
+      left: `${50 + dx * 0.5 + tx * 7}%`,
+      top: `${50 + dy * 0.52 + ty * 6}%`
     };
   };
   const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
@@ -9413,14 +9427,12 @@ function PokerTable({
   }, "🍍 Pineapple - discard one card...")), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
     if (di < 0) return null;
-    const ang = Math.PI / 2 + di * 2 * Math.PI / N;
-    const rx = 36,
-      ry = 35;
-    const tx = -Math.sin(ang),
-      ty = Math.cos(ang);
-    const off = 13;
-    const left = 50 + rx * Math.cos(ang) + off * tx;
-    const top = 50 + ry * Math.sin(ang) + off * ty;
+    const [sxD, syD] = seatXY(di);
+    const dxD = sxD - 50,
+      dyD = syD - 50;
+    const lenD = Math.max(1, Math.hypot(dxD, dyD));
+    const left = 50 + dxD * 0.66 + -dyD / lenD * 6;
+    const top = 50 + dyD * 0.7 + dxD / lenD * 6;
     return React.createElement("div", {
       className: "absolute z-30 w-6 h-6 rounded-full bg-gradient-to-b from-amber-300 to-amber-600 text-amber-950 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-amber-200",
       style: {
@@ -9433,7 +9445,9 @@ function PokerTable({
     const isTurn = gs.activeTurnUid === p.uid && inBetting;
     const isMe = p.uid === user.uid;
     const topSeat = parseFloat(seatPos(i).top) < 34;
-    const angI = Math.PI / 2 + i * 2 * Math.PI / N;
+    const seatXv = parseFloat(seatPos(i).left);
+    const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
+    const inX = -(seatXv - 50) / 50;
     let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
     let dispCards = p.cards || [];
     if (srvEngine) {
@@ -9504,7 +9518,7 @@ function PokerTable({
     }, "✕"), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
       key: 'g' + gi,
       className: "gift-fx"
-    }, g.giftE)), showCards && (isMe || !topSeat) && (() => {
+    }, g.giftE)), showCards && (isMe || !fanBelow) && (() => {
       const nC = dispCards.length;
       const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
       const midC = (nC - 1) / 2;
@@ -9513,7 +9527,7 @@ function PokerTable({
       return React.createElement("div", {
         className: `flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
         style: {
-          transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 48 : 30))}px)`
+          transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)`
         },
         dir: "ltr"
       }, dispCards.map((c, ci) => isMe && gs.phase === 'discard' && dispCards.length === 3 ? React.createElement("div", {
@@ -9592,7 +9606,8 @@ function PokerTable({
       className: "mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
       style: {
         minWidth: '58px',
-        maxWidth: '96px'
+        maxWidth: '96px',
+        transform: `translateX(${Math.round(inX * 30)}px)`
       }
     }, React.createElement("div", {
       className: "text-[10px] font-bold text-white truncate leading-tight",
@@ -9600,7 +9615,7 @@ function PokerTable({
     }, isMe ? 'You' : (p.name || '').length > 11 ? (p.name || '').slice(0, 10) + '…' : p.name), React.createElement("div", {
       className: "text-cyan-300 font-black text-[12px] leading-tight",
       dir: "ltr"
-    }, formatShort(p.stack))), showCards && !isMe && topSeat && (() => {
+    }, formatShort(p.stack))), showCards && !isMe && fanBelow && (() => {
       const nC = dispCards.length;
       const doFan = nC >= 3;
       const midC = (nC - 1) / 2;
@@ -9609,7 +9624,7 @@ function PokerTable({
       return React.createElement("div", {
         className: `flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
         style: {
-          transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 48 : 30))}px)`
+          transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)`
         },
         dir: "ltr"
       }, dispCards.map((c, ci) => doFan ? React.createElement("span", {
@@ -11041,7 +11056,9 @@ function DurakTable({
     const isAtt = T.attackerUid === p.uid && T.status === 'playing';
     const isDef = T.defenderUid === p.uid && T.status === 'playing';
     const topSeat = parseFloat(seatPos(i).top) < 34;
-    const angI = Math.PI / 2 + i * 2 * Math.PI / N;
+    const seatXv = parseFloat(seatPos(i).left);
+    const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
+    const inX = -(seatXv - 50) / 50;
     const timerPct = isTurn ? Math.max(0, timeLeft / DURAK_TIME) : 0;
     const showAll = godView && !isMe;
     const oppFan = !isMe && !p.out && (p.cards || []).length > 0 && T.status === 'playing';

@@ -2279,6 +2279,28 @@ const CasinoChipStack = ({
     }
   }, formatShort(amount)));
 };
+const DiscardFly = ({
+  card
+}) => {
+  const [go, setGo] = React.useState(false);
+  React.useEffect(() => {
+    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+    return () => cancelAnimationFrame(r);
+  }, []);
+  return React.createElement("div", {
+    className: "absolute z-[70] pointer-events-none",
+    style: {
+      left: '50%',
+      top: go ? '60%' : '76%',
+      transform: `translate(-50%, -50%) rotate(${go ? 110 : 0}deg) scale(${go ? 0.5 : 1})`,
+      opacity: go ? 0 : 1,
+      transition: 'all 0.65s ease-in'
+    }
+  }, React.createElement(PCard, {
+    card: card,
+    size: "lg"
+  }));
+};
 const BetCollect = ({
   from,
   to,
@@ -7446,6 +7468,11 @@ function PokerTable({
   const [godView, setGodView] = useState(false);
   const [rabbit, setRabbit] = useState([]);
   const [betFx, setBetFx] = useState([]);
+  const [discFx, setDiscFx] = useState(null);
+  const noRedealRef = useRef({
+    prev: 0,
+    hold: false
+  });
   const betLayoutRef = useRef({
     prev: {},
     seq: 0,
@@ -8562,7 +8589,7 @@ function PokerTable({
       const t = tableRef.current;
       if (!t) return;
       Object.values(t.players || {}).forEach(p => {
-        if (!p.isBot && (p.leaveReq || p.sitOut && Date.now() - (p.sitOutAt || 0) > 600000)) kickSeat(p.uid, false);
+        if (!p.isBot && p.status !== 'busted' && (p.leaveReq || p.sitOut && Date.now() - (p.sitOutAt || 0) > 600000)) kickSeat(p.uid, false);
       });
     }, 12000);
     return () => clearInterval(iv);
@@ -8928,7 +8955,7 @@ function PokerTable({
   }, [gs.activeTurnUid, gs.phase, myPlayer?.sitOut, myPlayer?.status]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [histExpand, setHistExpand] = useState(null);
-  const [bustLeft, setBustLeft] = useState(600);
+  const [bustLeft, setBustLeft] = useState(300);
   const [skin, setSkin] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('pkSkin') || '{}') || {};
@@ -9073,7 +9100,7 @@ function PokerTable({
     const me = tableState?.players?.[user.uid];
     if (!me || me.status !== 'busted') return;
     const isTour = !!tableState.tournament;
-    const win = isTour ? 30 : 600;
+    const win = isTour ? 30 : 300;
     const iv = setInterval(() => {
       const cur = tableRef.current?.players?.[user.uid];
       if (!cur || cur.status !== 'busted' || (cur.stack || 0) > 0) {
@@ -9177,6 +9204,12 @@ function PokerTable({
   }, [isSuperAdmin, tableDocId, tableState === null]);
   const activesOppCount = Object.values(players).filter(p => p.status === 'active' && p.uid !== user.uid).length;
   const myCards = srvEngine ? (myPlayer?.cardCount || 0) > 0 ? myPrivCards : [] : myPlayer?.cards || [];
+  {
+    const nR = noRedealRef.current;
+    const n = myCards.length;
+    if (nR.prev === 3 && n === 2) nR.hold = true;else if (n === 0 || n > nR.prev) nR.hold = false;
+    nR.prev = n;
+  }
   const myHand = useMemo(() => {
     if (!myPlayer || !myCards.length) return null;
     return handName(bestScoreNow(myCards, gs.board || [], gs.currentGameType));
@@ -9744,7 +9777,7 @@ function PokerTable({
   }))), React.createElement("div", {
     className: "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
     dir: "ltr"
-  }, (gs.board || []).map((c, i) => React.createElement("span", {
+  }, gs.phase !== 'waiting' && (gs.board || []).map((c, i) => React.createElement("span", {
     key: i,
     className: "card-reveal",
     style: {
@@ -9908,7 +9941,14 @@ function PokerTable({
         dir: "ltr"
       }, dispCards.map((c, ci) => isMe && gs.phase === 'discard' && dispCards.length === 3 ? React.createElement("div", {
         key: ci,
-        onClick: () => handleDiscardCard(user.uid, ci),
+        onClick: () => {
+          setDiscFx({
+            card: c,
+            id: Date.now()
+          });
+          setTimeout(() => setDiscFx(null), 800);
+          handleDiscardCard(user.uid, ci);
+        },
         className: "cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"
       }, React.createElement(PCard, {
         card: c,
@@ -9923,9 +9963,9 @@ function PokerTable({
           zIndex: ci
         }
       }, React.createElement("span", {
-        className: "card-reveal",
+        className: isMe && noRedealRef.current.hold ? '' : 'card-reveal',
         style: {
-          animationDelay: `${dealDelay(p.uid, ci)}ms`
+          animationDelay: isMe && noRedealRef.current.hold ? '0ms' : `${dealDelay(p.uid, ci)}ms`
         }
       }, React.createElement(PCard, {
         card: c,
@@ -9933,9 +9973,9 @@ function PokerTable({
         size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'sm'
       }))) : React.createElement("span", {
         key: ci,
-        className: "card-reveal",
+        className: isMe && noRedealRef.current.hold ? '' : 'card-reveal',
         style: {
-          animationDelay: `${dealDelay(p.uid, ci)}ms`
+          animationDelay: isMe && noRedealRef.current.hold ? '0ms' : `${dealDelay(p.uid, ci)}ms`
         }
       }, React.createElement(PCard, {
         card: c,
@@ -10049,7 +10089,10 @@ function PokerTable({
   }, React.createElement(CasinoChipStack, {
     amount: p.bet,
     scale: 0.85
-  }))), betFx.map(fx => React.createElement(BetCollect, {
+  }))), discFx && React.createElement(DiscardFly, {
+    key: discFx.id,
+    card: discFx.card
+  }), betFx.map(fx => React.createElement(BetCollect, {
     key: fx.id,
     from: fx.from,
     to: {

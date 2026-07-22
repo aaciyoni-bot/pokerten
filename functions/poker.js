@@ -483,7 +483,7 @@ async function dealHand(tableId, chosenType) {
       // changes apply BETWEEN hands, never inside one.
       if (p.sitOutNext) { p.sitOut = true; p.sitOutAt = Date.now(); p.sitAuto = false; p.sitOutNext = false; }
       // Leaving at hand's end — never dealt into the next hand (removal races the deal).
-      if (p.leaveReq && !t.tournamentId) p.sitOut = true;
+      if (p.leaveReq && !t.tournamentId) { p.sitOut = true; if (!p.sitOutAt) p.sitOutAt = Date.now(); }
       p.cards = []; p.cardCount = 0; p.bet = 0; p.actionText = ""; p.hasActed = false; p.reveal = false;
       // Tournament: sit-out players are still dealt (blinds burn, auto-folded by the tick);
       // out/busted stay out. Cash: sit-out means skipped.
@@ -492,7 +492,12 @@ async function dealHand(tableId, chosenType) {
         : (["busted", "out"].includes(p.status) ? p.status : "sitout");
     });
     const acts = activesOf(pl);
-    if (acts.length < 2) { tx.update(tRef(tableId), {players: pl, "gameState.phase": "waiting", "gameState.activeTurnUid": null}); return; }
+    if (acts.length < 2) {
+      // Not enough players: the felt must read as IDLE — a stale board with a
+      // lone sitting-out player looked like a broken table.
+      tx.update(tRef(tableId), {players: pl, "gameState.phase": "waiting", "gameState.activeTurnUid": null, "gameState.board": [], "gameState.pots": [], "gameState.lastWinners": null, "gameState.lastWinAmount": 0, "gameState.rabbit": null, "gameState.allInReveal": false, "gameState.earlyWin": false});
+      return;
+    }
     let gameType = chosenType || g0.currentGameType || s.baseGameType || "NLH";
     if (!GAME_CARDS[gameType]) gameType = s.baseGameType || "NLH";
     // Dealer's Choice: the choosing seat rotates backwards; when it's the dealer's

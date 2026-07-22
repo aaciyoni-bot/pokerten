@@ -7196,6 +7196,8 @@ function PokerTable({
   const [topUpBox, setTopUpBox] = useState(null);
   const tableRef = useRef(null);
   const actedTurnRef = useRef(null);
+  const leaveArmedRef = useRef(false);
+  const leavingNowRef = useRef(false);
   const advanceRef = useRef(null);
   const nextHandRef = useRef(null);
   const startingRef = useRef(false);
@@ -7679,6 +7681,7 @@ function PokerTable({
           p.sitAuto = false;
           p.sitOutNext = false;
         }
+        if (p.leaveReq && !t.tournamentId) p.sitOut = true;
         p.cards = [];
         p.bet = 0;
         p.actionText = '';
@@ -8123,7 +8126,8 @@ function PokerTable({
         const t = ts2.data();
         const p = t.players[uid];
         if (!p) return;
-        if (!byAdmin && !(p.sitOut && !t.tournamentId && Date.now() - (p.sitOutAt || 0) > 600000)) return;
+        if (!byAdmin && !t.tournamentId && !(p.leaveReq || p.sitOut && Date.now() - (p.sitOutAt || 0) > 600000)) return;
+        if (!byAdmin && t.tournamentId) return;
         const inHand = !['waiting', 'showdown'].includes((t.gameState || {}).phase) && p.status === 'active';
         if (inHand && !byAdmin) return;
         const ms = p.isBot ? null : await tr.get(memDoc(uid));
@@ -8146,11 +8150,30 @@ function PokerTable({
       const t = tableRef.current;
       if (!t) return;
       Object.values(t.players || {}).forEach(p => {
-        if (p.sitOut && !p.isBot && Date.now() - (p.sitOutAt || 0) > 600000) kickSeat(p.uid, false);
+        if (!p.isBot && (p.leaveReq || p.sitOut && Date.now() - (p.sitOutAt || 0) > 600000)) kickSeat(p.uid, false);
       });
     }, 12000);
     return () => clearInterval(iv);
   }, [tableState && tableState.id]);
+  useEffect(() => {
+    if (!tableState) return;
+    const me = (tableState.players || {})[user.uid];
+    if (me?.leaveReq) leaveArmedRef.current = true;
+    if (!leaveArmedRef.current) return;
+    if (!me) {
+      leaveArmedRef.current = false;
+      onLeave();
+      return;
+    }
+    const ph = (tableState.gameState || {}).phase;
+    if (me.leaveReq && ['waiting', 'showdown'].includes(ph) && !leavingNowRef.current) {
+      leavingNowRef.current = true;
+      leaveArmedRef.current = false;
+      Promise.resolve(handleStandUp(true)).finally(() => {
+        leavingNowRef.current = false;
+      });
+    }
+  }, [tableState]);
   const rebuyAfterBust = async () => {
     try {
       await window.fb.runTransaction(window.fb.db, async tr => {
@@ -8232,8 +8255,31 @@ function PokerTable({
     }
     const g = t.gameState;
     const inHand = !['waiting', 'showdown'].includes(g.phase) && t.players[user.uid].status === 'active';
+    if (inHand) {
+      const meF = t.players[user.uid] || {};
+      if (meF.leaveReq) {
+        if (await askConfirm("Cancel leaving and stay at the table?")) {
+          try {
+            await window.fb.updateDoc(tblRef(), {
+              [`players.${user.uid}.leaveReq`]: null
+            });
+          } catch (e) {}
+          leaveArmedRef.current = false;
+          showToast("Staying! 💪", "success");
+        }
+        return;
+      }
+      if (!(await askConfirm("You're mid-hand — you'll leave when the hand ends. Play it out. Mark the exit?"))) return;
+      try {
+        await window.fb.updateDoc(tblRef(), {
+          [`players.${user.uid}.leaveReq`]: Date.now()
+        });
+        leaveArmedRef.current = true;
+      } catch (e) {}
+      showToast("🚪 Leaving at the end of this hand (tap again to cancel)", "info");
+      return;
+    }
     if (setts.serverEngine) {
-      if (inHand && !(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
       const meS = t.players[user.uid] || {};
       try {
         await window.fb.updateDoc(tblRef(), {
@@ -8259,44 +8305,6 @@ function PokerTable({
       }], tableDocId);
       onLeave();
       return;
-    }
-    if (inHand) {
-      if (!(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
-      if (g.phase === 'discard' && (t.players[user.uid].cards || []).length === 3) {
-        await handleDiscardCard(user.uid, 0);
-        await new Promise(r => setTimeout(r, 400));
-      }
-      if (g.phase === 'dc_selection' && g.dcUid === user.uid) {
-        await selectDCGame(setts.baseGameType || 'NLH', user.uid);
-        await new Promise(r => setTimeout(r, 400));
-      }
-      const tNow = tableRef.current || t;
-      const gNow = tNow.gameState || g;
-      if (BETTING.includes(gNow.phase) && tNow.players[user.uid] && tNow.players[user.uid].status === 'active') {
-        const othersIn = Object.values(tNow.players).filter(q => q.status === 'active' && q.uid !== user.uid);
-        if (othersIn.length === 0) {
-          await finishEarlyWin({
-            ...gNow
-          }, clonePlayers(tNow.players), user.uid);
-        } else if (gNow.activeTurnUid === user.uid) {
-          await performAction(user.uid, 'fold');
-        } else {
-          const g2 = {
-            ...gNow
-          };
-          const pl = clonePlayers(tNow.players);
-          pl[user.uid].status = 'folded';
-          pl[user.uid].actionText = 'Fold';
-          pl[user.uid].hasActed = true;
-          const actives = Object.values(pl).filter(q => q.status === 'active');
-          if (actives.length === 1) await finishEarlyWin(g2, pl, actives[0].uid);else if (actives.length === 0) {
-            g2.phase = 'waiting';
-            g2.activeTurnUid = null;
-            await saveGame(g2, pl);
-          } else await saveGame(g2, pl);
-        }
-      }
-      await new Promise(r => setTimeout(r, 500));
     }
     try {
       let session = null;
@@ -9256,7 +9264,10 @@ function PokerTable({
     })(), !p.sitOut && p.sitOutNext && React.createElement("div", {
       className: "absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5",
       dir: "ltr"
-    }, "☕ after hand"), p.leavingAt && !tableState.tournamentId && (() => {
+    }, "☕ after hand"), p.leaveReq && !tableState.tournamentId && React.createElement("div", {
+      className: "absolute -top-2 left-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5",
+      dir: "ltr"
+    }, "🚪 after hand"), p.leavingAt && !tableState.tournamentId && (() => {
       const lms = Math.max(0, p.leavingAt - Date.now());
       return React.createElement("div", {
         className: "absolute right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5",

@@ -546,6 +546,10 @@
         .tbl-seats .tbl-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
         .tbl-seats span { font-size: 10.5px; font-weight: 600; color: #cbd5e1; }
         .tbl-main { flex: 1; min-width: 0; }
+        /* Spin & Cash rows: pinned on top, casino gold-and-magenta shimmer */
+        .tbl-row.tbl-spin { background: linear-gradient(90deg, rgba(245,158,11,0.16), rgba(190,24,93,0.13) 55%, rgba(245,158,11,0.10)); border: 1px solid rgba(245,158,11,0.5); box-shadow: 0 0 16px rgba(245,158,11,0.16), inset 0 0 22px rgba(245,158,11,0.05); position: relative; overflow: hidden; }
+        .tbl-row.tbl-spin::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(255,235,180,0.14) 50%, transparent 60%); background-size: 240% 100%; animation: spinShine 3.2s linear infinite; pointer-events: none; }
+        @keyframes spinShine { from { background-position: 140% 0; } to { background-position: -60% 0; } }
         .tbl-name { font-size: 12px; font-weight: 500; color: #8b98ad; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
         .tbl-dc { font-size: 9px; font-weight: 900; color: #fda4af; border: 1px solid rgba(244,63,94,0.4); border-radius: 4px; padding: 0 4px; flex: none; }
         .tbl-me { font-size: 9px; font-weight: 900; color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); border-radius: 99px; padding: 0 6px; flex: none; }
@@ -4667,7 +4671,7 @@ function LobbyView({
     const idx = GAME_ORDER.indexOf((t.settings || {}).baseGameType || 'NLH');
     return idx < 0 ? 99 : idx;
   };
-  const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => gtRank(a) - gtRank(b) || (a.createdAt || 0) - (b.createdAt || 0));
+  const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (b.settings?.spinMode ? 1 : 0) - (a.settings?.spinMode ? 1 : 0) || gtRank(a) - gtRank(b) || (a.createdAt || 0) - (b.createdAt || 0));
   const [pokFilter, setPokFilter] = useState('all');
   const [buyinEdit, setBuyinEdit] = useState(null);
   const pokerTpls = (() => {
@@ -5472,14 +5476,14 @@ function LobbyView({
     const cap = s.maxPlayers || 6;
     return React.createElement("div", {
       key: t.docId,
-      className: "tbl-row",
+      className: `tbl-row ${s.spinMode ? 'tbl-spin' : ''}`,
       onClick: () => onJoinPoker(t)
     }, React.createElement("div", {
       className: "tbl-spine",
       style: {
-        '--spineC': vs.hue
+        '--spineC': s.spinMode ? '#f59e0b' : vs.hue
       }
-    }, variantLabel(gt, s)), React.createElement("div", {
+    }, s.spinMode ? '🎡 SPIN' : variantLabel(gt, s)), React.createElement("div", {
       className: "tbl-seats"
     }, React.createElement("svg", {
       viewBox: "0 0 44 44",
@@ -5507,7 +5511,7 @@ function LobbyView({
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
-    }, s.spinMode ? `🎡 Spin & Cash ${formatShort(s.spinBuyIn || 50)}` : s.tableName || variantLabel(gt, s), s.isDealerChoice && React.createElement("span", {
+    }, s.spinMode ? `🎡 Spin & Cash ${formatShort(s.spinBuyIn || 50)} · ${variantLabel(gt, s)}` : s.tableName || variantLabel(gt, s), s.isDealerChoice && React.createElement("span", {
       className: "tbl-dc"
     }, "DC"), t.players && t.players[user.uid] && React.createElement("span", {
       className: "tbl-me"

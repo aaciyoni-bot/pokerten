@@ -217,28 +217,27 @@
         .action-btn:hover { border-color: rgba(103,232,249,0.4); }
         .action-btn:active { transform: translateY(2px); box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
 
-        /* ===== Poker: GG-style calm table — muted felt, graphite rim, no neon ===== */
+        /* ===== Poker: GG-match table — thick glossy rim, felt color per game (blue
+           Omaha / green NLH), soft top light, inner racetrack line ===== */
         .poker-table {
             background:
-                url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2064%2064'%3E%3Ctext%20x%3D'32'%20y%3D'43'%20font-family%3D'Arial%2Csans-serif'%20font-weight%3D'900'%20font-size%3D'36'%20text-anchor%3D'middle'%20fill%3D'rgba(255%2C255%2C255%2C0.045)'%3E%E2%99%A0%3C%2Ftext%3E%3C%2Fsvg%3E") 50% 74% / 80px no-repeat,
-                radial-gradient(ellipse at 50% 30%, rgba(255,255,255,0.05), transparent 58%),
-                radial-gradient(ellipse at 50% 42%, #33524a 0%, #27403a 50%, #1a2c27 100%);
+                radial-gradient(ellipse at 50% 26%, rgba(255,255,255,0.06), transparent 55%),
+                radial-gradient(ellipse at 50% 44%, var(--feltA, #2e6089) 0%, var(--feltB, #1f4a6e) 52%, var(--feltC, #132f47) 100%);
             border-radius: 999px;
-            border: 9px solid #23272f;
-            box-shadow: inset 0 6px 26px rgba(0,0,0,0.5), inset 0 0 70px rgba(0,0,0,0.35), 0 18px 50px rgba(0,0,0,0.7);
+            border: 12px solid #0f1216;
+            box-shadow: inset 0 10px 34px rgba(0,0,0,0.45), inset 0 0 80px rgba(0,0,0,0.28), 0 20px 55px rgba(0,0,0,0.8);
             position: relative;
         }
         .poker-table::before {
-            content: ''; position: absolute; inset: -9px; border-radius: inherit; pointer-events: none;
-            border: 2px solid transparent;
-            background: linear-gradient(170deg, #3d434f, #191d24 45%, #2e333d 78%, #14171d) border-box;
+            content: ''; position: absolute; inset: -12px; border-radius: inherit; pointer-events: none;
+            border: 3px solid transparent;
+            background: linear-gradient(175deg, #34393f, #0a0c0f 42%, #232830 78%, #060708) border-box;
             -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
             -webkit-mask-composite: xor; mask-composite: exclude;
         }
         .poker-table::after {
-            content: ''; position: absolute; inset: 11px; border-radius: inherit; pointer-events: none;
-            border: 1.5px solid rgba(255,255,255,0.07);
-            box-shadow: inset 0 0 30px rgba(0,0,0,0.35);
+            content: ''; position: absolute; inset: 30px; border-radius: inherit; pointer-events: none;
+            border: 1.5px solid rgba(255,255,255,0.055);
         }
 
         /* דסקטופ: שולחן קפסולה רחב במקום עיגול */
@@ -271,14 +270,15 @@
         }
         .card-reveal { display: inline-block; animation: cardReveal 0.32s cubic-bezier(0.2,0.85,0.25,1) both; transform-origin: 50% 50%; }
         @media (prefers-reduced-motion: reduce) { .card-reveal { animation-duration: 0.01s; } }
+        /* GG-style silver lattice card back */
         .card-back {
             border-radius: 9px;
             background:
-                url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2064%2064'%3E%3Ctext%20x%3D'32'%20y%3D'45'%20font-family%3D'Arial%2Csans-serif'%20font-weight%3D'900'%20font-size%3D'34'%20text-anchor%3D'middle'%20fill%3D'rgba(103%2C232%2C249%2C0.32)'%3E%26%239824%3B%3C%2Ftext%3E%3C%2Fsvg%3E") center / 58% no-repeat,
-                repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(103,232,249,0.05) 5px, rgba(103,232,249,0.05) 10px),
-                linear-gradient(160deg, #0e2233 0%, #091426 100%);
-            border: 1px solid rgba(34,211,238,0.4);
-            box-shadow: 0 6px 14px rgba(2,6,23,0.55), inset 0 0 0 3px rgba(255,255,255,0.05);
+                repeating-linear-gradient(45deg, rgba(120,133,151,0.30) 0 1.5px, transparent 1.5px 6px),
+                repeating-linear-gradient(-45deg, rgba(120,133,151,0.30) 0 1.5px, transparent 1.5px 6px),
+                linear-gradient(160deg, #f0f3f7 0%, #d3d9e2 55%, #bcc3cf 100%);
+            border: 2px solid #f8fafc;
+            box-shadow: 0 5px 12px rgba(2,6,23,0.5), inset 0 0 0 1px rgba(100,116,139,0.35);
         }
 
         .casino-chip { border-radius: 50%; border-style: dashed; box-shadow: 0 3px 6px rgba(0,0,0,0.55), inset 0 -2px 4px rgba(0,0,0,0.40), inset 0 2px 3px rgba(255,255,255,0.28); display: flex; align-items: center; justify-content: center; position: absolute; }
@@ -5767,38 +5767,48 @@
                             );
                         })()}
 
-                        <div className={"poker-table w-full max-w-[440px] h-full max-h-[calc(100dvh-190px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : "")}>
+                        <div className={"poker-table w-full max-w-[470px] h-full max-h-[calc(100dvh-185px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : "")}
+                             style={(() => {
+                                 // GG-match felt per game: blue for Omaha, green for NLH, teal for Pineapple
+                                 const F = { 'NLH': ['#2f7d4d', '#215c37', '#123a20'], 'Pineapple': ['#1f6d6d', '#175252', '#0e3535'] };
+                                 const c = F[gs.currentGameType || setts.baseGameType] || ['#2e6089', '#1f4a6e', '#132f47'];
+                                 return { '--feltA': c[0], '--feltB': c[1], '--feltC': c[2] };
+                             })()}>
                             {tableState.tournament && tableState.tournament.final && <div className="ft-banner" dir="ltr">FINAL TABLE</div>}
 
                             {/* מרכז: קופות, קלפים, מנצח — z-30 כדי שתמיד יהיו מעל קלפי הגב של המושבים (z-20) */}
-                            <div className="absolute left-1/2 top-[33%] -translate-x-1/2 flex gap-5 items-end z-30">
-                                {(gs.pots || []).map((pot, i) => <CasinoChipStack key={i} amount={pot.amount} scale={1.1} />)}
-                            </div>
+                            {/* GG layout: "Total Pot" pill above the board, collected chips below it */}
                             {totalPot > 0 && gs.phase !== 'waiting' && (
-                                <div className="absolute left-1/2 top-[39%] -translate-x-1/2 z-30 bg-black/45 border border-white/10 rounded-full px-3 py-0.5 text-[11px] font-black text-slate-100 pointer-events-none" dir="ltr">Pot {formatShort(totalPot)}</div>
+                                <div className="absolute left-1/2 top-[38%] -translate-x-1/2 z-30 bg-black/30 rounded-2xl px-5 py-1 text-center pointer-events-none" dir="ltr">
+                                    <div className="text-[10px] font-bold text-slate-200/90 leading-tight">Total Pot</div>
+                                    <div className="text-[14px] font-black text-amber-300 leading-tight">{formatShort(totalPot)}</div>
+                                </div>
                             )}
+                            <div className="absolute left-1/2 top-[58%] -translate-x-1/2 flex gap-5 items-start z-30">
+                                {(gs.pots || []).map((pot, i) => <CasinoChipStack key={i} amount={pot.amount} scale={0.9} />)}
+                            </div>
 
-                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 z-30" dir="ltr">
-                                {(gs.board || []).map((c, i) => <span key={i} className="card-reveal" style={{ animationDelay: `${(i % 3) * 100}ms` }}><PCard card={c} size="md" /></span>)}
+                            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30" dir="ltr">
+                                {(gs.board || []).map((c, i) => <span key={i} className="card-reveal" style={{ animationDelay: `${(i % 3) * 100}ms` }}><PCard card={c} size="lg" /></span>)}
                                 {rabbit.length > 0 && rabbit.map((c, i) => (
-                                    <div key={'rb'+i} className="relative opacity-75"><PCard card={c} size="md" /><span className="absolute -top-2 -right-1 text-xs">🐰</span></div>
+                                    <div key={'rb'+i} className="relative opacity-75"><PCard card={c} size="lg" /><span className="absolute -top-2 -right-1 text-xs">🐰</span></div>
                                 ))}
                                 {gs.phase !== 'waiting' && [...Array(Math.max(0, 5 - (gs.board || []).length - rabbit.length))].map((_, i) => (
-                                    <div key={'ph'+i} className="w-9 sm:w-10 rounded-lg border border-dashed border-white/15 bg-white/[0.02]" style={{ height: '3.4rem' }}></div>
+                                    <div key={'ph'+i} className="w-11 sm:w-12 rounded-lg border border-dashed border-white/12 bg-white/[0.02]" style={{ height: '4.4rem' }}></div>
                                 ))}
                                 {gs.phase === 'showdown' && gs.earlyWin && !srvEngine && rabbit.length === 0 && (gs.board || []).length < 5 && (gs.deck || []).length >= (5 - (gs.board || []).length) && (
                                     <button onClick={() => setRabbit((gs.deck || []).slice(0, 5 - (gs.board || []).length))} title="Rabbit hunt — see what would have come" className="self-center w-9 h-9 rounded-full bg-slate-900/90 border border-white/15 text-lg hover:scale-110 transition-transform">🐰</button>
                                 )}
                             </div>
 
-                            <div className="absolute left-1/2 top-[64%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%]">
-                                {gs.phase === 'waiting' && (
-                                    <div className="text-slate-300/40 font-bold text-[11px] leading-relaxed" dir="ltr">
-                                        <div>{variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts) + ' ' + formatShort(setts.blinds) + '/' + formatShort(BB)}</div>
-                                        <div>{'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '')}</div>
-                                        <div className="tracking-[0.15em] text-[9px] text-slate-400/30 uppercase mt-0.5">POKERTEN</div>
-                                    </div>
-                                )}
+                            {/* GG-style always-on table info on the felt */}
+                            <div className="absolute left-1/2 top-[65%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%]">
+                                <div className="text-slate-100/30 font-bold text-[13px] leading-relaxed" dir="ltr">
+                                    <div className="text-[14px]">{setts.tableName || variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts)}</div>
+                                    <div>{'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '')}</div>
+                                    {setts.isDealerChoice && <div>Dealer's Choice</div>}
+                                    {setts.straddle && <div>Straddle</div>}
+                                </div>
                                 {gs.phase === 'discard' && <div className="text-amber-300 font-black text-xs animate-pulse">🍍 Pineapple - discard one card...</div>}
                             </div>
 
@@ -5817,7 +5827,7 @@
                                 const off = 13;                          // היסט הצידה שמפנה את ה-D מהקלפים ומהאווטאר
                                 const left = 50 + rx * Math.cos(ang) + off * tx;
                                 const top = 50 + ry * Math.sin(ang) + off * ty;
-                                return <div className="absolute z-30 w-6 h-6 rounded-full bg-white text-slate-900 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-slate-300" style={{ left: `${left}%`, top: `${top}%`, transform: 'translate(-50%,-50%)' }}>D</div>;
+                                return <div className="absolute z-30 w-6 h-6 rounded-full bg-gradient-to-b from-amber-300 to-amber-600 text-amber-950 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-amber-200" style={{ left: `${left}%`, top: `${top}%`, transform: 'translate(-50%,-50%)' }}>D</div>;
                             })()}
 
                             {/* Players */}
@@ -5915,7 +5925,7 @@
                                             {/* GG-style name+stack pill: name truncated to the frame, balance clear below */}
                                             <div className="mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center" style={{ minWidth: '58px', maxWidth: '96px' }}>
                                                 <div className="text-[10px] font-bold text-white truncate leading-tight" title={isMe ? 'You' : p.name}>{isMe ? 'You' : ((p.name || '').length > 11 ? (p.name || '').slice(0, 10) + '…' : p.name)}</div>
-                                                <div className="text-gold-400 font-black text-[12px] leading-tight" dir="ltr">{formatShort(p.stack)}</div>
+                                                <div className="text-cyan-300 font-black text-[12px] leading-tight" dir="ltr">{formatShort(p.stack)}</div>
                                             </div>
 
                                             {showCards && !isMe && topSeat && (() => {

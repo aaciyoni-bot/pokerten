@@ -5688,7 +5688,7 @@
                 // Elliptical "lying" table: wider horizontally (43), shorter vertically (34) so seats
                 // spread along the long sides instead of stacking — less crowded, and the bottom seat
                 // (You) + its stack stay well on-screen.
-                return { left: `${50 + 48 * Math.cos(ang)}%`, top: `${50 + 39 * Math.sin(ang)}%` };
+                return { left: `${50 + 50 * Math.cos(ang)}%`, top: `${50 + 41 * Math.sin(ang)}%` };
             };
             const betPos = (i) => {
                 // Hero seat: the big bottom fan owns the center — the bet sits beside it, on
@@ -6019,7 +6019,7 @@
                                                 const ovl = isMe ? (nC >= 5 ? -28 : -32) : (hidden ? (nC >= 5 ? -13 : -11) : (nC >= 5 ? -22 : -18));
                                                 const ang = isMe ? (nC >= 5 ? 5 : 6) : (nC >= 5 ? 6 : 7);
                                                 return (
-                                                <div className={`flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : (isMe ? 'gap-1' : 'gap-0.5')}`} style={{ transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 36 : 14))}px)` }} dir="ltr">
+                                                <div className={`flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : (isMe ? 'gap-1' : 'gap-0.5')}`} style={{ transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 48 : 30))}px)` }} dir="ltr">
                                                     {dispCards.map((c, ci) => (
                                                         isMe && gs.phase === 'discard' && dispCards.length === 3
                                                         ? <div key={ci} onClick={() => handleDiscardCard(user.uid, ci)} className="cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"><PCard card={c} size="xl" /></div>
@@ -6069,7 +6069,7 @@
                                                 const ovl = nC >= 5 ? -18 : nC === 4 ? -15 : -11;
                                                 const ang = nC >= 5 ? 6 : 7;
                                                 return (
-                                                <div className={`flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`} style={{ transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 36 : 14))}px)` }} dir="ltr">
+                                                <div className={`flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`} style={{ transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 48 : 30))}px)` }} dir="ltr">
                                                     {dispCards.map((c, ci) => (
                                                         doFan
                                                         ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(midC - ci) * ang}deg) translateY(${-Math.abs(ci - midC) * 2.5}px)`, transformOrigin: '50% -15%', zIndex: ci }}><span className="card-reveal" style={{ animationDelay: `${dealDelay(p.uid, ci)}ms` }}><PCard card={c} hidden={hidden} size={hidden ? 'xs' : 'sm'} /></span></span>

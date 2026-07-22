@@ -2279,6 +2279,101 @@ const CasinoChipStack = ({
     }
   }, formatShort(amount)));
 };
+const SPIN_SEGS = [2, 3, 100, 2, 5, 3, 10, 2, 3, 20, 4, 3];
+const SEG_COL = {
+  2: '#334155',
+  3: '#0f766e',
+  4: '#7c3aed',
+  5: '#b45309',
+  10: '#be185d',
+  20: '#b91c1c',
+  100: '#eab308'
+};
+const SpinWheel = ({
+  mult,
+  near,
+  prize
+}) => {
+  const [go, setGo] = React.useState(false);
+  const [done, setDone] = React.useState(false);
+  const target = React.useMemo(() => {
+    const idxs = SPIN_SEGS.map((m, i) => m === mult ? i : -1).filter(i => i >= 0);
+    if (near) return SPIN_SEGS[1] === mult ? 1 : SPIN_SEGS[3] === mult ? 3 : idxs[0];
+    const pool = idxs.filter(i => i !== 1 && i !== 3);
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : idxs[0];
+  }, []);
+  React.useEffect(() => {
+    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+    const tm = setTimeout(() => {
+      setDone(true);
+      try {
+        playSnd('chip', 5, 0.1);
+      } catch (e) {}
+    }, 6600);
+    return () => {
+      cancelAnimationFrame(r);
+      clearTimeout(tm);
+    };
+  }, []);
+  const n = SPIN_SEGS.length,
+    segAng = 360 / n;
+  const grad = SPIN_SEGS.map((m, i) => `${SEG_COL[m]} ${i * segAng}deg ${(i + 1) * segAng}deg`).join(', ');
+  const finalRot = 6 * 360 + (360 - (target * segAng + segAng / 2));
+  return React.createElement("div", {
+    className: "fixed inset-0 z-[400] bg-slate-950/92 backdrop-blur-sm flex flex-col items-center justify-center",
+    dir: "ltr"
+  }, React.createElement("div", {
+    className: "text-amber-300 font-black text-xl mb-4 tracking-widest animate-pulse"
+  }, "🎡 SPIN & CASH"), React.createElement("div", {
+    className: "relative",
+    style: {
+      width: '280px',
+      height: '280px'
+    }
+  }, React.createElement("div", {
+    className: "absolute inset-0 rounded-full border-[10px] border-amber-700 shadow-[0_0_45px_rgba(245,158,11,0.35),inset_0_0_25px_rgba(0,0,0,0.6)]",
+    style: {
+      background: `conic-gradient(${grad})`
+    }
+  }, SPIN_SEGS.map((m, i) => React.createElement("div", {
+    key: i,
+    className: "absolute left-1/2 top-1/2 text-white font-black",
+    style: {
+      transform: `rotate(${i * segAng + segAng / 2}deg) translateY(-108px) translateX(-50%)`,
+      transformOrigin: '0 0',
+      fontSize: m === 100 ? '15px' : '13px',
+      textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+      color: m === 100 ? '#fff7cc' : '#fff'
+    }
+  }, "×", m))), React.createElement("div", {
+    className: "absolute inset-[86px] rounded-full bg-slate-950 border-4 border-amber-600/60 flex items-center justify-center"
+  }, React.createElement("span", {
+    className: `font-black text-2xl ${done ? 'text-amber-300 animate-pop-in' : 'text-slate-600'}`
+  }, done ? `×${mult}` : '?')), React.createElement("div", {
+    className: "absolute inset-0",
+    style: {
+      transform: `rotate(${go ? finalRot : 0}deg)`,
+      transition: go ? 'transform 6.5s cubic-bezier(0.13, 0.82, 0.16, 1)' : 'none'
+    }
+  }, React.createElement("div", {
+    className: "absolute left-1/2 -translate-x-1/2",
+    style: {
+      top: '16px',
+      width: '17px',
+      height: '17px',
+      borderRadius: '50%',
+      background: 'radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 70%, #64748b)',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.7)'
+    }
+  }))), React.createElement("div", {
+    className: `mt-5 text-center transition-opacity duration-500 ${done ? 'opacity-100' : 'opacity-0'}`
+  }, React.createElement("div", {
+    className: "text-3xl font-black text-amber-300",
+    dir: "ltr"
+  }, "Prize: ", formatShort(prize)), React.createElement("div", {
+    className: "text-slate-400 text-xs font-bold mt-1"
+  }, "Winner takes all · good luck! 🍀")));
+};
 const DiscardFly = ({
   card
 }) => {
@@ -5406,7 +5501,7 @@ function LobbyView({
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
-    }, s.tableName || variantLabel(gt, s), s.isDealerChoice && React.createElement("span", {
+    }, s.spinMode ? `🎡 Spin & Cash ${formatShort(s.spinBuyIn || 50)}` : s.tableName || variantLabel(gt, s), s.isDealerChoice && React.createElement("span", {
       className: "tbl-dc"
     }, "DC"), t.players && t.players[user.uid] && React.createElement("span", {
       className: "tbl-me"
@@ -7203,7 +7298,10 @@ function PokerCreateView({
     omahaPotLimit: true,
     bombEvery: 0,
     bombAnte: 2,
-    aofEvery: 0
+    aofEvery: 0,
+    spinMode: false,
+    spinBuyIn: 50,
+    spinStack: 1000
   });
   const upd = (k, v) => setS(prev => ({
     ...prev,
@@ -7474,6 +7572,45 @@ function PokerCreateView({
   }, "Omaha plays ", React.createElement("b", {
     className: "text-amber-400"
   }, "POT LIMIT"), " (PLO) — uncheck for No-Limit (NLO)"))), React.createElement(Field, {
+    label: "🎡 Spin & Cash"
+  }, React.createElement("label", {
+    className: "flex items-center gap-2 cursor-pointer bg-slate-900 border border-amber-500/30 rounded-xl p-3"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: !!s.spinMode,
+    onChange: e => {
+      const on = e.target.checked;
+      setS(prev => ({
+        ...prev,
+        spinMode: on,
+        ...(on ? {
+          maxPlayers: 3,
+          rakePercent: 0
+        } : {})
+      }));
+    },
+    className: "accent-amber-500 w-4 h-4"
+  }), React.createElement("span", {
+    className: "text-white text-sm font-bold"
+  }, "3 players · the wheel picks the prize (×2–×20, jackpot on display) · winner takes all · no rake")), s.spinMode && React.createElement("div", {
+    className: "grid grid-cols-2 gap-2 mt-2"
+  }, React.createElement("div", null, React.createElement("div", {
+    className: "text-[10px] text-slate-400 font-black mb-1"
+  }, "Entry price"), React.createElement("input", {
+    type: "number",
+    value: s.spinBuyIn ?? 50,
+    onChange: e => upd('spinBuyIn', Number(e.target.value)),
+    className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm outline-none focus:border-amber-500/60",
+    dir: "ltr"
+  })), React.createElement("div", null, React.createElement("div", {
+    className: "text-[10px] text-slate-400 font-black mb-1"
+  }, "Starting chips"), React.createElement("input", {
+    type: "number",
+    value: s.spinStack ?? 1000,
+    onChange: e => upd('spinStack', Number(e.target.value)),
+    className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm outline-none focus:border-amber-500/60",
+    dir: "ltr"
+  })))), React.createElement(Field, {
     label: "Action hands 💣"
   }, React.createElement("div", {
     className: "grid grid-cols-2 gap-2"
@@ -7557,6 +7694,15 @@ function PokerTable({
   const [rabbit, setRabbit] = useState([]);
   const [betFx, setBetFx] = useState([]);
   const [discFx, setDiscFx] = useState(null);
+  const [spinShow, setSpinShow] = useState(false);
+  useEffect(() => {
+    const t2 = tableState;
+    if (t2?.spin && !t2.spinDone && Date.now() < (t2.spinStartAt || 0)) {
+      setSpinShow(true);
+      const tm = setTimeout(() => setSpinShow(false), Math.max(500, (t2.spinStartAt || 0) - Date.now() + 1000));
+      return () => clearTimeout(tm);
+    }
+  }, [!!tableState?.spin]);
   const noRedealRef = useRef({
     prev: 0,
     hold: false
@@ -8342,6 +8488,39 @@ function PokerTable({
         const pl = t.players || {};
         if (pl[user.uid]) throw "You're already seated";
         if (Object.keys(pl).length >= (t.settings.maxPlayers || 6)) throw "The table is full";
+        const sSp = t.settings || {};
+        if (sSp.spinMode) {
+          if (t.spin) throw "This spin already started — a fresh table is open in the lobby";
+          const entry = round2(Number(sSp.spinBuyIn) || 50);
+          const tickets = Number(uSnap.data().spinTickets || 0);
+          if (tickets > 0) tr.update(uRef, {
+            spinTickets: tickets - 1
+          });else if ((uSnap.data().balance || 0) >= entry) tr.update(uRef, {
+            balance: round2((uSnap.data().balance || 0) - entry)
+          });else throw "Not enough balance in wallet";
+          let si2 = 0;
+          const tk2 = new Set(Object.values(pl).map(p => p.seatIndex));
+          while (tk2.has(si2)) si2++;
+          tr.update(tblRef(), {
+            [`players.${user.uid}`]: {
+              uid: user.uid,
+              name: user.username,
+              photo: user.photo || '',
+              avatarSeed: user.avatarSeed || '',
+              seatIndex: si2,
+              stack: round2(Number(sSp.spinStack) || 1000),
+              bet: 0,
+              buyTotal: 0,
+              spinPaid: tickets > 0 ? 0 : entry,
+              status: 'active',
+              cards: [],
+              hasActed: false,
+              actionText: '',
+              isBot: false
+            }
+          });
+          return;
+        }
         if ((uSnap.data().balance || 0) < buyAmt) throw "Not enough balance in wallet";
         const left = (t.leftStacks || {})[user.uid];
         if (left && Date.now() - left.at < 12 * 60 * 60 * 1000 && buyAmt < round2(left.amount)) throw `You left this table with ${formatMoney(left.amount)} - you must return with at least this amount`;
@@ -8589,6 +8768,7 @@ function PokerTable({
   const topUpChips = () => {
     const t = tableRef.current;
     if (!t || t.tournamentId) return;
+    if ((t.settings || {}).spinMode) return showToast("Spin & Cash plays with tournament chips — no top-ups", "info");
     const BBv = round2((Number(setts.blinds) || 1) * 2);
     const maxBuy2 = buyInMax(setts);
     const meP = t.players[user.uid];
@@ -10450,7 +10630,22 @@ function PokerTable({
     className: "ns-slash"
   })), React.createElement("span", {
     className: "text-[11px] font-black text-rose-300"
-  }, "No connection — reconnecting…")), myPlayer && myPlayer.leavingAt && !tableState.tournament && (() => {
+  }, "No connection — reconnecting…")), spinShow && tableState.spin && React.createElement(SpinWheel, {
+    mult: tableState.spin.mult,
+    near: !!tableState.spin.near,
+    prize: tableState.spin.prize
+  }), setts.spinMode && tableState.spinDone && React.createElement("div", {
+    className: "absolute inset-x-0 top-[38%] z-[80] flex justify-center pointer-events-none"
+  }, React.createElement("div", {
+    className: "bg-slate-950/95 border-2 border-amber-400/70 rounded-2xl px-6 py-3 text-center animate-pop-in"
+  }, React.createElement("div", {
+    className: "text-2xl"
+  }, "🏆"), React.createElement("div", {
+    className: "text-amber-300 font-black text-lg",
+    dir: "ltr"
+  }, players[tableState.spinWinner]?.name || '...', " wins ", formatShort(tableState.spin?.prize || 0), "!"), React.createElement("div", {
+    className: "text-slate-400 text-[11px] font-bold"
+  }, "A fresh Spin & Cash table is open in the lobby"))), myPlayer && myPlayer.leavingAt && !tableState.tournament && (() => {
     const ms = Math.max(0, myPlayer.leavingAt - Date.now());
     const mm = Math.floor(ms / 60000),
       ss = Math.floor(ms % 60000 / 1000);
@@ -10471,7 +10666,7 @@ function PokerTable({
       onClick: () => handleStandUp(false),
       className: "text-[10px] font-black text-slate-300 hover:text-white bg-slate-800/80 border border-white/10 px-2.5 py-1.5 rounded-lg"
     }, "Cancel")));
-  })(), myPlayer && myPlayer.status === 'busted' && (myPlayer.stack || 0) <= 0 && !tableState.tournament && React.createElement("div", {
+  })(), myPlayer && myPlayer.status === 'busted' && (myPlayer.stack || 0) <= 0 && !tableState.tournament && !setts.spinMode && React.createElement("div", {
     className: "absolute bottom-0 left-0 right-0 z-[60] px-3 pb-2 pointer-events-none"
   }, React.createElement("div", {
     className: "glass-panel rounded-2xl border border-rose-500/30 px-3 py-2 flex items-center gap-3 animate-pop-in pointer-events-auto",

@@ -2995,7 +2995,7 @@
             const handleCreateDurak = async () => {
                 await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
                     type: 'durak', clubId: CLUB_ID, createdAt: Date.now(), hostUid: user.uid, status: 'setup',
-                    settings: { ...durakOpts, buyIn: Number(durakOpts.buyIn), rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT, bluffEnabled: !!durakOpts.bluff },
+                    settings: { ...durakOpts, buyIn: Math.max(1, Number(durakOpts.buyIn) || 0), rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT, bluffEnabled: !!durakOpts.bluff },
                     players: { [user.uid]: { uid: user.uid, name: user.username, photo: user.photo || '', avatarSeed: user.avatarSeed || '', seatIndex: 0, cards: [], isBot: false, out: false, left: false } },
                     pot: 0, deck: [], trumpCard: null, trumpSuit: null,
                     attackerUid: null, defenderUid: null, pairs: [], roundCap: 6,
@@ -3338,10 +3338,8 @@
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Buy-in</label>
-                                                <select value={durakOpts.buyIn} onChange={e=>setDurakOpts({...durakOpts, buyIn: parseFloat(e.target.value)})} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-blue-500 font-bold">
-                                                    {[50,100,250,500,1000,2500,5000].map(b => <option key={b} value={b}>{formatMoney(b)}</option>)}
-                                                </select>
+                                                <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Buy-in (any amount)</label>
+                                                <input type="number" inputMode="decimal" min="1" step="any" value={durakOpts.buyIn} onChange={e=>setDurakOpts({...durakOpts, buyIn: e.target.value})} className="w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-blue-500 font-bold" dir="ltr" />
                                             </div>
                                             <div>
                                                 <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">Players</label>

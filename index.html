@@ -5588,16 +5588,19 @@
 
             /* ---------- עוצמת יד + אחוזי זכייה ---------- */
             const activesOppCount = Object.values(players).filter(p => p.status === 'active' && p.uid !== user.uid).length;
+            // Server tables keep hole cards in the private doc (myPrivCards), not on the player —
+            // hand strength + equity must read the effective cards or they never show.
+            const myCards = srvEngine ? myPrivCards : (myPlayer?.cards || []);
             const myHand = useMemo(() => {
-                if (!myPlayer || !(myPlayer.cards || []).length) return null;
-                return handName(bestScoreNow(myPlayer.cards, gs.board || [], gs.currentGameType));
-            }, [(myPlayer?.cards || []).length, (gs.board || []).length, gs.phase]);
+                if (!myPlayer || !myCards.length) return null;
+                return handName(bestScoreNow(myCards, gs.board || [], gs.currentGameType));
+            }, [myCards.length, (gs.board || []).length, gs.phase]);
             const myEquity = useMemo(() => {
-                if (!myPlayer || myPlayer.status !== 'active' || !(myPlayer.cards || []).length) return null;
+                if (!myPlayer || myPlayer.status !== 'active' || !myCards.length) return null;
                 if (gs.allInReveal || !['preflop','discard','flop','turn','river'].includes(gs.phase)) return null;
                 if (activesOppCount < 1) return null;
-                return simMyEquity(myPlayer.cards, gs.board || [], activesOppCount, gs.currentGameType);
-            }, [(myPlayer?.cards || []).length, (gs.board || []).length, gs.phase, activesOppCount, gs.allInReveal]);
+                return simMyEquity(myCards, gs.board || [], activesOppCount, gs.currentGameType);
+            }, [myCards.length, (gs.board || []).length, gs.phase, activesOppCount, gs.allInReveal]);
             const realEq = useMemo(() => {
                 if (!gs.allInReveal) return null;
                 const hands = Object.values(players).filter(p => p.status === 'active' && (p.cards || []).length > 0).map(p => ({ uid: p.uid, cards: p.cards }));
@@ -6085,7 +6088,7 @@
 
                     {/* פס פעולות */}
                     <div className="shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 p-3 z-40 min-h-[110px] flex flex-col justify-center">
-                        {isSeated && myPlayer?.status === 'active' && (myPlayer.cards || []).length > 0 && !['waiting','showdown'].includes(gs.phase) && (
+                        {isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting','showdown'].includes(gs.phase) && (
                             <div className="flex justify-center gap-2 mb-2">
                                 {!gs.allInReveal && myHand && <span className="bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg">{myHand}</span>}
                                 {!gs.allInReveal && myEquity !== null && <span className="bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[11px] font-black px-3 py-1 rounded-lg" dir="ltr">🎯 {myEquity}%</span>}
@@ -6135,7 +6138,7 @@
                                 </div>
                             </div>
                             );
-                        })() : gs.phase === 'discard' && isSeated && (myPlayer?.cards||[]).length === 3 ? (
+                        })() : gs.phase === 'discard' && isSeated && myCards.length === 3 ? (
                             <div className="text-center text-amber-300 font-black text-sm animate-pulse">🍍 Tap a top card to discard it</div>
                         ) : (
                             <div className="text-center text-slate-500 font-bold text-xs">

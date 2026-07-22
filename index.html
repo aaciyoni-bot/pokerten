@@ -5641,6 +5641,26 @@
                 } catch(e) { showToast(typeof e === 'string' ? e : "Error", "error"); }
             };
 
+            // Leave-notice fairness: the clock ticks only while you actually PLAY.
+            // Sitting out freezes it — no waiting out the notice from the bench.
+            useEffect(() => {
+                const me0 = tableState?.players?.[user.uid];
+                if (!me0?.leavingAt || !me0.sitOut || tableState?.tournamentId) return;
+                const iv = setInterval(() => {
+                    const cur = tableRef.current?.players?.[user.uid];
+                    if (!cur?.leavingAt || !cur.sitOut) { clearInterval(iv); return; }
+                    window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leavingAt`]: cur.leavingAt + 5000 }).catch(() => {});
+                }, 5000);
+                return () => clearInterval(iv);
+            }, [!!tableState?.players?.[user.uid]?.leavingAt, !!tableState?.players?.[user.uid]?.sitOut]);
+            // 1s heartbeat so the big leave timer counts down smoothly
+            const [, setLvTick] = useState(0);
+            useEffect(() => {
+                if (!tableState?.players?.[user.uid]?.leavingAt) return;
+                const iv = setInterval(() => setLvTick(x => x + 1), 1000);
+                return () => clearInterval(iv);
+            }, [!!tableState?.players?.[user.uid]?.leavingAt]);
+
             // Leave notice matured → actually stand up (from my own client)
             useEffect(() => {
                 const la = tableState?.players?.[user.uid]?.leavingAt;
@@ -6420,6 +6440,25 @@
                             </div>
                         </div>
                     )}
+
+                    {/* Leave notice: a BIG visible clock — you asked to stand up while in
+                        profit, so you play out the notice. Pauses while sitting out. */}
+                    {myPlayer && myPlayer.leavingAt && !tableState.tournament && (() => {
+                        const ms = Math.max(0, myPlayer.leavingAt - Date.now());
+                        const mm = Math.floor(ms / 60000), ss = Math.floor((ms % 60000) / 1000);
+                        return (
+                            <div className="absolute top-1 left-1/2 -translate-x-1/2 z-[59]">
+                                <div className="glass-panel rounded-2xl border border-rose-500/40 px-4 py-1 flex items-center gap-3 animate-pop-in" dir="ltr">
+                                    <span className="text-base">🚪</span>
+                                    <div className="text-center">
+                                        <div className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{myPlayer.sitOut ? 'Leave clock paused — sit out' : 'Standing up in'}</div>
+                                        <div className={`text-lg font-black font-mono leading-tight ${myPlayer.sitOut ? 'text-slate-500' : 'text-rose-300'}`}>{mm}:{String(ss).padStart(2, '0')}</div>
+                                    </div>
+                                    <button onClick={() => handleStandUp(false)} className="text-[10px] font-black text-slate-300 hover:text-white bg-slate-800/80 border border-white/10 px-2.5 py-1.5 rounded-lg">Cancel</button>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Busted (cash): NO popup — the table stays fully visible, you watch the
                         showdown and who took the pot. A 10-minute clock + Rebuy sit in the

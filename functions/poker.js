@@ -276,6 +276,67 @@ async function tourAfterHand(tableId, t, plAfter, winnersUids) {
   }
 }
 
+// ── Missions: 10 personal quests tracked server-side on the membership doc.
+// Completing ALL of them auto-pays the club's missionsPrize (default 1000) from
+// the owner's balance, flagged as BONUS money (bonusTotal) for the settlement.
+const MISSION_GOALS = {win_deuce: 1, lose_flush: 1, omaha6_5: 5, pine_10: 10, hands_50: 50, streak_3: 3, bomb_win: 1, spin_win: 1, bigpot: 1, rabbit_1: 1};
+async function bumpMissions(uid, clubId, inc, wonHand) {
+  try {
+    const mRef = db.doc(`memberships/${uid}_${clubId}`);
+    const cRef = db.doc(`clubs/${clubId}`);
+    await db.runTransaction(async (tx) => {
+      const [mS, cS] = await Promise.all([tx.get(mRef), tx.get(cRef)]);
+      if (!mS.exists) return;
+      const cur = mS.data().missions || {};
+      const next = {...cur};
+      Object.keys(inc).forEach((k) => { next[k] = Math.min(MISSION_GOALS[k] || 1, (next[k] || 0) + inc[k]); });
+      if (wonHand !== null) {
+        const st = wonHand ? (cur._streak || 0) + 1 : 0;
+        next._streak = st;
+        if (st >= 3) next.streak_3 = 3;
+      }
+      const upd = {missions: next};
+      const allDone = Object.keys(MISSION_GOALS).every((k) => (next[k] || 0) >= MISSION_GOALS[k]);
+      if (allDone && !mS.data().missionsPaid && cS.exists) {
+        const prize = round2(Number((cS.data().missionsPrize)) || 1000);
+        const oRef = db.doc(`memberships/${cS.data().ownerUid}_${clubId}`);
+        const oS = await tx.get(oRef);
+        if (oS.exists && (oS.data().balance || 0) >= prize) {
+          tx.update(oRef, {balance: round2((oS.data().balance || 0) - prize), bonusPaid: round2((oS.data().bonusPaid || 0) + prize)});
+          upd.balance = round2((mS.data().balance || 0) + prize);
+          upd.bonusTotal = round2((mS.data().bonusTotal || 0) + prize);
+          upd.missionsPaid = true;
+        }
+      }
+      tx.update(mRef, upd);
+    });
+  } catch (e) { /* best-effort */ }
+}
+async function trackMissions(t, g2, plAfter, eng) {
+  try {
+    if (t.tournamentId) return;
+    const s = t.settings || {};
+    const bb = round2((Number(s.blinds) || 0.5) * 2);
+    const gtype = g2.currentGameType || "NLH";
+    const winners = String(g2.lastWinners || "").split(", ");
+    for (const p of Object.values(plAfter)) {
+      if (p.isBot || !(p.cardCount || 0)) continue;
+      const won = winners.includes(p.name);
+      const hole = ((eng.hands || {})[p.uid]) || [];
+      const inc = {hands_50: 1};
+      if (gtype === "Omaha 6") inc.omaha6_5 = 1;
+      if (gtype === "Pineapple") inc.pine_10 = 1;
+      if (won && hole.some((c) => c.val === "2")) inc.win_deuce = 1;
+      if (won && g2.bombPot) inc.bomb_win = 1;
+      if (won && !s.spinMode && (g2.lastWinAmount || 0) >= bb * 100) inc.bigpot = 1;
+      if (!won && p.status === "active" && !g2.earlyWin && (g2.board || []).length >= 3) {
+        try { if (bestScore(hole, g2.board, gtype) >= 5000000) inc.lose_flush = 1; } catch (e) { /* noop */ }
+      }
+      bumpMissions(p.uid, t.clubId || "main", inc, won);
+    }
+  } catch (e) { /* best-effort */ }
+}
+
 async function logHandResults(t, eng, plAfter, finish) {
   try {
     const start = eng.startStacks || {};
@@ -673,9 +734,11 @@ async function afterFinish(tableId, t, finish, plAfter, eng) {
     await tourAfterHand(tableId, t, plAfter, winnersUids);
   } else if ((t.settings || {}).spinMode) {
     await spinAfterHand(tableId, t, plAfter); // no rake, no per-hand money log — chips are tournament chips
+    trackMissions(t, finish.g || {}, plAfter, eng);
   } else {
     distributeRake(t.clubId || "main", finish.rake, finish.participants);
     logHandResults(t, eng, plAfter, finish);
+    trackMissions(t, finish.g || {}, plAfter, eng);
   }
 }
 
@@ -827,6 +890,7 @@ async function spinAfterHand(tableId, t, plAfter) {
   const clubId = t.clubId || "main";
   const buy = round2(Number(s.spinBuyIn) || 50);
   await creditBalance(w.uid, clubId, t.spin.prize);
+  if (!w.isBot) bumpMissions(w.uid, clubId, {spin_win: 1}, null);
   if (t.spin.ticket && !w.isBot) {
     try {
       const r = db.doc(`memberships/${w.uid}_${clubId}`);

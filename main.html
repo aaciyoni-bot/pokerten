@@ -2297,7 +2297,7 @@ const PotAward = ({
 }) => {
   const [go, setGo] = React.useState(false);
   React.useEffect(() => {
-    if (snd) playSnd('chip', 9, dur / 9);
+    if (snd) playSnd('chip', 6, dur * 0.7 / 6);
     const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
     return () => cancelAnimationFrame(r);
   }, []);
@@ -9962,7 +9962,7 @@ function PokerTable({
     const share = round2((gs.lastWinAmount || 0) / wIdx.length);
     const dur = Math.min(3.2, 0.9 + Math.log10(1 + share) * 0.55);
     return wIdx.map((ix, k) => React.createElement(PotAward, {
-      key: 'pa' + ix + '_' + (gs.showdownAt || 0),
+      key: 'pa' + (displayList[ix]?.uid || ix) + '_' + (gs.showdownAt || 0),
       to: seatPos(ix),
       amount: share,
       dur: dur,

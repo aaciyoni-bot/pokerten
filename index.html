@@ -800,13 +800,15 @@
         const BOT_FIRST_EN = ['Eli', 'Yossi', 'Avi', 'Kobi', 'Rami', 'Moti', 'Dudu', 'Itzik', 'Shlomi', 'Oren', 'Nadav', 'Sagi', 'Doron', 'Meir', 'Benny', 'Haim'];
         const BOT_LAST_EN = ['Cohen', 'Levi', 'Mizrahi', 'Peretz', 'Biton', 'Ohayon', 'Dahan', 'Hadad', 'Gabay', 'Azulay', 'Malka', 'Amar', 'Ben-David', 'Sharabi'];
         const BOT_NAMES_PK = ['RiverKing', 'FlopMaster', 'AllInArtist', 'CheckRaise', 'GutShot', 'NutFlush', 'SlowRoll', 'PocketRockets', 'BigBlind', 'TiltProof', 'DryAce', 'TripleBarrel', 'LooseCannon', 'Cooler', 'HeaterRun', 'SuitedAce'];
+        const BOT_NAME_NUM = ['David', 'Marina', 'Alex', 'Maya', 'Daniel', 'Nicole', 'Roman', 'Diana', 'Leon', 'Sofia', 'Tanya', 'Igor', 'Lena', 'Mark', 'Julia', 'Max'];
         const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
         const botDisplayName = () => {
             const r = Math.random();
             if (r < 0.4) return pick(BOT_FIRST_HE) + ' ' + pick(BOT_LAST_HE);          // אלי כהן
             if (r < 0.65) return pick(BOT_FIRST_EN) + ' ' + pick(BOT_LAST_EN);          // Eli Cohen
-            if (r < 0.85) return pick(BOT_NAMES_PK) + Math.floor(Math.random() * 99);   // RiverKing42
-            return String(1000 + Math.floor(Math.random() * 899999));                   // just a number
+            if (r < 0.82) return pick(BOT_NAMES_PK) + Math.floor(Math.random() * 99);   // RiverKing42
+            // name + number, like David 1984 / Marina 19
+            return pick(BOT_NAME_NUM) + ' ' + (Math.random() < 0.55 ? (1965 + Math.floor(Math.random() * 40)) : (1 + Math.floor(Math.random() * 98)));
         };
         const BOT_NAMES = BOT_NAMES_PK; // legacy alias
 
@@ -920,15 +922,16 @@
             } catch(e) { return false; }
         };
         const SND = {};
-        const playSnd = (type, times = 1) => {
+        const playSnd = (type, times = 1, gapSec = 0) => {
             if (type === 'turn') return; // no gratuitous sounds — your turn is shown visually, not beeped
             try {
                 // Sample engine first — random variant per repeat, like a real dealer
                 const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
                 if (variants.length) {
-                    const n = Math.max(1, Math.min(9, Math.floor(times) || 1));
+                    const n = Math.max(1, Math.min(type === 'deal' ? 36 : 9, Math.floor(times) || 1));
                     const base = SFX_GAIN[type] ?? 0.7;
-                    for (let i = 0; i < n; i++) sfxPlay(variants[Math.floor(Math.random() * variants.length)], i * (0.085 + Math.random() * 0.03), base);
+                    const gap = gapSec || (type === 'flip' ? 0.22 : 0.085);
+                    for (let i = 0; i < n; i++) sfxPlay(variants[Math.floor(Math.random() * variants.length)], i * (gap + Math.random() * 0.02), base);
                     return;
                 }
                 if (!window.Tone) return;
@@ -4494,6 +4497,7 @@
             const actedTurnRef = useRef(null); // turnStartedAt of the turn I already acted on — hides buttons until a genuinely new turn
             const leaveArmedRef = useRef(false); // I marked "leave at end of hand" — auto-exit when the seat clears
             const leavingNowRef = useRef(false);
+            const dealAnimRef = useRef(null); // visible dealing round: {t0, order:{uid:i}, n, iv, cache}
             const advanceRef = useRef(null);
             const nextHandRef = useRef(null);
             const startingRef = useRef(false);
@@ -5621,9 +5625,19 @@
                 const ps = prevSnd.current;
                 const bl = (gs.board || []).length;
                 if (bl > ps.board) playSnd('flip', bl - ps.board); // one flip per new board card (flop=3)
-                // New hand dealt → one card-slide per player in the hand
-                if (BETTING.includes(gs.phase) && !BETTING.includes(ps.phase) && gs.phase === 'preflop') {
-                    playSnd('deal', Object.values(players).filter(p => p.status === 'active').length);
+                // New hand dealt → visible dealing round: cards revealed one by one around the
+                // table (round-robin from the dealer's left, like a real dealer) with one
+                // card-slide sound per card, tempo-matched to the animation.
+                if (gs.phase === 'preflop' && ['waiting', 'showdown', 'dc_selection'].includes(ps.phase)) {
+                    const acts = Object.values(players).filter(p => p.status === 'active').sort((x, y) => x.seatIndex - y.seatIndex);
+                    const dIdx = Math.max(0, acts.findIndex(p => p.uid === gs.dealerUid));
+                    const ordered = [...acts.slice(dIdx + 1), ...acts.slice(0, dIdx + 1)];
+                    const order = {}; ordered.forEach((p, i) => { order[p.uid] = i; });
+                    const perHand = GAME_CARDS[gs.currentGameType] || 2;
+                    const total = ordered.length * perHand;
+                    const iv = Math.max(0.07, Math.min(0.16, 1.8 / Math.max(1, total))); // whole deal ≤ ~1.8s
+                    dealAnimRef.current = { t0: Date.now(), order, n: ordered.length, iv, cache: {} };
+                    playSnd('deal', total, iv);
                 }
                 if (gs.phase === 'showdown' && ps.phase !== 'showdown') playSnd((gs.lastWinAmount || 0) >= (Number(setts.blinds) || 0.5) * 2 * 40 ? 'bigwin' : 'win');
                 const mine = gs.activeTurnUid === user.uid && BETTING.includes(gs.phase);
@@ -5644,6 +5658,16 @@
             }, [tableState]);
 
             if (loading || !tableState) return <div className="h-full flex items-center justify-center text-amber-500"><i className="fa-solid fa-spinner fa-spin text-3xl"></i></div>;
+
+            // Reveal delay for hole card ci of seat uid during the dealing round.
+            // Cached per hand so re-renders don't restart a finished animation.
+            const dealDelay = (uid, ci) => {
+                const dd = dealAnimRef.current;
+                if (!dd || dd.order[uid] == null) return ci * 45;
+                const k = uid + ':' + ci;
+                if (dd.cache[k] == null) dd.cache[k] = Math.max(0, Math.round((ci * dd.n + dd.order[uid]) * dd.iv * 1000 - (Date.now() - dd.t0)));
+                return dd.cache[k];
+            };
 
             /* ---------- חישובי תצוגה ---------- */
             const list = Object.values(players).sort((a,b) => (a.seatIndex - b.seatIndex) || String(a.uid).localeCompare(String(b.uid)));
@@ -5883,7 +5907,7 @@
                             </div>
 
                             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30" dir="ltr">
-                                {(gs.board || []).map((c, i) => <span key={i} className="card-reveal" style={{ animationDelay: `${(i % 3) * 100}ms` }}><PCard card={c} size="lg" /></span>)}
+                                {(gs.board || []).map((c, i) => <span key={i} className="card-reveal" style={{ animationDelay: `${(i % 3) * 220}ms` }}><PCard card={c} size="lg" /></span>)}
                                 {rabbit.length > 0 && rabbit.map((c, i) => (
                                     <div key={'rb'+i} className="relative opacity-75"><PCard card={c} size="lg" /><span className="absolute -top-2 -right-1 text-xs">🐰</span></div>
                                 ))}
@@ -5984,8 +6008,8 @@
                                                         isMe && gs.phase === 'discard' && dispCards.length === 3
                                                         ? <div key={ci} onClick={() => handleDiscardCard(user.uid, ci)} className="cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"><PCard card={c} size="xl" /></div>
                                                         : doFan
-                                                        ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(ci - midC) * ang}deg) translateY(${Math.abs(ci - midC) * (isMe ? 3.5 : 2.5)}px)`, transformOrigin: '50% 115%', zIndex: ci }}><span className="card-reveal" style={{ animationDelay: `${ci * 45}ms` }}><PCard card={c} hidden={hidden} size={isMe ? (nC > 4 ? 'lg' : 'xl') : (hidden ? 'sm' : 'md')} /></span></span>
-                                                        : <span key={ci} className="card-reveal" style={{ animationDelay: `${ci * 45}ms` }}><PCard card={c} hidden={hidden} size={isMe ? (nC > 4 ? 'lg' : 'xl') : (hidden ? 'sm' : 'md')} /></span>
+                                                        ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(ci - midC) * ang}deg) translateY(${Math.abs(ci - midC) * (isMe ? 3.5 : 2.5)}px)`, transformOrigin: '50% 115%', zIndex: ci }}><span className="card-reveal" style={{ animationDelay: `${dealDelay(p.uid, ci)}ms` }}><PCard card={c} hidden={hidden} size={isMe ? (nC > 4 ? 'lg' : 'xl') : (hidden ? 'sm' : 'md')} /></span></span>
+                                                        : <span key={ci} className="card-reveal" style={{ animationDelay: `${dealDelay(p.uid, ci)}ms` }}><PCard card={c} hidden={hidden} size={isMe ? (nC > 4 ? 'lg' : 'xl') : (hidden ? 'sm' : 'md')} /></span>
                                                     ))}
                                                 </div>
                                                 );
@@ -6032,8 +6056,8 @@
                                                 <div className={`flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`} dir="ltr">
                                                     {dispCards.map((c, ci) => (
                                                         doFan
-                                                        ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(midC - ci) * ang}deg) translateY(${-Math.abs(ci - midC) * 2.5}px)`, transformOrigin: '50% -15%', zIndex: ci }}><PCard card={c} hidden={hidden} size="sm" /></span>
-                                                        : <PCard key={ci} card={c} hidden={hidden} size="sm" />
+                                                        ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(midC - ci) * ang}deg) translateY(${-Math.abs(ci - midC) * 2.5}px)`, transformOrigin: '50% -15%', zIndex: ci }}><span className="card-reveal" style={{ animationDelay: `${dealDelay(p.uid, ci)}ms` }}><PCard card={c} hidden={hidden} size="sm" /></span></span>
+                                                        : <span key={ci} className="card-reveal" style={{ animationDelay: `${dealDelay(p.uid, ci)}ms` }}><PCard card={c} hidden={hidden} size="sm" /></span>
                                                     ))}
                                                 </div>
                                                 );
@@ -6867,6 +6891,16 @@
             }, [T.turnStartedAt, T.turnUid, T.status]);
 
             if (loading || !tableState) return <div className="h-full flex items-center justify-center text-blue-400"><i className="fa-solid fa-spinner fa-spin text-3xl"></i></div>;
+
+            // Reveal delay for hole card ci of seat uid during the dealing round.
+            // Cached per hand so re-renders don't restart a finished animation.
+            const dealDelay = (uid, ci) => {
+                const dd = dealAnimRef.current;
+                if (!dd || dd.order[uid] == null) return ci * 45;
+                const k = uid + ':' + ci;
+                if (dd.cache[k] == null) dd.cache[k] = Math.max(0, Math.round((ci * dd.n + dd.order[uid]) * dd.iv * 1000 - (Date.now() - dd.t0)));
+                return dd.cache[k];
+            };
 
             /* ---------- חישובי תצוגה ---------- */
             const list = Object.values(players).sort((a, b) => a.seatIndex - b.seatIndex);

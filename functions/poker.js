@@ -604,39 +604,115 @@ async function engineStep(tableId, op) {
 }
 
 // ── Bot decision: server knows the bot's cards → simple strength-based play ──
+// ── Bot brain: plays like a solid, believable human — using ONLY its own cards
+// and the board (never peeks at opponents or the deck). Real hand classes,
+// draw awareness, pot odds, mixed frequencies, and pot-commitment: it will call
+// down with second pair when the price is right, but it never spazzes all-in
+// without the goods, and it never folds a crumb stack into a big pot. ──
+const RANKV = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14};
+
+function botEquity(hole, board, gameType) {
+  // Postflop: classify the MADE hand relative to the board + add draw equity.
+  const sc = bestScore(hole, board, gameType);
+  const bRanks = board.map((c) => RANKV[c.val]).sort((a, b) => b - a);
+  let eq;
+  if (sc >= 5000000) eq = 0.93;                    // flush or better
+  else if (sc >= 4000000) eq = 0.88;               // straight
+  else if (sc >= 3000000) eq = 0.80;               // trips/set
+  else if (sc >= 2000000) eq = 0.70;               // two pair
+  else if (sc >= 1000000) {
+    const pr = Math.floor((sc - 1000000) / 10000); // the pair's rank
+    if (pr >= bRanks[0]) eq = 0.58;                // top pair / overpair
+    else if (pr >= (bRanks[1] || 0)) eq = 0.46;    // second pair — worth a fair price
+    else eq = 0.34;                                // weak pair
+  } else {
+    const hv = hole.map((c) => RANKV[c.val]).sort((a, b) => b - a);
+    eq = hv[0] === 14 ? 0.26 : 0.18;               // ace-high / air
+  }
+  if (board.length < 5) {
+    // Draws (simple + honest): flush draw = 4 of a suit, straight draws by window scan
+    const suits = {};
+    [...hole, ...board].forEach((c) => suits[c.suit] = (suits[c.suit] || 0) + 1);
+    const myS = {}; hole.forEach((c) => myS[c.suit] = (myS[c.suit] || 0) + 1);
+    const fd = Object.keys(suits).some((s2) => suits[s2] === 4 && (myS[s2] || 0) >= 1);
+    const rs = new Set([...hole, ...board].map((c) => RANKV[c.val]));
+    if (rs.has(14)) rs.add(1);
+    let bestWin = 0;
+    for (let lo = 1; lo <= 10; lo++) {
+      let hit = 0;
+      for (let v = lo; v < lo + 5; v++) if (rs.has(v)) hit++;
+      bestWin = Math.max(bestWin, hit);
+    }
+    if (fd) eq = Math.min(0.9, eq + 0.17);
+    if (bestWin === 4 && sc < 4000000) eq = Math.min(0.9, eq + 0.13); // open/gutshot family
+  }
+  return eq;
+}
+
+function botPreflop(hole, gameType) {
+  const hv = hole.map((c) => RANKV[c.val]).sort((a, b) => b - a);
+  const suited = new Set(hole.map((c) => c.suit)).size < hole.length;
+  const paired = new Set(hole.map((c) => c.val)).size < hole.length;
+  if ((gameType || "").startsWith("Omaha")) {
+    // rough Omaha strength: pairs + suitedness + connectivity + high cards
+    let eq = 0.30 + (paired ? 0.14 : 0) + (suited ? 0.07 : 0) + (hv[0] >= 13 ? 0.08 : 0) + (hv[1] >= 11 ? 0.05 : 0);
+    const gaps = hv.slice(0, -1).map((v, i2) => v - hv[i2 + 1]);
+    if (gaps.every((d2) => d2 <= 2)) eq += 0.07;
+    return Math.min(0.8, eq);
+  }
+  if (paired) return hv[0] >= 12 ? 0.88 : hv[0] >= 9 ? 0.72 : 0.55;
+  if (hv[0] === 14 && hv[1] >= 12) return suited ? 0.75 : 0.70;    // AK/AQ
+  if (hv[0] >= 11 && hv[1] >= 10) return suited ? 0.62 : 0.56;     // broadways
+  if (hv[0] === 14) return suited ? 0.5 : 0.42;                    // Ax
+  if (suited && hv[0] - hv[1] === 1 && hv[1] >= 5) return 0.5;     // suited connectors
+  if (hv[0] >= 10) return 0.36;
+  return 0.24;
+}
+
 function botDecide(t, g, pl, eng, uid) {
   const p = pl[uid];
   const toCall = round2(Math.max(0, (g.highestBet || 0) - (p.bet || 0)));
   const board = g.board || [];
   const hole = (eng.hands || {})[uid] || [];
-  let strength = 0.3;
-  if (board.length >= 3) {
-    const sc = bestScore(hole, board, g.currentGameType);
-    strength = sc >= 3000000 ? 0.95 : sc >= 2000000 ? 0.8 : sc >= 1000000 ? 0.55 : 0.25;
-  } else if (hole.length >= 2) {
-    const vals = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14};
-    const vs = hole.map((c) => vals[c.val]).sort((a, b) => b - a);
-    const pair = new Set(hole.map((c) => c.val)).size < hole.length;
-    strength = pair ? 0.85 : vs[0] >= 12 ? 0.6 : vs[0] >= 9 ? 0.42 : 0.28;
-  }
+  const bb = round2((Number((t.settings || {}).blinds) || 0.5) * 2);
+  const stack = p.stack || 0;
+  const maxTo = round2((p.bet || 0) + stack);
+  const pot = round2((g.pots || []).reduce((s2, x) => s2 + x.amount, 0) + Object.values(pl).reduce((s2, q) => s2 + (q.bet || 0), 0));
+  const eq = board.length >= 3 ? botEquity(hole, board, g.currentGameType) : botPreflop(hole, g.currentGameType);
   const rnd = Math.random();
-  const potOdds = toCall > 0 ? toCall / Math.max(1, toCall + (g.pots || []).reduce((s, x) => s + x.amount, 0) + Object.values(pl).reduce((s, q) => s + (q.bet || 0), 0)) : 0;
+  const potOdds = toCall > 0 ? toCall / Math.max(0.01, pot + toCall) : 0;
+  const raiseTo = (frac) => {
+    const target = round2((g.highestBet || 0) + Math.max(g.minRaise || bb, (pot + toCall) * frac));
+    return Math.min(target, maxTo);
+  };
+
+  // Pot-committed / crumb stack: folding 90 agorot into a pot is not human — call.
+  if (toCall > 0 && (stack <= bb * 1.5 || potOdds < 0.12 || (toCall >= stack * 0.8 && eq >= 0.4))) return {type: "call"};
+
   if (toCall === 0) {
-    if (strength > 0.75 && rnd < 0.5) {
-      const target = round2((g.highestBet || 0) + Math.max(g.minRaise || 1, round2((Number((t.settings || {}).blinds) || 0.5) * 2 * (2 + Math.floor(rnd * 3)))));
-      return {type: "raise", amount: Math.min(target, round2((p.bet || 0) + p.stack))};
-    }
-    return {type: "call"}; // check
+    if (eq >= 0.8 && rnd < 0.22) return {type: "call"};            // slowplay a monster sometimes
+    if (eq >= 0.72) return rnd < 0.75 ? {type: "raise", amount: raiseTo(0.6 + rnd * 0.2)} : {type: "call"};
+    if (eq >= 0.52 && rnd < 0.45) return {type: "raise", amount: raiseTo(0.5)};
+    if (board.length >= 4 && eq < 0.3 && rnd < 0.08) return {type: "raise", amount: raiseTo(0.55)}; // rare bluff stab
+    return {type: "call"};                                          // check
   }
-  if (strength >= 0.8) {
-    if (rnd < 0.45) {
-      const target = round2((g.highestBet || 0) + Math.max(g.minRaise || 1, toCall * 2));
-      return {type: "raise", amount: Math.min(target, round2((p.bet || 0) + p.stack))};
-    }
-    return {type: "call"};
+
+  // Facing a bet — price-driven, with human mixing
+  const bigBet = toCall > pot * 0.66;
+  if (eq >= 0.85) return rnd < 0.6 ? {type: "raise", amount: raiseTo(0.7 + rnd * 0.3)} : {type: "call"};
+  if (eq >= 0.7) return rnd < 0.3 && !bigBet ? {type: "raise", amount: raiseTo(0.6)} : {type: "call"};
+  if (eq >= 0.44) {
+    // second-pair territory: call a fair price, fold to real pressure (mostly)
+    if (potOdds <= 0.28) return {type: "call"};
+    if (potOdds <= 0.4) return rnd < 0.55 ? {type: "call"} : {type: "fold"};
+    return rnd < 0.15 ? {type: "call"} : {type: "fold"};
   }
-  if (strength >= 0.45) return potOdds < 0.4 || rnd < 0.7 ? {type: "call"} : {type: "fold"};
-  return toCall <= (Number((t.settings || {}).blinds) || 0.5) * 2 && rnd < 0.55 ? {type: "call"} : {type: "fold"};
+  if (eq >= 0.3) {
+    if (potOdds <= 0.18 && rnd < 0.7) return {type: "call"};       // cheap peel with a draw/weak pair
+    return {type: "fold"};
+  }
+  if (toCall <= bb && rnd < 0.4) return {type: "call"};            // defend the blind cheaply sometimes
+  return {type: "fold"};
 }
 
 // ═════════ Callables ═════════
@@ -705,6 +781,19 @@ exports.pkTick = onCall(async (request) => {
   if (!s.serverEngine) return {ok: true};
   const g = t.gameState || {};
   const pl = t.players || {};
+
+  // CASH sanity: a player holding live cards can NEVER be sitOut mid-hand (a
+  // sit-out tap racing the deal used to leave a "sitting out" seat playing a
+  // hand). Demote the flag to sitOutNext — it applies at the end of the hand,
+  // exactly per the house rule. Tournaments are exempt (sit-outs are dealt).
+  if (!t.tournamentId && [...BETTING, "discard"].includes(g.phase)) {
+    const bad = Object.values(pl).filter((q) => q && q.sitOut && q.status === "active" && (q.cardCount || 0) > 0);
+    if (bad.length) {
+      const upd = {};
+      bad.forEach((q) => { upd[`players.${q.uid}.sitOut`] = false; upd[`players.${q.uid}.sitOutNext`] = true; });
+      await tRef(tableId).update(upd).catch(() => {});
+    }
+  }
 
   // Door rule: leaving takes effect at the END of the hand, never inside one.
   // A seat flagged leaveReq is removed by whichever viewer ticks first — but only

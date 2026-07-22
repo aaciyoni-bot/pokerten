@@ -336,6 +336,10 @@
         }
         .btn-raise:not(:disabled):hover { filter: brightness(1.06); }
         .timer-ring { transform: rotate(-90deg); transition: stroke-dashoffset 1s linear; }
+        /* Gentle "no signal" blink: wifi + diagonal slash */
+        .no-signal { color: #fca5a5; font-size: 12px; animation: nsBlink 1.2s ease-in-out infinite; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
+        .ns-slash { position: absolute; left: 50%; top: 50%; width: 16px; height: 2px; background: #f43f5e; transform: translate(-50%, -50%) rotate(-45deg); border-radius: 2px; }
+        @keyframes nsBlink { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
         /* Vertical raise slider — opens on demand from the RAISE button; top = ALL IN */
         .vslider {
             -webkit-appearance: slider-vertical; appearance: slider-vertical;
@@ -4670,6 +4674,37 @@
                 if (buyAmt < minB) setBuyAmt(round2(minB));
             }, [tableState]);
 
+            // C/F pre-select: armed BEFORE my turn — when it lands: bet in front of me → fold,
+            // otherwise → check. Cancelable any time before the turn actually arrives.
+            const [preCF, setPreCF] = useState(false);
+            useEffect(() => {
+                if (!isMyTurn || !preCF) return;
+                setPreCF(false);
+                const tm = setTimeout(() => {
+                    const g2 = tableRef.current?.gameState || {};
+                    if (g2.activeTurnUid !== user.uid) return;
+                    const me2 = tableRef.current?.players?.[user.uid] || {};
+                    const tc = Math.max(0, (g2.highestBet || 0) - (me2.bet || 0));
+                    performAction(user.uid, tc > 0 ? 'fold' : 'call');
+                }, 450);
+                return () => clearTimeout(tm);
+            }, [isMyTurn]);
+            useEffect(() => { if (!['preflop','flop','turn','river'].includes(gs.phase) || myPlayer?.status !== 'active') setPreCF(false); }, [gs.phase, myPlayer?.status]);
+            // Presence heartbeat — others show a "no signal" mark over a seat that stops beating
+            useEffect(() => {
+                if (!isSeated) return;
+                const beat = () => window.fb.updateDoc(tblRef(), { [`players.${user.uid}.lastSeen`]: Date.now() }).catch(() => {});
+                beat();
+                const iv = setInterval(beat, 25000);
+                return () => clearInterval(iv);
+            }, [isSeated, tableDocId]);
+            // My own device lost network → show it to ME immediately
+            const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+            useEffect(() => {
+                const on = () => setOffline(false), off = () => setOffline(true);
+                window.addEventListener('online', on); window.addEventListener('offline', off);
+                return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+            }, []);
             useEffect(() => {
                 setActing(false); // every new turn (or turn hand-off) re-enables the buttons
                 setRaiseOpen(false); // the raise slider never survives a turn change
@@ -5178,12 +5213,22 @@
                     } else {
                         // Rule: state changes apply BETWEEN hands. Mid-hand ☕ queues the sit-out
                         // for the end of the hand; you keep playing this one out.
-                        const inHand = !['waiting', 'showdown', 'dc_selection'].includes((t.gameState || {}).phase) && meP.status === 'active';
+                        // TRANSACTION: the phase/status re-check happens atomically against the
+                        // server's deal — a plain write could land right AFTER a fresh deal and
+                        // leave a "sitting out" player holding live cards.
+                        let inHand = false;
+                        await window.fb.runTransaction(window.fb.db, async (tr) => {
+                            const s2 = await tr.get(tblRef());
+                            if (!s2.exists()) throw "err";
+                            const t2 = s2.data();
+                            const me2 = t2.players[user.uid]; if (!me2) throw "err";
+                            inHand = !['waiting', 'showdown', 'dc_selection'].includes((t2.gameState || {}).phase) && me2.status === 'active';
+                            if (inHand) tr.update(tblRef(), { [`players.${user.uid}.sitOutNext`]: true });
+                            else tr.update(tblRef(), { [`players.${user.uid}.sitOut`]: true, [`players.${user.uid}.sitOutAt`]: Date.now(), [`players.${user.uid}.sitAuto`]: false });
+                        });
                         if (inHand) {
-                            await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.sitOutNext`]: true });
                             showToast("Sit out at the END of this hand ☕ (tap again to cancel)", "info");
                         } else {
-                            await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.sitOut`]: true, [`players.${user.uid}.sitOutAt`]: Date.now(), [`players.${user.uid}.sitAuto`]: false });
                             showToast(t?.tournamentId ? "Sit out ☕ blinds keep going down in the tournament!" : "Sit out ☕ you have 10 minutes to return", "info");
                         }
                     }
@@ -6190,6 +6235,9 @@
                                                 return <div className="absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5" dir="ltr">☕ {tableState.tournamentId ? 'Sit out' : `${mm}:${String(ss).padStart(2,'0')}`}{p.sitAuto ? ' 📵' : ''}</div>;
                                             })()}
                                             {!p.sitOut && p.sitOutNext && <div className="absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5" dir="ltr">☕ after hand</div>}
+                                            {!p.isBot && p.lastSeen && Date.now() - p.lastSeen > 45000 && (
+                                                <div className="no-signal absolute -top-4 left-1/2 -translate-x-1/2 z-40" title="Connection lost?"><i className="fa-solid fa-wifi"></i><span className="ns-slash"></span></div>
+                                            )}
                                             {p.leaveReq && !tableState.tournamentId && <div className="absolute -top-2 left-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5" dir="ltr">🚪 after hand</div>}
                                             {p.leavingAt && !tableState.tournamentId && (() => {
                                                 const lms = Math.max(0, p.leavingAt - Date.now());
@@ -6359,30 +6407,43 @@
                             return (
                             <div className="max-w-md mx-auto w-full relative">
                                 {/* Vertical raise slider — opens on demand; slide to the TOP = ALL IN */}
-                                {raiseOpen && (
+                                {raiseOpen && (() => {
+                                    const potAfterCall = round2(totalPot + toCallMe);
+                                    const potTo = (f) => Math.max(minRaiseTo, Math.min(round2((gs.highestBet || 0) + toCallMe + potAfterCall * f), myMaxBet));
+                                    const pct = myMaxBet > minRaiseTo ? Math.max(0, Math.min(100, (raiseAmt - minRaiseTo) / (myMaxBet - minRaiseTo) * 100)) : 100;
+                                    const fillCol = atTop && topIsAllIn ? '#f43f5e' : '#f59e0b';
+                                    return (
                                     <div className="absolute bottom-full right-0 mb-3 z-50 bg-slate-950/95 backdrop-blur border border-amber-500/40 rounded-3xl px-5 py-4 flex flex-col items-center gap-2.5 shadow-[0_12px_45px_rgba(0,0,0,0.75)] animate-pop-in">
                                         <span className={`text-base font-black ${atTop && topIsAllIn ? 'text-rose-400' : 'text-amber-300'}`} dir="ltr">
                                             {atTop && topIsAllIn ? '🔥 ALL IN' : formatShort(raiseAmt)}
                                         </span>
-                                        <div className="flex items-stretch gap-2.5">
-                                            <div className="flex flex-col justify-between items-end text-[9px] font-black py-1">
-                                                <span className="text-rose-400">{topIsAllIn ? 'ALL IN' : 'MAX POT'}</span>
-                                                <span className="text-slate-500">MIN</span>
+                                        <div className="flex items-stretch gap-3">
+                                            {/* pot-fraction shortcuts — right beside the slider, tappable but slim */}
+                                            <div className="flex flex-col justify-between items-stretch gap-1 py-1">
+                                                <button onClick={()=>setRaiseAmt(myMaxBet)} className="text-[10px] bg-slate-800 border border-rose-500/40 px-2.5 py-1 rounded-lg font-black text-rose-300">{topIsAllIn ? 'ALL IN' : 'MAX'}</button>
+                                                <button onClick={()=>setRaiseAmt(potTo(1))} className="text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300">POT</button>
+                                                <button onClick={()=>setRaiseAmt(potTo(2/3))} className="text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300">2/3</button>
+                                                <button onClick={()=>setRaiseAmt(potTo(1/2))} className="text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300">1/2</button>
+                                                <button onClick={()=>setRaiseAmt(potTo(1/3))} className="text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300">1/3</button>
+                                                <button onClick={()=>setRaiseAmt(minRaiseTo)} className="text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300">MIN</button>
                                             </div>
-                                            <input type="range" className="vslider" min={minRaiseTo} max={myMaxBet} step={Number(setts.blinds) || 0.5}
-                                                value={raiseAmt} onChange={e=>setRaiseAmt(parseFloat(e.target.value))} />
-                                        </div>
-                                        <div className="flex gap-1.5">
-                                            <button onClick={()=>setRaiseAmt(minRaiseTo)} className="text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1.5 rounded-lg font-black text-slate-300">MIN</button>
-                                            <button onClick={()=>setRaiseAmt(Math.min(round2(totalPot + toCallMe*2), myMaxBet))} className="text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1.5 rounded-lg font-black text-slate-300">POT</button>
-                                            <button onClick={()=>setRaiseAmt(myMaxBet)} className="text-[10px] bg-slate-800 border border-rose-500/40 px-2.5 py-1.5 rounded-lg font-black text-rose-300">{topIsAllIn ? 'ALL IN' : 'MAX'}</button>
+                                            {/* Wedge slider: narrow at MIN (bottom) → wide at ALL IN (top); the white
+                                                level line grows with it */}
+                                            <div className="relative" style={{ width: '64px', height: '250px' }}>
+                                                <div className="absolute inset-0" style={{ clipPath: 'polygon(42% 100%, 58% 100%, 100% 0, 0 0)', background: `linear-gradient(to top, ${fillCol} 0%, ${fillCol} ${pct}%, rgba(148,163,184,0.16) ${pct}%, rgba(148,163,184,0.16) 100%)` }}></div>
+                                                <div className="absolute left-1/2 -translate-x-1/2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.7)]" style={{ height: '3px', bottom: `calc(${pct}% - 1px)`, width: `${10 + 54 * pct / 100}px` }}></div>
+                                                <div className="absolute left-0 right-0 top-0 text-center text-[8px] font-black text-rose-300 -translate-y-4">{topIsAllIn ? 'ALL IN' : 'MAX'}</div>
+                                                <input type="range" className="vslider absolute inset-0 opacity-0" style={{ width: '64px', height: '250px' }} min={minRaiseTo} max={myMaxBet} step={Number(setts.blinds) || 0.5}
+                                                    value={raiseAmt} onChange={e=>setRaiseAmt(parseFloat(e.target.value))} />
+                                            </div>
                                         </div>
                                         <button disabled={acting} onClick={()=>{ setRaiseOpen(false); myAct('raise', raiseAmt); }}
                                                 className={`w-full py-3 rounded-2xl font-black text-sm shadow-lg active:scale-95 transition-transform text-white ${atTop && topIsAllIn ? 'bg-gradient-to-b from-rose-500 to-rose-800' : 'btn-raise'}`} dir="ltr">
                                             {atTop && topIsAllIn ? '🔥 ALL IN' : `RAISE ${formatShort(raiseAmt)}`}
                                         </button>
                                     </div>
-                                )}
+                                    );
+                                })()}
                                 <div className={`grid grid-cols-3 gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`}>
                                     <button disabled={acting} onClick={()=>{ setRaiseOpen(false); myAct('fold'); }} className="btn-fold text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform">FOLD</button>
                                     <button disabled={acting} onClick={()=>{ setRaiseOpen(false); myAct('call'); }} className="btn-call text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform">
@@ -6397,8 +6458,16 @@
                         })() : gs.phase === 'discard' && isSeated && myCards.length === 3 ? (
                             <div className="text-center text-amber-300 font-black text-sm animate-pulse">🍍 Tap a top card to discard it</div>
                         ) : (
-                            <div className="text-center text-slate-500 font-bold text-xs">
-                                {inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'}
+                            <div className="flex flex-col items-center gap-1.5">
+                                {inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn && (
+                                    <button onClick={() => setPreCF(v => !v)}
+                                            className={`px-6 py-2.5 rounded-xl font-black text-sm border transition-all active:scale-95 ${preCF ? 'bg-gradient-to-b from-amber-500 to-amber-700 text-white border-amber-300 ring-2 ring-amber-300/60' : 'bg-slate-800/90 text-slate-300 border-white/10 hover:text-white'}`}>
+                                        {preCF ? '✓ CHECK/FOLD armed — tap to cancel' : 'CHECK / FOLD'}
+                                    </button>
+                                )}
+                                <div className="text-center text-slate-500 font-bold text-xs">
+                                    {inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'}
+                                </div>
                             </div>
                         )}
                         {spectate && !isSeated && (
@@ -6438,6 +6507,13 @@
                                     <button onClick={tourDecline} className="flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3.5 rounded-2xl font-black border border-white/10">Folded</button>
                                 </div>
                             </div>
+                        </div>
+                    )}
+
+                    {offline && (
+                        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse" dir="ltr">
+                            <span className="no-signal relative"><i className="fa-solid fa-wifi"></i><span className="ns-slash"></span></span>
+                            <span className="text-[11px] font-black text-rose-300">No connection — reconnecting…</span>
                         </div>
                     )}
 

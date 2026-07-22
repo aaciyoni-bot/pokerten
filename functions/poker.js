@@ -693,6 +693,8 @@ exports.pkTick = onCall(async (request) => {
         try { await leaveSeat(tableId, lv.uid, t.clubId || "main"); } catch (e) { /* retried next tick */ }
         return {ok: true};
       }
+      // Still live in the hand → FALL THROUGH to the normal tick (timeouts, bots,
+      // dealing). Returning here froze the whole table while a leaver played on.
     }
   }
 

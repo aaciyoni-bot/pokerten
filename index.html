@@ -4848,11 +4848,14 @@
                 if ((g0.ritAgree || {})[user.uid] !== undefined) return;
                 window.fb.fx('pkRit', { tableId: tableDocId, agree: true }).catch(() => {});
             }, [!!tableState?.gameState?.ritOffer]);
-            // A running spin table is watch-only for outsiders: enter spectate directly,
-            // never dangle a buy-in that can't work.
+            // Watch-only rule (ALL tournament-style tables, present and future): if the
+            // player has no way in anymore — spin already started, tournament seat not
+            // his, late-reg over, rebuys done — entering the table goes STRAIGHT to
+            // spectate. Never dangle a buy-in that can't work.
             useEffect(() => {
-                if (setts.spinMode && tableState?.spin && !isSeated && !spectate) setSpectate(true);
-            }, [!!tableState?.spin, isSeated]);
+                const noWayIn = (setts.spinMode && tableState?.spin) || !!tableState?.tournamentId;
+                if (noWayIn && !isSeated && !spectate) setSpectate(true);
+            }, [!!tableState?.spin, !!tableState?.tournamentId, isSeated]);
             // Spin & Cash: show the roulette while the wheel window is open
             const [spinShow, setSpinShow] = useState(false);
             useEffect(() => {
@@ -6832,7 +6835,7 @@
                                 </div>
                             </div>
                         )}
-                        {spectate && !isSeated && !(setts.spinMode && tableState.spin) && (
+                        {spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && (
                             <button onClick={()=>setSpectate(false)} className="mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg">Sit back in</button>
                         )}
                     </div>

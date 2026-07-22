@@ -1084,6 +1084,9 @@ exports.pkTick = onCall(async (request) => {
     if (t.spin && !t.spinDone && g.phase === "waiting" && Date.now() > (t.spinStartAt || 0)) {
       const alive = Object.values(pl).filter((q) => (q.stack || 0) > 0);
       if (alive.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } return {ok: true}; }
+      // Everyone else left after the wheel → the last one standing IS the winner.
+      // Without this a half-abandoned spin table would hang forever.
+      if (alive.length === 1) { await spinAfterHand(tableId, t, pl); return {ok: true}; }
     }
   }
 

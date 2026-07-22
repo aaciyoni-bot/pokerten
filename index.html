@@ -4402,6 +4402,8 @@
 
             const tableRef = useRef(null);
             const actedTurnRef = useRef(null); // turnStartedAt of the turn I already acted on — hides buttons until a genuinely new turn
+            const leaveArmedRef = useRef(false); // I marked "leave at end of hand" — auto-exit when the seat clears
+            const leavingNowRef = useRef(false);
             const advanceRef = useRef(null);
             const nextHandRef = useRef(null);
             const startingRef = useRef(false);
@@ -4704,7 +4706,7 @@
                     const g0 = t.gameState;
                     if (!['waiting','showdown'].includes(g0.phase)) return;
                     const pl = clonePlayers(t.players);
-                    Object.values(pl).forEach(p => { if (p.sitOutNext) { p.sitOut = true; p.sitOutAt = Date.now(); p.sitAuto = false; p.sitOutNext = false; } p.cards = []; p.bet = 0; p.actionText = ''; p.hasActed = false; p.reveal = false; p.status = p.stack > 0 ? ((p.sitOut && !t.tournamentId) ? 'sitout' : 'active') : (['busted','out'].includes(p.status) ? p.status : 'sitout'); });
+                    Object.values(pl).forEach(p => { if (p.sitOutNext) { p.sitOut = true; p.sitOutAt = Date.now(); p.sitAuto = false; p.sitOutNext = false; } if (p.leaveReq && !t.tournamentId) p.sitOut = true; p.cards = []; p.bet = 0; p.actionText = ''; p.hasActed = false; p.reveal = false; p.status = p.stack > 0 ? ((p.sitOut && !t.tournamentId) ? 'sitout' : 'active') : (['busted','out'].includes(p.status) ? p.status : 'sitout'); });
                     const actives = Object.values(pl).filter(p => p.status === 'active').sort((a,b) => a.seatIndex - b.seatIndex);
                     if (actives.length < 2) {
                         await saveGame({ ...g0, phase: 'waiting', activeTurnUid: null, board: [], pots: [] }, pl);
@@ -5016,7 +5018,8 @@
                         if (!ts2.exists()) return;
                         const t = ts2.data();
                         const p = t.players[uid]; if (!p) return;
-                        if (!byAdmin && !(p.sitOut && !t.tournamentId && Date.now() - (p.sitOutAt || 0) > 600000)) return;
+                        if (!byAdmin && !t.tournamentId && !(p.leaveReq || (p.sitOut && Date.now() - (p.sitOutAt || 0) > 600000))) return;
+                        if (!byAdmin && t.tournamentId) return;
                         const inHand = !['waiting', 'showdown'].includes((t.gameState || {}).phase) && p.status === 'active';
                         if (inHand && !byAdmin) return; // לא בועטים באמצע יד
                         const ms = p.isBot ? null : await tr.get(memDoc(uid));
@@ -5031,11 +5034,27 @@
                 const iv = setInterval(() => {
                     const t = tableRef.current; if (!t) return;
                     Object.values(t.players || {}).forEach(p => {
-                        if (p.sitOut && !p.isBot && Date.now() - (p.sitOutAt || 0) > 600000) kickSeat(p.uid, false);
+                        // 10-min sit-out kick + leave-at-end-of-hand cleanup for a leaver who disconnected
+                        if (!p.isBot && (p.leaveReq || (p.sitOut && Date.now() - (p.sitOutAt || 0) > 600000))) kickSeat(p.uid, false);
                     });
                 }, 12000);
                 return () => clearInterval(iv);
             }, [tableState && tableState.id]);
+
+            // "Leave at end of hand": once the hand settles, my own client completes the
+            // exit; if the seat was already cleared (tick backstop / kick), just go home.
+            useEffect(() => {
+                if (!tableState) return;
+                const me = (tableState.players || {})[user.uid];
+                if (me?.leaveReq) leaveArmedRef.current = true;
+                if (!leaveArmedRef.current) return;
+                if (!me) { leaveArmedRef.current = false; onLeave(); return; }
+                const ph = (tableState.gameState || {}).phase;
+                if (me.leaveReq && ['waiting', 'showdown'].includes(ph) && !leavingNowRef.current) {
+                    leavingNowRef.current = true; leaveArmedRef.current = false;
+                    Promise.resolve(handleStandUp(true)).finally(() => { leavingNowRef.current = false; });
+                }
+            }, [tableState]);
 
             const rebuyAfterBust = async () => {
                 try {
@@ -5104,12 +5123,28 @@
                 const inHand = !['waiting','showdown'].includes(g.phase) && t.players[user.uid].status === 'active';
                 // Server-authoritative table: the whole fold-out + seat removal + refund runs
                 // atomically in pkLeave, so blinds/turn logic never waits on a ghost player.
+                // The rule: leaving takes effect at the END of the hand, never inside one.
+                // Mid-hand the door marks the exit; you finish the hand, and when it settles the
+                // seat is removed (pkTick backstop) and you're returned to the lobby automatically.
+                if (inHand) {
+                    const meF = t.players[user.uid] || {};
+                    if (meF.leaveReq) {
+                        if (await askConfirm("Cancel leaving and stay at the table?")) {
+                            try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leaveReq`]: null }); } catch(e) {}
+                            leaveArmedRef.current = false;
+                            showToast("Staying! 💪", "success");
+                        }
+                        return;
+                    }
+                    if (!(await askConfirm("You're mid-hand — you'll leave when the hand ends. Play it out. Mark the exit?"))) return;
+                    try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leaveReq`]: Date.now() }); leaveArmedRef.current = true; } catch(e) {}
+                    showToast("🚪 Leaving at the end of this hand (tap again to cancel)", "info");
+                    return;
+                }
                 if (setts.serverEngine) {
-                    if (inHand && !(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
                     const meS = t.players[user.uid] || {};
                     // Flag first: even if the pkLeave call below fails (network hiccup, stale
-                    // client), any viewer's next pkTick finishes the removal server-side —
-                    // so the door ALWAYS takes you out.
+                    // client), any viewer's next pkTick finishes the removal server-side.
                     try { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.leaveReq`]: Date.now() }); } catch(e) {}
                     let left = false;
                     for (let i = 0; i < 2 && !left; i++) {
@@ -5118,38 +5153,6 @@
                     }
                     logGameResult([{ uid: user.uid, username: user.username, game: 'poker', profit: round2((meS.stack || 0) - (meS.buyTotal || meS.stack || 0)) }], tableDocId);
                     onLeave(); return;
-                }
-                if (inHand) {
-                    if (!(await askConfirm("Standing up mid hand = Fold the hand. Continue?"))) return;
-                    // פיינאפל: אם טרם זרקתי קלף - זורקים אחד לפני היציאה, אחרת שלב הזריקה נתקע לנצח
-                    if (g.phase === 'discard' && (t.players[user.uid].cards || []).length === 3) {
-                        await handleDiscardCard(user.uid, 0);
-                        await new Promise(r => setTimeout(r, 400));
-                    }
-                    // Dealer's Choice: אם אני זה שאמור לבחור משחק - בוחרים ברירת מחדל לפני היציאה
-                    if (g.phase === 'dc_selection' && g.dcUid === user.uid) {
-                        await selectDCGame(setts.baseGameType || 'NLH', user.uid);
-                        await new Promise(r => setTimeout(r, 400));
-                    }
-                    const tNow = tableRef.current || t;
-                    const gNow = tNow.gameState || g;
-                    if (BETTING.includes(gNow.phase) && tNow.players[user.uid] && tNow.players[user.uid].status === 'active') {
-                        const othersIn = Object.values(tNow.players).filter(q => q.status === 'active' && q.uid !== user.uid);
-                        if (othersIn.length === 0) {
-                            // Last one still in the hand — the pot is his; settle, then cash out below.
-                            await finishEarlyWin({ ...gNow }, clonePlayers(tNow.players), user.uid);
-                        } else if (gNow.activeTurnUid === user.uid) {
-                            await performAction(user.uid, 'fold');
-                        } else {
-                            const g2 = { ...gNow }; const pl = clonePlayers(tNow.players);
-                            pl[user.uid].status = 'folded'; pl[user.uid].actionText = 'Fold'; pl[user.uid].hasActed = true;
-                            const actives = Object.values(pl).filter(q => q.status === 'active');
-                            if (actives.length === 1) await finishEarlyWin(g2, pl, actives[0].uid);
-                            else if (actives.length === 0) { g2.phase = 'waiting'; g2.activeTurnUid = null; await saveGame(g2, pl); }
-                            else await saveGame(g2, pl);
-                        }
-                    }
-                    await new Promise(r => setTimeout(r, 500));
                 }
                 try {
                     let session = null;
@@ -5841,6 +5844,7 @@
                                                 return <div className="absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5" dir="ltr">☕ {tableState.tournamentId ? 'Sit out' : `${mm}:${String(ss).padStart(2,'0')}`}{p.sitAuto ? ' 📵' : ''}</div>;
                                             })()}
                                             {!p.sitOut && p.sitOutNext && <div className="absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5" dir="ltr">☕ after hand</div>}
+                                            {p.leaveReq && !tableState.tournamentId && <div className="absolute -top-2 left-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5" dir="ltr">🚪 after hand</div>}
                                             {p.leavingAt && !tableState.tournamentId && (() => {
                                                 const lms = Math.max(0, p.leavingAt - Date.now());
                                                 return <div className="absolute right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5" style={{ top: p.sitOut ? 12 : -8 }} dir="ltr">🚪 {Math.floor(lms/60000)}:{String(Math.floor((lms%60000)/1000)).padStart(2,'0')}</div>;

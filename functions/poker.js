@@ -449,6 +449,8 @@ async function dealHand(tableId, chosenType) {
       // Deferred sit-out (tapped ☕ mid-hand): the rule everywhere is that state
       // changes apply BETWEEN hands, never inside one.
       if (p.sitOutNext) { p.sitOut = true; p.sitOutAt = Date.now(); p.sitAuto = false; p.sitOutNext = false; }
+      // Leaving at hand's end — never dealt into the next hand (removal races the deal).
+      if (p.leaveReq && !t.tournamentId) p.sitOut = true;
       p.cards = []; p.cardCount = 0; p.bet = 0; p.actionText = ""; p.hasActed = false; p.reveal = false;
       // Tournament: sit-out players are still dealt (blinds burn, auto-folded by the tick);
       // out/busted stay out. Cash: sit-out means skipped.
@@ -671,14 +673,18 @@ exports.pkTick = onCall(async (request) => {
   const g = t.gameState || {};
   const pl = t.players || {};
 
-  // Door backstop: a seat flagged leaveReq (a client whose exit call failed or
-  // never arrived) is removed by whichever viewer ticks first — the door always
-  // ends with the seat gone and the wallet refunded.
+  // Door rule: leaving takes effect at the END of the hand, never inside one.
+  // A seat flagged leaveReq is removed by whichever viewer ticks first — but only
+  // once its owner is no longer live in a hand (hand over / folded / sitout).
+  // A disconnected leaver still exits: the timeout below folds him, then this fires.
   if (!t.tournamentId) {
     const lv = Object.values(pl).find((p) => p && p.leaveReq);
     if (lv) {
-      try { await leaveSeat(tableId, lv.uid, t.clubId || "main"); } catch (e) { /* retried next tick */ }
-      return {ok: true};
+      const inLive = [...BETTING, "discard"].includes(g.phase) && lv.status === "active";
+      if (!inLive) {
+        try { await leaveSeat(tableId, lv.uid, t.clubId || "main"); } catch (e) { /* retried next tick */ }
+        return {ok: true};
+      }
     }
   }
 

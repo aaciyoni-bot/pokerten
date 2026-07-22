@@ -7200,7 +7200,10 @@ function PokerCreateView({
     autoStart: 2,
     straddle: false,
     ante: 0,
-    omahaPotLimit: true
+    omahaPotLimit: true,
+    bombEvery: 0,
+    bombAnte: 2,
+    aofEvery: 0
   });
   const upd = (k, v) => setS(prev => ({
     ...prev,
@@ -7470,7 +7473,59 @@ function PokerCreateView({
     className: "text-white text-sm font-bold"
   }, "Omaha plays ", React.createElement("b", {
     className: "text-amber-400"
-  }, "POT LIMIT"), " (PLO) — uncheck for No-Limit (NLO)")))), React.createElement("div", {
+  }, "POT LIMIT"), " (PLO) — uncheck for No-Limit (NLO)"))), React.createElement(Field, {
+    label: "Action hands 💣"
+  }, React.createElement("div", {
+    className: "grid grid-cols-2 gap-2"
+  }, React.createElement("div", null, React.createElement("div", {
+    className: "text-[10px] text-slate-400 font-black mb-1"
+  }, "💣 Bomb Pot every"), React.createElement("select", {
+    value: s.bombEvery || 0,
+    onChange: e => upd('bombEvery', Number(e.target.value)),
+    className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm"
+  }, React.createElement("option", {
+    value: 0
+  }, "Off"), React.createElement("option", {
+    value: 5
+  }, "5 hands"), React.createElement("option", {
+    value: 10
+  }, "10 hands"), React.createElement("option", {
+    value: 15
+  }, "15 hands"), React.createElement("option", {
+    value: 25
+  }, "25 hands"))), React.createElement("div", null, React.createElement("div", {
+    className: "text-[10px] text-slate-400 font-black mb-1"
+  }, "Bomb ante (BB)"), React.createElement("select", {
+    value: s.bombAnte || 2,
+    onChange: e => upd('bombAnte', Number(e.target.value)),
+    className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm"
+  }, React.createElement("option", {
+    value: 1
+  }, "1"), React.createElement("option", {
+    value: 2
+  }, "2"), React.createElement("option", {
+    value: 3
+  }, "3"), React.createElement("option", {
+    value: 5
+  }, "5"))), React.createElement("div", {
+    className: "col-span-2"
+  }, React.createElement("div", {
+    className: "text-[10px] text-slate-400 font-black mb-1"
+  }, "♠ ALL-IN or FOLD hand"), React.createElement("select", {
+    value: s.aofEvery || 0,
+    onChange: e => upd('aofEvery', e.target.value === 'orbit' ? 'orbit' : Number(e.target.value)),
+    className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm"
+  }, React.createElement("option", {
+    value: 0
+  }, "Off"), React.createElement("option", {
+    value: "orbit"
+  }, "Once per orbit"), React.createElement("option", {
+    value: 5
+  }, "Every 5 hands"), React.createElement("option", {
+    value: 10
+  }, "Every 10 hands"), React.createElement("option", {
+    value: 20
+  }, "Every 20 hands")))))), React.createElement("div", {
     className: "flex gap-2 items-center pt-1"
   }, React.createElement("input", {
     value: tplName,
@@ -9798,7 +9853,10 @@ function PokerTable({
   }, tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "ft-banner",
     dir: "ltr"
-  }, "FINAL TABLE"), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
+  }, "FINAL TABLE"), (gs.bombPot || gs.aof) && gs.phase !== 'waiting' && React.createElement("div", {
+    className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
+    dir: "ltr"
+  }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
     className: "absolute left-1/2 top-[32.5%] -translate-x-1/2 z-40 bg-black/40 rounded-2xl px-5 py-1 text-center pointer-events-none",
     dir: "ltr"
   }, React.createElement("div", {
@@ -10283,7 +10341,23 @@ function PokerTable({
         className: `w-full py-3 rounded-2xl font-black text-sm shadow-lg active:scale-95 transition-transform text-white ${atTop && topIsAllIn ? 'bg-gradient-to-b from-rose-500 to-rose-800' : 'btn-raise'}`,
         dir: "ltr"
       }, atTop && topIsAllIn ? '🔥 ALL IN' : `RAISE ${formatShort(raiseAmt)}`));
-    })(), React.createElement("div", {
+    })(), gs.aof ? React.createElement("div", {
+      className: `grid ${toCallMe === 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`
+    }, React.createElement("button", {
+      disabled: acting,
+      onClick: () => myAct('fold'),
+      className: "btn-fold text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform"
+    }, "FOLD"), toCallMe === 0 && React.createElement("button", {
+      disabled: acting,
+      onClick: () => myAct('call'),
+      className: "btn-call text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform"
+    }, "CHECK"), React.createElement("button", {
+      disabled: acting,
+      onClick: () => {
+        toCallMe > 0 && toCallMe >= (myPlayer?.stack || 0) ? myAct('call') : myAct('raise', allInTo);
+      },
+      className: "bg-gradient-to-b from-rose-500 to-rose-800 text-white py-4 rounded-xl font-black text-base shadow-lg active:scale-95 transition-transform"
+    }, "🔥 ALL IN")) : React.createElement("div", {
       className: `grid grid-cols-3 gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`
     }, React.createElement("button", {
       disabled: acting,

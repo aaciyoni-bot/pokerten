@@ -8876,16 +8876,17 @@ function PokerTable({
     return () => clearInterval(iv);
   }, [isSuperAdmin, tableDocId, tableState === null]);
   const activesOppCount = Object.values(players).filter(p => p.status === 'active' && p.uid !== user.uid).length;
+  const myCards = srvEngine ? myPrivCards : myPlayer?.cards || [];
   const myHand = useMemo(() => {
-    if (!myPlayer || !(myPlayer.cards || []).length) return null;
-    return handName(bestScoreNow(myPlayer.cards, gs.board || [], gs.currentGameType));
-  }, [(myPlayer?.cards || []).length, (gs.board || []).length, gs.phase]);
+    if (!myPlayer || !myCards.length) return null;
+    return handName(bestScoreNow(myCards, gs.board || [], gs.currentGameType));
+  }, [myCards.length, (gs.board || []).length, gs.phase]);
   const myEquity = useMemo(() => {
-    if (!myPlayer || myPlayer.status !== 'active' || !(myPlayer.cards || []).length) return null;
+    if (!myPlayer || myPlayer.status !== 'active' || !myCards.length) return null;
     if (gs.allInReveal || !['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase)) return null;
     if (activesOppCount < 1) return null;
-    return simMyEquity(myPlayer.cards, gs.board || [], activesOppCount, gs.currentGameType);
-  }, [(myPlayer?.cards || []).length, (gs.board || []).length, gs.phase, activesOppCount, gs.allInReveal]);
+    return simMyEquity(myCards, gs.board || [], activesOppCount, gs.currentGameType);
+  }, [myCards.length, (gs.board || []).length, gs.phase, activesOppCount, gs.allInReveal]);
   const realEq = useMemo(() => {
     if (!gs.allInReveal) return null;
     const hands = Object.values(players).filter(p => p.status === 'active' && (p.cards || []).length > 0).map(p => ({
@@ -9615,7 +9616,7 @@ function PokerTable({
     className: "absolute top-16 left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
     className: "shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 p-3 z-40 min-h-[110px] flex flex-col justify-center"
-  }, isSeated && myPlayer?.status === 'active' && (myPlayer.cards || []).length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
+  }, isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
     className: "flex justify-center gap-2 mb-2"
   }, !gs.allInReveal && myHand && React.createElement("span", {
     className: "bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg"
@@ -9701,7 +9702,7 @@ function PokerTable({
     }, "RAISE ", React.createElement("span", {
       className: "block text-[11px] opacity-90"
     }, raiseOpen ? '▼ close' : '▲'))));
-  })() : gs.phase === 'discard' && isSeated && (myPlayer?.cards || []).length === 3 ? React.createElement("div", {
+  })() : gs.phase === 'discard' && isSeated && myCards.length === 3 ? React.createElement("div", {
     className: "text-center text-amber-300 font-black text-sm animate-pulse"
   }, "🍍 Tap a top card to discard it") : React.createElement("div", {
     className: "text-center text-slate-500 font-bold text-xs"

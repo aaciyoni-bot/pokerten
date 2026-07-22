@@ -8885,7 +8885,7 @@ function PokerTable({
     return () => clearInterval(iv);
   }, [isSuperAdmin, tableDocId, tableState === null]);
   const activesOppCount = Object.values(players).filter(p => p.status === 'active' && p.uid !== user.uid).length;
-  const myCards = srvEngine ? myPrivCards : myPlayer?.cards || [];
+  const myCards = srvEngine ? (myPlayer?.cardCount || 0) > 0 ? myPrivCards : [] : myPlayer?.cards || [];
   const myHand = useMemo(() => {
     if (!myPlayer || !myCards.length) return null;
     return handName(bestScoreNow(myCards, gs.board || [], gs.currentGameType));
@@ -9417,7 +9417,7 @@ function PokerTable({
     let dispCards = p.cards || [];
     if (srvEngine) {
       if (isMe) {
-        dispCards = myPrivCards;
+        dispCards = (myPlayer?.cardCount || 0) > 0 ? myPrivCards : [];
         hidden = false;
       } else if ((p.cards || []).length) {
         dispCards = p.cards;

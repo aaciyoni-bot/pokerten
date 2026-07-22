@@ -793,14 +793,20 @@
         const TURN_SECONDS = 60;
         const FIRST_MELD_MIN = 30;
 
-        // Bot display names — NEVER contain the word "bot": Israeli names, poker slang, or a plain random number.
-        const BOT_NAMES_HE = ['יוסי', 'דודו', 'אבי', 'איציק', 'שלומי', 'רמי', 'קובי', 'ששון', 'אלי', 'מאיר', 'אורן', 'גולן', 'שגיא', 'נדב', 'חיים', 'מוטי', 'בני', 'צחי', 'עמוס', 'דורון', 'יעקב', 'שמעון'];
+        // Bot display names — NEVER contain the word "bot": full Israeli names (Hebrew or
+        // English, first + family), poker slang, or a plain random number.
+        const BOT_FIRST_HE = ['יוסי', 'דודו', 'אבי', 'איציק', 'שלומי', 'רמי', 'קובי', 'ששון', 'אלי', 'מאיר', 'אורן', 'גולן', 'שגיא', 'נדב', 'חיים', 'מוטי', 'בני', 'צחי', 'עמוס', 'דורון', 'יעקב', 'שמעון'];
+        const BOT_LAST_HE = ['כהן', 'לוי', 'מזרחי', 'פרץ', 'ביטון', 'אוחיון', 'דהן', 'חדד', 'גבאי', 'אזולאי', 'מלכה', 'עמר', 'בן דוד', 'שרעבי', 'אברהם', 'דיין'];
+        const BOT_FIRST_EN = ['Eli', 'Yossi', 'Avi', 'Kobi', 'Rami', 'Moti', 'Dudu', 'Itzik', 'Shlomi', 'Oren', 'Nadav', 'Sagi', 'Doron', 'Meir', 'Benny', 'Haim'];
+        const BOT_LAST_EN = ['Cohen', 'Levi', 'Mizrahi', 'Peretz', 'Biton', 'Ohayon', 'Dahan', 'Hadad', 'Gabay', 'Azulay', 'Malka', 'Amar', 'Ben-David', 'Sharabi'];
         const BOT_NAMES_PK = ['RiverKing', 'FlopMaster', 'AllInArtist', 'CheckRaise', 'GutShot', 'NutFlush', 'SlowRoll', 'PocketRockets', 'BigBlind', 'TiltProof', 'DryAce', 'TripleBarrel', 'LooseCannon', 'Cooler', 'HeaterRun', 'SuitedAce'];
+        const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
         const botDisplayName = () => {
             const r = Math.random();
-            if (r < 0.45) return BOT_NAMES_HE[Math.floor(Math.random() * BOT_NAMES_HE.length)] + (Math.random() < 0.5 ? '' : ' ' + (2 + Math.floor(Math.random() * 97)));
-            if (r < 0.8) return BOT_NAMES_PK[Math.floor(Math.random() * BOT_NAMES_PK.length)] + Math.floor(Math.random() * 99);
-            return String(1000 + Math.floor(Math.random() * 899999)); // just a random number
+            if (r < 0.4) return pick(BOT_FIRST_HE) + ' ' + pick(BOT_LAST_HE);          // אלי כהן
+            if (r < 0.65) return pick(BOT_FIRST_EN) + ' ' + pick(BOT_LAST_EN);          // Eli Cohen
+            if (r < 0.85) return pick(BOT_NAMES_PK) + Math.floor(Math.random() * 99);   // RiverKing42
+            return String(1000 + Math.floor(Math.random() * 899999));                   // just a number
         };
         const BOT_NAMES = BOT_NAMES_PK; // legacy alias
 

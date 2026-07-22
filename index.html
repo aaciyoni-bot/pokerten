@@ -862,7 +862,15 @@ const SUPER_ADMIN_EMAIL = 'aaci.yoni@gmail.com';
 const DEFAULT_RAKE_PCT = 6;
 const TURN_SECONDS = 60;
 const FIRST_MELD_MIN = 30;
-const BOT_NAMES = ['Alex_Pro', 'TileMaster99', 'RummyKing', 'Sara_Play', 'PokerFace_Dan', 'Lucky_Jim', 'AceOfSpades', 'JokerQueen', 'Max_Bet', 'Fast_Hand'];
+const BOT_NAMES_HE = ['יוסי', 'דודו', 'אבי', 'איציק', 'שלומי', 'רמי', 'קובי', 'ששון', 'אלי', 'מאיר', 'אורן', 'גולן', 'שגיא', 'נדב', 'חיים', 'מוטי', 'בני', 'צחי', 'עמוס', 'דורון', 'יעקב', 'שמעון'];
+const BOT_NAMES_PK = ['RiverKing', 'FlopMaster', 'AllInArtist', 'CheckRaise', 'GutShot', 'NutFlush', 'SlowRoll', 'PocketRockets', 'BigBlind', 'TiltProof', 'DryAce', 'TripleBarrel', 'LooseCannon', 'Cooler', 'HeaterRun', 'SuitedAce'];
+const botDisplayName = () => {
+  const r = Math.random();
+  if (r < 0.45) return BOT_NAMES_HE[Math.floor(Math.random() * BOT_NAMES_HE.length)] + (Math.random() < 0.5 ? '' : ' ' + (2 + Math.floor(Math.random() * 97)));
+  if (r < 0.8) return BOT_NAMES_PK[Math.floor(Math.random() * BOT_NAMES_PK.length)] + Math.floor(Math.random() * 99);
+  return String(1000 + Math.floor(Math.random() * 899999));
+};
+const BOT_NAMES = BOT_NAMES_PK;
 const isGodUser = u => u && GOD_EMAILS.includes((u.email || '').toLowerCase().trim());
 const canManageGame = (u, gameId) => {
   if (!u) return false;
@@ -6092,7 +6100,7 @@ function BackofficeView({
     try {
       showToast("Generating Bots...", "info");
       for (let i = 0; i < 20; i++) {
-        const botName = BOT_NAMES[i % BOT_NAMES.length] + Math.floor(Math.random() * 100);
+        const botName = botDisplayName();
         await window.fb.addDoc(window.fb.collection(window.fb.db, "users"), {
           username: botName,
           email: `bot${i}@pokerten.com`,
@@ -6124,6 +6132,25 @@ function BackofficeView({
       showToast("All Bots deleted.", "info");
     } catch (e) {
       showToast("Error deleting Bots", "error");
+    }
+  };
+  const handleRenameBots = async () => {
+    try {
+      showToast("Renaming bots...", "info");
+      let n = 0;
+      for (const coll of ["users", "memberships"]) {
+        const q2 = window.fb.query(window.fb.collection(window.fb.db, coll), window.fb.where("isBot", "==", true));
+        const snaps = await window.fb.getDocs(q2);
+        for (const d of snaps.docs) {
+          await window.fb.updateDoc(d.ref, {
+            username: botDisplayName()
+          });
+          n++;
+        }
+      }
+      showToast(`${n} bot profiles renamed 🎭`, "success");
+    } catch (e) {
+      showToast("Error renaming bots", "error");
     }
   };
   const canApproveAll = isOwner || user.role === ROLES.MANAGER;
@@ -6211,7 +6238,13 @@ function BackofficeView({
     className: "bg-gradient-to-b from-purple-500 to-purple-800 hover:from-purple-400 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"
   }, React.createElement("i", {
     className: "fa-solid fa-robot ml-2"
-  }), "20 Bots"), React.createElement("span", {
+  }), "20 Bots"), React.createElement("button", {
+    onClick: handleRenameBots,
+    title: "Fresh human-looking names for all bots",
+    className: "bg-slate-800/80 hover:bg-purple-900/70 border border-purple-500/40 text-purple-300 px-4 py-2.5 rounded-xl text-sm font-bold"
+  }, React.createElement("i", {
+    className: "fa-solid fa-masks-theater ml-1"
+  }), "Rename"), React.createElement("span", {
     className: "text-purple-300 text-xs font-black bg-purple-500/10 border border-purple-500/40 px-3 py-2 rounded-xl self-center"
   }, "🤖 ", botsList.length, " Bots in the system (serving all clubs)"), React.createElement("button", {
     onClick: handleDeleteBots,
@@ -6302,7 +6335,9 @@ function BackofficeView({
     onChange: async e => {
       try {
         await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
-          botsAuto: e.target.checked
+          botsAuto: e.target.checked,
+          botsAutoBy: user.username,
+          botsAutoAt: Date.now()
         }, {
           merge: true
         });
@@ -6316,7 +6351,9 @@ function BackofficeView({
     className: "text-slate-200 text-sm font-bold"
   }, "🤖 Allow automatic bot entry ", React.createElement("span", {
     className: "text-slate-500 text-xs"
-  }, "(tournament auto-fill; off = bots only when added manually)")))), React.createElement("div", {
+  }, "(tournament auto-fill; off = bots only when added manually)"))), clubSettings?.botsAutoBy && React.createElement("div", {
+    className: "text-[10px] text-slate-500 font-bold mt-1 mr-6"
+  }, "Last changed by ", clubSettings.botsAutoBy, clubSettings.botsAutoAt ? ' · ' + new Date(clubSettings.botsAutoAt).toLocaleString('he-IL') : '')), React.createElement("div", {
     className: "mb-4 pb-4 border-b border-white/5"
   }, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
@@ -8381,7 +8418,7 @@ function PokerTable({
         tx.update(ref, {
           [`players.${botUid}`]: {
             uid: botUid,
-            name: BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + Math.floor(Math.random() * 99),
+            name: botDisplayName(),
             seatIndex,
             stack: round2(100 * bb),
             bet: 0,

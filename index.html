@@ -1667,9 +1667,9 @@
             const [go, setGo] = React.useState(false);
             const [done, setDone] = React.useState(false);
             const target = React.useMemo(() => {
-                const idxs = SPIN_SEGS.map((m, i) => m === mult ? i : -1).filter(i => i >= 0);
-                if (near) return SPIN_SEGS[1] === mult ? 1 : (SPIN_SEGS[3] === mult ? 3 : idxs[0]); // parks right beside the ×100
-                const pool = idxs.filter(i => i !== 1 && i !== 3);
+                const idxs = SPIN_SEGS.map((m, i2) => m === mult ? i2 : -1).filter(i2 => i2 >= 0);
+                if (near) return SPIN_SEGS[1] === mult ? 1 : (SPIN_SEGS[3] === mult ? 3 : idxs[0]);
+                const pool = idxs.filter(i2 => i2 !== 1 && i2 !== 3);
                 return pool.length ? pool[Math.floor(Math.random() * pool.length)] : idxs[0];
             }, []);
             React.useEffect(() => {
@@ -1678,28 +1678,75 @@
                 return () => { cancelAnimationFrame(r); clearTimeout(tm); };
             }, []);
             const n = SPIN_SEGS.length, segAng = 360 / n;
-            const grad = SPIN_SEGS.map((m, i) => `${SEG_COL[m]} ${i * segAng}deg ${(i + 1) * segAng}deg`).join(', ');
-            const finalRot = 6 * 360 + (360 - (target * segAng + segAng / 2));
+            const grad = SPIN_SEGS.map((m, i2) => `${SEG_COL[m]} ${i2 * segAng}deg ${(i2 + 1) * segAng}deg`).join(', ');
+            // ball at top of a container rotated R lands at angle R clockwise — matching
+            // the conic segment center exactly (the old formula spun it MIRRORED).
+            const finalRot = 6 * 360 + (target * segAng + segAng / 2);
             return (
-                <div className="fixed inset-0 z-[400] bg-slate-950/92 backdrop-blur-sm flex flex-col items-center justify-center" dir="ltr">
-                    <div className="text-amber-300 font-black text-xl mb-4 tracking-widest animate-pulse">🎡 SPIN & CASH</div>
-                    <div className="relative" style={{ width: '280px', height: '280px' }}>
-                        <div className="absolute inset-0 rounded-full border-[10px] border-amber-700 shadow-[0_0_45px_rgba(245,158,11,0.35),inset_0_0_25px_rgba(0,0,0,0.6)]" style={{ background: `conic-gradient(${grad})` }}>
-                            {SPIN_SEGS.map((m, i) => (
-                                <div key={i} className="absolute left-1/2 top-1/2 text-white font-black" style={{ transform: `rotate(${i * segAng + segAng / 2}deg) translateY(-108px) translateX(-50%)`, transformOrigin: '0 0', fontSize: m === 100 ? '15px' : '13px', textShadow: '0 1px 3px rgba(0,0,0,0.9)', color: m === 100 ? '#fff7cc' : '#fff' }}>×{m}</div>
-                            ))}
+                <div className="fixed inset-0 z-[400] flex flex-col items-center justify-center" dir="ltr"
+                     style={{ background: 'radial-gradient(ellipse at 50% 30%, rgba(60,16,40,0.97), rgba(2,6,15,0.99) 70%)' }}>
+                    <div className="font-black text-2xl mb-5 tracking-[0.3em]" style={{ background: 'linear-gradient(100deg,#8a6a25,#fde68a 30%,#f5c860 50%,#fde68a 70%,#8a6a25)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent', textShadow: 'none' }}>SPIN &amp; CASH</div>
+                    <div className="relative" style={{ width: '320px', height: '320px' }}>
+                        {/* outer rim: brushed gold with studs */}
+                        <div className="absolute inset-0 rounded-full" style={{ background: 'conic-gradient(#7a5a1c, #e8c96a, #8a6a25, #f3dc9a, #7a5a1c, #e8c96a, #8a6a25)', boxShadow: '0 18px 60px rgba(0,0,0,0.8), 0 0 70px rgba(245,200,96,0.22), inset 0 2px 6px rgba(255,255,255,0.35)' }}></div>
+                        <div className="absolute inset-[7px] rounded-full" style={{ background: 'repeating-conic-gradient(rgba(255,244,200,0.95) 0 2deg, rgba(90,60,15,0.9) 2deg 30deg)', maskImage: 'radial-gradient(circle, transparent 62%, black 63%)', WebkitMaskImage: 'radial-gradient(circle, transparent 62%, black 63%)' }}></div>
+                        {/* wheel face */}
+                        <div className="absolute inset-[18px] rounded-full overflow-hidden" style={{ background: `conic-gradient(${grad})`, boxShadow: 'inset 0 0 35px rgba(0,0,0,0.75)' }}>
+                            <div className="absolute inset-0" style={{ background: `repeating-conic-gradient(rgba(245,220,150,0.9) 0 0.7deg, transparent 0.7deg ${segAng}deg)` }}></div>
+                            <div className="absolute inset-0" style={{ background: 'radial-gradient(circle, transparent 55%, rgba(0,0,0,0.35) 100%)' }}></div>
                         </div>
-                        <div className="absolute inset-[86px] rounded-full bg-slate-950 border-4 border-amber-600/60 flex items-center justify-center">
-                            <span className={`font-black text-2xl ${done ? 'text-amber-300 animate-pop-in' : 'text-slate-600'}`}>{done ? `×${mult}` : '?'}</span>
+                        {SPIN_SEGS.map((m, i2) => (
+                            <div key={i2} className="absolute left-1/2 top-1/2 font-black" style={{ transform: `rotate(${i2 * segAng + segAng / 2}deg) translateY(-122px) translateX(-50%)`, transformOrigin: '0 0', fontSize: m === 100 ? '17px' : '14px', color: m === 100 ? '#fff3bf' : '#f8fafc', textShadow: '0 2px 4px rgba(0,0,0,0.95)', letterSpacing: '0.02em' }}>×{m}</div>
+                        ))}
+                        {/* hub */}
+                        <div className="absolute inset-[104px] rounded-full flex items-center justify-center" style={{ background: 'radial-gradient(circle at 35% 30%, #fde68a, #b8862b 45%, #6b4d16)', boxShadow: '0 4px 14px rgba(0,0,0,0.7), inset 0 -3px 8px rgba(0,0,0,0.45)' }}>
+                            <div className="w-[78px] h-[78px] rounded-full bg-slate-950/95 border border-amber-300/40 flex items-center justify-center">
+                                <span className={`font-black ${done ? 'text-amber-300 animate-pop-in text-3xl' : 'text-slate-600 text-2xl'}`}>{done ? `×${mult}` : '?'}</span>
+                            </div>
                         </div>
-                        {/* the ball orbits inside the rim and settles on the landing slice */}
+                        {/* pointer */}
+                        <div className="absolute left-1/2 -translate-x-1/2 -top-1 z-10" style={{ width: 0, height: 0, borderLeft: '11px solid transparent', borderRight: '11px solid transparent', borderTop: '18px solid #fde68a', filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.7))' }}></div>
+                        {/* ball */}
                         <div className="absolute inset-0" style={{ transform: `rotate(${go ? finalRot : 0}deg)`, transition: go ? 'transform 6.5s cubic-bezier(0.13, 0.82, 0.16, 1)' : 'none' }}>
-                            <div className="absolute left-1/2 -translate-x-1/2" style={{ top: '16px', width: '17px', height: '17px', borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 70%, #64748b)', boxShadow: '0 2px 6px rgba(0,0,0,0.7)' }}></div>
+                            <div className="absolute left-1/2 -translate-x-1/2" style={{ top: '26px', width: '18px', height: '18px', borderRadius: '50%', background: 'radial-gradient(circle at 35% 28%, #ffffff, #d7dde6 60%, #7c8794)', boxShadow: '0 3px 8px rgba(0,0,0,0.8), 0 0 10px rgba(255,255,255,0.35)' }}></div>
                         </div>
                     </div>
-                    <div className={`mt-5 text-center transition-opacity duration-500 ${done ? 'opacity-100' : 'opacity-0'}`}>
-                        <div className="text-3xl font-black text-amber-300" dir="ltr">Prize: {formatShort(prize)}</div>
-                        <div className="text-slate-400 text-xs font-bold mt-1">Winner takes all · good luck! 🍀</div>
+                    <div className={`mt-6 text-center transition-all duration-700 ${done ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}>
+                        <div className="text-[11px] font-black text-amber-200/70 tracking-[0.35em] uppercase">The table plays for</div>
+                        <div className="text-5xl font-black mt-1" style={{ background: 'linear-gradient(180deg,#fff7d6,#f5c860 55%,#a87e22)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }} dir="ltr">{formatShort(prize)}</div>
+                        <div className="text-slate-400 text-xs font-bold mt-2">Winner takes all · good luck 🍀</div>
+                    </div>
+                </div>
+            );
+        };
+
+        /* Spin podium: dignified metal trophies — gold champion screen is built to be
+           screenshotted. Stays up until the player closes it with the X. */
+        const PodiumScreen = ({ place, amount, onClose }) => {
+            const C = place === 1 ? { g1: '#fde68a', g2: '#f59e0b', g3: '#92400e', label: '1st Place', ring: 'rgba(245,158,11,0.55)' }
+                : place === 2 ? { g1: '#f8fafc', g2: '#94a3b8', g3: '#475569', label: '2nd Place', ring: 'rgba(148,163,184,0.5)' }
+                : { g1: '#fdba74', g2: '#b45309', g3: '#7c2d12', label: '3rd Place', ring: 'rgba(180,83,9,0.45)' };
+            return (
+                <div className="fixed inset-0 z-[460] flex flex-col items-center justify-center p-6" dir="ltr" style={{ background: 'radial-gradient(ellipse at 50% 35%, rgba(30,25,10,0.97), rgba(2,6,15,0.99) 75%)' }}>
+                    <button onClick={onClose} className="absolute top-5 right-5 w-12 h-12 rounded-2xl bg-slate-800/95 border-2 border-white/25 text-white text-xl font-black shadow-2xl">✕</button>
+                    <div className="rounded-full p-8" style={{ boxShadow: `0 0 110px ${C.ring}` }}>
+                        <svg width="160" height="180" viewBox="0 0 120 136">
+                            <defs><linearGradient id={'tg' + place} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0" stopColor={C.g1} /><stop offset="0.5" stopColor={C.g2} /><stop offset="1" stopColor={C.g3} />
+                            </linearGradient></defs>
+                            <path d="M30 10 h60 v14 c0 26 -12 44 -30 50 c-18 -6 -30 -24 -30 -50 z" fill={'url(#tg' + place + ')'} stroke={C.g1} strokeWidth="1.5" />
+                            <path d="M30 16 h-14 c-2 20 8 32 20 34" fill="none" stroke={'url(#tg' + place + ')'} strokeWidth="6" strokeLinecap="round" />
+                            <path d="M90 16 h14 c2 20 -8 32 -20 34" fill="none" stroke={'url(#tg' + place + ')'} strokeWidth="6" strokeLinecap="round" />
+                            <rect x="52" y="74" width="16" height="18" fill={'url(#tg' + place + ')'} />
+                            <rect x="38" y="92" width="44" height="10" rx="2" fill={'url(#tg' + place + ')'} />
+                            <rect x="30" y="102" width="60" height="13" rx="2" fill={'url(#tg' + place + ')'} stroke={C.g3} />
+                            <path d="M40 18 l7 0 c-2 12 0 24 4 32 l-7 0 c-4 -10 -5 -22 -4 -32 z" fill="rgba(255,255,255,0.4)" />
+                        </svg>
+                    </div>
+                    <div className="text-4xl font-black text-white mt-5 tracking-wide">{C.label}</div>
+                    {amount > 0 && <div className="text-5xl font-black mt-3" style={{ background: 'linear-gradient(180deg,#fff7d6,#f5c860 55%,#a87e22)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }} dir="ltr">+{formatShort(amount)}</div>}
+                    <div className="text-slate-300 font-bold text-sm mt-4 text-center max-w-xs">
+                        {place === 1 ? 'Champion. Take the screenshot — this belongs in the group chat 📸' : place === 2 ? 'Runner-up — the crown was one hand away.' : 'Prize: 0 — next time it\u2019s yours. 💪'}
                     </div>
                 </div>
             );
@@ -4771,6 +4818,19 @@
             const [discFx, setDiscFx] = useState(null); // pineapple discard fly-out
             const [, setMuteTick] = useState(0); // 🔇 button repaint
             const [peek, setPeek] = useState(null); // tap an avatar → rings panel
+            // Spin podium: my final placement screen (1st on win; 2nd/3rd on bust)
+            const [podium, setPodium] = useState(null);
+            const podiumShownRef = useRef(false);
+            useEffect(() => {
+                if (!setts.spinMode || podiumShownRef.current || !tableState) return;
+                if (tableState.spinDone && tableState.spinWinner === user.uid) { podiumShownRef.current = true; setPodium({ place: 1, amount: tableState.spin?.prize || 0 }); return; }
+                const me0 = (tableState.players || {})[user.uid];
+                if (me0 && me0.status === 'busted' && tableState.spin) {
+                    const alive0 = Object.values(tableState.players || {}).filter(q => (q.stack || 0) > 0).length;
+                    podiumShownRef.current = true;
+                    setPodium({ place: Math.max(2, Math.min(3, alive0 + 1)), amount: 0 });
+                }
+            }, [tableState?.spinDone, tableState?.players?.[user.uid]?.status]);
             // Run It Twice: my standing preference (auto-accept offers)
             const [ritAlways, setRitAlways] = useState(() => { try { return localStorage.getItem('pkRitAlways') === '1'; } catch (e) { return false; } });
             useEffect(() => {
@@ -4781,6 +4841,11 @@
                 if ((g0.ritAgree || {})[user.uid] !== undefined) return;
                 window.fb.fx('pkRit', { tableId: tableDocId, agree: true }).catch(() => {});
             }, [!!tableState?.gameState?.ritOffer]);
+            // A running spin table is watch-only for outsiders: enter spectate directly,
+            // never dangle a buy-in that can't work.
+            useEffect(() => {
+                if (setts.spinMode && tableState?.spin && !isSeated && !spectate) setSpectate(true);
+            }, [!!tableState?.spin, isSeated]);
             // Spin & Cash: show the roulette while the wheel window is open
             const [spinShow, setSpinShow] = useState(false);
             useEffect(() => {
@@ -6161,8 +6226,13 @@
                 // Like a live table: the bet stays right in front of the player's seat all
                 // street (only ~28% of the way to center), perfectly mirrored seat-for-seat.
                 // Top-center seats side-step left so the chips never sit on their own cards.
-                const shift = Math.abs(dx) < 10 && sy < 34 ? -13 : 0;
-                return { left: `${50 + dx * 0.72 + shift}%`, top: `${50 + dy * 0.68}%` };
+                if (sy < 34) {
+                    // Top-row seats: the fan hangs BELOW the pod — the bet goes under it,
+                    // pulled toward center, never on anyone's cards.
+                    const lx = sx + (50 - sx) * 0.35 + (Math.abs(dx) < 10 ? -13 : 0);
+                    return { left: `${lx}%`, top: `${sy + 18}%` };
+                }
+                return { left: `${50 + dx * 0.72}%`, top: `${50 + dy * 0.68}%` };
             };
             const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
             const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
@@ -6502,7 +6572,7 @@
                                         {p.actionText && <div className={`action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB','BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`}
                                             style={isMe
                                                 ? {} /* my badge: dead-center ABOVE my cards (the CSS default spot) */
-                                                : { top: '30px', left: '50%', right: 'auto', transform: 'translateX(-50%)' }}>{p.actionText}</div>}
+                                                : { top: '-12px', left: '50%', right: 'auto', transform: 'translateX(-50%)' }}>{p.actionText}</div>}
                                         <div className={`relative flex flex-col items-center ${folded ? (isMe ? 'opacity-75' : 'opacity-40 grayscale') : ''} ${p.sitOut ? 'opacity-50' : ''}`}>
                                             {ch.bubbles[p.uid] && <div className="chat-bubble">{ch.bubbles[p.uid]}</div>}
                                             {p.sitOut && (() => {
@@ -6755,7 +6825,7 @@
                                 </div>
                             </div>
                         )}
-                        {spectate && !isSeated && (
+                        {spectate && !isSeated && !(setts.spinMode && tableState.spin) && (
                             <button onClick={()=>setSpectate(false)} className="mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg">Sit back in</button>
                         )}
                     </div>
@@ -6804,6 +6874,7 @@
 
                     {spinShow && tableState.spin && <SpinWheel mult={tableState.spin.mult} near={!!tableState.spin.near} prize={tableState.spin.prize} />}
                     {peek && <PlayerPeek peek={peek} onClose={() => setPeek(null)} clubId={CLUB_ID} />}
+                    {podium && <PodiumScreen place={podium.place} amount={podium.amount} onClose={() => { const pl1 = podium.place; setPodium(null); if (pl1 === 1) handleStandUp(true); }} />}
 
                     {/* Run It Twice offer — small, self-dismissing, never blocks the table */}
                     {gs.ritOffer && Date.now() < gs.ritOffer.until && gs.allInReveal && myPlayer?.status === 'active' && (gs.ritAgree || {})[user.uid] === undefined && !ritAlways && (
@@ -6814,7 +6885,7 @@
                             <label className="flex items-center gap-1 text-[9px] text-slate-400 font-bold cursor-pointer"><input type="checkbox" onChange={e => { setRitAlways(e.target.checked); try { localStorage.setItem('pkRitAlways', e.target.checked ? '1' : ''); } catch (err) {} if (e.target.checked) window.fb.fx('pkRit', { tableId: tableDocId, agree: true }).catch(() => {}); }} className="accent-cyan-500 w-3 h-3" />always</label>
                         </div>
                     )}
-                    {setts.spinMode && tableState.spinDone && (
+                    {setts.spinMode && tableState.spinDone && !podium && (
                         <div className="absolute inset-x-0 top-[38%] z-[80] flex justify-center pointer-events-none">
                             <div className="bg-slate-950/95 border-2 border-amber-400/70 rounded-2xl px-6 py-3 text-center animate-pop-in">
                                 <div className="text-2xl">🏆</div>

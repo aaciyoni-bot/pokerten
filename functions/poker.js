@@ -851,7 +851,16 @@ const SPIN_WHEEL = [
   {m: 2, p: 0.50}, {m: 3, p: 0.40}, {m: 4, p: 0.05}, {m: 5, p: 0.028},
   {m: 10, p: 0.012}, {m: 20, p: 0.005}, {m: "ticket", p: 0.005},
 ];
+function spawnSpinTwin(clubId, s) {
+  db.collection("tables").add({
+    type: "poker", clubId, createdAt: Date.now(),
+    settings: {...s},
+    players: {}, chat: [], leftStacks: {},
+    gameState: {phase: "waiting", deck: [], board: [], pots: [], highestBet: 0, minRaise: round2((Number(s.blinds) || 0.5) * 2), dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: s.baseGameType || "NLH", activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false},
+  }).catch(() => {});
+}
 async function armSpin(tableId) {
+  let armed = false;
   try {
     await db.runTransaction(async (tx) => {
       const sn = await tx.get(tRef(tableId));
@@ -869,8 +878,10 @@ async function armSpin(tableId) {
         spin: {mult, ticket: out.m === "ticket", prize: round2(buy * mult), at: Date.now(), near: mult <= 3 && crypto.randomInt(4) === 0},
         spinStartAt: Date.now() + 9000,
       });
+      armed = true;
     });
   } catch (e) { /* raced */ }
+  return armed;
 }
 async function spinAfterHand(tableId, t, plAfter) {
   const s = t.settings || {};
@@ -903,13 +914,6 @@ async function spinAfterHand(tableId, t, plAfter) {
     const profit = q.uid === w.uid ? round2(t.spin.prize - buy) : -buy;
     db.collection("gameLog").add({uid: q.uid, username: q.name || "", clubId, game: "poker", profit, rake: 0, tableId: `tournament:spin_${tableId}`, at: now}).catch(() => {});
   }
-  // Respawn: a fresh Spin & Cash table with the SAME settings opens immediately.
-  db.collection("tables").add({
-    type: "poker", clubId, createdAt: Date.now(),
-    settings: {...s},
-    players: {}, chat: [], leftStacks: {},
-    gameState: {phase: "waiting", deck: [], board: [], pots: [], highestBet: 0, minRaise: round2((Number(s.blinds) || 0.5) * 2), dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: s.baseGameType || "NLH", activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false},
-  }).catch(() => {});
 }
 
 // ── Bot rotation (cash): every ~20-45 min one bot stands up between hands and a
@@ -1144,7 +1148,11 @@ exports.pkTick = onCall(async (request) => {
 
   // Spin & Cash: table filled → spin the wheel; wheel done → auto-deal hands.
   if (s.spinMode && !t.tournamentId) {
-    if (!t.spin && g.phase === "waiting" && Object.keys(pl).length >= (Number(s.maxPlayers) || 3)) { await armSpin(tableId); return {ok: true}; }
+    if (!t.spin && g.phase === "waiting" && Object.keys(pl).length >= (Number(s.maxPlayers) || 3)) {
+      const armed = await armSpin(tableId);
+      if (armed) spawnSpinTwin(t.clubId || "main", s); // fresh identical table opens IMMEDIATELY
+      return {ok: true};
+    }
     if (t.spin && !t.spinDone && g.phase === "waiting" && Date.now() > (t.spinStartAt || 0)) {
       const alive = Object.values(pl).filter((q) => (q.stack || 0) > 0);
       if (alive.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } return {ok: true}; }
@@ -1177,7 +1185,7 @@ exports.pkTick = onCall(async (request) => {
   }
 
   // 1) showdown pause over → next hand
-  if (g.phase === "showdown" && Date.now() - (g.showdownAt || 0) > (g.earlyWin ? 4000 : 9000)) {
+  if (g.phase === "showdown" && Date.now() - (g.showdownAt || 0) > (g.earlyWin ? ((t.settings || {}).spinMode ? 6500 : 4000) : 9000)) {
     if (t.tournament && t.tournament.finished) return {ok: true};
     const alive = Object.values(pl).filter((p) => (p.stack || 0) > 0 && (t.tournamentId ? !["busted", "out"].includes(p.status) : !p.sitOut));
     if (alive.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } }

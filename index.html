@@ -4680,7 +4680,7 @@
                     // Server-authoritative table: only MY OWN action goes up (as a request);
                     // bots/timeouts/other actors are the server's job via pkTick.
                     if (actorUid === user.uid) {
-                        try { await window.fb.fx('pkAct', { tableId: tableDocId, action: type === 'raise' ? 'raise' : type, amount: targetBet }); }
+                        try { await window.fb.fx('pkAct', { tableId: tableDocId, action: type === 'raise' ? 'raise' : type, amount: targetBet, auto: !!autoTimeout }); }
                         catch(e) { const m = (e && e.message) || ''; if (!/turn|not your|in the hand|no betting|betting now/i.test(m)) showToast(m || 'Action failed', 'error'); }
                         finally { setActing(false); }
                     }

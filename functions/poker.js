@@ -633,11 +633,19 @@ exports.pkDeal = onCall(async (request) => {
 exports.pkAct = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in");
-  const {tableId, action, amount} = request.data || {};
+  const {tableId, action, amount, auto} = request.data || {};
   if (!tableId || !action) throw new HttpsError("invalid-argument", "Missing args");
   await engineStep(tableId, (t, g, pl, eng) => {
     if (!BETTING.includes(g.phase)) throw new HttpsError("failed-precondition", "No betting now");
-    if (pl[uid]) pl[uid].missed = 0; // a real action resets the auto-sit-out miss counter
+    const p0 = pl[uid];
+    if (p0) {
+      // auto=true marks a client-side TIMEOUT fold/check — it counts as a miss
+      // (two straight misses → sit-out at the end of the hand). A real tap resets.
+      if (auto) {
+        p0.missed = (p0.missed || 0) + 1;
+        if (p0.missed >= 2 && !p0.sitOut && !p0.sitOutNext) { p0.sitOutNext = true; p0.sitAuto = true; }
+      } else p0.missed = 0;
+    }
     return applyAction(t, g, pl, eng, uid, action, amount);
   });
   return {ok: true};

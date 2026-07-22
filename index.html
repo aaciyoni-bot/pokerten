@@ -838,9 +838,10 @@
             return isNaN(num) ? String(amount) : num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         };
         const formatShort = (num) => {
+            // Full numbers with thousands separators — 1,300, never "1.3K".
             if (num === undefined || num === null) return '0';
-            if (num >= 1000) return (num / 1000).toFixed(1).replace('.0','') + 'K';
-            return round2(num).toString();
+            const n = round2(num);
+            return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
         };
         const EMOJI_AV_BG = ['16243c,0e7490','1f1533,6b21a8','33200e,b45309','0e2b22,0f766e','2b0f18,9f1239','101d33,1d4ed8','1c2230,3b475e','132810,3f6212'];
         const dicebearUrl = (seed) => {

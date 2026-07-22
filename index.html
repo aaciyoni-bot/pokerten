@@ -970,7 +970,6 @@ const SFX_FILES = {
   chip1: ['chip_single_1', 'chip_single_2'],
   check: ['check_knock'],
   fold: ['fold_toss_1', 'fold_toss_2'],
-  turn: ['my_turn'],
   tick: ['timer_tick_1', 'timer_tick_2'],
   win: ['win_pot'],
   bigwin: ['big_win'],
@@ -1054,6 +1053,7 @@ const sfxPlay = (name, when = 0, gain = 1) => {
 };
 const SND = {};
 const playSnd = (type, times = 1) => {
+  if (type === 'turn') return;
   try {
     const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
     if (variants.length) {

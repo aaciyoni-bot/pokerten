@@ -1593,6 +1593,23 @@
             );
         };
 
+        /* Pot award: the pot's chips physically travel from the table center to the
+           winner, amount label riding along — bigger pot → longer trip and a longer
+           chip-rustle. That rustle is the ONLY win sound. */
+        const PotAward = ({ to, amount, dur, snd }) => {
+            const [go, setGo] = React.useState(false);
+            React.useEffect(() => {
+                if (snd) playSnd('chip', 9, dur / 9);
+                const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+                return () => cancelAnimationFrame(r);
+            }, []);
+            return (
+                <div className="absolute z-[55] pointer-events-none" style={{ left: go ? to.left : '50%', top: go ? to.top : '63.5%', opacity: go ? 0.2 : 1, transform: 'translate(-50%, -50%)', transition: `left ${dur}s ease-in-out, top ${dur}s ease-in-out, opacity ${dur}s ease-in` }}>
+                    <CasinoChipStack amount={amount} scale={0.95} />
+                </div>
+            );
+        };
+
         /* ================================================================
            אפליקציה ראשית
            ================================================================ */
@@ -6142,18 +6159,6 @@
                                                 );
                                             })()}
 
-                                            {gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && (
-                                                (() => {
-                                                    let hn = null; // the winning hand's name — visible whenever the winner's cards are revealed
-                                                    try { if (!gs.earlyWin && !hidden && (dispCards || []).length >= 2 && (gs.board || []).length >= 3) hn = handName(bestScoreNow(dispCards, gs.board || [], gs.currentGameType)); } catch(e) {}
-                                                    return (
-                                                        <div className={'win-tag' + (topSeat ? ' win-top' : '')} dir="ltr">
-                                                            <span className="win-amt">WIN{(gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''}</span>
-                                                            {hn && <span className="win-hand">{hn}</span>}
-                                                        </div>
-                                                    );
-                                                })()
-                                            )}
                                             <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
                                                 {godView && godBestUid === p.uid && <React.Fragment><div className="god-best-ring"></div><div className="god-best-tag">👁 WINS</div></React.Fragment>}
                                                 {isTurn && (
@@ -6212,6 +6217,16 @@
                             ))}
                             {/* בסוף הסיבוב הדילר "אוסף" — הצ'יפים מחליקים למרכז לקופה */}
                             {betFx.map(fx => <BetCollect key={fx.id} from={fx.from} to={{ left: '50%', top: '63.5%' }} amount={fx.amount} />)}
+
+                            {/* הקופה עוברת פיזית מהמרכז לזוכה, הסכום נוסע עם הצ'יפים */}
+                            {gs.phase === 'showdown' && (gs.lastWinAmount || 0) > 0 && gs.lastWinners && (() => {
+                                const names = String(gs.lastWinners).split(', ');
+                                const wIdx = displayList.map((p, i) => names.includes(p.name) ? i : -1).filter(ix => ix >= 0);
+                                if (!wIdx.length) return null;
+                                const share = round2((gs.lastWinAmount || 0) / wIdx.length);
+                                const dur = Math.min(3.2, 0.9 + Math.log10(1 + share) * 0.55);
+                                return wIdx.map((ix, k) => <PotAward key={'pa' + ix + '_' + (gs.showdownAt || 0)} to={seatPos(ix)} amount={share} dur={dur} snd={k === 0} />);
+                            })()}
 
                             {/* Rabbit hunt — הארנב יושב ליד השחקן; לחיצה חושפת על הבורד מה היה יורד */}
                             {(() => {

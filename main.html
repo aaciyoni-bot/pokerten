@@ -2289,6 +2289,32 @@ const BetCollect = ({
     showLabel: false
   }));
 };
+const PotAward = ({
+  to,
+  amount,
+  dur,
+  snd
+}) => {
+  const [go, setGo] = React.useState(false);
+  React.useEffect(() => {
+    if (snd) playSnd('chip', 9, dur / 9);
+    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+    return () => cancelAnimationFrame(r);
+  }, []);
+  return React.createElement("div", {
+    className: "absolute z-[55] pointer-events-none",
+    style: {
+      left: go ? to.left : '50%',
+      top: go ? to.top : '63.5%',
+      opacity: go ? 0.2 : 1,
+      transform: 'translate(-50%, -50%)',
+      transition: `left ${dur}s ease-in-out, top ${dur}s ease-in-out, opacity ${dur}s ease-in`
+    }
+  }, React.createElement(CasinoChipStack, {
+    amount: amount,
+    scale: 0.95
+  }));
+};
 function App() {
   const [fbReady, setFbReady] = useState(false);
   const [dbUser, setDbUser] = useState(null);
@@ -8818,17 +8844,7 @@ function PokerTable({
   }, [gs.activeTurnUid, gs.phase, myPlayer?.sitOut, myPlayer?.status]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [histExpand, setHistExpand] = useState(null);
-  const [bustLeft, setBustLeft] = useState(30);
-  const [rebuyGate, setRebuyGate] = useState(false);
-  useEffect(() => {
-    const bust = isSeated && (myPlayer?.stack || 0) <= 0 && ['waiting', 'showdown'].includes(gs.phase);
-    if (!bust) {
-      setRebuyGate(false);
-      return;
-    }
-    const tm = setTimeout(() => setRebuyGate(true), gs.phase === 'showdown' ? 6000 : 400);
-    return () => clearTimeout(tm);
-  }, [isSeated, (myPlayer?.stack || 0) <= 0, gs.phase]);
+  const [bustLeft, setBustLeft] = useState(600);
   const [tourTick, setTourTick] = useState(0);
   const ch = useTableChat(tableState, tableDocId, user, 'poker', showToast);
   const tour = tableState?.tournament || null;
@@ -8938,17 +8954,18 @@ function PokerTable({
     const me = tableState?.players?.[user.uid];
     if (!me || me.status !== 'busted') return;
     const isTour = !!tableState.tournament;
+    const win = isTour ? 30 : 600;
     const iv = setInterval(() => {
       const cur = tableRef.current?.players?.[user.uid];
-      if (!cur || cur.status !== 'busted') {
+      if (!cur || cur.status !== 'busted' || (cur.stack || 0) > 0) {
         clearInterval(iv);
         return;
       }
-      const left = Math.max(0, 30 - Math.floor((Date.now() - (cur.bustedAt || Date.now())) / 1000));
+      const left = Math.max(0, win - Math.floor((Date.now() - (cur.bustedAt || Date.now())) / 1000));
       setBustLeft(left);
       if (left === 0) {
         clearInterval(iv);
-        if (isTour) tourDecline();else handleStandUp();
+        if (isTour) tourDecline();else handleStandUp(true);
       }
     }, 500);
     return () => clearInterval(iv);
@@ -9233,7 +9250,7 @@ function PokerTable({
   const lockActive = leftLock && Date.now() - leftLock.at < 12 * 60 * 60 * 1000 && leftLock.amount > baseMinBuy;
   const minBuy = lockActive ? round2(Math.max(baseMinBuy, leftLock.amount)) : baseMinBuy;
   const maxBuy = Math.max(baseMaxBuy, minBuy);
-  const needRebuy = rebuyGate;
+  const needRebuy = false;
   const eligibleCount = Object.values(players).filter(p => p.stack > 0).length;
   return React.createElement("div", {
     className: "h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none",
@@ -9704,19 +9721,6 @@ function PokerTable({
         hidden: hidden,
         size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'sm'
       }))));
-    })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && (() => {
-      let hn = null;
-      try {
-        if (!gs.earlyWin && !hidden && (dispCards || []).length >= 2 && (gs.board || []).length >= 3) hn = handName(bestScoreNow(dispCards, gs.board || [], gs.currentGameType));
-      } catch (e) {}
-      return React.createElement("div", {
-        className: 'win-tag' + (topSeat ? ' win-top' : ''),
-        dir: "ltr"
-      }, React.createElement("span", {
-        className: "win-amt"
-      }, "WIN", (gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''), hn && React.createElement("span", {
-        className: "win-hand"
-      }, hn));
     })(), React.createElement("div", {
       className: `player-pod ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
       style: {
@@ -9832,7 +9836,20 @@ function PokerTable({
       top: '63.5%'
     },
     amount: fx.amount
-  })), (() => {
+  })), gs.phase === 'showdown' && (gs.lastWinAmount || 0) > 0 && gs.lastWinners && (() => {
+    const names = String(gs.lastWinners).split(', ');
+    const wIdx = displayList.map((p, i) => names.includes(p.name) ? i : -1).filter(ix => ix >= 0);
+    if (!wIdx.length) return null;
+    const share = round2((gs.lastWinAmount || 0) / wIdx.length);
+    const dur = Math.min(3.2, 0.9 + Math.log10(1 + share) * 0.55);
+    return wIdx.map((ix, k) => React.createElement(PotAward, {
+      key: 'pa' + ix + '_' + (gs.showdownAt || 0),
+      to: seatPos(ix),
+      amount: share,
+      dur: dur,
+      snd: k === 0
+    }));
+  })(), (() => {
     if (!(gs.phase === 'showdown' && gs.earlyWin && rabbit.length === 0 && (gs.board || []).length < 5)) return null;
     const need = 5 - (gs.board || []).length;
     const src = srvEngine ? gs.rabbit || [] : gs.deck || [];
@@ -10007,39 +10024,40 @@ function PokerTable({
   }, "Rebuy 💪"), React.createElement("button", {
     onClick: tourDecline,
     className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3.5 rounded-2xl font-black border border-white/10"
-  }, "Folded")))), myPlayer && myPlayer.status === 'busted' && !tableState.tournament && React.createElement("div", {
-    className: "absolute inset-0 z-[240] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+  }, "Folded")))), myPlayer && myPlayer.status === 'busted' && (myPlayer.stack || 0) <= 0 && !tableState.tournament && React.createElement("div", {
+    className: "absolute bottom-0 left-0 right-0 z-[60] px-3 pb-2 pointer-events-none"
   }, React.createElement("div", {
-    className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-white/10"
+    className: "glass-panel rounded-2xl border border-rose-500/30 px-3 py-2 flex items-center gap-3 animate-pop-in pointer-events-auto",
+    dir: "ltr"
   }, React.createElement("div", {
-    className: "text-5xl mb-2"
-  }, "💥"), React.createElement("h3", {
-    className: "text-2xl font-black text-rose-400 mb-1"
-  }, "Out of chips!"), React.createElement("p", {
-    className: "text-slate-300 text-sm font-bold mb-1"
-  }, "Rebuy and stay at the table?"), React.createElement("div", {
-    className: `text-4xl font-black font-mono my-3 ${bustLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-white'}`
-  }, bustLeft), React.createElement("input", {
+    className: "text-center shrink-0"
+  }, React.createElement("div", {
+    className: "text-[9px] text-slate-400 font-black uppercase tracking-widest"
+  }, "Rebuy time"), React.createElement("div", {
+    className: `text-xl font-black font-mono leading-tight ${bustLeft <= 60 ? 'text-rose-400 animate-pulse' : 'text-white'}`,
+    dir: "ltr"
+  }, Math.floor(bustLeft / 60), ":", String(bustLeft % 60).padStart(2, '0'))), React.createElement("div", {
+    className: "flex-1 min-w-0"
+  }, React.createElement("input", {
     type: "range",
     min: minBuy,
     max: maxBuy,
     step: BB,
     value: Math.min(Math.max(buyAmt, minBuy), maxBuy),
     onChange: e => setBuyAmt(parseFloat(e.target.value)),
-    className: "w-full accent-emerald-500 mb-1",
+    className: "w-full accent-emerald-500",
     dir: "ltr"
   }), React.createElement("div", {
-    className: "text-emerald-400 font-black text-lg mb-3",
+    className: "text-emerald-400 font-black text-xs text-center leading-none",
     dir: "ltr"
-  }, formatMoney(Math.min(Math.max(buyAmt, minBuy), maxBuy))), React.createElement("div", {
-    className: "flex gap-3"
-  }, React.createElement("button", {
+  }, formatMoney(Math.min(Math.max(buyAmt, minBuy), maxBuy)))), React.createElement("button", {
     onClick: rebuyAfterBust,
-    className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg"
-  }, "Rebuy & stay 💪"), React.createElement("button", {
-    onClick: handleStandUp,
-    className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3.5 rounded-2xl font-black border border-white/10"
-  }, "Stand up")))), historyOpen && React.createElement("div", {
+    className: "shrink-0 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-4 py-2.5 rounded-xl font-black text-sm shadow-lg"
+  }, "Rebuy 💪"), React.createElement("button", {
+    onClick: () => handleStandUp(true),
+    title: "Stand up",
+    className: "shrink-0 bg-slate-800 hover:bg-rose-900 text-slate-300 w-10 h-10 rounded-xl font-black border border-white/10"
+  }, "🚪"))), historyOpen && React.createElement("div", {
     className: "absolute inset-0 z-[250] bg-black/75 backdrop-blur-sm flex items-center justify-center p-3",
     onClick: () => setHistoryOpen(false)
   }, React.createElement("div", {

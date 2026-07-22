@@ -1663,7 +1663,7 @@
            near-miss spins park one slot past the ×100. */
         const SPIN_SEGS = [2, 3, 100, 2, 5, 3, 10, 2, 3, 20, 4, 3];
         const SEG_COL = { 2: '#334155', 3: '#0f766e', 4: '#7c3aed', 5: '#b45309', 10: '#be185d', 20: '#b91c1c', 100: '#eab308' };
-        const SpinWheel = ({ mult, near, prize }) => {
+        const SpinWheel = ({ mult, near, prize, buyIn }) => {
             const [go, setGo] = React.useState(false);
             const [done, setDone] = React.useState(false);
             const target = React.useMemo(() => {
@@ -1695,13 +1695,14 @@
                             <div className="absolute inset-0" style={{ background: `repeating-conic-gradient(rgba(245,220,150,0.9) 0 0.7deg, transparent 0.7deg ${segAng}deg)` }}></div>
                             <div className="absolute inset-0" style={{ background: 'radial-gradient(circle, transparent 55%, rgba(0,0,0,0.35) 100%)' }}></div>
                         </div>
-                        {SPIN_SEGS.map((m, i2) => (
-                            <div key={i2} className="absolute left-1/2 top-1/2 font-black" style={{ transform: `rotate(${i2 * segAng + segAng / 2}deg) translateY(-122px) translateX(-50%)`, transformOrigin: '0 0', fontSize: m === 100 ? '17px' : '14px', color: m === 100 ? '#fff3bf' : '#f8fafc', textShadow: '0 2px 4px rgba(0,0,0,0.95)', letterSpacing: '0.02em' }}>×{m}</div>
-                        ))}
+                        {SPIN_SEGS.map((m, i2) => {
+                            const amt = formatShort(m * (buyIn || 50)); // real money reads better than ×4
+                            return <div key={i2} className="absolute left-1/2 top-1/2 font-black" style={{ transform: `rotate(${i2 * segAng + segAng / 2}deg) translateY(-120px) translateX(-50%)`, transformOrigin: '0 0', fontSize: amt.length > 4 ? '11px' : amt.length > 3 ? '12px' : '14px', color: m === 100 ? '#fff3bf' : '#f8fafc', textShadow: '0 2px 4px rgba(0,0,0,0.95)', letterSpacing: '0.01em' }}>{amt}</div>;
+                        })}
                         {/* hub */}
                         <div className="absolute inset-[104px] rounded-full flex items-center justify-center" style={{ background: 'radial-gradient(circle at 35% 30%, #fde68a, #b8862b 45%, #6b4d16)', boxShadow: '0 4px 14px rgba(0,0,0,0.7), inset 0 -3px 8px rgba(0,0,0,0.45)' }}>
                             <div className="w-[78px] h-[78px] rounded-full bg-slate-950/95 border border-amber-300/40 flex items-center justify-center">
-                                <span className={`font-black ${done ? 'text-amber-300 animate-pop-in text-3xl' : 'text-slate-600 text-2xl'}`}>{done ? `×${mult}` : '?'}</span>
+                                <span className={`font-black ${done ? 'text-amber-300 animate-pop-in' : 'text-slate-600'}`} style={{ fontSize: done ? (String(prize).length > 4 ? '20px' : '26px') : '24px' }}>{done ? formatShort(prize) : '?'}</span>
                             </div>
                         </div>
                         {/* pointer */}
@@ -6872,7 +6873,7 @@
                         </div>
                     )}
 
-                    {spinShow && tableState.spin && <SpinWheel mult={tableState.spin.mult} near={!!tableState.spin.near} prize={tableState.spin.prize} />}
+                    {spinShow && tableState.spin && <SpinWheel mult={tableState.spin.mult} near={!!tableState.spin.near} prize={tableState.spin.prize} buyIn={Number(setts.spinBuyIn) || 50} />}
                     {peek && <PlayerPeek peek={peek} onClose={() => setPeek(null)} clubId={CLUB_ID} />}
                     {podium && <PodiumScreen place={podium.place} amount={podium.amount} onClose={() => { const pl1 = podium.place; setPodium(null); if (pl1 === 1) handleStandUp(true); }} />}
 

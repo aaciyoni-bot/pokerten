@@ -2413,7 +2413,8 @@ const SEG_COL = {
 const SpinWheel = ({
   mult,
   near,
-  prize
+  prize,
+  buyIn
 }) => {
   const [go, setGo] = React.useState(false);
   const [done, setDone] = React.useState(false);
@@ -2490,18 +2491,21 @@ const SpinWheel = ({
     style: {
       background: 'radial-gradient(circle, transparent 55%, rgba(0,0,0,0.35) 100%)'
     }
-  })), SPIN_SEGS.map((m, i2) => React.createElement("div", {
-    key: i2,
-    className: "absolute left-1/2 top-1/2 font-black",
-    style: {
-      transform: `rotate(${i2 * segAng + segAng / 2}deg) translateY(-122px) translateX(-50%)`,
-      transformOrigin: '0 0',
-      fontSize: m === 100 ? '17px' : '14px',
-      color: m === 100 ? '#fff3bf' : '#f8fafc',
-      textShadow: '0 2px 4px rgba(0,0,0,0.95)',
-      letterSpacing: '0.02em'
-    }
-  }, "×", m)), React.createElement("div", {
+  })), SPIN_SEGS.map((m, i2) => {
+    const amt = formatShort(m * (buyIn || 50));
+    return React.createElement("div", {
+      key: i2,
+      className: "absolute left-1/2 top-1/2 font-black",
+      style: {
+        transform: `rotate(${i2 * segAng + segAng / 2}deg) translateY(-120px) translateX(-50%)`,
+        transformOrigin: '0 0',
+        fontSize: amt.length > 4 ? '11px' : amt.length > 3 ? '12px' : '14px',
+        color: m === 100 ? '#fff3bf' : '#f8fafc',
+        textShadow: '0 2px 4px rgba(0,0,0,0.95)',
+        letterSpacing: '0.01em'
+      }
+    }, amt);
+  }), React.createElement("div", {
     className: "absolute inset-[104px] rounded-full flex items-center justify-center",
     style: {
       background: 'radial-gradient(circle at 35% 30%, #fde68a, #b8862b 45%, #6b4d16)',
@@ -2510,8 +2514,11 @@ const SpinWheel = ({
   }, React.createElement("div", {
     className: "w-[78px] h-[78px] rounded-full bg-slate-950/95 border border-amber-300/40 flex items-center justify-center"
   }, React.createElement("span", {
-    className: `font-black ${done ? 'text-amber-300 animate-pop-in text-3xl' : 'text-slate-600 text-2xl'}`
-  }, done ? `×${mult}` : '?'))), React.createElement("div", {
+    className: `font-black ${done ? 'text-amber-300 animate-pop-in' : 'text-slate-600'}`,
+    style: {
+      fontSize: done ? String(prize).length > 4 ? '20px' : '26px' : '24px'
+    }
+  }, done ? formatShort(prize) : '?'))), React.createElement("div", {
     className: "absolute left-1/2 -translate-x-1/2 -top-1 z-10",
     style: {
       width: 0,
@@ -11033,7 +11040,8 @@ function PokerTable({
   }, "No connection — reconnecting…")), spinShow && tableState.spin && React.createElement(SpinWheel, {
     mult: tableState.spin.mult,
     near: !!tableState.spin.near,
-    prize: tableState.spin.prize
+    prize: tableState.spin.prize,
+    buyIn: Number(setts.spinBuyIn) || 50
   }), peek && React.createElement(PlayerPeek, {
     peek: peek,
     onClose: () => setPeek(null),

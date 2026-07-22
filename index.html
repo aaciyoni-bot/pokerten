@@ -5686,9 +5686,10 @@
             };
             const betPos = (i) => {
                 const ang = Math.PI / 2 + (i * 2 * Math.PI) / N;
-                // Pushed clear of the community-card strip (~±28% of felt width) so bet
-                // chips never hide behind the board template.
-                return { left: `${50 + 31 * Math.cos(ang)}%`, top: `${50 + 27 * Math.sin(ang)}%` };
+                // Radial spot between seat and board, plus a tangential side-step (like the
+                // dealer button) so the chips never sit on the SB/BB/action badge line.
+                const tx = -Math.sin(ang), ty = Math.cos(ang);
+                return { left: `${50 + 29 * Math.cos(ang) + 7 * tx}%`, top: `${50 + 25 * Math.sin(ang) + 6 * ty}%` };
             };
             const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
             const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));

@@ -943,6 +943,37 @@ async function leaveSeat(tableId, uid, clubId) {
   return refund;
 }
 
+// GOD-only one-shot repair: remove client-written SESSION duplicates from gameLog.
+// Server hand results are written in GROUPS sharing (tableId, at) — every player
+// of the hand at the same millisecond. A cash-poker entry that shares its
+// timestamp with no sibling is a client session log (the double-count) → delete.
+// Tournament payouts ('tournament:...') and manual adjustments are untouched.
+exports.admFixGameLog = onCall(async (request) => {
+  if (!(await isGod(request.auth))) throw new HttpsError("permission-denied", "No");
+  const {clubId} = request.data || {};
+  const snap = await db.collection("gameLog").where("clubId", "==", clubId || "main").get();
+  const groups = {};
+  snap.docs.forEach((d) => {
+    const e = d.data();
+    if (e.game !== "poker") return;
+    const tid = String(e.tableId || "");
+    if (tid.startsWith("tournament:")) return;
+    const k = tid + "|" + e.at;
+    (groups[k] = groups[k] || []).push(d);
+  });
+  const solo = [];
+  Object.values(groups).forEach((arr) => { if (arr.length === 1) solo.push(arr[0]); });
+  let deleted = 0;
+  while (solo.length) {
+    const chunk = solo.splice(0, 450);
+    const batch = db.batch();
+    chunk.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    deleted += chunk.length;
+  }
+  return {ok: true, deleted, scanned: snap.size};
+});
+
 // GOD-only: return all live hands for a table. Validated server-side; the god
 // list never ships to the browser.
 exports.godPeek = onCall(async (request) => {

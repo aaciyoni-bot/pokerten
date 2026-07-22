@@ -6836,7 +6836,7 @@
                             </div>
                         )}
                         {spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && (
-                            <button onClick={()=>setSpectate(false)} className="mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg">Sit back in</button>
+                            <button onClick={()=>setSpectate(false)} className="mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg">Take a seat 🪑</button>
                         )}
                     </div>
 
@@ -7040,7 +7040,7 @@
                                         title="Straddle when eligible (2×BB blind — you act last preflop)"
                                         className={`w-11 h-11 rounded-2xl shadow-xl text-[10px] font-black border ${myPlayer?.straddleNext ? 'bg-amber-500 text-slate-900 border-amber-300' : 'glass-panel border-transparent text-slate-300 hover:text-amber-300'}`}>STR</button>
                             )}
-                            <button onClick={toggleSitOut} title={myPlayer?.sitOut ? 'Sit back in' : myPlayer?.sitOutNext ? 'Cancel sit-out (queued for end of hand)' : 'Sit out'} className={`w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : myPlayer?.sitOutNext ? 'bg-amber-500/40 text-amber-200 border-amber-400/60 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`}>{myPlayer?.sitOut ? '✋' : '☕'}</button>
+                            <button onClick={toggleSitOut} title={myPlayer?.sitOut ? 'Take a seat 🪑' : myPlayer?.sitOutNext ? 'Cancel sit-out (queued for end of hand)' : 'Sit out'} className={`w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : myPlayer?.sitOutNext ? 'bg-amber-500/40 text-amber-200 border-amber-400/60 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`}>{myPlayer?.sitOut ? '✋' : '☕'}</button>
                             {!(tableState?.tournamentId) && <button onClick={topUpChips} title="Add chips" className="relative w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg">💰{(myPlayer?.pendingTopUp || 0) > 0 && <span className="absolute -top-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full shadow" dir="ltr" title="Queued — added at end of hand">+{formatShort(myPlayer.pendingTopUp)}</span>}</button>}
                             {gs.phase === 'showdown' && ((srvEngine ? myPrivCards : (myPlayer?.cards || [])).length > 0) && !myPlayer.reveal && (myPlayer.status === 'folded' || (gs.earlyWin && myPlayer.status === 'active')) && (
                                 <button onClick={async () => { try { if (srvEngine) { await window.fb.fx('pkReveal', { tableId: tableDocId }); } else { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.reveal`]: true }); } } catch(e) {} }}
@@ -7073,7 +7073,7 @@
                                     </div>
                                 )}
                                 {!(isFull && !needRebuy) && <button onClick={needRebuy ? handleRebuy : handleSit} className="w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">
-                                    {needRebuy ? 'Do Rebuy' : 'Sit back in'}
+                                    {needRebuy ? 'Do Rebuy' : 'Take a seat 🪑'}
                                 </button>}
                                 {!needRebuy && <button onClick={()=>setSpectate(true)} className="w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 border border-cyan-500/30 text-cyan-200 hover:text-white py-3 rounded-2xl font-black text-sm shadow-lg mb-2"><i className="fa-solid fa-eye text-base"></i>Spectate the table</button>}
                                 {needRebuy && <button onClick={handleStandUp} className="text-slate-400 hover:text-white text-xs font-bold underline">Stand up</button>}

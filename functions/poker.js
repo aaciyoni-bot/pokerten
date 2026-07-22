@@ -699,7 +699,7 @@ exports.pkTick = onCall(async (request) => {
   }
 
   // 1) showdown pause over → next hand
-  if (g.phase === "showdown" && g.showdownAt && Date.now() - g.showdownAt > (g.earlyWin ? 3500 : 5000)) {
+  if (g.phase === "showdown" && Date.now() - (g.showdownAt || 0) > (g.earlyWin ? 3500 : 5000)) {
     if (t.tournament && t.tournament.finished) return {ok: true};
     const alive = Object.values(pl).filter((p) => (p.stack || 0) > 0 && (t.tournamentId ? !["busted", "out"].includes(p.status) : !p.sitOut));
     if (alive.length >= 2) { try { await dealHand(tableId); } catch (e) { /* raced */ } }
@@ -743,7 +743,24 @@ exports.pkTick = onCall(async (request) => {
     }
     return {ok: true};
   }
-  if (!BETTING.includes(g.phase) || !g.activeTurnUid) return {ok: true};
+  // Self-heal: a betting phase with no active turn (corrupted during a freeze /
+  // legacy write) would otherwise stall forever — reassign the turn or settle.
+  if (BETTING.includes(g.phase) && !g.activeTurnUid) {
+    try {
+      await engineStep(tableId, (t2, g2, pl2, eng) => {
+        if (!BETTING.includes(g2.phase) || g2.activeTurnUid) return null;
+        const acts = Object.values(pl2).filter((q) => q.status === "active");
+        if (acts.length === 0) { g2.phase = "waiting"; g2.board = []; g2.pots = []; return null; }
+        if (acts.length === 1) return finishEarlyWin(t2, g2, pl2, acts[0].uid);
+        const canAct = acts.filter((q) => (q.stack || 0) > 0);
+        if (canAct.length < 2) return advancePhase(t2, g2, pl2, eng); // all-in runout to showdown
+        g2.activeTurnUid = firstAfterDealer(g2, pl2); g2.turnStartedAt = Date.now();
+        return null;
+      });
+    } catch (e) { /* raced */ }
+    return {ok: true};
+  }
+  if (!BETTING.includes(g.phase)) return {ok: true};
 
   const actor = pl[g.activeTurnUid];
   const elapsed = Date.now() - (g.turnStartedAt || 0);

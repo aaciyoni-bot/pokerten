@@ -311,10 +311,18 @@ function finishEarlyWin(t, g, pl, winnerUid, eng) {
   return {rake, g, participants: Object.values(pl).filter((q) => (q.cardCount || 0) > 0).map((q) => q.uid)};
 }
 
-function runShowdown(t, g, pl, hands) {
+function runShowdown(t, g, pl, eng) {
+  const hands = eng.hands || {};
   const acts = Object.values(pl).filter((p) => p.status === "active");
-  const scores = {};
-  acts.forEach((p) => { scores[p.uid] = bestScore(hands[p.uid] || [], g.board || [], g.currentGameType); });
+  // Run It Twice: build the second board (shares everything dealt pre-agreement)
+  if (g.rit && !g.board2) {
+    const shared = (g.board || []).slice(0, g.ritFrom || 0);
+    const b2 = [...shared];
+    while (b2.length < 5 && (eng.deck || []).length) b2.push(eng.deck.shift());
+    g.board2 = b2;
+  }
+  const boards = (g.rit && (g.board2 || []).length === 5) ? [g.board || [], g.board2] : [g.board || []];
+  const scoreSets = boards.map((bd) => { const sc = {}; acts.forEach((p) => sc[p.uid] = bestScore(hands[p.uid] || [], bd, g.currentGameType)); return sc; });
   let rakeTotal = 0;
   const winnerNames = new Set();
   let winTotal = 0;
@@ -322,15 +330,20 @@ function runShowdown(t, g, pl, hands) {
   (g.pots || []).forEach((pot, idx) => {
     const elig = (pot.eligible || []).filter((uid) => pl[uid] && pl[uid].status === "active");
     if (elig.length === 0) return;
-    let bestS = -1; let winners = [];
-    elig.forEach((uid) => { const sc = scores[uid] || 0; if (sc > bestS) { bestS = sc; winners = [uid]; } else if (sc === bestS) winners.push(uid); });
     let amount = pot.amount;
     if (idx === 0) { const r = round2(amount * rakeFrac); rakeTotal = round2(rakeTotal + r); amount = round2(amount - r); }
-    const share = Math.floor((amount / winners.length) * 100) / 100;
-    // Odd cents from an uneven split go to the first winner — chips never vanish.
-    const oddCents = round2(amount - share * winners.length);
-    winTotal = round2(winTotal + amount);
-    winners.forEach((uid, wi) => { pl[uid].stack = round2(pl[uid].stack + share + (wi === 0 ? oddCents : 0)); pl[uid].actionText = "WINNER"; winnerNames.add(pl[uid].name); });
+    // one board → whole pot on it; two boards → half the pot decided by EACH board
+    const halves = scoreSets.length === 2 ? [round2(amount / 2), round2(amount - round2(amount / 2))] : [amount];
+    halves.forEach((amt, bi) => {
+      const scores = scoreSets[bi];
+      let bestS = -1; let winners = [];
+      elig.forEach((uid) => { const sc = scores[uid] || 0; if (sc > bestS) { bestS = sc; winners = [uid]; } else if (sc === bestS) winners.push(uid); });
+      const share = Math.floor((amt / winners.length) * 100) / 100;
+      // Odd cents from an uneven split go to the first winner — chips never vanish.
+      const oddCents = round2(amt - share * winners.length);
+      winTotal = round2(winTotal + amt);
+      winners.forEach((uid, wi) => { pl[uid].stack = round2(pl[uid].stack + share + (wi === 0 ? oddCents : 0)); pl[uid].actionText = "WINNER"; winnerNames.add(pl[uid].name); });
+    });
   });
   g.pots = []; g.phase = "showdown"; g.activeTurnUid = null; g.earlyWin = false;
   g.lastWinAmount = winTotal;
@@ -362,7 +375,7 @@ function advancePhase(t, g, pl, eng) {
   } else if (g.phase === "discard") { g.phase = "flop"; }
   else if (g.phase === "flop") { dealBoard(g, deck, 1); g.phase = "turn"; }
   else if (g.phase === "turn") { dealBoard(g, deck, 1); g.phase = "river"; }
-  else if (g.phase === "river") return runShowdown(t, g, pl, eng.hands);
+  else if (g.phase === "river") return runShowdown(t, g, pl, eng);
   // All-in runout: fewer than 2 players can still act → reveal everyone's hands
   // and deal the rest of the board ONE STREET AT A TIME. The tick brings the next
   // street after a dramatic pause, so players actually SEE the turn and the river
@@ -373,6 +386,13 @@ function advancePhase(t, g, pl, eng) {
     Object.values(pl).forEach((p) => { if (p.status === "active") p.cards = eng.hands[p.uid] || []; });
     g.activeTurnUid = null;
     g.runoutAt = Date.now();
+    // Run It Twice (table option): open a 5.5s opt-in window for every live
+    // player before the rest of the board runs. Cards already visible are shared.
+    if ((t.settings || {}).runTwice && !g.rit && !g.ritOffer && (g.board || []).length < 5 && Object.values(pl).filter((q) => q.status === "active").length >= 2) {
+      g.ritOffer = {until: Date.now() + 5500};
+      g.ritAgree = {};
+      g.ritFrom = (g.board || []).length;
+    }
     return null;
   }
   g.activeTurnUid = firstAfterDealer(g, pl);
@@ -577,6 +597,29 @@ async function dealHand(tableId, chosenType) {
       const ba = round2(Math.max(1, Number(s.bombAnte) || 2) * bb);
       acts.forEach((p) => { const a = Math.min(ba, p.stack); p.stack = round2(p.stack - a); anteTotal = round2(anteTotal + a); p.actionText = "BOMB"; });
     } else { post(sbP, sb, "SB"); post(bbP, bb, "BB"); }
+    // ── Straddle chain (armed players only, consecutive, poker-legal): the first
+    // player after the BB may straddle 2×BB, the NEXT one may double to 4×BB,
+    // the next triple to 8×BB (cap by table setting). The chain simply stops
+    // when there's no eligible armed player — so 3-handed only the single
+    // (button) straddle is possible, exactly per the rules. Action reopens
+    // left of the LAST straddler; he acts last preflop. ──
+    let strAmt = 0; let strLastUid = null; const strActions = [];
+    if (!isBomb && s.straddle && !t.tournamentId && !isAof) {
+      const maxStr = Math.max(1, Math.min(3, Number(s.straddleMax) || 1));
+      const ordAll = acts.filter((p2) => p2.seatIndex > bbP.seatIndex).concat(acts.filter((p2) => p2.seatIndex <= bbP.seatIndex));
+      const afterBB = ordAll.filter((p2) => p2.uid !== sbP.uid && p2.uid !== bbP.uid);
+      let amt = bb;
+      for (let i2 = 0; i2 < Math.min(maxStr, afterBB.length); i2++) {
+        const q = afterBB[i2];
+        if (!q.straddleNext || (q.stack || 0) <= 0) break;   // chain must be consecutive volunteers
+        amt = round2(amt * 2);
+        const pay = Math.min(amt, q.stack);
+        q.stack = round2(q.stack - pay); q.bet = round2(pay); q.actionText = i2 === 0 ? "STR" : i2 === 1 ? "STR×2" : "STR×3";
+        strActions.push({n: q.name || "", a: q.actionText, amt: pay, ph: "preflop"});
+        strAmt = amt; strLastUid = q.uid;
+        if (pay < amt) break;                                 // short straddle ends the chain
+      }
+    }
     const g = {
       phase: "preflop", deck: [], board: [], pots: anteTotal > 0 ? [{amount: anteTotal, eligible: acts.map((p) => p.uid)}] : [], highestBet: isBomb ? 0 : bb, minRaise: bb,
       dealerUid: dealer.uid, dcUid: g0.dcUid || null, dcAnchor: g0.dcAnchor || null, currentGameType: gameType,
@@ -588,6 +631,14 @@ async function dealHand(tableId, chosenType) {
       dealBoard(g, deck, 3);
       g.phase = "flop";
       g.activeTurnUid = firstAfterDealer(g, pl);
+    }
+    if (strAmt > 0) {
+      // Straddle live: it's the new blind level; first action left of the last straddler
+      g.highestBet = strAmt; g.minRaise = strAmt;
+      g.actions = [...g.actions, ...strActions];
+      const ordAct = activesOf(pl);
+      const si = ordAct.findIndex((p2) => p2.uid === strLastUid);
+      if (si >= 0 && ordAct.length > 1) { g.activeTurnUid = ordAct[(si + 1) % ordAct.length].uid; g.turnStartedAt = Date.now(); }
     }
     const startStacks = {};
     acts.forEach((p) => { startStacks[p.uid] = round2((p.stack || 0) + (p.bet || 0)); });
@@ -607,7 +658,7 @@ async function afterFinish(tableId, t, finish, plAfter, eng) {
   // hands made public (showdown/all-in/voluntary reveal); everyone else stores a count only.
   const g2 = finish.g || {};
   const histEntry = {
-    at: Date.now(), game: g2.currentGameType || "NLH", board: g2.board || [],
+    at: Date.now(), game: g2.currentGameType || "NLH", board: g2.board || [], board2: g2.board2 || null,
     acts: g2.actions || [], // street-by-street action log (SB/BB/raises/calls/folds)
     rake: finish.rake || 0, amount: g2.lastWinAmount || 0, winners: g2.lastWinners || "",
     ps: Object.values(plAfter).filter((q) => (q.cardCount || 0) > 0).map((q) => ({
@@ -1106,6 +1157,26 @@ exports.pkTick = onCall(async (request) => {
   // Self-heal: a betting phase with no active turn (corrupted during a freeze /
   // legacy write) would otherwise stall forever — reassign the turn or settle.
   if (BETTING.includes(g.phase) && !g.activeTurnUid) {
+    // Run It Twice offer window: pause the runout; bots opt in; close on expiry.
+    if (g.allInReveal && g.ritOffer && !g.rit) {
+      if (Date.now() < g.ritOffer.until) {
+        const pendingBots = Object.values(pl).filter((q) => q.isBot && q.status === "active" && (g.ritAgree || {})[q.uid] === undefined);
+        if (pendingBots.length) {
+          try { await engineStep(tableId, (t2, g2, pl2) => { g2.ritAgree = g2.ritAgree || {}; Object.values(pl2).forEach((q) => { if (q.isBot && q.status === "active") g2.ritAgree[q.uid] = true; }); return null; }); } catch (e) { /* raced */ }
+        }
+        return {ok: true};
+      }
+      try {
+        await engineStep(tableId, (t2, g2, pl2) => {
+          if (!g2.ritOffer) return null;
+          const live = Object.values(pl2).filter((q) => q.status === "active");
+          g2.rit = live.length >= 2 && live.every((q) => (g2.ritAgree || {})[q.uid] === true);
+          g2.ritOffer = null; g2.runoutAt = Date.now();
+          return null;
+        });
+      } catch (e) { /* raced */ }
+      return {ok: true};
+    }
     // Staged all-in runout: hold each street on screen before dealing the next.
     if (g.allInReveal && Date.now() - (g.runoutAt || 0) < 1600) return {ok: true};
     try {
@@ -1350,6 +1421,24 @@ exports.admFixGameLog = onCall(async (request) => {
     deleted += chunk.length;
   }
   return {ok: true, deleted, scanned: snap.size};
+});
+
+// Run It Twice vote (during the 5.5s all-in offer window only)
+exports.pkRit = onCall(async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in");
+  const {tableId, agree} = request.data || {};
+  if (!tableId) throw new HttpsError("invalid-argument", "Missing tableId");
+  try {
+    await engineStep(tableId, (t2, g2, pl2) => {
+      if (!g2.ritOffer || Date.now() > g2.ritOffer.until) return null;
+      if (!pl2[uid] || pl2[uid].status !== "active") return null;
+      g2.ritAgree = g2.ritAgree || {};
+      g2.ritAgree[uid] = agree === true;
+      return null;
+    });
+  } catch (e) { /* window closed */ }
+  return {ok: true};
 });
 
 // GOD-only: return all live hands for a table. Validated server-side; the god

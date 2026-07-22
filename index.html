@@ -355,6 +355,12 @@
             animation: popIn 0.3s ease-out;
         }
         .win-tag.win-top { bottom: auto; top: -30px; }
+        /* Golden halo around the winning player's avatar */
+        .winner-glow { animation: winnerPulse 1.1s ease-in-out infinite; }
+        @keyframes winnerPulse {
+            0%, 100% { box-shadow: 0 0 0 3px rgba(245,200,96,0.85), 0 0 22px 6px rgba(245,200,96,0.45); }
+            50% { box-shadow: 0 0 0 4px #ffe9a8, 0 0 34px 12px rgba(245,200,96,0.75); }
+        }
         .win-tag .win-amt {
             font-size: 13px; letter-spacing: 0.05em;
             background: linear-gradient(180deg, #fbe7ae, #e3ae4e 60%, #a9761f);
@@ -3418,6 +3424,9 @@
             const [mems, setMems] = useState(null);
             const [busy, setBusy] = useState(false);
             const [pq, setPq] = useState(''); // players-report search
+            const [sortBy, setSortBy] = useState('result'); // result | balance | rake | agent
+            const [groupAg, setGroupAg] = useState(false);
+            const [repFull, setRepFull] = useState(false);
             const [transferFor, setTransferFor] = useState(null); // player membership being reassigned
             const [closed, setClosed] = useState((window.__club || {}).closedWeeks || {});
             useEffect(() => {
@@ -3441,8 +3450,8 @@
             const inCyc = (at) => (at || 0) >= start && (at || 0) < end;
             const cuts = {}; let houseGross = 0;
             aLog.forEach(e => { if (!inCyc(e.at)) return; if (e.kind === 'club') houseGross = round2(houseGross + (e.amount || 0)); else if (e.agentUid) cuts[e.agentUid] = round2((cuts[e.agentUid] || 0) + (e.amount || 0)); });
-            const pres = {};
-            gLog.forEach(e => { if (!inCyc(e.at) || !e.uid) return; pres[e.uid] = round2((pres[e.uid] || 0) + (e.profit || 0)); });
+            const pres = {}; const rakes = {};
+            gLog.forEach(e => { if (!inCyc(e.at) || !e.uid) return; pres[e.uid] = round2((pres[e.uid] || 0) + (e.profit || 0)); rakes[e.uid] = round2((rakes[e.uid] || 0) + (e.rake || 0)); });
             const totalCuts = round2(Object.values(cuts).reduce((a, b) => a + b, 0));
             const grossRake = round2(houseGross + totalCuts);
             const club = window.__club || {};
@@ -3554,7 +3563,7 @@
                                 : <div className="glass-panel rounded-2xl p-3"><div className="text-[9px] text-slate-500 font-black uppercase">Agents</div><div className="text-lg font-black text-white" dir="ltr">{agents.length}</div></div>}
                         </div>
                     )}
-                    {/* Players report: every player, balance + results — owner sees all, an agent sees only his referrals */}
+                    {/* Players report v2: sortable, rake column, group-by-agent, full-screen */}
                     {(() => {
                         const presAll = {};
                         gLog.forEach(e => { if (e.uid) presAll[e.uid] = round2((presAll[e.uid] || 0) + (e.profit || 0)); });
@@ -3562,61 +3571,95 @@
                         let rows = isOwnerView ? mems : mems.filter(m => m.agentUid === user.uid);
                         const q = pq.trim().toLowerCase();
                         if (q) rows = rows.filter(m => (m.username || '').toLowerCase().includes(q) || (m.playerId || '').toLowerCase().includes(q) || (m.googleName || '').toLowerCase().includes(q));
-                        rows = [...rows].sort((a, b) => (b.balance || 0) - (a.balance || 0));
-                        // "Of which bonus" = spin/scratch prizes credited into the balance (bonusTotal)
-                        // + any legacy play-only bonus chips (promoBalance).
                         const bonusOf = (m) => round2((m.bonusTotal || 0) + (m.promoBalance || 0));
-                        const tot = { bal: 0, bon: 0, cyc: 0, all: 0 };
-                        rows.forEach(m => { tot.bal = round2(tot.bal + (m.balance || 0)); tot.bon = round2(tot.bon + bonusOf(m)); tot.cyc = round2(tot.cyc + (pres[m.uid] || 0)); tot.all = round2(tot.all + (presAll[m.uid] || 0)); });
+                        const agName = (m) => (byUid[m.agentUid] || {}).username || '—';
+                        const V = { balance: m => m.balance || 0, result: m => pres[m.uid] || 0, rake: m => rakes[m.uid] || 0 };
+                        rows = [...rows].sort((x, y) => sortBy === 'agent'
+                            ? agName(x).localeCompare(agName(y)) || (pres[y.uid] || 0) - (pres[x.uid] || 0)
+                            : (V[sortBy] || V.result)(y) - (V[sortBy] || V.result)(x));
+                        const tot = { bal: 0, bon: 0, cyc: 0, rk: 0, all: 0 };
+                        rows.forEach(m => { tot.bal = round2(tot.bal + (m.balance || 0)); tot.bon = round2(tot.bon + bonusOf(m)); tot.cyc = round2(tot.cyc + (pres[m.uid] || 0)); tot.rk = round2(tot.rk + (rakes[m.uid] || 0)); tot.all = round2(tot.all + (presAll[m.uid] || 0)); });
                         const csvPlayers = () => {
-                            const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Of which bonus', `Result (${cycLabel})`, 'Result (all time)']];
-                            rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', (byUid[m.agentUid] || {}).username || '', formatMoney(m.balance || 0), formatMoney(bonusOf(m)), formatMoney(pres[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
-                            out.push(['TOTAL', '', '', '', formatMoney(tot.bal), formatMoney(tot.bon), formatMoney(tot.cyc), formatMoney(tot.all)]);
+                            const out = [['Player', 'Player ID', 'Real name', 'Agent', 'Balance', 'Of which bonus', `Result (${cycLabel})`, `Rake (${cycLabel})`, 'Result (all time)']];
+                            rows.forEach(m => out.push([m.username, m.playerId || '', m.googleName || '', agName(m), formatMoney(m.balance || 0), formatMoney(bonusOf(m)), formatMoney(pres[m.uid] || 0), formatMoney(rakes[m.uid] || 0), formatMoney(presAll[m.uid] || 0)]));
+                            out.push(['TOTAL', '', '', '', formatMoney(tot.bal), formatMoney(tot.bon), formatMoney(tot.cyc), formatMoney(tot.rk), formatMoney(tot.all)]);
                             downloadCSV(out, 'players_report.csv');
                         };
-                        return (
-                            <div className="glass-panel rounded-2xl p-4 mb-5">
+                        let sections;
+                        if (groupAg) {
+                            const g2 = {};
+                            rows.forEach(m => { const k = m.agentUid || '_none'; (g2[k] = g2[k] || []).push(m); });
+                            sections = Object.entries(g2).map(([k, arr]) => [k === '_none' ? 'No agent' : ((byUid[k] || {}).username || k), arr])
+                                .sort((x, y) => String(x[0]).localeCompare(String(y[0])));
+                        } else sections = [[null, rows]];
+                        const cell = (big) => big ? 'py-2.5 pr-3' : 'py-1.5 pr-2';
+                        const panel = (big) => (
+                            <div className={`glass-panel rounded-2xl ${big ? 'p-5' : 'p-4 mb-5'}`}>
                                 <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                                    <h4 className="text-xs font-black text-amber-300 uppercase tracking-widest"><i className="fa-solid fa-table-list ml-1"></i> Players report ({rows.length})</h4>
-                                    <div className="flex items-center gap-2">
-                                        <input value={pq} onChange={e => setPq(e.target.value)} placeholder="Search name / ID..." className="bg-slate-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-amber-500/60 w-36" />
-                                        <button onClick={csvPlayers} title="Export players CSV" className="text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-amber-300 px-2.5 py-1.5 rounded-lg font-black"><i className="fa-solid fa-file-csv"></i></button>
+                                    <h4 className={`font-black text-amber-300 uppercase tracking-widest ${big ? 'text-base' : 'text-xs'}`}><i className="fa-solid fa-table-list ml-1"></i> Players report ({rows.length}) · {cycLabel}</h4>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        {[['result', 'Result'], ['balance', 'Balance'], ['rake', 'Rake'], ['agent', 'Agent']].map(([k, l]) => (
+                                            <button key={k} onClick={() => setSortBy(k)} className={`text-[10px] px-2.5 py-1.5 rounded-lg font-black border ${sortBy === k ? 'bg-amber-500/20 border-amber-400/60 text-amber-200' : 'bg-slate-900/60 border-white/10 text-slate-400'}`}>{l}</button>
+                                        ))}
+                                        <button onClick={() => setGroupAg(v => !v)} className={`text-[10px] px-2.5 py-1.5 rounded-lg font-black border ${groupAg ? 'bg-purple-500/20 border-purple-400/60 text-purple-200' : 'bg-slate-900/60 border-white/10 text-slate-400'}`}>🤝 By agent</button>
+                                        <input value={pq} onChange={e => setPq(e.target.value)} placeholder="Search…" className="bg-slate-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-amber-500/60 w-28" />
+                                        <button onClick={csvPlayers} title="Export CSV" className="text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-amber-300 px-2.5 py-1.5 rounded-lg font-black"><i className="fa-solid fa-file-csv"></i></button>
+                                        <button onClick={() => setRepFull(v => !v)} title={big ? 'Close' : 'Full screen'} className="text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-200 px-2.5 py-1.5 rounded-lg font-black"><i className={`fa-solid ${big ? 'fa-xmark' : 'fa-expand'}`}></i></button>
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
-                                    <table className="w-full text-xs" dir="ltr">
-                                        <thead><tr className="text-slate-500 font-black text-[10px] uppercase border-b border-white/10">
-                                            <th className="text-left py-1.5 pr-2">Player</th>
-                                            {isOwnerView && <th className="text-left py-1.5 pr-2">Agent</th>}
-                                            <th className="text-right py-1.5 pr-2">Balance</th>
-                                            <th className="text-right py-1.5 pr-2" title="Spin/scratch prizes included in the balance">🎁 Bonus</th>
-                                            <th className="text-right py-1.5 pr-2">{cycLabel}</th>
+                                    <table className={`w-full ${big ? 'text-sm' : 'text-xs'}`} dir="ltr">
+                                        <thead><tr className={`text-slate-500 font-black uppercase border-b border-white/10 ${big ? 'text-xs' : 'text-[10px]'}`}>
+                                            <th className={`text-left ${cell(big)}`}>Player</th>
+                                            {isOwnerView && <th className={`text-left ${cell(big)}`}>Agent</th>}
+                                            <th className={`text-right ${cell(big)}`}>Balance</th>
+                                            <th className={`text-right ${cell(big)}`} title="Spin/scratch prizes included in the balance">🎁 Bonus</th>
+                                            <th className={`text-right ${cell(big)}`}>{cycLabel}</th>
+                                            <th className={`text-right ${cell(big)}`}>Rake</th>
                                             <th className="text-right py-1.5">All time</th>
                                         </tr></thead>
                                         <tbody>
-                                            {rows.map(m => (
-                                                <tr key={m.uid} className="border-b border-white/5">
-                                                    <td className="py-1.5 pr-2 whitespace-nowrap"><span className="text-white font-bold">{m.username}</span> <span className="text-slate-600 font-black text-[10px]">{m.playerId || ''}</span>{(m.promoBalance || 0) > 0 && <span className="text-amber-400 text-[9px] font-black" title="Bonus chips"> 🎁{formatShort(m.promoBalance)}</span>}</td>
-                                                    {isOwnerView && <td className="py-1.5 pr-2 text-slate-400 font-bold">{(byUid[m.agentUid] || {}).username || '—'}</td>}
-                                                    <td className="py-1.5 pr-2 text-right font-black text-amber-300">{formatMoney(m.balance || 0)}</td>
-                                                    <td className="py-1.5 pr-2 text-right font-bold text-amber-500/80">{bonusOf(m) > 0 ? formatMoney(bonusOf(m)) : '—'}</td>
-                                                    <td className={`py-1.5 pr-2 text-right font-black ${(pres[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(pres[m.uid] || 0)}</td>
-                                                    <td className={`py-1.5 text-right font-black ${(presAll[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(presAll[m.uid] || 0)}</td>
-                                                </tr>
+                                            {sections.map(([secName, arr]) => (
+                                                <React.Fragment key={secName || 'all'}>
+                                                    {secName !== null && (
+                                                        <tr className="bg-purple-500/10"><td colSpan={isOwnerView ? 7 : 6} className={`${cell(big)} font-black text-purple-300`}>
+                                                            🤝 {secName} · {arr.length} players · result <span className={arr.reduce((sm, m) => sm + (pres[m.uid] || 0), 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}>{formatMoney(round2(arr.reduce((sm, m) => sm + (pres[m.uid] || 0), 0)))}</span> · rake {formatMoney(round2(arr.reduce((sm, m) => sm + (rakes[m.uid] || 0), 0)))}
+                                                        </td></tr>
+                                                    )}
+                                                    {arr.map(m => (
+                                                        <tr key={m.uid} className="border-b border-white/5">
+                                                            <td className={`${cell(big)} whitespace-nowrap`}><span className="text-white font-bold">{m.username}</span> <span className="text-slate-600 font-black text-[10px]">{m.playerId || ''}</span>{bonusOf(m) > 0 && <span className="text-amber-400 text-[9px] font-black" title="Bonus"> 🎁</span>}</td>
+                                                            {isOwnerView && <td className={`${cell(big)} text-slate-400 font-bold`}>{agName(m)}</td>}
+                                                            <td className={`${cell(big)} text-right font-black text-amber-300`}>{formatMoney(m.balance || 0)}</td>
+                                                            <td className={`${cell(big)} text-right font-bold text-amber-500/80`}>{bonusOf(m) > 0 ? formatMoney(bonusOf(m)) : '—'}</td>
+                                                            <td className={`${cell(big)} text-right font-black ${(pres[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(pres[m.uid] || 0)}</td>
+                                                            <td className={`${cell(big)} text-right font-bold text-cyan-300/80`}>{(rakes[m.uid] || 0) > 0 ? formatMoney(rakes[m.uid]) : '—'}</td>
+                                                            <td className={`py-1.5 text-right font-black ${(presAll[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(presAll[m.uid] || 0)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </React.Fragment>
                                             ))}
-                                            {rows.length === 0 && <tr><td colSpan={isOwnerView ? 6 : 5} className="text-center py-6 text-slate-500 font-bold">No players.</td></tr>}
+                                            {rows.length === 0 && <tr><td colSpan={isOwnerView ? 7 : 6} className="text-center py-6 text-slate-500 font-bold">No players.</td></tr>}
                                         </tbody>
-                                        <tfoot><tr className="text-[11px] font-black border-t border-white/15">
-                                            <td className="py-2 pr-2 text-slate-400 uppercase">Total</td>
+                                        <tfoot><tr className={`font-black border-t border-white/15 ${big ? 'text-sm' : 'text-[11px]'}`}>
+                                            <td className={`${cell(big)} text-slate-400 uppercase`}>Total</td>
                                             {isOwnerView && <td></td>}
-                                            <td className="py-2 pr-2 text-right text-amber-300">{formatMoney(tot.bal)}</td>
-                                            <td className="py-2 pr-2 text-right text-amber-500/80">{formatMoney(tot.bon)}</td>
-                                            <td className={`py-2 pr-2 text-right ${tot.cyc >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(tot.cyc)}</td>
+                                            <td className={`${cell(big)} text-right text-amber-300`}>{formatMoney(tot.bal)}</td>
+                                            <td className={`${cell(big)} text-right text-amber-500/80`}>{formatMoney(tot.bon)}</td>
+                                            <td className={`${cell(big)} text-right ${tot.cyc >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(tot.cyc)}</td>
+                                            <td className={`${cell(big)} text-right text-cyan-300/80`}>{formatMoney(tot.rk)}</td>
                                             <td className={`py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{formatMoney(tot.all)}</td>
                                         </tr></tfoot>
                                     </table>
                                 </div>
                             </div>
+                        );
+                        return (
+                            <React.Fragment>
+                                {panel(false)}
+                                {repFull && ReactDOM.createPortal(
+                                    <div className="fixed inset-0 z-[600] bg-slate-950 overflow-auto p-3 sm:p-6">{panel(true)}</div>, document.body)}
+                            </React.Fragment>
                         );
                     })()}
                     <div className="space-y-3">
@@ -3890,6 +3933,14 @@
                     showToast("All Bots deleted.", "info");
                 } catch(e) { showToast("Error deleting Bots", "error"); }
             };
+            // One-shot: remove the doubled client session entries from gameLog (server-side, GOD only)
+            const handleFixResults = async () => {
+                try {
+                    showToast('Scanning results…', 'info');
+                    const r = await window.fb.fx('admFixGameLog', { clubId: CLUB_ID });
+                    showToast(`Results repaired — ${(r && r.deleted) || 0} duplicate entries removed 🧹`, 'success');
+                } catch(e) { showToast((e && e.message) || 'Error', 'error'); }
+            };
             // Give every existing bot a fresh human-looking name (Israeli / poker slang / plain number)
             const handleRenameBots = async () => {
                 try {
@@ -3958,6 +4009,7 @@
                             {user.role === ROLES.SUPER_ADMIN && (
                                 <div className="flex gap-2">
                                     <button onClick={handleCreateBots} className="bg-gradient-to-b from-purple-500 to-purple-800 hover:from-purple-400 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><i className="fa-solid fa-robot ml-2"></i>20 Bots</button>
+                                    {isGodUser(user) && <button onClick={handleFixResults} title="Remove doubled result entries (one-shot repair)" className="bg-slate-800/80 hover:bg-emerald-900/70 border border-emerald-500/40 text-emerald-300 px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-broom ml-1"></i>Fix results</button>
                                     <button onClick={handleRenameBots} title="Fresh human-looking names for all bots" className="bg-slate-800/80 hover:bg-purple-900/70 border border-purple-500/40 text-purple-300 px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-masks-theater ml-1"></i>Rename</button>
                                     <span className="text-purple-300 text-xs font-black bg-purple-500/10 border border-purple-500/40 px-3 py-2 rounded-xl self-center">🤖 {botsList.length} Bots in the system (serving all clubs)</span>
                                     <button onClick={handleDeleteBots} className="bg-slate-800/80 hover:bg-rose-900/80 border border-white/10 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-trash"></i></button>
@@ -4189,8 +4241,8 @@
                             </div>
                             <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pl-1">
                                 {players.map(u => (
-                                    <div key={u.id} className="flex items-center justify-between bg-slate-900/70 rounded-2xl p-3 border border-white/5 hover:border-emerald-500/30 transition-colors">
-                                        <div className="flex items-center gap-3 min-w-0 cursor-pointer flex-1" onClick={() => !u.isBot && setPlayerFile(u)} title="Open player file">
+                                    <div key={u.id} className="flex items-center justify-between flex-wrap gap-y-2 bg-slate-900/70 rounded-2xl p-3 border border-white/5 hover:border-emerald-500/30 transition-colors">
+                                        <div className="flex items-center gap-3 min-w-0 cursor-pointer flex-1 basis-[200px]" onClick={() => !u.isBot && setPlayerFile(u)} title="Open player file">
                                             <img src={avatarUrl({ ...u, uid: u.id })} className={`w-10 h-10 rounded-xl bg-slate-800 shrink-0 ${u.isBot ? 'ring-1 ring-purple-500' : ''}`} />
                                             <div className="min-w-0">
                                                 <div className="font-bold text-white truncate text-sm flex items-center gap-1.5">
@@ -5715,7 +5767,7 @@
                 const dx = sx - 50, dy = sy - 50;
                 const len = Math.max(1, Math.hypot(dx, dy));
                 const tx = -dy / len, ty = dx / len; // side-step off the badge line
-                return { left: `${50 + dx * 0.5 + tx * 7}%`, top: `${50 + dy * 0.52 + ty * 6}%` };
+                return { left: `${50 + dx * 0.5 + tx * 7}%`, top: `${50 + dy * 0.57 + ty * 6}%` };
             };
             const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
             const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
@@ -5929,17 +5981,17 @@
                                     <div className="text-[14px] font-black text-amber-300 leading-tight">{formatShort(totalPot)}</div>
                                 </div>
                             )}
-                            <div className="absolute left-1/2 top-[58%] -translate-x-1/2 flex gap-5 items-start z-30">
+                            <div className="absolute left-1/2 top-[60%] -translate-x-1/2 flex gap-5 items-start z-40">
                                 {(gs.pots || []).map((pot, i) => <CasinoChipStack key={i} amount={pot.amount} scale={0.9} />)}
                             </div>
 
                             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30" dir="ltr">
-                                {(gs.board || []).map((c, i) => <span key={i} className="card-reveal" style={{ animationDelay: `${(i % 3) * 220}ms` }}><PCard card={c} size="lg" /></span>)}
+                                {(gs.board || []).map((c, i) => <span key={i} className="card-reveal" style={{ animationDelay: `${(i % 3) * 220}ms` }}><PCard card={c} size="md" /></span>)}
                                 {rabbit.length > 0 && rabbit.map((c, i) => (
-                                    <div key={'rb'+i} className="relative opacity-75"><PCard card={c} size="lg" /><span className="absolute -top-2 -right-1 text-xs">🐰</span></div>
+                                    <div key={'rb'+i} className="relative opacity-75"><PCard card={c} size="md" /><span className="absolute -top-2 -right-1 text-xs">🐰</span></div>
                                 ))}
                                 {gs.phase !== 'waiting' && [...Array(Math.max(0, 5 - (gs.board || []).length - rabbit.length))].map((_, i) => (
-                                    <div key={'ph'+i} className="w-11 sm:w-12 opacity-0" style={{ height: '4.4rem' }}></div>
+                                    <div key={'ph'+i} className="w-9 sm:w-10 opacity-0" style={{ height: '3.4rem' }}></div>
                                 ))}
                                 {gs.phase === 'showdown' && gs.earlyWin && !srvEngine && rabbit.length === 0 && (gs.board || []).length < 5 && (gs.deck || []).length >= (5 - (gs.board || []).length) && (
                                     <button onClick={() => setRabbit((gs.deck || []).slice(0, 5 - (gs.board || []).length))} title="Rabbit hunt — see what would have come" className="self-center w-9 h-9 rounded-full bg-slate-900/90 border border-white/15 text-lg hover:scale-110 transition-transform">🐰</button>
@@ -6001,6 +6053,7 @@
                                 const showCards = (dispCards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout' && !(p.status === 'folded' && hidden && !isMe);
                                 const folded = p.status === 'folded';
                                 const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
+                                const isWinner = gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name);
                                 return (
                                     <div key={p.uid} className="absolute z-20" style={{ ...seatPos(i), transform: 'translate(-50%, -50%)' }}>
                                         {isTurn && <div className="player-spotlight"></div>}
@@ -6054,13 +6107,13 @@
                                                     try { if (!gs.earlyWin && !hidden && (dispCards || []).length >= 2 && (gs.board || []).length >= 3) hn = handName(bestScoreNow(dispCards, gs.board || [], gs.currentGameType)); } catch(e) {}
                                                     return (
                                                         <div className={'win-tag' + (topSeat ? ' win-top' : '')} dir="ltr">
-                                                            <span className="win-amt">🏆 {(gs.lastWinAmount || 0) > 0 ? '+' + formatShort(gs.lastWinAmount) : 'WIN'}</span>
+                                                            <span className="win-amt">WIN{(gs.lastWinAmount || 0) > 0 ? ' +' + formatShort(gs.lastWinAmount) : ''}</span>
                                                             {hn && <span className="win-hand">{hn}</span>}
                                                         </div>
                                                     );
                                                 })()
                                             )}
-                                            <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
+                                            <div className={`player-pod ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`} style={{ backgroundImage: `url(${avatarUrl(p)})` }}>
                                                 {godView && godBestUid === p.uid && <React.Fragment><div className="god-best-ring"></div><div className="god-best-tag">👁 WINS</div></React.Fragment>}
                                                 {isTurn && (
                                                     <svg className="absolute inset-0 w-full h-full timer-ring" viewBox="0 0 40 40">

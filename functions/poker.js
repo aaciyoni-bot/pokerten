@@ -276,15 +276,18 @@ async function tourAfterHand(tableId, t, plAfter, winnersUids) {
   }
 }
 
-async function logHandResults(t, eng, plAfter) {
+async function logHandResults(t, eng, plAfter, finish) {
   try {
     const start = eng.startStacks || {};
     const now = Date.now();
+    const parts = (finish && finish.participants) || [];
+    const share = parts.length ? round2((finish && finish.rake || 0) / parts.length) : 0;
     for (const p of Object.values(plAfter)) {
       if (!(p.uid in start)) continue;
       const profit = round2((p.stack || 0) - start[p.uid]);
-      if (profit === 0) continue;
-      db.collection("gameLog").add({uid: p.uid, username: p.name || "", clubId: t.clubId || "main", game: "poker", profit, tableId: eng.tableId || "", at: now}).catch(() => {});
+      const rake = parts.includes(p.uid) ? share : 0;
+      if (profit === 0 && rake === 0) continue;
+      db.collection("gameLog").add({uid: p.uid, username: p.name || "", clubId: t.clubId || "main", game: "poker", profit, rake, tableId: eng.tableId || "", at: now}).catch(() => {});
     }
   } catch (e) { /* best-effort */ }
 }
@@ -554,7 +557,7 @@ async function afterFinish(tableId, t, finish, plAfter, eng) {
     await tourAfterHand(tableId, t, plAfter, winnersUids);
   } else {
     distributeRake(t.clubId || "main", finish.rake, finish.participants);
-    logHandResults(t, eng, plAfter);
+    logHandResults(t, eng, plAfter, finish);
   }
 }
 

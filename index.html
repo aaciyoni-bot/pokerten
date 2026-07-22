@@ -4460,7 +4460,7 @@
                 blinds: 0.5, actionTime: 30, minBuyInBB: 40, maxBuyInBB: 200, minBuyIn: 40, maxBuyIn: 200,
                 leaveNoticeMins: 0, leaveNoticeBB: 0, serverEngine: true,
                 rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT, autoStart: 2,
-                straddle: false, ante: 0, omahaPotLimit: true
+                straddle: false, ante: 0, omahaPotLimit: true, bombEvery: 0, bombAnte: 2, aofEvery: 0
             });
             const upd = (k, v) => setS(prev => ({ ...prev, [k]: v }));
 
@@ -4584,6 +4584,28 @@
                                         <input type="checkbox" checked={s.omahaPotLimit !== false} onChange={e=>upd('omahaPotLimit', e.target.checked)} className="accent-amber-500 w-4 h-4" />
                                         <span className="text-white text-sm font-bold">Omaha plays <b className="text-amber-400">POT LIMIT</b> (PLO) — uncheck for No-Limit (NLO)</span>
                                     </label>
+                                </Field>
+                                <Field label="Action hands 💣">
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <div className="text-[10px] text-slate-400 font-black mb-1">💣 Bomb Pot every</div>
+                                            <select value={s.bombEvery || 0} onChange={e=>upd('bombEvery', Number(e.target.value))} className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm">
+                                                <option value={0}>Off</option><option value={5}>5 hands</option><option value={10}>10 hands</option><option value={15}>15 hands</option><option value={25}>25 hands</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <div className="text-[10px] text-slate-400 font-black mb-1">Bomb ante (BB)</div>
+                                            <select value={s.bombAnte || 2} onChange={e=>upd('bombAnte', Number(e.target.value))} className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm">
+                                                <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={5}>5</option>
+                                            </select>
+                                        </div>
+                                        <div className="col-span-2">
+                                            <div className="text-[10px] text-slate-400 font-black mb-1">♠ ALL-IN or FOLD hand</div>
+                                            <select value={s.aofEvery || 0} onChange={e=>upd('aofEvery', e.target.value === 'orbit' ? 'orbit' : Number(e.target.value))} className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm">
+                                                <option value={0}>Off</option><option value="orbit">Once per orbit</option><option value={5}>Every 5 hands</option><option value={10}>Every 10 hands</option><option value={20}>Every 20 hands</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                 </Field>
                             </div>
                             <div className="flex gap-2 items-center pt-1">
@@ -6200,6 +6222,11 @@
 
                             {/* מרכז: קופות, קלפים, מנצח — z-30 כדי שתמיד יהיו מעל קלפי הגב של המושבים (z-20) */}
                             {/* GG layout: "Total Pot" pill above the board, collected chips below it */}
+                            {(gs.bombPot || gs.aof) && gs.phase !== 'waiting' && (
+                                <div className="absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none" dir="ltr">
+                                    {gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'}
+                                </div>
+                            )}
                             {totalPot > 0 && gs.phase !== 'waiting' && (
                                 <div className="absolute left-1/2 top-[32.5%] -translate-x-1/2 z-40 bg-black/40 rounded-2xl px-5 py-1 text-center pointer-events-none" dir="ltr">
                                     <div className="text-[10px] font-bold text-slate-200/90 leading-tight">Total Pot</div>
@@ -6506,6 +6533,13 @@
                                     </div>
                                     );
                                 })()}
+                                {gs.aof ? (
+                                    <div className={`grid ${toCallMe === 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        <button disabled={acting} onClick={()=>myAct('fold')} className="btn-fold text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform">FOLD</button>
+                                        {toCallMe === 0 && <button disabled={acting} onClick={()=>myAct('call')} className="btn-call text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform">CHECK</button>}
+                                        <button disabled={acting} onClick={()=>{ (toCallMe > 0 && toCallMe >= (myPlayer?.stack || 0)) ? myAct('call') : myAct('raise', allInTo); }} className="bg-gradient-to-b from-rose-500 to-rose-800 text-white py-4 rounded-xl font-black text-base shadow-lg active:scale-95 transition-transform">🔥 ALL IN</button>
+                                    </div>
+                                ) : (
                                 <div className={`grid grid-cols-3 gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`}>
                                     <button disabled={acting} onClick={()=>{ setRaiseOpen(false); myAct('fold'); }} className="btn-fold text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform">FOLD</button>
                                     <button disabled={acting} onClick={()=>{ setRaiseOpen(false); myAct('call'); }} className="btn-call text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform">
@@ -6515,6 +6549,7 @@
                                         RAISE <span className="block text-[11px] opacity-90">{raiseOpen ? '▼ close' : '▲'}</span>
                                     </button>
                                 </div>
+                                )}
                             </div>
                             );
                         })() : gs.phase === 'discard' && isSeated && myCards.length === 3 ? (

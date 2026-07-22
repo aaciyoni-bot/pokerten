@@ -386,6 +386,11 @@ function applyAction(t, g, pl, eng, actorUid, type, targetBet) {
   if (!p || p.status !== "active") throw new HttpsError("failed-precondition", "Not in the hand");
   if (g.activeTurnUid !== actorUid) throw new HttpsError("failed-precondition", "Not your turn");
   const toCall = round2(Math.max(0, (g.highestBet || 0) - (p.bet || 0)));
+  if (g.aof) {
+    // All-In-or-Fold hand: jam or fold (checking with nothing to call stays legal).
+    if (type === "raise") targetBet = round2((p.bet || 0) + p.stack);
+    if (type === "call" && toCall > 0 && toCall < p.stack) throw new HttpsError("failed-precondition", "All-in or Fold hand");
+  }
   if (type === "fold") { p.status = "folded"; p.actionText = "Fold"; p.hasActed = true; }
   else if (type === "call") {
     const pay = Math.min(toCall, p.stack);
@@ -525,6 +530,12 @@ async function dealHand(tableId, chosenType) {
       }
       g0.dcUid = dcUid; g0.dcAnchor = dcAnchor;
     }
+    // ── Special-hand cadence (table options): Bomb Pot / All-In-or-Fold ──
+    const handNo = (Number(t.handCounter) || 0) + 1;
+    const bombN = Number(s.bombEvery) || 0;
+    const isBomb = bombN > 0 && gameType !== "Pineapple" && !t.tournamentId && handNo % bombN === 0;
+    const aofN = s.aofEvery === "orbit" ? Math.max(2, acts.length) : (Number(s.aofEvery) || 0);
+    const isAof = !isBomb && aofN > 0 && !t.tournamentId && handNo % aofN === 0;
     const nCards = GAME_CARDS[gameType] || 2;
     const deck = pokerDeck();
     const hands = {};
@@ -554,19 +565,28 @@ async function dealHand(tableId, chosenType) {
       sbP = order[1]; bbP = order[2]; firstUid = (order[3] || order[0]).uid;
     }
     const post = (p, amt, label) => { const pay = Math.min(amt, p.stack); p.stack = round2(p.stack - pay); p.bet = round2(pay); p.actionText = label; };
-    post(sbP, sb, "SB"); post(bbP, bb, "BB");
+    if (isBomb) {
+      // Bomb pot: everyone antes X BB, NO preflop betting — straight to the flop.
+      const ba = round2(Math.max(1, Number(s.bombAnte) || 2) * bb);
+      acts.forEach((p) => { const a = Math.min(ba, p.stack); p.stack = round2(p.stack - a); anteTotal = round2(anteTotal + a); p.actionText = "BOMB"; });
+    } else { post(sbP, sb, "SB"); post(bbP, bb, "BB"); }
     const g = {
-      phase: "preflop", deck: [], board: [], pots: anteTotal > 0 ? [{amount: anteTotal, eligible: acts.map((p) => p.uid)}] : [], highestBet: bb, minRaise: bb,
+      phase: "preflop", deck: [], board: [], pots: anteTotal > 0 ? [{amount: anteTotal, eligible: acts.map((p) => p.uid)}] : [], highestBet: isBomb ? 0 : bb, minRaise: bb,
       dealerUid: dealer.uid, dcUid: g0.dcUid || null, dcAnchor: g0.dcAnchor || null, currentGameType: gameType,
       activeTurnUid: firstUid, turnStartedAt: Date.now(), lastWinners: null, lastWinAmount: 0,
-      allInReveal: false, earlyWin: false, showdownAt: null, rabbit: null,
-      actions: [{n: sbP.name || "", a: "SB", amt: sb, ph: "preflop"}, {n: bbP.name || "", a: "BB", amt: bb, ph: "preflop"}],
+      allInReveal: false, earlyWin: false, showdownAt: null, rabbit: null, bombPot: isBomb, aof: isAof,
+      actions: isBomb ? [] : [{n: sbP.name || "", a: "SB", amt: sb, ph: "preflop"}, {n: bbP.name || "", a: "BB", amt: bb, ph: "preflop"}],
     };
+    if (isBomb) {
+      dealBoard(g, deck, 3);
+      g.phase = "flop";
+      g.activeTurnUid = firstAfterDealer(g, pl);
+    }
     const startStacks = {};
     acts.forEach((p) => { startStacks[p.uid] = round2((p.stack || 0) + (p.bet || 0)); });
     tx.set(eRef(tableId), {deck, hands, startStacks, tableId, at: Date.now()});
     for (const p of acts) tx.set(pRef(tableId, p.uid), {cards: hands[p.uid], at: Date.now()});
-    tx.update(tRef(tableId), {players: pl, gameState: g});
+    tx.update(tRef(tableId), {players: pl, gameState: g, handCounter: handNo});
   });
   for (const [uid, clubId, amt] of topUpRefunds) await creditBalance(uid, clubId, amt);
   return finishInfo;
@@ -773,6 +793,17 @@ function botDecide(t, g, pl, eng, uid) {
   const iWin = winners.includes(uid);
   const split = iWin && winners.length > 1;
   const visEq = street >= 3 ? botEquity(hole, board, g.currentGameType) : botPreflop(hole, g.currentGameType);
+
+  if (g.aof) {
+    // All-In-or-Fold hand: the winner jams; a destined loser folds — except a
+    // premium-LOOKING hand shoves sometimes for optics, and crumb stacks go in.
+    if (iWin && !split) return toCall > 0 ? (toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo}) : {type: "raise", amount: maxTo};
+    if (split) return toCall > 0 ? (toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo}) : {type: "call"};
+    if (toCall === 0) return visEq >= 0.85 && rnd < 0.4 ? {type: "raise", amount: maxTo} : {type: "call"};
+    if (stack <= bb * 1.5) return toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
+    if (visEq >= 0.85 && rnd < 0.35) return toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
+    return {type: "fold"};
+  }
 
   // ── PREFLOP: the standard starting-hands chart RULES the optics, winner or not.
   // KK never limps. A destined-loser premium raises like a human and escapes on

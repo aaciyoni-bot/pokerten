@@ -275,10 +275,10 @@
         .card-back {
             border-radius: 9px;
             background:
-                repeating-linear-gradient(45deg, rgba(120,133,151,0.30) 0 1.5px, transparent 1.5px 6px),
-                repeating-linear-gradient(-45deg, rgba(120,133,151,0.30) 0 1.5px, transparent 1.5px 6px),
-                linear-gradient(160deg, #f0f3f7 0%, #d3d9e2 55%, #bcc3cf 100%);
-            border: 2px solid #f8fafc;
+                repeating-linear-gradient(45deg, var(--cbLine, rgba(120,133,151,0.30)) 0 1.5px, transparent 1.5px 6px),
+                repeating-linear-gradient(-45deg, var(--cbLine, rgba(120,133,151,0.30)) 0 1.5px, transparent 1.5px 6px),
+                linear-gradient(160deg, var(--cbA, #f0f3f7) 0%, var(--cbB, #d3d9e2) 55%, var(--cbC, #bcc3cf) 100%);
+            border: 2px solid var(--cbEdge, #f8fafc);
             box-shadow: 0 5px 12px rgba(2,6,23,0.5), inset 0 0 0 1px rgba(100,116,139,0.35);
         }
 
@@ -720,7 +720,7 @@
       function out() { if (done) return; done = true; el.classList.add('oi-out'); setTimeout(function () { el.remove(); }, 500); }
       el.addEventListener('click', out);
       el.addEventListener('touchstart', out, { passive: true });
-      setTimeout(out, 1300);
+      setTimeout(out, 3200);
     })();
   </script>
 </div>
@@ -1001,20 +1001,20 @@ const SFX_FILES = {
   dice: ['chips_slide_2']
 };
 const SFX_GAIN = {
-  deal: 0.7,
-  flip: 0.7,
-  chip: 0.8,
-  chip1: 0.7,
-  check: 0.8,
-  fold: 0.55,
+  deal: 0.8,
+  flip: 0.85,
+  chip: 1.0,
+  chip1: 0.85,
+  check: 1.6,
+  fold: 0.7,
   turn: 0.65,
   tick: 0.4,
-  win: 0.75,
-  bigwin: 0.85,
+  win: 0.95,
+  bigwin: 1.0,
   msg: 0.5,
   shuffle: 0.6,
   join: 0.6,
-  allin: 0.9,
+  allin: 1.1,
   bust: 0.7,
   tile: 0.5,
   dice: 0.5
@@ -8498,7 +8498,6 @@ function PokerTable({
   useEffect(() => {
     if (!tableState) return;
     const me = (tableState.players || {})[user.uid];
-    if (me?.leaveReq) leaveArmedRef.current = true;
     if (!leaveArmedRef.current) return;
     if (!me) {
       leaveArmedRef.current = false;
@@ -8856,6 +8855,20 @@ function PokerTable({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [histExpand, setHistExpand] = useState(null);
   const [bustLeft, setBustLeft] = useState(600);
+  const [skin, setSkin] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('pkSkin') || '{}') || {};
+    } catch (e) {
+      return {};
+    }
+  });
+  const [skinOpen, setSkinOpen] = useState(false);
+  const saveSkin = s2 => {
+    setSkin(s2);
+    try {
+      localStorage.setItem('pkSkin', JSON.stringify(s2));
+    } catch (e) {}
+  };
   const [tourTick, setTourTick] = useState(0);
   const ch = useTableChat(tableState, tableDocId, user, 'poker', showToast);
   const tour = tableState?.tournament || null;
@@ -9269,7 +9282,51 @@ function PokerTable({
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
     }
-  }, buyinEdit && ReactDOM.createPortal(React.createElement("div", {
+  }, skinOpen && ReactDOM.createPortal(React.createElement("div", {
+    dir: "ltr",
+    className: "fixed inset-0 z-[500] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => setSkinOpen(false)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "glass-panel rounded-3xl p-5 w-full max-w-sm animate-pop-in border border-white/10"
+  }, React.createElement("h3", {
+    className: "text-lg font-black text-white mb-1"
+  }, "🎨 My table look"), React.createElement("p", {
+    className: "text-[11px] text-slate-400 font-bold mb-3"
+  }, "Only YOU see this — every player picks their own look."), React.createElement("div", {
+    className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5"
+  }, "Felt color"), React.createElement("div", {
+    className: "flex gap-2 mb-4 flex-wrap"
+  }, [['auto', null], ['green', '#2f7d4d'], ['blue', '#2e6089'], ['red', '#8a3131'], ['purple', '#5b3a86'], ['gold', '#a08326'], ['slate', '#4a5568']].map(([k, col]) => React.createElement("button", {
+    key: k,
+    onClick: () => saveSkin({
+      ...skin,
+      felt: k === 'auto' ? null : k
+    }),
+    className: `w-10 h-10 rounded-full border-2 ${(skin.felt || 'auto') === k ? 'border-amber-400 scale-110' : 'border-white/20'} flex items-center justify-center text-[7px] font-black text-white transition-transform`,
+    style: col ? {
+      background: `radial-gradient(circle at 35% 30%, ${col}, #0a0f1a)`
+    } : {
+      background: 'conic-gradient(#2f7d4d, #2e6089, #a08326, #2f7d4d)'
+    }
+  }, k === 'auto' ? 'AUTO' : ''))), React.createElement("div", {
+    className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5"
+  }, "Card back"), React.createElement("div", {
+    className: "flex gap-2 mb-4"
+  }, [['silver', '#d3d9e2'], ['red', '#b91c1c'], ['blue', '#1d4ed8'], ['gold', '#d4af37'], ['black', '#0f172a']].map(([k, col]) => React.createElement("button", {
+    key: k,
+    onClick: () => saveSkin({
+      ...skin,
+      back: k === 'silver' ? null : k
+    }),
+    className: `w-9 h-12 rounded-lg border-2 ${(skin.back || 'silver') === k ? 'border-amber-400 scale-110' : 'border-white/20'} transition-transform`,
+    style: {
+      background: `repeating-linear-gradient(45deg, rgba(255,255,255,0.25) 0 1.5px, transparent 1.5px 5px), linear-gradient(160deg, ${col} 0%, ${col} 100%)`
+    }
+  }))), React.createElement("button", {
+    onClick: () => setSkinOpen(false),
+    className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm"
+  }, "Done"))), document.body), buyinEdit && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setBuyinEdit(null)
@@ -9527,11 +9584,50 @@ function PokerTable({
         'NLH': ['#2f7d4d', '#215c37', '#123a20'],
         'Pineapple': ['#a08326', '#7d661d', '#4e4012']
       };
-      const c = F[gs.currentGameType || setts.baseGameType] || ['#2e6089', '#1f4a6e', '#132f47'];
+      const FELT_CHOICES = {
+        green: ['#2f7d4d', '#215c37', '#123a20'],
+        blue: ['#2e6089', '#1f4a6e', '#132f47'],
+        red: ['#8a3131', '#6b2222', '#411111'],
+        purple: ['#5b3a86', '#452a6b', '#2a1747'],
+        gold: ['#a08326', '#7d661d', '#4e4012'],
+        slate: ['#4a5568', '#374151', '#1f2937']
+      };
+      const c = skin.felt && FELT_CHOICES[skin.felt] || F[gs.currentGameType || setts.baseGameType] || ['#2e6089', '#1f4a6e', '#132f47'];
+      const CB = {
+        red: {
+          '--cbA': '#dc2626',
+          '--cbB': '#991b1b',
+          '--cbC': '#5f1111',
+          '--cbEdge': '#fecaca',
+          '--cbLine': 'rgba(255,255,255,0.32)'
+        },
+        blue: {
+          '--cbA': '#2563eb',
+          '--cbB': '#1e3a8a',
+          '--cbC': '#172554',
+          '--cbEdge': '#bfdbfe',
+          '--cbLine': 'rgba(255,255,255,0.30)'
+        },
+        gold: {
+          '--cbA': '#d4af37',
+          '--cbB': '#a8842a',
+          '--cbC': '#6e551a',
+          '--cbEdge': '#f8dc8f',
+          '--cbLine': 'rgba(255,255,255,0.35)'
+        },
+        black: {
+          '--cbA': '#334155',
+          '--cbB': '#0f172a',
+          '--cbC': '#020617',
+          '--cbEdge': '#64748b',
+          '--cbLine': 'rgba(148,163,184,0.35)'
+        }
+      }[skin.back] || {};
       return {
         '--feltA': c[0],
         '--feltB': c[1],
-        '--feltC': c[2]
+        '--feltC': c[2],
+        ...CB
       };
     })()
   }, tableState.tournament && tableState.tournament.final && React.createElement("div", {
@@ -9592,8 +9688,8 @@ function PokerTable({
     const dxD = sxD - 50,
       dyD = syD - 50;
     const lenD = Math.max(1, Math.hypot(dxD, dyD));
-    let left = 50 + dxD * 0.66 + -dyD / lenD * 6;
-    let top = 50 + dyD * 0.7 + dxD / lenD * 6;
+    let left = 50 + dxD * 0.55 + -dyD / lenD * 8;
+    let top = 50 + dyD * 0.62 + dxD / lenD * 8;
     if (isSeated && di === 0) {
       left = 29;
       top = 73;
@@ -9647,7 +9743,19 @@ function PokerTable({
     }, isTurn && React.createElement("div", {
       className: "player-spotlight"
     }), p.actionText && React.createElement("div", {
-      className: `action-badge ${topSeat ? 'badge-bottom' : ''} ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`
+      className: `action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
+      style: isMe ? {
+        top: 'auto',
+        bottom: '42px',
+        left: 'auto',
+        right: 'calc(100% + 6px)',
+        transform: 'none'
+      } : {
+        top: '30px',
+        left: '50%',
+        right: 'auto',
+        transform: 'translateX(-50%)'
+      }
     }, p.actionText), React.createElement("div", {
       className: `relative flex flex-col items-center ${folded ? isMe ? 'opacity-75' : 'opacity-40 grayscale' : ''} ${p.sitOut ? 'opacity-50' : ''}`
     }, ch.bubbles[p.uid] && React.createElement("div", {
@@ -10204,6 +10312,10 @@ function PokerTable({
   }, React.createElement("i", {
     className: "fa-solid fa-comment-dots"
   })), React.createElement("button", {
+    onClick: () => setSkinOpen(true),
+    title: "My table look — only you see it",
+    className: "w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-amber-300 shadow-xl text-lg"
+  }, "🎨"), React.createElement("button", {
     onClick: toggleSitOut,
     title: myPlayer?.sitOut ? 'Sit back in' : myPlayer?.sitOutNext ? 'Cancel sit-out (queued for end of hand)' : 'Sit out',
     className: `w-11 h-11 rounded-2xl border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : myPlayer?.sitOutNext ? 'bg-amber-500/40 text-amber-200 border-amber-400/60 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`

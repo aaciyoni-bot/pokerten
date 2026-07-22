@@ -2289,6 +2289,117 @@ const CasinoChipStack = ({
     }
   }, formatShort(amount)));
 };
+const MISSIONS = [{
+  k: 'win_deuce',
+  e: '2️⃣',
+  label: 'Win a hand holding a deuce',
+  goal: 1
+}, {
+  k: 'lose_flush',
+  e: '💔',
+  label: 'Lose a showdown with a flush+',
+  goal: 1
+}, {
+  k: 'omaha6_5',
+  e: '6️⃣',
+  label: 'Play 5 hands of PLO6',
+  goal: 5
+}, {
+  k: 'pine_10',
+  e: '🍍',
+  label: 'Play 10 Pineapple hands',
+  goal: 10
+}, {
+  k: 'hands_50',
+  e: '♠',
+  label: 'Play 50 hands',
+  goal: 50
+}, {
+  k: 'streak_3',
+  e: '🔥',
+  label: 'Win 3 hands in a row',
+  goal: 3
+}, {
+  k: 'bomb_win',
+  e: '💣',
+  label: 'Win a Bomb Pot',
+  goal: 1
+}, {
+  k: 'spin_win',
+  e: '🎡',
+  label: 'Win a Spin & Cash',
+  goal: 1
+}, {
+  k: 'bigpot',
+  e: '🏔',
+  label: 'Win a 100BB+ pot',
+  goal: 1
+}, {
+  k: 'rabbit_1',
+  e: '🐰',
+  label: 'Rabbit-hunt a board',
+  goal: 1
+}];
+const botMissions = uid => {
+  let h = 0;
+  for (const ch of String(uid)) h = h * 31 + ch.charCodeAt(0) >>> 0;
+  const done = {};
+  MISSIONS.forEach((m, i) => {
+    if ((h >> i * 3 & 7) < (m.goal > 5 ? 6 : 3)) done[m.k] = m.goal;
+  });
+  done.hands_50 = 50;
+  return done;
+};
+const PlayerPeek = ({
+  peek,
+  onClose,
+  clubId
+}) => {
+  const [mi, setMi] = React.useState(null);
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      if (peek.isBot) {
+        setMi(botMissions(peek.uid));
+        return;
+      }
+      try {
+        const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'memberships', `${peek.uid}_${clubId}`));
+        if (!dead) setMi(snap.exists() && snap.data().missions || {});
+      } catch (e) {
+        if (!dead) setMi({});
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+  }, [peek.uid]);
+  const doneCount = mi ? MISSIONS.filter(m => (mi[m.k] || 0) >= m.goal).length : 0;
+  return React.createElement("div", {
+    className: "fixed right-2 top-16 z-[450] w-56 glass-panel border border-amber-500/40 rounded-2xl p-3 shadow-2xl animate-pop-in",
+    dir: "ltr"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, React.createElement("span", {
+    className: "text-white font-black text-sm truncate"
+  }, peek.name), React.createElement("button", {
+    onClick: onClose,
+    className: "w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white text-xs font-black shrink-0"
+  }, "✕")), React.createElement("div", {
+    className: "text-[10px] font-black text-amber-300 mb-2"
+  }, "💍 ", doneCount, "/", MISSIONS.length, " rings"), React.createElement("div", {
+    className: "grid grid-cols-5 gap-1.5"
+  }, MISSIONS.map(m => {
+    const got = mi && (mi[m.k] || 0) >= m.goal;
+    return React.createElement("div", {
+      key: m.k,
+      title: m.label + (mi && !got ? ` (${mi[m.k] || 0}/${m.goal})` : ''),
+      className: `aspect-square rounded-full flex items-center justify-center text-sm border-2 ${got ? 'border-amber-400 bg-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'border-white/10 bg-slate-900/60 opacity-40 grayscale'}`
+    }, m.e);
+  })), mi === null && React.createElement("div", {
+    className: "text-center text-slate-500 text-[10px] font-bold mt-2"
+  }, "Loading…"));
+};
 const SPIN_SEGS = [2, 3, 100, 2, 5, 3, 10, 2, 3, 20, 4, 3];
 const SEG_COL = {
   2: '#334155',
@@ -7724,6 +7835,7 @@ function PokerTable({
   const [betFx, setBetFx] = useState([]);
   const [discFx, setDiscFx] = useState(null);
   const [, setMuteTick] = useState(0);
+  const [peek, setPeek] = useState(null);
   const [ritAlways, setRitAlways] = useState(() => {
     try {
       return localStorage.getItem('pkRitAlways') === '1';
@@ -10328,7 +10440,15 @@ function PokerTable({
         size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'sm'
       }))));
     })(), React.createElement("div", {
-      className: `player-pod ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
+      onClick: e => {
+        e.stopPropagation();
+        setPeek({
+          uid: p.uid,
+          name: isMe ? 'You' : p.name,
+          isBot: !!p.isBot
+        });
+      },
+      className: `player-pod cursor-pointer ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }
@@ -10465,7 +10585,14 @@ function PokerTable({
     const src = srvEngine ? gs.rabbit || [] : gs.deck || [];
     if (src.length < need) return null;
     return React.createElement("button", {
-      onClick: () => setRabbit(src.slice(0, need)),
+      onClick: () => {
+        setRabbit(src.slice(0, need));
+        try {
+          window.fb.updateDoc(memDoc(user.uid), {
+            'missions.rabbit_1': 1
+          });
+        } catch (e) {}
+      },
       title: "Rabbit hunt — see what would have come",
       className: "absolute z-[45] w-11 h-11 rounded-full bg-slate-900/90 border-2 border-amber-400/60 text-2xl shadow-[0_0_14px_rgba(245,200,96,0.35)] hover:scale-110 transition-transform animate-pop-in",
       style: {
@@ -10704,6 +10831,10 @@ function PokerTable({
     mult: tableState.spin.mult,
     near: !!tableState.spin.near,
     prize: tableState.spin.prize
+  }), peek && React.createElement(PlayerPeek, {
+    peek: peek,
+    onClose: () => setPeek(null),
+    clubId: CLUB_ID
   }), gs.ritOffer && Date.now() < gs.ritOffer.until && gs.allInReveal && myPlayer?.status === 'active' && (gs.ritAgree || {})[user.uid] === undefined && !ritAlways && React.createElement("div", {
     className: "absolute bottom-16 left-1/2 -translate-x-1/2 z-[75] bg-slate-950/95 border border-cyan-400/50 rounded-2xl px-3.5 py-2 flex items-center gap-2 animate-pop-in shadow-xl",
     dir: "ltr"

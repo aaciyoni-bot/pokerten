@@ -8690,6 +8690,16 @@ function PokerTable({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [histExpand, setHistExpand] = useState(null);
   const [bustLeft, setBustLeft] = useState(30);
+  const [rebuyGate, setRebuyGate] = useState(false);
+  useEffect(() => {
+    const bust = isSeated && (myPlayer?.stack || 0) <= 0 && ['waiting', 'showdown'].includes(gs.phase);
+    if (!bust) {
+      setRebuyGate(false);
+      return;
+    }
+    const tm = setTimeout(() => setRebuyGate(true), gs.phase === 'showdown' ? 4200 : 400);
+    return () => clearTimeout(tm);
+  }, [isSeated, (myPlayer?.stack || 0) <= 0, gs.phase]);
   const [tourTick, setTourTick] = useState(0);
   const ch = useTableChat(tableState, tableDocId, user, 'poker', showToast);
   const tour = tableState?.tournament || null;
@@ -9096,7 +9106,7 @@ function PokerTable({
   const lockActive = leftLock && Date.now() - leftLock.at < 12 * 60 * 60 * 1000 && leftLock.amount > baseMinBuy;
   const minBuy = lockActive ? round2(Math.max(baseMinBuy, leftLock.amount)) : baseMinBuy;
   const maxBuy = Math.max(baseMaxBuy, minBuy);
-  const needRebuy = isSeated && (myPlayer?.stack || 0) <= 0 && ['waiting', 'showdown'].includes(gs.phase);
+  const needRebuy = rebuyGate;
   const eligibleCount = Object.values(players).filter(p => p.stack > 0).length;
   return React.createElement("div", {
     className: "h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none",

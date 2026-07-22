@@ -4686,7 +4686,7 @@ function LobbyView({
       status: 'setup',
       settings: {
         ...durakOpts,
-        buyIn: Number(durakOpts.buyIn),
+        buyIn: Math.max(1, Number(durakOpts.buyIn) || 0),
         rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT,
         bluffEnabled: !!durakOpts.bluff
       },
@@ -5361,17 +5361,19 @@ function LobbyView({
     value: "perevodnoy"
   }, "Transfer (Perevodnoy)"))), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
-  }, "Buy-in"), React.createElement("select", {
+  }, "Buy-in (any amount)"), React.createElement("input", {
+    type: "number",
+    inputMode: "decimal",
+    min: "1",
+    step: "any",
     value: durakOpts.buyIn,
     onChange: e => setDurakOpts({
       ...durakOpts,
-      buyIn: parseFloat(e.target.value)
+      buyIn: e.target.value
     }),
-    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-blue-500 font-bold"
-  }, [50, 100, 250, 500, 1000, 2500, 5000].map(b => React.createElement("option", {
-    key: b,
-    value: b
-  }, formatMoney(b))))), React.createElement("div", null, React.createElement("label", {
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-blue-500 font-bold",
+    dir: "ltr"
+  })), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "Players"), React.createElement("select", {
     value: durakOpts.maxPlayers,

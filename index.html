@@ -5542,16 +5542,7 @@
             /* ---------- צ'אט ---------- */
             const [historyOpen, setHistoryOpen] = useState(false);
             const [histExpand, setHistExpand] = useState(null);
-            const [bustLeft, setBustLeft] = useState(30);
-            // Busted → let the player SEE the showdown (what beat them) before the
-            // full-screen rebuy modal covers the table.
-            const [rebuyGate, setRebuyGate] = useState(false);
-            useEffect(() => {
-                const bust = isSeated && (myPlayer?.stack || 0) <= 0 && ['waiting', 'showdown'].includes(gs.phase);
-                if (!bust) { setRebuyGate(false); return; }
-                const tm = setTimeout(() => setRebuyGate(true), gs.phase === 'showdown' ? 6000 : 400);
-                return () => clearTimeout(tm);
-            }, [isSeated, (myPlayer?.stack || 0) <= 0, gs.phase]);
+            const [bustLeft, setBustLeft] = useState(600);
             const [tourTick, setTourTick] = useState(0);
             const ch = useTableChat(tableState, tableDocId, user, 'poker', showToast);
             const tour = tableState?.tournament || null;
@@ -5631,17 +5622,19 @@
                 return () => clearTimeout(tm);
             }, [tableState?.players?.[user.uid]?.leavingAt]);
 
-            // 30 שניות להחליט על קנייה נוספת אחרי הדחה
+            // Bust decision window: tournament 30s (rebuy window); cash 10 MINUTES,
+            // shown as a clock in the bottom bar — never a popup over the showdown.
             useEffect(() => {
                 const me = tableState?.players?.[user.uid];
                 if (!me || me.status !== 'busted') return;
                 const isTour = !!tableState.tournament;
+                const win = isTour ? 30 : 600;
                 const iv = setInterval(() => {
                     const cur = tableRef.current?.players?.[user.uid];
-                    if (!cur || cur.status !== 'busted') { clearInterval(iv); return; }
-                    const left = Math.max(0, 30 - Math.floor((Date.now() - (cur.bustedAt || Date.now())) / 1000));
+                    if (!cur || cur.status !== 'busted' || (cur.stack || 0) > 0) { clearInterval(iv); return; }
+                    const left = Math.max(0, win - Math.floor((Date.now() - (cur.bustedAt || Date.now())) / 1000));
                     setBustLeft(left);
-                    if (left === 0) { clearInterval(iv); if (isTour) tourDecline(); else handleStandUp(); }
+                    if (left === 0) { clearInterval(iv); if (isTour) tourDecline(); else handleStandUp(true); }
                 }, 500);
                 return () => clearInterval(iv);
             }, [tableState?.players?.[user.uid]?.status]);
@@ -5875,7 +5868,7 @@
             const lockActive = leftLock && (Date.now() - leftLock.at < 12 * 60 * 60 * 1000) && leftLock.amount > baseMinBuy;
             const minBuy = lockActive ? round2(Math.max(baseMinBuy, leftLock.amount)) : baseMinBuy;
             const maxBuy = Math.max(baseMaxBuy, minBuy);
-            const needRebuy = rebuyGate;
+            const needRebuy = false; // bust flow is the inline bottom bar now — never a popup
             const eligibleCount = Object.values(players).filter(p => p.stack > 0).length;
 
             return (
@@ -6365,20 +6358,22 @@
                         </div>
                     )}
 
-                    {/* Bustedת! 30 שניות להחליט על קנייה נוספת */}
-                    {myPlayer && myPlayer.status === 'busted' && !tableState.tournament && (
-                        <div className="absolute inset-0 z-[240] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                            <div className="glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-white/10">
-                                <div className="text-5xl mb-2">💥</div>
-                                <h3 className="text-2xl font-black text-rose-400 mb-1">Out of chips!</h3>
-                                <p className="text-slate-300 text-sm font-bold mb-1">Rebuy and stay at the table?</p>
-                                <div className={`text-4xl font-black font-mono my-3 ${bustLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-white'}`}>{bustLeft}</div>
-                                <input type="range" min={minBuy} max={maxBuy} step={BB} value={Math.min(Math.max(buyAmt, minBuy), maxBuy)} onChange={e=>setBuyAmt(parseFloat(e.target.value))} className="w-full accent-emerald-500 mb-1" dir="ltr" />
-                                <div className="text-emerald-400 font-black text-lg mb-3" dir="ltr">{formatMoney(Math.min(Math.max(buyAmt, minBuy), maxBuy))}</div>
-                                <div className="flex gap-3">
-                                    <button onClick={rebuyAfterBust} className="flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg">Rebuy & stay 💪</button>
-                                    <button onClick={handleStandUp} className="flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3.5 rounded-2xl font-black border border-white/10">Stand up</button>
+                    {/* Busted (cash): NO popup — the table stays fully visible, you watch the
+                        showdown and who took the pot. A 10-minute clock + Rebuy sit in the
+                        bottom bar, right where the action buttons normally are. */}
+                    {myPlayer && myPlayer.status === 'busted' && (myPlayer.stack || 0) <= 0 && !tableState.tournament && (
+                        <div className="absolute bottom-0 left-0 right-0 z-[60] px-3 pb-2 pointer-events-none">
+                            <div className="glass-panel rounded-2xl border border-rose-500/30 px-3 py-2 flex items-center gap-3 animate-pop-in pointer-events-auto" dir="ltr">
+                                <div className="text-center shrink-0">
+                                    <div className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Rebuy time</div>
+                                    <div className={`text-xl font-black font-mono leading-tight ${bustLeft <= 60 ? 'text-rose-400 animate-pulse' : 'text-white'}`} dir="ltr">{Math.floor(bustLeft / 60)}:{String(bustLeft % 60).padStart(2, '0')}</div>
                                 </div>
+                                <div className="flex-1 min-w-0">
+                                    <input type="range" min={minBuy} max={maxBuy} step={BB} value={Math.min(Math.max(buyAmt, minBuy), maxBuy)} onChange={e=>setBuyAmt(parseFloat(e.target.value))} className="w-full accent-emerald-500" dir="ltr" />
+                                    <div className="text-emerald-400 font-black text-xs text-center leading-none" dir="ltr">{formatMoney(Math.min(Math.max(buyAmt, minBuy), maxBuy))}</div>
+                                </div>
+                                <button onClick={rebuyAfterBust} className="shrink-0 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-4 py-2.5 rounded-xl font-black text-sm shadow-lg">Rebuy 💪</button>
+                                <button onClick={() => handleStandUp(true)} title="Stand up" className="shrink-0 bg-slate-800 hover:bg-rose-900 text-slate-300 w-10 h-10 rounded-xl font-black border border-white/10">🚪</button>
                             </div>
                         </div>
                     )}

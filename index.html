@@ -2123,6 +2123,12 @@ const PCard = ({
     rank: '1.02rem',
     suit: '0.72rem',
     big: '1.35rem'
+  } : size === 'xs' ? {
+    w: 'w-6',
+    h: '2.1rem',
+    rank: '0.8rem',
+    suit: '0.6rem',
+    big: '1rem'
   } : {
     w: 'w-9 sm:w-10',
     h: '3.4rem',
@@ -8989,12 +8995,16 @@ function PokerTable({
     };
   };
   const betPos = i => {
+    if (isSeated && i === 0) return {
+      left: '29%',
+      top: '64%'
+    };
     const ang = Math.PI / 2 + i * 2 * Math.PI / N;
     const tx = -Math.sin(ang),
       ty = Math.cos(ang);
     return {
-      left: `${50 + 29 * Math.cos(ang) + 7 * tx}%`,
-      top: `${50 + 25 * Math.sin(ang) + 6 * ty}%`
+      left: `${50 + 27 * Math.cos(ang) + 7 * tx}%`,
+      top: `${50 + 22 * Math.sin(ang) + 6 * ty}%`
     };
   };
   const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
@@ -9495,7 +9505,7 @@ function PokerTable({
       const nC = dispCards.length;
       const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
       const midC = (nC - 1) / 2;
-      const ovl = isMe ? nC >= 5 ? -28 : -32 : hidden ? nC >= 5 ? -16 : -13 : nC >= 5 ? -22 : -18;
+      const ovl = isMe ? nC >= 5 ? -28 : -32 : hidden ? nC >= 5 ? -13 : -11 : nC >= 5 ? -22 : -18;
       const ang = isMe ? nC >= 5 ? 5 : 6 : nC >= 5 ? 6 : 7;
       return React.createElement("div", {
         className: `flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
@@ -9524,7 +9534,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : 'md'
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'md'
       }))) : React.createElement("span", {
         key: ci,
         className: "card-reveal",
@@ -9534,7 +9544,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : 'md'
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : 'md'
       }))));
     })(), gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name) && (() => {
       let hn = null;
@@ -9610,7 +9620,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: "sm"
+        size: hidden ? 'xs' : 'sm'
       }))) : React.createElement("span", {
         key: ci,
         className: "card-reveal",
@@ -9620,7 +9630,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: "sm"
+        size: hidden ? 'xs' : 'sm'
       }))));
     })(), isMe && showCards && !gs.allInReveal && (myHand || myEquity !== null) && gs.phase !== 'showdown' && React.createElement("div", {
       className: "flex gap-1 mt-1 z-30"

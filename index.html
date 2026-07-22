@@ -5683,22 +5683,29 @@
                 if (myIdx >= 0) displayList = [...list.slice(myIdx), ...list.slice(0, myIdx)]; // אני תמיד למטה במרכז
             }
             const N = Math.max(displayList.length, 2);
-            const seatPos = (i) => {
-                const ang = Math.PI / 2 + (i * 2 * Math.PI) / N;
-                // Elliptical "lying" table: wider horizontally (43), shorter vertically (34) so seats
-                // spread along the long sides instead of stacking — less crowded, and the bottom seat
-                // (You) + its stack stay well on-screen.
-                return { left: `${50 + 50 * Math.cos(ang)}%`, top: `${50 + 41 * Math.sin(ang)}%` };
+            // Fixed symmetric seat layouts (GG-style): hero bottom center, everyone else
+            // mirrored — balanced at any player count, and no seat ever at board height.
+            const SEAT_LAYOUTS = {
+                2: [[50, 91], [50, 9]],
+                3: [[50, 91], [8, 24], [92, 24]],
+                4: [[50, 91], [7, 66], [50, 9], [93, 66]],
+                5: [[50, 91], [7, 68], [13, 14], [87, 14], [93, 68]],
+                6: [[50, 91], [6, 68], [9, 18], [50, 9], [91, 18], [94, 68]],
+                7: [[50, 91], [6, 70], [6, 30], [28, 10], [72, 10], [94, 30], [94, 70]],
+                8: [[50, 91], [6, 70], [5, 38], [18, 12], [50, 9], [82, 12], [95, 38], [94, 70]],
+                9: [[50, 91], [6, 72], [5, 42], [12, 17], [36, 9], [64, 9], [88, 17], [95, 42], [94, 72]],
             };
+            const seatXY = (i) => ((SEAT_LAYOUTS[Math.min(9, Math.max(2, N))] || SEAT_LAYOUTS[6])[i]) || [50, 50];
+            const seatPos = (i) => { const [x, y] = seatXY(i); return { left: `${x}%`, top: `${y}%` }; };
             const betPos = (i) => {
                 // Hero seat: the big bottom fan owns the center — the bet sits beside it, on
                 // clear felt, never on the cards or the amount.
                 if (isSeated && i === 0) return { left: '29%', top: '64%' };
-                const ang = Math.PI / 2 + (i * 2 * Math.PI) / N;
-                // Radial spot between seat and board, plus a tangential side-step (like the
-                // dealer button) so the chips never sit on the SB/BB/action badge line.
-                const tx = -Math.sin(ang), ty = Math.cos(ang);
-                return { left: `${50 + 27 * Math.cos(ang) + 7 * tx}%`, top: `${50 + 22 * Math.sin(ang) + 6 * ty}%` };
+                const [sx, sy] = seatXY(i);
+                const dx = sx - 50, dy = sy - 50;
+                const len = Math.max(1, Math.hypot(dx, dy));
+                const tx = -dy / len, ty = dx / len; // side-step off the badge line
+                return { left: `${50 + dx * 0.5 + tx * 7}%`, top: `${50 + dy * 0.52 + ty * 6}%` };
             };
             const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
             const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
@@ -5949,12 +5956,11 @@
                             {gs.dealerUid && (() => {
                                 const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
                                 if (di < 0) return null;
-                                const ang = Math.PI / 2 + (di * 2 * Math.PI) / N;
-                                const rx = 36, ry = 35;                 // בטבעת השחקן, מתחת למניפה
-                                const tx = -Math.sin(ang), ty = Math.cos(ang); // כיוון טנגנציאלי (הצידה)
-                                const off = 13;                          // היסט הצידה שמפנה את ה-D מהקלפים ומהאווטאר
-                                const left = 50 + rx * Math.cos(ang) + off * tx;
-                                const top = 50 + ry * Math.sin(ang) + off * ty;
+                                const [sxD, syD] = seatXY(di);
+                                const dxD = sxD - 50, dyD = syD - 50;
+                                const lenD = Math.max(1, Math.hypot(dxD, dyD));
+                                const left = 50 + dxD * 0.66 + (-dyD / lenD) * 6;
+                                const top = 50 + dyD * 0.7 + (dxD / lenD) * 6;
                                 return <div className="absolute z-30 w-6 h-6 rounded-full bg-gradient-to-b from-amber-300 to-amber-600 text-amber-950 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-amber-200" style={{ left: `${left}%`, top: `${top}%`, transform: 'translate(-50%,-50%)' }}>D</div>;
                             })()}
 
@@ -5963,10 +5969,11 @@
                                 const isTurn = gs.activeTurnUid === p.uid && inBetting;
                                 const isMe = p.uid === user.uid;
                                 const topSeat = parseFloat(seatPos(i).top) < 34;
-                                // Seats sit half off the felt; the card fan shifts back toward the
-                                // center so the cards stay on the table. Face-down backs shift deep;
-                                // revealed showdown hands shift only a little so they never reach the board.
-                                const angI = Math.PI / 2 + (i * 2 * Math.PI) / N;
+                                // Rim seats: cards shift back toward the center so they stay on the felt;
+                                // side seats show their fan BELOW the pod (GG-style) so it never meets the board.
+                                const seatXv = parseFloat(seatPos(i).left);
+                                const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
+                                const inX = -(seatXv - 50) / 50;
                                 let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
                                 // Server tables: cards live server-side. Mine come from my private doc; others
                                 // render backs by cardCount until made public (showdown/all-in/reveal) or GOD-peeked.
@@ -6008,7 +6015,7 @@
                                             {ch.gifts.filter(g => g.to === p.uid).map((g, gi) => <div key={'g'+gi} className="gift-fx">{g.giftE}</div>)}
 
                                             {/* קלפים מעל הפוד - שלי מוגדלים; במושב עליון עוברים מתחת לפוד כדי שלא ייחתכו */}
-                                            {showCards && (isMe || !topSeat) && (() => {
+                                            {showCards && (isMe || !fanBelow) && (() => {
                                                 // 3+ cards → fan them like a real hand (Omaha 5/6 was overflowing the screen)
                                                 const nC = dispCards.length;
                                                 const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
@@ -6019,7 +6026,7 @@
                                                 const ovl = isMe ? (nC >= 5 ? -28 : -32) : (hidden ? (nC >= 5 ? -13 : -11) : (nC >= 5 ? -22 : -18));
                                                 const ang = isMe ? (nC >= 5 ? 5 : 6) : (nC >= 5 ? 6 : 7);
                                                 return (
-                                                <div className={`flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : (isMe ? 'gap-1' : 'gap-0.5')}`} style={{ transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 48 : 30))}px)` }} dir="ltr">
+                                                <div className={`flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : (isMe ? 'gap-1' : 'gap-0.5')}`} style={{ transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)` }} dir="ltr">
                                                     {dispCards.map((c, ci) => (
                                                         isMe && gs.phase === 'discard' && dispCards.length === 3
                                                         ? <div key={ci} onClick={() => handleDiscardCard(user.uid, ci)} className="cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"><PCard card={c} size="xl" /></div>
@@ -6057,19 +6064,19 @@
                                             {setts.isDealerChoice && gs.dcUid === p.uid && <div className="absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30">DC</div>}
 
                                             {/* GG-style name+stack pill: name truncated to the frame, balance clear below */}
-                                            <div className="mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center" style={{ minWidth: '58px', maxWidth: '96px' }}>
+                                            <div className="mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center" style={{ minWidth: '58px', maxWidth: '96px', transform: `translateX(${Math.round(inX * 30)}px)` }}>
                                                 <div className="text-[10px] font-bold text-white truncate leading-tight" title={isMe ? 'You' : p.name}>{isMe ? 'You' : ((p.name || '').length > 11 ? (p.name || '').slice(0, 10) + '…' : p.name)}</div>
                                                 <div className="text-cyan-300 font-black text-[12px] leading-tight" dir="ltr">{formatShort(p.stack)}</div>
                                             </div>
 
-                                            {showCards && !isMe && topSeat && (() => {
+                                            {showCards && !isMe && fanBelow && (() => {
                                                 const nC = dispCards.length;
                                                 const doFan = nC >= 3;
                                                 const midC = (nC - 1) / 2;
                                                 const ovl = nC >= 5 ? -18 : nC === 4 ? -15 : -11;
                                                 const ang = nC >= 5 ? 6 : 7;
                                                 return (
-                                                <div className={`flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`} style={{ transform: `translateX(${Math.round(-Math.cos(angI) * (hidden ? 48 : 30))}px)` }} dir="ltr">
+                                                <div className={`flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`} style={{ transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)` }} dir="ltr">
                                                     {dispCards.map((c, ci) => (
                                                         doFan
                                                         ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(midC - ci) * ang}deg) translateY(${-Math.abs(ci - midC) * 2.5}px)`, transformOrigin: '50% -15%', zIndex: ci }}><span className="card-reveal" style={{ animationDelay: `${dealDelay(p.uid, ci)}ms` }}><PCard card={c} hidden={hidden} size={hidden ? 'xs' : 'sm'} /></span></span>
@@ -7032,10 +7039,11 @@
                                 const isAtt = T.attackerUid === p.uid && T.status === 'playing';
                                 const isDef = T.defenderUid === p.uid && T.status === 'playing';
                                 const topSeat = parseFloat(seatPos(i).top) < 34;
-                                // Seats sit half off the felt; the card fan shifts back toward the
-                                // center so the cards stay on the table. Face-down backs shift deep;
-                                // revealed showdown hands shift only a little so they never reach the board.
-                                const angI = Math.PI / 2 + (i * 2 * Math.PI) / N;
+                                // Rim seats: cards shift back toward the center so they stay on the felt;
+                                // side seats show their fan BELOW the pod (GG-style) so it never meets the board.
+                                const seatXv = parseFloat(seatPos(i).left);
+                                const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
+                                const inX = -(seatXv - 50) / 50;
                                 const timerPct = isTurn ? Math.max(0, timeLeft / DURAK_TIME) : 0;
                                 const showAll = godView && !isMe;
                                 const oppFan = !isMe && !p.out && (p.cards || []).length > 0 && T.status === 'playing';

@@ -9753,7 +9753,21 @@ function PokerTable({
     } : {
       background: 'conic-gradient(#2f7d4d, #2e6089, #a08326, #2f7d4d)'
     }
-  }, k === 'auto' ? 'AUTO' : ''))), React.createElement("div", {
+  }, k === 'auto' ? 'AUTO' : ''))), React.createElement("label", {
+    className: "flex items-center gap-2 cursor-pointer bg-slate-900/70 border border-cyan-500/30 rounded-xl p-3 mb-4"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: !!ritAlways,
+    onChange: e => {
+      setRitAlways(e.target.checked);
+      try {
+        localStorage.setItem('pkRitAlways', e.target.checked ? '1' : '');
+      } catch (err) {}
+    },
+    className: "accent-cyan-500 w-4 h-4"
+  }), React.createElement("span", {
+    className: "text-white text-xs font-bold"
+  }, "🔁 Run It Twice — ALWAYS, never ask me")), React.createElement("div", {
     className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5"
   }, "Card back"), React.createElement("div", {
     className: "flex gap-2 mb-4"

@@ -338,6 +338,12 @@
         }
         .btn-raise:not(:disabled):hover { filter: brightness(1.06); }
         .timer-ring { transform: rotate(-90deg); transition: stroke-dashoffset 1s linear; }
+        /* Vertical raise slider — opens on demand from the RAISE button; top = ALL IN */
+        .vslider {
+            -webkit-appearance: slider-vertical; appearance: slider-vertical;
+            writing-mode: vertical-lr; direction: rtl;
+            width: 48px; height: 250px; accent-color: #f59e0b; touch-action: none; cursor: pointer;
+        }
         /* Subtle winner marker above the player's pod (replaces the big center banner
            that used to cover the revealed cards). */
         .win-tag {
@@ -7187,6 +7193,7 @@ function PokerTable({
   const [raiseAmt, setRaiseAmt] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
   const [acting, setActing] = useState(false);
+  const [raiseOpen, setRaiseOpen] = useState(false);
   const [buyinEdit, setBuyinEdit] = useState(null);
   const [confirmBox, setConfirmBox] = useState(null);
   const askConfirm = msg => new Promise(resolve => setConfirmBox({
@@ -7262,6 +7269,7 @@ function PokerTable({
   }, [tableState]);
   useEffect(() => {
     setActing(false);
+    setRaiseOpen(false);
     if (isMyTurn) setRaiseAmt(round2(Math.min((gs.highestBet || 0) + (gs.minRaise || BB), (myPlayer?.bet || 0) + (myPlayer?.stack || 0))));
   }, [gs.activeTurnUid, gs.turnStartedAt]);
   const myAct = (type, amt) => {
@@ -9463,54 +9471,83 @@ function PokerTable({
   }, "🎯 ", myEquity, "%"), gs.allInReveal && realEq && realEq[user.uid] !== undefined && React.createElement("span", {
     className: "bg-amber-900/80 border border-amber-500/50 text-amber-300 text-[11px] font-black px-3 py-1 rounded-lg animate-pulse",
     dir: "ltr"
-  }, "ALL-IN · ", realEq[user.uid], "%")), isMyTurn ? React.createElement("div", {
-    className: "max-w-md mx-auto w-full flex flex-col gap-2.5"
-  }, React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, React.createElement("span", {
-    className: "text-[10px] font-black text-amber-400 w-14 text-center",
-    dir: "ltr"
-  }, formatShort(raiseAmt)), React.createElement("input", {
-    type: "range",
-    min: Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet),
-    max: myMaxBet,
-    step: Number(setts.blinds) || 0.5,
-    value: raiseAmt,
-    onChange: e => setRaiseAmt(parseFloat(e.target.value)),
-    className: "flex-1 accent-amber-500",
-    dir: "ltr"
-  }), React.createElement("div", {
-    className: "flex gap-1"
-  }, React.createElement("button", {
-    onClick: () => setRaiseAmt(Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet)),
-    className: "text-[9px] bg-slate-800 border border-white/10 px-2 py-1 rounded font-black text-slate-300"
-  }, "MIN"), React.createElement("button", {
-    onClick: () => setRaiseAmt(Math.min(round2(totalPot + toCallMe * 2), myMaxBet)),
-    className: "text-[9px] bg-slate-800 border border-white/10 px-2 py-1 rounded font-black text-slate-300"
-  }, "POT"), React.createElement("button", {
-    onClick: () => setRaiseAmt(myMaxBet),
-    className: "text-[9px] bg-slate-800 border border-white/10 px-2 py-1 rounded font-black text-rose-300"
-  }, "MAX"))), React.createElement("div", {
-    className: `grid grid-cols-3 gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`
-  }, React.createElement("button", {
-    disabled: acting,
-    onClick: () => myAct('fold'),
-    className: "btn-fold text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform"
-  }, "FOLD"), React.createElement("button", {
-    disabled: acting,
-    onClick: () => myAct('call'),
-    className: "btn-call text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform"
-  }, toCallMe > 0 ? React.createElement("span", null, "CALL ", React.createElement("span", {
-    dir: "ltr",
-    className: "block text-[10px] opacity-90"
-  }, formatShort(Math.min(toCallMe, myPlayer?.stack || 0)))) : 'CHECK'), React.createElement("button", {
-    disabled: acting,
-    onClick: () => myAct('raise', raiseAmt),
-    className: "btn-raise text-white py-3.5 font-black text-sm shadow-lg active:scale-95 transition-transform"
-  }, "RAISE ", React.createElement("span", {
-    dir: "ltr",
-    className: "block text-[10px] opacity-90"
-  }, formatShort(raiseAmt))))) : gs.phase === 'discard' && isSeated && (myPlayer?.cards || []).length === 3 ? React.createElement("div", {
+  }, "ALL-IN · ", realEq[user.uid], "%")), isMyTurn ? (() => {
+    const minRaiseTo = Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet);
+    const allInTo = round2((myPlayer?.bet || 0) + (myPlayer?.stack || 0));
+    const topIsAllIn = myMaxBet >= allInTo - 0.001;
+    const atTop = raiseAmt >= myMaxBet - 0.001;
+    return React.createElement("div", {
+      className: "max-w-md mx-auto w-full relative"
+    }, raiseOpen && React.createElement("div", {
+      className: "absolute bottom-full right-0 mb-3 z-50 bg-slate-950/95 backdrop-blur border border-amber-500/40 rounded-3xl px-5 py-4 flex flex-col items-center gap-2.5 shadow-[0_12px_45px_rgba(0,0,0,0.75)] animate-pop-in"
+    }, React.createElement("span", {
+      className: `text-base font-black ${atTop && topIsAllIn ? 'text-rose-400' : 'text-amber-300'}`,
+      dir: "ltr"
+    }, atTop && topIsAllIn ? '🔥 ALL IN' : formatShort(raiseAmt)), React.createElement("div", {
+      className: "flex items-stretch gap-2.5"
+    }, React.createElement("div", {
+      className: "flex flex-col justify-between items-end text-[9px] font-black py-1"
+    }, React.createElement("span", {
+      className: "text-rose-400"
+    }, topIsAllIn ? 'ALL IN' : 'MAX POT'), React.createElement("span", {
+      className: "text-slate-500"
+    }, "MIN")), React.createElement("input", {
+      type: "range",
+      className: "vslider",
+      min: minRaiseTo,
+      max: myMaxBet,
+      step: Number(setts.blinds) || 0.5,
+      value: raiseAmt,
+      onChange: e => setRaiseAmt(parseFloat(e.target.value))
+    })), React.createElement("div", {
+      className: "flex gap-1.5"
+    }, React.createElement("button", {
+      onClick: () => setRaiseAmt(minRaiseTo),
+      className: "text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1.5 rounded-lg font-black text-slate-300"
+    }, "MIN"), React.createElement("button", {
+      onClick: () => setRaiseAmt(Math.min(round2(totalPot + toCallMe * 2), myMaxBet)),
+      className: "text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1.5 rounded-lg font-black text-slate-300"
+    }, "POT"), React.createElement("button", {
+      onClick: () => setRaiseAmt(myMaxBet),
+      className: "text-[10px] bg-slate-800 border border-rose-500/40 px-2.5 py-1.5 rounded-lg font-black text-rose-300"
+    }, topIsAllIn ? 'ALL IN' : 'MAX')), React.createElement("button", {
+      disabled: acting,
+      onClick: () => {
+        setRaiseOpen(false);
+        myAct('raise', raiseAmt);
+      },
+      className: `w-full py-3 rounded-2xl font-black text-sm shadow-lg active:scale-95 transition-transform text-white ${atTop && topIsAllIn ? 'bg-gradient-to-b from-rose-500 to-rose-800' : 'btn-raise'}`,
+      dir: "ltr"
+    }, atTop && topIsAllIn ? '🔥 ALL IN' : `RAISE ${formatShort(raiseAmt)}`)), React.createElement("div", {
+      className: `grid grid-cols-3 gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`
+    }, React.createElement("button", {
+      disabled: acting,
+      onClick: () => {
+        setRaiseOpen(false);
+        myAct('fold');
+      },
+      className: "btn-fold text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform"
+    }, "FOLD"), React.createElement("button", {
+      disabled: acting,
+      onClick: () => {
+        setRaiseOpen(false);
+        myAct('call');
+      },
+      className: "btn-call text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform"
+    }, toCallMe > 0 ? React.createElement("span", null, "CALL ", React.createElement("span", {
+      dir: "ltr",
+      className: "block text-[11px] opacity-90"
+    }, formatShort(Math.min(toCallMe, myPlayer?.stack || 0)))) : 'CHECK'), React.createElement("button", {
+      disabled: acting,
+      onClick: () => {
+        if (!raiseOpen) setRaiseAmt(minRaiseTo);
+        setRaiseOpen(o => !o);
+      },
+      className: `btn-raise text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform ${raiseOpen ? 'ring-2 ring-amber-300/70' : ''}`
+    }, "RAISE ", React.createElement("span", {
+      className: "block text-[11px] opacity-90"
+    }, raiseOpen ? '▼ close' : '▲'))));
+  })() : gs.phase === 'discard' && isSeated && (myPlayer?.cards || []).length === 3 ? React.createElement("div", {
     className: "text-center text-amber-300 font-black text-sm animate-pulse"
   }, "🍍 Tap a top card to discard it") : React.createElement("div", {
     className: "text-center text-slate-500 font-bold text-xs"

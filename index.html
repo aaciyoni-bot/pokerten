@@ -793,7 +793,16 @@
         const TURN_SECONDS = 60;
         const FIRST_MELD_MIN = 30;
 
-        const BOT_NAMES = ['Alex_Pro', 'TileMaster99', 'RummyKing', 'Sara_Play', 'PokerFace_Dan', 'Lucky_Jim', 'AceOfSpades', 'JokerQueen', 'Max_Bet', 'Fast_Hand'];
+        // Bot display names — NEVER contain the word "bot": Israeli names, poker slang, or a plain random number.
+        const BOT_NAMES_HE = ['יוסי', 'דודו', 'אבי', 'איציק', 'שלומי', 'רמי', 'קובי', 'ששון', 'אלי', 'מאיר', 'אורן', 'גולן', 'שגיא', 'נדב', 'חיים', 'מוטי', 'בני', 'צחי', 'עמוס', 'דורון', 'יעקב', 'שמעון'];
+        const BOT_NAMES_PK = ['RiverKing', 'FlopMaster', 'AllInArtist', 'CheckRaise', 'GutShot', 'NutFlush', 'SlowRoll', 'PocketRockets', 'BigBlind', 'TiltProof', 'DryAce', 'TripleBarrel', 'LooseCannon', 'Cooler', 'HeaterRun', 'SuitedAce'];
+        const botDisplayName = () => {
+            const r = Math.random();
+            if (r < 0.45) return BOT_NAMES_HE[Math.floor(Math.random() * BOT_NAMES_HE.length)] + (Math.random() < 0.5 ? '' : ' ' + (2 + Math.floor(Math.random() * 97)));
+            if (r < 0.8) return BOT_NAMES_PK[Math.floor(Math.random() * BOT_NAMES_PK.length)] + Math.floor(Math.random() * 99);
+            return String(1000 + Math.floor(Math.random() * 899999)); // just a random number
+        };
+        const BOT_NAMES = BOT_NAMES_PK; // legacy alias
 
         const isGodUser = (u) => u && GOD_EMAILS.includes((u.email || '').toLowerCase().trim());
         // מי רשאי לנהל משחק מסוים: אדמין/בעלים - הכל; מנהל - רק משחקים שסומנו לו
@@ -3791,7 +3800,7 @@
                 try {
                     showToast("Generating Bots...", "info");
                     for (let i = 0; i < 20; i++) {
-                        const botName = BOT_NAMES[i % BOT_NAMES.length] + Math.floor(Math.random() * 100);
+                        const botName = botDisplayName();
                         await window.fb.addDoc(window.fb.collection(window.fb.db, "users"), {
                             username: botName, email: `bot${i}@pokerten.com`, role: ROLES.PLAYER,
                             status: 'approved', balance: 50000, isBot: true, managedGames: [],
@@ -3809,6 +3818,19 @@
                     for (const d of snaps.docs) { await window.fb.deleteDoc(d.ref); }
                     showToast("All Bots deleted.", "info");
                 } catch(e) { showToast("Error deleting Bots", "error"); }
+            };
+            // Give every existing bot a fresh human-looking name (Israeli / poker slang / plain number)
+            const handleRenameBots = async () => {
+                try {
+                    showToast("Renaming bots...", "info");
+                    let n = 0;
+                    for (const coll of ["users", "memberships"]) {
+                        const q2 = window.fb.query(window.fb.collection(window.fb.db, coll), window.fb.where("isBot", "==", true));
+                        const snaps = await window.fb.getDocs(q2);
+                        for (const d of snaps.docs) { await window.fb.updateDoc(d.ref, { username: botDisplayName() }); n++; }
+                    }
+                    showToast(`${n} bot profiles renamed 🎭`, "success");
+                } catch(e) { showToast("Error renaming bots", "error"); }
             };
 
             // Owners & managers approve everyone; a plain agent approves ONLY their own referrals
@@ -3865,6 +3887,7 @@
                             {user.role === ROLES.SUPER_ADMIN && (
                                 <div className="flex gap-2">
                                     <button onClick={handleCreateBots} className="bg-gradient-to-b from-purple-500 to-purple-800 hover:from-purple-400 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><i className="fa-solid fa-robot ml-2"></i>20 Bots</button>
+                                    <button onClick={handleRenameBots} title="Fresh human-looking names for all bots" className="bg-slate-800/80 hover:bg-purple-900/70 border border-purple-500/40 text-purple-300 px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-masks-theater ml-1"></i>Rename</button>
                                     <span className="text-purple-300 text-xs font-black bg-purple-500/10 border border-purple-500/40 px-3 py-2 rounded-xl self-center">🤖 {botsList.length} Bots in the system (serving all clubs)</span>
                                     <button onClick={handleDeleteBots} className="bg-slate-800/80 hover:bg-rose-900/80 border border-white/10 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-trash"></i></button>
                                 </div>
@@ -3910,9 +3933,10 @@
                                 </div>
                                 <div className="mb-4 pb-4 border-b border-white/5">
                                     <label className="flex items-center gap-2.5 cursor-pointer">
-                                        <input type="checkbox" checked={clubSettings?.botsAuto === true} onChange={async (e) => { try { await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { botsAuto: e.target.checked }, { merge: true }); showToast(e.target.checked ? "Automatic bots enabled 🤖" : "Automatic bots blocked — bots enter only when you add them manually", "success"); } catch(err) { showToast("Error", "error"); } }} className="accent-purple-500 w-4 h-4" />
+                                        <input type="checkbox" checked={clubSettings?.botsAuto === true} onChange={async (e) => { try { await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { botsAuto: e.target.checked, botsAutoBy: user.username, botsAutoAt: Date.now() }, { merge: true }); showToast(e.target.checked ? "Automatic bots enabled 🤖" : "Automatic bots blocked — bots enter only when you add them manually", "success"); } catch(err) { showToast("Error", "error"); } }} className="accent-purple-500 w-4 h-4" />
                                         <span className="text-slate-200 text-sm font-bold">🤖 Allow automatic bot entry <span className="text-slate-500 text-xs">(tournament auto-fill; off = bots only when added manually)</span></span>
                                     </label>
+                                    {clubSettings?.botsAutoBy && <div className="text-[10px] text-slate-500 font-bold mt-1 mr-6">Last changed by {clubSettings.botsAutoBy}{clubSettings.botsAutoAt ? ' · ' + new Date(clubSettings.botsAutoAt).toLocaleString('he-IL') : ''}</div>}
                                 </div>
                                 <div className="mb-4 pb-4 border-b border-white/5">
                                     <label className="text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest">📣 Pop-up message to all club members</label>
@@ -5205,7 +5229,7 @@
                         const midHand = !['waiting','showdown'].includes((t.gameState || {}).phase);
                         const bb = (Number((t.settings || {}).blinds) || 0.5) * 2;
                         tx.update(ref, { [`players.${botUid}`]: {
-                            uid: botUid, name: BOT_NAMES[Math.floor(Math.random()*BOT_NAMES.length)] + Math.floor(Math.random()*99), seatIndex,
+                            uid: botUid, name: botDisplayName(), seatIndex,
                             stack: round2(100 * bb), bet: 0, status: midHand ? 'waiting' : 'active', cards: [], hasActed: false, actionText: '', isBot: true
                         }});
                     });

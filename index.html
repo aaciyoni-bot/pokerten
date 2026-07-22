@@ -5600,7 +5600,7 @@
             const activesOppCount = Object.values(players).filter(p => p.status === 'active' && p.uid !== user.uid).length;
             // Server tables keep hole cards in the private doc (myPrivCards), not on the player —
             // hand strength + equity must read the effective cards or they never show.
-            const myCards = srvEngine ? myPrivCards : (myPlayer?.cards || []);
+            const myCards = srvEngine ? (((myPlayer?.cardCount) || 0) > 0 ? myPrivCards : []) : (myPlayer?.cards || []);
             const myHand = useMemo(() => {
                 if (!myPlayer || !myCards.length) return null;
                 return handName(bestScoreNow(myCards, gs.board || [], gs.currentGameType));
@@ -5959,7 +5959,9 @@
                                 // render backs by cardCount until made public (showdown/all-in/reveal) or GOD-peeked.
                                 let dispCards = p.cards || [];
                                 if (srvEngine) {
-                                    if (isMe) { dispCards = myPrivCards; hidden = false; }
+                                    // Only show my private cards when I'm actually DEALT IN this hand —
+                                    // the priv doc keeps last hand's cards, so a fresh sit-down must not show them.
+                                    if (isMe) { dispCards = (myPlayer?.cardCount || 0) > 0 ? myPrivCards : []; hidden = false; }
                                     else if ((p.cards || []).length) { dispCards = p.cards; hidden = false; }
                                     else if (godView && (godHands[p.uid] || []).length) { dispCards = godHands[p.uid]; hidden = false; }
                                     else { dispCards = Array(p.cardCount || 0).fill({ val: '', suit: '♠' }); hidden = true; }

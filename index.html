@@ -866,9 +866,64 @@
         };
 
         /* ===== מנוע צלילים (Tone.js) ===== */
-        const SND = {};
-        const playSnd = (type) => {
+        /* ── Real sample-based sound engine ──
+           Pre-rendered studio samples from /assets/sounds/ played through WebAudio,
+           with tiny random pitch/volume variation so repeats sound natural.
+           playSnd(type, times) → repeats a sample (e.g. one card-deal sound per player).
+           Falls back to the old Tone.js synth until the samples finish loading. */
+        const SFX = { ctx: null, buf: {}, loading: false };
+        // Each event maps to one or more sample variants (Kenney CC0 recordings for the
+        // physical card/chip sounds; crafted samples for the musical cues) — a random
+        // variant plays each time so repeats sound like a real dealer, not a machine.
+        const SFX_FILES = {
+            deal: ['card_deal_1', 'card_deal_2', 'card_deal_3', 'card_deal_4'],
+            flip: ['card_flip_1', 'card_flip_2', 'card_flip_3'],
+            chip: ['chips_slide_1', 'chips_slide_2', 'chips_slide_3'],
+            chip1: ['chip_single_1', 'chip_single_2'],
+            check: ['check_knock'], fold: ['fold_toss_1', 'fold_toss_2'],
+            turn: ['my_turn'], tick: ['timer_tick_1', 'timer_tick_2'],
+            win: ['win_pot'], bigwin: ['big_win'], msg: ['chat_msg'],
+            shuffle: ['shuffle'], join: ['player_join'], allin: ['all_in'], bust: ['bust'],
+            tile: ['chip_single_1'], dice: ['chips_slide_2'],
+        };
+        const SFX_GAIN = { deal: 0.7, flip: 0.7, chip: 0.8, chip1: 0.7, check: 0.8, fold: 0.55, turn: 0.65, tick: 0.4, win: 0.75, bigwin: 0.85, msg: 0.5, shuffle: 0.6, join: 0.6, allin: 0.9, bust: 0.7, tile: 0.5, dice: 0.5 };
+        const sfxCtx = () => {
+            if (!SFX.ctx) { try { SFX.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {} }
+            if (SFX.ctx && SFX.ctx.state === 'suspended') SFX.ctx.resume().catch(() => {});
+            return SFX.ctx;
+        };
+        const sfxLoad = () => {
+            const ctx = sfxCtx(); if (!ctx || SFX.loading) return; SFX.loading = true;
+            [...new Set(Object.values(SFX_FILES).flat())].forEach(f => {
+                fetch(`assets/sounds/${f}.wav`).then(r => r.arrayBuffer())
+                    .then(ab => ctx.decodeAudioData(ab)).then(b => { SFX.buf[f] = b; }).catch(() => {});
+            });
+        };
+        // Audio can only start after a user gesture — hook the first tap.
+        try { ['touchstart', 'mousedown', 'keydown'].forEach(ev => window.addEventListener(ev, () => { sfxCtx(); sfxLoad(); }, { once: true, passive: true })); } catch(e) {}
+        setTimeout(() => { try { sfxLoad(); } catch(e) {} }, 2500); // pre-decode samples early (context stays suspended until first tap)
+        const sfxPlay = (name, when = 0, gain = 1) => {
+            const ctx = sfxCtx(); const b = SFX.buf[name]; if (!ctx || !b) return false;
             try {
+                const src = ctx.createBufferSource(); src.buffer = b;
+                src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.09; // natural variation
+                const g = ctx.createGain(); g.gain.value = gain * (0.9 + Math.random() * 0.2);
+                src.connect(g); g.connect(ctx.destination);
+                src.start(ctx.currentTime + when);
+                return true;
+            } catch(e) { return false; }
+        };
+        const SND = {};
+        const playSnd = (type, times = 1) => {
+            try {
+                // Sample engine first — random variant per repeat, like a real dealer
+                const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
+                if (variants.length) {
+                    const n = Math.max(1, Math.min(9, Math.floor(times) || 1));
+                    const base = SFX_GAIN[type] ?? 0.7;
+                    for (let i = 0; i < n; i++) sfxPlay(variants[Math.floor(Math.random() * variants.length)], i * (0.085 + Math.random() * 0.03), base);
+                    return;
+                }
                 if (!window.Tone) return;
                 if (window.Tone.context.state !== 'running') window.Tone.context.resume();
                 if (!SND.rv) {
@@ -5555,8 +5610,12 @@
                 if (!tableState) return;
                 const ps = prevSnd.current;
                 const bl = (gs.board || []).length;
-                if (bl > ps.board) playSnd('deal');
-                if (gs.phase === 'showdown' && ps.phase !== 'showdown') playSnd('win');
+                if (bl > ps.board) playSnd('flip', bl - ps.board); // one flip per new board card (flop=3)
+                // New hand dealt → one card-slide per player in the hand
+                if (BETTING.includes(gs.phase) && !BETTING.includes(ps.phase) && gs.phase === 'preflop') {
+                    playSnd('deal', Object.values(players).filter(p => p.status === 'active').length);
+                }
+                if (gs.phase === 'showdown' && ps.phase !== 'showdown') playSnd((gs.lastWinAmount || 0) >= (Number(setts.blinds) || 0.5) * 2 * 40 ? 'bigwin' : 'win');
                 const mine = gs.activeTurnUid === user.uid && BETTING.includes(gs.phase);
                 if (mine && !ps.turnMine) playSnd('turn');
                 const cl = (tableState.chat || []).length;
@@ -5566,7 +5625,8 @@
                     if (p.actionText && p.actionText !== prev) {
                         if (p.actionText === 'Fold') playSnd('fold');
                         else if (p.actionText === 'Check') playSnd('check');
-                        else if (['Call','Raise','All-in','SB','BB'].includes(p.actionText)) playSnd('chip');
+                        else if (p.actionText === 'All-in') playSnd('allin');
+                        else if (['Call','Raise','SB','BB'].includes(p.actionText)) playSnd('chip');
                     }
                     ps.acts[p.uid] = p.actionText;
                 });

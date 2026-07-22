@@ -293,8 +293,11 @@ async function logHandResults(t, eng, plAfter, finish) {
 }
 
 // ── Core: finish paths (mutate g/pl; return {reveal} extra public updates) ──
-function finishEarlyWin(t, g, pl, winnerUid) {
+function finishEarlyWin(t, g, pl, winnerUid, eng) {
   gatherBetsToPots(g, pl);
+  // Rabbit hunt: the board's future is fixed in the shuffled deck (no burns) —
+  // publish the would-be runout so players can peek at what never came.
+  g.rabbit = (eng && (g.board || []).length < 5) ? (eng.deck || []).slice(0, 5 - (g.board || []).length) : null;
   const pot = round2((g.pots || []).reduce((s, p) => s + p.amount, 0));
   const rakeFrac = (Number((t.settings || {}).rakePercent) || 0) / 100;
   const rake = (g.board || []).length > 0 ? round2(pot * rakeFrac) : 0; // No Flop No Drop
@@ -324,8 +327,10 @@ function runShowdown(t, g, pl, hands) {
     let amount = pot.amount;
     if (idx === 0) { const r = round2(amount * rakeFrac); rakeTotal = round2(rakeTotal + r); amount = round2(amount - r); }
     const share = Math.floor((amount / winners.length) * 100) / 100;
-    winTotal = round2(winTotal + share * winners.length);
-    winners.forEach((uid) => { pl[uid].stack = round2(pl[uid].stack + share); pl[uid].actionText = "WINNER"; winnerNames.add(pl[uid].name); });
+    // Odd cents from an uneven split go to the first winner — chips never vanish.
+    const oddCents = round2(amount - share * winners.length);
+    winTotal = round2(winTotal + amount);
+    winners.forEach((uid, wi) => { pl[uid].stack = round2(pl[uid].stack + share + (wi === 0 ? oddCents : 0)); pl[uid].actionText = "WINNER"; winnerNames.add(pl[uid].name); });
   });
   g.pots = []; g.phase = "showdown"; g.activeTurnUid = null; g.earlyWin = false;
   g.lastWinAmount = winTotal;
@@ -409,8 +414,11 @@ function applyAction(t, g, pl, eng, actorUid, type, targetBet) {
     p.hasActed = true;
   } else throw new HttpsError("invalid-argument", "Unknown action");
 
+  // Street-by-street action log for the hand-history view (small: ≤ a few dozen rows)
+  g.actions = [...(g.actions || []), {n: p.name || "", a: p.actionText, amt: type === "fold" ? 0 : round2(p.bet || 0), ph: g.phase}].slice(-80);
+
   const remaining = Object.values(pl).filter((q) => q.status === "active");
-  if (remaining.length === 1) return finishEarlyWin(t, g, pl, remaining[0].uid);
+  if (remaining.length === 1) return finishEarlyWin(t, g, pl, remaining[0].uid, eng);
   const nxt = nextActor(g, pl, actorUid);
   if (!nxt) return advancePhase(t, g, pl, eng);
   g.activeTurnUid = nxt; g.turnStartedAt = Date.now();
@@ -426,7 +434,9 @@ function markBusted(pl) {
 // ── Deal a fresh hand (internal; caller must hold nothing — runs its own tx) ──
 async function dealHand(tableId, chosenType) {
   let finishInfo = null;
+  const topUpRefunds = []; // [uid, clubId, amt] — clipped queue remainders go BACK to the wallet
   await db.runTransaction(async (tx) => {
+    topUpRefunds.length = 0; // tx may retry — never refund twice
     const tS = await tx.get(tRef(tableId));
     if (!tS.exists) throw new HttpsError("not-found", "Table gone");
     const t = tS.data();
@@ -447,6 +457,10 @@ async function dealHand(tableId, chosenType) {
         const room = cap ? Math.max(0, round2(cap - (p.stack || 0))) : (p.pendingTopUp || 0);
         const add = Math.min(round2(p.pendingTopUp), room);
         if (add > 0) p.stack = round2((p.stack || 0) + add);
+        // The wallet was debited for the FULL queued amount — anything the table
+        // cap clips off must go back to the wallet, never evaporate.
+        const clipped = round2((p.pendingTopUp || 0) - add);
+        if (clipped > 0 && !p.isBot) topUpRefunds.push([p.uid, t.clubId || "main", clipped]);
         p.pendingTopUp = 0;
       }
       // Deferred sit-out (tapped ☕ mid-hand): the rule everywhere is that state
@@ -484,7 +498,7 @@ async function dealHand(tableId, chosenType) {
         tx.update(tRef(tableId), {players: pl, gameState: {
           ...g0, phase: "dc_selection", dealerUid: nextDealerUid, dcUid, dcAnchor,
           board: [], pots: [], activeTurnUid: null, turnStartedAt: Date.now(),
-          lastWinners: null, lastWinAmount: 0, allInReveal: false, earlyWin: false,
+          lastWinners: null, lastWinAmount: 0, allInReveal: false, earlyWin: false, rabbit: null,
         }});
         return;
       }
@@ -524,7 +538,8 @@ async function dealHand(tableId, chosenType) {
       phase: "preflop", deck: [], board: [], pots: anteTotal > 0 ? [{amount: anteTotal, eligible: acts.map((p) => p.uid)}] : [], highestBet: bb, minRaise: bb,
       dealerUid: dealer.uid, dcUid: g0.dcUid || null, dcAnchor: g0.dcAnchor || null, currentGameType: gameType,
       activeTurnUid: firstUid, turnStartedAt: Date.now(), lastWinners: null, lastWinAmount: 0,
-      allInReveal: false, earlyWin: false, showdownAt: null,
+      allInReveal: false, earlyWin: false, showdownAt: null, rabbit: null,
+      actions: [{n: sbP.name || "", a: "SB", amt: sb, ph: "preflop"}, {n: bbP.name || "", a: "BB", amt: bb, ph: "preflop"}],
     };
     const startStacks = {};
     acts.forEach((p) => { startStacks[p.uid] = round2((p.stack || 0) + (p.bet || 0)); });
@@ -532,6 +547,7 @@ async function dealHand(tableId, chosenType) {
     for (const p of acts) tx.set(pRef(tableId, p.uid), {cards: hands[p.uid], at: Date.now()});
     tx.update(tRef(tableId), {players: pl, gameState: g});
   });
+  for (const [uid, clubId, amt] of topUpRefunds) await creditBalance(uid, clubId, amt);
   return finishInfo;
 }
 
@@ -544,6 +560,7 @@ async function afterFinish(tableId, t, finish, plAfter, eng) {
   const g2 = finish.g || {};
   const histEntry = {
     at: Date.now(), game: g2.currentGameType || "NLH", board: g2.board || [],
+    acts: g2.actions || [], // street-by-street action log (SB/BB/raises/calls/folds)
     rake: finish.rake || 0, amount: g2.lastWinAmount || 0, winners: g2.lastWinners || "",
     ps: Object.values(plAfter).filter((q) => (q.cardCount || 0) > 0).map((q) => ({
       n: q.name || "", c: (q.cards && q.cards.length) ? q.cards : null, cc: q.cardCount || 0,
@@ -754,7 +771,7 @@ exports.pkTick = onCall(async (request) => {
         if (!BETTING.includes(g2.phase) || g2.activeTurnUid) return null;
         const acts = Object.values(pl2).filter((q) => q.status === "active");
         if (acts.length === 0) { g2.phase = "waiting"; g2.board = []; g2.pots = []; return null; }
-        if (acts.length === 1) return finishEarlyWin(t2, g2, pl2, acts[0].uid);
+        if (acts.length === 1) return finishEarlyWin(t2, g2, pl2, acts[0].uid, eng);
         const canAct = acts.filter((q) => (q.stack || 0) > 0);
         if (canAct.length < 2) return advancePhase(t2, g2, pl2, eng); // all-in runout to showdown
         g2.activeTurnUid = firstAfterDealer(g2, pl2); g2.turnStartedAt = Date.now();
@@ -772,7 +789,7 @@ exports.pkTick = onCall(async (request) => {
     try {
       await engineStep(tableId, (t2, g2, pl2, eng) => {
         const acts = Object.values(pl2).filter((q) => q.status === "active");
-        if (acts.length === 1) return finishEarlyWin(t2, g2, pl2, acts[0].uid);
+        if (acts.length === 1) return finishEarlyWin(t2, g2, pl2, acts[0].uid, eng);
         if (acts.length === 0) { g2.phase = "waiting"; g2.activeTurnUid = null; g2.board = []; g2.pots = []; return null; } // hand voided (everyone left)
         g2.activeTurnUid = firstAfterDealer(g2, pl2); g2.turnStartedAt = Date.now();
         return null;
@@ -894,16 +911,16 @@ async function leaveSeat(tableId, uid, clubId) {
       if (BETTING.includes(g2.phase)) {
         // He's the LAST one still in the hand (everyone else folded/left) → the pot
         // is his; settle the hand for him, then the removal below cashes it out.
-        if (others.length === 0) return finishEarlyWin(t2, g2, pl2, uid);
+        if (others.length === 0) return finishEarlyWin(t2, g2, pl2, uid, eng);
         if (g2.activeTurnUid === uid) return applyAction(t2, g2, pl2, eng, uid, "fold");
         p2.status = "folded"; p2.actionText = "Fold"; p2.hasActed = true;
-        if (others.length === 1) return finishEarlyWin(t2, g2, pl2, others[0].uid);
+        if (others.length === 1) return finishEarlyWin(t2, g2, pl2, others[0].uid, eng);
         return null;
       }
       if (g2.phase === "discard") {
-        if (others.length === 0) return finishEarlyWin(t2, g2, pl2, uid);
+        if (others.length === 0) return finishEarlyWin(t2, g2, pl2, uid, eng);
         p2.status = "folded"; p2.actionText = "Fold";
-        if (others.length === 1) return finishEarlyWin(t2, g2, pl2, others[0].uid);
+        if (others.length === 1) return finishEarlyWin(t2, g2, pl2, others[0].uid, eng);
         // If he was the last one still holding 3 cards, resume the flop betting round.
         const pending = others.some((q) => (((eng.hands || {})[q.uid]) || []).length === 3);
         if (!pending) { g2.phase = "flop"; g2.activeTurnUid = firstAfterDealer(g2, pl2); g2.turnStartedAt = Date.now(); }
@@ -915,14 +932,25 @@ async function leaveSeat(tableId, uid, clubId) {
   // Step 2: remove the seat + refund. His folded bet joins the pot for the players
   // still in the hand; the dc_selection watchdog (pkTick) covers a vanished chooser.
   let refund = 0;
+  let leaverLog = null; // set when the seat is pulled MID-HAND — his result must still be booked
   await db.runTransaction(async (tx) => {
-    const [tS, mS] = await Promise.all([tx.get(tRef(tableId)), tx.get(db.doc(`memberships/${uid}_${clubId}`))]);
+    leaverLog = null;
+    const [tS, mS, eS] = await Promise.all([tx.get(tRef(tableId)), tx.get(db.doc(`memberships/${uid}_${clubId}`)), tx.get(eRef(tableId))]);
     if (!tS.exists) return;
     const t = tS.data();
     const g = t.gameState || {};
     const pl = {...(t.players || {})};
     const p = pl[uid];
     if (!p) return;
+    // A live hand ends WITHOUT him in players → logHandResults would skip his loss
+    // and the books stop summing to zero (the raem-atias class of bug). Book his
+    // hand result now, flagged leave:true so the dedup repair never touches it.
+    const eng0 = eS.exists ? eS.data() : {};
+    const start0 = (eng0.startStacks || {});
+    if ([...BETTING, "discard"].includes(g.phase) && (p.cardCount || 0) > 0 && (uid in start0)) {
+      const profit = round2((p.stack || 0) - start0[uid]);
+      if (profit !== 0) leaverLog = {uid, username: p.name || "", clubId, game: "poker", profit, rake: 0, tableId, leave: true, at: Date.now()};
+    }
     const othersLive = Object.values(pl).filter((q) => q.uid !== uid && q.status === "active");
     // Only wait for step 1 when there are OTHER live players whose hand we'd disturb;
     // a lone leaver must never be trapped by his own "active" status.
@@ -943,6 +971,7 @@ async function leaveSeat(tableId, uid, clubId) {
     }
     if (!p.isBot && refund > 0 && mS.exists) tx.update(mS.ref, {balance: round2((mS.data().balance || 0) + refund)});
   });
+  if (leaverLog) db.collection("gameLog").add(leaverLog).catch(() => {});
   return refund;
 }
 
@@ -959,6 +988,7 @@ exports.admFixGameLog = onCall(async (request) => {
   snap.docs.forEach((d) => {
     const e = d.data();
     if (e.game !== "poker") return;
+    if (e.leave) return; // mid-hand leaver results are legitimately solo — never delete
     const tid = String(e.tableId || "");
     if (tid.startsWith("tournament:")) return;
     const k = tid + "|" + e.at;

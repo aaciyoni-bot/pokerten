@@ -903,8 +903,9 @@
             chip1: ['chip_single_1', 'chip_single_2'],
             check: ['check_knock'], fold: ['fold_toss_1', 'fold_toss_2'],
             tick: ['timer_tick_1', 'timer_tick_2'],
-            win: ['win_pot'], bigwin: ['big_win'], msg: ['chat_msg'],
-            shuffle: ['shuffle'], join: ['player_join'], allin: ['all_in'], bust: ['bust'],
+            /* Winning = the pot physically arriving: a cascade of chips, no jingle */
+            win: ['chips_slide_1', 'chips_slide_2', 'chips_slide_3'], bigwin: ['all_in', 'chips_slide_2'], msg: ['chat_msg'],
+            shuffle: ['shuffle'], allin: ['all_in'], bust: ['chips_slide_1'],
             tile: ['chip_single_1'], dice: ['chips_slide_2'],
         };
         const SFX_GAIN = { deal: 0.7, flip: 0.7, chip: 0.8, chip1: 0.7, check: 0.8, fold: 0.55, turn: 0.65, tick: 0.4, win: 0.75, bigwin: 0.85, msg: 0.5, shuffle: 0.6, join: 0.6, allin: 0.9, bust: 0.7, tile: 0.5, dice: 0.5 };
@@ -936,14 +937,18 @@
         };
         const SND = {};
         const playSnd = (type, times = 1, gapSec = 0) => {
-            if (type === 'turn') return; // no gratuitous sounds — your turn is shown visually, not beeped
+            // Table policy: ONLY cards and chips make noise (plus the check knock, which is a
+            // real poker gesture). No beeps for turns, chat, joins, timers — silence.
+            if (['turn', 'msg', 'join', 'tick'].includes(type)) return;
             try {
                 // Sample engine first — random variant per repeat, like a real dealer
                 const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
                 if (variants.length) {
-                    const n = Math.max(1, Math.min(type === 'deal' ? 36 : 9, Math.floor(times) || 1));
+                    // A win is the pot ARRIVING: several chip clusters tumbling in, not a jingle.
+                    const reps = (type === 'win' || type === 'bigwin') ? Math.max(3, Math.floor(times) || 1) : (Math.floor(times) || 1);
+                    const n = Math.max(1, Math.min(type === 'deal' ? 36 : 9, reps));
                     const base = SFX_GAIN[type] ?? 0.7;
-                    const gap = gapSec || (type === 'flip' ? 0.22 : 0.085);
+                    const gap = gapSec || (type === 'flip' ? 0.22 : (type === 'win' || type === 'bigwin') ? 0.16 : 0.085);
                     for (let i = 0; i < n; i++) sfxPlay(variants[Math.floor(Math.random() * variants.length)], i * (gap + Math.random() * 0.02), base);
                     return;
                 }
@@ -1539,28 +1544,51 @@
 
         const CasinoChipStack = ({ amount, scale = 1, showLabel = true }) => {
             if (!amount || amount <= 0) return null;
-            let remaining = Math.round(amount); const chipsToRender = [];
-            const addChips = (val, typeClass, count) => { for(let i=0; i<count; i++) chipsToRender.push({ val, typeClass, id: Math.random() }); };
-            const thousands = Math.floor(remaining / 1000); remaining %= 1000;
-            const hundreds = Math.floor(remaining / 100); remaining %= 100;
-            const twentyFives = Math.floor(remaining / 25); remaining %= 25;
-            const fives = Math.floor(remaining / 5); remaining %= 5;
-            addChips('1K', 'chip-1000', Math.min(thousands, 5)); addChips('100', 'chip-100', Math.min(hundreds, 5));
-            addChips('25', 'chip-25', Math.min(twentyFives, 4)); addChips('5', 'chip-5', Math.min(fives, 4)); addChips('1', 'chip-1', Math.min(remaining, 4));
-            if (chipsToRender.length === 0) addChips('1', 'chip-1', 1);
+            // Real casino change-making: the amount DECIDES the pile. A bigger bet/pot simply
+            // looks bigger — chips split into side-by-side towers of 8 (render cap 24 chips).
+            let remaining = Math.round(amount);
+            const DEN = [[1000, 'chip-1000', '1K'], [100, 'chip-100', '100'], [25, 'chip-25', '25'], [5, 'chip-5', '5'], [1, 'chip-1', '1']];
+            const chips = [];
+            for (const [v, cls, lab] of DEN) {
+                let n = Math.floor(remaining / v); remaining -= n * v;
+                while (n-- > 0 && chips.length < 24) chips.push({ lab, cls });
+            }
+            if (!chips.length) chips.push({ lab: '1', cls: 'chip-1' });
+            const PER = 8; // chips per tower
+            const cols = []; for (let i = 0; i < chips.length; i += PER) cols.push(chips.slice(i, i + PER));
             const chipSize = 22 * scale;
+            const tallest = Math.max(...cols.map(c => c.length));
+            const pileH = chipSize + tallest * 3 * scale;
             return (
-                <div className="relative pointer-events-none flex flex-col items-center" style={{ width: `${chipSize}px`, height: `${chipSize + (chipsToRender.length * 3)}px` }}>
-                    {chipsToRender.map((chip, index) => (
-                        <div key={chip.id} className={`casino-chip ${chip.typeClass}`} style={{ width: `${chipSize}px`, height: `${chipSize}px`, borderWidth: `${3*scale}px`, bottom: `${index * (3 * scale)}px`, position: 'absolute', zIndex: index }}>
-                            <div className="casino-chip-inner" style={{ width: `${15*scale}px`, height: `${15*scale}px`, fontSize: `${7.5*scale}px` }}>{chip.val}</div>
-                        </div>
-                    ))}
+                <div className="relative pointer-events-none" style={{ height: `${pileH}px` }}>
+                    <div className="flex items-end" style={{ gap: `${2 * scale}px`, height: `${pileH}px` }}>
+                        {cols.map((col, ci) => (
+                            <div key={ci} className="relative" style={{ width: `${chipSize}px`, height: `${pileH}px` }}>
+                                {col.map((chip, index) => (
+                                    <div key={index} className={`casino-chip ${chip.cls}`} style={{ width: `${chipSize}px`, height: `${chipSize}px`, borderWidth: `${3*scale}px`, bottom: `${index * (3 * scale)}px`, position: 'absolute', zIndex: index }}>
+                                        <div className="casino-chip-inner" style={{ width: `${15*scale}px`, height: `${15*scale}px`, fontSize: `${7.5*scale}px` }}>{chip.lab}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        ))}
+                    </div>
                     {showLabel && (
-                        <div className="absolute transform -translate-x-1/2 left-1/2 bg-slate-950/90 text-gold-400 font-black px-2 py-0.5 rounded-md text-[10px] whitespace-nowrap shadow-lg border border-white/10" style={{ bottom: `${(chipsToRender.length * 3 * scale) + chipSize + 4}px` }}>
+                        <div className="absolute transform -translate-x-1/2 left-1/2 bg-slate-950/90 text-gold-400 font-black px-2 py-0.5 rounded-md text-[10px] whitespace-nowrap shadow-lg border border-white/10" style={{ bottom: `${pileH + 4}px` }}>
                             {formatShort(amount)}
                         </div>
                     )}
+                </div>
+            );
+        };
+
+        /* Street-end chip sweep: a ghost of the player's bet glides from his spot into
+           the pot (the "dealer collects"), then fades — bets never teleport. */
+        const BetCollect = ({ from, to, amount }) => {
+            const [go, setGo] = React.useState(false);
+            React.useEffect(() => { const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true))); return () => cancelAnimationFrame(r); }, []);
+            return (
+                <div className="absolute z-[36] pointer-events-none" style={{ left: go ? to.left : from.left, top: go ? to.top : from.top, opacity: go ? 0.1 : 1, transform: 'translate(-50%, -50%)', transition: 'left 0.65s ease-in, top 0.65s ease-in, opacity 0.65s ease-in' }}>
+                    <CasinoChipStack amount={amount} scale={0.85} showLabel={false} />
                 </div>
             );
         };
@@ -4009,7 +4037,7 @@
                             {user.role === ROLES.SUPER_ADMIN && (
                                 <div className="flex gap-2">
                                     <button onClick={handleCreateBots} className="bg-gradient-to-b from-purple-500 to-purple-800 hover:from-purple-400 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><i className="fa-solid fa-robot ml-2"></i>20 Bots</button>
-                                    {isGodUser(user) && <button onClick={handleFixResults} title="Remove doubled result entries (one-shot repair)" className="bg-slate-800/80 hover:bg-emerald-900/70 border border-emerald-500/40 text-emerald-300 px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-broom ml-1"></i>Fix results</button>
+                                    {isGodUser(user) && <button onClick={handleFixResults} title="Remove doubled result entries (one-shot repair)" className="bg-slate-800/80 hover:bg-emerald-900/70 border border-emerald-500/40 text-emerald-300 px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-broom ml-1"></i>Fix results</button>}
                                     <button onClick={handleRenameBots} title="Fresh human-looking names for all bots" className="bg-slate-800/80 hover:bg-purple-900/70 border border-purple-500/40 text-purple-300 px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-masks-theater ml-1"></i>Rename</button>
                                     <span className="text-purple-300 text-xs font-black bg-purple-500/10 border border-purple-500/40 px-3 py-2 rounded-xl self-center">🤖 {botsList.length} Bots in the system (serving all clubs)</span>
                                     <button onClick={handleDeleteBots} className="bg-slate-800/80 hover:bg-rose-900/80 border border-white/10 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl text-sm font-bold"><i className="fa-solid fa-trash"></i></button>
@@ -4504,6 +4532,24 @@
             const [loading, setLoading] = useState(true);
             const [godView, setGodView] = useState(false);
             const [rabbit, setRabbit] = useState([]); // rabbit-hunt cards revealed locally after a fold-win
+            // Street-end chip sweep: remember where each live bet sat last render; when a bet
+            // drops to 0 (street closed / hand ended) a ghost stack glides into the pot.
+            const [betFx, setBetFx] = useState([]);
+            const betLayoutRef = useRef({ prev: {}, seq: 0, now: {} });
+            useEffect(() => {
+                const L = betLayoutRef.current;
+                const fx = [];
+                Object.keys(L.prev).forEach(uid => {
+                    const was = L.prev[uid];
+                    if (was.bet > 0 && (!L.now[uid] || L.now[uid].bet === 0)) fx.push({ id: 'bfx' + (++L.seq), from: was.pos, amount: was.bet });
+                });
+                L.prev = L.now;
+                if (fx.length) {
+                    setBetFx(cur => [...cur, ...fx]);
+                    const ids = fx.map(f => f.id);
+                    setTimeout(() => setBetFx(cur => cur.filter(f => !ids.includes(f.id))), 750);
+                }
+            });
             // ── Server-engine (settings.serverEngine) support ──
             const srvEngine = !!((tableState || {}).settings || {}).serverEngine;
             const [myPrivCards, setMyPrivCards] = useState([]);
@@ -5765,9 +5811,11 @@
                 if (isSeated && i === 0) return { left: '29%', top: '64%' };
                 const [sx, sy] = seatXY(i);
                 const dx = sx - 50, dy = sy - 50;
-                const len = Math.max(1, Math.hypot(dx, dy));
-                const tx = -dy / len, ty = dx / len; // side-step off the badge line
-                return { left: `${50 + dx * 0.5 + tx * 7}%`, top: `${50 + dy * 0.57 + ty * 6}%` };
+                // Like a live table: the bet stays right in front of the player's seat all
+                // street (only ~28% of the way to center), perfectly mirrored seat-for-seat.
+                // Top-center seats side-step left so the chips never sit on their own cards.
+                const shift = Math.abs(dx) < 10 && sy < 34 ? -13 : 0;
+                return { left: `${50 + dx * 0.72 + shift}%`, top: `${50 + dy * 0.68}%` };
             };
             const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
             const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
@@ -5981,7 +6029,7 @@
                                     <div className="text-[14px] font-black text-amber-300 leading-tight">{formatShort(totalPot)}</div>
                                 </div>
                             )}
-                            <div className="absolute left-1/2 top-[60%] -translate-x-1/2 flex gap-5 items-start z-40">
+                            <div className="absolute left-1/2 top-[63.5%] -translate-x-1/2 flex gap-5 items-start z-40">
                                 {(gs.pots || []).map((pot, i) => <CasinoChipStack key={i} amount={pot.amount} scale={0.9} />)}
                             </div>
 
@@ -5993,9 +6041,6 @@
                                 {gs.phase !== 'waiting' && [...Array(Math.max(0, 5 - (gs.board || []).length - rabbit.length))].map((_, i) => (
                                     <div key={'ph'+i} className="w-9 sm:w-10 opacity-0" style={{ height: '3.4rem' }}></div>
                                 ))}
-                                {gs.phase === 'showdown' && gs.earlyWin && !srvEngine && rabbit.length === 0 && (gs.board || []).length < 5 && (gs.deck || []).length >= (5 - (gs.board || []).length) && (
-                                    <button onClick={() => setRabbit((gs.deck || []).slice(0, 5 - (gs.board || []).length))} title="Rabbit hunt — see what would have come" className="self-center w-9 h-9 rounded-full bg-slate-900/90 border border-white/15 text-lg hover:scale-110 transition-transform">🐰</button>
-                                )}
                             </div>
 
                             {/* GG-style always-on table info on the felt */}
@@ -6021,8 +6066,11 @@
                                 const [sxD, syD] = seatXY(di);
                                 const dxD = sxD - 50, dyD = syD - 50;
                                 const lenD = Math.max(1, Math.hypot(dxD, dyD));
-                                const left = 50 + dxD * 0.66 + (-dyD / lenD) * 6;
-                                const top = 50 + dyD * 0.7 + (dxD / lenD) * 6;
+                                // Hero as dealer: the bottom fan owns the center — park the D on
+                                // clear felt beside it (under the bet spot), never on the cards.
+                                let left = 50 + dxD * 0.66 + (-dyD / lenD) * 6;
+                                let top = 50 + dyD * 0.7 + (dxD / lenD) * 6;
+                                if (isSeated && di === 0) { left = 29; top = 73; }
                                 return <div className="absolute z-30 w-6 h-6 rounded-full bg-gradient-to-b from-amber-300 to-amber-600 text-amber-950 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-amber-200" style={{ left: `${left}%`, top: `${top}%`, transform: 'translate(-50%,-50%)' }}>D</div>;
                             })()}
 
@@ -6162,12 +6210,28 @@
                                 );
                             })}
 
-                            {/* הימורים על השולחן */}
+                            {/* הימורים על השולחן — יושבים ליד השחקן כל הסיבוב */}
+                            {(() => { const now = {}; displayList.forEach((p, i) => { now[p.uid] = { bet: p.bet || 0, pos: betPos(i) }; }); betLayoutRef.current.now = now; return null; })()}
                             {displayList.map((p, i) => (p.bet || 0) > 0 && (
                                 <div key={'bet' + p.uid} className="absolute z-[35]" style={{ ...betPos(i), transform: 'translate(-50%, -50%)' }}>
                                     <CasinoChipStack amount={p.bet} scale={0.85} />
                                 </div>
                             ))}
+                            {/* בסוף הסיבוב הדילר "אוסף" — הצ'יפים מחליקים למרכז לקופה */}
+                            {betFx.map(fx => <BetCollect key={fx.id} from={fx.from} to={{ left: '50%', top: '63.5%' }} amount={fx.amount} />)}
+
+                            {/* Rabbit hunt — הארנב יושב ליד השחקן; לחיצה חושפת על הבורד מה היה יורד */}
+                            {(() => {
+                                if (!(gs.phase === 'showdown' && gs.earlyWin && rabbit.length === 0 && (gs.board || []).length < 5)) return null;
+                                const need = 5 - (gs.board || []).length;
+                                const src = srvEngine ? (gs.rabbit || []) : (gs.deck || []);
+                                if (src.length < need) return null;
+                                return (
+                                    <button onClick={() => setRabbit(src.slice(0, need))} title="Rabbit hunt — see what would have come"
+                                            className="absolute z-[45] w-11 h-11 rounded-full bg-slate-900/90 border-2 border-amber-400/60 text-2xl shadow-[0_0_14px_rgba(245,200,96,0.35)] hover:scale-110 transition-transform animate-pop-in"
+                                            style={{ left: '68%', top: '80%', transform: 'translate(-50%,-50%)' }}>🐰</button>
+                                );
+                            })()}
                         </div>
 
                         {/* מודל בחירת משחק - Dealer's Choice */}
@@ -6339,9 +6403,15 @@
                                             </button>
                                             {histExpand === i && (
                                                 <div className="px-3 pb-3 border-t border-white/5 pt-2">
+                                                    {/* Board split into streets — you see exactly what the flop/turn/river were */}
                                                     {(h.board || []).length > 0 && (
-                                                        <div className="flex gap-1 justify-center mb-2" dir="ltr">
-                                                            {h.board.map((c, ci) => <PCard key={ci} card={c} size="sm" />)}
+                                                        <div className="flex gap-3 justify-center mb-2 flex-wrap" dir="ltr">
+                                                            {[['Flop', (h.board || []).slice(0, 3)], ['Turn', (h.board || []).slice(3, 4)], ['River', (h.board || []).slice(4, 5)]].map(([lb, cs]) => cs.length ? (
+                                                                <div key={lb} className="flex flex-col items-center gap-0.5">
+                                                                    <span className="text-[9px] text-slate-500 font-black uppercase tracking-widest">{lb}</span>
+                                                                    <div className="flex gap-1">{cs.map((c, ci) => <PCard key={ci} card={c} size="sm" />)}</div>
+                                                                </div>
+                                                            ) : null)}
                                                         </div>
                                                     )}
                                                     <div className="flex flex-col gap-1.5">
@@ -6352,7 +6422,27 @@
                                                             </div>
                                                         ))}
                                                     </div>
-                                                    <div className="text-[10px] text-slate-500 font-bold mt-2 text-center">&nbsp;</div>
+                                                    {/* Street-by-street betting: blinds, raises, calls, folds in order */}
+                                                    {(h.acts || []).length > 0 && (
+                                                        <div className="mt-2 flex flex-col gap-1" dir="ltr">
+                                                            {['preflop', 'flop', 'turn', 'river'].map(ph => {
+                                                                const rows = (h.acts || []).filter(a => a.ph === ph);
+                                                                if (!rows.length) return null;
+                                                                return (
+                                                                    <div key={ph} className="bg-slate-950/50 rounded-lg px-2 py-1.5">
+                                                                        <div className="text-[9px] text-amber-400/80 font-black uppercase tracking-widest mb-0.5">{ph === 'preflop' ? 'Pre-flop' : ph}</div>
+                                                                        <div className="flex flex-wrap gap-x-2.5 gap-y-0.5">
+                                                                            {rows.map((a, ai) => (
+                                                                                <span key={ai} className="text-[10px] font-bold text-slate-300 whitespace-nowrap">
+                                                                                    {a.n} <span className={a.a === 'Fold' ? 'text-rose-400' : (a.a === 'Raise' || a.a === 'All-in') ? 'text-amber-300' : 'text-slate-400'}>{a.a}{a.amt > 0 && a.a !== 'Check' ? ' ' + formatShort(a.amt) : ''}</span>
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

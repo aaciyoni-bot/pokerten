@@ -795,6 +795,10 @@
         /* the seat capacity ("/6") reads as secondary to the filled count */
         .tbl-seats .seat-cap { color: #5b6b82; }
 
+        /* ── Club landing page: section labels get a gold accent for structure ── */
+        .club-sec-label { display: flex; align-items: center; gap: 9px; }
+        .club-sec-label::before { content: ""; width: 15px; height: 2px; border-radius: 2px; background: var(--pt-gold, #D5B36B); opacity: 0.85; flex: none; }
+
         /* Spin & Cash: gold confetti burst on the winning number */
         .spin-confetti { position: absolute; left: 50%; top: 50%; width: 7px; height: 11px; border-radius: 2px; animation: confettiFly 1.05s ease-out forwards; }
         @keyframes confettiFly {
@@ -4609,7 +4613,19 @@ function ClubsView({
     className: "max-w-2xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
     className: "text-center mb-8 mt-6"
-  }, React.createElement("h1", {
+  }, React.createElement("div", {
+    // brand emblem — gives the club landing page identity, matches the sign-in screen
+    className: "w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center",
+    style: {
+      background: 'var(--pt-raised)',
+      border: '1px solid rgba(213,179,107,0.35)',
+      boxShadow: 'var(--pt-shadow), inset 0 1px 0 rgba(255,255,255,0.06)'
+    }
+  }, React.createElement(SuitGlyph, {
+    s: '♠',
+    color: '#D5B36B',
+    size: "26px"
+  })), React.createElement("h1", {
     className: "logo-shine text-4xl sm:text-5xl tracking-[0.15em] text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400",
     style: {
       fontWeight: 700
@@ -4773,7 +4789,7 @@ function ClubsView({
   }, "You're not in a club yet. Got a 6-digit code from a friend? Enter it below and request to join. Or open your own club and become the house.")), myClubs.length > 0 && React.createElement("div", {
     className: "mb-8"
   }, React.createElement("h3", {
-    className: "text-[11px] uppercase tracking-[0.18em] mb-3",
+    className: "club-sec-label text-[11px] uppercase tracking-[0.18em] mb-3",
     style: {
       color: 'var(--pt-text-3)',
       fontWeight: 600
@@ -4790,7 +4806,7 @@ function ClubsView({
   })))), pendingClubs.length > 0 && React.createElement("div", {
     className: "mb-8"
   }, React.createElement("h3", {
-    className: "text-[11px] uppercase tracking-[0.18em] mb-3",
+    className: "club-sec-label text-[11px] uppercase tracking-[0.18em] mb-3",
     style: {
       color: 'var(--pt-text-3)',
       fontWeight: 600
@@ -4816,7 +4832,7 @@ function ClubsView({
   })))), React.createElement("div", {
     className: "mb-8"
   }, React.createElement("h3", {
-    className: "text-[11px] uppercase tracking-[0.18em] mb-3",
+    className: "club-sec-label text-[11px] uppercase tracking-[0.18em] mb-3",
     style: {
       color: 'var(--pt-text-3)',
       fontWeight: 600
@@ -4896,7 +4912,7 @@ function ClubsView({
   }, "Cancel"))), document.body), React.createElement("div", {
     className: "club-card p-6"
   }, React.createElement("h3", {
-    className: "text-[11px] uppercase tracking-[0.18em] mb-3",
+    className: "club-sec-label text-[11px] uppercase tracking-[0.18em] mb-3",
     style: {
       color: 'var(--pt-text-3)',
       fontWeight: 600

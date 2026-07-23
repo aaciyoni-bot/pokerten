@@ -4860,6 +4860,7 @@
             // drops to 0 (street closed / hand ended) a ghost stack glides into the pot.
             const [betFx, setBetFx] = useState([]);
             const [discFx, setDiscFx] = useState(null); // pineapple discard fly-out
+            const [discHide, setDiscHide] = useState(null); // the tapped card vanishes from MY fan instantly
             const [, setMuteTick] = useState(0); // 🔇 button repaint
             const [toolsOpen, setToolsOpen] = useState(false); // ☰ bottom-left tools menu
             const [peek, setPeek] = useState(null); // tap an avatar → rings panel
@@ -6659,7 +6660,7 @@
                                                 <div className={`flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : (isMe ? 'gap-1' : 'gap-0.5')}`} style={{ transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)` }} dir="ltr">
                                                     {dispCards.map((c, ci) => (
                                                         isMe && gs.phase === 'discard' && dispCards.length === 3
-                                                        ? <div key={ci} onClick={() => { setDiscFx({ card: c, id: Date.now() }); setTimeout(() => setDiscFx(null), 800); handleDiscardCard(user.uid, ci); }} className="cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"><PCard card={c} size="xl" /></div>
+                                                        ? (discHide === ci ? <div key={ci} className="w-2"></div> : <div key={ci} onClick={() => { if (discHide !== null) return; setDiscFx({ card: c, id: Date.now() }); setDiscHide(ci); setTimeout(() => { setDiscFx(null); setDiscHide(null); }, 1200); handleDiscardCard(user.uid, ci); }} className="cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"><PCard card={c} size="xl" /></div>)
                                                         : doFan
                                                         ? <span key={ci} className="inline-block" style={{ marginLeft: ci === 0 ? 0 : ovl, transform: `rotate(${(ci - midC) * ang}deg) translateY(${Math.abs(ci - midC) * (isMe ? 3.5 : 2.5)}px)`, transformOrigin: '50% 115%', zIndex: ci }}><span className={(isMe && noRedealRef.current.hold) ? '' : 'card-reveal'} style={{ animationDelay: (isMe && noRedealRef.current.hold) ? '0ms' : `${dealDelay(p.uid, ci)}ms` }}><PCard card={c} hidden={hidden} size={isMe ? (nC > 4 ? 'lg' : 'xl') : (hidden ? 'xs' : 'sm')} /></span></span>
                                                         : <span key={ci} className={(isMe && noRedealRef.current.hold) ? '' : 'card-reveal'} style={{ animationDelay: (isMe && noRedealRef.current.hold) ? '0ms' : `${dealDelay(p.uid, ci)}ms` }}><PCard card={c} hidden={hidden} size={isMe ? (nC > 4 ? 'lg' : 'xl') : (hidden ? 'xs' : 'sm')} /></span>

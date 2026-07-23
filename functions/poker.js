@@ -574,9 +574,18 @@ async function dealHand(tableId, chosenType) {
       p.cards = []; p.cardCount = 0; p.bet = 0; p.actionText = ""; p.hasActed = false; p.reveal = false;
       // Tournament: sit-out players are still dealt (blinds burn, auto-folded by the tick);
       // out/busted stay out. Cash: sit-out means skipped.
-      p.status = p.stack > 0
-        ? ((p.sitOut && !t.tournamentId) ? "sitout" : "active")
-        : (["busted", "out"].includes(p.status) ? p.status : "sitout");
+      if (p.stack > 0) {
+        p.status = (p.sitOut && !t.tournamentId) ? "sitout" : "active";
+      } else if (["busted", "out"].includes(p.status)) {
+        // keep terminal states
+      } else if (!t.tournamentId) {
+        // CASH — ALL games (NLH/Omaha/Pineapple/DC): zero stack is BUSTED, never
+        // 'sitout'. Busted is what grants the 5-minute rebuy clock and protects
+        // the seat from the sit-out kick watchdog.
+        p.status = "busted"; if (!p.bustedAt) p.bustedAt = Date.now();
+      } else {
+        p.status = "sitout";
+      }
     });
     const acts = activesOf(pl);
     if (acts.length < 2) {

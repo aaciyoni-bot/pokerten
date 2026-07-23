@@ -8067,6 +8067,7 @@ function PokerTable({
   const [rabbit, setRabbit] = useState([]);
   const [betFx, setBetFx] = useState([]);
   const [discFx, setDiscFx] = useState(null);
+  const [discHide, setDiscHide] = useState(null);
   const [, setMuteTick] = useState(0);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [peek, setPeek] = useState(null);
@@ -10662,14 +10663,22 @@ function PokerTable({
           transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)`
         },
         dir: "ltr"
-      }, dispCards.map((c, ci) => isMe && gs.phase === 'discard' && dispCards.length === 3 ? React.createElement("div", {
+      }, dispCards.map((c, ci) => isMe && gs.phase === 'discard' && dispCards.length === 3 ? discHide === ci ? React.createElement("div", {
+        key: ci,
+        className: "w-2"
+      }) : React.createElement("div", {
         key: ci,
         onClick: () => {
+          if (discHide !== null) return;
           setDiscFx({
             card: c,
             id: Date.now()
           });
-          setTimeout(() => setDiscFx(null), 800);
+          setDiscHide(ci);
+          setTimeout(() => {
+            setDiscFx(null);
+            setDiscHide(null);
+          }, 1200);
           handleDiscardCard(user.uid, ci);
         },
         className: "cursor-pointer hover:-translate-y-2 transition-transform ring-2 ring-amber-400/70 rounded-lg"

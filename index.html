@@ -621,7 +621,7 @@
         .tbl-name { font-size: 12px; font-weight: 500; color: #8b98ad; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
         .tbl-dc { font-size: 9px; font-weight: 900; color: #fda4af; border: 1px solid rgba(244,63,94,0.4); border-radius: 4px; padding: 0 4px; flex: none; }
         .tbl-me { font-size: 9px; font-weight: 900; color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); border-radius: 99px; padding: 0 6px; flex: none; }
-        .tbl-stakes { font-size: 18px; font-weight: 600; color: #f1f5f9; font-family: 'Rubik', sans-serif; line-height: 1.2; letter-spacing: 0.01em; }
+        .tbl-stakes { font-size: 19px; font-weight: 800; color: #f8fafc; font-family: 'Rubik', sans-serif; line-height: 1.2; letter-spacing: 0.005em; }
         .tbl-sub { font-size: 10px; font-weight: 500; color: #5b6779; }
         .tbl-live { color: #34d399; }
         .tbl-buyin { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; margin-right: 4px; }
@@ -782,6 +782,18 @@
         }
         .game-seg.active .gs-ico { background: linear-gradient(180deg, #22d3ee, #0891b2); color: #04222b; border-color: rgba(165,243,252,0.6); box-shadow: 0 4px 12px rgba(34,211,238,0.4); }
         .game-seg.active .gs-count { background: rgba(34,211,238,0.25); color: #a5f3fc; }
+
+        /* ── Table list: sharpen the scan hierarchy ── */
+        .tbl-row { transition: border-color .15s ease, transform .15s ease, background .15s ease; }
+        .tbl-row:hover { background: linear-gradient(180deg, #14203a, #0c1628); }
+        /* occupied tables' seat ring gets a faint glow so live action pops */
+        .tbl-seats .tbl-ring { filter: drop-shadow(0 0 3px rgba(34,211,238,0.20)); }
+        /* pulsing "live" dot — signals a real, running game at a glance */
+        .tbl-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 7px rgba(52,211,153,0.85); animation: livePulse 1.4s ease-in-out infinite; margin-inline-end: 5px; vertical-align: middle; }
+        @keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+        @media (prefers-reduced-motion: reduce) { .tbl-live-dot { animation: none; } }
+        /* the seat capacity ("/6") reads as secondary to the filled count */
+        .tbl-seats .seat-cap { color: #5b6b82; }
 
         /* Spin & Cash: gold confetti burst on the winning number */
         .spin-confetti { position: absolute; left: 50%; top: 50%; width: 7px; height: 11px; border-radius: 2px; animation: confettiFly 1.05s ease-out forwards; }
@@ -6027,7 +6039,9 @@ function LobbyView({
       transform: "rotate(-90 22 22)"
     })), React.createElement("span", {
       dir: "ltr"
-    }, seated, "/", cap)), React.createElement("div", {
+    }, seated, React.createElement("span", {
+      className: "seat-cap"
+    }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
@@ -6040,7 +6054,9 @@ function LobbyView({
       className: "tbl-sub"
     }, t.status === 'playing' ? React.createElement("span", {
       className: "tbl-live"
-    }, "● Running") : 'Waiting')), React.createElement("div", {
+    }, React.createElement("span", {
+      className: "tbl-live-dot"
+    }), "Running") : 'Waiting')), React.createElement("div", {
       className: "tbl-buyin",
       dir: "ltr"
     }, React.createElement("span", {
@@ -6170,7 +6186,9 @@ function LobbyView({
       transform: "rotate(-90 22 22)"
     })), React.createElement("span", {
       dir: "ltr"
-    }, seated, "/", cap)), React.createElement("div", {
+    }, seated, React.createElement("span", {
+      className: "seat-cap"
+    }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
@@ -6192,7 +6210,9 @@ function LobbyView({
       const h10 = (t.history || []).filter(h => Date.now() - (h.at || 0) < 600000).length;
       return inHand ? React.createElement("span", {
         className: "tbl-live"
-      }, "● Running", h10 > 0 ? ` · 🔥 ${h10} hands/10m` : '') : h10 > 0 ? `🔥 ${h10} hands/10m` : 'Waiting';
+      }, React.createElement("span", {
+      className: "tbl-live-dot"
+    }), "Running", h10 > 0 ? ` · 🔥 ${h10} hands/10m` : '') : h10 > 0 ? `🔥 ${h10} hands/10m` : 'Waiting';
     })())), React.createElement("div", {
       className: "tbl-buyin",
       dir: "ltr"
@@ -6366,7 +6386,9 @@ function LobbyView({
       transform: "rotate(-90 22 22)"
     })), React.createElement("span", {
       dir: "ltr"
-    }, seated, "/", cap)), React.createElement("div", {
+    }, seated, React.createElement("span", {
+      className: "seat-cap"
+    }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
@@ -6379,7 +6401,9 @@ function LobbyView({
       className: "tbl-sub"
     }, t.status === 'playing' ? React.createElement("span", {
       className: "tbl-live"
-    }, "● Running") : 'Waiting')), React.createElement("div", {
+    }, React.createElement("span", {
+      className: "tbl-live-dot"
+    }), "Running") : 'Waiting')), React.createElement("div", {
       className: "tbl-buyin",
       dir: "ltr"
     }, React.createElement("span", {

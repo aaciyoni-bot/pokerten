@@ -5415,6 +5415,7 @@ function LobbyView({
   const BONUS_SEGS = Array.isArray(bwConf.prizes) && bwConf.prizes.length === 8 ? bwConf.prizes.map(x => Number(x) || 0) : [5, 10, 20, 30, 50, 75, 100, 200];
   const BONUS_W = [800, 100, 35, 25, 18, 12, 5, 5];
   const [bonusOpen, setBonusOpen] = useState(false);
+  const [giftOpen, setGiftOpen] = useState(false);
   const SCR_HOURS = 7 * 24;
   const [scrOpen, setScrOpen] = useState(false);
   const [scr, setScr] = useState(null);
@@ -5763,27 +5764,13 @@ function LobbyView({
     amount: user.balance
   })))), React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
-  }, bonusEnabled && React.createElement(BonusButton, {
-    emoji: "🎫",
-    label: "",
-    readyText: "Scratch ✨",
-    lastAt: user.lastScratchAt,
-    hours: SCR_HOURS,
-    onClick: () => {
-      setScrOpen(true);
-      setScr(null);
-    }
-  }), bonusEnabled && React.createElement(BonusButton, {
-    emoji: "🎁",
-    label: "",
-    readyText: "Spin 🎰",
-    lastAt: user.lastBonusAt,
-    hours: 22,
-    onClick: () => {
-      setBonusOpen(true);
-      setBonusSpin(null);
-    }
-  }))), React.createElement(InstallBanner, {
+  }, bonusEnabled && React.createElement("button", {
+    onClick: () => setGiftOpen(true),
+    "aria-label": "Bonuses",
+    className: `relative w-11 h-11 rounded-2xl border shadow-lg text-xl flex items-center justify-center ${(scratchReady || bonusReady) ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-white border-amber-300 animate-pulse' : 'bg-slate-800/80 border-white/10 text-slate-300'}`
+  }, "🎁", (scratchReady || bonusReady) && React.createElement("span", {
+    className: "absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center border border-slate-900"
+  }, "!")), false)), React.createElement(InstallBanner, {
     variant: "lobby"
   }), React.createElement("div", {
     className: "flex items-center gap-1.5 mb-7"
@@ -5820,7 +5807,23 @@ function LobbyView({
     className: "gs-label"
   }, g.label), g.n > 0 && React.createElement("span", {
     className: "gs-count"
-  }, g.n)))), scrOpen && bonusEnabled && ReactDOM.createPortal(React.createElement("div", {
+  }, g.n)))), giftOpen && bonusEnabled && ReactDOM.createPortal(React.createElement("div", {
+    dir: "ltr", className: "fixed inset-0 z-[300] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4", onClick: () => setGiftOpen(false)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(), className: "glass-panel rounded-3xl p-5 w-full max-w-xs animate-pop-in border border-amber-500/40"
+  }, React.createElement("h3", { className: "text-lg font-black text-white mb-1 text-center" }, "🎁 Bonuses"),
+    React.createElement("p", { className: "text-slate-400 text-[11px] font-bold mb-4 text-center" }, "Pick a reward to claim"),
+    React.createElement("div", { className: "flex flex-col gap-2" },
+      React.createElement("button", { onClick: () => { setGiftOpen(false); setScr(null); setScrOpen(true); }, className: `flex items-center gap-3 p-3 rounded-2xl border ${scratchReady ? 'bg-amber-500/15 border-amber-400/60' : 'bg-slate-800/60 border-white/10'}` },
+        React.createElement("span", { className: "text-2xl" }, "🎫"),
+        React.createElement("div", { className: "flex-1 text-left" }, React.createElement("div", { className: "text-white font-black text-sm" }, "Scratch card"), React.createElement("div", { className: `text-[10px] font-bold ${scratchReady ? 'text-emerald-300' : 'text-slate-400'}` }, scratchReady ? "Ready now ✨" : "On cooldown")),
+        scratchReady && React.createElement("span", { className: "text-emerald-400 text-lg" }, "→")),
+      React.createElement("button", { onClick: () => { setGiftOpen(false); setBonusSpin(null); setBonusOpen(true); }, className: `flex items-center gap-3 p-3 rounded-2xl border ${bonusReady ? 'bg-amber-500/15 border-amber-400/60' : 'bg-slate-800/60 border-white/10'}` },
+        React.createElement("span", { className: "text-2xl" }, "🎰"),
+        React.createElement("div", { className: "flex-1 text-left" }, React.createElement("div", { className: "text-white font-black text-sm" }, "Daily wheel"), React.createElement("div", { className: `text-[10px] font-bold ${bonusReady ? 'text-emerald-300' : 'text-slate-400'}` }, bonusReady ? "Ready now 🎰" : "On cooldown")),
+        bonusReady && React.createElement("span", { className: "text-emerald-400 text-lg" }, "→"))),
+    React.createElement("button", { onClick: () => setGiftOpen(false), className: "w-full mt-3 text-slate-400 hover:text-white text-xs font-bold" }, "Close")
+  )), document.body), scrOpen && bonusEnabled && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[250] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => (!scr || scr.revealed) && setScrOpen(false)

@@ -621,7 +621,7 @@
         .tbl-name { font-size: 12px; font-weight: 500; color: #8b98ad; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
         .tbl-dc { font-size: 9px; font-weight: 900; color: #fda4af; border: 1px solid rgba(244,63,94,0.4); border-radius: 4px; padding: 0 4px; flex: none; }
         .tbl-me { font-size: 9px; font-weight: 900; color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); border-radius: 99px; padding: 0 6px; flex: none; }
-        .tbl-stakes { font-size: 19px; font-weight: 800; color: #f8fafc; font-family: 'Rubik', sans-serif; line-height: 1.2; letter-spacing: 0.005em; }
+        .tbl-stakes { font-size: 18px; font-weight: 600; color: #e8edf4; font-family: 'Rubik', sans-serif; line-height: 1.2; letter-spacing: 0.005em; }
         .tbl-sub { font-size: 10px; font-weight: 500; color: #5b6779; }
         .tbl-live { color: #34d399; }
         .tbl-buyin { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; margin-right: 4px; }
@@ -5332,7 +5332,7 @@ function LobbyView({
     const idx = GAME_ORDER.indexOf((t.settings || {}).baseGameType || 'NLH');
     return idx < 0 ? 99 : idx;
   };
-  const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (b.settings?.spinMode ? 1 : 0) - (a.settings?.spinMode ? 1 : 0) || gtRank(a) - gtRank(b) || (a.createdAt || 0) - (b.createdAt || 0));
+  const pokerTables = tables.filter(t => t.type === 'poker' && !t.tournamentId && !t.spinDone && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (b.settings?.spinMode ? 1 : 0) - (a.settings?.spinMode ? 1 : 0) || gtRank(a) - gtRank(b) || (a.createdAt || 0) - (b.createdAt || 0));
   const [pokFilter, setPokFilter] = useState('all');
   const [buyinEdit, setBuyinEdit] = useState(null);
   const pokerTpls = (() => {

@@ -943,11 +943,13 @@ const SuitGlyph = ({
   s,
   color,
   dark,
-  size
+  size,
+  grad
 }) => {
   const p = SUIT_GLYPH_PATHS[s];
   if (!p) return React.createElement("span", null, s);
-  const fill = color || (dark ? SUIT_DARK_COL[s] : SUIT_LIGHT_COL[s]);
+  const isRed = s === '♥' || s === '♦';
+  const fill = grad ? (isRed ? 'url(#pcGRed)' : 'url(#pcGBlk)') : (color || (dark ? SUIT_DARK_COL[s] : SUIT_LIGHT_COL[s]));
   return React.createElement("svg", {
     viewBox: "0 0 24 24",
     style: {
@@ -956,9 +958,20 @@ const SuitGlyph = ({
       display: 'inline-block',
       verticalAlign: '-0.1em',
       flex: 'none',
-      filter: 'drop-shadow(0 0.5px 0.5px rgba(0,0,0,0.15))'
+      filter: grad ? 'drop-shadow(0 0.6px 0.7px rgba(0,0,0,0.28))' : 'drop-shadow(0 0.5px 0.5px rgba(0,0,0,0.15))'
     }
-  }, React.createElement("path", {
+  }, grad && React.createElement("defs", null,
+    React.createElement("linearGradient", { id: "pcGRed", x1: "0", y1: "0", x2: "0.3", y2: "1" },
+      React.createElement("stop", { offset: "0", stopColor: "#c31c20" }),
+      React.createElement("stop", { offset: "0.52", stopColor: "#8f1114" }),
+      React.createElement("stop", { offset: "1", stopColor: "#350709" })
+    ),
+    React.createElement("linearGradient", { id: "pcGBlk", x1: "0", y1: "0", x2: "0.3", y2: "1" },
+      React.createElement("stop", { offset: "0", stopColor: "#6f6f6f" }),
+      React.createElement("stop", { offset: "0.5", stopColor: "#2b2b2b" }),
+      React.createElement("stop", { offset: "1", stopColor: "#0e0e0e" })
+    )
+  ), React.createElement("path", {
     d: p,
     fill: fill
   }));
@@ -2410,7 +2423,11 @@ const PCard = ({
       height: D.h
     }
   });
-  const col = (window.__pkDeck4 ? SUIT_COLORS_4 : SUIT_COLORS)[card.suit] || '#111827';
+  const deck4 = !!window.__pkDeck4;
+  const isRed = card.suit === '♥' || card.suit === '♦';
+  const col = (deck4 ? SUIT_COLORS_4 : SUIT_COLORS)[card.suit] || '#111827';
+  const rankCol = deck4 ? col : (isRed ? '#8f1114' : '#141414');
+  const gradOn = !deck4;
   const showBig = size !== 'sm';
   const isCourt = false; // court frame removed — clean cards, no 'card-in-card' look
   return React.createElement("div", {
@@ -2425,7 +2442,7 @@ const PCard = ({
       top: '5%',
       left: '8%',
       lineHeight: 0.82,
-      color: col
+      color: rankCol
     }
   }, React.createElement("span", {
     style: {
@@ -2441,7 +2458,8 @@ const PCard = ({
     }
   }, React.createElement(SuitGlyph, {
     s: card.suit,
-    color: col,
+    color: deck4 ? col : undefined,
+    grad: gradOn,
     size: D.suit
   }))), showBig && (isCourt ? React.createElement("div", {
     // court cards: ornamental framed panel instead of a bare letter
@@ -2473,7 +2491,8 @@ const PCard = ({
     }
   }, React.createElement(SuitGlyph, {
     s: card.suit,
-    color: col,
+    color: deck4 ? col : undefined,
+    grad: gradOn,
     size: D.big
   }))));
 };

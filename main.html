@@ -8066,10 +8066,6 @@ function PokerTable({
       agree: true
     }).catch(() => {});
   }, [!!tableState?.gameState?.ritOffer]);
-  useEffect(() => {
-    const noWayIn = setts.spinMode && tableState?.spin || !!tableState?.tournamentId;
-    if (noWayIn && !isSeated && !spectate) setSpectate(true);
-  }, [!!tableState?.spin, !!tableState?.tournamentId, isSeated]);
   const [spinShow, setSpinShow] = useState(false);
   useEffect(() => {
     const t2 = tableState;
@@ -8214,6 +8210,10 @@ function PokerTable({
   const players = tableState?.players || {};
   const myPlayer = players[user.uid];
   const isSeated = !!myPlayer;
+  useEffect(() => {
+    const noWayIn = setts.spinMode && tableState?.spin || !!tableState?.tournamentId;
+    if (noWayIn && !isSeated && !spectate) setSpectate(true);
+  }, [!!tableState?.spin, !!tableState?.tournamentId, isSeated]);
   const BB = (Number(setts.blinds) || 0.5) * 2;
   const BETTING = ['preflop', 'flop', 'turn', 'river'];
   const inBetting = BETTING.includes(gs.phase);

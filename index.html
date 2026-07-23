@@ -4848,14 +4848,6 @@
                 if ((g0.ritAgree || {})[user.uid] !== undefined) return;
                 window.fb.fx('pkRit', { tableId: tableDocId, agree: true }).catch(() => {});
             }, [!!tableState?.gameState?.ritOffer]);
-            // Watch-only rule (ALL tournament-style tables, present and future): if the
-            // player has no way in anymore — spin already started, tournament seat not
-            // his, late-reg over, rebuys done — entering the table goes STRAIGHT to
-            // spectate. Never dangle a buy-in that can't work.
-            useEffect(() => {
-                const noWayIn = (setts.spinMode && tableState?.spin) || !!tableState?.tournamentId;
-                if (noWayIn && !isSeated && !spectate) setSpectate(true);
-            }, [!!tableState?.spin, !!tableState?.tournamentId, isSeated]);
             // Spin & Cash: show the roulette while the wheel window is open
             const [spinShow, setSpinShow] = useState(false);
             useEffect(() => {
@@ -4958,6 +4950,14 @@
             const players = tableState?.players || {};
             const myPlayer = players[user.uid];
             const isSeated = !!myPlayer;
+            // Watch-only rule (ALL tournament-style tables, present and future): if the
+            // player has no way in anymore — spin already started, tournament seat not
+            // his, late-reg over, rebuys done — entering the table goes STRAIGHT to
+            // spectate. Never dangle a buy-in that can't work.
+            useEffect(() => {
+                const noWayIn = (setts.spinMode && tableState?.spin) || !!tableState?.tournamentId;
+                if (noWayIn && !isSeated && !spectate) setSpectate(true);
+            }, [!!tableState?.spin, !!tableState?.tournamentId, isSeated]);
             const BB = (Number(setts.blinds) || 0.5) * 2;
             const BETTING = ['preflop','flop','turn','river'];
             const inBetting = BETTING.includes(gs.phase);

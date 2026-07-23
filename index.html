@@ -1823,8 +1823,10 @@
                 return () => cancelAnimationFrame(r);
             }, []);
             return (
-                <div className="absolute z-[55] pointer-events-none" style={{ left: go ? to.left : '50%', top: go ? to.top : '63.5%', opacity: go ? 0.2 : 1, transform: 'translate(-50%, -50%)', transition: `left ${dur}s ease-in-out, top ${dur}s ease-in-out, opacity ${dur}s ease-in` }}>
-                    <CasinoChipStack amount={amount} scale={0.95} />
+                // Fully opaque for the WHOLE trip, above every table layer — the amount and
+                // chips must be readable in motion; the fade happens only AFTER arrival.
+                <div className="absolute z-[120] pointer-events-none" style={{ left: go ? to.left : '50%', top: go ? to.top : '63.5%', opacity: go ? 0 : 1, transform: 'translate(-50%, -50%) scale(1.15)', transition: `left ${dur}s ease-in-out, top ${dur}s ease-in-out, opacity 0.45s ease-in ${dur}s` }}>
+                    <CasinoChipStack amount={amount} scale={1.05} />
                 </div>
             );
         };

@@ -922,7 +922,7 @@ async function spinAfterHand(tableId, t, plAfter) {
     await db.runTransaction(async (tx) => {
       const sn = await tx.get(tRef(tableId));
       if (!sn.exists || sn.data().spinDone) return;
-      tx.update(tRef(tableId), {spinDone: true, spinWinner: alive[0].uid});
+      tx.update(tRef(tableId), {spinDone: true, spinWinner: alive[0].uid, spinFinishedAt: Date.now()});
       won = true;
     });
   } catch (e) { return; }
@@ -1178,6 +1178,15 @@ exports.pkTick = onCall(async (request) => {
 
   // Spin & Cash: table filled → spin the wheel; wheel done → auto-deal hands.
   if (s.spinMode && !t.tournamentId) {
+    // Finished spin table: after a short grace (players saw the podium), close it
+    // so a dead table never lingers in the lobby.
+    if (t.spinDone) {
+      if (Date.now() - (t.spinFinishedAt || 0) > 30000) {
+        try { await tRef(tableId).delete(); } catch (e) {}
+        try { await eRef(tableId).delete(); } catch (e) {}
+      }
+      return {ok: true};
+    }
     if (!t.spin && g.phase === "waiting" && Object.keys(pl).length >= (Number(s.maxPlayers) || 3)) {
       const armed = await armSpin(tableId);
       if (armed) spawnSpinTwin(t.clubId || "main", s); // fresh identical table opens IMMEDIATELY

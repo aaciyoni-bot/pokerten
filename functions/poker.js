@@ -662,8 +662,10 @@ async function dealHand(tableId, chosenType) {
     let sb = round2(Number(s.blinds) || 0.5);
     let bb = round2(sb * 2);
     if (s.spinMode && t.spinStartAt) {
-      // Hyper structure: blinds double every 4 minutes (cap ×32) so a spin game always ends
-      const lvl2 = Math.max(0, Math.floor((Date.now() - t.spinStartAt) / 240000));
+      // Hyper structure: blinds double every level (cap ×32) so a spin game always ends.
+      // Level length is set per-table at open time (spinLevelSec, default 240s).
+      const lvlMs = Math.max(30, Number(s.spinLevelSec) || 240) * 1000;
+      const lvl2 = Math.max(0, Math.floor((Date.now() - t.spinStartAt) / lvlMs));
       const esc = Math.min(32, Math.pow(2, lvl2));
       sb = round2(sb * esc); bb = round2(sb * 2);
     }
@@ -1021,16 +1023,32 @@ function botDecide(t, g, pl, eng, uid) {
   const split = iWin && winners.length > 1;
   const visEq = street >= 3 ? botEquity(hole, board, g.currentGameType) : botPreflop(hole, g.currentGameType);
 
-  // Spin & Cash: winner-take-all, no rake — bots play REAL poker (natural push/fold),
-  // not the oracle fold-discipline, so hands are actually contested with action.
+  // Spin & Cash: winner-take-all hyper — bots play a real push/fold that MUST
+  // resolve. The shorter the stack, the wider they jam and call, so a spin game
+  // can never stall on bots that refuse to commit. Termination is guaranteed:
+  // as the blinds escalate every stack eventually drops into the shove zone.
   if ((t.settings || {}).spinMode) {
     const effBB = bb > 0 ? stack / bb : 99;
+    // Ultra-short (≤3.5bb): open-shove ANY two; facing a jam, call very wide.
+    if (effBB <= 3.5) {
+      if (toCall === 0) return {type: "raise", amount: maxTo};
+      if (toCall >= stack) return (visEq >= 0.28 || potOdds <= 0.5) ? {type: "call"} : {type: "fold"};
+      return {type: "raise", amount: maxTo};
+    }
+    // Short (≤7bb): jam-or-fold on a wide top range; open-shove decent hands.
+    if (effBB <= 7) {
+      if (visEq >= 0.40) return toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
+      if (toCall === 0) return (visEq >= 0.30 || rnd < 0.35) ? {type: "raise", amount: maxTo} : {type: "fold"};
+      return (visEq >= 0.34 && potOdds <= 0.34) ? {type: "call"} : {type: "fold"};
+    }
+    // Push/fold zone (≤13bb): premium jams, otherwise limp/defend cheaply.
+    if (effBB <= 13) {
+      if (visEq >= 0.52) return toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
+      if (toCall === 0) return {type: "call"};
+      return (visEq >= 0.42 && potOdds <= 0.32) ? {type: "call"} : {type: "fold"};
+    }
+    // Deeper: play actual streets, but still get it in with the goods.
     if (street === 0) {
-      if (effBB <= 12) {
-        if (visEq >= 0.5) return {type: "raise", amount: maxTo};            // short: jam
-        if (toCall === 0) return {type: "call"};
-        return (visEq >= 0.42 && potOdds <= 0.3) ? {type: "call"} : {type: "fold"};
-      }
       if (toCall === 0) return (visEq >= 0.55 && rnd < 0.55) ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
       if (visEq >= 0.6) return rnd < 0.4 ? {type: "raise", amount: raiseTo(0.6)} : {type: "call"};
       if (visEq >= 0.42 && potOdds <= 0.34) return {type: "call"};

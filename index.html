@@ -2349,7 +2349,7 @@ const PCard = ({
   });
   const col = (window.__pkDeck4 ? SUIT_COLORS_4 : SUIT_COLORS)[card.suit] || '#111827';
   const showBig = size !== 'sm';
-  const isCourt = ['J', 'Q', 'K'].includes(String(card.val));
+  const isCourt = false; // court frame removed — clean cards, no 'card-in-card' look
   return React.createElement("div", {
     className: `${D.w} card-face relative overflow-hidden`,
     style: {
@@ -6090,6 +6090,7 @@ function LobbyView({
     const gt = s.baseGameType || 'NLH';
     const vs = variantStyle(gt);
     const inHand = t.gameState && !['waiting', 'showdown'].includes(t.gameState.phase);
+    const spinRunning = s.spinMode && !!t.spin;
     const minBuy = buyInMin(s);
     const seated = Object.keys(t.players || {}).length;
     const cap = s.maxPlayers || 6;
@@ -6146,6 +6147,7 @@ function LobbyView({
       className: "tbl-sub"
     }, (() => {
       const h10 = (t.history || []).filter(h => Date.now() - (h.at || 0) < 600000).length;
+      if (spinRunning) return React.createElement("span", { className: "tbl-live" }, "● In progress");
       return inHand ? React.createElement("span", {
         className: "tbl-live"
       }, "● Running", h10 > 0 ? ` · 🔥 ${h10} hands/10m` : '') : h10 > 0 ? `🔥 ${h10} hands/10m` : 'Waiting';
@@ -6154,9 +6156,9 @@ function LobbyView({
       dir: "ltr"
     }, React.createElement("span", {
       className: "tbl-buyin-label"
-    }, "Buy-in"), React.createElement("span", {
+    }, spinRunning ? "Live" : "Buy-in"), React.createElement("span", {
       className: "tbl-buyin-val"
-    }, formatMoney(minBuy))), canManageGame(user, 'poker') && !t.tournamentId && React.createElement("button", {
+    }, spinRunning ? "👁" : formatMoney(minBuy))), canManageGame(user, 'poker') && !t.tournamentId && React.createElement("button", {
       onClick: e => {
         e.stopPropagation();
         setBuyinEdit({

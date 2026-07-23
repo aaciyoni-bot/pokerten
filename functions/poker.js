@@ -1078,13 +1078,16 @@ function botDecide(t, g, pl, eng, uid) {
     const strong = visEq >= 0.6;       // JJ-99, AQ, big broadways
     const playable = visEq >= 0.4;     // suited connectors, Ax, mid pairs
     const speculative = visEq >= 0.27; // wide, cheap-flop hands
-    // Short stack in a tournament → active push/fold, NEVER blind out folding.
+    // Short stack in a tournament → real push/fold (a RANGE, not any-two — a whole
+    // table jamming every hand would end the tournament in minutes). Widens as the
+    // stack shrinks; only a truly desperate ≤2.5bb stack ships any two.
     if (isTour && stack <= bb * 12) {
-      if (iWin) return toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
-      if (premium || strong) return toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
-      if (toCall === 0) return {type: "raise", amount: maxTo};               // open-shove wide
-      if (toCall >= stack) return (playable && potOdds <= 0.5) ? {type: "call"} : {type: "fold"};
-      return playable ? {type: "raise", amount: maxTo} : {type: "fold"};
+      const jam = toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
+      if (iWin || premium || strong) return jam;
+      if (stack <= bb * 2.5) return jam;                                     // desperate: any two goes
+      if (toCall === 0) return (playable || (stack <= bb * 6 && rnd < 0.5)) ? jam : {type: "call"};
+      if (toCall >= stack) return (playable && potOdds <= 0.45) ? {type: "call"} : {type: "fold"};
+      return (playable && potOdds <= 0.35) ? {type: "call"} : {type: "fold"};
     }
     if (premium) { if (toCall >= stack) return {type: "call"}; return rnd < 0.9 ? {type: "raise", amount: raiseTo(0.6 + rnd * 0.25)} : {type: "call"}; } // KK never limps
     if (iWin && !split) {

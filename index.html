@@ -251,23 +251,30 @@
            Omaha / green NLH), soft top light, inner racetrack line ===== */
         .poker-table {
             background:
+                url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 40'%3E%3Ctext x='150' y='27' text-anchor='middle' font-family='Arial,sans-serif' font-weight='900' font-size='19' letter-spacing='9' fill='rgba(255,255,255,0.045)'%3EPOKERTEN%3C/text%3E%3C/svg%3E") center 63% / min(52%, 230px) no-repeat,
                 radial-gradient(ellipse at 50% 26%, rgba(255,255,255,0.06), transparent 55%),
+                repeating-linear-gradient(0deg, rgba(255,255,255,0.009) 0 1px, transparent 1px 3px),
+                repeating-linear-gradient(90deg, rgba(0,0,0,0.012) 0 1px, transparent 1px 3px),
                 radial-gradient(ellipse at 50% 44%, var(--feltA, #2e6089) 0%, var(--feltB, #1f4a6e) 52%, var(--feltC, #132f47) 100%);
             border-radius: 999px;
             border: 12px solid #0f1216;
-            box-shadow: inset 0 10px 34px rgba(0,0,0,0.45), inset 0 0 80px rgba(0,0,0,0.28), 0 20px 55px rgba(0,0,0,0.8);
+            /* gold pinline where rail meets felt — the detail that reads "casino grade" */
+            box-shadow: inset 0 0 0 2.5px rgba(213,179,107,0.28), inset 0 10px 34px rgba(0,0,0,0.45), inset 0 0 80px rgba(0,0,0,0.28), 0 20px 55px rgba(0,0,0,0.8);
             position: relative;
         }
         .poker-table::before {
             content: ''; position: absolute; inset: -12px; border-radius: inherit; pointer-events: none;
             border: 3px solid transparent;
-            background: linear-gradient(175deg, #34393f, #0a0c0f 42%, #232830 78%, #060708) border-box;
+            background:
+                linear-gradient(178deg, rgba(255,255,255,0.14), rgba(255,255,255,0.02) 26%, transparent 42%),
+                linear-gradient(175deg, #383e45, #0a0c0f 42%, #262b33 78%, #060708) border-box;
             -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
             -webkit-mask-composite: xor; mask-composite: exclude;
         }
         .poker-table::after {
             content: ''; position: absolute; inset: 30px; border-radius: inherit; pointer-events: none;
-            border: 1.5px solid rgba(255,255,255,0.055);
+            border: 1.5px solid rgba(255,255,255,0.08);
+            box-shadow: inset 0 0 26px rgba(0,0,0,0.20);
         }
 
         /* דסקטופ: שולחן קפסולה רחב במקום עיגול */
@@ -285,10 +292,11 @@
         }
 
         .card-face {
-            background: #ffffff;
+            /* warm paper: cool top light rolling into ivory, so cards read as objects, not rectangles */
+            background: radial-gradient(130% 100% at 30% 0%, #ffffff 0%, #fdfdfb 48%, #f1f0ea 100%);
             border: none; border-radius: 8px;
             /* hairline edge so overlapping cards in a fan stay visually separated (GG-style) */
-            box-shadow: 0 3px 10px rgba(2,6,23,0.45), inset 0 0 0 1px rgba(15,23,42,0.14), 1px 0 2px rgba(2,6,23,0.30);
+            box-shadow: 0 3px 10px rgba(2,6,23,0.45), inset 0 0 0 1px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.9), 1px 0 2px rgba(2,6,23,0.30);
             font-family: 'Rubik', sans-serif;
         }
         /* Smooth (but quick) reveal: board flop/turn/river + dealt hole cards flip-slide in.
@@ -300,22 +308,53 @@
         }
         .card-reveal { display: inline-block; animation: cardReveal 0.32s cubic-bezier(0.2,0.85,0.25,1) both; transform-origin: 50% 50%; }
         @media (prefers-reduced-motion: reduce) { .card-reveal { animation-duration: 0.01s; } }
-        /* GG-style silver lattice card back */
+        /* Premium navy-and-gold POKERTEN back (Durak decks re-theme it via --cb* vars) */
         .card-back {
             border-radius: 9px;
+            position: relative;
             background:
-                repeating-linear-gradient(45deg, var(--cbLine, rgba(120,133,151,0.30)) 0 1.5px, transparent 1.5px 6px),
-                repeating-linear-gradient(-45deg, var(--cbLine, rgba(120,133,151,0.30)) 0 1.5px, transparent 1.5px 6px),
-                linear-gradient(160deg, var(--cbA, #f0f3f7) 0%, var(--cbB, #d3d9e2) 55%, var(--cbC, #bcc3cf) 100%);
-            border: 2px solid var(--cbEdge, #f8fafc);
-            box-shadow: 0 5px 12px rgba(2,6,23,0.5), inset 0 0 0 1px rgba(100,116,139,0.35);
+                radial-gradient(70% 52% at 50% 50%, color-mix(in srgb, var(--cbEdge, #c8a55e) 16%, transparent), transparent 72%),
+                repeating-linear-gradient(45deg, var(--cbLine, rgba(213,179,107,0.26)) 0 1.5px, transparent 1.5px 6px),
+                repeating-linear-gradient(-45deg, var(--cbLine, rgba(213,179,107,0.26)) 0 1.5px, transparent 1.5px 6px),
+                linear-gradient(160deg, var(--cbA, #182342) 0%, var(--cbB, #101a33) 55%, var(--cbC, #0a1124) 100%);
+            border: 2px solid var(--cbEdge, #c8a55e);
+            box-shadow: 0 5px 12px rgba(2,6,23,0.55), inset 0 0 0 1px rgba(0,0,0,0.35);
+        }
+        /* inner frame line + center emblem — the two details that make a back feel designed */
+        .card-back::before {
+            content: ''; position: absolute; inset: 7.5%; border-radius: 5px; pointer-events: none;
+            /* frame follows the chosen deck theme via its edge color */
+            border: 1px solid color-mix(in srgb, var(--cbEdge, #c8a55e) 45%, transparent);
+        }
+        .card-back::after {
+            content: '♠'; position: absolute; inset: 0; pointer-events: none;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.3em; line-height: 1;
+            color: color-mix(in srgb, var(--cbEdge, #c8a55e) 70%, transparent);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.45);
         }
 
-        .casino-chip { border-radius: 50%; border-style: dashed; box-shadow: 0 3px 6px rgba(0,0,0,0.55), inset 0 -2px 4px rgba(0,0,0,0.40), inset 0 2px 3px rgba(255,255,255,0.28); display: flex; align-items: center; justify-content: center; position: absolute; }
-        .casino-chip-inner { border-radius: 50%; border: 1px solid rgba(255,255,255,0.35); display: flex; align-items: center; justify-content: center; font-weight: 900; font-family: 'Rubik', sans-serif; background: rgba(2,6,15,0.32); color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.6); }
-        .chip-1000 { background-color: #7c3aed; border-color: #ede9fe; } .chip-100 { background-color: #111827; border-color: #94a3b8; } .chip-25 { background-color: #0f766e; border-color: #ccfbf1; } .chip-5 { background-color: #b91c1c; border-color: #fecaca; } .chip-1 { background-color: #64748b; border-color: #f1f5f9; }
+        /* Real casino chips: conic edge-spots (6 white inserts), lit from top-left, dashed inner ring */
+        .casino-chip {
+            border-radius: 50%; border: none; position: absolute;
+            display: flex; align-items: center; justify-content: center;
+            background:
+                radial-gradient(circle at 32% 26%, rgba(255,255,255,0.38), transparent 48%),
+                repeating-conic-gradient(var(--chipC, #64748b) 0deg 38deg, #f6f3ea 38deg 60deg);
+            box-shadow: 0 2px 3px rgba(0,0,0,0.55), 0 5px 9px rgba(0,0,0,0.35), inset 0 -2px 4px rgba(0,0,0,0.42), inset 0 2px 3px rgba(255,255,255,0.30);
+        }
+        .casino-chip-inner {
+            border-radius: 50%; border: 1.5px dashed rgba(255,255,255,0.55);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900; font-family: 'Rubik', sans-serif;
+            background: radial-gradient(circle at 35% 28%, rgba(255,255,255,0.25), rgba(255,255,255,0) 55%), var(--chipC, #64748b);
+            color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.65);
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.35);
+        }
+        /* casino-standard denominations: 1 white, 5 red, 25 green, 100 black, 500 purple, 1000 gold */
+        .chip-1000 { --chipC: #c99a2e; } .chip-500 { --chipC: #7c3aed; } .chip-100 { --chipC: #1a1d24; } .chip-25 { --chipC: #0e7a45; } .chip-5 { --chipC: #bf2626; } .chip-1 { --chipC: #8494a8; }
 
-        .player-pod { width: 48px; height: 48px; border-radius: 50%; background-color: #121a2a; border: 2px solid #283552; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.6); background-size: cover; background-position: center; position: relative; }
+        .player-pod { width: 48px; height: 48px; border-radius: 50%; background-color: #121a2a; border: 2px solid #31415f; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.05), inset 0 0 12px rgba(0,0,0,0.3); background-size: cover; background-position: center; position: relative; }
         .active-glow { border-color: #f5c860 !important; animation: pulseBorder 1.5s infinite; }
         @keyframes pulseBorder { 0%,100% { box-shadow: 0 0 10px rgba(245,200,96,0.4); } 50% { box-shadow: 0 0 24px rgba(245,200,96,0.85); } }
 
@@ -364,7 +403,7 @@
             box-shadow: 0 8px 20px rgba(227,174,78,0.28), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -6px 12px rgba(146,95,20,0.25);
         }
         .btn-raise:not(:disabled):hover { filter: brightness(1.06); }
-        .timer-ring { transform: rotate(-90deg); transition: stroke-dashoffset 1s linear; }
+        .timer-ring { transform: rotate(-90deg); transition: stroke-dashoffset 1s linear, stroke 0.35s ease; filter: drop-shadow(0 0 4px currentColor); }
         /* Gentle "no signal" blink: wifi + diagonal slash */
         .no-signal { color: #fca5a5; font-size: 12px; animation: nsBlink 1.2s ease-in-out infinite; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
         .ns-slash { position: absolute; left: 50%; top: 50%; width: 16px; height: 2px; background: #f43f5e; transform: translate(-50%, -50%) rotate(-45deg); border-radius: 2px; }
@@ -673,6 +712,36 @@
         .brc-silver .brc-plate { background: linear-gradient(160deg, #f8fafc, #cbd5e1 55%, #8494a8); color: #26334d; }
         .brc-bronze .brc-band { border-color: #a5683a; }
         .brc-bronze .brc-plate { background: linear-gradient(160deg, #eec49b, #c78a52 55%, #7d4c24); color: #3c2410; }
+
+        /* ═══ Lobby & interface polish pass ═══ */
+        /* variant tabs: animated underline slides in instead of hard color swap */
+        .vtab { position: relative; }
+        .vtab::after {
+            content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px;
+            background: linear-gradient(90deg, #22d3ee, #67e8f9);
+            transform: scaleX(0); transform-origin: center; transition: transform 0.22s ease;
+        }
+        .vtab-active::after { transform: scaleX(1); }
+        /* list rows: stakes light up when the row is engaged */
+        .tbl-row:hover .tbl-stakes { color: #ffffff; }
+        .tbl-row:hover .tbl-buyin-val { color: #f5c860; }
+        /* club cards: deeper lift + warm edge on hover */
+        .club-card:hover { border-color: rgba(213,179,107,0.4); transform: translateY(-2px); box-shadow: 0 14px 34px rgba(0,0,0,0.55); }
+        /* primary gold CTA: physical lift on hover, settle on press */
+        .btn-gold:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 12px 30px rgba(0,0,0,0.5), 0 0 18px rgba(213,179,107,0.18); }
+        .btn-gold:not(:disabled):active { transform: translateY(0); }
+        /* inputs: border joins the glow so focus reads instantly */
+        input:focus, select:focus, textarea:focus { border-color: rgba(34,211,238,0.5) !important; }
+        /* stat tiles breathe on hover */
+        .stat-tile { transition: border-color 0.18s ease, transform 0.18s ease; }
+        .stat-tile:hover { border-color: rgba(103,232,249,0.28); transform: translateY(-1px); }
+
+        /* Spin & Cash: gold confetti burst on the winning number */
+        .spin-confetti { position: absolute; left: 50%; top: 50%; width: 7px; height: 11px; border-radius: 2px; animation: confettiFly 1.05s ease-out forwards; }
+        @keyframes confettiFly {
+            from { transform: translate(-50%,-50%) rotate(var(--ca)) translateY(-46px); opacity: 1; }
+            to { transform: translate(-50%,-50%) rotate(var(--ca)) translateY(-195px) rotate(calc(var(--ca) + 140deg)); opacity: 0; }
+        }
 
         /* טקסטורת פרימיום עדינה */
         body::after {
@@ -1055,11 +1124,11 @@ const SFX_GAIN = {
   chip1: 0.85,
   check: 1.6,
   fold: 0.7,
-  turn: 0.65,
+  turn: 0.45,
   tick: 0.4,
   win: 0.95,
   bigwin: 1.0,
-  msg: 0.5,
+  msg: 0.35,
   shuffle: 0.6,
   join: 0.6,
   allin: 1.1,
@@ -1105,13 +1174,31 @@ const sfxPlay = (name, when = 0, gain = 1) => {
   const b = SFX.buf[name];
   if (!ctx || !b) return false;
   try {
+    if (!SFX.bus) {
+      // one gentle master compressor so rapid chip/deal bursts never clip
+      SFX.bus = ctx.createDynamicsCompressor();
+      SFX.bus.threshold.value = -14;
+      SFX.bus.knee.value = 18;
+      SFX.bus.ratio.value = 5;
+      SFX.bus.attack.value = 0.003;
+      SFX.bus.release.value = 0.18;
+      SFX.bus.connect(ctx.destination);
+    }
     const src = ctx.createBufferSource();
     src.buffer = b;
     src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.09;
     const g = ctx.createGain();
     g.gain.value = gain * (0.9 + Math.random() * 0.2);
     src.connect(g);
-    g.connect(ctx.destination);
+    let tail = g;
+    if (ctx.createStereoPanner) {
+      // slight stereo spread — the table stops sounding mono/flat
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = (Math.random() - 0.5) * 0.5;
+      g.connect(pan);
+      tail = pan;
+    }
+    tail.connect(SFX.bus);
     src.start(ctx.currentTime + when);
     return true;
   } catch (e) {
@@ -1125,15 +1212,32 @@ try {
   window.__pkMuted = false;
 }
 const playSnd = (type, times = 1, gapSec = 0) => {
+  // "your turn": silent haptic pulse instead of a sound (works even when muted)
+  if (type === 'turn') {
+    try {
+      if (navigator.vibrate) navigator.vibrate([110, 60, 110]);
+    } catch (e) {}
+    return;
+  }
   if (window.__pkMuted) return;
-  if (['turn', 'msg', 'join', 'tick'].includes(type)) return;
+  // only chip + card sounds — everything else stays quiet
+  if (['msg', 'join', 'tick'].includes(type)) return;
   try {
     const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
     if (variants.length) {
-      const reps = type === 'win' || type === 'bigwin' ? Math.max(3, Math.floor(times) || 1) : Math.floor(times) || 1;
+      // check = two real knuckle-knocks on the rail, second one a touch softer
+      const reps = type === 'check' ? 2 : type === 'win' || type === 'bigwin' ? Math.max(3, Math.floor(times) || 1) : Math.floor(times) || 1;
       const n = Math.max(1, Math.min(type === 'deal' ? 36 : 9, reps));
       const base = SFX_GAIN[type] ?? 0.7;
-      const gap = gapSec || (type === 'flip' ? 0.22 : type === 'win' || type === 'bigwin' ? 0.16 : 0.085);
+      const gap = gapSec || (type === 'check' ? 0.155 : type === 'flip' ? 0.22 : type === 'win' || type === 'bigwin' ? 0.16 : 0.085);
+      if (type === 'check') {
+        const v = (SFX_FILES.check || []).filter(x => SFX.buf[x]);
+        if (v.length) {
+          sfxPlay(v[0], 0, base);
+          sfxPlay(v[0], gap, base * 0.72);
+          return;
+        }
+      }
       for (let i = 0; i < n; i++) sfxPlay(variants[Math.floor(Math.random() * variants.length)], i * (gap + Math.random() * 0.02), base);
       return;
     }
@@ -1181,6 +1285,30 @@ const playSnd = (type, times = 1, gapSec = 0) => {
         }
       }).connect(SND.lim);
       SND.bell.volume.value = -19;
+      // metallic clink for chips — high harmonicity FM reads as ceramic-on-ceramic
+      SND.clink = new window.Tone.PolySynth(window.Tone.FMSynth, {
+        harmonicity: 5.7,
+        modulationIndex: 9,
+        oscillator: {
+          type: 'sine'
+        },
+        envelope: {
+          attack: 0.001,
+          decay: 0.12,
+          sustain: 0,
+          release: 0.15
+        },
+        modulation: {
+          type: 'square'
+        },
+        modulationEnvelope: {
+          attack: 0.001,
+          decay: 0.05,
+          sustain: 0,
+          release: 0.05
+        }
+      }).connect(SND.lim);
+      SND.clink.volume.value = -24;
       SND.m = new window.Tone.MembraneSynth({
         pitchDecay: 0.03,
         octaves: 2,
@@ -1211,11 +1339,13 @@ const playSnd = (type, times = 1, gapSec = 0) => {
         break;
       case 'chip':
         SND.m.triggerAttackRelease('A2', '16n', t);
-        SND.bell.triggerAttackRelease('A4', '32n', t + 0.02);
+        SND.clink.triggerAttackRelease('E6', '32n', t + 0.02, 0.55);
+        SND.clink.triggerAttackRelease('A6', '32n', t + 0.07, 0.3);
         break;
       case 'check':
+        // knock-knock: second tap slightly later and softer, like real knuckles
         SND.m.triggerAttackRelease('D2', '16n', t);
-        SND.m.triggerAttackRelease('D2', '16n', t + 0.13);
+        SND.m.triggerAttackRelease('C2', '16n', t + 0.155, 0.7);
         break;
       case 'fold':
         SND.nz.triggerAttackRelease('8n', t);
@@ -1223,17 +1353,19 @@ const playSnd = (type, times = 1, gapSec = 0) => {
         SND.s.triggerAttackRelease('E3', '4n', t + 0.09);
         break;
       case 'turn':
-        SND.bell.triggerAttackRelease('E4', '8n', t);
-        SND.bell.triggerAttackRelease('A4', '4n', t + 0.13);
+        SND.bell.triggerAttackRelease('E5', '16n', t, 0.4);
+        SND.bell.triggerAttackRelease('A5', '8n', t + 0.14, 0.28);
         break;
       case 'tick':
         SND.bell.triggerAttackRelease('A4', '32n', t);
         break;
       case 'win':
-        ['C4', 'E4', 'G4', 'C5'].forEach((n, i) => SND.bell.triggerAttackRelease(n, '4n', t + i * 0.12));
+        // arpeggio + a low pad root: fuller, still short
+        ['C4', 'E4', 'G4', 'C5', 'E5'].forEach((n, i) => SND.bell.triggerAttackRelease(n, '4n', t + i * 0.1, 0.7));
+        SND.s.triggerAttackRelease(['C3', 'G3'], '2n', t, 0.35);
         break;
       case 'msg':
-        SND.bell.triggerAttackRelease('G4', '32n', t);
+        SND.bell.triggerAttackRelease('G5', '32n', t, 0.35);
         break;
       case 'tile':
         SND.m.triggerAttackRelease('G2', '32n', t);
@@ -2001,7 +2133,7 @@ const SUIT_COLORS = {
   '♠': '#111827',
   '♥': '#dc2626',
   '♦': '#dc2626',
-  '♣': '#111827'
+  '♣': '#14532d'
 };
 const handName = s => s >= 8000000 ? 'Straight Flush' : s >= 7000000 ? 'Four of a Kind' : s >= 6000000 ? 'Full House' : s >= 5000000 ? 'Flush' : s >= 4000000 ? 'Straight' : s >= 3000000 ? 'Three of a Kind' : s >= 2000000 ? 'Two Pair' : s >= 1000000 ? 'Pair' : 'High Card';
 const bestScoreFull = (hole, board5, gameType) => {
@@ -2206,6 +2338,7 @@ const PCard = ({
   });
   const col = SUIT_COLORS[card.suit] || '#111827';
   const showBig = size !== 'sm';
+  const isCourt = ['J', 'Q', 'K'].includes(String(card.val));
   return React.createElement("div", {
     className: `${D.w} card-face relative overflow-hidden`,
     style: {
@@ -2236,7 +2369,29 @@ const PCard = ({
     s: card.suit,
     color: col,
     size: D.suit
-  }))), showBig && React.createElement("div", {
+  }))), showBig && (isCourt ? React.createElement("div", {
+    // court cards: ornamental framed panel instead of a bare letter
+    className: "absolute flex flex-col items-center justify-center pointer-events-none",
+    style: {
+      inset: '20% 12% 7% 30%',
+      borderRadius: '5px',
+      border: `1px solid ${col}40`,
+      background: `linear-gradient(160deg, ${col}0c, transparent 55%, ${col}14)`,
+      color: col,
+      gap: '2%'
+    }
+  }, React.createElement("span", {
+    style: {
+      fontFamily: "'Frank Ruhl Libre', 'Rubik', serif",
+      fontWeight: 900,
+      fontSize: `calc(${D.big} * 0.72)`,
+      lineHeight: 1
+    }
+  }, card.val), React.createElement(SuitGlyph, {
+    s: card.suit,
+    color: col,
+    size: `calc(${D.suit} * 1.05)`
+  })) : React.createElement("div", {
     className: "absolute flex items-center justify-center pointer-events-none",
     style: {
       right: '6%',
@@ -2246,7 +2401,7 @@ const PCard = ({
     s: card.suit,
     color: col,
     size: D.big
-  })));
+  }))));
 };
 const CasinoChipStack = ({
   amount,
@@ -2255,7 +2410,7 @@ const CasinoChipStack = ({
 }) => {
   if (!amount || amount <= 0) return null;
   let remaining = Math.round(amount);
-  const DEN = [[1000, 'chip-1000', '1K'], [100, 'chip-100', '100'], [25, 'chip-25', '25'], [5, 'chip-5', '5'], [1, 'chip-1', '1']];
+  const DEN = [[1000, 'chip-1000', '1K'], [500, 'chip-500', '500'], [100, 'chip-100', '100'], [25, 'chip-25', '25'], [5, 'chip-5', '5'], [1, 'chip-1', '1']];
   const chips = [];
   for (const [v, cls, lab] of DEN) {
     let n = Math.floor(remaining / v);
@@ -2299,8 +2454,9 @@ const CasinoChipStack = ({
     style: {
       width: `${chipSize}px`,
       height: `${chipSize}px`,
-      borderWidth: `${3 * scale}px`,
       bottom: `${index * (3 * scale)}px`,
+      // each chip in a real stack lands at a slightly different angle
+      transform: `rotate(${(index * 53 + ci * 29) % 44 - 22}deg)`,
       position: 'absolute',
       zIndex: index
     }
@@ -2455,10 +2611,22 @@ const SpinWheel = ({
   }, []);
   React.useEffect(() => {
     const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+    // roulette clicks: one tick per peg, spaced by inverting the ease-out curve,
+    // so the clicking naturally slows down with the ball
+    try {
+      const segA = 360 / SPIN_SEGS.length;
+      const fRot = 6 * 360 + (target * segA + segA / 2);
+      const pegs = Math.min(90, Math.floor(fRot / segA));
+      for (let k = 1; k <= pegs; k++) {
+        const tt = 6.5 * (1 - Math.cbrt(1 - k * segA / fRot));
+        sfxPlay('chip_single_1', tt, 0.13 + 0.12 * (k / pegs));
+      }
+    } catch (e) {}
     const tm = setTimeout(() => {
       setDone(true);
       try {
-        playSnd('chip', 5, 0.1);
+        playSnd('win', 4);
+        if (navigator.vibrate) navigator.vibrate([60, 40, 120]);
       } catch (e) {}
     }, 6600);
     return () => {
@@ -2520,7 +2688,26 @@ const SpinWheel = ({
     style: {
       background: 'radial-gradient(circle, transparent 55%, rgba(0,0,0,0.35) 100%)'
     }
-  })), SPIN_SEGS.map((m, i2) => {
+  })), done && React.createElement("div", {
+    // winning wedge lights up so the eye lands on the result, not the ball
+    className: "absolute inset-[18px] rounded-full pointer-events-none animate-pulse",
+    style: {
+      background: `conic-gradient(transparent ${target * segAng}deg, rgba(255,255,255,0.34) ${target * segAng}deg ${(target + 1) * segAng}deg, transparent ${(target + 1) * segAng}deg)`,
+      mixBlendMode: 'screen'
+    }
+  }), done && React.createElement("div", {
+    className: "absolute inset-0 pointer-events-none"
+  }, Array.from({
+    length: 18
+  }, (_, ci) => React.createElement("div", {
+    key: ci,
+    className: "spin-confetti",
+    style: {
+      '--ca': ci * 20 + 'deg',
+      animationDelay: ci % 6 * 0.05 + 's',
+      background: ci % 3 === 0 ? '#f5c860' : ci % 3 === 1 ? '#fde68a' : '#e879f9'
+    }
+  }))), SPIN_SEGS.map((m, i2) => {
     const amt = formatShort(m * (buyIn || 50));
     return React.createElement("div", {
       key: i2,
@@ -3533,8 +3720,12 @@ function App() {
     className: "mt-5 bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white px-10 py-3 rounded-xl font-black shadow-lg"
   }, "Got it 👍"))), toasts.map(t => React.createElement("div", {
     key: t.id,
-    className: `animate-fade-in px-6 py-3 rounded-2xl font-bold text-sm text-center border backdrop-blur-md ${t.type === 'error' ? 'bg-rose-900/95 border-rose-500 text-white' : 'bg-slate-800/95 border-emerald-500/50 text-emerald-400'}`
-  }, t.msg))));
+    // three distinct voices — success / error / info — each with its icon,
+    // so the eye reads the outcome before the words
+    className: `animate-pop-in px-5 py-3 rounded-2xl font-bold text-sm text-center border backdrop-blur-md shadow-xl flex items-center gap-2.5 justify-center ${t.type === 'error' ? 'bg-rose-950/95 border-rose-500/60 text-rose-100' : t.type === 'success' ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100' : 'bg-slate-900/95 border-cyan-500/40 text-slate-200'}`
+  }, React.createElement("i", {
+    className: `fa-solid ${t.type === 'error' ? 'fa-triangle-exclamation text-rose-400' : t.type === 'success' ? 'fa-circle-check text-emerald-400' : 'fa-circle-info text-cyan-400'} shrink-0`
+  }), React.createElement("span", null, t.msg)))));
 }
 function InstallBanner({
   variant
@@ -4496,7 +4687,31 @@ function ClubsView({
     }
   }, React.createElement("span", {
     className: "drop-shadow-[0_0_15px_rgba(56,189,248,0.9)]"
-  }, "⬇️"))), document.body)), myClubs.length > 0 && React.createElement("div", {
+  }, "⬇️"))), document.body)), myClubs.length === 0 && pendingClubs.length === 0 && React.createElement("div", {
+    // first-visit welcome: a brand-new user shouldn't land on a wall of inputs
+    className: "club-card p-6 mb-8 text-center flex flex-col items-center gap-2 animate-fade-in"
+  }, React.createElement("div", {
+    className: "w-14 h-14 rounded-2xl flex items-center justify-center mb-1",
+    style: {
+      background: 'rgba(213,179,107,0.07)',
+      border: '1px solid rgba(213,179,107,0.3)'
+    }
+  }, React.createElement(SuitGlyph, {
+    s: '♠',
+    color: '#D5B36B',
+    size: "24px"
+  })), React.createElement("div", {
+    className: "text-white text-base",
+    style: {
+      fontWeight: 700
+    }
+  }, "Welcome to the club scene"), React.createElement("p", {
+    className: "text-[12px] leading-relaxed max-w-[320px]",
+    style: {
+      color: 'var(--pt-text-2)',
+      fontWeight: 500
+    }
+  }, "You're not in a club yet. Got a 6-digit code from a friend? Enter it below and request to join. Or open your own club and become the house.")), myClubs.length > 0 && React.createElement("div", {
     className: "mb-8"
   }, React.createElement("h3", {
     className: "text-[11px] uppercase tracking-[0.18em] mb-3",
@@ -4976,6 +5191,35 @@ function ProfileView({
     className: "text-slate-500 text-xs font-bold"
   }, "Tap \"Load report\" to view all your game results."))));
 }
+const EmptyState = ({
+  suit,
+  title,
+  sub
+}) => React.createElement("div", {
+  // a designed empty state: tells the user this is normal and what happens next,
+  // instead of a bare grey sentence that reads like an error
+  className: "glass-panel rounded-3xl border-dashed text-center py-12 px-6 flex flex-col items-center gap-1.5 animate-fade-in"
+}, React.createElement("div", {
+  className: "w-14 h-14 rounded-2xl flex items-center justify-center mb-2",
+  style: {
+    background: 'rgba(213,179,107,0.06)',
+    border: '1px solid rgba(213,179,107,0.22)'
+  }
+}, React.createElement(SuitGlyph, {
+  s: suit || '♠',
+  color: '#D5B36B',
+  size: "22px"
+})), React.createElement("div", {
+  className: "text-slate-200 text-sm",
+  style: {
+    fontWeight: 700
+  }
+}, title), sub && React.createElement("div", {
+  className: "text-slate-500 text-[11px] max-w-[280px] leading-relaxed",
+  style: {
+    fontWeight: 600
+  }
+}, sub));
 function LobbyView({
   user,
   tables,
@@ -5242,6 +5486,13 @@ function LobbyView({
         done: false
       });
       playSnd('dice');
+      // roulette ticks that slow down with the wheel (inverse of the ease-out curve)
+      try {
+        const pegs = Math.min(60, Math.floor(target / segDeg));
+        for (let k = 1; k <= pegs; k++) {
+          sfxPlay('chip_single_1', 4 * (1 - Math.cbrt(1 - k * segDeg / target)), 0.12 + 0.12 * (k / pegs));
+        }
+      } catch (e) {}
       setTimeout(() => {
         setBonusSpin(sp => sp ? {
           ...sp,
@@ -5561,13 +5812,37 @@ function LobbyView({
   }, React.createElement("div", {
     className: "absolute -top-1 left-1/2 -translate-x-1/2 z-20 text-amber-400 text-2xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]"
   }, "▼"), React.createElement("div", {
-    className: "w-full h-full rounded-full border-4 border-amber-500/70 shadow-2xl relative overflow-hidden",
+    // machined gold rim, same family as the Spin & Cash wheel
+    className: "absolute inset-[-4px] rounded-full",
     style: {
-      background: 'conic-gradient(#161f33 0deg 45deg, #0c1322 45deg 90deg, #161f33 90deg 135deg, #0c1322 135deg 180deg, #161f33 180deg 225deg, #0c1322 225deg 270deg, #161f33 270deg 315deg, #713f12 315deg 360deg)',
+      background: 'conic-gradient(#7a5a1c, #e8c96a, #8a6a25, #f3dc9a, #7a5a1c, #e8c96a, #8a6a25)',
+      boxShadow: '0 14px 44px rgba(0,0,0,0.7), 0 0 44px rgba(245,200,96,0.20), inset 0 2px 5px rgba(255,255,255,0.35)'
+    }
+  }), React.createElement("div", {
+    className: "absolute inset-[4px] rounded-full",
+    style: {
+      background: 'repeating-conic-gradient(rgba(255,244,200,0.95) 0 2deg, rgba(90,60,15,0.9) 2deg 24deg)',
+      maskImage: 'radial-gradient(circle, transparent 88%, black 89%)',
+      WebkitMaskImage: 'radial-gradient(circle, transparent 88%, black 89%)'
+    }
+  }), React.createElement("div", {
+    className: "absolute inset-[10px] rounded-full overflow-hidden shadow-2xl",
+    style: {
+      background: 'conic-gradient(#1c2a47 0deg 45deg, #101b33 45deg 90deg, #1c2a47 90deg 135deg, #101b33 135deg 180deg, #1c2a47 180deg 225deg, #101b33 225deg 270deg, #1c2a47 270deg 315deg, #8a5a14 315deg 360deg)',
       transform: `rotate(${bonusSpin ? bonusSpin.deg : 0}deg)`,
       transition: bonusSpin ? 'transform 4s cubic-bezier(0.15, 0.9, 0.25, 1)' : 'none'
     }
-  }, BONUS_SEGS.map((v, i) => React.createElement("div", {
+  }, React.createElement("div", {
+    className: "absolute inset-0",
+    style: {
+      background: 'repeating-conic-gradient(rgba(245,220,150,0.85) 0 0.8deg, transparent 0.8deg 45deg)'
+    }
+  }), React.createElement("div", {
+    className: "absolute inset-0",
+    style: {
+      background: 'radial-gradient(circle, transparent 52%, rgba(0,0,0,0.4) 100%)'
+    }
+  }), BONUS_SEGS.map((v, i) => React.createElement("div", {
     key: i,
     className: "absolute left-1/2 top-1/2 origin-top-left",
     style: {
@@ -5723,9 +5998,11 @@ function LobbyView({
     }, React.createElement("i", {
       className: "fa-solid fa-trash"
     })));
-  }), ofcTables.length === 0 && React.createElement("div", {
-    className: "text-center py-10 text-slate-500 font-bold glass-panel rounded-3xl"
-  }, "No open Chinese Poker (OFC) tables."))), tab === 'tours' && React.createElement("div", {
+  }), ofcTables.length === 0 && React.createElement(EmptyState, {
+    suit: "♣",
+    title: "No open Chinese Poker (OFC) tables",
+    sub: "Open one above and challenge a friend — tables appear here live for the whole club."
+  }))), tab === 'tours' && React.createElement("div", {
     className: "animate-fade-in"
   }, React.createElement(TournamentsTab, {
     game: "all",
@@ -5842,7 +6119,12 @@ function LobbyView({
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
-    }, s.spinMode ? `🎡 Spin & Cash ${formatShort(s.spinBuyIn || 50)} · ${variantLabel(gt, s)}` : s.tableName || variantLabel(gt, s), s.isDealerChoice && React.createElement("span", {
+    }, s.spinMode ? React.createElement(React.Fragment, null, `🎡 Spin & Cash ${formatShort(s.spinBuyIn || 50)}`, React.createElement("span", {
+      // the game variant gets its own colored pill so players see WHAT they're
+      // spinning into (NLH / Omaha / Pineapple) before they tap
+      className: `text-[9px] font-black border rounded-full px-2 py-[1px] shrink-0 ${vs.chip}`,
+      dir: "ltr"
+    }, variantLabel(gt, s))) : s.tableName || variantLabel(gt, s), s.isDealerChoice && React.createElement("span", {
       className: "tbl-dc"
     }, "DC"), t.players && t.players[user.uid] && React.createElement("span", {
       className: "tbl-me"
@@ -5886,9 +6168,11 @@ function LobbyView({
     }, React.createElement("i", {
       className: "fa-solid fa-trash"
     })));
-  }), shownPoker.length === 0 && React.createElement("div", {
-    className: "text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
-  }, "No open ", pokFilter === 'all' ? 'Poker' : variantLabel(pokFilter), " tables.")), showPokerTours && React.createElement("div", {
+  }), shownPoker.length === 0 && React.createElement(EmptyState, {
+    suit: "♠",
+    title: `No open ${pokFilter === 'all' ? 'Poker' : variantLabel(pokFilter)} tables right now`,
+    sub: "New tables appear here live the moment they open — no refresh needed."
+  })), showPokerTours && React.createElement("div", {
     className: "border-t border-white/5 my-8"
   }), showPokerTours && React.createElement(TournamentsTab, {
     game: "poker",
@@ -6053,9 +6337,11 @@ function LobbyView({
     }, React.createElement("i", {
       className: "fa-solid fa-trash"
     })));
-  }), durakTables.length === 0 && React.createElement("div", {
-    className: "text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
-  }, "No open Durak tables.")), React.createElement("div", {
+  }), durakTables.length === 0 && React.createElement(EmptyState, {
+    suit: "♦",
+    title: "No open Durak tables right now",
+    sub: "New tables appear here live the moment they open — no refresh needed."
+  })), React.createElement("div", {
     className: "border-t border-white/5 my-8"
   }), React.createElement(TournamentsTab, {
     game: "durak",
@@ -8352,6 +8638,11 @@ function PokerTable({
   }, [gs.activeTurnUid, gs.turnStartedAt]);
   const myAct = (type, amt) => {
     if (acting || !isMyTurn) return;
+    // instant local feedback — the sound fires on the press itself, not after the
+    // Firestore round-trip (the sync effect skips our own echo to avoid doubling)
+    try {
+      if (type === 'fold') playSnd('fold');else if (type === 'raise') playSnd('chip');else if (type === 'call') playSnd(toCallMe > 0 ? 'chip' : 'check');
+    } catch (e) {}
     setActing(true);
     actedTurnRef.current = gs.turnStartedAt;
     setTimeout(() => {
@@ -9959,12 +10250,13 @@ function PokerTable({
     }
     const cl = (tableState.chat || []).length;
     if (ps.chatLen && cl > ps.chatLen) playSnd('msg');
-    Object.values(players).forEach(p => {
-      const prev = ps.acts[p.uid];
-      if (p.actionText && p.actionText !== prev) {
+    Object.entries(players).forEach(([puid, p]) => {
+      const prev = ps.acts[puid];
+      if (p.actionText && p.actionText !== prev && puid !== user.uid) {
+        // my own action already sounded instantly at press time (myAct)
         if (p.actionText === 'Fold') playSnd('fold');else if (p.actionText === 'Check') playSnd('check');else if (p.actionText === 'All-in') playSnd('allin');else if (['Call', 'Raise', 'SB', 'BB'].includes(p.actionText)) playSnd('chip');
       }
-      ps.acts[p.uid] = p.actionText;
+      ps.acts[puid] = p.actionText;
     });
     ps.board = bl;
     ps.phase = gs.phase;
@@ -12896,18 +13188,33 @@ function ScratchFoil({
     g.addColorStop(1, '#ddd3b8');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
+    // holographic streaks — the rainbow shimmer real scratch foil has
+    const HOLO = ['rgba(232,121,249,0.10)', 'rgba(94,234,212,0.10)', 'rgba(125,211,252,0.10)', 'rgba(253,224,71,0.12)'];
+    for (let i = 0; i < 8; i++) {
+      ctx.save();
+      ctx.translate(Math.random() * w, Math.random() * h);
+      ctx.rotate(-0.6 + Math.random() * 1.2);
+      ctx.fillStyle = HOLO[i % HOLO.length];
+      ctx.fillRect(-w, -6 - Math.random() * 10, w * 2, 12 + Math.random() * 16);
+      ctx.restore();
+    }
     for (let i = 0; i < 60; i++) {
       ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.55)' : 'rgba(146,113,32,0.35)';
       ctx.beginPath();
       ctx.arc(Math.random() * w, Math.random() * h, Math.random() * 1.6 + 0.4, 0, 7);
       ctx.fill();
     }
+    // brand watermark behind the call-to-action
+    ctx.fillStyle = 'rgba(90,66,20,0.16)';
+    ctx.font = '900 54px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('♠', w / 2, h / 2 - 18);
     ctx.fillStyle = 'rgba(90,66,20,0.85)';
     ctx.font = '900 17px Heebo, sans-serif';
-    ctx.textAlign = 'center';
     ctx.fillText('✨ Scratch here ✨', w / 2, h / 2 + 6);
     ctx.globalCompositeOperation = 'destination-out';
   }, []);
+  const lastSndRef = useRef(0);
   const scratch = e => {
     const cv = cvRef.current;
     if (!cv || doneRef.current) return;
@@ -12918,6 +13225,14 @@ function ScratchFoil({
     ctx.beginPath();
     ctx.arc(x, y, 30, 0, 7);
     ctx.fill();
+    // soft foil-scraping rasp while the finger moves, throttled so it never stacks
+    const now = Date.now();
+    if (now - lastSndRef.current > 160) {
+      lastSndRef.current = now;
+      try {
+        sfxPlay('shuffle', 0, 0.18);
+      } catch (err) {}
+    }
   };
   const checkDone = () => {
     const cv = cvRef.current;
@@ -12931,6 +13246,9 @@ function ScratchFoil({
         doneRef.current = true;
         cv.style.transition = 'opacity 0.5s';
         cv.style.opacity = '0';
+        try {
+          if (navigator.vibrate) navigator.vibrate([50, 40, 90]);
+        } catch (err) {}
         setTimeout(onDone, 450);
       }
     } catch (err) {}

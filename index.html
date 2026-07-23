@@ -8047,22 +8047,24 @@ function PokerCreateView({
     [k]: v
   }));
   const [spinOpen, setSpinOpen] = useState(false);
-  const [sf, setSf] = useState({ gt: 'NLH', buy: 50, stack: 1000 });
+  const [sf, setSf] = useState({ gt: 'NLH', buy: 50, stack: 1000, sb: 10, levelSec: 180 });
   const createSpin = async () => {
     const buy = Math.max(1, Number(sf.buy) || 50);
     const stack = Math.max(10, Number(sf.stack) || 1000);
+    const sb = Math.max(0.01, Number(sf.sb) || 10);
+    const levelSec = Math.max(30, Number(sf.levelSec) || 180);
     await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
       type: 'poker', clubId: CLUB_ID, createdAt: Date.now(),
       settings: {
         baseGameType: sf.gt, spinMode: true, spinBuyIn: buy, spinStack: stack,
-        maxPlayers: 3, blinds: 0.5, minBuyIn: buy, maxBuyIn: buy, minBuyInBB: 0, maxBuyInBB: 0,
+        maxPlayers: 3, blinds: sb, spinLevelSec: levelSec, minBuyIn: buy, maxBuyIn: buy, minBuyInBB: 0, maxBuyInBB: 0,
         serverEngine: true, rakePercent: 0, autoStart: 3, actionTime: 20,
         isDealerChoice: false, straddle: false, ante: 0, omahaPotLimit: true,
         bombEvery: 0, bombAnte: 2, aofEvery: 0, actionDeal: null, runTwice: false,
         leaveNoticeMins: 0, leaveNoticeBB: 0
       },
       players: {}, chat: [], leftStacks: {},
-      gameState: { phase: 'waiting', deck: [], board: [], pots: [], highestBet: 0, minRaise: 1, dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: sf.gt, activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false }
+      gameState: { phase: 'waiting', deck: [], board: [], pots: [], highestBet: 0, minRaise: round2(sb * 2), dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: sf.gt, activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false }
     });
     setSpinOpen(false);
     onCreated();
@@ -8490,6 +8492,18 @@ function PokerCreateView({
     ), React.createElement("div", null,
       React.createElement("div", { className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1" }, "Starting chips"),
       React.createElement("input", { type: "number", value: sf.stack, onChange: e => setSf(p => ({ ...p, stack: e.target.value })), className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white font-black text-center outline-none focus:border-amber-500/60", dir: "ltr" })
+    ), React.createElement("div", null,
+      React.createElement("div", { className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1" }, "Starting blinds (SB)"),
+      React.createElement("input", { type: "number", value: sf.sb, onChange: e => setSf(p => ({ ...p, sb: e.target.value })), className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white font-black text-center outline-none focus:border-amber-500/60", dir: "ltr" }),
+      React.createElement("div", { className: "text-[9px] text-slate-500 font-bold text-center mt-1", dir: "ltr" }, `Blinds ${formatShort(Number(sf.sb) || 0)}/${formatShort((Number(sf.sb) || 0) * 2)} · doubles each level`)
+    ), React.createElement("div", null,
+      React.createElement("div", { className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1" }, "Level time"),
+      React.createElement("select", { value: sf.levelSec, onChange: e => setSf(p => ({ ...p, levelSec: Number(e.target.value) })), className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white font-black text-center outline-none focus:border-amber-500/60", dir: "ltr" },
+        React.createElement("option", { value: 60 }, "1 min"),
+        React.createElement("option", { value: 120 }, "2 min"),
+        React.createElement("option", { value: 180 }, "3 min"),
+        React.createElement("option", { value: 240 }, "4 min")
+      )
     )),
     React.createElement("div", { className: "text-center text-amber-300/80 text-[11px] font-black mb-4", dir: "ltr" }, `Top prize on the wheel: ${formatShort((Number(sf.buy) || 50) * 100)}`),
     React.createElement("button", { onClick: createSpin, className: "w-full bg-gradient-to-b from-fuchsia-600 to-amber-600 hover:from-fuchsia-500 text-white py-3.5 rounded-2xl font-black text-lg shadow-lg mb-2" }, "🎡 Open Spin & Cash"),

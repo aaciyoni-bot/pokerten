@@ -7092,6 +7092,11 @@
                                 <button onClick={async () => { try { if (srvEngine) { await window.fb.fx('pkReveal', { tableId: tableDocId }); } else { await window.fb.updateDoc(tblRef(), { [`players.${user.uid}.reveal`]: true }); } } catch(e) {} }}
                                         title="Show your cards to the table" className="px-3 h-11 rounded-2xl border border-sky-400/50 bg-sky-600/20 text-sky-200 shadow-xl text-xs font-black animate-pulse">SHOW 🃏</button>
                             )}
+                            {/* Truth-based confirmation: appears only once the reveal flag is
+                                actually written — i.e., the table REALLY sees the cards now */}
+                            {gs.phase === 'showdown' && myPlayer?.reveal && (
+                                <div className="px-3 h-11 rounded-2xl border border-emerald-400/60 bg-emerald-600/25 text-emerald-200 shadow-xl text-xs font-black flex items-center gap-1.5 animate-pop-in">✓ SHOWN — the table sees your cards</div>
+                            )}
                         </div>
                     )}
 

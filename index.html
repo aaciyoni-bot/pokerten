@@ -5843,7 +5843,7 @@
                         const usedK = new Set(Object.values(pl).map(q => botNameKey(q.name)));
                         tx.update(ref, { [`players.${botUid}`]: {
                             uid: botUid, name: botDisplayName(usedN, usedK), seatIndex,
-                            stack: round2(100 * bb), bet: 0, status: midHand ? 'waiting' : 'active', cards: [], hasActed: false, actionText: '', isBot: true
+                            stack: (t.settings || {}).spinMode ? round2(Number((t.settings || {}).spinStack) || 1000) : round2(100 * bb), bet: 0, status: midHand ? 'waiting' : 'active', cards: [], hasActed: false, actionText: '', isBot: true
                         }});
                     });
                 } catch(e) {}
@@ -7104,7 +7104,22 @@
                     )}
 
                     {/* Buy-in */}
-                    {(canShowBuyIn || needRebuy) && (
+                    {canShowBuyIn && setts.spinMode && !tableState.spin ? (
+                        <div className="absolute inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className="glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/30">
+                                <div className="text-4xl mb-2">🎡</div>
+                                <h3 className="text-xl font-black text-white mb-1">Spin &amp; Cash</h3>
+                                <p className="text-slate-400 text-xs font-bold mb-4" dir="ltr">3 players · winner takes the wheel prize · Balance: {formatMoney(user.balance)}</p>
+                                <div className="flex justify-center gap-6 mb-5" dir="ltr">
+                                    <div><div className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Entry</div><div className="text-2xl font-black text-amber-300">{formatShort(Number(setts.spinBuyIn) || 50)}</div></div>
+                                    <div><div className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Chips</div><div className="text-2xl font-black text-white">{formatShort(Number(setts.spinStack) || 1000)}</div></div>
+                                    <div><div className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Top prize</div><div className="text-2xl font-black text-amber-300">{formatShort((Number(setts.spinBuyIn) || 50) * 100)}</div></div>
+                                </div>
+                                <button onClick={handleSit} className="w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2">Enter for {formatShort(Number(setts.spinBuyIn) || 50)}</button>
+                                <button onClick={()=>setSpectate(true)} className="w-full bg-slate-800 hover:bg-slate-700 border border-cyan-500/30 text-cyan-200 py-3 rounded-2xl font-black text-sm"><i className="fa-solid fa-eye ml-1"></i> Spectate</button>
+                            </div>
+                        </div>
+                    ) : (canShowBuyIn || needRebuy) && (
                         <div className="absolute inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
                             <div className="glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/30">
                                 <i className="fa-solid fa-coins text-4xl text-gold-400 mb-3"></i>

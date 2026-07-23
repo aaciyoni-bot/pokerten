@@ -9,9 +9,11 @@ description: Senior-product-designer standard for every UI change in this repo �
 1. **System before screens** — use the design tokens in `:root` (surfaces, text tiers,
    gold/accent/success/danger, radius, spacing, shadows, motion). Never hardcode a new
    color/radius/shadow when a token fits; extend the tokens if one is missing.
-2. **Hebrew RTL first-class** — fonts: Heebo (UI), Rubik (numerics/chips), Frank Ruhl
-   Libre (display moments). Hebrew text flows RTL; numbers/cards/amounts pinned LTR
-   with `dir="ltr"`. Mixed lines must be tested both ways.
+2. **UI copy is ENGLISH ONLY** (owner's decision) — never translate interface strings
+   to Hebrew. Hebrew appears ONLY in user-generated content (chat messages, player
+   names) and must render correctly there: RTL-safe embedding inside LTR lines,
+   numbers/cards/amounts pinned LTR with `dir="ltr"`. Fonts: Heebo (UI), Rubik
+   (numerics/chips), Frank Ruhl Libre (display moments).
 3. **Layered dark mode** — depth via elevation surfaces (--surface-0..3), never flat
    black; glass panels + soft shadows for hierarchy.
 4. **Motion is seasoning** — 140ms fast / 320ms slow with the standard easing; nothing

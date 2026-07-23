@@ -621,7 +621,7 @@
         .tbl-name { font-size: 12px; font-weight: 500; color: #8b98ad; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
         .tbl-dc { font-size: 9px; font-weight: 900; color: #fda4af; border: 1px solid rgba(244,63,94,0.4); border-radius: 4px; padding: 0 4px; flex: none; }
         .tbl-me { font-size: 9px; font-weight: 900; color: #6ee7b7; border: 1px solid rgba(16,185,129,0.4); border-radius: 99px; padding: 0 6px; flex: none; }
-        .tbl-stakes { font-size: 18px; font-weight: 600; color: #f1f5f9; font-family: 'Rubik', sans-serif; line-height: 1.2; letter-spacing: 0.01em; }
+        .tbl-stakes { font-size: 19px; font-weight: 800; color: #f8fafc; font-family: 'Rubik', sans-serif; line-height: 1.2; letter-spacing: 0.005em; }
         .tbl-sub { font-size: 10px; font-weight: 500; color: #5b6779; }
         .tbl-live { color: #34d399; }
         .tbl-buyin { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; margin-right: 4px; }
@@ -735,6 +735,69 @@
         /* stat tiles breathe on hover */
         .stat-tile { transition: border-color 0.18s ease, transform 0.18s ease; }
         .stat-tile:hover { border-color: rgba(103,232,249,0.28); transform: translateY(-1px); }
+
+        /* ── Lobby: the first thing players see ── */
+        /* Wallet — the balance is the #1 number a player checks; give it real presence */
+        .lobby-wallet {
+            display: flex; align-items: center; gap: 10px;
+            padding: 7px 16px 7px 9px; border-radius: 15px;
+            background: linear-gradient(135deg, rgba(245,200,96,0.15), rgba(168,126,34,0.05));
+            border: 1px solid rgba(245,200,96,0.30);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 18px rgba(0,0,0,0.35);
+        }
+        .lobby-wallet .lw-coin {
+            width: 34px; height: 34px; border-radius: 50%; flex: none;
+            display: grid; place-items: center; font-size: 16px;
+            background: radial-gradient(circle at 35% 30%, #fde68a, #d9a83f 55%, #a87e22);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.6);
+        }
+        .lobby-wallet .lw-label { font-size: 8.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #d9b978; opacity: 0.85; line-height: 1.2; }
+        .lobby-wallet .lw-val { font-family: 'Rubik', sans-serif; font-weight: 900; font-size: 18px; color: #fff6dc; line-height: 1.15; font-variant-numeric: tabular-nums; }
+
+        /* Game selector — the primary lobby navigation, as a premium segmented control */
+        .game-seg {
+            flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;
+            padding: 11px 6px 10px; border-radius: 16px; cursor: pointer; position: relative;
+            border: 1px solid rgba(255,255,255,0.07); background: rgba(13,20,36,0.55);
+            color: #64748b; -webkit-tap-highlight-color: transparent;
+            transition: color .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .12s ease;
+        }
+        .game-seg:hover { color: #cbd5e1; border-color: rgba(255,255,255,0.16); }
+        .game-seg:active { transform: scale(0.975); }
+        .game-seg .gs-ico {
+            width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center; font-size: 15px;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+            transition: background .18s ease, color .18s ease, box-shadow .18s ease, border-color .18s ease;
+        }
+        .game-seg .gs-label { font-weight: 800; font-size: 12.5px; letter-spacing: 0.01em; }
+        .game-seg .gs-count {
+            position: absolute; top: 7px; inset-inline-end: 8px;
+            font-size: 9px; font-weight: 900; min-width: 15px; text-align: center;
+            padding: 1px 5px; border-radius: 99px; background: rgba(255,255,255,0.10); color: #cbd5e1;
+        }
+        .game-seg.active {
+            color: #fff; border-color: rgba(34,211,238,0.55);
+            background: linear-gradient(180deg, rgba(34,211,238,0.15), rgba(8,145,178,0.07));
+            box-shadow: inset 0 0 0 1px rgba(34,211,238,0.14), 0 8px 22px rgba(0,0,0,0.42), 0 0 24px rgba(34,211,238,0.14);
+        }
+        .game-seg.active .gs-ico { background: linear-gradient(180deg, #22d3ee, #0891b2); color: #04222b; border-color: rgba(165,243,252,0.6); box-shadow: 0 4px 12px rgba(34,211,238,0.4); }
+        .game-seg.active .gs-count { background: rgba(34,211,238,0.25); color: #a5f3fc; }
+
+        /* ── Table list: sharpen the scan hierarchy ── */
+        .tbl-row { transition: border-color .15s ease, transform .15s ease, background .15s ease; }
+        .tbl-row:hover { background: linear-gradient(180deg, #14203a, #0c1628); }
+        /* occupied tables' seat ring gets a faint glow so live action pops */
+        .tbl-seats .tbl-ring { filter: drop-shadow(0 0 3px rgba(34,211,238,0.20)); }
+        /* pulsing "live" dot — signals a real, running game at a glance */
+        .tbl-live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #34d399; box-shadow: 0 0 7px rgba(52,211,153,0.85); animation: livePulse 1.4s ease-in-out infinite; margin-inline-end: 5px; vertical-align: middle; }
+        @keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+        @media (prefers-reduced-motion: reduce) { .tbl-live-dot { animation: none; } }
+        /* the seat capacity ("/6") reads as secondary to the filled count */
+        .tbl-seats .seat-cap { color: #5b6b82; }
+
+        /* ── Club landing page: section labels get a gold accent for structure ── */
+        .club-sec-label { display: flex; align-items: center; gap: 9px; }
+        .club-sec-label::before { content: ""; width: 15px; height: 2px; border-radius: 2px; background: var(--pt-gold, #D5B36B); opacity: 0.85; flex: none; }
 
         /* Spin & Cash: gold confetti burst on the winning number */
         .spin-confetti { position: absolute; left: 50%; top: 50%; width: 7px; height: 11px; border-radius: 2px; animation: confettiFly 1.05s ease-out forwards; }
@@ -4561,7 +4624,19 @@ function ClubsView({
     className: "max-w-2xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
     className: "text-center mb-8 mt-6"
-  }, React.createElement("h1", {
+  }, React.createElement("div", {
+    // brand emblem — gives the club landing page identity, matches the sign-in screen
+    className: "w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center",
+    style: {
+      background: 'var(--pt-raised)',
+      border: '1px solid rgba(213,179,107,0.35)',
+      boxShadow: 'var(--pt-shadow), inset 0 1px 0 rgba(255,255,255,0.06)'
+    }
+  }, React.createElement(SuitGlyph, {
+    s: '♠',
+    color: '#D5B36B',
+    size: "26px"
+  })), React.createElement("h1", {
     className: "logo-shine text-4xl sm:text-5xl tracking-[0.15em] text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400",
     style: {
       fontWeight: 700
@@ -4725,7 +4800,7 @@ function ClubsView({
   }, "You're not in a club yet. Got a 6-digit code from a friend? Enter it below and request to join. Or open your own club and become the house.")), myClubs.length > 0 && React.createElement("div", {
     className: "mb-8"
   }, React.createElement("h3", {
-    className: "text-[11px] uppercase tracking-[0.18em] mb-3",
+    className: "club-sec-label text-[11px] uppercase tracking-[0.18em] mb-3",
     style: {
       color: 'var(--pt-text-3)',
       fontWeight: 600
@@ -4742,7 +4817,7 @@ function ClubsView({
   })))), pendingClubs.length > 0 && React.createElement("div", {
     className: "mb-8"
   }, React.createElement("h3", {
-    className: "text-[11px] uppercase tracking-[0.18em] mb-3",
+    className: "club-sec-label text-[11px] uppercase tracking-[0.18em] mb-3",
     style: {
       color: 'var(--pt-text-3)',
       fontWeight: 600
@@ -4768,7 +4843,7 @@ function ClubsView({
   })))), React.createElement("div", {
     className: "mb-8"
   }, React.createElement("h3", {
-    className: "text-[11px] uppercase tracking-[0.18em] mb-3",
+    className: "club-sec-label text-[11px] uppercase tracking-[0.18em] mb-3",
     style: {
       color: 'var(--pt-text-3)',
       fontWeight: 600
@@ -4848,7 +4923,7 @@ function ClubsView({
   }, "Cancel"))), document.body), React.createElement("div", {
     className: "club-card p-6"
   }, React.createElement("h3", {
-    className: "text-[11px] uppercase tracking-[0.18em] mb-3",
+    className: "club-sec-label text-[11px] uppercase tracking-[0.18em] mb-3",
     style: {
       color: 'var(--pt-text-3)',
       fontWeight: 600
@@ -5676,15 +5751,17 @@ function LobbyView({
   }, React.createElement("div", {
     className: "flex items-center justify-between gap-3 mb-5"
   }, React.createElement("div", {
-    className: "flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/8 bg-slate-950/50",
+    className: "lobby-wallet",
     dir: "ltr"
   }, React.createElement("span", {
-    className: "text-gold-400 text-xs"
-  }, "🪙"), React.createElement("span", {
-    className: "text-sm font-black text-white"
+    className: "lw-coin"
+  }, "🪙"), React.createElement("div", null, React.createElement("div", {
+    className: "lw-label"
+  }, "Balance"), React.createElement("div", {
+    className: "lw-val"
   }, React.createElement(Coin, {
     amount: user.balance
-  }))), React.createElement("div", {
+  })))), React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
   }, bonusEnabled && React.createElement(BonusButton, {
     emoji: "🎫",
@@ -5728,15 +5805,21 @@ function LobbyView({
   }].map(g => React.createElement("button", {
     key: g.id,
     onClick: () => setTab(g.id),
-    className: `flex-1 justify-center px-2.5 py-2 rounded-xl font-black text-sm border transition-all flex items-center gap-1.5 whitespace-nowrap ${tab === g.id ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200 shadow-[0_4px_16px_rgba(6,182,212,0.2)]' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:text-white'}`
+    "aria-pressed": tab === g.id,
+    "aria-label": `${g.label}${g.n > 0 ? ` — ${g.n} open` : ''}`,
+    className: `game-seg ${tab === g.id ? 'active' : ''}`
+  }, React.createElement("span", {
+    className: "gs-ico"
   }, g.suit ? React.createElement(SuitGlyph, {
     s: g.suit,
     color: "currentColor",
-    size: "0.9em"
+    size: "1em"
   }) : React.createElement("i", {
-    className: `fa-solid ${g.icon} text-xs`
-  }), React.createElement("span", null, g.label), g.n > 0 && React.createElement("span", {
-    className: "text-[10px] bg-white/10 rounded-full px-1.5 font-bold"
+    className: `fa-solid ${g.icon}`
+  })), React.createElement("span", {
+    className: "gs-label"
+  }, g.label), g.n > 0 && React.createElement("span", {
+    className: "gs-count"
   }, g.n)))), scrOpen && bonusEnabled && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[250] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
@@ -5983,7 +6066,9 @@ function LobbyView({
       transform: "rotate(-90 22 22)"
     })), React.createElement("span", {
       dir: "ltr"
-    }, seated, "/", cap)), React.createElement("div", {
+    }, seated, React.createElement("span", {
+      className: "seat-cap"
+    }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
@@ -5996,7 +6081,9 @@ function LobbyView({
       className: "tbl-sub"
     }, t.status === 'playing' ? React.createElement("span", {
       className: "tbl-live"
-    }, "● Running") : 'Waiting')), React.createElement("div", {
+    }, React.createElement("span", {
+      className: "tbl-live-dot"
+    }), "Running") : 'Waiting')), React.createElement("div", {
       className: "tbl-buyin",
       dir: "ltr"
     }, React.createElement("span", {
@@ -6127,7 +6214,9 @@ function LobbyView({
       transform: "rotate(-90 22 22)"
     })), React.createElement("span", {
       dir: "ltr"
-    }, seated, "/", cap)), React.createElement("div", {
+    }, seated, React.createElement("span", {
+      className: "seat-cap"
+    }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
@@ -6150,7 +6239,9 @@ function LobbyView({
       if (spinRunning) return React.createElement("span", { className: "tbl-live" }, "● In progress");
       return inHand ? React.createElement("span", {
         className: "tbl-live"
-      }, "● Running", h10 > 0 ? ` · 🔥 ${h10} hands/10m` : '') : h10 > 0 ? `🔥 ${h10} hands/10m` : 'Waiting';
+      }, React.createElement("span", {
+      className: "tbl-live-dot"
+    }), "Running", h10 > 0 ? ` · 🔥 ${h10} hands/10m` : '') : h10 > 0 ? `🔥 ${h10} hands/10m` : 'Waiting';
     })())), React.createElement("div", {
       className: "tbl-buyin",
       dir: "ltr"
@@ -6324,7 +6415,9 @@ function LobbyView({
       transform: "rotate(-90 22 22)"
     })), React.createElement("span", {
       dir: "ltr"
-    }, seated, "/", cap)), React.createElement("div", {
+    }, seated, React.createElement("span", {
+      className: "seat-cap"
+    }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
     }, React.createElement("div", {
       className: "tbl-name"
@@ -6337,7 +6430,9 @@ function LobbyView({
       className: "tbl-sub"
     }, t.status === 'playing' ? React.createElement("span", {
       className: "tbl-live"
-    }, "● Running") : 'Waiting')), React.createElement("div", {
+    }, React.createElement("span", {
+      className: "tbl-live-dot"
+    }), "Running") : 'Waiting')), React.createElement("div", {
       className: "tbl-buyin",
       dir: "ltr"
     }, React.createElement("span", {

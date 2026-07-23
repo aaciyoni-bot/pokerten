@@ -1014,13 +1014,8 @@ function botDecide(t, g, pl, eng, uid) {
     const target = round2((g.highestBet || 0) + Math.max(g.minRaise || bb, (pot + toCall) * frac));
     return Math.min(target, maxTo);
   };
-  // The oracle: bots know every live hand and the fixed runout. The WINNER plays
-  // for maximum value; the LOSERS lose the minimum — but every visible move must
-  // read like a disciplined human, so the "story" (visEq: what the bot's own
-  // cards + board would justify) shapes sizing and call/fold theater.
-  const winners = botOracle(g, pl, eng);
-  const iWin = winners.includes(uid);
-  const split = iWin && winners.length > 1;
+  // Bots play LOGICAL poker off their own cards' strength (visEq) — no oracle.
+  // (botOracle is kept defined so the old house-edge behaviour can be restored.)
   const visEq = street >= 3 ? botEquity(hole, board, g.currentGameType) : botPreflop(hole, g.currentGameType);
 
   // Spin & Cash: winner-take-all hyper — bots play a real push/fold that MUST
@@ -1061,78 +1056,64 @@ function botDecide(t, g, pl, eng, uid) {
     return {type: "fold"};
   }
 
+  // ── Logical poker: bots decide off THEIR OWN cards' strength (visEq), not any
+  // oracle destiny. Every action is justified by the hand a human would see —
+  // premiums raise, strong hands bet, marginal hands call at a price, trash folds.
   if (g.aof) {
-    // All-In-or-Fold hand: the winner jams; a destined loser folds — except a
-    // premium-LOOKING hand shoves sometimes for optics, and crumb stacks go in.
-    if (iWin && !split) return toCall > 0 ? (toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo}) : {type: "raise", amount: maxTo};
-    if (split) return toCall > 0 ? (toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo}) : {type: "call"};
-    if (toCall === 0) return visEq >= 0.85 && rnd < 0.4 ? {type: "raise", amount: maxTo} : {type: "call"};
+    // All-In-or-Fold hand: shove strong hands, call all-ins on equity, else fold.
     if (stack <= bb * 1.5) return toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
-    if (visEq >= 0.85 && rnd < 0.35) return toCall >= stack ? {type: "call"} : {type: "raise", amount: maxTo};
-    return {type: "fold"};
+    if (toCall >= stack) return (visEq >= 0.5 || potOdds <= 0.42) ? {type: "call"} : {type: "fold"};
+    if (toCall > 0) return visEq >= 0.52 ? {type: "raise", amount: maxTo} : {type: "fold"};
+    return visEq >= 0.5 ? {type: "raise", amount: maxTo} : {type: "call"};
   }
 
-  // ── PREFLOP: the standard starting-hands chart RULES the optics, winner or not.
-  // KK never limps. A destined-loser premium raises like a human and escapes on
-  // later streets ("cooler avoided" discipline); a destined-winner with junk
-  // mostly limps/defends — sneaking in cheap is exactly how junk wins big pots.
+  // ── PREFLOP: standard starting-hand strength.
   if (street === 0) {
-    const premium = visEq >= 0.8;     // AA/KK/QQ
-    const strong = visEq >= 0.62;     // JJ-99, AK/AQ, big broadways
+    const premium = visEq >= 0.8;     // AA/KK/QQ, AK
+    const strong = visEq >= 0.62;     // JJ-99, AQ, big broadways
     const playable = visEq >= 0.45;   // suited connectors, Ax, mid pairs
+    if (toCall === 0) {
+      if (premium) return {type: "raise", amount: raiseTo(0.6 + rnd * 0.25)};      // premiums always come in raising
+      if (strong) return rnd < 0.85 ? {type: "raise", amount: raiseTo(0.5 + rnd * 0.2)} : {type: "call"};
+      if (playable) return rnd < 0.4 ? {type: "raise", amount: raiseTo(0.45)} : {type: "call"};
+      return rnd < 0.1 ? {type: "raise", amount: raiseTo(0.4)} : {type: "call"};   // occasional steal, else check the BB
+    }
     if (premium) {
       if (toCall >= stack) return {type: "call"};
-      return rnd < 0.9 ? {type: "raise", amount: raiseTo(0.55 + rnd * 0.25)} : {type: "call"};
+      return rnd < 0.85 ? {type: "raise", amount: raiseTo(0.7 + rnd * 0.3)} : {type: "call"}; // 3-bet / re-raise
     }
-    if (iWin && !split) {
-      if (toCall >= stack) return {type: "call"};
-      if (strong) return rnd < 0.65 ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
-      return rnd < 0.25 ? {type: "raise", amount: raiseTo(0.45)} : {type: "call"}; // limp in quietly
+    if (strong) {
+      if (toCall >= stack) return potOdds <= 0.42 ? {type: "call"} : {type: "fold"};
+      if (rnd < 0.45) return {type: "raise", amount: raiseTo(0.6)};
+      return potOdds <= 0.4 ? {type: "call"} : {type: "fold"};
     }
-    if (split) return toCall === 0 || potOdds <= 0.34 || toCall >= stack ? {type: "call"} : {type: "fold"};
-    // destined loser — chart-honest, price-aware, minimum damage
-    if (toCall === 0) return strong && rnd < 0.5 ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
+    if (playable) return (potOdds <= 0.3 || toCall <= bb) ? {type: "call"} : {type: "fold"};
     if (stack <= bb * 1.5) return {type: "call"};
-    if (strong && potOdds <= 0.34 && rnd < 0.8) return {type: "call"};
-    if (playable && potOdds <= 0.25 && rnd < 0.6) return {type: "call"};
-    if (toCall <= bb && rnd < 0.5) return {type: "call"};           // blind defense optics
     return {type: "fold"};
   }
 
-  if (iWin && !split) {
-    // Guaranteed winner: never folds, builds the pot. All-in only where a strong
-    // human would naturally jam — late streets or when the pot got big.
-    if (toCall > 0) {
-      if (toCall >= stack) return {type: "call"};
-      if (street === 5 && rnd < 0.55 && stack <= pot * 2) return {type: "raise", amount: maxTo}; // confident value jam
-      if (rnd < (street >= 4 ? 0.55 : 0.4)) return {type: "raise", amount: raiseTo(0.6 + rnd * 0.3)};
-      return {type: "call"};
-    }
-    if (street === 5) {
-      if (rnd < 0.3 && stack <= pot * 1.6) return {type: "raise", amount: maxTo};                // river jam, pot-sized story
-      return rnd < 0.85 ? {type: "raise", amount: raiseTo(0.65 + rnd * 0.3)} : {type: "call"};
-    }
-    if (rnd < 0.22) return {type: "call"};                          // trap street — lets someone catch up on looks
-    return {type: "raise", amount: raiseTo(0.5 + rnd * 0.3)};
-  }
-  if (split) {
-    // Chop-bound: no value to build — call reasonable prices, decline big raises war
-    if (toCall === 0) return {type: "call"};
-    return potOdds <= 0.34 || toCall >= stack ? {type: "call"} : {type: "fold"};
-  }
-
-  // Destined loser: fold-for-free discipline. A runner-runner hope with no price
-  // per the odds table is exactly what a solid player dumps — so it dumps.
+  // ── POSTFLOP: value-bet strong made hands, semi-bluff good draws, call with the
+  // right price, fold the rest.
+  const strongMade = visEq >= 0.72;
+  const goodHand = visEq >= 0.55;
+  const marginal = visEq >= 0.38;
   if (toCall === 0) {
-    // Flop with a big VISIBLE hand (overpair look): one believable stab, then slow down
-    if (street === 3 && visEq >= 0.7 && rnd < 0.55) return {type: "raise", amount: raiseTo(0.45)};
-    return {type: "call"};                                          // check it down
+    if (strongMade) return rnd < 0.85 ? {type: "raise", amount: raiseTo(0.6 + rnd * 0.25)} : {type: "call"};
+    if (goodHand) return rnd < 0.55 ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
+    if (marginal && street < 5) return rnd < 0.3 ? {type: "raise", amount: raiseTo(0.45)} : {type: "call"}; // occasional stab
+    return {type: "call"};                                          // check
   }
-  if (stack <= bb * 1.5) return {type: "call"};                     // crumb stack — humans always call that
-  // Theater calls (feed the pot ONLY when the visible story truly justifies it):
-  if (street === 3 && visEq >= 0.6 && potOdds <= 0.3 && rnd < 0.7) return {type: "call"};
-  if (street >= 3 && street < 5 && visEq >= 0.5 && potOdds <= 0.22 && rnd < 0.55) return {type: "call"};
-  if (visEq >= 0.3 && potOdds <= 0.1 && rnd < 0.45) return {type: "call"};
+  if (toCall >= stack) {
+    return (strongMade || (goodHand && potOdds <= 0.4) || potOdds <= 0.22) ? {type: "call"} : {type: "fold"};
+  }
+  if (strongMade) {
+    if (street === 5 && rnd < 0.4) return {type: "raise", amount: maxTo};          // river value jam
+    return rnd < 0.6 ? {type: "raise", amount: raiseTo(0.6 + rnd * 0.3)} : {type: "call"};
+  }
+  if (goodHand) return potOdds <= 0.42 ? (rnd < 0.3 && street < 5 ? {type: "raise", amount: raiseTo(0.55)} : {type: "call"}) : {type: "fold"};
+  if (marginal) return potOdds <= 0.28 ? {type: "call"} : {type: "fold"};
+  if (visEq >= 0.28 && potOdds <= 0.16) return {type: "call"};      // drawing hand priced in
+  if (stack <= bb * 1.5) return {type: "call"};
   return {type: "fold"};
 }
 

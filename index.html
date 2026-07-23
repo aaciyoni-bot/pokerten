@@ -7996,6 +7996,18 @@ function PokerCreateView({
     className: "col-span-2"
   }, React.createElement("div", {
     className: "text-[10px] text-slate-400 font-black mb-1"
+  }, "⚡ Action Deal (livelier shuffles, seat-fair)"), React.createElement("select", {
+    value: s.actionDeal || 'off',
+    onChange: e => upd('actionDeal', e.target.value === 'off' ? null : e.target.value),
+    className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm mb-2"
+  }, React.createElement("option", {
+    value: "off"
+  }, "Off — pure single shuffle"), React.createElement("option", {
+    value: "mild"
+  }, "Mild — best of 3 shuffles"), React.createElement("option", {
+    value: "spicy"
+  }, "Spicy — best of 5 shuffles")), React.createElement("div", {
+    className: "text-[10px] text-slate-400 font-black mb-1"
   }, "♠ ALL-IN or FOLD hand"), React.createElement("select", {
     value: s.aofEvery || 0,
     onChange: e => upd('aofEvery', e.target.value === 'orbit' ? 'orbit' : Number(e.target.value)),
@@ -10511,7 +10523,7 @@ function PokerTable({
     dir: "ltr"
   }, React.createElement("div", {
     className: "text-[14px]"
-  }, setts.tableName || variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts)), React.createElement("div", null, 'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '')), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
+  }, setts.tableName || variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts)), React.createElement("div", null, 'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '')), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
     className: "text-amber-300 font-black text-xs animate-pulse"
   }, "🍍 Pineapple - discard one card...")), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);

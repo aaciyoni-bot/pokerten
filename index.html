@@ -1211,6 +1211,11 @@ try {
 } catch (e) {
   window.__pkMuted = false;
 }
+try {
+  window.__pkDeck4 = localStorage.getItem('pkDeck4') === '1';
+} catch (e) {
+  window.__pkDeck4 = false;
+}
 const playSnd = (type, times = 1, gapSec = 0) => {
   // "your turn": silent haptic pulse instead of a sound (works even when muted)
   if (type === 'turn') {
@@ -2133,7 +2138,13 @@ const SUIT_COLORS = {
   '♠': '#111827',
   '♥': '#dc2626',
   '♦': '#dc2626',
-  '♣': '#14532d'
+  '♣': '#111827'
+};
+const SUIT_COLORS_4 = {
+  '♠': '#111827',
+  '♥': '#dc2626',
+  '♦': '#2563eb',
+  '♣': '#15803d'
 };
 const handName = s => s >= 8000000 ? 'Straight Flush' : s >= 7000000 ? 'Four of a Kind' : s >= 6000000 ? 'Full House' : s >= 5000000 ? 'Flush' : s >= 4000000 ? 'Straight' : s >= 3000000 ? 'Three of a Kind' : s >= 2000000 ? 'Two Pair' : s >= 1000000 ? 'Pair' : 'High Card';
 const bestScoreFull = (hole, board5, gameType) => {
@@ -2336,7 +2347,7 @@ const PCard = ({
       height: D.h
     }
   });
-  const col = SUIT_COLORS[card.suit] || '#111827';
+  const col = (window.__pkDeck4 ? SUIT_COLORS_4 : SUIT_COLORS)[card.suit] || '#111827';
   const showBig = size !== 'sm';
   const isCourt = ['J', 'Q', 'K'].includes(String(card.val));
   return React.createElement("div", {
@@ -10456,7 +10467,19 @@ function PokerTable({
     style: {
       background: `repeating-linear-gradient(45deg, rgba(255,255,255,0.25) 0 1.5px, transparent 1.5px 5px), linear-gradient(160deg, ${col} 0%, ${col} 100%)`
     }
-  }))), React.createElement("button", {
+  }))), React.createElement("div", {
+    className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 mt-3"
+  }, "Card colors"), React.createElement("div", {
+    className: "flex gap-2 mb-4"
+  }, [['2', 'Red / Black', false], ['4', '4-Color', true]].map(([k, label, val]) => React.createElement("button", {
+    key: k,
+    onClick: () => {
+      window.__pkDeck4 = val;
+      try { localStorage.setItem('pkDeck4', val ? '1' : ''); } catch (e) {}
+      saveSkin({ ...skin, deck4: val });
+    },
+    className: `flex-1 py-2.5 rounded-lg border-2 text-xs font-black transition-transform ${!!skin.deck4 === val ? 'border-amber-400 bg-amber-500/15 text-white' : 'border-white/20 text-slate-400'}`
+  }, label))), React.createElement("button", {
     onClick: () => setSkinOpen(false),
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm"
   }, "Done"))), document.body), buyinEdit && ReactDOM.createPortal(React.createElement("div", {

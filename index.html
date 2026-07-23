@@ -736,6 +736,53 @@
         .stat-tile { transition: border-color 0.18s ease, transform 0.18s ease; }
         .stat-tile:hover { border-color: rgba(103,232,249,0.28); transform: translateY(-1px); }
 
+        /* ── Lobby: the first thing players see ── */
+        /* Wallet — the balance is the #1 number a player checks; give it real presence */
+        .lobby-wallet {
+            display: flex; align-items: center; gap: 10px;
+            padding: 7px 16px 7px 9px; border-radius: 15px;
+            background: linear-gradient(135deg, rgba(245,200,96,0.15), rgba(168,126,34,0.05));
+            border: 1px solid rgba(245,200,96,0.30);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 6px 18px rgba(0,0,0,0.35);
+        }
+        .lobby-wallet .lw-coin {
+            width: 34px; height: 34px; border-radius: 50%; flex: none;
+            display: grid; place-items: center; font-size: 16px;
+            background: radial-gradient(circle at 35% 30%, #fde68a, #d9a83f 55%, #a87e22);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.6);
+        }
+        .lobby-wallet .lw-label { font-size: 8.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #d9b978; opacity: 0.85; line-height: 1.2; }
+        .lobby-wallet .lw-val { font-family: 'Rubik', sans-serif; font-weight: 900; font-size: 18px; color: #fff6dc; line-height: 1.15; font-variant-numeric: tabular-nums; }
+
+        /* Game selector — the primary lobby navigation, as a premium segmented control */
+        .game-seg {
+            flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px;
+            padding: 11px 6px 10px; border-radius: 16px; cursor: pointer; position: relative;
+            border: 1px solid rgba(255,255,255,0.07); background: rgba(13,20,36,0.55);
+            color: #64748b; -webkit-tap-highlight-color: transparent;
+            transition: color .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .12s ease;
+        }
+        .game-seg:hover { color: #cbd5e1; border-color: rgba(255,255,255,0.16); }
+        .game-seg:active { transform: scale(0.975); }
+        .game-seg .gs-ico {
+            width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center; font-size: 15px;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06);
+            transition: background .18s ease, color .18s ease, box-shadow .18s ease, border-color .18s ease;
+        }
+        .game-seg .gs-label { font-weight: 800; font-size: 12.5px; letter-spacing: 0.01em; }
+        .game-seg .gs-count {
+            position: absolute; top: 7px; inset-inline-end: 8px;
+            font-size: 9px; font-weight: 900; min-width: 15px; text-align: center;
+            padding: 1px 5px; border-radius: 99px; background: rgba(255,255,255,0.10); color: #cbd5e1;
+        }
+        .game-seg.active {
+            color: #fff; border-color: rgba(34,211,238,0.55);
+            background: linear-gradient(180deg, rgba(34,211,238,0.15), rgba(8,145,178,0.07));
+            box-shadow: inset 0 0 0 1px rgba(34,211,238,0.14), 0 8px 22px rgba(0,0,0,0.42), 0 0 24px rgba(34,211,238,0.14);
+        }
+        .game-seg.active .gs-ico { background: linear-gradient(180deg, #22d3ee, #0891b2); color: #04222b; border-color: rgba(165,243,252,0.6); box-shadow: 0 4px 12px rgba(34,211,238,0.4); }
+        .game-seg.active .gs-count { background: rgba(34,211,238,0.25); color: #a5f3fc; }
+
         /* Spin & Cash: gold confetti burst on the winning number */
         .spin-confetti { position: absolute; left: 50%; top: 50%; width: 7px; height: 11px; border-radius: 2px; animation: confettiFly 1.05s ease-out forwards; }
         @keyframes confettiFly {
@@ -5665,15 +5712,17 @@ function LobbyView({
   }, React.createElement("div", {
     className: "flex items-center justify-between gap-3 mb-5"
   }, React.createElement("div", {
-    className: "flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/8 bg-slate-950/50",
+    className: "lobby-wallet",
     dir: "ltr"
   }, React.createElement("span", {
-    className: "text-gold-400 text-xs"
-  }, "🪙"), React.createElement("span", {
-    className: "text-sm font-black text-white"
+    className: "lw-coin"
+  }, "🪙"), React.createElement("div", null, React.createElement("div", {
+    className: "lw-label"
+  }, "Balance"), React.createElement("div", {
+    className: "lw-val"
   }, React.createElement(Coin, {
     amount: user.balance
-  }))), React.createElement("div", {
+  })))), React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
   }, bonusEnabled && React.createElement(BonusButton, {
     emoji: "🎫",
@@ -5717,15 +5766,21 @@ function LobbyView({
   }].map(g => React.createElement("button", {
     key: g.id,
     onClick: () => setTab(g.id),
-    className: `flex-1 justify-center px-2.5 py-2 rounded-xl font-black text-sm border transition-all flex items-center gap-1.5 whitespace-nowrap ${tab === g.id ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200 shadow-[0_4px_16px_rgba(6,182,212,0.2)]' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:text-white'}`
+    "aria-pressed": tab === g.id,
+    "aria-label": `${g.label}${g.n > 0 ? ` — ${g.n} open` : ''}`,
+    className: `game-seg ${tab === g.id ? 'active' : ''}`
+  }, React.createElement("span", {
+    className: "gs-ico"
   }, g.suit ? React.createElement(SuitGlyph, {
     s: g.suit,
     color: "currentColor",
-    size: "0.9em"
+    size: "1em"
   }) : React.createElement("i", {
-    className: `fa-solid ${g.icon} text-xs`
-  }), React.createElement("span", null, g.label), g.n > 0 && React.createElement("span", {
-    className: "text-[10px] bg-white/10 rounded-full px-1.5 font-bold"
+    className: `fa-solid ${g.icon}`
+  })), React.createElement("span", {
+    className: "gs-label"
+  }, g.label), g.n > 0 && React.createElement("span", {
+    className: "gs-count"
   }, g.n)))), scrOpen && bonusEnabled && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[250] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",

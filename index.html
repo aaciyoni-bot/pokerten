@@ -6190,7 +6190,7 @@ function LobbyView({
       style: {
         '--spineC': s.spinMode ? '#f59e0b' : vs.hue
       }
-    }, s.spinMode ? '🎡 SPIN' : variantLabel(gt, s)), React.createElement("div", {
+    }, s.spinMode ? '🎡 ' + variantLabel(gt, s) : variantLabel(gt, s)), React.createElement("div", {
       className: "tbl-seats"
     }, React.createElement("svg", {
       viewBox: "0 0 44 44",
@@ -8043,6 +8043,27 @@ function PokerCreateView({
     ...prev,
     [k]: v
   }));
+  const [spinOpen, setSpinOpen] = useState(false);
+  const [sf, setSf] = useState({ gt: 'NLH', buy: 50, stack: 1000 });
+  const createSpin = async () => {
+    const buy = Math.max(1, Number(sf.buy) || 50);
+    const stack = Math.max(10, Number(sf.stack) || 1000);
+    await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
+      type: 'poker', clubId: CLUB_ID, createdAt: Date.now(),
+      settings: {
+        baseGameType: sf.gt, spinMode: true, spinBuyIn: buy, spinStack: stack,
+        maxPlayers: 3, blinds: 0.5, minBuyIn: buy, maxBuyIn: buy, minBuyInBB: 0, maxBuyInBB: 0,
+        serverEngine: true, rakePercent: 0, autoStart: 3, actionTime: 20,
+        isDealerChoice: false, straddle: false, ante: 0, omahaPotLimit: true,
+        bombEvery: 0, bombAnte: 2, aofEvery: 0, actionDeal: null, runTwice: false,
+        leaveNoticeMins: 0, leaveNoticeBB: 0
+      },
+      players: {}, chat: [], leftStacks: {},
+      gameState: { phase: 'waiting', deck: [], board: [], pots: [], highestBet: 0, minRaise: 1, dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: sf.gt, activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false }
+    });
+    setSpinOpen(false);
+    onCreated();
+  };
   const handleCreate = async () => {
     await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
       type: 'poker',
@@ -8446,7 +8467,31 @@ function PokerCreateView({
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-4 rounded-2xl font-black text-lg shadow-[0_8px_25px_rgba(245,158,11,0.35)]"
   }, React.createElement("i", {
     className: "fa-solid fa-diamond ml-2"
-  }), "Open table"))));
+  }), "Open table"), React.createElement("button", {
+    onClick: () => setSpinOpen(true),
+    className: "w-full mt-2 bg-gradient-to-b from-fuchsia-700 to-amber-700 hover:from-fuchsia-600 text-white py-3.5 rounded-2xl font-black text-base shadow-lg"
+  }, "🎡 Open Spin & Cash instead"), spinOpen && ReactDOM.createPortal(React.createElement("div", {
+    dir: "ltr", className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4", onClick: () => setSpinOpen(false)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(), className: "glass-panel rounded-3xl p-6 w-full max-w-sm border border-amber-500/40 animate-pop-in"
+  }, React.createElement("h3", { className: "text-xl font-black text-white mb-1" }, "🎡 Spin & Cash"),
+    React.createElement("p", { className: "text-slate-400 text-xs font-bold mb-4" }, "3 players · winner takes the wheel prize · no rake · tournament chips"),
+    React.createElement("div", { className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5" }, "Game"),
+    React.createElement("div", { className: "flex gap-1.5 mb-4 flex-wrap" }, ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'].map(g => React.createElement("button", {
+      key: g, onClick: () => setSf(p => ({ ...p, gt: g })),
+      className: `px-3 py-2 rounded-lg border-2 text-xs font-black ${sf.gt === g ? 'border-amber-400 bg-amber-500/15 text-white' : 'border-white/15 text-slate-400'}`
+    }, variantLabel(g, {})))),
+    React.createElement("div", { className: "grid grid-cols-2 gap-3 mb-4" }, React.createElement("div", null,
+      React.createElement("div", { className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1" }, "Entry price"),
+      React.createElement("input", { type: "number", value: sf.buy, onChange: e => setSf(p => ({ ...p, buy: e.target.value })), className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white font-black text-center outline-none focus:border-amber-500/60", dir: "ltr" })
+    ), React.createElement("div", null,
+      React.createElement("div", { className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1" }, "Starting chips"),
+      React.createElement("input", { type: "number", value: sf.stack, onChange: e => setSf(p => ({ ...p, stack: e.target.value })), className: "w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white font-black text-center outline-none focus:border-amber-500/60", dir: "ltr" })
+    )),
+    React.createElement("div", { className: "text-center text-amber-300/80 text-[11px] font-black mb-4", dir: "ltr" }, `Top prize on the wheel: ${formatShort((Number(sf.buy) || 50) * 100)}`),
+    React.createElement("button", { onClick: createSpin, className: "w-full bg-gradient-to-b from-fuchsia-600 to-amber-600 hover:from-fuchsia-500 text-white py-3.5 rounded-2xl font-black text-lg shadow-lg mb-2" }, "🎡 Open Spin & Cash"),
+    React.createElement("button", { onClick: () => setSpinOpen(false), className: "w-full text-slate-400 hover:text-white text-sm font-bold" }, "Cancel")
+  )), document.body))));
 }
 function PokerTable({
   tableDocId,

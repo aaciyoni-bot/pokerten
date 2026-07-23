@@ -1021,6 +1021,28 @@ function botDecide(t, g, pl, eng, uid) {
   const split = iWin && winners.length > 1;
   const visEq = street >= 3 ? botEquity(hole, board, g.currentGameType) : botPreflop(hole, g.currentGameType);
 
+  // Spin & Cash: winner-take-all, no rake — bots play REAL poker (natural push/fold),
+  // not the oracle fold-discipline, so hands are actually contested with action.
+  if ((t.settings || {}).spinMode) {
+    const effBB = bb > 0 ? stack / bb : 99;
+    if (street === 0) {
+      if (effBB <= 12) {
+        if (visEq >= 0.5) return {type: "raise", amount: maxTo};            // short: jam
+        if (toCall === 0) return {type: "call"};
+        return (visEq >= 0.42 && potOdds <= 0.3) ? {type: "call"} : {type: "fold"};
+      }
+      if (toCall === 0) return (visEq >= 0.55 && rnd < 0.55) ? {type: "raise", amount: raiseTo(0.5)} : {type: "call"};
+      if (visEq >= 0.6) return rnd < 0.4 ? {type: "raise", amount: raiseTo(0.6)} : {type: "call"};
+      if (visEq >= 0.42 && potOdds <= 0.34) return {type: "call"};
+      return {type: "fold"};
+    }
+    if (toCall === 0) return visEq >= 0.55 ? {type: "raise", amount: raiseTo(0.6)} : {type: "call"};
+    if (visEq >= 0.66) return rnd < 0.5 ? {type: "raise", amount: maxTo} : {type: "call"};
+    if (visEq >= 0.42 && potOdds <= 0.36) return {type: "call"};
+    if (visEq >= 0.3 && potOdds <= 0.2) return {type: "call"};
+    return {type: "fold"};
+  }
+
   if (g.aof) {
     // All-In-or-Fold hand: the winner jams; a destined loser folds — except a
     // premium-LOOKING hand shoves sometimes for optics, and crumb stacks go in.

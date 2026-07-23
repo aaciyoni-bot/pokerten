@@ -4808,6 +4808,12 @@
                                             </select>
                                         </div>
                                         <div className="col-span-2">
+                                            <div className="text-[10px] text-slate-400 font-black mb-1">⚡ Action Deal (livelier shuffles, seat-fair)</div>
+                                            <select value={s.actionDeal || 'off'} onChange={e=>upd('actionDeal', e.target.value === 'off' ? null : e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm mb-2">
+                                                <option value="off">Off — pure single shuffle</option>
+                                                <option value="mild">Mild — best of 3 shuffles</option>
+                                                <option value="spicy">Spicy — best of 5 shuffles</option>
+                                            </select>
                                             <div className="text-[10px] text-slate-400 font-black mb-1">♠ ALL-IN or FOLD hand</div>
                                             <select value={s.aofEvery || 0} onChange={e=>upd('aofEvery', e.target.value === 'orbit' ? 'orbit' : Number(e.target.value))} className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-white text-sm">
                                                 <option value={0}>Off</option><option value="orbit">Once per orbit</option><option value={5}>Every 5 hands</option><option value={10}>Every 10 hands</option><option value={20}>Every 20 hands</option>
@@ -6540,6 +6546,7 @@
                                     <div className="text-[14px]">{setts.tableName || variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts)}</div>
                                     <div>{'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '')}</div>
                                     {setts.isDealerChoice && <div>Dealer's Choice</div>}
+                                    {setts.actionDeal && <div>⚡ Action Deal</div>}
                                     {setts.straddle && <div>Straddle</div>}
                                 </div>
                                 {gs.phase === 'discard' && <div className="text-amber-300 font-black text-xs animate-pulse">🍍 Pineapple - discard one card...</div>}

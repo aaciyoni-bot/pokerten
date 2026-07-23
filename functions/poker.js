@@ -619,7 +619,28 @@ async function dealHand(tableId, chosenType) {
     const aofN = s.aofEvery === "orbit" ? Math.max(2, acts.length) : (Number(s.aofEvery) || 0);
     const isAof = !isBomb && aofN > 0 && !t.tournamentId && handNo % aofN === 0;
     const nCards = GAME_CARDS[gameType] || 2;
-    const deck = pokerDeck();
+    let deck = pokerDeck();
+    // ⚡ Action Deal (table option, DISCLOSED on the felt): deal the liveliest of N
+    // honest shuffles. Every seat is scored identically, so no player and not the
+    // house gains an edge — the table just sees more coordinated, playable hands
+    // (sets, boats, straights, coolers). Mild = best of 3, Spicy = best of 5.
+    const actN = s.actionDeal === "spicy" ? 5 : s.actionDeal === "mild" ? 3 : 0;
+    if (actN > 1 && !s.spinMode) {
+      let bestDeck = null; let bestSc = -1;
+      for (let c = 0; c < actN; c++) {
+        const cand = pokerDeck();
+        const sim = [...cand];
+        const hs = acts.map(() => sim.splice(0, nCards));
+        const fb = sim.slice(0, 5);
+        let sc = 0;
+        hs.forEach((h) => {
+          const v = bestScore(h, fb, gameType);
+          sc += v >= 6000000 ? 6 : v >= 5000000 ? 5 : v >= 4000000 ? 4 : v >= 3000000 ? 3 : v >= 2000000 ? 2 : 0;
+        });
+        if (sc > bestSc) { bestSc = sc; bestDeck = cand; }
+      }
+      deck = bestDeck || deck;
+    }
     const hands = {};
     // Hole cards are stored sorted high→low, so every consumer (player view,
     // GOD peek, showdown reveal, discard-by-index) sees the same tidy order.

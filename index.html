@@ -9819,7 +9819,9 @@ function PokerTable({
       return;
     }
     const noticeMs = (Number(setts.leaveNoticeMins) || 0) * 60000;
-    if (!t.tournament && noticeMs > 0 && !forceNow) {
+    const otherHumans = Object.values(t.players || {}).filter(p => p.uid !== user.uid && !p.isBot);
+    const alone = otherHumans.length === 0; // last human at the table — stand up immediately, no notice wait
+    if (!t.tournament && noticeMs > 0 && !forceNow && !alone) {
       const meN = t.players[user.uid];
       const bbV = (Number(setts.blinds) || 0.5) * 2;
       const thrBB = Number(setts.leaveNoticeBB) || 0;

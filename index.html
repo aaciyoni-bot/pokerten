@@ -7222,32 +7222,38 @@ function BackofficeView({
   // Reset Cycle: zero EVERY non-bot, non-owner member; total returns to the owner.
   // Bots keep their chips. ONLY the balance is touched — role/agent/identity/stats stay.
   const resetCycle = async () => {
-    const targets = usersList.filter(u => !u.isBot && u.uid !== user.uid && (round2(Number(u.balance) || 0) !== 0));
+    const targets = usersList.filter(u => !u.isBot && u.uid !== user.uid);
     const total = round2(targets.reduce((s, u) => s + (Number(u.balance) || 0), 0));
-    if (targets.length === 0) return showToast("All players are already at 0 — nothing to reset", "info");
-    const ok = window.prompt(`⚠️ RESET CYCLE\nZero the balance of ${targets.length} players and return ${formatMoney(total)} to you.\nBots keep their chips. This cannot be undone.\n\nType RESET to confirm:`);
+    if (targets.length === 0) return showToast("No players to reset", "info");
+    const ok = window.prompt(`⚠️ FULL RESET CYCLE\n${targets.length} players → balance 0 (${formatMoney(total)} returned to you), and EVERYONE's rake, stats and game history wiped to 0.\nBots keep their chips. Identity (role / agent / ID) is kept. Cannot be undone.\n\nType RESET to confirm:`);
     if (ok !== 'RESET') return;
     setResetBusy(true);
     let reclaimed = 0;
+    const ZERO_STATS = { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 };
     try {
       for (const u of targets) {
         await window.fb.runTransaction(window.fb.db, async tr => {
           const r = window.fb.doc(window.fb.db, "memberships", u.id);
           const s = await tr.get(r);
           if (!s.exists()) return;
-          const b = round2(Number(s.data().balance) || 0);
-          if (b === 0) return;
-          reclaimed = round2(reclaimed + b);
-          tr.update(r, { balance: 0 });
+          reclaimed = round2(reclaimed + (Number(s.data().balance) || 0));
+          tr.update(r, { balance: 0, clubProfits: 0, agentProfits: 0, bonusTotal: 0, stats: ZERO_STATS });
         });
       }
-      if (reclaimed > 0) await window.fb.runTransaction(window.fb.db, async tr => {
+      await window.fb.runTransaction(window.fb.db, async tr => {
         const oRef = memDoc(user.uid);
         const s = await tr.get(oRef);
-        tr.update(oRef, { balance: round2((s.data().balance || 0) + reclaimed) });
+        tr.update(oRef, { balance: round2((s.data().balance || 0) + reclaimed), clubProfits: 0, agentProfits: 0, stats: ZERO_STATS });
       });
-      showToast(`Cycle reset — ${formatMoney(reclaimed)} returned to you. Players at 0, bots untouched.`, "success");
-    } catch (e) { showToast("Reset error — some players may not have reset", "error"); }
+      try {
+        const q = window.fb.query(window.fb.collection(window.fb.db, "gameLog"), window.fb.where("clubId", "==", CLUB_ID));
+        const snap = await window.fb.getDocs(q);
+        for (let i = 0; i < snap.docs.length; i += 300) {
+          await Promise.all(snap.docs.slice(i, i + 300).map(d => window.fb.deleteDoc(d.ref).catch(() => {})));
+        }
+      } catch (e) {}
+      showToast(`Full reset — ${formatMoney(reclaimed)} returned to you. Balances, rake, stats & history at 0; bots untouched.`, "success");
+    } catch (e) { showToast("Reset error — some data may not have reset", "error"); }
     setResetBusy(false);
   };
   const saveClubSettings = async () => {

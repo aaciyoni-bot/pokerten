@@ -355,6 +355,16 @@ async function logHandResults(t, eng, plAfter, finish) {
 
 // ── Core: finish paths (mutate g/pl; return {reveal} extra public updates) ──
 function finishEarlyWin(t, g, pl, winnerUid, eng) {
+  // Return the uncalled portion of the winner's last bet BEFORE building the pot,
+  // so rake is never taken on chips no one matched (e.g. an all-in that got folded
+  // to). Uncalled = winner's bet minus the largest bet any other player made.
+  const w = pl[winnerUid];
+  if (w) {
+    let maxOther = 0;
+    Object.values(pl).forEach((q) => { if (q.uid !== winnerUid && (q.bet || 0) > maxOther) maxOther = q.bet || 0; });
+    const uncalled = round2(Math.max(0, (w.bet || 0) - maxOther));
+    if (uncalled > 0) { w.stack = round2(w.stack + uncalled); w.bet = round2((w.bet || 0) - uncalled); }
+  }
   gatherBetsToPots(g, pl);
   // Rabbit hunt: the board's future is fixed in the shuffled deck (no burns) —
   // publish the would-be runout so players can peek at what never came.
@@ -392,9 +402,10 @@ function runShowdown(t, g, pl, eng) {
     const elig = (pot.eligible || []).filter((uid) => pl[uid] && pl[uid].status === "active");
     if (elig.length === 0) return;
     let amount = pot.amount;
-    // Rake the WHOLE pot the hand built — every side pot too, not just the main
-    // pot. (idx 0 = main pot only would under-rake all-in hands with side pots.)
-    { const r = round2(amount * rakeFrac); rakeTotal = round2(rakeTotal + r); amount = round2(amount - r); }
+    // Rake every CONTESTED pot (2+ eligible) — main pot and true side pots alike —
+    // but NEVER a single-eligible pot: that is an uncalled bet returned to one
+    // player, which was never matched and must not be raked.
+    if (elig.length >= 2) { const r = round2(amount * rakeFrac); rakeTotal = round2(rakeTotal + r); amount = round2(amount - r); }
     // one board → whole pot on it; two boards → half the pot decided by EACH board
     const halves = scoreSets.length === 2 ? [round2(amount / 2), round2(amount - round2(amount / 2))] : [amount];
     halves.forEach((amt, bi) => {

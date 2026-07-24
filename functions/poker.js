@@ -392,7 +392,9 @@ function runShowdown(t, g, pl, eng) {
     const elig = (pot.eligible || []).filter((uid) => pl[uid] && pl[uid].status === "active");
     if (elig.length === 0) return;
     let amount = pot.amount;
-    if (idx === 0) { const r = round2(amount * rakeFrac); rakeTotal = round2(rakeTotal + r); amount = round2(amount - r); }
+    // Rake the WHOLE pot the hand built — every side pot too, not just the main
+    // pot. (idx 0 = main pot only would under-rake all-in hands with side pots.)
+    { const r = round2(amount * rakeFrac); rakeTotal = round2(rakeTotal + r); amount = round2(amount - r); }
     // one board → whole pot on it; two boards → half the pot decided by EACH board
     const halves = scoreSets.length === 2 ? [round2(amount / 2), round2(amount - round2(amount / 2))] : [amount];
     halves.forEach((amt, bi) => {

@@ -5661,18 +5661,20 @@ function LobbyView({
         const humanUids = Object.keys(players).filter(u => !u.startsWith('bot_') && !players[u].isBot);
         const S = snap.data().settings || {};
         const isSpin = !!S.spinMode;
+        const isTour = !!snap.data().tournamentId;
         const spinArmed = !!snap.data().spin;
         const potShare = round2((snap.data().pot || 0) / Math.max(humanUids.length, 1));
         const refunds = [];
         for (const uid of humanUids) {
           const uSnap = await tr.get(memDoc(uid));
           if (!uSnap.exists()) continue;
-          // Spin & Cash chips are TOURNAMENT chips, never real money. Deleting a spin
-          // table must not dump the winner's stack into his wallet — pre-wheel delete
-          // returns only the entry; after the wheel the server already paid the prize.
-          const add = isSpin
-            ? (spinArmed ? 0 : round2(players[uid].spinPaid || 0))
-            : round2((players[uid].stack || 0) + (players[uid].bet || 0) + (players[uid].pendingTopUp || 0) + potShare);
+          // Spin & tournament chips are NOT real money — deleting such a table must never
+          // credit a chip stack to a wallet (the wheel prize / tournament prize pool pays
+          // out separately). Only a pre-wheel spin delete refunds the entry; cash refunds the stack.
+          let add;
+          if (isTour) add = 0;
+          else if (isSpin) add = spinArmed ? 0 : round2(players[uid].spinPaid || 0);
+          else add = round2((players[uid].stack || 0) + (players[uid].bet || 0) + (players[uid].pendingTopUp || 0) + potShare);
           refunds.push([uSnap.ref, round2((uSnap.data().balance || 0) + add)]);
         }
         refunds.forEach(([ref, bal]) => tr.update(ref, {

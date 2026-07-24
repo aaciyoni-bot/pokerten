@@ -7117,6 +7117,8 @@ function BackofficeView({
     };
   }, []);
   const isOwner = [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role);
+  const canManageAny = isOwner || user.role === ROLES.MANAGER;
+  const [resetBusy, setResetBusy] = useState(false);
   const [assignFor, setAssignFor] = useState(null);
   const approveWith = async (memId, agent) => {
     try {
@@ -7200,6 +7202,52 @@ function BackofficeView({
     } catch (e) {
       showToast(typeof e === 'string' ? e : "Action error", "error");
     }
+  };
+  const resetMember = async (target) => {
+    const bal = round2(Number(target.balance) || 0);
+    if (bal <= 0) return showToast(`${target.username} is already at 0`, "info");
+    if (!window.confirm(`Reset ${target.username}'s balance to 0?\n${formatMoney(bal)} returns to your balance.`)) return;
+    try {
+      await window.fb.runTransaction(window.fb.db, async tr => {
+        const oRef = memDoc(user.uid), r = window.fb.doc(window.fb.db, "memberships", target.id);
+        const oS = await tr.get(oRef), s = await tr.get(r);
+        const b = round2(Number(s.data().balance) || 0);
+        tr.update(r, { balance: 0 });
+        tr.update(oRef, { balance: round2((oS.data().balance || 0) + b) });
+      });
+      showToast(`${target.username} reset — ${formatMoney(bal)} returned to you`, "success");
+    } catch (e) { showToast("Reset error", "error"); }
+  };
+  // Reset Cycle: zero EVERY non-bot, non-owner member; total returns to the owner.
+  // Bots keep their chips. ONLY the balance is touched — role/agent/identity/stats stay.
+  const resetCycle = async () => {
+    const targets = usersList.filter(u => !u.isBot && u.uid !== user.uid && (round2(Number(u.balance) || 0) !== 0));
+    const total = round2(targets.reduce((s, u) => s + (Number(u.balance) || 0), 0));
+    if (targets.length === 0) return showToast("All players are already at 0 — nothing to reset", "info");
+    const ok = window.prompt(`⚠️ RESET CYCLE\nZero the balance of ${targets.length} players and return ${formatMoney(total)} to you.\nBots keep their chips. This cannot be undone.\n\nType RESET to confirm:`);
+    if (ok !== 'RESET') return;
+    setResetBusy(true);
+    let reclaimed = 0;
+    try {
+      for (const u of targets) {
+        await window.fb.runTransaction(window.fb.db, async tr => {
+          const r = window.fb.doc(window.fb.db, "memberships", u.id);
+          const s = await tr.get(r);
+          if (!s.exists()) return;
+          const b = round2(Number(s.data().balance) || 0);
+          if (b === 0) return;
+          reclaimed = round2(reclaimed + b);
+          tr.update(r, { balance: 0 });
+        });
+      }
+      if (reclaimed > 0) await window.fb.runTransaction(window.fb.db, async tr => {
+        const oRef = memDoc(user.uid);
+        const s = await tr.get(oRef);
+        tr.update(oRef, { balance: round2((s.data().balance || 0) + reclaimed) });
+      });
+      showToast(`Cycle reset — ${formatMoney(reclaimed)} returned to you. Players at 0, bots untouched.`, "success");
+    } catch (e) { showToast("Reset error — some players may not have reset", "error"); }
+    setResetBusy(false);
   };
   const saveClubSettings = async () => {
     const pct = parseFloat(rakeDraft);
@@ -7391,7 +7439,7 @@ function BackofficeView({
     }
   };
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot);
-  const players = usersList.filter(u => u.status === 'approved' && u.uid !== user.uid).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase()));
+  const players = usersList.filter(u => u.status === 'approved' && u.uid !== user.uid).filter(u => (isOwner || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase()));
   const statTiles = [{
     label: 'Your balance',
     value: formatMoney(user.balance),
@@ -7452,7 +7500,18 @@ function BackofficeView({
     className: "bg-slate-800/80 hover:bg-rose-900/80 border border-white/10 text-slate-300 hover:text-white px-4 py-2.5 rounded-xl text-sm font-bold"
   }, React.createElement("i", {
     className: "fa-solid fa-trash"
-  })))), React.createElement("div", {
+  })))), isOwner && React.createElement("div", {
+    className: "flex flex-wrap items-center gap-2 mb-5"
+  }, React.createElement("button", {
+    onClick: () => { const el = document.getElementById('bo-players'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    className: "text-xs font-black px-4 py-2.5 rounded-xl border shrink-0 text-amber-300 border-amber-500/40 bg-amber-500/5"
+  }, React.createElement("i", { className: "fa-solid fa-users mr-1" }), "Players"), React.createElement("button", {
+    onClick: resetCycle,
+    disabled: resetBusy,
+    title: "Zero all players, return chips to you (bots keep theirs)",
+    className: "text-xs font-black px-4 py-2.5 rounded-xl text-slate-900 shadow-lg disabled:opacity-50 shrink-0",
+    style: { background: 'linear-gradient(180deg,#F8C830,#C99A1E)' }
+  }, resetBusy ? 'Resetting…' : '♻ Reset cycle · players → 0')), React.createElement("div", {
     className: "grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
   }, statTiles.map((t, i) => React.createElement("div", {
     key: i,
@@ -7839,7 +7898,9 @@ function BackofficeView({
   }), agents.length === 0 && !isAgentOnly && React.createElement("p", {
     className: "text-slate-500 text-sm font-bold"
   }, "No agents yet - appoint an agent via ⚙️ next to a player."))), React.createElement("div", {
-    className: "glass-panel p-6 rounded-3xl mb-6"
+    id: "bo-players",
+    className: "glass-panel p-6 rounded-3xl mb-6",
+    style: { scrollMarginTop: '12px' }
   }, React.createElement("div", {
     className: "flex items-center justify-between mb-4 flex-wrap gap-3"
   }, React.createElement("h3", {

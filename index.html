@@ -1649,6 +1649,15 @@ const logGameResult = async (entries, tableId) => {
     }
   } catch (err) {}
 };
+// Stable, human-readable table number derived from the table id (same table = same number)
+const tableCode = tid => {
+  if (!tid) return '—';
+  const s = String(tid);
+  if (s.startsWith('tournament:')) return 'Tournament';
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+  return '#' + (h % 1000000).toString().padStart(6, '0');
+};
 const downloadCSV = (rows, filename) => {
   const csv = '\uFEFF' + rows.map(r => r.map(x => `"${String(x ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], {
@@ -4320,7 +4329,31 @@ function PlayerFileModal({
   }, lifetime.gamesPlayed || 0, " games · ", lifetime.gamesWon || 0, " wins · ", React.createElement("span", {
     className: `${(lifetime.totalProfit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-black`,
     dir: "ltr"
-  }, (lifetime.totalProfit || 0) > 0 ? '+' : '', formatMoney(lifetime.totalProfit || 0))))))), document.body);
+  }, (lifetime.totalProfit || 0) > 0 ? '+' : '', formatMoney(lifetime.totalProfit || 0)))), /*#__PURE__*/React.createElement("div", {
+  className: "bg-slate-950/60 border border-white/5 rounded-2xl p-3"
+}, /*#__PURE__*/React.createElement("div", {
+  className: "text-slate-300 font-black text-xs mb-2"
+}, "Game log (", (log || []).length, ") · table & result"), /*#__PURE__*/React.createElement("div", {
+  className: "flex flex-col gap-1 max-h-60 overflow-y-auto"
+}, [...(log || [])].sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 300).map((e, i) => /*#__PURE__*/React.createElement("div", {
+  key: i,
+  className: "flex items-center justify-between text-[11px] bg-slate-900/50 rounded-lg px-2.5 py-1.5 border border-white/5"
+}, /*#__PURE__*/React.createElement("span", {
+  className: "text-slate-400 font-bold"
+}, /*#__PURE__*/React.createElement("span", {
+  className: "text-slate-500 ml-1.5"
+}, new Date(e.at).toLocaleDateString('en-GB'), " ", new Date(e.at).toLocaleTimeString('he-IL', {
+  hour: '2-digit',
+  minute: '2-digit'
+})), GAME_HEB[e.game] || e.game, /*#__PURE__*/React.createElement("span", {
+  className: "text-cyan-400/80 font-mono font-black mr-1.5",
+  dir: "ltr"
+}, tableCode(e.tableId))), /*#__PURE__*/React.createElement("span", {
+  className: `font-black ${(e.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`,
+  dir: "ltr"
+}, (e.profit || 0) >= 0 ? '+' : '', formatMoney(e.profit)))), (log || []).length === 0 && /*#__PURE__*/React.createElement("div", {
+  className: "text-slate-500 text-[11px] font-bold py-2"
+}, "No games yet.")))))), document.body);
 }
 function PendingView({
   clubName,
@@ -5075,13 +5108,13 @@ function ProfileView({
     totalsByGame[l.game].profit = round2(totalsByGame[l.game].profit + (l.profit || 0));
   });
   const exportMyCSV = () => {
-    const rows = [['Date', 'Time', 'Game', 'Profit/Loss']];
+    const rows = [['Date', 'Time', 'Game', 'Table', 'Profit/Loss']];
     filtered.forEach(l => {
       const d = new Date(l.at);
-      rows.push([d.toLocaleDateString('en-GB'), d.toLocaleTimeString('he-IL'), GAME_LABEL(l.game), l.profit]);
+      rows.push([d.toLocaleDateString('en-GB'), d.toLocaleTimeString('he-IL'), GAME_LABEL(l.game), tableCode(l.tableId), l.profit]);
     });
     rows.push([]);
-    rows.push(['Total', '', filtered.length + ' games', round2(filtered.reduce((s, l) => s + (l.profit || 0), 0))]);
+    rows.push(['Total', '', filtered.length + ' games', '', round2(filtered.reduce((s, l) => s + (l.profit || 0), 0))]);
     downloadCSV(rows, `my-report-${new Date().toISOString().slice(0, 10)}.csv`);
   };
   const stats = user.stats || {
@@ -5283,7 +5316,10 @@ function ProfileView({
   }, new Date(l.at).toLocaleDateString('en-GB'), " ", new Date(l.at).toLocaleTimeString('he-IL', {
     hour: '2-digit',
     minute: '2-digit'
-  })), GAME_LABEL(l.game)), React.createElement("span", {
+  })), GAME_LABEL(l.game), React.createElement("span", {
+    className: "text-cyan-400/80 text-[11px] font-mono font-black mr-2",
+    dir: "ltr"
+  }, tableCode(l.tableId))), React.createElement("span", {
     className: `font-black ${(l.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`,
     dir: "ltr"
   }, (l.profit || 0) >= 0 ? '+' : '', formatMoney(l.profit)))))), logs === null && React.createElement("p", {

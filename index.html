@@ -10418,7 +10418,8 @@ function PokerTable({
     const iv = setInterval(async () => {
       const t = tableRef.current;
       if (!t) return;
-      const stale = Object.values(t.players || {}).filter(q => q.status === 'busted' && (q.isBot || Date.now() - (q.bustedAt || 0) > 34000));
+      const graceMs = t.tournament ? 34000 : 300000;
+      const stale = Object.values(t.players || {}).filter(q => q.status === 'busted' && (q.isBot || Date.now() - (q.bustedAt || 0) > graceMs));
       if (!stale.length) return;
       if (t.tournament) {
         const upd = {};

@@ -7,6 +7,7 @@
  * or edit their own balance through the bonus wheel.
  */
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onSchedule} = require("firebase-functions/v2/scheduler");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 
@@ -162,6 +163,44 @@ exports.claimWeeklyScratch = onCall(async (request) => {
     tx.update(clubRef, {scratch: sc});
     return {prize, fromBank: false};
   });
+});
+
+// ── Always-on auto-credit ──
+// A player's unanswered deposit request (past the timeout) is auto-topped-up to
+// min(requested, their creditLimit), funded by the club owner's balance. Runs on
+// the server every minute so it fires even when no admin is online. The
+// transaction re-reads the request and clears it → it can NEVER double-credit.
+exports.autoCreditDeposits = onSchedule("every 1 minutes", async () => {
+  const TIMEOUT_MS = 2 * 60000;
+  const now = Date.now();
+  let snap;
+  try { snap = await db.collection("memberships").get(); } catch (e) { return; }
+  for (const d of snap.docs) {
+    const m = d.data();
+    const req = m.depositReq;
+    if (!req || (req.status && req.status !== "pending") || !(Number(req.amount) > 0)) continue;
+    if (now - (Number(req.at) || 0) < TIMEOUT_MS) continue;
+    const lim = Number(m.creditLimit) || 0;
+    const amt = round2(Math.min(Number(req.amount) || 0, lim));
+    if (lim <= 0 || amt <= 0) continue; // no limit → wait for a manual approve
+    const us = d.id.indexOf("_");
+    const clubId = us >= 0 ? d.id.slice(us + 1) : (m.clubId || "main");
+    let ownerUid = null;
+    try { const cs = await db.doc(`clubs/${clubId}`).get(); if (cs.exists) ownerUid = cs.data().ownerUid; } catch (e) {}
+    if (!ownerUid) continue;
+    const oRef = db.doc(`memberships/${ownerUid}_${clubId}`);
+    try {
+      await db.runTransaction(async (tx) => {
+        const [oS, pS] = [await tx.get(oRef), await tx.get(d.ref)];
+        if (!pS.exists) return;
+        const cur = pS.data().depositReq;
+        if (!cur || Number(cur.at) !== Number(req.at)) return; // already handled elsewhere
+        if (!oS.exists || (oS.data().balance || 0) < amt) return; // owner can't cover — leave pending
+        tx.update(oRef, {balance: round2((oS.data().balance || 0) - amt)});
+        tx.update(d.ref, {balance: round2((pS.data().balance || 0) + amt), depositReq: null});
+      });
+    } catch (e) { /* retry next run */ }
+  }
 });
 
 // ── Server-authoritative poker engine (Phase A) ──

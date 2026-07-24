@@ -15192,6 +15192,36 @@ const tourLateSeat = async (tor, p) => {
     });
   } catch (e) {}
 };
+// Atomic, idempotent tournament prize payout: credits balance (or promoBalance)
+// AND records the winner as paid in the SAME transaction, so a re-run after a
+// mid-finalize crash pays only the unpaid winners — never twice.
+const payTourPrize = async (torId, uid, amt, statsPatch, asBonus) => {
+  if (!uid) return;
+  try {
+    await window.fb.runTransaction(window.fb.db, async tr => {
+      const trRef = tRef(torId);
+      const tSnap = await tr.get(trRef);
+      if (!tSnap.exists()) return;
+      const paid = tSnap.data().paidPrizes || {};
+      if (paid[uid]) return;
+      const mRef = memDoc(uid);
+      const mSnap = await tr.get(mRef);
+      if (mSnap.exists() && (amt || statsPatch)) {
+        const field = asBonus ? 'promoBalance' : 'balance';
+        const upd = {};
+        if (amt) upd[field] = round2((mSnap.data()[field] || 0) + amt);
+        if (statsPatch) {
+          const st = mSnap.data().stats || { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 };
+          if (statsPatch.played) upd['stats.gamesPlayed'] = (st.gamesPlayed || 0) + 1;
+          if (statsPatch.won) upd['stats.gamesWon'] = (st.gamesWon || 0) + 1;
+          if (statsPatch.profit !== undefined) upd['stats.totalProfit'] = round2((st.totalProfit || 0) + statsPatch.profit);
+        }
+        if (Object.keys(upd).length) tr.update(mRef, upd);
+      }
+      tr.update(trRef, { [`paidPrizes.${uid}`]: true });
+    });
+  } catch (e) {}
+};
 const tourRegister = async (tor, user, showToast) => {
   const entry = tourEntryOf(tor);
   let didLateSeat = false;
@@ -15571,11 +15601,11 @@ const tourFinalize = async (tor, championUid, rakePct) => {
         prize,
         bounties: ranked[i].bounties || 0
       });
-      if (prize > 0) await creditBalance(ranked[i].uid, prize, {
+      if (prize > 0) await payTourPrize(tor.id, ranked[i].uid, prize, {
         played: true,
         won: ranked[i].rank === 1,
         profit: round2(prize - (ranked[i].paid || 0))
-      }, t.prizeAsBonus === true);else if (!ranked[i].isBot) await creditBalance(ranked[i].uid, 0, {
+      }, t.prizeAsBonus === true);else if (!ranked[i].isBot) await payTourPrize(tor.id, ranked[i].uid, 0, {
         played: true,
         profit: -(ranked[i].paid || 0)
       });
@@ -15586,7 +15616,9 @@ const tourFinalize = async (tor, championUid, rakePct) => {
         profit: round2(prize - (ranked[i].paid || 0))
       }], 'tournament:' + tor.id);
     }
-    distributeRake(rake, entrants.map(p => p.uid));
+    let doRake = false;
+    try { await window.fb.runTransaction(window.fb.db, async tr => { const s = await tr.get(tRef(tor.id)); if (s.exists() && !s.data().rakeDistributed) { tr.update(tRef(tor.id), { rakeDistributed: true }); doRake = true; } }); } catch (e) {}
+    if (doRake) distributeRake(rake, entrants.map(p => p.uid));
     await window.fb.updateDoc(tRef(tor.id), {
       status: 'done',
       players: pl,

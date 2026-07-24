@@ -1172,10 +1172,10 @@ exports.pkAct = onCall(async (request) => {
     const p0 = pl[uid];
     if (p0) {
       // auto=true marks a client-side TIMEOUT fold/check — it counts as a miss
-      // (two straight misses → sit-out at the end of the hand). A real tap resets.
+      // (one missed hand → sit-out at the end of the hand). A real tap resets.
       if (auto) {
         p0.missed = (p0.missed || 0) + 1;
-        if (p0.missed >= 2 && !p0.sitOut && !p0.sitOutNext) { p0.sitOutNext = true; p0.sitAuto = true; }
+        if (p0.missed >= 1 && !p0.sitOut && !p0.sitOutNext) { p0.sitOutNext = true; p0.sitAuto = true; }
       } else p0.missed = 0;
     }
     return applyAction(t, g, pl, eng, uid, action, amount);
@@ -1392,11 +1392,11 @@ exports.pkTick = onCall(async (request) => {
       await engineStep(tableId, (t2, g2, pl2, eng) => {
         if (g2.activeTurnUid !== actor.uid) return null;
         const p2 = pl2[actor.uid];
-        // Two straight timer misses → automatic 10-minute sit-out (flagged for the
+        // One missed hand (timer) → automatic 10-minute sit-out (flagged for the
         // NEXT deal — the current hand just auto-folds/checks). A real action resets it.
         if (!actor.sitOut) {
           p2.missed = (p2.missed || 0) + 1;
-          if (p2.missed >= 2 && !p2.sitOutNext) { p2.sitOutNext = true; p2.sitAuto = true; }
+          if (p2.missed >= 1 && !p2.sitOutNext) { p2.sitOutNext = true; p2.sitAuto = true; }
         }
         const toCall = round2(Math.max(0, (g2.highestBet || 0) - (p2.bet || 0)));
         return applyAction(t2, g2, pl2, eng, actor.uid, toCall > 0 ? "fold" : "call");

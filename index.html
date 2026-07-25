@@ -8805,11 +8805,6 @@ function PokerTable({
   useEffect(() => {
     if (!srvEngine) return;
     const iv = setInterval(() => {
-      const tt = tableRef.current;
-      // Never tick an EMPTY table: there is no hand to run, and it removes any
-      // chance for the server engine to cull an owner-opened empty table on an
-      // idle tick. Ticking resumes automatically once someone sits down.
-      if (!tt || Object.keys(tt.players || {}).length === 0) return;
       window.fb.fx('pkTick', {
         tableId: tableDocId
       }).catch(() => {});

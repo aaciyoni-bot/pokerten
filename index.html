@@ -9464,6 +9464,31 @@ function PokerTable({
       startingRef.current = false;
     }
   };
+  // Owner emergency unstick for a frozen table: refund every chip in play, switch
+  // THIS table to the proven client engine, and deal a fresh hand. Safe — it
+  // starts a clean hand (no priv/players.cards mismatch) and returns all bets.
+  const forceUnstick = async () => {
+    try {
+      const t = tableRef.current;
+      if (!t) return;
+      if (!window.confirm('שחרור שולחן תקוע: ההימורים הנוכחיים יוחזרו לשחקנים, השולחן יעבור למנוע הלקוח ותחולק יד חדשה. להמשיך?')) return;
+      const pl = clonePlayers(t.players);
+      const g = t.gameState || {};
+      Object.values(pl).forEach(p => { if (p.bet) { p.stack = round2((p.stack || 0) + p.bet); } });
+      (g.pots || []).forEach(pot => {
+        const elig = (pot.eligible || []).filter(u => pl[u]);
+        if (elig.length) { const share = round2((pot.amount || 0) / elig.length); elig.forEach(u => pl[u].stack = round2((pl[u].stack || 0) + share)); }
+      });
+      Object.values(pl).forEach(p => { p.cards = []; p.bet = 0; p.actionText = ''; p.hasActed = false; p.reveal = false; if (!['busted', 'out'].includes(p.status)) p.status = (p.stack > 0) ? 'active' : 'sitout'; });
+      await window.fb.updateDoc(tblRef(), {
+        'settings.serverEngine': false,
+        players: pl,
+        gameState: { ...g, phase: 'waiting', activeTurnUid: null, turnStartedAt: null, board: [], pots: [], highestBet: 0, minRaise: round2((setts.blinds || 0.5) * 2), allInReveal: false, lastWinners: null, lastWinAmount: 0 }
+      });
+      showToast('השולחן שוחרר — יד חדשה מתחילה', 'success');
+      setTimeout(() => startHand(true), 1200);
+    } catch (e) { showToast('שחרור נכשל: ' + (e && e.message || e), 'error'); }
+  };
   const selectDCGame = async (gameType, byUid = user.uid) => {
     if (setts.serverEngine) {
       if (byUid === user.uid) {
@@ -10993,7 +11018,11 @@ function PokerTable({
   })), ['waiting', 'showdown'].includes(gs.phase) && eligibleCount >= 2 && React.createElement("button", {
     onClick: () => startHand(),
     className: "px-2.5 py-1.5 rounded-lg bg-emerald-700 text-white text-[10px] font-black border border-emerald-500"
-  }, "Deal")), (isSuperAdmin || canManageGame(user, 'poker')) && !tableState?.tournamentId && React.createElement("button", {
+  }, "Deal"), React.createElement("button", {
+    onClick: forceUnstick,
+    className: "px-2.5 py-1.5 rounded-lg bg-rose-700 text-white text-[10px] font-black border border-rose-400",
+    title: "Force-unstick a frozen table: refund bets, switch to client engine, deal fresh"
+  }, "🔧 שחרר")), (isSuperAdmin || canManageGame(user, 'poker')) && !tableState?.tournamentId && React.createElement("button", {
     onClick: () => setBuyinEdit({
       min: String(buyInMin(setts)),
       max: String(buyInMax(setts))

@@ -3113,6 +3113,37 @@ function App() {
   useEffect(() => {
     tablesRef2.current = tablesDB;
   }, [tablesDB]);
+  // Lobby guarantee: always keep ONE joinable table open per live config.
+  // Runs only on the club owner's client (no thundering herd) and only for a
+  // config that ALREADY has a table but zero joinable ones (bounded — it can
+  // never invent tables from nothing, so it cannot run away). This is what
+  // recovers Spin & Cash tables: when a spin resolves server-side no client
+  // spawns a replacement, so the owner's lobby does it.
+  const ensureRef = useRef({});
+  useEffect(() => {
+    const ownerUid = (window.__club || {}).ownerUid;
+    if (!dbUser?.uid || !ownerUid || ownerUid !== dbUser.uid) return;
+    const cid = CLUB_ID;
+    const mine = (tablesDB || []).filter(x => (x.clubId || 'main') === cid && !x.tournamentId && x.type === 'poker');
+    if (!mine.length) return;
+    const keyOf = x => { const s = x.settings || {}; return JSON.stringify([!!s.spinMode, Number(s.spinBuyIn) || 0, Number(s.buyIn) || 0, Number(s.blinds) || 0, s.baseGameType || '', Number(s.maxPlayers) || 0, s.variant || '']); };
+    const isJoinable = x => {
+      const s = x.settings || {};
+      if (Object.keys(x.players || {}).length >= (Number(s.maxPlayers) || 9)) return false;
+      if (s.spinMode && x.spin) return false; // spin already armed/started → not a place to sit
+      return true;
+    };
+    const groups = {};
+    mine.forEach(x => { const k = keyOf(x); (groups[k] = groups[k] || []).push(x); });
+    const now = Date.now();
+    Object.keys(groups).forEach(k => {
+      const arr = groups[k];
+      if (arr.some(isJoinable)) return;            // already have an open table for this config
+      if (now - (ensureRef.current[k] || 0) < 8000) return; // debounce repeated snapshots
+      ensureRef.current[k] = now;
+      spawnTwinTable(arr[0], true);                // force: we already verified 0 joinable exist
+    });
+  }, [tablesDB, dbUser?.uid]);
   const [activeTable, setActiveTable] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [clubSettings, setClubSettings] = useState({
@@ -6313,7 +6344,10 @@ function LobbyView({
       className: "tbl-buyin-label"
     }, spinRunning ? "Live" : "Buy-in"), React.createElement("span", {
       className: "tbl-buyin-val"
-    }, spinRunning ? "👁" : formatMoney(minBuy))), canManageGame(user, 'poker') && !t.tournamentId && React.createElement("button", {
+    }, spinRunning ? "👁" : formatMoney(minBuy)), s.spinMode && !spinRunning && React.createElement("span", {
+      style: { fontSize: '9px', fontWeight: 900, color: '#fcd34d', lineHeight: 1, marginTop: '2px', whiteSpace: 'nowrap' },
+      dir: "ltr"
+    }, "WIN ", formatShort((Number(s.spinBuyIn) || 50) * 100))), canManageGame(user, 'poker') && !t.tournamentId && React.createElement("button", {
       onClick: e => {
         e.stopPropagation();
         setBuyinEdit({

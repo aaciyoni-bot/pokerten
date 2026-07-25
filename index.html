@@ -8189,7 +8189,7 @@ function PokerCreateView({
     maxBuyIn: 200,
     leaveNoticeMins: 0,
     leaveNoticeBB: 0,
-    serverEngine: true,
+    serverEngine: false, // new cash tables: proven client engine (server pkDeal is currently failing); spin keeps the server
     rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT,
     autoStart: 2,
     straddle: false,
@@ -9362,17 +9362,30 @@ function PokerTable({
     };
     await saveGame(g, pl);
   };
-  const startHand = async () => {
-    if (setts.serverEngine) {
+  const startHand = async (forceClient) => {
+    if (setts.serverEngine && !forceClient) {
       try {
-        await window.fb.fx('pkDeal', {
+        await Promise.race([window.fb.fx('pkDeal', {
           tableId: tableDocId
-        });
+        }), new Promise((_, rej) => setTimeout(() => rej(new Error('pkDeal timeout')), 7000))]);
+        return;
       } catch (e) {
         console.error('pkDeal failed', e);
-        showToast('Deal: ' + (e && e.message || e), 'error');
+        // FAILOVER: the server engine did not deal. Flip THIS table to the
+        // proven client engine and deal locally. Safe here — no cards have
+        // been dealt yet, so nothing renders wrong. Spin stays server-only
+        // (its prize flow lives on the server end-to-end).
+        if (setts.spinMode) {
+          showToast('Deal: ' + (e && e.message || e), 'error');
+          return;
+        }
+        try {
+          await window.fb.updateDoc(tblRef(), {
+            'settings.serverEngine': false
+          });
+        } catch (e2) {}
+        // fall through to the client-engine deal below
       }
-      return;
     }
     if (startingRef.current) return;
     startingRef.current = true;
@@ -15475,7 +15488,7 @@ const tourSeedRound = async (tor, uids, round) => {
         autoStart: 2,
         straddle: false,
         ante: 0,
-        serverEngine: !!tor.serverEngine
+        serverEngine: false // tournaments run on the proven client engine until the server engine (#28) is stable
       },
       players,
       chat: [],

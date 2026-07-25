@@ -8189,7 +8189,7 @@ function PokerCreateView({
     maxBuyIn: 200,
     leaveNoticeMins: 0,
     leaveNoticeBB: 0,
-    serverEngine: true,
+    serverEngine: false, // emergency: default to the proven client engine until #28 is stable
     rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT,
     autoStart: 2,
     straddle: false,
@@ -8764,7 +8764,12 @@ function PokerTable({
       setTimeout(() => setBetFx(cur => cur.filter(f => !ids.includes(f.id))), 750);
     }
   });
-  const srvEngine = !!((tableState || {}).settings || {}).serverEngine;
+  // EMERGENCY KILL-SWITCH: the deployed server engine (#28, unfinished) was
+  // freezing hands and culling tables, with no client recovery while it was on.
+  // Force it OFF so every table falls back to the proven client engine
+  // (performAction client branch + advancePhase + the stuck-player watchdog).
+  // Flip back to `!!settings.serverEngine` once the server engine is stable.
+  const srvEngine = false;
   const [myPrivCards, setMyPrivCards] = useState([]);
   const [godHands, setGodHands] = useState({});
   const [godFinal, setGodFinal] = useState([]);

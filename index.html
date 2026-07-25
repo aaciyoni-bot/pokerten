@@ -10548,7 +10548,7 @@ function PokerTable({
     return simMyEquity(myCards, gs.board || [], activesOppCount, gs.currentGameType);
   }, [myCards.length, (gs.board || []).length, gs.phase, activesOppCount, gs.allInReveal]);
   const realEq = useMemo(() => {
-    if (!gs.allInReveal) return null;
+    if (!gs.allInReveal && gs.phase !== 'showdown') return null;
     const hands = Object.values(players).filter(p => p.status === 'active' && (p.cards || []).length > 0).map(p => ({
       uid: p.uid,
       cards: p.cards
@@ -11456,10 +11456,12 @@ function PokerTable({
     }, myHand), myEquity !== null && React.createElement("span", {
       className: "bg-emerald-900/90 border border-emerald-500/40 text-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-md",
       dir: "ltr"
-    }, myEquity, "%")), gs.allInReveal && realEq && realEq[p.uid] !== undefined && p.status === 'active' && React.createElement("div", {
+    }, myEquity, "%")), (gs.allInReveal || gs.phase === 'showdown') && realEq && realEq[p.uid] !== undefined && p.status === 'active' && React.createElement("div", {
       className: "mt-1 z-30 bg-amber-900/90 border border-amber-500/50 text-amber-300 text-[11px] font-black px-2.5 py-0.5 rounded-md animate-pop-in",
       dir: "ltr"
-    }, realEq[p.uid], "%")));
+    }, realEq[p.uid], "%"), (gs.allInReveal || gs.phase === 'showdown') && p.status === 'active' && (gs.board || []).length >= 3 && (isMe ? myCards : p.cards || []).length > 0 && React.createElement("div", {
+      className: "mt-0.5 z-30 bg-slate-950/95 border border-amber-400/50 text-amber-100 text-[10px] font-black px-2 py-0.5 rounded-md whitespace-nowrap"
+    }, handName(bestScoreNow(isMe ? myCards : p.cards, gs.board || [], gs.currentGameType)))));
   }), (() => {
     const now = {};
     displayList.forEach((p, i) => {

@@ -8948,8 +8948,19 @@ function PokerTable({
       [`players.${user.uid}.lastSeen`]: Date.now()
     }).catch(() => {});
     beat();
-    const iv = setInterval(beat, 25000);
-    return () => clearInterval(iv);
+    // Fast heartbeat so a disconnect / closed tab is detectable within ~20s,
+    // not ~50s. Also beat the moment the player comes back / refocuses.
+    const iv = setInterval(beat, 8000);
+    const onBack = () => beat();
+    window.addEventListener('online', onBack);
+    window.addEventListener('focus', onBack);
+    document.addEventListener('visibilitychange', onBack);
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener('online', onBack);
+      window.removeEventListener('focus', onBack);
+      document.removeEventListener('visibilitychange', onBack);
+    };
   }, [isSeated, tableDocId]);
   const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
   useEffect(() => {
@@ -10511,7 +10522,13 @@ function PokerTable({
             return;
           }
           const isSitSkip = t.tournamentId && actor.sitOut && actor.status === 'active';
-          const limit = ((Number(setts.actionTime) || 30) + (isSuperAdmin ? 12 : 22)) * 1000;
+          // Connection-aware: if the player whose turn it is has gone dark
+          // (heartbeat stale — disconnected or closed the tab), don't make the
+          // whole table wait the full clock. Act for them after a short grace
+          // so the hand keeps moving. 20s threshold > 2 missed 8s heartbeats,
+          // so a merely-slow connection is never falsely timed out.
+          const gone = !actor.isBot && actor.lastSeen && Date.now() - actor.lastSeen > 20000;
+          const limit = gone ? 9000 : ((Number(setts.actionTime) || 30) + (isSuperAdmin ? 12 : 22)) * 1000;
           if (isSitSkip || stuckFor > limit) {
             const toCall = round2(Math.max(0, (g.highestBet || 0) - (actor.bet || 0)));
             await performAction(g.activeTurnUid, toCall > 0 ? 'fold' : 'call', undefined, !isSitSkip);

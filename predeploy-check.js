@@ -84,5 +84,40 @@ try {
   } else { bad('handName present — could not locate function'); }
 } catch (e) { bad('handName evaluates — ' + e.message); }
 
+// 9) RAKE IS NEVER TAKEN ON UNCALLED BETS (fold-out over-rake regression).
+//    BUG (fixed f7f2bac): on a fold-out, rake was charged on the full pot
+//    INCLUDING the winner's uncalled bet — their own money returning. A 300
+//    contested pot with a 533 uncalled shove was raked 6%×833≈50 instead of 18.
+//    Lock BOTH the structural guard and the resulting math so it can't return.
+check('finishEarlyWin returns the winner\'s uncalled bet BEFORE building the pot',
+  /_maxOther[\s\S]{0,200}?_w\.bet = _maxOther;[\s\S]{0,120}?gatherBetsToPots\(g, pl\)/.test(bundle),
+  'the uncalled-bet return block must run before gatherBetsToPots in finishEarlyWin, else uncalled money gets raked');
+
+try {
+  const gm = bundle.match(/const gatherBetsToPots = \(gs, playersObj\) => \{[\s\S]*?Object\.values\(playersObj\)\.forEach\(p => p\.bet = 0\);\s*\};/);
+  if (gm) {
+    const round2 = n => Math.round(n * 100) / 100;
+    // eslint-disable-next-line no-eval
+    const gather = eval(gm[0].replace('const gatherBetsToPots = ', 'var __gather = ') + '\n__gather;');
+    // Canonical scenario: 300 contested already pooled, winner shoves 533 uncalled, all fold.
+    const g = { pots: [{ amount: 300, eligible: ['W', 'X'] }], board: ['a','b','c','d','e'] };
+    const pl = { W:{uid:'W',bet:533,status:'active',stack:0}, X:{uid:'X',bet:0,status:'folded',stack:0} };
+    const winnerUid = 'W', _w = pl[winnerUid];
+    const _maxOther = Object.values(pl).reduce((m,p)=>p.uid!==winnerUid?Math.max(m,p.bet||0):m,0);
+    if (_w && (_w.bet||0) > _maxOther) { const _unc = round2(_w.bet-_maxOther); _w.stack = round2((_w.stack||0)+_unc); _w.bet = _maxOther; }
+    gather(g, pl);
+    const pot = round2((g.pots||[]).reduce((s,p)=>s+p.amount,0));
+    const rake = round2(pot * 0.06);
+    check('fold-out rake = 6% of the CONTESTED pot only (18, not ~50)',
+      pot === 300 && rake === 18,
+      `expected contested pot 300 / rake 18, got pot ${pot} / rake ${rake} — uncalled money is being raked`);
+  } else { bad('rake math check — could not locate gatherBetsToPots in bundle'); }
+} catch (e) { bad('rake math check evaluates — ' + e.message); }
+
+// 10) RAKE IS RECORDED PER PLAYER (report-was-always-0 regression, fixed 5e92716).
+check('per-player rake is attributed in reports (not always 0)',
+  /rakes\[[^\]]*\.uid\][\s\S]{0,80}?e\.rake/.test(bundle) || /e\.rake \|\| 0/.test(bundle),
+  'rake must be attributed per player (rakes[e.uid] += e.rake) so reports are not always 0');
+
 console.log('\n' + (fails ? `FAILED: ${fails} check(s) failed, ${passes} passed — DO NOT DEPLOY` : `OK: all ${passes} checks passed`));
 process.exit(fails ? 1 : 0);

@@ -2268,6 +2268,35 @@ const bestScoreNow = (hole, board, gameType) => {
   hole.forEach(c => counts[c.val] = (counts[c.val] || 0) + 1);
   return Object.values(counts).some(v => v >= 2) ? 1000001 : 1;
 };
+
+/* ================= Spin & Cash prize wheel (client-side) =================
+   Owner rules: house never loses; prize = entry × multiplier; ×100 is shown
+   on the wheel as a lure but NEVER lands; non-round prizes rounded DOWN, the
+   house keeps the remainder. Edit SPIN_WHEEL weights to retune the edge —
+   just keep the weighted-average multiplier < 3 so the house never loses. */
+const SPIN_WHEEL = [
+  { mult: 2, weight: 720 },
+  { mult: 3, weight: 200 },
+  { mult: 5, weight: 50 },
+  { mult: 10, weight: 25 },
+  { mult: 25, weight: 5 }
+  // ×100 intentionally absent from the draw — display-only jackpot lure.
+];
+const SPIN_DISPLAY_MULTS = [2, 3, 5, 10, 25, 100]; // what the wheel shows
+const spinExpectedMult = () => {
+  const tot = SPIN_WHEEL.reduce((s, f) => s + f.weight, 0);
+  return SPIN_WHEEL.reduce((s, f) => s + f.mult * f.weight, 0) / tot;
+};
+// Draw the ACTUAL multiplier (never ×100). Pass rnd in [0,1) for tests.
+const spinDrawMult = rnd => {
+  const tot = SPIN_WHEEL.reduce((s, f) => s + f.weight, 0);
+  let r = (rnd == null ? Math.random() : rnd) * tot;
+  for (const f of SPIN_WHEEL) { r -= f.weight; if (r < 0) return f.mult; }
+  return SPIN_WHEEL[0].mult;
+};
+// Prize for entry × mult, rounded DOWN — the house keeps the fractional remainder.
+const spinPrize = (buyIn, mult) => Math.floor((Number(buyIn) || 0) * (Number(mult) || 0));
+
 const deckWithout = known => {
   const ids = new Set(known.filter(c => c).map(c => c.id));
   return pokerDeck().filter(c => !ids.has(c.id));

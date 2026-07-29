@@ -9031,6 +9031,15 @@ function PokerTable({
     return cand ? cand.uid : null;
   };
   const finishEarlyWin = async (g, pl, winnerUid) => {
+    // Return the winner's UNCALLED bet before building the pot — it is their own
+    // money coming back and must never be raked. (Everyone else folded.)
+    const _w = pl[winnerUid];
+    const _maxOther = Object.values(pl).reduce((m, p) => p.uid !== winnerUid ? Math.max(m, p.bet || 0) : m, 0);
+    if (_w && (_w.bet || 0) > _maxOther) {
+      const _unc = round2(_w.bet - _maxOther);
+      _w.stack = round2((_w.stack || 0) + _unc);
+      _w.bet = _maxOther;
+    }
     gatherBetsToPots(g, pl);
     const pot = round2((g.pots || []).reduce((s, p) => s + p.amount, 0));
     const rakeFrac = (Number(setts.rakePercent) || 0) / 100;

@@ -1643,6 +1643,7 @@ const logGameResult = async (entries, tableId) => {
         game: e.game,
         clubId: CLUB_ID,
         profit: round2(e.profit || 0),
+        rake: round2(e.rake || 0),
         tableId: tableId || '',
         at: Date.now()
       });
@@ -9070,6 +9071,13 @@ function PokerTable({
       ...tourExtra
     });
     distributeRake(rake, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
+    // Record rake per human player for the reports (split equally among the
+    // players dealt into the hand). Bots don't generate reportable rake.
+    const rkUids = Object.values(pl).filter(q => (q.cards || []).length && !q.isBot).map(q => q.uid);
+    if (rake > 0 && rkUids.length) {
+      const share = round2(rake / rkUids.length);
+      logGameResult(rkUids.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share })), tableDocId);
+    }
     clearTimeout(nextHandRef.current);
     nextHandRef.current = setTimeout(() => startHand(), 4000);
   };
@@ -9160,6 +9168,12 @@ function PokerTable({
       ...tourExtra
     });
     distributeRake(rakeTotal, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
+    // Record rake per human player for the reports (split among players dealt in).
+    const rkUids2 = Object.values(pl).filter(q => (q.cards || []).length && !q.isBot).map(q => q.uid);
+    if (rakeTotal > 0 && rkUids2.length) {
+      const share2 = round2(rakeTotal / rkUids2.length);
+      logGameResult(rkUids2.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share2 })), tableDocId);
+    }
     clearTimeout(nextHandRef.current);
     nextHandRef.current = setTimeout(() => startHand(), 9000);
   };

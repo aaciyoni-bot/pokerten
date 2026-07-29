@@ -119,5 +119,29 @@ check('per-player rake is attributed in reports (not always 0)',
   /rakes\[[^\]]*\.uid\][\s\S]{0,80}?e\.rake/.test(bundle) || /e\.rake \|\| 0/.test(bundle),
   'rake must be attributed per player (rakes[e.uid] += e.rake) so reports are not always 0');
 
+// 11) ANTI-FREEZE: the stuck-turn guard must run for ANY seated player.
+//    If canGuardTable is narrowed to owner/admin only, a table of pure players
+//    freezes the moment the active player disconnects and the owner isn't
+//    watching. The seated-player clause is what makes tables self-heal.
+check('stuck-turn guard runs for any seated player (self-healing tables)',
+  /canGuardTable = !srvEngine &&[\s\S]{0,160}?tableState\?\.players\?\.\[user\.uid\]/.test(bundle),
+  'canGuardTable must include `!!tableState?.players?.[user.uid]` so every seated client can unstick the table');
+
+// 12) ANTI-FREEZE: the guard actually force-acts a stuck/disconnected player.
+check('guard force-acts a stuck or disconnected player (fold/call)',
+  /const gone = !actor\.isBot && actor\.lastSeen[\s\S]{0,450}?performAction\(g\.activeTurnUid/.test(bundle),
+  'the guard must call performAction on the stuck active player after the timeout');
+
+// 13) ANTI-FREEZE: server-engine deal has a bounded timeout + failover to client.
+//    If pkDeal hangs, the table must flip to the proven client engine, not wait.
+check('deal has a bounded timeout and fails over to the client engine',
+  /pkDeal timeout/.test(bundle) && /pkDeal failed[\s\S]{0,500}?'settings\.serverEngine': false/.test(bundle),
+  'startHand must race pkDeal against a timeout and set settings.serverEngine=false on failure');
+
+// 14) STABILITY: new cash tables and tournaments default to the client engine.
+check('new cash tables default to the client engine (serverEngine:false)',
+  /serverEngine: false, \/\/ new cash tables/.test(bundle),
+  'the cash-table create default must stay serverEngine:false until the server engine is proven');
+
 console.log('\n' + (fails ? `FAILED: ${fails} check(s) failed, ${passes} passed — DO NOT DEPLOY` : `OK: all ${passes} checks passed`));
 process.exit(fails ? 1 : 0);

@@ -7325,7 +7325,7 @@ function BackofficeView({
     const targets = usersList.filter(u => !u.isBot && u.uid !== user.uid);
     const total = round2(targets.reduce((s, u) => s + (Number(u.balance) || 0), 0));
     if (targets.length === 0) return showToast("No players to reset", "info");
-    const ok = window.prompt(`⚠️ FULL RESET CYCLE\n${targets.length} players → balance 0 (${formatMoney(total)} returned to you), and EVERYONE's rake, stats and game history wiped to 0.\nBots keep their chips. Identity (role / agent / ID) is kept. Cannot be undone.\n\nType RESET to confirm:`);
+    const ok = window.prompt(`⚠️ GENERAL RESET\n${targets.length} players → balance 0. Your balance → ${formatMoney(10000000)}. EVERYONE's rake, stats and money history wiped to 0.\nBots keep their chips. Identity (role / agent / ID) is kept. Cannot be undone.\n\nType RESET to confirm:`);
     if (ok !== 'RESET') return;
     setResetBusy(true);
     let reclaimed = 0;
@@ -7343,7 +7343,7 @@ function BackofficeView({
       await window.fb.runTransaction(window.fb.db, async tr => {
         const oRef = memDoc(user.uid);
         const s = await tr.get(oRef);
-        tr.update(oRef, { balance: round2((s.data().balance || 0) + reclaimed), clubProfits: 0, agentProfits: 0, stats: ZERO_STATS });
+        tr.update(oRef, { balance: 10000000, clubProfits: 0, agentProfits: 0, bonusTotal: 0, stats: ZERO_STATS });
       });
       try {
         const q = window.fb.query(window.fb.collection(window.fb.db, "gameLog"), window.fb.where("clubId", "==", CLUB_ID));
@@ -7352,7 +7352,7 @@ function BackofficeView({
           await Promise.all(snap.docs.slice(i, i + 300).map(d => window.fb.deleteDoc(d.ref).catch(() => {})));
         }
       } catch (e) {}
-      showToast(`Full reset — ${formatMoney(reclaimed)} returned to you. Balances, rake, stats & history at 0; bots untouched.`, "success");
+      showToast(`General reset done — your balance is ${formatMoney(10000000)}. Players' balances, rake, stats & money history at 0; bots untouched.`, "success");
     } catch (e) { showToast("Reset error — some data may not have reset", "error"); }
     setResetBusy(false);
   };
@@ -7615,10 +7615,10 @@ function BackofficeView({
   }, React.createElement("i", { className: "fa-solid fa-users mr-1" }), "Players"), React.createElement("button", {
     onClick: resetCycle,
     disabled: resetBusy,
-    title: "Zero all players, return chips to you (bots keep theirs)",
+    title: "General reset: all players → 0, your balance → 10,000,000, money history wiped (bots keep theirs)",
     className: "text-xs font-black px-4 py-2.5 rounded-xl text-slate-900 shadow-lg disabled:opacity-50 shrink-0",
     style: { background: 'linear-gradient(180deg,#F8C830,#C99A1E)' }
-  }, resetBusy ? 'Resetting…' : '♻ Reset cycle · players → 0')), React.createElement("div", {
+  }, resetBusy ? 'Resetting…' : '♻ General reset · players → 0, you → 10M')), React.createElement("div", {
     className: "grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
   }, statTiles.map((t, i) => React.createElement("div", {
     key: i,

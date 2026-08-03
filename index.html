@@ -6625,7 +6625,6 @@ function SettlementSection({
   const [groupAg, setGroupAg] = useState(false);
   const [repFull, setRepFull] = useState(false);
   const [transferFor, setTransferFor] = useState(null);
-  const [secAlerts, setSecAlerts] = useState([]);
   const [closed, setClosed] = useState((window.__club || {}).closedWeeks || {});
   useEffect(() => {
     (async () => {
@@ -6643,12 +6642,6 @@ function SettlementSection({
         setGLog([]);
         setMems([]);
       }
-      try {
-        // Owner/super-admin only per firestore.rules — agents get a permission
-        // error here and the panel simply stays hidden.
-        const sa = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "securityAlerts"), window.fb.where("clubId", "==", CLUB_ID)));
-        setSecAlerts(sa.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.at || 0) - (a.at || 0)));
-      } catch (e) {}
     })();
   }, []);
   if (aLog === null || gLog === null || mems === null) return React.createElement("div", {
@@ -7247,6 +7240,18 @@ function BackofficeView({
     };
   }, []);
   const isOwner = [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role);
+  const [secAlerts, setSecAlerts] = useState([]);
+  useEffect(() => {
+    if (!isOwner) return;
+    (async () => {
+      try {
+        // Readable only by the club owner / super admin per firestore.rules —
+        // anyone else gets a permission error and the panel simply stays hidden.
+        const sa = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "securityAlerts"), window.fb.where("clubId", "==", CLUB_ID)));
+        setSecAlerts(sa.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.at || 0) - (a.at || 0)));
+      } catch (e) {}
+    })();
+  }, [isOwner]);
   const [resetBusy, setResetBusy] = useState(false);
   const [assignFor, setAssignFor] = useState(null);
   const approveWith = async (memId, agent) => {
@@ -7656,7 +7661,7 @@ function BackofficeView({
     title: "General reset: all players → 0, your balance → 10,000,000, money history wiped (bots keep theirs)",
     className: "text-xs font-black px-4 py-2.5 rounded-xl text-slate-900 shadow-lg disabled:opacity-50 shrink-0",
     style: { background: 'linear-gradient(180deg,#F8C830,#C99A1E)' }
-  }, resetBusy ? 'Resetting…' : '♻ General reset · players → 0, you → 10M')), isOwnerView && secAlerts.length > 0 && React.createElement("div", {
+  }, resetBusy ? 'Resetting…' : '♻ General reset · players → 0, you → 10M')), isOwner && secAlerts.length > 0 && React.createElement("div", {
     className: "glass-panel rounded-2xl p-4 mb-5",
     style: { border: '1px solid rgba(244,63,94,.45)' }
   }, React.createElement("div", {

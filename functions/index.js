@@ -14,6 +14,11 @@ const {getFirestore} = require("firebase-admin/firestore");
 initializeApp();
 const db = getFirestore();
 
+// Server-authoritative poker engine (pkDeal/pkAct/pkTick/pkLeave/pkRit/
+// pkReveal/pkPickGame/pkDiscard/godPeek/admFixGameLog) — see pokerEngine.js.
+// Requires the app to be initialized first, hence the require after initializeApp.
+Object.assign(exports, require("./pokerEngine"));
+
 const BONUS_COOLDOWN_MS = 22 * 3600 * 1000;          // כמו בלקוח
 const BONUS_WEIGHTS = [800, 100, 35, 25, 18, 12, 5, 5];
 const DEFAULT_PRIZES = [5, 10, 20, 30, 50, 75, 100, 200];

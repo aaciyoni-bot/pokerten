@@ -1239,7 +1239,7 @@ setTimeout(() => {
     sfxLoad();
   } catch (e) {}
 }, 2500);
-const sfxPlay = (name, when = 0, gain = 1) => {
+const sfxPlay = (name, when = 0, gain = 1, rate = 0) => {
   const ctx = sfxCtx();
   const b = SFX.buf[name];
   if (!ctx || !b) return false;
@@ -1256,7 +1256,9 @@ const sfxPlay = (name, when = 0, gain = 1) => {
     }
     const src = ctx.createBufferSource();
     src.buffer = b;
-    src.playbackRate.value = 1 + (Math.random() - 0.5) * 0.09;
+    // explicit rate = deliberately stretched/pitched sample; otherwise a hair
+    // of random detune so repeated chips don't sound machine-gunned
+    src.playbackRate.value = rate || 1 + (Math.random() - 0.5) * 0.09;
     const g = ctx.createGain();
     g.gain.value = gain * (0.9 + Math.random() * 0.2);
     src.connect(g);
@@ -1300,8 +1302,21 @@ const playSnd = (type, times = 1, gapSec = 0) => {
   try {
     const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
     if (variants.length) {
+      // Winner takes the pot: ONE long smooth chip-slide (sample slowed to
+      // ~72% = longer + deeper), not a burst of short ones — owner request.
+      // bigwin adds a single "all in" hit in front as the celebration accent.
+      if (type === 'win' || type === 'bigwin') {
+        const slide = (SFX_FILES.win || []).filter(x => SFX.buf[x]);
+        if (type === 'bigwin' && SFX.buf['all_in']) {
+          sfxPlay('all_in', 0, SFX_GAIN.bigwin);
+          if (slide.length) sfxPlay(slide[0], 0.35, SFX_GAIN.win * 0.9, 0.72);
+        } else if (slide.length) {
+          sfxPlay(slide[0], 0, SFX_GAIN.win, 0.72);
+        }
+        return;
+      }
       // check = two real knuckle-knocks on the rail, second one a touch softer
-      const reps = type === 'check' ? 2 : type === 'win' || type === 'bigwin' ? Math.max(3, Math.floor(times) || 1) : Math.floor(times) || 1;
+      const reps = type === 'check' ? 2 : Math.floor(times) || 1;
       const n = Math.max(1, Math.min(type === 'deal' ? 36 : 9, reps));
       const base = SFX_GAIN[type] ?? 0.7;
       const gap = gapSec || (type === 'check' ? 0.155 : type === 'flip' ? 0.22 : type === 'win' || type === 'bigwin' ? 0.16 : 0.085);
@@ -3082,9 +3097,15 @@ const PotAward = ({
 }) => {
   const [go, setGo] = React.useState(false);
   React.useEffect(() => {
-    if (snd) playSnd('chip', 6, dur * 0.7 / 6);
+    // The long slide already plays on the showdown transition; here just one
+    // soft chip "settle" as the stack lands on the winner (owner request —
+    // the old 6-hit burst was grating).
+    const tm = snd ? setTimeout(() => playSnd('tile'), Math.max(300, dur * 800)) : null;
     const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
-    return () => cancelAnimationFrame(r);
+    return () => {
+      cancelAnimationFrame(r);
+      if (tm) clearTimeout(tm);
+    };
   }, []);
   return (React.createElement("div", {
       className: "absolute z-[120] pointer-events-none",

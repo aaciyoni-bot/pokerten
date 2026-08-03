@@ -3767,6 +3767,7 @@ function App() {
       setLobbyTab('poker');
       changeView('lobby');
     },
+    onManage: [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER, ROLES.MANAGER].includes(effUser?.role) ? () => changeView('backoffice') : null,
     showToast: showToast
   }), currentView === 'durak-table' && React.createElement(DurakTable, {
     tableDocId: activeTable?.docId,
@@ -8841,7 +8842,9 @@ function PokerTable({
   user,
   clubSettings,
   onLeave,
-  showToast
+  onManage,
+  showToast,
+  headless
 }) {
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -8930,6 +8933,65 @@ function PokerTable({
     }
   });
   const srvEngine = !!((tableState || {}).settings || {}).serverEngine;
+  // Live tournament standings — my rank at any moment + a full table on demand.
+  // Alive players are ranked by current stack across ALL the tournament's
+  // tables; busted players keep their recorded finishing rank.
+  const [tourRanks, setTourRanks] = useState(null);
+  const [tourStandOpen, setTourStandOpen] = useState(false);
+  const loadTourRanks = async () => {
+    const torId = tableRef.current?.tournamentId;
+    if (!torId) return;
+    try {
+      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId)))]);
+      const torPl = tSnap.exists() ? tSnap.data().players || {} : {};
+      const stacks = {};
+      tbls.docs.forEach(d => Object.values(d.data().players || {}).forEach(p => {
+        if (p && p.uid) stacks[p.uid] = p.stack || 0;
+      }));
+      const alivePl = [],
+        outPl = [];
+      Object.entries(torPl).forEach(([uid, p]) => {
+        if (p.out) outPl.push({
+          uid,
+          name: p.name,
+          out: true,
+          rank: p.rank || 999
+        });else alivePl.push({
+          uid,
+          name: p.name,
+          stack: stacks[uid] || 0,
+          out: false
+        });
+      });
+      alivePl.sort((a, b) => b.stack - a.stack);
+      outPl.sort((a, b) => (a.rank || 999) - (b.rank || 999));
+      const list = [...alivePl.map((p, i) => ({
+        ...p,
+        rank: i + 1
+      })), ...outPl];
+      const meRow = list.find(p => p.uid === user.uid);
+      setTourRanks({
+        list,
+        alive: alivePl.length,
+        total: Object.keys(torPl).length,
+        myRank: meRow ? meRow.rank : null
+      });
+    } catch (e) {}
+  };
+  useEffect(() => {
+    if (!tableState?.tournamentId) return;
+    loadTourRanks();
+    const iv = setInterval(loadTourRanks, 30000);
+    return () => clearInterval(iv);
+  }, [tableState?.tournamentId]);
+  const tourStandBtn = tableState?.tournamentId ? React.createElement("button", {
+    key: "tstand",
+    onClick: () => {
+      setTourStandOpen(true);
+      loadTourRanks();
+    },
+    className: "bg-purple-800/70 hover:bg-purple-700 text-white px-2.5 py-1 rounded-lg border border-purple-400/40"
+  }, "🏅 ", tourRanks && tourRanks.myRank ? `#${tourRanks.myRank}` : 'Rank', tourRanks ? ` · ${tourRanks.alive} left` : '') : null;
   const [myPrivCards, setMyPrivCards] = useState([]);
   const [godHands, setGodHands] = useState({});
   const [godFinal, setGodFinal] = useState([]);
@@ -9507,10 +9569,11 @@ function PokerTable({
       anteAmt = round2(Number(setts.ante) || 0),
       lvl = 0;
     if (tour) {
-      lvl = Math.min(TOUR_SCHEDULE.length - 1, Math.floor((Date.now() - (tour.startedAt || Date.now())) / ((tour.levelMins || 5) * 60000)));
-      sbAmt = TOUR_SCHEDULE[lvl][0];
-      bbAmt = TOUR_SCHEDULE[lvl][1];
-      anteAmt = lvl >= (tour.anteFromLevel ?? 4) ? sbAmt : 0;
+      const tc = tourClock(tour);
+      lvl = tc.lvl;
+      sbAmt = Number(tc.row.sb) || 5;
+      bbAmt = Number(tc.row.bb) || sbAmt * 2;
+      anteAmt = round2(Number(tc.row.ante) || 0);
     }
     let anteTotal = 0;
     if (anteAmt > 0) actives.forEach(p => {
@@ -9571,6 +9634,20 @@ function PokerTable({
     await saveGame(g, pl);
   };
   const startHand = async (forceClient) => {
+    // Tournament break gate — ONE shared clock for every table. A hand that is
+    // already running simply finishes; the NEXT deal waits out the break, so a
+    // table that ended its hand late just gets a shorter break.
+    {
+      const tour0 = (tableRef.current || {}).tournament;
+      if (tour0 && tour0.startedAt) {
+        const tc0 = tourClock(tour0);
+        if (tc0.inBreak) {
+          clearTimeout(nextHandRef.current);
+          nextHandRef.current = setTimeout(() => startHand(forceClient), Math.max(1000, tc0.phaseEndsAt - Date.now() + 800));
+          return;
+        }
+      }
+    }
     if (setts.serverEngine && !forceClient) {
       try {
         await Promise.race([window.fb.fx('pkDeal', {
@@ -10757,20 +10834,29 @@ function PokerTable({
     return () => clearInterval(iv);
   }, [canGuardTable, tableDocId]);
   useEffect(() => {
-    if (!isSuperAdmin || !tableState) return;
+    // Runs on ANY seated client (admin included) — a table nobody managed used
+    // to keep busted players glued to their seats with 0 chips, so late
+    // registrations found "full" tables and got shoved into phantom seats.
+    if (!(isSuperAdmin || isSeated) || !tableState) return;
     const iv = setInterval(async () => {
       const t = tableRef.current;
       if (!t) return;
       const graceMs = t.tournament ? 34000 : 300000;
-      const stale = Object.values(t.players || {}).filter(q => q.status === 'busted' && (q.isBot || Date.now() - (q.bustedAt || 0) > graceMs));
+      const stale = Object.values(t.players || {}).filter(q => (q.status === 'busted' || q.status === 'out') && (q.isBot || Date.now() - (q.bustedAt || 0) > graceMs));
       if (!stale.length) return;
       if (t.tournament) {
-        const upd = {};
+        // Free the seat entirely — the bust is already recorded on the
+        // tournament doc (rank/results); an 'out' ghost only blocks the seat.
+        const pl = {
+          ...t.players
+        };
         stale.forEach(q => {
-          upd[`players.${q.uid}.status`] = 'out';
+          delete pl[q.uid];
         });
         try {
-          await window.fb.updateDoc(tblRef(), upd);
+          await window.fb.updateDoc(tblRef(), {
+            players: pl
+          });
         } catch (e) {}
         tourReportBust(t.tournamentId, stale.map(q => q.uid), [], 0, false);
       } else {
@@ -10788,7 +10874,20 @@ function PokerTable({
       }
     }, 6000);
     return () => clearInterval(iv);
-  }, [isSuperAdmin, tableDocId, tableState === null]);
+  }, [isSuperAdmin, isSeated, tableDocId, tableState === null]);
+  // MTT consolidation trigger: one client per table (first live human, or an
+  // admin) checks every ~8s whether tables should merge or balance.
+  useEffect(() => {
+    if (!tableState?.tournamentId) return;
+    const iv = setInterval(() => {
+      const t = tableRef.current;
+      if (!t) return;
+      const humans = Object.values(t.players || {}).filter(p2 => !p2.isBot && p2.status !== 'out' && (p2.stack || 0) > 0).sort((a, b) => a.seatIndex - b.seatIndex);
+      if (!(isSuperAdmin || humans[0] && humans[0].uid === user.uid)) return;
+      tourRebalance(t.tournamentId);
+    }, 8000);
+    return () => clearInterval(iv);
+  }, [tableState?.tournamentId, isSuperAdmin]);
   const activesOppCount = Object.values(players).filter(p => p.status === 'active' && p.uid !== user.uid).length;
   const myCards = srvEngine ? (myPlayer?.cardCount || 0) > 0 ? myPrivCards : [] : myPlayer?.cards || [];
   {
@@ -10824,7 +10923,7 @@ function PokerTable({
     acts: {}
   });
   useEffect(() => {
-    if (!tableState) return;
+    if (!tableState || headless) return;
     const ps = prevSnd.current;
     const bl = (gs.board || []).length;
     if (bl > ps.board) playSnd('flip', bl - ps.board);
@@ -11266,7 +11365,29 @@ function PokerTable({
     title: "Adjust table buy-in (min/max)"
   }, React.createElement("i", {
     className: "fa-solid fa-coins"
-  }))), React.createElement("div", {
+  })), onManage && React.createElement("button", {
+    onClick: async () => {
+      // Owner/manager: hop to Club Management WITHOUT standing up — the seat
+      // is kept, the current hand plays out as sit-out, and coming back through
+      // the lobby returns you straight to your chips.
+      try {
+        if (isSeated) {
+          const midHand = !['waiting', 'showdown'].includes(gs.phase);
+          await window.fb.updateDoc(tblRef(), midHand ? {
+            [`players.${user.uid}.sitOutNext`]: true
+          } : {
+            [`players.${user.uid}.sitOut`]: true,
+            [`players.${user.uid}.sitAuto`]: false
+          });
+        }
+      } catch (e) {}
+      onManage();
+    },
+    className: "px-2.5 py-1.5 rounded-lg bg-slate-800 text-blue-300 text-[10px] font-black border border-blue-500/40",
+    title: "Sit out and open Club Management — your seat and chips stay at the table"
+  }, React.createElement("i", {
+    className: "fa-solid fa-chart-line"
+  }), " ניהול")), React.createElement("div", {
     className: "flex-1 min-w-0 flex flex-col items-center px-1"
   }, React.createElement("span", {
     className: "text-amber-400 font-black text-xs sm:text-sm tracking-wider truncate max-w-full"
@@ -11968,27 +12089,73 @@ function PokerTable({
     onClick: () => setSpectate(false),
     className: "mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg"
   }, "Take a seat 🪑")), tour && (() => {
-    const lvl = tourLevelOf(tour);
-    const [sb, bb] = TOUR_SCHEDULE[lvl];
-    const nextIn = Math.max(0, (tour.levelMins || 5) * 60000 * (lvl + 1) - (Date.now() - tour.startedAt));
+    const tc = tourClock(tour);
+    const lvl = tc.lvl;
+    const sb = Number(tc.row.sb) || 5,
+      bb = Number(tc.row.bb) || sb * 2,
+      ante = Number(tc.row.ante) || 0;
+    const nextIn = Math.max(0, tc.phaseEndsAt === Infinity ? 0 : tc.phaseEndsAt - Date.now());
     const mm = Math.floor(nextIn / 60000),
       ss = Math.floor(nextIn % 60000 / 1000);
+    if (tc.inBreak) return React.createElement("div", {
+      className: "bg-sky-950/85 border-b border-sky-500/40 px-3 py-2 flex items-center justify-center gap-3 text-[12px] font-black z-30 shrink-0 flex-wrap"
+    }, React.createElement("span", {
+      className: "text-sky-300"
+    }, "☕ BREAK — all tables"), React.createElement("span", {
+      className: "text-white font-mono",
+      dir: "ltr"
+    }, mm, ":", String(ss).padStart(2, '0')), React.createElement("span", {
+      className: "text-sky-300"
+    }, "resuming at ", formatShort(sb), "/", formatShort(bb)));
     return React.createElement("div", {
       className: "bg-purple-950/80 border-b border-purple-500/30 px-3 py-1.5 flex items-center justify-center gap-3 text-[11px] font-black z-30 shrink-0 flex-wrap"
     }, React.createElement("span", {
       className: "text-purple-300"
-    }, "🏆 ", tour.name, " · Level ", tour.round), React.createElement("span", {
+    }, "🏆 ", tour.name, " · Round ", tour.round), React.createElement("span", {
       className: "text-white"
-    }, "Level ", lvl + 1, ": ", formatShort(sb), "/", formatShort(bb), lvl >= (tour.anteFromLevel ?? 4) ? ` + ante ${formatShort(sb)}` : ''), React.createElement("span", {
+    }, "Level ", lvl + 1, ": ", formatShort(sb), "/", formatShort(bb), ante > 0 ? ` + ante ${formatShort(ante)}` : ''), React.createElement("span", {
       className: "text-purple-300 font-mono",
       dir: "ltr"
-    }, "⏱ ", mm, ":", String(ss).padStart(2, '0')), tour.finished && React.createElement("span", {
+    }, "⏱ ", mm, ":", String(ss).padStart(2, '0')), tc.next && nextIn < 90000 && !tc.inBreak && React.createElement("span", {
+      className: "text-slate-400"
+    }, tc.breakNext ? '☕ break next' : `next ${formatShort(tc.next.sb)}/${formatShort(tc.next.bb)}`), tourStandBtn, tour.finished && React.createElement("span", {
       className: "text-amber-400 animate-pulse"
     }, "🏆 ", players[tour.tableWinner]?.name || '', " advanced!"), isSeated && myPlayer && lvl === (tour.addonAt ?? -1) && myPlayer.status !== 'out' && React.createElement("button", {
       onClick: tourAddon,
       className: "bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg"
     }, "🚀 Add-on"));
-  })(), tour && myPlayer && myPlayer.status === 'busted' && React.createElement("div", {
+  })(), tourStandOpen && React.createElement("div", {
+    className: "absolute inset-0 z-[230] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => setTourStandOpen(false)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "glass-panel rounded-3xl p-5 w-full max-w-sm animate-pop-in border border-purple-500/40 max-h-[80vh] flex flex-col"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-3"
+  }, React.createElement("h3", {
+    className: "text-lg font-black text-white"
+  }, "🏅 Standings", tourRanks ? ` · ${tourRanks.alive}/${tourRanks.total} left` : ''), React.createElement("button", {
+    onClick: () => setTourStandOpen(false),
+    className: "w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white"
+  }, "✕")), React.createElement("div", {
+    className: "overflow-y-auto flex-1 space-y-1"
+  }, (tourRanks?.list || []).map(p => React.createElement("div", {
+    key: p.uid,
+    className: `flex items-center justify-between rounded-xl px-3 py-2 text-sm font-bold ${p.uid === user.uid ? 'bg-purple-500/20 border border-purple-400/50 text-white' : p.out ? 'bg-slate-900/40 text-slate-500' : 'bg-slate-900/70 text-slate-200'}`
+  }, React.createElement("span", {
+    className: "flex items-center gap-2"
+  }, React.createElement("span", {
+    className: `w-7 text-center font-black ${p.rank === 1 ? 'text-amber-300' : p.rank === 2 ? 'text-slate-300' : p.rank === 3 ? 'text-amber-600' : 'text-slate-500'}`
+  }, p.rank <= 3 && !p.out ? ['🥇', '🥈', '🥉'][p.rank - 1] : '#' + p.rank), React.createElement("span", null, p.name, p.uid === user.uid ? ' (you)' : '')), p.out ? React.createElement("span", {
+    className: "text-[10px] text-rose-400 font-black"
+  }, "OUT") : React.createElement("span", {
+    className: "font-black text-emerald-300",
+    dir: "ltr"
+  }, formatShort(p.stack)))), !tourRanks && React.createElement("div", {
+    className: "text-center text-slate-500 py-6"
+  }, React.createElement("i", {
+    className: "fa-solid fa-spinner fa-spin"
+  }))))), tour && myPlayer && myPlayer.status === 'busted' && React.createElement("div", {
     className: "absolute inset-0 z-[240] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
     className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-white/10"
@@ -15554,7 +15721,66 @@ const TOUR_SIZES = {
   ofc: 2
 };
 const tourEntryOf = tor => round2((Number(tor.buyIn) || 0) + (Number(tor.fee) || 0) + (Number(tor.bounty) || 0));
-const tourLevelOf = tour => Math.min(TOUR_SCHEDULE.length - 1, Math.floor((Date.now() - (tour.startedAt || Date.now())) / ((tour.levelMins || 5) * 60000)));
+// Effective blind structure for a tournament: the saved custom/auto structure,
+// or (legacy tournaments) rows generated from TOUR_SCHEDULE + levelMins + anteFromLevel.
+const tourStructOf = tour => {
+  if (Array.isArray(tour.structure) && tour.structure.length) return tour.structure;
+  const mins = Number(tour.levelMins) || 5;
+  const anteFrom = tour.anteFromLevel ?? 4;
+  return TOUR_SCHEDULE.map(([sb, bb], i) => ({
+    sb,
+    bb,
+    ante: i >= anteFrom ? sb : 0,
+    mins
+  }));
+};
+// ONE shared tournament clock — a pure function of (tournament doc, wall time),
+// so every table computes the exact same level/break at the same moment.
+// Breaks: after every `breakEvery` levels the clock inserts `breakMins` of
+// break time. A table mid-hand simply finishes the hand (the deal gate checks
+// inBreak) — so its break is naturally shorter, aligned to the shared clock.
+const tourClock = tour => {
+  const struct = tourStructOf(tour);
+  const bE = Number(tour.breakEvery) || 0;
+  const bM = Number(tour.breakMins) || 0;
+  const started = tour.startedAt || Date.now();
+  const t = Date.now() - started;
+  let acc = 0;
+  for (let i = 0; i < struct.length; i++) {
+    const lvMs = Math.max(1, Number(struct[i].mins) || 5) * 60000;
+    if (t < acc + lvMs) return {
+      lvl: i,
+      row: struct[i],
+      inBreak: false,
+      phaseEndsAt: started + acc + lvMs,
+      next: struct[i + 1] || null,
+      breakNext: !!(bE && bM && (i + 1) % bE === 0 && i + 1 < struct.length)
+    };
+    acc += lvMs;
+    if (bE && bM && (i + 1) % bE === 0 && i + 1 < struct.length) {
+      const brMs = bM * 60000;
+      if (t < acc + brMs) return {
+        lvl: i + 1,
+        row: struct[i + 1],
+        inBreak: true,
+        phaseEndsAt: started + acc + brMs,
+        next: struct[i + 1],
+        breakNext: false
+      };
+      acc += brMs;
+    }
+  }
+  const last = struct.length - 1;
+  return {
+    lvl: last,
+    row: struct[last],
+    inBreak: false,
+    phaseEndsAt: Infinity,
+    next: null,
+    breakNext: false
+  };
+};
+const tourLevelOf = tour => tourClock(tour).lvl;
 const tRef = id => window.fb.doc(window.fb.db, "tournaments", id);
 const creditBalance = async (uid, amt, statsPatch, asBonus) => {
   if (!uid || !amt) return;
@@ -15590,39 +15816,192 @@ const tourLateRegOpen = tor => {
   const curLevel1 = (tourLevelOf(tor) || 0) + 1;
   return curLevel1 <= until;
 };
+// A player only LIVE-occupies a seat if they still have chips (or are mid-bust
+// grace). 'out' ghosts and 0-stack leftovers don't block seating.
+const tourLivePl = tb => Object.values(tb.players || {}).filter(x => x.status !== 'out' && (x.stack || 0) > 0);
 const tourLateSeat = async (tor, p) => {
   try {
     const q = window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", tor.id));
     const snap = await window.fb.getDocs(q);
     const tblSize = tor.mttMode ? 9 : TOUR_SIZES[tor.game] || TOUR_SIZE;
+    const cands = snap.docs.map(d => ({
+      docId: d.id,
+      ...d.data()
+    })).filter(tb => tb.type === 'poker' && !(tb.tournament || {}).finished).sort((a, b) => tourLivePl(a).length - tourLivePl(b).length);
+    if (!cands.length) return false;
+    // Transactional seat pick: re-read the table, drop dead seats, take the
+    // lowest free REAL seat — never seat past the table's capacity (that's how
+    // players ended up floating in the middle of the felt).
+    for (const cand of cands) {
+      const seated = await window.fb.runTransaction(window.fb.db, async tr => {
+        const ref = window.fb.doc(window.fb.db, "tables", cand.docId);
+        const s = await tr.get(ref);
+        if (!s.exists()) return false;
+        const t = s.data();
+        if ((t.tournament || {}).finished) return false;
+        const pl = {
+          ...t.players
+        };
+        if (pl[p.uid]) return true; // already seated (double-tap / race)
+        // free dead seats first
+        Object.values({
+          ...pl
+        }).forEach(x => {
+          if (x.status === 'out' || (x.stack || 0) <= 0 && x.status !== 'waiting') delete pl[x.uid];
+        });
+        const used = new Set(Object.values(pl).map(x => x.seatIndex));
+        let seatIndex = 0;
+        while (used.has(seatIndex) && seatIndex < tblSize) seatIndex++;
+        if (seatIndex >= tblSize) return false; // genuinely full — try the next table
+        const midHand = !['waiting', 'showdown'].includes((t.gameState || {}).phase);
+        pl[p.uid] = {
+          uid: p.uid,
+          name: p.name || '',
+          photo: p.photo || '',
+          avatarSeed: p.avatarSeed || '',
+          seatIndex,
+          stack: Number(tor.startStack) || 1000,
+          bet: 0,
+          status: midHand ? 'waiting' : 'active',
+          cards: [],
+          hasActed: false,
+          actionText: '',
+          isBot: !!p.isBot,
+          buyTotal: 0
+        };
+        tr.update(ref, {
+          players: pl
+        });
+        return true;
+      });
+      if (seated) return true;
+    }
+    return false;
+  } catch (e) {
+    return false;
+  }
+};
+// ---- MTT consolidation ("table balancing") ----
+// Runs opportunistically from clients sitting at tournament tables. Only ever
+// touches tables that are BETWEEN hands, and every move is one transaction:
+// - when everyone left fits on one table -> merge into the FINAL TABLE
+// - otherwise the biggest table donates a player to the smallest (diff >= 2)
+const tourRebalance = async torId => {
+  if (!torId) return;
+  try {
+    const tSnap = await window.fb.getDoc(tRef(torId));
+    if (!tSnap.exists()) return;
+    const tor = {
+      id: torId,
+      ...tSnap.data()
+    };
+    if (tor.game !== 'poker' || tor.status !== 'running') return;
+    const q = window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId));
+    const snap = await window.fb.getDocs(q);
     const tbls = snap.docs.map(d => ({
       docId: d.id,
       ...d.data()
     })).filter(tb => tb.type === 'poker' && !(tb.tournament || {}).finished);
-    if (!tbls.length) return;
-    tbls.sort((a, b) => Object.keys(a.players || {}).length - Object.keys(b.players || {}).length);
-    const target = tbls.find(tb => Object.keys(tb.players || {}).length < tblSize) || tbls[0];
-    const used = Object.values(target.players || {}).map(x => x.seatIndex);
-    let seatIndex = 0;
-    while (used.includes(seatIndex)) seatIndex++;
-    const phase = (target.gameState || {}).phase;
-    const midHand = !['waiting', 'showdown'].includes(phase);
-    await window.fb.updateDoc(window.fb.doc(window.fb.db, "tables", target.docId), {
-      [`players.${p.uid}`]: {
-        uid: p.uid,
-        name: p.name || '',
-        photo: p.photo || '',
-        avatarSeed: p.avatarSeed || '',
-        seatIndex,
-        stack: Number(tor.startStack) || 1000,
+    if (tbls.length < 2) return;
+    const tblSize = tor.mttMode ? 9 : TOUR_SIZES.poker || TOUR_SIZE;
+    const idle = tb => ['waiting', 'showdown'].includes((tb.gameState || {}).phase);
+    const dropDead = pl => {
+      Object.values({
+        ...pl
+      }).forEach(x => {
+        if (x.status === 'out' || (x.stack || 0) <= 0 && x.status !== 'waiting') delete pl[x.uid];
+      });
+      return pl;
+    };
+    const sorted = [...tbls].sort((a, b) => tourLivePl(a).length - tourLivePl(b).length);
+    const total = sorted.reduce((sm, tb) => sm + tourLivePl(tb).length, 0);
+    if (total <= tblSize) {
+      const target = sorted[sorted.length - 1];
+      const sources = sorted.slice(0, -1);
+      if (!sources.every(idle)) return; // wait for their hands to finish
+      await window.fb.runTransaction(window.fb.db, async tr => {
+        const refs = [target, ...sources].map(tb => window.fb.doc(window.fb.db, "tables", tb.docId));
+        const snaps = [];
+        for (const r of refs) snaps.push(await tr.get(r));
+        if (!snaps[0].exists()) return;
+        const tgt = snaps[0].data();
+        if ((tgt.tournament || {}).finished) return;
+        const pl = dropDead({
+          ...tgt.players
+        });
+        const used = new Set(Object.values(pl).map(x => x.seatIndex));
+        for (let i = 1; i < snaps.length; i++) {
+          if (!snaps[i].exists()) continue;
+          const src = snaps[i].data();
+          if (!['waiting', 'showdown'].includes((src.gameState || {}).phase)) throw 'busy';
+          for (const x of Object.values(src.players || {})) {
+            if (x.status === 'out' || (x.stack || 0) <= 0 || pl[x.uid]) continue;
+            let si = 0;
+            while (used.has(si) && si < tblSize) si++;
+            if (si >= tblSize) continue;
+            used.add(si);
+            pl[x.uid] = {
+              ...x,
+              seatIndex: si,
+              bet: 0,
+              cards: [],
+              hasActed: false,
+              actionText: '',
+              status: 'active'
+            };
+          }
+          tr.delete(refs[i]);
+        }
+        tr.update(refs[0], {
+          players: pl,
+          'tournament.final': true
+        });
+      });
+      return;
+    }
+    const small = sorted[0],
+      big = sorted[sorted.length - 1];
+    if (tourLivePl(big).length - tourLivePl(small).length < 2) return;
+    if (!idle(big) || tourLivePl(small).length >= tblSize) return;
+    await window.fb.runTransaction(window.fb.db, async tr => {
+      const bigRef = window.fb.doc(window.fb.db, "tables", big.docId);
+      const smallRef = window.fb.doc(window.fb.db, "tables", small.docId);
+      const [bS, sS] = [await tr.get(bigRef), await tr.get(smallRef)];
+      if (!bS.exists() || !sS.exists()) return;
+      const bT = bS.data(),
+        sT = sS.data();
+      if (!['waiting', 'showdown'].includes((bT.gameState || {}).phase)) return;
+      const bLive = Object.values(bT.players || {}).filter(x => x.status !== 'out' && (x.stack || 0) > 0);
+      const sPl = dropDead({
+        ...sT.players
+      });
+      if (bLive.length - Object.keys(sPl).length < 2) return;
+      const used = new Set(Object.values(sPl).map(x => x.seatIndex));
+      let si = 0;
+      while (used.has(si) && si < tblSize) si++;
+      if (si >= tblSize) return;
+      const mover = bLive.sort((a, b) => b.seatIndex - a.seatIndex)[0];
+      if (!mover) return;
+      const bPl = {
+        ...bT.players
+      };
+      delete bPl[mover.uid];
+      const midHand = !['waiting', 'showdown'].includes((sT.gameState || {}).phase);
+      sPl[mover.uid] = {
+        ...mover,
+        seatIndex: si,
         bet: 0,
-        status: midHand ? 'waiting' : 'active',
         cards: [],
         hasActed: false,
         actionText: '',
-        isBot: !!p.isBot,
-        buyTotal: 0
-      }
+        status: midHand ? 'waiting' : 'active'
+      };
+      tr.update(bigRef, {
+        players: bPl
+      });
+      tr.update(smallRef, {
+        players: sPl
+      });
     });
   } catch (e) {}
 };
@@ -15854,6 +16233,10 @@ const tourSeedRound = async (tor, uids, round) => {
         startedAt: tor.startedAt,
         levelMins: tor.levelMins || 5,
         anteFromLevel: 4,
+        structure: Array.isArray(tor.structure) && tor.structure.length ? tor.structure : null,
+        breakEvery: Number(tor.breakEvery) || 0,
+        breakMins: Number(tor.breakMins) || 0,
+        torId: tor.id,
         rebuyUntil: tor.rebuys ? (Number(tor.rebuyUntilLevel) || 2) - 1 : -1,
         addonAt: tor.addon ? (Number(tor.addonLevel) || 3) - 1 : -1,
         startStack: Number(tor.startStack) || 1000,
@@ -15972,15 +16355,21 @@ const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBount
         let total;
         if (t.mysteryBounty) {
           const rigUid = t.mysteryRigUid && winnerUids.includes(t.mysteryRigUid) ? t.mysteryRigUid : null;
+          // Envelopes drawn up-front at creation (t.mysteryEnvelopes) are opened
+          // in order — GOD saw the whole sequence in advance. Legacy tournaments
+          // without a pre-drawn pool keep the old per-bust random draw.
+          const env = Array.isArray(t.mysteryEnvelopes) ? t.mysteryEnvelopes : null;
+          let cursor = Number(t.mysteryNext) || 0;
           let sum = 0;
           for (let i = 0; i < bustedUids.length; i++) {
-            const mult = rigUid ? (t.mysteryRig || {}).mult || 25 : mysteryMult();
+            const mult = rigUid ? (t.mysteryRig || {}).mult || 25 : env ? env[Math.min(cursor++, env.length - 1)] || 2 : mysteryMult();
             sum += bountyAmt * mult;
             if (mult >= 10 && !mysteryHit) mysteryHit = {
               uid: rigUid || winnerUids[0],
               amount: round2(bountyAmt * mult)
             };
           }
+          if (env) upd.mysteryNext = cursor;
           total = round2(sum);
         } else {
           total = round2(bountyAmt * bustedUids.length);
@@ -16394,8 +16783,63 @@ function TournamentsTab({
     mysteryRigId: '',
     botFill: false,
     serverEngine: true,
-    prizeAsBonus: false
+    prizeAsBonus: false,
+    structure: null,
+    breakEvery: 0,
+    breakMins: 5
   });
+  const [structOpen, setStructOpen] = useState(false);
+  const [envPeek, setEnvPeek] = useState(null); // tournament id whose mystery envelopes a GOD is peeking at
+  const [specPick, setSpecPick] = useState(null); // tournament id whose spectate table-picker is open
+  const [regPeek, setRegPeek] = useState(null); // tournament id whose registered-players list is expanded
+  // Current blind structure rows: the custom rows once edited, else the
+  // system default (TOUR_SCHEDULE + level length + ante from level 5).
+  const autoStructRows = () => TOUR_SCHEDULE.map(([sb, bb], i) => ({
+    sb,
+    bb,
+    ante: i >= 4 ? sb : 0,
+    mins: Number(opts.levelMins) || 5
+  }));
+  const structRows = opts.structure || autoStructRows();
+  const setStructRow = (i, k, v) => {
+    const rows = structRows.map((r, j) => j === i ? {
+      ...r,
+      [k]: Math.max(0, Number(v) || 0)
+    } : r);
+    setOpts({
+      ...opts,
+      structure: rows
+    });
+  };
+  const delStructRow = i => {
+    const rows = structRows.filter((_, j) => j !== i);
+    if (!rows.length) return;
+    setOpts({
+      ...opts,
+      structure: rows
+    });
+  };
+  const addStructRow = i => {
+    const rows = [...structRows];
+    const base = rows[i] || rows[rows.length - 1];
+    const nxt = rows[i + 1];
+    const row = nxt ? {
+      sb: round2((base.sb + nxt.sb) / 2),
+      bb: round2((base.bb + nxt.bb) / 2),
+      ante: round2((Number(base.ante) + Number(nxt.ante)) / 2),
+      mins: base.mins
+    } : {
+      sb: base.sb * 2,
+      bb: base.bb * 2,
+      ante: base.ante ? base.ante * 2 : 0,
+      mins: base.mins
+    };
+    rows.splice(i + 1, 0, row);
+    setOpts({
+      ...opts,
+      structure: rows
+    });
+  };
   const isGod = isGodUser(user);
   const isAll = game === 'all';
   const effGame = isAll ? opts.gameSel || 'poker' : game;
@@ -16433,6 +16877,20 @@ function TournamentsTab({
       maxPlayers: Math.max(2, Number(opts.maxPlayers) || 2),
       minPlayers: Math.max(2, Math.min(Number(opts.maxPlayers) || 2, Number(opts.minPlayers) || 2)),
       levelMins: isPoker ? Number(opts.levelMins) : 0,
+      structure: isPoker && Array.isArray(opts.structure) && opts.structure.length ? opts.structure.map(r => ({
+        sb: Number(r.sb) || 0,
+        bb: Number(r.bb) || 0,
+        ante: Number(r.ante) || 0,
+        mins: Math.max(1, Number(r.mins) || 5)
+      })) : null,
+      breakEvery: isPoker ? Math.max(0, Number(opts.breakEvery) || 0) : 0,
+      breakMins: isPoker ? Math.max(1, Number(opts.breakMins) || 5) : 0,
+      // Mystery envelopes: the whole prize pool is drawn UP-FRONT — one sealed
+      // envelope per possible bust. Only a GOD account ever sees the contents.
+      mysteryEnvelopes: isPoker && isGod && bounty > 0 && opts.mysteryBounty ? Array.from({
+        length: Math.max(1, (Number(opts.maxPlayers) || 2) - 1)
+      }, () => mysteryMult()) : null,
+      mysteryNext: 0,
       rebuys: isPoker ? !!opts.rebuys : false,
       addon: isPoker ? !!opts.addon : false,
       rebuyUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0,
@@ -16997,6 +17455,85 @@ function TournamentsTab({
     key: n,
     value: n
   }, n, " min")))), isPoker && React.createElement("div", {
+    className: "col-span-full"
+  }, React.createElement("button", {
+    type: "button",
+    onClick: () => setStructOpen(o => !o),
+    className: "w-full flex items-center justify-between bg-slate-900/80 border border-purple-500/30 rounded-xl px-4 py-3 text-white font-black text-sm"
+  }, React.createElement("span", null, "🎚 Blind structure · ", structRows.length, " levels", opts.structure ? ' · CUSTOM' : ' · auto', Number(opts.breakEvery) > 0 ? ` · ☕ break ${opts.breakMins}m every ${opts.breakEvery} levels` : ''), React.createElement("i", {
+    className: `fa-solid fa-chevron-${structOpen ? 'up' : 'down'} text-purple-300`
+  })), structOpen && React.createElement("div", {
+    className: "mt-2 bg-slate-950/60 border border-white/10 rounded-xl p-3"
+  }, React.createElement("div", {
+    className: "flex flex-wrap items-center gap-3 mb-3"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-sky-300"
+  }, "☕ Break every"), React.createElement("input", {
+    type: "number",
+    min: "0",
+    max: "50",
+    value: opts.breakEvery,
+    onChange: e => setOpts({
+      ...opts,
+      breakEvery: e.target.value
+    }),
+    className: "w-16 bg-slate-900 text-white border border-white/10 rounded-lg p-2 text-sm font-bold text-center",
+    dir: "ltr"
+  }), React.createElement("span", {
+    className: "text-[11px] font-bold text-slate-400"
+  }, "levels (0 = none) for"), React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "60",
+    value: opts.breakMins,
+    onChange: e => setOpts({
+      ...opts,
+      breakMins: e.target.value
+    }),
+    className: "w-16 bg-slate-900 text-white border border-white/10 rounded-lg p-2 text-sm font-bold text-center",
+    dir: "ltr"
+  }), React.createElement("span", {
+    className: "text-[11px] font-bold text-slate-400"
+  }, "minutes · one clock for ALL tables — a table that ends its hand late just gets a shorter break"), opts.structure && React.createElement("button", {
+    type: "button",
+    onClick: () => setOpts({
+      ...opts,
+      structure: null
+    }),
+    className: "text-[11px] font-black text-amber-300 underline mr-auto"
+  }, "↺ Reset to system structure")), React.createElement("div", {
+    className: "grid gap-1",
+    dir: "ltr"
+  }, React.createElement("div", {
+    className: "grid grid-cols-[2rem_1fr_1fr_1fr_3.5rem_3.5rem] gap-1 text-[10px] font-black text-slate-500 uppercase px-1"
+  }, React.createElement("span", null, "Lvl"), React.createElement("span", null, "SB"), React.createElement("span", null, "BB"), React.createElement("span", null, "Ante"), React.createElement("span", null, "Min"), React.createElement("span", null, "")), structRows.map((r, i) => React.createElement(React.Fragment, {
+    key: i
+  }, React.createElement("div", {
+    className: "grid grid-cols-[2rem_1fr_1fr_1fr_3.5rem_3.5rem] gap-1 items-center"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-purple-300 text-center"
+  }, i + 1), ['sb', 'bb', 'ante', 'mins'].map(k => React.createElement("input", {
+    key: k,
+    type: "number",
+    min: "0",
+    value: r[k],
+    onChange: e => setStructRow(i, k, e.target.value),
+    className: "bg-slate-900 text-white border border-white/10 rounded-lg p-1.5 text-xs font-bold text-center"
+  })), React.createElement("span", {
+    className: "flex gap-1 justify-center"
+  }, React.createElement("button", {
+    type: "button",
+    title: "Add a level after this one",
+    onClick: () => addStructRow(i),
+    className: "w-6 h-6 rounded-md bg-slate-800 text-emerald-300 hover:bg-emerald-800 text-xs font-black"
+  }, "+"), structRows.length > 1 && React.createElement("button", {
+    type: "button",
+    title: "Remove this level",
+    onClick: () => delStructRow(i),
+    className: "w-6 h-6 rounded-md bg-slate-800 text-rose-300 hover:bg-rose-900 text-xs font-black"
+  }, "✕")))))), React.createElement("p", {
+    className: "text-[10px] text-slate-500 font-bold mt-2"
+  }, "Editing any cell, ✕ or + switches to CUSTOM. The tournament locks its structure at creation."))), isPoker && React.createElement("div", {
     className: "flex flex-col gap-2 justify-end"
   }, React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer"
@@ -17213,13 +17750,44 @@ function TournamentsTab({
     }, " · 🎯", r.bounties) : null), React.createElement("span", {
       className: "text-emerald-400 font-black",
       dir: "ltr"
-    }, r.prize > 0 ? '+' + formatMoney(r.prize) : '-')))), React.createElement("div", {
+    }, r.prize > 0 ? '+' + formatMoney(r.prize) : '-')))), tor.status === 'reg' && (() => {
+      const regs = Object.values(tor.players || {});
+      if (!regs.length) return null;
+      const open = regPeek === tor.id;
+      return React.createElement("div", {
+        className: "mb-2"
+      }, React.createElement("button", {
+        onClick: () => setRegPeek(open ? null : tor.id),
+        className: "text-[11px] font-black text-purple-300 hover:text-white"
+      }, "👥 ", regs.length, " registered ", React.createElement("i", {
+        className: `fa-solid fa-chevron-${open ? 'up' : 'down'} text-[9px]`
+      })), open && React.createElement("div", {
+        className: "flex flex-wrap gap-1.5 mt-1.5"
+      }, regs.map(p => React.createElement("span", {
+        key: p.uid,
+        className: `text-[11px] font-bold px-2.5 py-1 rounded-full border ${p.uid === user.uid ? 'bg-purple-500/20 border-purple-400/50 text-white' : 'bg-slate-900 border-white/10 text-slate-300'}`
+      }, p.isBot ? '🤖 ' : '', p.name))));
+    })(), isGod && envPeek === tor.id && Array.isArray(tor.mysteryEnvelopes) && React.createElement("div", {
+      className: "bg-amber-950/40 border border-amber-500/40 rounded-xl p-2.5 mb-2",
+      dir: "ltr"
+    }, React.createElement("div", {
+      className: "text-[10px] font-black text-amber-300 uppercase mb-1.5"
+    }, "🎁 GOD ONLY — envelope sequence (opened left to right, ", Number(tor.mysteryNext) || 0, "/", tor.mysteryEnvelopes.length, " opened)"), React.createElement("div", {
+      className: "flex flex-wrap gap-1.5"
+    }, tor.mysteryEnvelopes.map((m, i) => React.createElement("span", {
+      key: i,
+      className: `text-[11px] font-black px-2 py-1 rounded-lg border ${i < (Number(tor.mysteryNext) || 0) ? 'bg-slate-800/60 border-white/10 text-slate-500 line-through' : m >= 10 ? 'bg-amber-500/20 border-amber-400/60 text-amber-200' : 'bg-slate-900 border-white/10 text-slate-200'}`
+    }, "×", m, " (", formatMoney(round2((Number(tor.bounty) || 0) * m)), ")")))), React.createElement("div", {
       className: "flex gap-2"
     }, tor.status === 'reg' && canManageGame(user, tor.game) && React.createElement("button", {
       onClick: () => fillBots(tor),
       title: "Fill with bots",
       className: "bg-gradient-to-b from-purple-500 to-purple-800 hover:from-purple-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
-    }, "🤖"), tor.status === 'reg' && canManageGame(user, tor.game) && React.createElement("button", {
+    }, "🤖"), isGod && Array.isArray(tor.mysteryEnvelopes) && tor.mysteryEnvelopes.length > 0 && React.createElement("button", {
+      onClick: () => setEnvPeek(envPeek === tor.id ? null : tor.id),
+      title: "GOD: peek at the mystery envelopes (drawn in advance, opened in order)",
+      className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
+    }, "🎁"), tor.status === 'reg' && canManageGame(user, tor.game) && React.createElement("button", {
       onClick: () => runNow(tor),
       title: "Start now",
       className: "bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
@@ -17248,15 +17816,62 @@ function TournamentsTab({
       if (!torTables.length) return null;
       return React.createElement("div", {
         className: "w-full flex flex-wrap gap-1.5 items-center mt-1"
-      }, React.createElement("span", {
-        className: "text-[10px] text-slate-500 font-black uppercase tracking-widest"
-      }, "👁 Watch:"), torTables.map((tb, ti) => React.createElement("button", {
-        key: tb.docId,
-        onClick: () => onJoinTable(tb),
-        className: "text-[11px] bg-slate-800/80 hover:bg-slate-700 border border-white/10 text-slate-200 px-2.5 py-1 rounded-lg font-bold"
-      }, "Table ", ti + 1, " · ", Object.values(tb.players || {}).filter(q => (q.stack || 0) > 0).length, React.createElement("i", {
-        className: "fa-solid fa-user text-[8px] ml-1 opacity-60"
-      }), tb.tournament && tb.tournament.final ? ' 🏆' : '')));
+      }, (() => {
+        // Spectate rules: a busted participant may watch ONLY the final table;
+        // a non-participant gets one "pick a table" button (a picker screen —
+        // not a wall of table chips crowding the row).
+        const finals = torTables.filter(tb => tb.tournament && tb.tournament.final);
+        if (me && me.out) {
+          if (!finals.length) return React.createElement("span", {
+            className: "text-[10px] text-slate-500 font-bold"
+          }, "👁 The final table opens for viewing when it forms");
+          return React.createElement("button", {
+            onClick: () => onJoinTable(finals[0]),
+            className: "text-[11px] bg-slate-800/80 hover:bg-amber-900/60 border border-amber-500/40 text-amber-200 px-3 py-1.5 rounded-lg font-black"
+          }, "👁 Watch the FINAL TABLE 🏆");
+        }
+        if (me) return null; // still alive — you have your own table
+        return React.createElement("button", {
+          onClick: () => setSpecPick(tor.id),
+          className: "text-[11px] bg-slate-800/80 hover:bg-slate-700 border border-cyan-500/40 text-cyan-200 px-3 py-1.5 rounded-lg font-black"
+        }, "👁 Choose a table to watch (", torTables.length, ")");
+      })(), specPick === tor.id && ReactDOM.createPortal(React.createElement("div", {
+        className: "fixed inset-0 z-[300] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
+        onClick: () => setSpecPick(null)
+      }, React.createElement("div", {
+        onClick: e => e.stopPropagation(),
+        className: "glass-panel rounded-3xl p-5 w-full max-w-md animate-pop-in border border-cyan-500/40 max-h-[80vh] flex flex-col"
+      }, React.createElement("div", {
+        className: "flex items-center justify-between mb-3"
+      }, React.createElement("h3", {
+        className: "text-lg font-black text-white"
+      }, "👁 Choose a table · ", tor.name), React.createElement("button", {
+        onClick: () => setSpecPick(null),
+        className: "w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white"
+      }, "✕")), React.createElement("div", {
+        className: "overflow-y-auto flex-1 space-y-2"
+      }, torTables.map((tb, ti) => {
+        const alive = Object.values(tb.players || {}).filter(q => (q.stack || 0) > 0);
+        const totChips = alive.reduce((sm, q) => sm + (q.stack || 0), 0);
+        const big = alive.slice().sort((a, b) => (b.stack || 0) - (a.stack || 0))[0];
+        return React.createElement("button", {
+          key: tb.docId,
+          onClick: () => {
+            setSpecPick(null);
+            onJoinTable(tb);
+          },
+          className: `w-full text-left rounded-2xl px-4 py-3 border transition-colors ${tb.tournament && tb.tournament.final ? 'bg-amber-950/40 border-amber-500/40 hover:bg-amber-900/40' : 'bg-slate-900/70 border-white/10 hover:bg-slate-800'}`
+        }, React.createElement("div", {
+          className: "flex items-center justify-between"
+        }, React.createElement("span", {
+          className: "font-black text-white text-sm"
+        }, tb.tournament && tb.tournament.final ? '🏆 FINAL TABLE' : `Table ${ti + 1}`), React.createElement("span", {
+          className: "text-[11px] font-bold text-slate-400"
+        }, alive.length, " players")), React.createElement("div", {
+          className: "flex items-center justify-between mt-1 text-[11px] font-bold text-slate-400",
+          dir: "ltr"
+        }, React.createElement("span", null, "avg ", formatShort(alive.length ? Math.round(totChips / alive.length) : 0)), big ? React.createElement("span", null, "leader: ", big.name, " · ", formatShort(big.stack || 0)) : null));
+      })))), document.body));
     })(), tor.status === 'running' && me && me.out && React.createElement("span", {
       className: "flex-1 text-center py-2.5 text-rose-300 font-bold text-sm"
     }, "Busted — place ", me.rank), tor.status === 'done' && (tor.results || []).length > 0 && React.createElement("button", {
@@ -17265,7 +17880,30 @@ function TournamentsTab({
     }, "🏆 Final Table · Champions"))));
   }), sorted.length === 0 && React.createElement("div", {
     className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
-  }, "No tournaments right now. ", canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, soloModal);
+  }, "No tournaments right now. ", canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, soloModal, (() => {
+    // HIDDEN DRIVERS: the client engine only runs a table while some browser
+    // has it open — a bot-only table would never deal a hand and the
+    // tournament could never finish. The tournament manager's client quietly
+    // mounts a headless copy of every bot-only table, which drives it with the
+    // exact same engine, guard, blind structure and shared break clock.
+    const canDrive = t2 => isGod || user.uid === t2.creatorUid || [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role);
+    const driverTables = (tournaments || []).filter(t2 => t2.game === 'poker' && t2.status === 'running' && (t2.clubId || 'main') === CLUB_ID && canDrive(t2)).flatMap(t2 => (tables || []).filter(tb => tb.tournamentId === t2.id && tb.type === 'poker' && !(tb.tournament || {}).finished && !(tb.settings || {}).serverEngine && !Object.values(tb.players || {}).some(q2 => !q2.isBot && q2.status !== 'out' && (q2.stack || 0) > 0)));
+    if (!driverTables.length) return null;
+    return React.createElement("div", {
+      style: {
+        display: 'none'
+      },
+      "aria-hidden": true
+    }, driverTables.map(tb => React.createElement(PokerTable, {
+      key: 'drv' + tb.docId,
+      tableDocId: tb.docId,
+      user: user,
+      clubSettings: clubSettings,
+      headless: true,
+      onLeave: () => {},
+      showToast: () => {}
+    })));
+  })());
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App, null));

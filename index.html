@@ -5458,6 +5458,41 @@ function LobbyView({
     maxPlayers: 4,
     bluff: false
   });
+  // Durak templates — same mechanism as the poker create form (local, per club)
+  const DTPL_KEY = 'durakTpl_' + CLUB_ID;
+  const [dTpls, setDTpls] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(DTPL_KEY) || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+  const [dTplName, setDTplName] = useState('');
+  const persistDTpls = arr => {
+    setDTpls(arr);
+    try {
+      localStorage.setItem(DTPL_KEY, JSON.stringify(arr));
+    } catch (e) {}
+  };
+  const saveDurakTpl = () => {
+    const nm = dTplName.trim() || `Durak ${durakOpts.deckSize} · ${formatShort(Number(durakOpts.buyIn) || 0)} · ${durakOpts.maxPlayers}p`;
+    persistDTpls([...dTpls.filter(x => x.name !== nm), {
+      name: nm,
+      opts: {
+        ...durakOpts
+      }
+    }]);
+    setDTplName('');
+    showToast('Template saved: ' + nm, 'success');
+  };
+  const loadDurakTpl = tp => {
+    setDurakOpts(prev => ({
+      ...prev,
+      ...tp.opts
+    }));
+    showToast('Loaded template: ' + tp.name, 'info');
+  };
+  const delDurakTpl = nm => persistDTpls(dTpls.filter(x => x.name !== nm));
   const GAME_ORDER = ['NLH', 'Pineapple', 'Omaha 4', 'Omaha 5', 'Omaha 6'];
   const gtRank = t => {
     const idx = GAME_ORDER.indexOf((t.settings || {}).baseGameType || 'NLH');
@@ -6448,7 +6483,24 @@ function LobbyView({
     className: "fa-solid fa-plus ml-2"
   }), "New table")), showCreateDurak && React.createElement("div", {
     className: "glass-panel p-6 rounded-2xl mb-6 border border-blue-500/30 animate-pop-in"
-  }, React.createElement("div", {
+  }, dTpls.length > 0 && React.createElement("div", {
+    className: "flex flex-wrap gap-2 items-center pb-4 mb-4 border-b border-white/8"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-sky-300 uppercase tracking-widest shrink-0"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark ml-1"
+  }), "Templates"), dTpls.map(tp => React.createElement("span", {
+    key: tp.name,
+    className: "inline-flex items-center gap-1 bg-slate-800 border border-sky-500/30 rounded-full pr-1 pl-3 py-1"
+  }, React.createElement("button", {
+    onClick: () => loadDurakTpl(tp),
+    className: "text-xs font-black text-sky-200 hover:text-white"
+  }, tp.name), React.createElement("button", {
+    onClick: () => delDurakTpl(tp.name),
+    className: "w-5 h-5 rounded-full text-slate-500 hover:text-rose-400 text-[10px] flex items-center justify-center"
+  }, React.createElement("i", {
+    className: "fa-solid fa-xmark"
+  }))))), React.createElement("div", {
     className: "grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4"
   }, React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
@@ -6521,8 +6573,18 @@ function LobbyView({
   }, "Attack with a face-down card, defender doubts or accepts")), React.createElement("span", {
     className: "text-xs text-slate-500 font-bold"
   }, "The loser (the Durak) pays the winners"), React.createElement("div", {
-    className: "flex gap-3"
-  }, React.createElement("button", {
+    className: "flex gap-3 items-center flex-wrap"
+  }, React.createElement("input", {
+    value: dTplName,
+    onChange: e => setDTplName(e.target.value),
+    placeholder: "Template name (optional)",
+    className: "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-sky-500/60 w-40"
+  }), React.createElement("button", {
+    onClick: saveDurakTpl,
+    className: "bg-slate-800 hover:bg-slate-700 border border-sky-500/40 text-sky-200 px-4 py-2 rounded-xl font-black text-xs"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark ml-1"
+  }), " Save as template"), React.createElement("button", {
     onClick: () => setShowCreateDurak(false),
     className: "px-6 py-2 text-slate-400 hover:text-white font-bold"
   }, "Cancel"), React.createElement("button", {
@@ -12501,6 +12563,99 @@ function DurakTable({
       turnMine: mine
     };
   }, [tableState]);
+  // Waiting happens INSIDE the table (like poker): anyone with this table open
+  // and visible is automatically "staying" — the showdown sweep only clears
+  // players whose tab is closed/asleep. No more being thrown back to the lobby
+  // (and the table deleted under you) just because you watched the results.
+  useEffect(() => {
+    if (!isSeated || T.status !== 'showdown' || !T.showdownAt) return;
+    const autoStay = () => {
+      if (document.visibilityState !== 'visible') return;
+      const cur = tableRef.current?.players?.[user.uid];
+      if (!cur || (cur.stayAt || 0) >= T.showdownAt) return;
+      window.fb.updateDoc(tblRef(), {
+        [`players.${user.uid}.stayAt`]: Date.now()
+      }).catch(() => {});
+    };
+    autoStay();
+    document.addEventListener('visibilitychange', autoStay);
+    return () => document.removeEventListener('visibilitychange', autoStay);
+  }, [isSeated, T.status, T.showdownAt]);
+  // Spectator queue: watch the running game from inside the table and get
+  // seated automatically when it ends.
+  const onWaitNext = (T.waitlist || []).some(w => w && w.uid === user.uid);
+  const joinNextGame = async () => {
+    try {
+      const wl = (tableRef.current?.waitlist || []).filter(w => w && w.uid !== user.uid);
+      await window.fb.updateDoc(tblRef(), {
+        waitlist: [...wl, { uid: user.uid, name: user.username, at: Date.now() }]
+      });
+    } catch (e) {
+      toastErr("Error joining the queue");
+    }
+  };
+  const leaveNextGame = async () => {
+    try {
+      const wl = (tableRef.current?.waitlist || []).filter(w => w && w.uid !== user.uid);
+      await window.fb.updateDoc(tblRef(), { waitlist: wl });
+    } catch (e) {}
+  };
+  useEffect(() => {
+    if (isSeated || !onWaitNext || !['setup', 'showdown'].includes(T.status)) return;
+    (async () => {
+      await leaveNextGame();
+      await handleJoin();
+    })();
+  }, [isSeated, onWaitNext, T.status]);
+  // Keep the screen awake while the table is open (same as poker) — watching a
+  // game without touching the phone must not dim/lock the screen.
+  useEffect(() => {
+    let lock = null,
+      released = false;
+    const acquire = async () => {
+      try {
+        if (!released && document.visibilityState === 'visible' && navigator.wakeLock) {
+          lock = await navigator.wakeLock.request('screen');
+        }
+      } catch (e) {}
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') acquire();
+    };
+    acquire();
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      released = true;
+      document.removeEventListener('visibilitychange', onVis);
+      try {
+        lock && lock.release();
+      } catch (e) {}
+      lock = null;
+    };
+  }, []);
+  // Presence heartbeat (same as poker) — lets the guard fast-skip a player
+  // whose tab is closed instead of stalling the whole table for 35s.
+  useEffect(() => {
+    if (!isSeated) return;
+    const beat = () => window.fb.updateDoc(tblRef(), {
+      [`players.${user.uid}.lastSeen`]: Date.now()
+    }).catch(() => {});
+    beat();
+    const iv = setInterval(beat, 25000);
+    return () => clearInterval(iv);
+  }, [isSeated, tableDocId]);
+  // My own device lost network → show it to ME immediately (same as poker)
+  const [dOffline, setDOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  useEffect(() => {
+    const on = () => setDOffline(false),
+      off = () => setDOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
   const startGame = async () => {
     const t = tableRef.current;
     if (!t) return;
@@ -13163,14 +13318,24 @@ function DurakTable({
     return () => clearInterval(iv);
   }, [T.status, dPlayersCount, isSuperAdmin, clubSettings?.botsAuto]);
   useEffect(() => {
-    if (!isSuperAdmin || !tableState || T.status !== 'playing') return;
+    // Guard runs on EVERY seated client (parity with poker) — a table with no
+    // admin watching used to stall forever on a vanished player's turn.
+    if (!(isSuperAdmin || isSeated) || !tableState || T.status !== 'playing') return;
     const iv = setInterval(() => {
       const t = tableRef.current;
       if (!t || t.status !== 'playing' || !t.turnStartedAt) return;
-      if (Date.now() - t.turnStartedAt > (DURAK_TIME + 5) * 1000) autoAction(t.turnUid);
+      const actor = (t.players || {})[t.turnUid] || {};
+      // Connection-aware fast skip (parity with poker): if the actor's
+      // heartbeat has gone dark, act for them after a short grace instead of
+      // the full clock. 20s threshold > 2 missed 25s beats is not needed here —
+      // lastSeen may simply predate this feature, so only fast-skip when a
+      // heartbeat WAS seen and then stopped.
+      const gone = !actor.isBot && actor.lastSeen && Date.now() - actor.lastSeen > 40000;
+      const limit = gone ? 9000 : (DURAK_TIME + 5) * 1000;
+      if (Date.now() - t.turnStartedAt > limit) autoAction(t.turnUid);
     }, 4000);
     return () => clearInterval(iv);
-  }, [T.status, isSuperAdmin]);
+  }, [T.status, isSuperAdmin, isSeated]);
   useEffect(() => {
     let interval;
     if (T.status === 'playing' && T.turnStartedAt) {
@@ -13512,9 +13677,26 @@ function DurakTable({
   }, "Stand up 🚪"), !isSeated && React.createElement("button", {
     onClick: () => setResHide(true),
     className: "flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-xl font-black border border-white/10"
-  }, "👁 Keep watching"))))), React.createElement("div", {
+  }, "👁 Keep watching"))))), dOffline && React.createElement("div", {
+    className: "absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse",
+    dir: "ltr"
+  }, React.createElement("i", {
+    className: "fa-solid fa-wifi text-rose-400"
+  }), React.createElement("span", {
+    className: "text-[11px] font-black text-rose-300"
+  }, "No connection — reconnecting…")), React.createElement("div", {
     className: "shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 px-3 pt-2 pb-3 z-40 min-h-[135px] flex flex-col justify-end gap-2"
-  }, isSeated && T.status === 'playing' && !me.out && React.createElement("div", {
+  }, !isSeated && T.status === 'playing' && React.createElement("div", {
+    className: "flex items-center justify-center gap-3 py-3"
+  }, React.createElement("span", {
+    className: "text-cyan-300 text-xs font-black"
+  }, "👁 Spectating · game in progress"), onWaitNext ? React.createElement("button", {
+    onClick: leaveNextGame,
+    className: "bg-slate-800 hover:bg-slate-700 border border-sky-500/40 text-sky-200 px-4 py-2.5 rounded-xl font-black text-xs"
+  }, "🪑 In queue for the next game ✓ · tap to cancel") : React.createElement("button", {
+    onClick: joinNextGame,
+    className: "bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white px-5 py-2.5 rounded-xl font-black text-xs shadow-lg"
+  }, "🪑 Join the next game (", formatMoney(setts.buyIn), ")")), isSeated && T.status === 'playing' && !me.out && React.createElement("div", {
     className: "flex justify-center",
     dir: "ltr"
   }, [...(me.cards || [])].sort((a, b) => (a.suit === T.trumpSuit ? 100 : 0) + a.v - ((b.suit === T.trumpSuit ? 100 : 0) + b.v)).map((c, ci) => {

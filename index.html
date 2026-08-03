@@ -8970,6 +8970,7 @@ function PokerTable({
   const advanceRef = useRef(null);
   const nextHandRef = useRef(null);
   const startingRef = useRef(false);
+  const sdStuckRef = useRef({ key: '', at: 0 }); // stuck-showdown watchdog anchor
   const synthRef = useRef(null);
   const isGod = isGodUser(user);
   const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
@@ -10625,6 +10626,27 @@ function PokerTable({
         }
         if (g.phase === 'dc_selection' && stuckFor > 25000 && g.dcUid) {
           await selectDCGame(t.settings?.baseGameType || 'NLH', g.dcUid);
+          return;
+        }
+        if (g.phase === 'showdown') {
+          // The next hand is normally started by a 4-9s timer on the client that
+          // finished this one. If that tab went to sleep the table sat on
+          // "New hand starting soon..." forever — the one stuck-state the guard
+          // didn't cover. Each client measures showdown age locally; after 20s
+          // with no progress the start-eligible client (first human / admin)
+          // deals the next hand itself.
+          const sd = sdStuckRef.current;
+          const key = 'sd' + (g.turnStartedAt || 0) + ':' + (t.handCount || 0);
+          if (sd.key !== key) {
+            sd.key = key;
+            sd.at = Date.now();
+          } else if (Date.now() - sd.at > 20000) {
+            const humans2 = Object.values(t.players || {}).filter(q => !q.isBot && (q.stack || 0) > 0).sort((a, b) => a.seatIndex - b.seatIndex);
+            if (humans2[0]?.uid === user.uid || isSuperAdmin) {
+              sd.at = Date.now();
+              await startHand();
+            }
+          }
           return;
         }
         if (BETTING.includes(g.phase) && g.activeTurnUid) {

@@ -174,8 +174,12 @@ exports.claimWeeklyScratch = onCall(async (request) => {
  * owner / the admin SDK is recorded in `securityAlerts`, which only the club
  * owner and super admin can read (see firestore.rules). Alert-only by design:
  * an auto-revert could eat a legitimate big win, a false alert costs nothing.
+ *
+ * At a 500-chip threshold every cash-out from a table qualifies, so alerts
+ * are AGGREGATED per player per day (one doc, running count/total) — the
+ * owner sees "player X: 7 jumps, +12,400 today" instead of a flooded panel.
  */
-const ALERT_MIN_JUMP = 50000;
+const ALERT_MIN_JUMP = 500;
 
 exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
     async (event) => {
@@ -201,17 +205,30 @@ exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
         if (byUid && byUid === ownerUid) return;
       } catch (e) { /* can't verify → alert anyway */ }
 
-      await db.collection("securityAlerts").add({
-        at: Date.now(),
-        clubId,
-        memberDoc: memId,
-        uid: after.uid || memId.split("_")[0],
-        username: after.username || "",
-        before: prev,
-        after: next,
-        delta,
-        byUid,
-        authType,
-        selfWrite: !!byUid && memId.indexOf(byUid + "_") === 0,
+      const now = Date.now();
+      const il = new Date(new Date(now).toLocaleString("en-US", {timeZone: "Asia/Jerusalem"}));
+      const dayKey = `${il.getFullYear()}-${String(il.getMonth() + 1).padStart(2, "0")}-${String(il.getDate()).padStart(2, "0")}`;
+      const uid = after.uid || memId.split("_")[0];
+      const aRef = db.doc(`securityAlerts/${clubId}_${uid}_${dayKey}`);
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(aRef);
+        const cur = s.exists ? s.data() : {};
+        tx.set(aRef, {
+          at: now, // last event — panel sorts by this
+          day: dayKey,
+          clubId,
+          memberDoc: memId,
+          uid,
+          username: after.username || cur.username || "",
+          count: (Number(cur.count) || 0) + 1,
+          total: round2((Number(cur.total) || 0) + delta),
+          maxDelta: Math.max(Number(cur.maxDelta) || 0, delta),
+          before: prev, // of the latest jump
+          after: next,
+          delta,
+          byUid,
+          authType,
+          selfWrite: !!cur.selfWrite || (!!byUid && memId.indexOf(byUid + "_") === 0),
+        }, {merge: true});
       });
     });

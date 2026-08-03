@@ -6604,6 +6604,7 @@ function SettlementSection({
   const [groupAg, setGroupAg] = useState(false);
   const [repFull, setRepFull] = useState(false);
   const [transferFor, setTransferFor] = useState(null);
+  const [secAlerts, setSecAlerts] = useState([]);
   const [closed, setClosed] = useState((window.__club || {}).closedWeeks || {});
   useEffect(() => {
     (async () => {
@@ -6621,6 +6622,12 @@ function SettlementSection({
         setGLog([]);
         setMems([]);
       }
+      try {
+        // Owner/super-admin only per firestore.rules — agents get a permission
+        // error here and the panel simply stays hidden.
+        const sa = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "securityAlerts"), window.fb.where("clubId", "==", CLUB_ID)));
+        setSecAlerts(sa.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.at || 0) - (a.at || 0)));
+      } catch (e) {}
     })();
   }, []);
   if (aLog === null || gLog === null || mems === null) return React.createElement("div", {
@@ -7622,7 +7629,37 @@ function BackofficeView({
     title: "General reset: all players → 0, your balance → 10,000,000, money history wiped (bots keep theirs)",
     className: "text-xs font-black px-4 py-2.5 rounded-xl text-slate-900 shadow-lg disabled:opacity-50 shrink-0",
     style: { background: 'linear-gradient(180deg,#F8C830,#C99A1E)' }
-  }, resetBusy ? 'Resetting…' : '♻ General reset · players → 0, you → 10M')), React.createElement("div", {
+  }, resetBusy ? 'Resetting…' : '♻ General reset · players → 0, you → 10M')), isOwnerView && secAlerts.length > 0 && React.createElement("div", {
+    className: "glass-panel rounded-2xl p-4 mb-5",
+    style: { border: '1px solid rgba(244,63,94,.45)' }
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, React.createElement("h4", {
+    className: "font-black text-rose-300 text-sm"
+  }, "🚨 Security alerts — big balance jumps (", secAlerts.length, ")"), React.createElement("button", {
+    onClick: async () => {
+      for (const a of secAlerts) { try { await window.fb.deleteDoc(window.fb.doc(window.fb.db, "securityAlerts", a.id)); } catch (e) {} }
+      setSecAlerts([]);
+    },
+    className: "text-[10px] px-2.5 py-1.5 rounded-lg font-black border bg-slate-900/60 border-white/10 text-slate-300"
+  }, "Clear all")), React.createElement("div", {
+    className: "space-y-1 max-h-48 overflow-y-auto",
+    dir: "ltr"
+  }, secAlerts.slice(0, 50).map(a => React.createElement("div", {
+    key: a.id,
+    className: "text-xs text-slate-300 flex flex-wrap items-baseline gap-x-2"
+  }, React.createElement("span", {
+    className: "text-slate-500"
+  }, new Date(a.at || 0).toLocaleString('en-GB')), React.createElement("span", {
+    className: "font-bold text-white"
+  }, a.username || a.uid), React.createElement("span", {
+    className: "font-black text-rose-300"
+  }, "+", formatMoney(a.delta || 0)), React.createElement("span", {
+    className: "text-slate-500"
+  }, "(", formatMoney(a.before || 0), " → ", formatMoney(a.after || 0), ")"), a.selfWrite && React.createElement("span", {
+    className: "font-black text-rose-400",
+    title: "The player wrote their own balance"
+  }, "SELF-WRITE"))))), React.createElement("div", {
     className: "grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
   }, statTiles.map((t, i) => React.createElement("div", {
     key: i,

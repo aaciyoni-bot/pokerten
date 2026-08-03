@@ -25,7 +25,37 @@ service cloud.firestore {
     // Field-level hardening (deny direct writes to balance/stack/cards/deck/rank, and
     // keep hole cards out of the shared doc) lands with the server-authoritative rework.
     match /users/{id}        { allow read, write: if signedIn(); }
-    match /memberships/{id}  { allow read, write: if signedIn(); }
+
+    // Memberships hold player balances. The client engine NEEDS open writes
+    // (wins are paid from players' browsers), but a single write may not
+    // RAISE a balance by more than 1,000,000 unless it comes from the club
+    // owner or the super admin. Blocks the one-line console attack; the
+    // watchBalances Cloud Function alerts on anything smaller that looks off.
+    // Cheap checks come first so normal game writes never pay for a get().
+    match /memberships/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && (
+        !('balance' in request.resource.data) ||
+        (request.resource.data.balance is number && request.resource.data.balance <= 1000000) ||
+        superAdmin() || clubOwnerOf(request.resource.data.clubId)
+      );
+      allow update: if signedIn() && (
+        !('balance' in request.resource.data) ||
+        (request.resource.data.balance is number &&
+          request.resource.data.balance - (('balance' in resource.data && resource.data.balance is number) ? resource.data.balance : 0) <= 1000000) ||
+        superAdmin() || clubOwnerOf(resource.data.clubId)
+      );
+      allow delete: if signedIn();
+    }
+
+    // Security alerts — written ONLY by Cloud Functions (admin SDK bypasses
+    // these rules). The club owner / super admin can read and clear them;
+    // players can't see they exist.
+    match /securityAlerts/{id} {
+      allow read, delete: if superAdmin() || clubOwnerOf(resource.data.clubId);
+      allow create, update: if false;
+    }
+
     match /tables/{id}       { allow read, write: if signedIn(); }
 
     // Server-engine private data: a player may read ONLY their own hole cards.

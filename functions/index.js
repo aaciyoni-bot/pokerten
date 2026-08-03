@@ -7,6 +7,7 @@
  * or edit their own balance through the bonus wheel.
  */
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onDocumentWrittenWithAuthContext} = require("firebase-functions/v2/firestore");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore} = require("firebase-admin/firestore");
 
@@ -163,3 +164,54 @@ exports.claimWeeklyScratch = onCall(async (request) => {
     return {prize, fromBank: false};
   });
 });
+
+/**
+ * watchBalances — server-side tripwire for balance tampering.
+ *
+ * Fires on EVERY write to a membership doc, no matter who wrote it or how
+ * (app, dev console, REST) — a client cannot bypass or even see it. Any
+ * single-write balance jump of ALERT_MIN_JUMP+ that wasn't made by the club
+ * owner / the admin SDK is recorded in `securityAlerts`, which only the club
+ * owner and super admin can read (see firestore.rules). Alert-only by design:
+ * an auto-revert could eat a legitimate big win, a false alert costs nothing.
+ */
+const ALERT_MIN_JUMP = 50000;
+
+exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
+    async (event) => {
+      const after = event.data.after.exists ? event.data.after.data() : null;
+      if (!after) return; // deletion — nothing to gain
+      const before = event.data.before.exists ? event.data.before.data() : null;
+      const prev = before ? (Number(before.balance) || 0) : 0;
+      const next = Number(after.balance) || 0;
+      const delta = round2(next - prev);
+      if (delta < ALERT_MIN_JUMP) return;
+
+      const memId = String(event.params.memId);
+      const clubId = after.clubId || memId.split("_").slice(1).join("_") || "";
+      const authType = event.authType || "unknown";
+      const byUid = event.authId || "";
+
+      // Admin-SDK writes (our own functions / owner console) are trusted.
+      if (authType === "service_account" || authType === "system") return;
+      // The club owner moving money (deposits, GENERAL RESET) is legitimate.
+      try {
+        const clubSnap = await db.doc(`clubs/${clubId}`).get();
+        const ownerUid = clubSnap.exists ? (clubSnap.data().ownerUid || "") : "";
+        if (byUid && byUid === ownerUid) return;
+      } catch (e) { /* can't verify → alert anyway */ }
+
+      await db.collection("securityAlerts").add({
+        at: Date.now(),
+        clubId,
+        memberDoc: memId,
+        uid: after.uid || memId.split("_")[0],
+        username: after.username || "",
+        before: prev,
+        after: next,
+        delta,
+        byUid,
+        authType,
+        selfWrite: !!byUid && memId.indexOf(byUid + "_") === 0,
+      });
+    });

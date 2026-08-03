@@ -7345,14 +7345,18 @@ function BackofficeView({
         const s = await tr.get(oRef);
         tr.update(oRef, { balance: 10000000, clubProfits: 0, agentProfits: 0, bonusTotal: 0, stats: ZERO_STATS });
       });
-      try {
-        const q = window.fb.query(window.fb.collection(window.fb.db, "gameLog"), window.fb.where("clubId", "==", CLUB_ID));
-        const snap = await window.fb.getDocs(q);
-        for (let i = 0; i < snap.docs.length; i += 300) {
-          await Promise.all(snap.docs.slice(i, i + 300).map(d => window.fb.deleteDoc(d.ref).catch(() => {})));
-        }
-      } catch (e) {}
-      showToast(`General reset done — your balance is ${formatMoney(10000000)}. Players' balances, rake, stats & money history at 0; bots untouched.`, "success");
+      let histFailed = 0;
+      for (const logCol of ["gameLog", "agentLog"]) {
+        try {
+          const q = window.fb.query(window.fb.collection(window.fb.db, logCol), window.fb.where("clubId", "==", CLUB_ID));
+          const snap = await window.fb.getDocs(q);
+          for (let i = 0; i < snap.docs.length; i += 300) {
+            await Promise.all(snap.docs.slice(i, i + 300).map(d => window.fb.deleteDoc(d.ref).catch(() => { histFailed++; })));
+          }
+        } catch (e) { histFailed++; }
+      }
+      if (histFailed > 0) showToast(`Balances reset, but ${histFailed} history records could not be deleted — press GENERAL RESET again (or the rules deploy hasn't landed yet).`, "error");
+      else showToast(`General reset done — your balance is ${formatMoney(10000000)}. Players' balances, rake, stats & money history at 0; bots untouched.`, "success");
     } catch (e) { showToast("Reset error — some data may not have reset", "error"); }
     setResetBusy(false);
   };
@@ -12955,6 +12959,7 @@ function DurakTable({
       delete pl[user.uid];
       if (Object.keys(pl).length === 0 && t.status !== 'playing') {
         await window.fb.deleteDoc(tblRef());
+        spawnTwinTable(t); // keep the lobby stocked — same-config Durak table respawns (skips if a joinable twin exists)
       } else {
         const upd = {
           players: pl

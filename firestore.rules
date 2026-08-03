@@ -5,9 +5,19 @@ service cloud.firestore {
     // Must be signed in with a Google account (the app's only sign-in method).
     function signedIn() { return request.auth != null; }
 
-    // Game / agent logs — append-only: create + read allowed, never edit/delete.
-    match /gameLog/{id}   { allow read, create: if signedIn(); allow update, delete: if false; }
-    match /agentLog/{id}  { allow read, create: if signedIn(); allow update, delete: if false; }
+    // Game / agent logs — append-only for players: create + read allowed, no edits.
+    // Delete is reserved for the club's owner (GENERAL RESET) and the super admin;
+    // regular players can never touch history.
+    function superAdmin() {
+      return signedIn() && request.auth.token.email == 'aaci.yoni@gmail.com';
+    }
+    function clubOwnerOf(cid) {
+      return signedIn() && request.auth.uid == get(/databases/$(database)/documents/clubs/$(cid)).data.ownerUid;
+    }
+    match /gameLog/{id}   { allow read, create: if signedIn(); allow update: if false;
+                            allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
+    match /agentLog/{id}  { allow read, create: if signedIn(); allow update: if false;
+                            allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
 
     // Core data — every access (read/write/delete) requires a signed-in account.
     // Fully blocks anonymous access from the internet without breaking any app action.

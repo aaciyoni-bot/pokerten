@@ -7353,7 +7353,7 @@ function BackofficeView({
     const targets = usersList.filter(u => !u.isBot && u.uid !== user.uid);
     const total = round2(targets.reduce((s, u) => s + (Number(u.balance) || 0), 0));
     if (targets.length === 0) return showToast("No players to reset", "info");
-    const ok = window.prompt(`⚠️ GENERAL RESET\n${targets.length} players → balance 0. Your balance → ${formatMoney(10000000)}. EVERYONE's rake, stats and money history wiped to 0.\nBots keep their chips. Identity (role / agent / ID) is kept. Cannot be undone.\n\nType RESET to confirm:`);
+    const ok = window.prompt(`⚠️ GENERAL RESET\n${targets.length} players → balance 0. Your balance → ${formatMoney(10000000)}. EVERYONE's rake, stats, ALL-TIME results and money history wiped to 0.\nBots keep their chips. Identity (role / agent / ID) is kept. Cannot be undone.\n\nType RESET to confirm:`);
     if (ok !== 'RESET') return;
     setResetBusy(true);
     let reclaimed = 0;
@@ -7384,7 +7384,13 @@ function BackofficeView({
         } catch (e) { histFailed++; }
       }
       if (histFailed > 0) showToast(`Balances reset, but ${histFailed} history records could not be deleted — press GENERAL RESET again (or the rules deploy hasn't landed yet).`, "error");
-      else showToast(`General reset done — your balance is ${formatMoney(10000000)}. Players' balances, rake, stats & money history at 0; bots untouched.`, "success");
+      else {
+        showToast(`General reset done — your balance is ${formatMoney(10000000)}. Players' balances, rake, stats, ALL-TIME results & money history at 0; bots untouched. Refreshing…`, "success");
+        // The settlement report loads its history once on mount, so without a
+        // refresh the Result / Rake / All-time columns keep showing the wiped
+        // numbers until the owner reloads by hand.
+        setTimeout(() => window.location.reload(), 1800);
+      }
     } catch (e) { showToast("Reset error — some data may not have reset", "error"); }
     setResetBusy(false);
   };

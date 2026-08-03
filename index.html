@@ -8902,10 +8902,19 @@ function PokerTable({
   }, [srvEngine, tableDocId]);
   useEffect(() => {
     if (!srvEngine) return;
+    let warned = false;
     const iv = setInterval(() => {
       window.fb.fx('pkTick', {
         tableId: tableDocId
-      }).catch(() => {});
+      }).then(() => { warned = false; }).catch(e => {
+        // A spin table can ONLY be armed/dealt by the server — if pkTick is
+        // missing or down the table silently sits at "Waiting for players"
+        // forever. Say so once instead of looking like a lobby problem.
+        if (warned || !setts.spinMode) return;
+        if ((tableRef.current?.gameState?.phase || 'waiting') !== 'waiting') return;
+        warned = true;
+        showToast('Spin server is not responding (' + ((e && e.code) || (e && e.message) || e) + ') — the game cannot start. If this persists, the Cloud Functions deploy hasn\'t landed yet.', 'error');
+      });
     }, 4000);
     return () => clearInterval(iv);
   }, [srvEngine, tableDocId]);

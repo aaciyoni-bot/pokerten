@@ -57,7 +57,7 @@
     padding: 4mm 5mm;
     display: flex;
     flex-direction: column;
-    gap: 3mm;
+    gap: 2.4mm;
     background:
       linear-gradient(180deg, #fffdf7 0%, #fff 22%);
   }
@@ -68,35 +68,35 @@
     align-items: center;
     gap: 4mm;
     border-bottom: 0.8mm solid var(--gold);
-    padding-bottom: 2mm;
+    padding-bottom: 1.6mm;
   }
-  .hdr svg { width: 17mm; height: 20mm; flex: 0 0 auto; }
+  .hdr svg { width: 14.5mm; height: 22mm; flex: 0 0 auto; }
   .hdr .titles { flex: 1; text-align: center; }
   .hdr h1 {
-    font-size: 18pt;
+    font-size: 17pt;
     color: var(--maroon);
     letter-spacing: 0.5mm;
   }
   .hdr h2 {
-    font-size: 11.5pt;
+    font-size: 11pt;
     color: var(--green);
-    margin-top: 1mm;
-  }
-  .hdr h4 {
-    font-size: 9.5pt;
-    color: #555;
-    font-weight: normal;
     margin-top: 0.8mm;
   }
+  .hdr h4 {
+    font-size: 9pt;
+    color: #555;
+    font-weight: normal;
+    margin-top: 0.6mm;
+  }
 
-  /* ---------- identity rows ---------- */
-  .row { display: flex; align-items: flex-end; gap: 3mm; font-size: 11pt; }
+  /* ---------- rows & fields ---------- */
+  .row { display: flex; align-items: flex-end; gap: 3mm; font-size: 10.5pt; }
   .row .fld { display: flex; align-items: flex-end; gap: 1.5mm; flex: 1; }
   .lbl { font-weight: bold; color: #222; white-space: nowrap; }
   .blank {
     flex: 1;
     border-bottom: 0.4mm dotted var(--line);
-    min-height: 5.5mm;
+    min-height: 5.2mm;
   }
   .blank.date { flex: 0 0 30mm; text-align: center; color: #666; white-space: nowrap; font-size: 9.5pt; }
 
@@ -104,39 +104,73 @@
   .box {
     border: 0.5mm solid #333;
     border-radius: 2mm;
-    padding: 2.2mm 3mm 3mm;
+    padding: 2mm 3mm 2.4mm;
     display: flex;
     flex-direction: column;
-    gap: 2.6mm;
+    gap: 2mm;
   }
   .box h3 {
     text-align: center;
-    font-size: 13pt;
+    font-size: 12pt;
     letter-spacing: 0.3mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2mm;
+  }
+  .num {
+    display: inline-flex;
+    width: 5.6mm; height: 5.6mm;
+    border-radius: 50%;
+    color: #fff;
+    align-items: center;
+    justify-content: center;
+    font-size: 10pt;
+    flex: 0 0 auto;
   }
   .box.soldier h3 { color: var(--brown); }
-  .box.gear    h3 { color: var(--blue); }
-  .box.weapon  h3 { color: var(--dark-red); }
-  .box.notesbox { flex: 1; justify-content: space-evenly; }
-  .box.notesbox h3 { color: var(--green); }
+  .box.logi    h3 { color: var(--blue); }
+  .box.logi   .num { background: var(--blue); }
+  .box.armory  { flex: 1; }
+  .box.armory .col { justify-content: space-evenly; }
+  .box.armory  h3 { color: var(--dark-red); }
+  .box.armory .num { background: var(--dark-red); }
   .box.final   { border-color: var(--dark-red); border-width: 0.7mm; }
-  .box.final h3 { color: var(--dark-red); font-size: 14pt; }
+  .box.final  h3 { color: var(--dark-red); font-size: 12.5pt; }
+  .box.final .num { background: var(--dark-red); }
 
-  .choice { display: inline-flex; align-items: center; gap: 1.5mm; white-space: nowrap; font-size: 11pt; }
+  /* content + stamp side by side */
+  .withstamp { display: flex; gap: 3mm; align-items: stretch; }
+  .withstamp .col { flex: 1; display: flex; flex-direction: column; gap: 2mm; justify-content: flex-end; }
+  .stamp {
+    flex: 0 0 21mm;
+    border: 0.4mm dashed #999;
+    border-radius: 2mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    font-size: 9pt;
+    min-height: 15mm;
+  }
+
+  .choice { display: inline-flex; align-items: center; gap: 1.5mm; white-space: nowrap; font-size: 10.5pt; }
   .circ {
-    width: 4.5mm; height: 4.5mm;
+    width: 4.3mm; height: 4.3mm;
     border: 0.45mm solid #333;
     border-radius: 50%;
     display: inline-block;
   }
   .spacer { flex: 1; }
-  .notes {
-    flex: 1;
-    border: 0.4mm dotted #888;
-    border-radius: 2mm;
-    padding: 1.5mm 2mm;
+
+  .warn {
+    text-align: center;
     font-size: 10pt;
-    color: #555;
+    font-weight: bold;
+    color: var(--dark-red);
+    background: #fdeaea;
+    border-radius: 1.5mm;
+    padding: 1.2mm 2mm;
   }
 </style>
 </head>
@@ -147,27 +181,42 @@
   <!-- ======== copy #1 ======== -->
   <div class="form">
     <div class="hdr">
-      <svg viewBox="0 0 100 134" aria-label="סמל גדוד 1895">
-        <path d="M50 4 L94 18 V58 C94 88 50 116 50 116 C50 116 6 88 6 58 V18 Z"
-              fill="#7a1f1f" stroke="#c9a227" stroke-width="4"/>
-        <rect x="18" y="22" width="64" height="16" rx="3" fill="#c9a227"/>
-        <text x="50" y="34.5" text-anchor="middle" font-size="13" font-weight="bold"
-              fill="#7a1f1f" font-family="Arial, sans-serif">1895</text>
-        <polygon points="50,44 53.5,52 53.5,88 50,96 46.5,88 46.5,52" fill="#fff"/>
-        <rect x="38" y="55" width="24" height="4" rx="2" fill="#fff"/>
-        <circle cx="50" cy="48" r="3" fill="#fff"/>
-        <text x="50" y="130" text-anchor="middle" font-size="13" font-weight="bold"
-              fill="#7a1f1f" font-family="Arial, sans-serif">יעלה</text>
+      <svg viewBox="0 0 100 150" aria-label="סמל גדוד יעלה 1895">
+        <defs><clipPath id="shieldclip"><path d="M50 4 L93 15 V60 C93 90 50 118 50 118 C50 118 7 90 7 60 V15 Z"/></clipPath></defs>
+        <path d="M50 4 L93 15 V60 C93 90 50 118 50 118 C50 118 7 90 7 60 V15 Z" fill="#b98a45"/>
+        <rect x="50" y="0" width="50" height="120" fill="#5f2e10" clip-path="url(#shieldclip)"/>
+        <g fill="#e6c07c">
+          <circle cx="50" cy="16" r="3.2"/>
+          <rect x="48.6" y="19" width="2.8" height="7"/>
+          <rect x="42" y="26" width="16" height="3.4" rx="1.7"/>
+          <polygon points="50,30 52.4,34 52.4,84 50,92 47.6,84 47.6,34"/>
+        </g>
+        <path d="M44 52 C12 46 4 14 32 8 C14 20 20 42 46 46 Z" fill="#4d1d05"/>
+        <path d="M56 52 C88 46 96 14 68 8 C86 20 80 42 54 46 Z" fill="#e6c07c"/>
+        <path d="M36 56 C28 52 24 58 28 64 C32 62 35 59 36 56 Z" fill="#4d1d05"/>
+        <path d="M64 56 C72 52 76 58 72 64 C68 62 65 59 64 56 Z" fill="#e6c07c"/>
+        <path d="M50 42 C57 44 61 50 60 58 L56 78 C55 86 52 92 50 96 C48 92 45 86 44 78 L40 58 C39 50 43 44 50 42 Z"
+              fill="#4d1d05" stroke="#e6c07c" stroke-width="1.4"/>
+        <circle cx="45.5" cy="58" r="1.6" fill="#e6c07c"/>
+        <circle cx="54.5" cy="58" r="1.6" fill="#e6c07c"/>
+        <path d="M50 82 C52 84 52 88 50 90 C48 88 48 84 50 82 Z" fill="#e6c07c"/>
+        <path d="M50 4 L93 15 V60 C93 90 50 118 50 118 C50 118 7 90 7 60 V15 Z"
+              fill="none" stroke="#e6c07c" stroke-width="3.5"/>
+        <text x="50" y="133" text-anchor="middle" font-size="14" font-weight="bold"
+              fill="#7a1f1f" font-family="Arial, sans-serif">גדוד יעלה</text>
+        <text x="50" y="147" text-anchor="middle" font-size="11" font-weight="bold"
+              fill="#c9a227" font-family="Arial, sans-serif">— 1895 —</text>
       </svg>
       <div class="titles">
         <h1>טופס קליטה</h1>
-        <h2>גדוד 1895 — יעלה</h2>
-        <h4>אישור על קליטת נשקו וציודו של החייל</h4>
+        <h2>גדוד יעלה — 1895</h2>
+        <h4>נפתח בשלישות · מוחזר לשלישות בסיום המסלול</h4>
       </div>
     </div>
 
     <div class="row">
       <div class="fld"><span class="lbl">תאריך:</span><span class="blank date">____/____/____</span></div>
+      <div class="fld"></div>
     </div>
 
     <div class="box soldier">
@@ -178,51 +227,64 @@
       </div>
       <div class="row">
         <div class="fld"><span class="lbl">פלוגה:</span><span class="blank"></span></div>
+        <div class="fld"><span class="lbl">מחלקה:</span><span class="blank"></span></div>
         <div class="fld"><span class="lbl">תפקיד:</span><span class="blank"></span></div>
       </div>
     </div>
 
-    <div class="box gear">
-      <h3>ציוד</h3>
-      <div class="row">
-        <span class="lbl">האם יש פק"ל:</span>
-        <span class="choice"><span class="circ"></span> כן</span>
-        <span class="choice"><span class="circ"></span> לא</span>
-        <span class="spacer"></span>
-        <div class="fld"><span class="lbl">פירוט:</span><span class="blank"></span></div>
-      </div>
-      <div class="row">
-        <span class="lbl">חותם על ערכת מפקד:</span>
-        <span class="choice"><span class="circ"></span> כן</span>
-        <span class="choice"><span class="circ"></span> לא</span>
-        <span class="spacer"></span>
-      </div>
-    </div>
-
-    <div class="box weapon">
-      <h3>קליטת נשק</h3>
-      <div class="row">
-        <div class="fld"><span class="lbl">סוג הנשק:</span><span class="blank"></span></div>
-        <div class="fld"><span class="lbl">מס' נשק:</span><span class="blank"></span></div>
-      </div>
-      <div class="row">
-        <div class="fld"><span class="lbl">הערות:</span><span class="blank"></span></div>
+    <div class="box logi">
+      <h3><span class="num">1</span>לוגיסטיקה — החתמה על ציוד</h3>
+      <div class="withstamp">
+        <div class="col">
+          <div class="row">
+            <div class="fld"><span class="lbl">מס' טופס 1008:</span><span class="blank"></span></div>
+          </div>
+          <div class="row">
+            <div class="fld"><span class="lbl">שם החותם:</span><span class="blank"></span></div>
+            <div class="fld"><span class="lbl">חתימה:</span><span class="blank"></span></div>
+          </div>
+        </div>
+        <div class="stamp">חותמת<br>לוגיסטיקה</div>
       </div>
     </div>
 
-    <div class="box notesbox">
-      <h3>הערות כלליות</h3>
-      <div class="row"><div class="fld"><span class="blank"></span></div></div>
-      <div class="row"><div class="fld"><span class="blank"></span></div></div>
+    <div class="box armory">
+      <h3><span class="num">2</span>ארמו"ן — החתמה על נשק</h3>
+      <div class="withstamp">
+        <div class="col">
+          <div class="row">
+            <span class="lbl">האם יש פק"ל:</span>
+            <span class="choice"><span class="circ"></span> כן</span>
+            <span class="choice"><span class="circ"></span> לא</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="row">
+            <span class="lbl">חותם על ערכת מפקד:</span>
+            <span class="choice"><span class="circ"></span> כן</span>
+            <span class="choice"><span class="circ"></span> לא</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="row">
+            <div class="fld"><span class="lbl">סוג הנשק:</span><span class="blank"></span></div>
+            <div class="fld"><span class="lbl">מס' נשק:</span><span class="blank"></span></div>
+          </div>
+          <div class="row">
+            <div class="fld"><span class="lbl">מס' טופס 1008:</span><span class="blank"></span></div>
+          </div>
+          <div class="row">
+            <div class="fld"><span class="lbl">שם החותם:</span><span class="blank"></span></div>
+            <div class="fld"><span class="lbl">חתימה:</span><span class="blank"></span></div>
+          </div>
+        </div>
+        <div class="stamp">חותמת<br>ארמו"ן</div>
+      </div>
     </div>
 
     <div class="box final">
-      <h3>אישור הקולט</h3>
+      <h3><span class="num">3</span>סגירה בשלישות</h3>
+      <div class="warn">חובה! בסיום המסלול החייל מחזיר את הטופס לשלישות</div>
       <div class="row">
-        <div class="fld"><span class="lbl">שם הקולט:</span><span class="blank"></span></div>
-        <div class="fld"><span class="lbl">תפקיד הקולט:</span><span class="blank"></span></div>
-      </div>
-      <div class="row">
+        <div class="fld"><span class="lbl">שם המקבל בשלישות:</span><span class="blank"></span></div>
         <div class="fld"><span class="lbl">חתימה:</span><span class="blank"></span></div>
         <div class="fld"><span class="lbl">תאריך:</span><span class="blank date">____/____/____</span></div>
       </div>
@@ -232,27 +294,42 @@
   <!-- ======== copy #2 ======== -->
   <div class="form">
     <div class="hdr">
-      <svg viewBox="0 0 100 134" aria-label="סמל גדוד 1895">
-        <path d="M50 4 L94 18 V58 C94 88 50 116 50 116 C50 116 6 88 6 58 V18 Z"
-              fill="#7a1f1f" stroke="#c9a227" stroke-width="4"/>
-        <rect x="18" y="22" width="64" height="16" rx="3" fill="#c9a227"/>
-        <text x="50" y="34.5" text-anchor="middle" font-size="13" font-weight="bold"
-              fill="#7a1f1f" font-family="Arial, sans-serif">1895</text>
-        <polygon points="50,44 53.5,52 53.5,88 50,96 46.5,88 46.5,52" fill="#fff"/>
-        <rect x="38" y="55" width="24" height="4" rx="2" fill="#fff"/>
-        <circle cx="50" cy="48" r="3" fill="#fff"/>
-        <text x="50" y="130" text-anchor="middle" font-size="13" font-weight="bold"
-              fill="#7a1f1f" font-family="Arial, sans-serif">יעלה</text>
+      <svg viewBox="0 0 100 150" aria-label="סמל גדוד יעלה 1895">
+        <defs><clipPath id="shieldclip"><path d="M50 4 L93 15 V60 C93 90 50 118 50 118 C50 118 7 90 7 60 V15 Z"/></clipPath></defs>
+        <path d="M50 4 L93 15 V60 C93 90 50 118 50 118 C50 118 7 90 7 60 V15 Z" fill="#b98a45"/>
+        <rect x="50" y="0" width="50" height="120" fill="#5f2e10" clip-path="url(#shieldclip)"/>
+        <g fill="#e6c07c">
+          <circle cx="50" cy="16" r="3.2"/>
+          <rect x="48.6" y="19" width="2.8" height="7"/>
+          <rect x="42" y="26" width="16" height="3.4" rx="1.7"/>
+          <polygon points="50,30 52.4,34 52.4,84 50,92 47.6,84 47.6,34"/>
+        </g>
+        <path d="M44 52 C12 46 4 14 32 8 C14 20 20 42 46 46 Z" fill="#4d1d05"/>
+        <path d="M56 52 C88 46 96 14 68 8 C86 20 80 42 54 46 Z" fill="#e6c07c"/>
+        <path d="M36 56 C28 52 24 58 28 64 C32 62 35 59 36 56 Z" fill="#4d1d05"/>
+        <path d="M64 56 C72 52 76 58 72 64 C68 62 65 59 64 56 Z" fill="#e6c07c"/>
+        <path d="M50 42 C57 44 61 50 60 58 L56 78 C55 86 52 92 50 96 C48 92 45 86 44 78 L40 58 C39 50 43 44 50 42 Z"
+              fill="#4d1d05" stroke="#e6c07c" stroke-width="1.4"/>
+        <circle cx="45.5" cy="58" r="1.6" fill="#e6c07c"/>
+        <circle cx="54.5" cy="58" r="1.6" fill="#e6c07c"/>
+        <path d="M50 82 C52 84 52 88 50 90 C48 88 48 84 50 82 Z" fill="#e6c07c"/>
+        <path d="M50 4 L93 15 V60 C93 90 50 118 50 118 C50 118 7 90 7 60 V15 Z"
+              fill="none" stroke="#e6c07c" stroke-width="3.5"/>
+        <text x="50" y="133" text-anchor="middle" font-size="14" font-weight="bold"
+              fill="#7a1f1f" font-family="Arial, sans-serif">גדוד יעלה</text>
+        <text x="50" y="147" text-anchor="middle" font-size="11" font-weight="bold"
+              fill="#c9a227" font-family="Arial, sans-serif">— 1895 —</text>
       </svg>
       <div class="titles">
         <h1>טופס קליטה</h1>
-        <h2>גדוד 1895 — יעלה</h2>
-        <h4>אישור על קליטת נשקו וציודו של החייל</h4>
+        <h2>גדוד יעלה — 1895</h2>
+        <h4>נפתח בשלישות · מוחזר לשלישות בסיום המסלול</h4>
       </div>
     </div>
 
     <div class="row">
       <div class="fld"><span class="lbl">תאריך:</span><span class="blank date">____/____/____</span></div>
+      <div class="fld"></div>
     </div>
 
     <div class="box soldier">
@@ -263,51 +340,64 @@
       </div>
       <div class="row">
         <div class="fld"><span class="lbl">פלוגה:</span><span class="blank"></span></div>
+        <div class="fld"><span class="lbl">מחלקה:</span><span class="blank"></span></div>
         <div class="fld"><span class="lbl">תפקיד:</span><span class="blank"></span></div>
       </div>
     </div>
 
-    <div class="box gear">
-      <h3>ציוד</h3>
-      <div class="row">
-        <span class="lbl">האם יש פק"ל:</span>
-        <span class="choice"><span class="circ"></span> כן</span>
-        <span class="choice"><span class="circ"></span> לא</span>
-        <span class="spacer"></span>
-        <div class="fld"><span class="lbl">פירוט:</span><span class="blank"></span></div>
-      </div>
-      <div class="row">
-        <span class="lbl">חותם על ערכת מפקד:</span>
-        <span class="choice"><span class="circ"></span> כן</span>
-        <span class="choice"><span class="circ"></span> לא</span>
-        <span class="spacer"></span>
-      </div>
-    </div>
-
-    <div class="box weapon">
-      <h3>קליטת נשק</h3>
-      <div class="row">
-        <div class="fld"><span class="lbl">סוג הנשק:</span><span class="blank"></span></div>
-        <div class="fld"><span class="lbl">מס' נשק:</span><span class="blank"></span></div>
-      </div>
-      <div class="row">
-        <div class="fld"><span class="lbl">הערות:</span><span class="blank"></span></div>
+    <div class="box logi">
+      <h3><span class="num">1</span>לוגיסטיקה — החתמה על ציוד</h3>
+      <div class="withstamp">
+        <div class="col">
+          <div class="row">
+            <div class="fld"><span class="lbl">מס' טופס 1008:</span><span class="blank"></span></div>
+          </div>
+          <div class="row">
+            <div class="fld"><span class="lbl">שם החותם:</span><span class="blank"></span></div>
+            <div class="fld"><span class="lbl">חתימה:</span><span class="blank"></span></div>
+          </div>
+        </div>
+        <div class="stamp">חותמת<br>לוגיסטיקה</div>
       </div>
     </div>
 
-    <div class="box notesbox">
-      <h3>הערות כלליות</h3>
-      <div class="row"><div class="fld"><span class="blank"></span></div></div>
-      <div class="row"><div class="fld"><span class="blank"></span></div></div>
+    <div class="box armory">
+      <h3><span class="num">2</span>ארמו"ן — החתמה על נשק</h3>
+      <div class="withstamp">
+        <div class="col">
+          <div class="row">
+            <span class="lbl">האם יש פק"ל:</span>
+            <span class="choice"><span class="circ"></span> כן</span>
+            <span class="choice"><span class="circ"></span> לא</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="row">
+            <span class="lbl">חותם על ערכת מפקד:</span>
+            <span class="choice"><span class="circ"></span> כן</span>
+            <span class="choice"><span class="circ"></span> לא</span>
+            <span class="spacer"></span>
+          </div>
+          <div class="row">
+            <div class="fld"><span class="lbl">סוג הנשק:</span><span class="blank"></span></div>
+            <div class="fld"><span class="lbl">מס' נשק:</span><span class="blank"></span></div>
+          </div>
+          <div class="row">
+            <div class="fld"><span class="lbl">מס' טופס 1008:</span><span class="blank"></span></div>
+          </div>
+          <div class="row">
+            <div class="fld"><span class="lbl">שם החותם:</span><span class="blank"></span></div>
+            <div class="fld"><span class="lbl">חתימה:</span><span class="blank"></span></div>
+          </div>
+        </div>
+        <div class="stamp">חותמת<br>ארמו"ן</div>
+      </div>
     </div>
 
     <div class="box final">
-      <h3>אישור הקולט</h3>
+      <h3><span class="num">3</span>סגירה בשלישות</h3>
+      <div class="warn">חובה! בסיום המסלול החייל מחזיר את הטופס לשלישות</div>
       <div class="row">
-        <div class="fld"><span class="lbl">שם הקולט:</span><span class="blank"></span></div>
-        <div class="fld"><span class="lbl">תפקיד הקולט:</span><span class="blank"></span></div>
-      </div>
-      <div class="row">
+        <div class="fld"><span class="lbl">שם המקבל בשלישות:</span><span class="blank"></span></div>
         <div class="fld"><span class="lbl">חתימה:</span><span class="blank"></span></div>
         <div class="fld"><span class="lbl">תאריך:</span><span class="blank date">____/____/____</span></div>
       </div>

@@ -971,6 +971,10 @@ const SuitGlyph = ({
   }));
 };
 const TOUR_SCHEDULE = [[5, 10], [10, 20], [15, 30], [25, 50], [40, 80], [60, 120], [100, 200], [150, 300], [250, 500], [400, 800], [600, 1200], [1000, 2000]];
+// Default tournament structure for NEW tournaments: 25 sensible levels starting
+// 50/100 (hundreds). TOUR_SCHEDULE above stays untouched as the legacy fallback
+// for tournaments created before structures existed.
+const TOUR_DEFAULT_STRUCT = [[50, 100], [75, 150], [100, 200], [150, 300], [200, 400], [300, 600], [400, 800], [500, 1000], [600, 1200], [800, 1600], [1000, 2000], [1500, 3000], [2000, 4000], [2500, 5000], [3000, 6000], [4000, 8000], [5000, 10000], [6000, 12000], [8000, 16000], [10000, 20000], [15000, 30000], [20000, 40000], [30000, 60000], [40000, 80000], [50000, 100000]];
 const genPlayerId = () => {
   const C = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let r = '';
@@ -3614,7 +3618,7 @@ function App() {
     };
   }, [fbReady, dbUser?.uid]);
   useEffect(() => {
-    if (!fbReady || !dbUser || dbUser.role !== ROLES.SUPER_ADMIN) return;
+    if (!fbReady || !dbUser || dbUser.role !== ROLES.SUPER_ADMIN && !isGodUser(dbUser)) return;
     const iv = setInterval(() => {
       tourOrchestrate(toursRef.current, tablesRef2.current, clubSettings?.rakePct ?? DEFAULT_RAKE_PCT);
     }, 8000);
@@ -9400,7 +9404,7 @@ function PokerTable({
     const pl = clonePlayers(plIn);
     gatherBetsToPots(g, pl);
     g.highestBet = 0;
-    g.minRaise = BB;
+    g.minRaise = g.handBB || BB; // tournament hands raise by the LEVEL's BB, not the cash-table blind
     Object.values(pl).forEach(p => {
       if (p.status === 'active') {
         p.hasActed = false;
@@ -9576,7 +9580,11 @@ function PokerTable({
       anteAmt = round2(Number(tc.row.ante) || 0);
     }
     let anteTotal = 0;
-    if (anteAmt > 0) actives.forEach(p => {
+    // BB-ante (modern tournament format): ONLY the big blind posts the ante,
+    // for the whole table, in the amount of one BB — handled after the blinds
+    // are posted below. Classic mode: everyone antes here.
+    const bbAnteMode = tour && tour.anteType === 'bb';
+    if (anteAmt > 0 && !bbAnteMode) actives.forEach(p => {
       const a = Math.min(anteAmt, p.stack);
       p.stack = round2(p.stack - a);
       anteTotal = round2(anteTotal + a);
@@ -9602,6 +9610,13 @@ function PokerTable({
     };
     post(sbP, sbAmt, 'SB');
     post(bbP, bbAmt, 'BB');
+    if (anteAmt > 0 && bbAnteMode) {
+      // the BB posts BB + BB-ante; the ante goes straight to the pot
+      const a = Math.min(anteAmt, bbP.stack);
+      bbP.stack = round2(bbP.stack - a);
+      anteTotal = round2(anteTotal + a);
+      if (a > 0) bbP.actionText = 'BB+A';
+    }
     let high = bbAmt,
       minR = bbAmt,
       firstUid = utgP.uid;
@@ -9622,6 +9637,7 @@ function PokerTable({
       }] : [],
       highestBet: high,
       minRaise: minR,
+      handBB: bbAmt, // this hand's big blind — post-flop min-raise uses it (tournament levels!)
       phase: 'preflop',
       currentGameType: gameType,
       activeTurnUid: firstUid,
@@ -10319,7 +10335,9 @@ function PokerTable({
         if (!(await askConfirm("⚠️ Leaving a tournament table = knocking out of the tournament (no refund). Sure?"))) return;
         try {
           await window.fb.updateDoc(tblRef(), {
-            [`players.${user.uid}.status`]: 'out'
+            [`players.${user.uid}.status`]: 'out',
+            [`players.${user.uid}.stack`]: 0, // a chip-holding ghost blocked the 'last player standing' check forever
+            [`players.${user.uid}.bustedAt`]: Date.now()
           });
         } catch (e) {}
         tourReportBust(t.tournamentId, [user.uid], [], 0, false);
@@ -10664,7 +10682,9 @@ function PokerTable({
   const tourDecline = async () => {
     try {
       await window.fb.updateDoc(tblRef(), {
-        [`players.${user.uid}.status`]: 'out'
+        [`players.${user.uid}.status`]: 'out',
+        [`players.${user.uid}.stack`]: 0,
+        [`players.${user.uid}.bustedAt`]: Date.now()
       });
       tourReportBust(tableState.tournamentId, [user.uid], [], 0, false);
     } catch (e) {}
@@ -10680,6 +10700,10 @@ function PokerTable({
         const torD = torSnap.data();
         const me = t.players[user.uid];
         if (!me || (torD.players[user.uid] || {}).addon) throw "Add-on already used";
+        if (['out', 'busted'].includes(me.status)) throw "Add-on is for live stacks — use Rebuy";
+        // the add-on is only sold at its level (or the break right before it)
+        const lvlNow = t.tournament ? tourClock(t.tournament).lvl : -1;
+        if (lvlNow !== (t.tournament?.addonAt ?? -1)) throw "Add-on window is closed";
         const price = Number(torD.buyIn) || 0;
         if ((uSnap.data().balance || 0) < price) throw "Not enough balance";
         tr.update(uRef, {
@@ -10839,55 +10863,47 @@ function PokerTable({
     // registrations found "full" tables and got shoved into phantom seats.
     if (!(isSuperAdmin || isSeated) || !tableState) return;
     const iv = setInterval(async () => {
-      const t = tableRef.current;
-      if (!t) return;
-      const graceMs = t.tournament ? 34000 : 300000;
-      const stale = Object.values(t.players || {}).filter(q => (q.status === 'busted' || q.status === 'out') && (q.isBot || Date.now() - (q.bustedAt || 0) > graceMs));
-      if (!stale.length) return;
-      if (t.tournament) {
-        // Free the seat entirely — the bust is already recorded on the
-        // tournament doc (rank/results); an 'out' ghost only blocks the seat.
-        const pl = {
-          ...t.players
-        };
-        stale.forEach(q => {
-          delete pl[q.uid];
-        });
-        try {
-          await window.fb.updateDoc(tblRef(), {
+      const t0 = tableRef.current;
+      if (!t0) return;
+      // 45s grace (rebuy countdown is 30s + margin for throttled tabs); a human
+      // with no bustedAt timestamp is never insta-swept.
+      const graceMs = t0.tournament ? 45000 : 300000;
+      const isStale = q => (q.status === 'busted' || q.status === 'out') && (q.isBot || q.bustedAt && Date.now() - q.bustedAt > graceMs);
+      if (!Object.values(t0.players || {}).some(isStale)) return;
+      // Transactional: re-read the live map inside the tx so a rebuy or add-on
+      // that landed a moment ago is never clobbered by a stale full-map write.
+      let removed = [];
+      try {
+        await window.fb.runTransaction(window.fb.db, async trx => {
+          removed = [];
+          const s = await trx.get(tblRef());
+          if (!s.exists()) return;
+          const t = s.data();
+          const pl = {
+            ...t.players
+          };
+          Object.values({
+            ...pl
+          }).forEach(q => {
+            if (isStale(q)) {
+              delete pl[q.uid];
+              removed.push(q.uid);
+            }
+          });
+          if (removed.length) trx.update(tblRef(), {
             players: pl
           });
-        } catch (e) {}
-        tourReportBust(t.tournamentId, stale.map(q => q.uid), [], 0, false);
-      } else {
-        const pl = {
-          ...t.players
-        };
-        stale.forEach(q => {
-          delete pl[q.uid];
         });
-        try {
-          await window.fb.updateDoc(tblRef(), {
-            players: pl
-          });
-        } catch (e) {}
+      } catch (e) {
+        removed = [];
       }
+      if (removed.length && t0.tournament) tourReportBust(t0.tournamentId, removed, [], 0, false);
     }, 6000);
     return () => clearInterval(iv);
   }, [isSuperAdmin, isSeated, tableDocId, tableState === null]);
-  // MTT consolidation trigger: one client per table (first live human, or an
-  // admin) checks every ~8s whether tables should merge or balance.
-  useEffect(() => {
-    if (!tableState?.tournamentId) return;
-    const iv = setInterval(() => {
-      const t = tableRef.current;
-      if (!t) return;
-      const humans = Object.values(t.players || {}).filter(p2 => !p2.isBot && p2.status !== 'out' && (p2.stack || 0) > 0).sort((a, b) => a.seatIndex - b.seatIndex);
-      if (!(isSuperAdmin || humans[0] && humans[0].uid === user.uid)) return;
-      tourRebalance(t.tournamentId);
-    }, 8000);
-    return () => clearInterval(iv);
-  }, [tableState?.tournamentId, isSuperAdmin]);
+  // NOTE: table consolidation runs ONLY in tourOrchestrate/mttOrchestrate (one
+  // orchestrator) — a second per-table merger here raced it and could delete
+  // tables twice. Removed after the pre-pilot audit.
   const activesOppCount = Object.values(players).filter(p => p.status === 'active' && p.uid !== user.uid).length;
   const myCards = srvEngine ? (myPlayer?.cardCount || 0) > 0 ? myPrivCards : [] : myPlayer?.cards || [];
   {
@@ -12108,14 +12124,17 @@ function PokerTable({
       dir: "ltr"
     }, mm, ":", String(ss).padStart(2, '0')), React.createElement("span", {
       className: "text-sky-300"
-    }, "resuming at ", formatShort(sb), "/", formatShort(bb)));
+    }, "resuming at ", formatShort(sb), "/", formatShort(bb)), isSeated && myPlayer && lvl === (tour.addonAt ?? -1) && !['out', 'busted'].includes(myPlayer.status) && React.createElement("button", {
+      onClick: tourAddon,
+      className: "bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg"
+    }, "🚀 Add-on"));
     return React.createElement("div", {
       className: "bg-purple-950/80 border-b border-purple-500/30 px-3 py-1.5 flex items-center justify-center gap-3 text-[11px] font-black z-30 shrink-0 flex-wrap"
     }, React.createElement("span", {
       className: "text-purple-300"
     }, "🏆 ", tour.name, " · Round ", tour.round), React.createElement("span", {
       className: "text-white"
-    }, "Level ", lvl + 1, ": ", formatShort(sb), "/", formatShort(bb), ante > 0 ? ` + ante ${formatShort(ante)}` : ''), React.createElement("span", {
+    }, "Level ", lvl + 1, ": ", formatShort(sb), "/", formatShort(bb), ante > 0 ? tour.anteType === 'bb' ? ` + BB-ante ${formatShort(ante)}` : ` + ante ${formatShort(ante)}` : ''), React.createElement("span", {
       className: "text-purple-300 font-mono",
       dir: "ltr"
     }, "⏱ ", mm, ":", String(ss).padStart(2, '0')), tc.next && nextIn < 90000 && !tc.inBreak && React.createElement("span", {
@@ -15845,11 +15864,13 @@ const tourLateSeat = async (tor, p) => {
           ...t.players
         };
         if (pl[p.uid]) return true; // already seated (double-tap / race)
-        // free dead seats first
+        // free dead seats first — ONLY confirmed 'out' players. A 'busted'
+        // player may still be inside their rebuy countdown, and an all-in
+        // active player has stack 0 mid-hand; neither may lose their seat.
         Object.values({
           ...pl
         }).forEach(x => {
-          if (x.status === 'out' || (x.stack || 0) <= 0 && x.status !== 'waiting') delete pl[x.uid];
+          if (x.status === 'out') delete pl[x.uid];
         });
         const used = new Set(Object.values(pl).map(x => x.seatIndex));
         let seatIndex = 0;
@@ -16055,7 +16076,8 @@ const tourRegister = async (tor, user, showToast) => {
       });
       if (t.status !== 'reg' && !isLate) throw "Registration closed";
       if (t.players[user.uid]) throw "You're already registered";
-      if (Object.keys(t.players).length >= (t.maxPlayers || 36)) throw "The tournament is full";
+      // capacity counts LIVE entrants — eliminated players don't hold a spot
+      if (Object.values(t.players).filter(p => !p.out).length >= (t.maxPlayers || 36)) throw "The tournament is full";
       if ((uSnap.data().balance || 0) < entry) throw `Not enough balance (${formatMoney(entry)})`;
       tr.update(uRef, {
         balance: round2((uSnap.data().balance || 0) - entry)
@@ -16080,13 +16102,39 @@ const tourRegister = async (tor, user, showToast) => {
       didLateSeat = isLate;
     });
     if (didLateSeat) {
-      await tourLateSeat(tor, {
+      const seated = await tourLateSeat(tor, {
         uid: user.uid,
         name: user.username,
         photo: user.photo || '',
         avatarSeed: user.avatarSeed || '',
         isBot: !!user.isBot
       });
+      if (!seated) {
+        // charged but no physical seat — undo the registration completely
+        try {
+          await window.fb.runTransaction(window.fb.db, async tr => {
+            const uRef = memDoc(user.uid);
+            const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tRef(tor.id))];
+            if (!tSnap.exists()) return;
+            const t = tSnap.data();
+            const meP = (t.players || {})[user.uid];
+            if (!meP) return;
+            const pl = {
+              ...t.players
+            };
+            delete pl[user.uid];
+            tr.update(tRef(tor.id), {
+              players: pl,
+              prizePool: round2((t.prizePool || 0) - (Number(t.buyIn) || 0)),
+              feeTotal: round2((t.feeTotal || 0) - (Number(t.fee) || 0))
+            });
+            if (uSnap.exists()) tr.update(uRef, {
+              balance: round2((uSnap.data().balance || 0) + (meP.paid || 0))
+            });
+          });
+        } catch (e2) {}
+        throw "No open seat right now — registration cancelled and fully refunded. Try again in a minute.";
+      }
     }
     showToast(didLateSeat ? "Late registration done — you're seated! 🏆" : "Registered for the tournament! 🏆", "success");
   } catch (e) {
@@ -16239,6 +16287,7 @@ const tourSeedRound = async (tor, uids, round) => {
         levelMins: tor.levelMins || 5,
         anteFromLevel: 4,
         structure: Array.isArray(tor.structure) && tor.structure.length ? tor.structure : null,
+        anteType: tor.anteType || null,
         breakEvery: Number(tor.breakEvery) || 0,
         breakMins: Number(tor.breakMins) || 0,
         torId: tor.id,
@@ -16307,13 +16356,19 @@ const tourStart = async tor => {
     if (hit) rigUid = hit.uid;
   }
   try {
-    await window.fb.updateDoc(tRef(tor.id), {
-      status: 'running',
-      startedAt,
-      round: 1,
-      ...(rigUid ? {
-        mysteryRigUid: rigUid
-      } : {})
+    // Compare-and-set: only ONE client may flip reg -> running. Two admins
+    // online used to both seed the tournament, creating every table twice.
+    await window.fb.runTransaction(window.fb.db, async trx => {
+      const s = await trx.get(tRef(tor.id));
+      if (!s.exists() || s.data().status !== 'reg') throw 'already-started';
+      trx.update(tRef(tor.id), {
+        status: 'running',
+        startedAt,
+        round: 1,
+        ...(rigUid ? {
+          mysteryRigUid: rigUid
+        } : {})
+      });
     });
   } catch (e) {
     return;
@@ -16398,50 +16453,68 @@ const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBount
 };
 const tourFinalize = async (tor, championUid, rakePct) => {
   try {
+    // Claim the finalize (CAS with 60s expiry) — two clients used to both pass
+    // a plain status check and double-write logs/results.
+    let claimed = false;
+    try {
+      await window.fb.runTransaction(window.fb.db, async trx => {
+        const s = await trx.get(tRef(tor.id));
+        if (!s.exists()) throw 'gone';
+        const d = s.data();
+        if (d.status === 'done') throw 'done';
+        if (d.finalizingAt && Date.now() - d.finalizingAt < 60000) throw 'claimed';
+        trx.update(tRef(tor.id), {
+          finalizingAt: Date.now(),
+          ...(championUid && (d.players || {})[championUid] ? {
+            [`players.${championUid}.rank`]: 1,
+            [`players.${championUid}.out`]: false
+          } : {})
+        });
+      });
+      claimed = true;
+    } catch (e2) {}
+    if (!claimed) return;
     const sn = await window.fb.getDoc(tRef(tor.id));
     if (!sn.exists()) return;
     const t = {
       id: tor.id,
       ...sn.data()
     };
-    if (t.status === 'done') return;
-    const pl = {
-      ...t.players
-    };
-    if (championUid && pl[championUid]) pl[championUid] = {
-      ...pl[championUid],
-      rank: 1,
-      out: false
-    };
-    const entrants = Object.values(pl);
+    const entrants = Object.values(t.players || {});
     const net = round2(t.prizePool || 0);
     const rake = round2(t.feeTotal || 0);
     const n = entrants.length;
     const custom = Array.isArray(t.payouts) && t.payouts.length ? t.payouts.map(x => (Number(x) || 0) / 100) : null;
     const scheme = custom || (n >= 5 ? [0.5, 0.3, 0.2] : n >= 3 ? [0.7, 0.3] : [1]);
+    // Prize money goes to HUMANS only, in finishing order — a bot in the money
+    // would swallow real players' buy-ins. Bots keep their rank in the results
+    // list but are skipped when the payout scheme is applied.
     const ranked = entrants.filter(p => p.rank).sort((a, b) => a.rank - b.rank);
+    const humansRanked = ranked.filter(p => !p.isBot);
     const results = [];
-    for (let i = 0; i < ranked.length; i++) {
-      const prize = i < scheme.length ? round2(Math.floor(net * scheme[i] * 100) / 100) : 0;
+    for (const p of ranked) {
+      const hi = humansRanked.indexOf(p);
+      const prize = hi >= 0 && hi < scheme.length ? round2(Math.floor(net * scheme[hi] * 100) / 100) : 0;
       results.push({
-        name: ranked[i].name,
-        rank: ranked[i].rank,
+        name: p.name,
+        rank: p.rank,
         prize,
-        bounties: ranked[i].bounties || 0
+        bounties: p.bounties || 0
       });
-      if (prize > 0) await payTourPrize(tor.id, ranked[i].uid, prize, {
+      if (p.isBot) continue;
+      if (prize > 0) await payTourPrize(tor.id, p.uid, prize, {
         played: true,
-        won: ranked[i].rank === 1,
-        profit: round2(prize - (ranked[i].paid || 0))
-      }, t.prizeAsBonus === true);else if (!ranked[i].isBot) await payTourPrize(tor.id, ranked[i].uid, 0, {
+        won: p.rank === 1,
+        profit: round2(prize - (p.paid || 0))
+      }, t.prizeAsBonus === true);else await payTourPrize(tor.id, p.uid, 0, {
         played: true,
-        profit: -(ranked[i].paid || 0)
+        profit: -(p.paid || 0)
       });
-      if (!ranked[i].isBot) logGameResult([{
-        uid: ranked[i].uid,
-        username: ranked[i].name,
+      logGameResult([{
+        uid: p.uid,
+        username: p.name,
         game: 'poker',
-        profit: round2(prize - (ranked[i].paid || 0))
+        profit: round2(prize - (p.paid || 0))
       }], 'tournament:' + tor.id);
     }
     let doRake = false;
@@ -16449,7 +16522,6 @@ const tourFinalize = async (tor, championUid, rakePct) => {
     if (doRake) distributeRake(rake, entrants.map(p => p.uid));
     await window.fb.updateDoc(tRef(tor.id), {
       status: 'done',
-      players: pl,
       results,
       finishedAt: Date.now()
     });
@@ -16485,21 +16557,26 @@ const mttDelTable = async docId => {
 };
 const mttOrchestrate = async (tor, myTables, rakePct) => {
   if (!myTables.length) return;
+  // Tournament-alive at a table = not out/busted AND (has chips OR is mid-hand
+  // all-in with status 'active'). Counting raw stack>0 made every all-in player
+  // invisible and let tables be deleted mid-hand.
+  const aliveAt = p => !['out', 'busted'].includes(p.status) && ((p.stack || 0) > 0 || p.status === 'active');
   let info = myTables.map(tb => ({
     tb,
-    act: Object.values(tb.players || {}).filter(p => (p.stack || 0) > 0),
+    act: Object.values(tb.players || {}).filter(aliveAt),
     idle: mttIdle(tb)
   }));
   info.forEach(it => it.count = it.act.length);
-  for (const it of info) if (it.count === 0) await mttDelTable(it.tb.docId);
+  for (const it of info) if (it.count === 0 && it.idle) await mttDelTable(it.tb.docId);
   let live = info.filter(it => it.count > 0);
   const rankAlive = Object.values(tor.players || {}).filter(p => !p.out);
   if (!live.length) {
-    await tourFinalize(tor, (rankAlive[0] || {}).uid || null, rakePct);
+    await tourFinalize(tor, rankAlive.length === 1 ? rankAlive[0].uid : null, rakePct);
     return;
   }
   const totalActive = live.reduce((s, it) => s + it.count, 0);
   if (totalActive <= 1) {
+    if (!live.every(it => it.idle)) return; // let the last hand settle first
     const champ = live[0].act[0];
     for (const it of live) await mttDelTable(it.tb.docId);
     await tourFinalize(tor, (champ || {}).uid || null, rakePct);
@@ -16540,31 +16617,44 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
   if (totalActive <= MTT_SEATS) {
     if (live.length === 1 && (live[0].tb.tournament || {}).final) return;
     if (!live.every(it => it.idle)) return;
-    const seatPlayers = {};
-    let si = 0;
-    live.forEach(it => it.act.forEach(p => {
-      seatPlayers[p.uid] = mttEntry(p, si++);
-    }));
-    const keep = live[0].tb;
-    for (let i = 1; i < live.length; i++) await mttDelTable(live[i].tb.docId);
+    // FINAL TABLE merge — one transaction: re-read every table, re-verify it is
+    // idle and re-collect the alive players, THEN move + delete. The old
+    // delete-then-write sequence could race a second orchestrator (or a hand
+    // finishing) and destroy tables with the players still on them.
     try {
-      await window.fb.updateDoc(window.fb.doc(window.fb.db, "tables", keep.docId), {
-        players: seatPlayers,
-        tournament: {
-          ...keep.tournament,
-          final: true
-        },
-        gameState: {
-          ...(keep.gameState || {}),
-          phase: 'waiting',
-          board: [],
-          pots: [],
-          highestBet: 0,
-          activeTurnUid: null,
-          turnStartedAt: null,
-          lastWinners: null,
-          allInReveal: false
+      await window.fb.runTransaction(window.fb.db, async trx => {
+        const refs = live.map(it => window.fb.doc(window.fb.db, "tables", it.tb.docId));
+        const snaps = [];
+        for (const r of refs) snaps.push(await trx.get(r));
+        if (!snaps[0].exists()) throw 'keeper-gone';
+        const keepT = snaps[0].data();
+        if ((keepT.tournament || {}).final && live.length === 1) return;
+        const seatPlayers = {};
+        let si = 0;
+        for (let i = 0; i < snaps.length; i++) {
+          if (!snaps[i].exists()) continue;
+          const tData = snaps[i].data();
+          if (tData.gameState && !['waiting', 'showdown'].includes(tData.gameState.phase)) throw 'busy';
+          Object.values(tData.players || {}).filter(aliveAt).forEach(p => {
+            if (!seatPlayers[p.uid] && si < MTT_SEATS) seatPlayers[p.uid] = mttEntry(p, si++);
+          });
         }
+        for (let i = 1; i < snaps.length; i++) if (snaps[i].exists()) trx.delete(refs[i]);
+        trx.update(refs[0], {
+          players: seatPlayers,
+          'tournament.final': true,
+          gameState: {
+            ...(keepT.gameState || {}),
+            phase: 'waiting',
+            board: [],
+            pots: [],
+            highestBet: 0,
+            activeTurnUid: null,
+            turnStartedAt: null,
+            lastWinners: null,
+            allInReveal: false
+          }
+        });
       });
     } catch (e) {}
     return;
@@ -16734,6 +16824,26 @@ const tourOrchestrate = async (tours, tables, rakePct) => {
           }
         }
       }
+      // Claim the round advance (CAS) — with two admin clients online, both
+      // used to delete all tables and seed the next round TWICE. The claim
+      // expires after 60s so a crashed claimer doesn't stall the tournament.
+      const curRound = tor.round || 1;
+      let claimed = false;
+      try {
+        await window.fb.runTransaction(window.fb.db, async trx => {
+          const s = await trx.get(tRef(tor.id));
+          if (!s.exists()) throw 'gone';
+          const d = s.data();
+          if (d.status !== 'running' || (d.round || 1) !== curRound) throw 'stale';
+          if (d.advancing === curRound && Date.now() - (d.advancingAt || 0) < 60000) throw 'claimed';
+          trx.update(tRef(tor.id), {
+            advancing: curRound,
+            advancingAt: Date.now()
+          });
+        });
+        claimed = true;
+      } catch (e2) {}
+      if (!claimed) continue;
       for (const tb of myTables) {
         try {
           await window.fb.deleteDoc(window.fb.doc(window.fb.db, "tables", tb.docId));
@@ -16781,7 +16891,7 @@ function TournamentsTab({
     addonLevel: 3,
     mttMode: false,
     pokerType: 'NLH',
-    startStack: 1000,
+    startStack: 10000,
     paidPlaces: 3,
     payouts: [50, 30, 20],
     mysteryBounty: false,
@@ -16790,27 +16900,80 @@ function TournamentsTab({
     serverEngine: true,
     prizeAsBonus: false,
     structure: null,
-    breakEvery: 0,
-    breakMins: 5
+    anteMode: 'bb',
+    breakEvery: 10,
+    breakMins: 4
   });
   const [structOpen, setStructOpen] = useState(false);
+  // Tournament templates — same local per-club mechanism as the table forms.
+  // A template stores the whole config (incl. blind structure) minus name/date.
+  const TOURTPL_KEY = 'tourTpl_' + CLUB_ID;
+  const [tTpls, setTTpls] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(TOURTPL_KEY) || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+  const [tTplName, setTTplName] = useState('');
+  const persistTTpls = arr => {
+    setTTpls(arr);
+    try {
+      localStorage.setItem(TOURTPL_KEY, JSON.stringify(arr));
+    } catch (e) {}
+  };
+  const saveTourTpl = () => {
+    const {
+      name,
+      date,
+      time,
+      ...rest
+    } = opts;
+    const nm = tTplName.trim() || `${rest.pokerType || 'NLH'} · buy-in ${formatShort(Number(rest.buyIn) || 0)}${rest.mttMode ? ' · MTT' : ''}`;
+    persistTTpls([...tTpls.filter(x => x.name !== nm), {
+      name: nm,
+      opts: rest
+    }]);
+    setTTplName('');
+    showToast('Tournament template saved: ' + nm, 'success');
+  };
+  const loadTourTpl = tp => {
+    setOpts(prev => ({
+      ...prev,
+      ...tp.opts,
+      name: prev.name,
+      date: prev.date,
+      time: prev.time
+    }));
+    showToast('Loaded template: ' + tp.name, 'info');
+  };
+  const delTourTpl = nm => persistTTpls(tTpls.filter(x => x.name !== nm));
   const [envPeek, setEnvPeek] = useState(null); // tournament id whose mystery envelopes a GOD is peeking at
   const [specPick, setSpecPick] = useState(null); // tournament id whose spectate table-picker is open
   const [regPeek, setRegPeek] = useState(null); // tournament id whose registered-players list is expanded
   // Current blind structure rows: the custom rows once edited, else the
   // system default (TOUR_SCHEDULE + level length + ante from level 5).
-  const autoStructRows = () => TOUR_SCHEDULE.map(([sb, bb], i) => ({
+  const autoStructRows = () => TOUR_DEFAULT_STRUCT.map(([sb, bb], i) => ({
     sb,
     bb,
-    ante: i >= 4 ? sb : 0,
+    // BB-ante format: from level 10 the big blind alone posts an extra BB as
+    // the ante for the whole table. 'none' turns antes off entirely.
+    ante: opts.anteMode === 'none' ? 0 : i >= 9 ? bb : 0,
     mins: Number(opts.levelMins) || 5
   }));
   const structRows = opts.structure || autoStructRows();
   const setStructRow = (i, k, v) => {
-    const rows = structRows.map((r, j) => j === i ? {
-      ...r,
-      [k]: Math.max(0, Number(v) || 0)
-    } : r);
+    const val = Math.max(0, Number(v) || 0);
+    const rows = structRows.map((r, j) => {
+      if (j !== i) return r;
+      const next = {
+        ...r,
+        [k]: val
+      };
+      // typing the SB auto-sets the BB to 2x (50 -> 100)
+      if (k === 'sb') next.bb = val * 2;
+      return next;
+    });
     setOpts({
       ...opts,
       structure: rows
@@ -16882,12 +17045,13 @@ function TournamentsTab({
       maxPlayers: Math.max(2, Number(opts.maxPlayers) || 2),
       minPlayers: Math.max(2, Math.min(Number(opts.maxPlayers) || 2, Number(opts.minPlayers) || 2)),
       levelMins: isPoker ? Number(opts.levelMins) : 0,
-      structure: isPoker && Array.isArray(opts.structure) && opts.structure.length ? opts.structure.map(r => ({
+      structure: isPoker ? (opts.structure && opts.structure.length ? opts.structure : autoStructRows()).map(r => ({
         sb: Number(r.sb) || 0,
         bb: Number(r.bb) || 0,
         ante: Number(r.ante) || 0,
         mins: Math.max(1, Number(r.mins) || 5)
       })) : null,
+      anteType: isPoker && opts.anteMode !== 'none' ? 'bb' : null,
       breakEvery: isPoker ? Math.max(0, Number(opts.breakEvery) || 0) : 0,
       breakMins: isPoker ? Math.max(1, Number(opts.breakMins) || 5) : 0,
       // Mystery envelopes: the whole prize pool is drawn UP-FRONT — one sealed
@@ -17238,7 +17402,24 @@ function TournamentsTab({
     className: "fa-solid fa-plus ml-2"
   }), "New tournament")), showCreate && React.createElement("div", {
     className: "glass-panel p-6 rounded-2xl mb-6 border border-purple-500/30 animate-pop-in"
-  }, React.createElement("div", {
+  }, tTpls.length > 0 && React.createElement("div", {
+    className: "flex flex-wrap gap-2 items-center pb-4 mb-4 border-b border-white/8"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-purple-300 uppercase tracking-widest shrink-0"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark ml-1"
+  }), "Templates"), tTpls.map(tp => React.createElement("span", {
+    key: tp.name,
+    className: "inline-flex items-center gap-1 bg-slate-800 border border-purple-500/30 rounded-full pr-1 pl-3 py-1"
+  }, React.createElement("button", {
+    onClick: () => loadTourTpl(tp),
+    className: "text-xs font-black text-purple-200 hover:text-white"
+  }, tp.name), React.createElement("button", {
+    onClick: () => delTourTpl(tp.name),
+    className: "w-5 h-5 rounded-full text-slate-500 hover:text-rose-400 text-[10px] flex items-center justify-center"
+  }, React.createElement("i", {
+    className: "fa-solid fa-xmark"
+  }))))), React.createElement("div", {
     className: "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4"
   }, React.createElement("div", {
     className: "sm:col-span-2"
@@ -17499,7 +17680,19 @@ function TournamentsTab({
     dir: "ltr"
   }), React.createElement("span", {
     className: "text-[11px] font-bold text-slate-400"
-  }, "minutes · one clock for ALL tables — a table that ends its hand late just gets a shorter break"), opts.structure && React.createElement("button", {
+  }, "minutes · one clock for ALL tables — a table that ends its hand late just gets a shorter break"), React.createElement("select", {
+    value: opts.anteMode || 'bb',
+    onChange: e => setOpts({
+      ...opts,
+      anteMode: e.target.value
+    }),
+    title: "BB-ante: from level 10 the big blind alone posts one extra BB as the whole table's ante",
+    className: "bg-slate-900 text-white border border-white/10 rounded-lg p-2 text-xs font-bold"
+  }, React.createElement("option", {
+    value: "bb"
+  }, "BB-ante from L10 (big blind pays BB+BB)"), React.createElement("option", {
+    value: "none"
+  }, "No ante")), opts.structure && React.createElement("button", {
     type: "button",
     onClick: () => setOpts({
       ...opts,
@@ -17682,7 +17875,17 @@ function TournamentsTab({
     className: "text-xs text-slate-500 font-bold"
   }, "Entry: ", formatMoney(round2((Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) + (isPoker ? bounty : 0))), " (", formatMoney(Number(opts.buyIn) || 0), " to pool + ", formatMoney(Number(opts.fee) || 0), " to club", isPoker && bounty > 0 ? ` + ${formatMoney(bounty)} bounty` : '', ")", (Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) === 0 ? ' · 🎁 Freeroll!' : '', isPoker ? ` · stack ${Number(opts.startStack) || 1000}` : ' · knockout'), React.createElement("div", {
     className: "flex gap-3"
-  }, React.createElement("button", {
+  }, React.createElement("input", {
+    value: tTplName,
+    onChange: e => setTTplName(e.target.value),
+    placeholder: "Template name (optional)",
+    className: "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-purple-500/60 w-40"
+  }), React.createElement("button", {
+    onClick: saveTourTpl,
+    className: "bg-slate-800 hover:bg-slate-700 border border-purple-500/40 text-purple-200 px-4 py-2 rounded-xl font-black text-xs"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark ml-1"
+  }), " Save as template"), React.createElement("button", {
     onClick: () => setShowCreate(false),
     className: "px-6 py-2 text-slate-400 hover:text-white font-bold"
   }, "Cancel"), React.createElement("button", {

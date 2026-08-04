@@ -18326,6 +18326,27 @@ function TournamentsTab({
       }, ['🥇', '🥈', '🥉'][i] || '#' + (i + 1), " ", formatMoney(amt))), pz.length > shown.length && React.createElement("span", {
         className: "text-[10px] font-bold text-slate-500"
       }, "+", pz.length - shown.length, " more paid"));
+    })(), tor.status === 'running' && canManageGame(user, tor.game) && (() => {
+      // Manager's pace watchdog: any table that hasn't moved for 60s shows a
+      // red alert — tap to open it (the guards usually fix it first).
+      const torTbls = (tables || []).filter(tb => tb.tournamentId === tor.id && !(tb.tournament || {}).finished);
+      const stale = torTbls.map((tb, i) => {
+        const g2 = tb.gameState || {};
+        const lastMove = Math.max(g2.turnStartedAt || 0, tb.showdownAt || 0, g2.showdownAt || 0, tb.createdAt || 0);
+        return {
+          tb,
+          i,
+          idleS: Math.floor((Date.now() - lastMove) / 1000)
+        };
+      }).filter(x => x.idleS > 60);
+      if (!stale.length) return null;
+      return React.createElement("div", {
+        className: "flex flex-wrap gap-1.5 mb-2"
+      }, stale.map(x => React.createElement("button", {
+        key: x.tb.docId,
+        onClick: () => onJoinTable(x.tb),
+        className: "text-[11px] font-black bg-rose-950/70 border border-rose-500/60 text-rose-200 px-3 py-1.5 rounded-lg animate-pulse"
+      }, "⚠️ Table ", x.i + 1, " idle ", x.idleS, "s — tap to open")));
     })(), tor.status === 'reg' && (() => {
       const regs = Object.values(tor.players || {});
       if (!regs.length) return null;

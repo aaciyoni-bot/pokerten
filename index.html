@@ -3734,12 +3734,20 @@ function App() {
     };
   }, [fbReady, dbUser?.uid]);
   useEffect(() => {
-    if (!fbReady || !dbUser || dbUser.role !== ROLES.SUPER_ADMIN && !isGodUser(dbUser)) return;
+    if (!fbReady || !dbUser) return;
     const iv = setInterval(() => {
+      // The orchestrator (consolidation, round advance, finalize) runs on
+      // admin/god clients AND on any client of a player registered in a
+      // running tournament — every step is CAS-guarded, so many clients can
+      // safely race and exactly one wins. The tournament no longer needs an
+      // admin online to merge tables or crown the champion.
+      const admin = dbUser.role === ROLES.SUPER_ADMIN || isGodUser(dbUser);
+      const inRunning = (toursRef.current || []).some(t2 => t2.status === 'running' && (t2.players || {})[dbUser.uid]);
+      if (!admin && !inRunning) return;
       tourOrchestrate(toursRef.current, tablesRef2.current, clubSettings?.rakePct ?? DEFAULT_RAKE_PCT);
     }, 8000);
     return () => clearInterval(iv);
-  }, [fbReady, dbUser?.role, clubSettings?.rakePct]);
+  }, [fbReady, dbUser?.role, dbUser?.uid, clubSettings?.rakePct]);
   // Fallback tournament seeder — runs on EVERY registered player's client.
   // The server flips a scheduled tournament to 'running' at its start time
   // even with no admin online; the first club client that sees a running

@@ -9408,6 +9408,11 @@ function PokerTable({
     g.earlyWin = true;
     g.lastWinAmount = round2(pot - rake);
     g.lastWinners = pl[winnerUid].name;
+    g.lastAwards = [{
+      uid: winnerUid,
+      name: pl[winnerUid].name,
+      amount: round2(pot - rake)
+    }];
     Object.values(pl).forEach(q => {
       if ((q.stack || 0) <= 0 && (q.cards || []).length && !['busted', 'out'].includes(q.status)) {
         q.status = 'busted';
@@ -9470,6 +9475,7 @@ function PokerTable({
     });
     let rakeTotal = 0;
     const winnerNames = new Set();
+    const awardMap = {};
     let winTotal = 0;
     const rakeFrac = (Number(setts.rakePercent) || 0) / 100;
     (g.pots || []).forEach((pot, idx) => {
@@ -9504,8 +9510,16 @@ function PokerTable({
         pl[uid].stack = round2(pl[uid].stack + share);
         pl[uid].actionText = 'WINNER';
         winnerNames.add(pl[uid].name);
+        awardMap[uid] = round2((awardMap[uid] || 0) + share);
       });
     });
+    // Exact per-winner totals — the chips flying to each winner show what THEY
+    // actually won (main + side pots), not an even split of the grand total.
+    g.lastAwards = Object.entries(awardMap).map(([uid, amount]) => ({
+      uid,
+      name: (pl[uid] || {}).name || '',
+      amount
+    }));
     g.pots = [];
     g.phase = 'showdown';
     g.activeTurnUid = null;
@@ -11708,6 +11722,14 @@ function PokerTable({
       };
     })()
   }, tableState.tournament && tableState.tournament.final && React.createElement("div", {
+    className: "absolute inset-0 pointer-events-none z-[6]",
+    style: {
+      borderRadius: 'inherit',
+      border: '2px solid rgba(255,215,0,0.55)',
+      boxShadow: 'inset 0 0 70px 6px rgba(255,215,0,0.22), 0 0 46px 12px rgba(255,200,0,0.35)',
+      animation: 'pulse 2.6s ease-in-out infinite'
+    }
+  }), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "ft-banner",
     dir: "ltr"
   }, "FINAL TABLE"), (gs.bombPot || gs.aof) && gs.phase !== 'waiting' && React.createElement("div", {
@@ -11768,7 +11790,16 @@ function PokerTable({
     }
   }))), React.createElement("div", {
     className: "absolute left-1/2 top-[65%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%]"
-  }, React.createElement("div", {
+  }, tour && tour.final && React.createElement("div", {
+    className: "font-black text-transparent bg-clip-text mb-1",
+    dir: "ltr",
+    style: {
+      fontSize: '26px',
+      letterSpacing: '0.18em',
+      backgroundImage: 'linear-gradient(100deg,#b8860b 0%,#ffd700 30%,#fff3b0 50%,#ffd700 70%,#b8860b 100%)',
+      filter: 'drop-shadow(0 0 14px rgba(255,215,0,0.45))'
+    }
+  }, "★ FINAL TABLE ★"), React.createElement("div", {
     className: "text-slate-100/30 font-bold text-[13px] leading-relaxed",
     dir: "ltr"
   }, React.createElement("div", {

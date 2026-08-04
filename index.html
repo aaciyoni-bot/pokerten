@@ -17315,6 +17315,7 @@ function TournamentsTab({
     levelMins: 5,
     rebuys: true,
     rebuyUntilLevel: 2,
+    lateRegLevel: 2, // late registration open through this level (0 = off)
     addon: true,
     addonLevel: 3,
     mttMode: true, // Real MTT is the default — the authentic tournament flow
@@ -17551,7 +17552,7 @@ function TournamentsTab({
       addon: isPoker ? !!opts.addon : false,
       rebuyUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0,
       addonLevel: isPoker ? Math.max(1, Number(opts.addonLevel) || 3) : 0,
-      lateRegUntilLevel: isPoker ? Math.max(1, Number(opts.rebuyUntilLevel) || 2) : 0,
+      lateRegUntilLevel: isPoker ? Math.max(0, Math.min(12, Number(opts.lateRegLevel ?? 2))) : 0,
       mttMode: isPoker ? !!opts.mttMode : false,
       serverEngine: isPoker ? !!opts.serverEngine : false,
       botFill: !!opts.botFill,
@@ -18323,9 +18324,24 @@ function TournamentsTab({
     className: "accent-emerald-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-emerald-300 text-xs font-black"
-  }, "🔒 Server-secured engine (cards dealt on the server)")), React.createElement("span", {
-    className: "text-[10px] text-sky-300 font-bold"
-  }, "Late reg: until level ", opts.rebuyUntilLevel))), React.createElement("div", {
+  }, "🔒 Server-secured engine (cards dealt on the server)")), React.createElement("label", {
+    className: "flex items-center gap-2 mt-2"
+  }, React.createElement("span", {
+    className: "text-sky-300 text-xs font-bold"
+  }, "Late reg until level"), React.createElement("input", {
+    type: "number",
+    min: "0",
+    max: "12",
+    value: opts.lateRegLevel ?? 2,
+    onChange: e => setOpts({
+      ...opts,
+      lateRegLevel: Math.max(0, Math.min(12, parseInt(e.target.value) || 0))
+    }),
+    className: "w-14 bg-slate-900 text-white border border-slate-700 rounded-lg p-1 text-center font-bold",
+    dir: "ltr"
+  }), React.createElement("span", {
+    className: "text-[10px] text-slate-500 font-bold"
+  }, "0 = off")))), React.createElement("div", {
     className: "flex justify-between items-center pt-3 border-t border-white/5 flex-wrap gap-2"
   }, React.createElement("div", {
     className: "basis-full bg-slate-950/50 border border-white/10 rounded-2xl p-3"

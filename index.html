@@ -17422,6 +17422,27 @@ function TournamentsTab({
       const [tSnap, tbls] = await Promise.all([window.fb.getDoc(tRef(tor.id)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", tor.id)))]);
       const torD = tSnap.exists() ? tSnap.data() : {};
       const torPl = torD.players || {};
+      // Finished tournament: the FULL final table of every participant by
+      // recorded rank (tables are gone, so there are no live stacks to show).
+      if ((torD.status || tor.status) === 'done') {
+        const all = Object.entries(torPl).map(([uid, p]) => ({
+          uid,
+          name: p.name,
+          out: true,
+          rank: p.rank || 999,
+          stack: 0
+        }));
+        all.sort((a, b) => (a.rank || 999) - (b.rank || 999));
+        setStandData({
+          list: all,
+          alive: 0,
+          total: all.length,
+          prizes: tourPrizeList(torD),
+          pool: round2(Number(torD.prizePool) || 0),
+          finished: true
+        });
+        return;
+      }
       const stacks = {};
       tbls.docs.forEach(d => Object.values(d.data().players || {}).forEach(p => {
         if (p && p.uid) stacks[p.uid] = p.stack || 0;
@@ -18610,9 +18631,9 @@ function TournamentsTab({
       onClick: () => setEnvPeek(envPeek === tor.id ? null : tor.id),
       title: "GOD: peek at the mystery envelopes (drawn in advance, opened in order)",
       className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
-    }, "🎁"), tor.status === 'running' && React.createElement("button", {
+    }, "🎁"), ['running', 'done'].includes(tor.status) && React.createElement("button", {
       onClick: () => openStandings(tor),
-      title: "Live standings — every player's place and prize",
+      title: "Standings — every player's place and prize (also after the tournament ends)",
       className: "bg-gradient-to-b from-purple-500 to-purple-800 hover:from-purple-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
     }, "🏅"), tor.status === 'reg' && canManageGame(user, tor.game) && React.createElement("button", {
       onClick: () => runNow(tor),
@@ -18745,7 +18766,7 @@ function TournamentsTab({
     className: "flex items-center justify-between mb-2"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white"
-  }, "🏅 Standings", standData ? ` · ${standData.alive}/${standData.total} left` : ''), React.createElement("button", {
+  }, "🏅 Standings", standData ? standData.finished ? ` · Final results · ${standData.total} players` : ` · ${standData.alive}/${standData.total} left` : ''), React.createElement("button", {
     onClick: () => setStandFor(null),
     className: "w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white"
   }, "✕")), standData && standData.pool > 0 && React.createElement("div", {
@@ -18763,10 +18784,10 @@ function TournamentsTab({
     className: "flex items-center gap-2"
   }, React.createElement("span", {
     className: `w-7 text-center font-black ${p.rank === 1 ? 'text-amber-300' : p.rank === 2 ? 'text-slate-300' : p.rank === 3 ? 'text-amber-600' : 'text-slate-500'}`
-  }, p.rank <= 3 && !p.out ? ['🥇', '🥈', '🥉'][p.rank - 1] : '#' + p.rank), React.createElement("span", null, p.name, p.uid === user.uid ? ' (you)' : ''), p.rank <= (standData?.prizes || []).length && React.createElement("span", {
+  }, p.rank <= 3 && (p.out ? standData?.finished : true) ? ['🥇', '🥈', '🥉'][p.rank - 1] : '#' + (p.rank >= 999 ? '—' : p.rank)), React.createElement("span", null, p.name, p.uid === user.uid ? ' (you)' : ''), p.rank <= (standData?.prizes || []).length && React.createElement("span", {
     className: "text-[10px] font-black text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-full px-2 py-0.5",
     dir: "ltr"
-  }, formatMoney(standData.prizes[p.rank - 1]))), p.out ? React.createElement("span", {
+  }, formatMoney(standData.prizes[p.rank - 1]))), p.out ? standData?.finished ? null : React.createElement("span", {
     className: "text-[10px] text-rose-400 font-black"
   }, "OUT") : React.createElement("span", {
     className: "font-black text-emerald-300",

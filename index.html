@@ -9099,11 +9099,14 @@ function PokerTable({
         rank: i + 1
       })), ...outPl];
       const meRow = list.find(p => p.uid === user.uid);
+      const torData = tSnap.exists() ? tSnap.data() : {};
       setTourRanks({
         list,
         alive: alivePl.length,
         total: Object.keys(torPl).length,
-        myRank: meRow ? meRow.rank : null
+        myRank: meRow ? meRow.rank : null,
+        prizes: tourPrizeList(torData),
+        pool: round2(Number(torData.prizePool) || 0)
       });
     } catch (e) {}
   };
@@ -12290,7 +12293,9 @@ function PokerTable({
   }, "🏅 Standings", tourRanks ? ` · ${tourRanks.alive}/${tourRanks.total} left` : ''), React.createElement("button", {
     onClick: () => setTourStandOpen(false),
     className: "w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white"
-  }, "✕")), React.createElement("div", {
+  }, "✕")), tourRanks && tourRanks.pool > 0 && React.createElement("div", {
+    className: "text-xs font-black text-amber-300 mb-2"
+  }, "💰 Prize pool: ", formatMoney(tourRanks.pool), " · top ", (tourRanks.prizes || []).length, " paid"), React.createElement("div", {
     className: "overflow-y-auto flex-1 space-y-1"
   }, (tourRanks?.list || []).map(p => React.createElement("div", {
     key: p.uid,
@@ -12299,7 +12304,10 @@ function PokerTable({
     className: "flex items-center gap-2"
   }, React.createElement("span", {
     className: `w-7 text-center font-black ${p.rank === 1 ? 'text-amber-300' : p.rank === 2 ? 'text-slate-300' : p.rank === 3 ? 'text-amber-600' : 'text-slate-500'}`
-  }, p.rank <= 3 && !p.out ? ['🥇', '🥈', '🥉'][p.rank - 1] : '#' + p.rank), React.createElement("span", null, p.name, p.uid === user.uid ? ' (you)' : '')), p.out ? React.createElement("span", {
+  }, p.rank <= 3 && !p.out ? ['🥇', '🥈', '🥉'][p.rank - 1] : '#' + p.rank), React.createElement("span", null, p.name, p.uid === user.uid ? ' (you)' : ''), p.rank <= (tourRanks.prizes || []).length && React.createElement("span", {
+    className: "text-[10px] font-black text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-full px-2 py-0.5",
+    dir: "ltr"
+  }, formatMoney(tourRanks.prizes[p.rank - 1]))), p.out ? React.createElement("span", {
     className: "text-[10px] text-rose-400 font-black"
   }, "OUT") : React.createElement("span", {
     className: "font-black text-emerald-300",
@@ -15874,6 +15882,35 @@ const TOUR_SIZES = {
   ofc: 2
 };
 const tourEntryOf = tor => round2((Number(tor.buyIn) || 0) + (Number(tor.fee) || 0) + (Number(tor.bounty) || 0));
+// Standard payout curve for n paid places (1..30): power-law weights, first
+// place absorbs rounding so the total is exactly 100.
+const payoutCurve = n => {
+  n = Math.max(1, Math.min(30, Math.round(Number(n) || 1)));
+  const w = Array.from({
+    length: n
+  }, (_, i) => 1 / Math.pow(i + 1, 0.9));
+  const sum = w.reduce((a, b) => a + b, 0);
+  const pct = w.map(x => Math.round(x / sum * 1000) / 10);
+  const diff = round2(100 - pct.reduce((a, b) => a + b, 0));
+  pct[0] = round2(pct[0] + diff);
+  return pct;
+};
+// The tournament's live payout scheme (fractions). paidPct > 0 = percentage
+// mode: places grow with the field (10% of 30 entrants = top 3 paid), so the
+// per-place prizes shown anywhere recompute as players register.
+const tourSchemeOf = t => {
+  const n = Object.keys(t.players || {}).length;
+  if (Number(t.paidPct) > 0) {
+    const places = Math.max(1, Math.floor(n * Number(t.paidPct) / 100));
+    return payoutCurve(places).map(x => x / 100);
+  }
+  const custom = Array.isArray(t.payouts) && t.payouts.length ? t.payouts.map(x => (Number(x) || 0) / 100) : null;
+  return custom || (n >= 5 ? [0.5, 0.3, 0.2] : n >= 3 ? [0.7, 0.3] : [1]);
+};
+const tourPrizeList = t => {
+  const pool = round2(Number(t.prizePool) || 0);
+  return tourSchemeOf(t).map(f => round2(Math.floor(pool * f * 100) / 100));
+};
 // Effective blind structure for a tournament: the saved custom/auto structure,
 // or (legacy tournaments) rows generated from TOUR_SCHEDULE + levelMins + anteFromLevel.
 const tourStructOf = tour => {
@@ -16621,9 +16658,7 @@ const tourFinalize = async (tor, championUid, rakePct) => {
     const entrants = Object.values(t.players || {});
     const net = round2(t.prizePool || 0);
     const rake = round2(t.feeTotal || 0);
-    const n = entrants.length;
-    const custom = Array.isArray(t.payouts) && t.payouts.length ? t.payouts.map(x => (Number(x) || 0) / 100) : null;
-    const scheme = custom || (n >= 5 ? [0.5, 0.3, 0.2] : n >= 3 ? [0.7, 0.3] : [1]);
+    const scheme = tourSchemeOf(t); // fixed payouts, or %-of-field computed from the final entrant count
     // Prize money goes to HUMANS only, in finishing order — a bot in the money
     // would swallow real players' buy-ins. Bots keep their rank in the results
     // list but are skipped when the payout scheme is applied.
@@ -17035,6 +17070,8 @@ function TournamentsTab({
     mttMode: false,
     pokerType: 'NLH',
     startStack: 10000,
+    paidMode: 'fixed',
+    paidPct: 10,
     paidPlaces: 3,
     payouts: [50, 30, 20],
     mysteryBounty: false,
@@ -17166,9 +17203,12 @@ function TournamentsTab({
     if (!opts.date) return showToast("Choose a start date", "error");
     const startAt = new Date(`${opts.date}T${opts.time || '20:00'}`).getTime();
     if (!startAt || startAt < Date.now() - 60000) return showToast("The start time has already passed", "error");
-    const payoutsArr = (opts.payouts || []).slice(0, Number(opts.paidPlaces) || 1).map(x => Number(x) || 0);
-    const paySum = payoutsArr.reduce((sm, x) => sm + x, 0);
-    if (Math.abs(paySum - 100) > 0.01) return showToast(`Prize percentages must total 100% (currently ${paySum}%)`, "error");
+    const pctMode = opts.paidMode === 'pct';
+    const payoutsArr = pctMode ? null : (opts.payouts || []).slice(0, Number(opts.paidPlaces) || 1).map(x => Number(x) || 0);
+    if (!pctMode) {
+      const paySum = payoutsArr.reduce((sm, x) => sm + x, 0);
+      if (Math.abs(paySum - 100) > 0.01) return showToast(`Prize percentages must total 100% (currently ${paySum}%)`, "error");
+    }
     const addedPrize = round2(Number(opts.addedPrize) || 0);
     const docData = {
       clubId: CLUB_ID,
@@ -17213,6 +17253,7 @@ function TournamentsTab({
       botFill: !!opts.botFill,
       startStack: isPoker ? Math.max(100, Number(opts.startStack) || 1000) : 1000,
       payouts: payoutsArr,
+      paidPct: pctMode ? Math.max(1, Math.min(50, Number(opts.paidPct) || 10)) : 0,
       creatorUid: user.uid,
       prizeAsBonus: !!opts.prizeAsBonus,
       status: 'reg',
@@ -17971,26 +18012,53 @@ function TournamentsTab({
   }, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold uppercase tracking-widest"
   }, "Paid places"), React.createElement("select", {
+    value: opts.paidMode || 'fixed',
+    onChange: e => setOpts({
+      ...opts,
+      paidMode: e.target.value
+    }),
+    className: "bg-slate-900 text-white border border-slate-700 rounded-xl p-2 font-bold outline-none focus:border-purple-500 text-xs"
+  }, React.createElement("option", {
+    value: "fixed"
+  }, "Fixed number"), React.createElement("option", {
+    value: "pct"
+  }, "% of the field")), opts.paidMode === 'pct' ? React.createElement(React.Fragment, null, React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "50",
+    value: opts.paidPct,
+    onChange: e => setOpts({
+      ...opts,
+      paidPct: e.target.value
+    }),
+    className: "w-16 bg-slate-900 text-white border border-slate-700 rounded-xl p-2 font-bold text-center",
+    dir: "ltr"
+  }), React.createElement("span", {
+    className: "text-[11px] text-slate-400 font-bold"
+  }, "% of entrants get paid — places & prizes recompute live as the field grows (standard curve, e.g. 30 players @10% → top 3)")) : React.createElement(React.Fragment, null, React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "30",
     value: opts.paidPlaces,
     onChange: e => {
-      const n = parseInt(e.target.value);
-      const def = {
-        1: [100],
-        2: [70, 30],
-        3: [50, 30, 20],
-        4: [45, 27, 18, 10]
-      }[n];
+      const n = Math.max(1, Math.min(30, parseInt(e.target.value) || 1));
       setOpts({
         ...opts,
         paidPlaces: n,
-        payouts: def
+        payouts: payoutCurve(n)
       });
     },
-    className: "bg-slate-900 text-white border border-slate-700 rounded-xl p-2 font-bold outline-none focus:border-purple-500"
-  }, [1, 2, 3, 4].map(n => React.createElement("option", {
-    key: n,
-    value: n
-  }, n))), (opts.payouts || []).slice(0, opts.paidPlaces).map((p, i) => React.createElement("div", {
+    className: "w-16 bg-slate-900 text-white border border-slate-700 rounded-xl p-2 font-bold text-center",
+    dir: "ltr"
+  }), React.createElement("button", {
+    type: "button",
+    onClick: () => setOpts({
+      ...opts,
+      payouts: payoutCurve(opts.paidPlaces)
+    }),
+    title: "Fill percentages with the standard payout curve",
+    className: "text-[11px] font-black text-purple-300 underline"
+  }, "auto-curve")), opts.paidMode !== 'pct' && (opts.payouts || []).slice(0, opts.paidPlaces).map((p, i) => React.createElement("div", {
     key: i,
     className: "flex items-center gap-1"
   }, React.createElement("span", {
@@ -18012,7 +18080,7 @@ function TournamentsTab({
     dir: "ltr"
   }), React.createElement("span", {
     className: "text-slate-500 text-xs font-black"
-  }, "%"))), React.createElement("span", {
+  }, "%"))), opts.paidMode !== 'pct' && React.createElement("span", {
     className: `text-xs font-black ${(opts.payouts || []).slice(0, opts.paidPlaces).reduce((sm, x) => sm + (Number(x) || 0), 0) === 100 ? 'text-emerald-400' : 'text-rose-400'}`
   }, "Total ", (opts.payouts || []).slice(0, opts.paidPlaces).reduce((sm, x) => sm + (Number(x) || 0), 0), "%"))), React.createElement("span", {
     className: "text-xs text-slate-500 font-bold"
@@ -18101,7 +18169,23 @@ function TournamentsTab({
     }, " · 🎯", r.bounties) : null), React.createElement("span", {
       className: "text-emerald-400 font-black",
       dir: "ltr"
-    }, r.prize > 0 ? '+' + formatMoney(r.prize) : '-')))), tor.status === 'reg' && (() => {
+    }, r.prize > 0 ? '+' + formatMoney(r.prize) : '-')))), ['reg', 'running'].includes(tor.status) && (tor.prizePool || 0) > 0 && (() => {
+      // Live prize breakdown — recomputes as the field grows (esp. %-of-field
+      // mode: 3 entrants now = 1 paid place; 30 entrants @10% = top 3).
+      const pz = tourPrizeList(tor);
+      const shown = pz.slice(0, 6);
+      return React.createElement("div", {
+        className: "flex flex-wrap items-center gap-1.5 mb-2",
+        dir: "ltr"
+      }, React.createElement("span", {
+        className: "text-[10px] font-black text-amber-300 uppercase"
+      }, "💰 ", formatMoney(round2(tor.prizePool || 0)), " ·"), shown.map((amt, i) => React.createElement("span", {
+        key: i,
+        className: "text-[10px] font-black text-slate-200 bg-slate-900 border border-amber-500/25 rounded-full px-2 py-0.5"
+      }, ['🥇', '🥈', '🥉'][i] || '#' + (i + 1), " ", formatMoney(amt))), pz.length > shown.length && React.createElement("span", {
+        className: "text-[10px] font-bold text-slate-500"
+      }, "+", pz.length - shown.length, " more paid"));
+    })(), tor.status === 'reg' && (() => {
       const regs = Object.values(tor.players || {});
       if (!regs.length) return null;
       const open = regPeek === tor.id;
@@ -18140,9 +18224,33 @@ function TournamentsTab({
       className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
     }, "🎁"), tor.status === 'reg' && canManageGame(user, tor.game) && React.createElement("button", {
       onClick: () => runNow(tor),
-      title: "Start now",
-      className: "bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
-    }, "▶️"), ['reg', 'running'].includes(tor.status) && canManageGame(user, tor.game) && React.createElement("button", {
+      title: "Start now (ignores the scheduled time)",
+      className: "bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 px-4 rounded-xl font-black text-sm shadow-lg"
+    }, "▶️ START"), tor.status === 'running' && canManageGame(user, tor.game) && !(tables || []).some(tb => tb.tournamentId === tor.id) && React.createElement("button", {
+      onClick: async () => {
+        // Rescue: the tournament is RUNNING but has no tables (seeder raced or
+        // no client claimed it) — seed round 1 right now from this client.
+        try {
+          const snap2 = await window.fb.getDoc(tRef(tor.id));
+          if (!snap2.exists()) return;
+          const fresh2 = {
+            id: tor.id,
+            ...snap2.data()
+          };
+          const ent2 = Object.values(fresh2.players || {}).filter(p => !p.out).map(p => p.uid);
+          if (ent2.length < 2) return showToast("Not enough live players", "error");
+          await tourSeedRound(fresh2, ent2, fresh2.round || 1);
+          await window.fb.updateDoc(tRef(tor.id), {
+            seededRound: fresh2.round || 1
+          });
+          showToast("Tables created — game on! 🏆", "success");
+        } catch (e) {
+          showToast("Error creating tables", "error");
+        }
+      },
+      title: "The tournament is running but has no tables — create them now",
+      className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg animate-pulse"
+    }, "⚡ Create tables"), ['reg', 'running'].includes(tor.status) && canManageGame(user, tor.game) && React.createElement("button", {
       onClick: () => cancelTour(tor),
       title: "Cancel tournament (refund)",
       className: "bg-slate-800 hover:bg-rose-900 text-rose-300 py-2.5 px-3.5 rounded-xl font-bold text-sm border border-white/10"

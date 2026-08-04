@@ -15898,6 +15898,9 @@ const tourRebalance = async torId => {
       ...tSnap.data()
     };
     if (tor.game !== 'poker' || tor.status !== 'running') return;
+    // Consolidation is an MTT concept. Round-based tournaments (winner per
+    // table advances) must NEVER have tables merged mid-round.
+    if (!tor.mttMode) return;
     const q = window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId));
     const snap = await window.fb.getDocs(q);
     const tbls = snap.docs.map(d => ({

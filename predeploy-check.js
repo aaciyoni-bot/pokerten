@@ -143,5 +143,27 @@ check('new cash tables default to the client engine (serverEngine:false)',
   /serverEngine: false, \/\/ new cash tables/.test(bundle),
   'the cash-table create default must stay serverEngine:false until the server engine is proven');
 
+// 15) CHIP INTEGRITY: tournament pots are NEVER raked. Rake on tournament
+//     chips destroys the prize-pool chip count hand after hand (the 270k→50k
+//     trial-tournament disaster) and leaves decimal stacks. BOTH showdown
+//     paths (runShowdown + finishEarlyWin) must zero the rake for tournaments.
+check('tournament pots are never raked (both showdown paths)',
+  (bundle.match(/rakeFrac = \(tableRef\.current \|\| \{\}\)\.tournament \? 0 :/g) || []).length >= 2,
+  'both rakeFrac sites must be `(tableRef.current || {}).tournament ? 0 : ...`');
+
+// 16) CHIP INTEGRITY: a 0-chip seat is never dealt cards. Dealing a stack-0
+//     "zombie" keeps it at the table forever posting phantom blinds.
+check('0-chip seats are busted at deal time, never dealt',
+  /status === 'active' && \(p\.stack \|\| 0\) <= 0[\s\S]{0,120}?p\.status = 'busted'/.test(bundle) &&
+  /filter\(p => p\.status === 'active' && \(p\.stack \|\| 0\) > 0\)\.sort/.test(bundle),
+  'executeDeal must mark stack<=0 seats busted and only deal status=active AND stack>0');
+
+// 17) CHIP INTEGRITY: saveGame is seq-guarded. Without the optimistic-
+//     concurrency check a stale client (phone waking from background) can
+//     overwrite a fresher hand — erasing pot awards (players left at 0).
+check('saveGame carries the __seq optimistic-concurrency guard',
+  /const base = Number\(g\.__seq\) \|\| 0;[\s\S]{0,600}?if \(cur !== base\) throw 'stale';/.test(bundle),
+  'saveGame must run in a transaction and abort when gameState.__seq moved on');
+
 console.log('\n' + (fails ? `FAILED: ${fails} check(s) failed, ${passes} passed — DO NOT DEPLOY` : `OK: all ${passes} checks passed`));
 process.exit(fails ? 1 : 0);

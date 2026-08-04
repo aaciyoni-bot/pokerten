@@ -17194,6 +17194,33 @@ const tourAutoFillBots = async tor => {
     await window.fb.updateDoc(tRef(tor.id), upd);
   } catch (e) {}
 };
+// Scheduled tournament that never reached its minimum: refund and cancel
+// instead of sitting in 'reg' forever with the entry fees locked up. The CAS
+// (status flips inside the transaction) guarantees exactly ONE client refunds.
+const tourAutoCancel = async tor => {
+  try {
+    const won = await window.fb.runTransaction(window.fb.db, async trx => {
+      const s = await trx.get(tRef(tor.id));
+      if (!s.exists()) return false;
+      const t = s.data();
+      if (t.status !== 'reg' || t.cancellingAt) return false;
+      trx.update(tRef(tor.id), {
+        status: 'cancelled',
+        cancellingAt: Date.now(),
+        cancelReason: 'min-not-reached'
+      });
+      return true;
+    });
+    if (!won) return;
+    for (const p of Object.values(tor.players || {})) {
+      if ((p.paid || 0) > 0 && !p.isBot) {
+        try {
+          await creditBalance(p.uid, p.paid);
+        } catch (e2) {}
+      }
+    }
+  } catch (e) {}
+};
 const tourOrchestrate = async (tours, tables, rakePct) => {
   for (const tor of tours || []) {
     try {
@@ -17202,6 +17229,8 @@ const tourOrchestrate = async (tours, tables, rakePct) => {
           await tourStart(tor);
         } else if (tor.botFill && !tor.botFillAt) {
           await tourAutoFillBots(tor);
+        } else if (!tor.botFill && Date.now() - tor.startAt > 15 * 60 * 1000) {
+          await tourAutoCancel(tor); // 15 min past start, still below minimum
         }
         continue;
       }

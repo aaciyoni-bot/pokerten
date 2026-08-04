@@ -1169,5 +1169,43 @@ exports.admFixGameLog = onCall(CALL_OPTS, async (request) => {
   return {deleted: dupes.length};
 });
 
+// ---- Scheduled tournament auto-start ----
+// Fires every minute on the SERVER, so a scheduled tournament flips to
+// 'running' exactly at its start time (anchored to the advertised startAt) —
+// no admin needs to be online. Table seeding then happens on the first club
+// client that sees a running tournament with no tables (index.html fallback
+// seeder), so play begins the moment players are looking at it.
+const {onSchedule} = require("firebase-functions/v2/scheduler");
+exports.tourAutoStart = onSchedule("every 1 minutes", async () => {
+  const now = Date.now();
+  const snap = await db().collection("tournaments").where("status", "==", "reg").get();
+  for (const d of snap.docs) {
+    const t = d.data();
+    if (!t.startAt || t.startAt > now) continue;
+    const entrants = Object.values(t.players || {}).filter((p) => !p.out);
+    if (entrants.length < Math.max(2, Number(t.minPlayers) || 2)) continue;
+    let rigUid = null;
+    if (t.mysteryBounty && t.mysteryRig && t.mysteryRig.playerId) {
+      const want = String(t.mysteryRig.playerId).trim().toUpperCase();
+      const hit = entrants.find((p) => String(p.playerId || "").toUpperCase() === want);
+      if (hit) rigUid = hit.uid;
+    }
+    try {
+      await db().runTransaction(async (tx) => {
+        const s = await tx.get(d.ref);
+        if (!s.exists || s.data().status !== "reg") return;
+        tx.update(d.ref, {
+          status: "running",
+          // blind clock anchored to the ADVERTISED start (Israel-time as set
+          // in the form), even if this tick ran up to a minute late
+          startedAt: Math.max(t.startAt, now - 60000),
+          round: 1,
+          ...(rigUid ? {mysteryRigUid: rigUid} : {}),
+        });
+      });
+    } catch (e) { /* raced another starter — fine */ }
+  }
+});
+
 // Test hook — a plain object, ignored by the Functions deploy loader.
 exports.__engineInternals = {startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction};

@@ -3289,6 +3289,34 @@ function App() {
   }, [tablesDB, dbUser?.uid]);
   const [activeTable, setActiveTable] = useState(null);
   const [toasts, setToasts] = useState([]);
+  // Tournament celebration: the champion's table gets DELETED at finalize, so
+  // the winner used to be dumped to the lobby with "The table closed" and no
+  // trophy. Watch finished tournaments and pop the celebration for anyone who
+  // finished in the money (biggest for the champion), wherever they are.
+  const [tourCele, setTourCele] = useState(null);
+  useEffect(() => {
+    if (!dbUser?.uid) return;
+    for (const tor of toursDB || []) {
+      try {
+        if (tor.status !== 'done' || !Array.isArray(tor.results)) continue;
+        if (Date.now() - (tor.finishedAt || 0) > 10 * 60000) continue; // fresh finishes only
+        const meP = (tor.players || {})[dbUser.uid];
+        if (!meP || !meP.rank) continue;
+        const res = tor.results.find(r => r.rank === meP.rank) || {};
+        if (meP.rank !== 1 && !(res.prize > 0)) continue; // champion always; others only if in the money
+        const key = 'tourCele_' + tor.id;
+        if (localStorage.getItem(key)) continue;
+        localStorage.setItem(key, '1');
+        setTourCele({
+          place: meP.rank,
+          prize: res.prize || 0,
+          torName: tor.name || 'Tournament',
+          bounties: meP.bounties || 0
+        });
+        break;
+      } catch (e) {}
+    }
+  }, [toursDB, dbUser?.uid]);
   const [clubSettings, setClubSettings] = useState({
     rakePct: DEFAULT_RAKE_PCT
   });
@@ -4042,7 +4070,36 @@ function App() {
   }, m.text)))), React.createElement("button", {
     onClick: dismissInbox,
     className: "mt-5 bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white px-10 py-3 rounded-xl font-black shadow-lg"
-  }, "Got it 👍"))), toasts.map(t => React.createElement("div", {
+  }, "Got it 👍"))), tourCele && React.createElement("div", {
+    className: "fixed inset-0 z-[500] bg-slate-950/92 backdrop-blur-md flex items-center justify-center p-4",
+    onClick: () => setTourCele(null)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "glass-panel rounded-3xl p-8 w-full max-w-sm text-center animate-pop-in",
+    style: {
+      border: '2px solid rgba(255,215,0,0.6)',
+      boxShadow: '0 0 80px 16px rgba(255,200,0,0.28)'
+    }
+  }, React.createElement("div", {
+    className: "text-7xl mb-3 animate-bounce"
+  }, tourCele.place === 1 ? '🏆' : tourCele.place === 2 ? '🥈' : tourCele.place === 3 ? '🥉' : '🎉'), React.createElement("h2", {
+    className: "text-3xl font-black text-transparent bg-clip-text mb-1",
+    style: {
+      backgroundImage: 'linear-gradient(100deg,#b8860b,#ffd700,#fff3b0,#ffd700,#b8860b)'
+    }
+  }, tourCele.place === 1 ? 'CHAMPION!' : `Place #${tourCele.place}`), React.createElement("p", {
+    className: "text-slate-300 font-bold mb-1"
+  }, tourCele.torName), tourCele.prize > 0 && React.createElement("p", {
+    className: "text-2xl font-black text-emerald-300 my-3",
+    dir: "ltr"
+  }, "+", formatMoney(tourCele.prize)), tourCele.bounties > 0 && React.createElement("p", {
+    className: "text-sm font-bold text-rose-300 mb-2"
+  }, "🎯 ", tourCele.bounties, " knockouts"), React.createElement("p", {
+    className: "text-slate-400 text-xs font-bold mb-5"
+  }, tourCele.place === 1 ? 'The whole club watched you take it down. Respect. 👑' : 'In the money — nice run!'), React.createElement("button", {
+    onClick: () => setTourCele(null),
+    className: "w-full bg-gradient-to-b from-amber-400 to-amber-600 hover:from-amber-300 text-slate-900 py-3.5 rounded-2xl font-black text-lg shadow-lg"
+  }, "🙌 Continue"))), toasts.map(t => React.createElement("div", {
     key: t.id,
     // three distinct voices — success / error / info — each with its icon,
     // so the eye reads the outcome before the words

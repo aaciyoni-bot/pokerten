@@ -3896,7 +3896,8 @@ function App() {
     user: effUser,
     tournaments: toursDB,
     tables: tablesDB,
-    clubSettings: clubSettings
+    clubSettings: clubSettings,
+    excludeDocId: ['poker-table', 'durak-table', 'ofc-table'].includes(currentView) ? activeTable?.docId : null
   }), currentView === 'poker-table' && React.createElement(PokerTable, {
     tableDocId: activeTable?.docId,
     user: effUser,
@@ -18534,11 +18535,18 @@ function TourDrivers({
   user,
   tournaments,
   tables,
-  clubSettings
+  clubSettings,
+  excludeDocId
 }) {
   const isGod = isGodUser(user);
   const canDrive = t2 => isGod || user.uid === t2.creatorUid || [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role);
-  const driverTables = (tournaments || []).filter(t2 => t2.game === 'poker' && t2.status === 'running' && (t2.clubId || 'main') === CLUB_ID && canDrive(t2)).flatMap(t2 => (tables || []).filter(tb => tb.tournamentId === t2.id && tb.type === 'poker' && !(tb.tournament || {}).finished && !(tb.settings || {}).serverEngine && !Object.values(tb.players || {}).some(q2 => !q2.isBot && q2.status !== 'out' && (q2.stack || 0) > 0)));
+  // Drive EVERY client-engine tournament table (except the one this client is
+  // actually viewing — that visible instance already drives itself). The
+  // manager's device becomes the always-on engine for the whole tournament:
+  // every rescue watchdog (stuck turn, dead street, frozen showdown, sit-out
+  // skip, bot turns, seat sweep) runs from here for every table, so a table
+  // whose players' phones sleep can no longer freeze the tournament.
+  const driverTables = (tournaments || []).filter(t2 => t2.game === 'poker' && t2.status === 'running' && (t2.clubId || 'main') === CLUB_ID && canDrive(t2)).flatMap(t2 => (tables || []).filter(tb => tb.tournamentId === t2.id && tb.type === 'poker' && !(tb.tournament || {}).finished && !(tb.settings || {}).serverEngine && tb.docId !== excludeDocId));
   if (!driverTables.length) return null;
   return React.createElement("div", {
     style: {

@@ -11187,7 +11187,14 @@ function PokerTable({
     8: [[50, 91], [6, 70], [5, 38], [18, 13], [50, 12], [82, 13], [95, 38], [94, 70]],
     9: [[50, 91], [6, 72], [5, 42], [12, 17], [36, 12], [64, 12], [88, 17], [95, 42], [94, 72]]
   };
-  const seatXY = i => (SEAT_LAYOUTS[Math.min(9, Math.max(2, N))] || SEAT_LAYOUTS[6])[i] || [50, 50];
+  const seatXY = i => {
+    const lay = (SEAT_LAYOUTS[Math.min(9, Math.max(2, N))] || SEAT_LAYOUTS[6])[i];
+    if (lay) return lay;
+    // Overflow seat (10+): place on the table ellipse instead of stacking
+    // players in the middle / off-screen.
+    const ang = Math.PI / 2 + i / Math.max(N, 2) * Math.PI * 2;
+    return [Math.round(50 + 44 * Math.cos(ang)), Math.round(50 + 41 * Math.sin(ang))];
+  };
   const seatPos = i => {
     const [x, y] = seatXY(i);
     return {
@@ -16829,7 +16836,7 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
           if (!sS.exists() || !dS.exists()) return;
           const sp = (sS.data().players || {})[mover.uid];
           if (!sp || (sp.stack || 0) <= 0) return;
-          if (Object.values(dS.data().players || {}).filter(p => (p.stack || 0) > 0).length >= MTT_SEATS) return;
+          if (Object.keys(dS.data().players || {}).length >= MTT_SEATS) return; // SEATS, not live stacks — a busted player in grace still occupies a chair
           const sPl = {
             ...sS.data().players
           };
@@ -16908,7 +16915,7 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
           if (!sS.exists() || !dS.exists()) return;
           const sp = (sS.data().players || {})[mover.uid];
           if (!sp || (sp.stack || 0) <= 0) return;
-          if (Object.values(dS.data().players || {}).filter(p => (p.stack || 0) > 0).length >= MTT_SEATS) return;
+          if (Object.keys(dS.data().players || {}).length >= MTT_SEATS) return; // SEATS, not live stacks — a busted player in grace still occupies a chair
           trx.update(dRef, {
             players: {
               ...dS.data().players,
@@ -16931,7 +16938,7 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
         if (!sS.exists() || !dS.exists()) return;
         const sp = (sS.data().players || {})[mover.uid];
         if (!sp || (sp.stack || 0) <= 0) return;
-        if (Object.values(dS.data().players || {}).filter(p => (p.stack || 0) > 0).length >= MTT_SEATS) return;
+        if (Object.keys(dS.data().players || {}).length >= MTT_SEATS) return; // SEATS, not live stacks — a busted player in grace still occupies a chair
         const sPl = {
           ...sS.data().players
         };

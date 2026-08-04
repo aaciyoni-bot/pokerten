@@ -531,6 +531,13 @@ function runShowdown(S) {
   let winTotal = 0;
   const winnerUids = new Set();
   (g.pots || []).forEach((potObj, idx) => {
+    // Single-eligible pot = uncalled over-bet returning to its owner: a
+    // silent REFUND, never a "win" (it rendered like a split pot).
+    if ((potObj.eligible || []).length === 1) {
+      const uid0 = potObj.eligible[0];
+      if (pl[uid0]) pl[uid0].stack = round2(pl[uid0].stack + potObj.amount);
+      return;
+    }
     const elig = potObj.eligible.filter((uid) => pl[uid] && pl[uid].status === "active");
     if (!elig.length) return; // client parity: dropped (index.html:9165)
     let amount = potObj.amount;

@@ -9469,6 +9469,14 @@ function PokerTable({
     let winTotal = 0;
     const rakeFrac = (Number(setts.rakePercent) || 0) / 100;
     (g.pots || []).forEach((pot, idx) => {
+      // A pot with exactly ONE eligible player from the start is an uncalled
+      // over-bet coming back — a REFUND, not a win. Return it silently: no
+      // WINNER tag, no win banner amount (it looked like a split pot).
+      if ((pot.eligible || []).length === 1) {
+        const uid0 = pot.eligible[0];
+        if (pl[uid0]) pl[uid0].stack = round2(pl[uid0].stack + pot.amount);
+        return;
+      }
       const elig = (pot.eligible || []).filter(uid => pl[uid] && pl[uid].status === 'active');
       if (elig.length === 0) return;
       let bestS = -1;

@@ -1243,7 +1243,7 @@ setTimeout(() => {
     sfxLoad();
   } catch (e) {}
 }, 2500);
-const sfxPlay = (name, when = 0, gain = 1, rate = 0) => {
+const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0) => {
   const ctx = sfxCtx();
   const b = SFX.buf[name];
   if (!ctx || !b) return false;
@@ -1275,7 +1275,15 @@ const sfxPlay = (name, when = 0, gain = 1, rate = 0) => {
       tail = pan;
     }
     tail.connect(SFX.bus);
-    src.start(ctx.currentTime + when);
+    const t0 = ctx.currentTime + when;
+    if (maxDur > 0) {
+      // trim long samples: hold, then quick fade so the cut isn't a click
+      const fadeAt = t0 + Math.max(0.05, maxDur - 0.2);
+      g.gain.setValueAtTime(g.gain.value, fadeAt);
+      g.gain.linearRampToValueAtTime(0.0001, t0 + maxDur);
+      src.stop(t0 + maxDur + 0.03);
+    }
+    src.start(t0);
     return true;
   } catch (e) {
     return false;
@@ -1306,16 +1314,16 @@ const playSnd = (type, times = 1, gapSec = 0) => {
   try {
     const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
     if (variants.length) {
-      // Winner takes the pot: ONE long smooth chip-slide (sample slowed to
-      // ~72% = longer + deeper), not a burst of short ones — owner request.
+      // Winner takes the pot: ONE short chip-slide, natural speed, trimmed to
+      // ~0.7s with a fade — owner request (the slowed 1.4s version was grating).
       // bigwin adds a single "all in" hit in front as the celebration accent.
       if (type === 'win' || type === 'bigwin') {
         const slide = (SFX_FILES.win || []).filter(x => SFX.buf[x]);
         if (type === 'bigwin' && SFX.buf['all_in']) {
           sfxPlay('all_in', 0, SFX_GAIN.bigwin);
-          if (slide.length) sfxPlay(slide[0], 0.35, SFX_GAIN.win * 0.9, 0.72);
+          if (slide.length) sfxPlay(slide[0], 0.3, SFX_GAIN.win * 0.75, 1, 0.7);
         } else if (slide.length) {
-          sfxPlay(slide[0], 0, SFX_GAIN.win, 0.72);
+          sfxPlay(slide[0], 0, SFX_GAIN.win * 0.85, 1, 0.7);
         }
         return;
       }
@@ -9514,7 +9522,8 @@ function PokerTable({
       logGameResult(rkUids.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share })), tableDocId);
     }
     clearTimeout(nextHandRef.current);
-    nextHandRef.current = setTimeout(() => startHand(), 4000);
+    // cash keeps a snappy rhythm; tournaments keep the fuller beat
+    nextHandRef.current = setTimeout(() => startHand(), (tableRef.current || {}).tournament ? 4000 : 2500);
   };
   const runShowdown = async (g, pl) => {
     const actives = Object.values(pl).filter(p => p.status === 'active');
@@ -9627,7 +9636,8 @@ function PokerTable({
       logGameResult(rkUids2.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share2 })), tableDocId);
     }
     clearTimeout(nextHandRef.current);
-    nextHandRef.current = setTimeout(() => startHand(), 9000);
+    // enough to read the showdown + pot animation; cash moves on much sooner
+    nextHandRef.current = setTimeout(() => startHand(), (tableRef.current || {}).tournament ? 9000 : 5000);
   };
   const advancePhase = async (gIn, plIn) => {
     const g = {

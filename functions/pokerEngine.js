@@ -836,7 +836,7 @@ async function tickTable(id) {
       startHand(S);
       dirty = true;
     } else if (g.phase === "showdown" && spinGate && !extraTop.spinDone) {
-      const wait = g.earlyWin ? 4000 : 9000; // client parity (index.html:9132/:9228)
+      const wait = g.earlyWin ? 2500 : 5000; // client cash parity (server tables are cash/spin only)
       if (now - (g.showdownAt || 0) > wait && eligible.length >= 2) {
         startHand(S);
         dirty = true;

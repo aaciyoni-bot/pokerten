@@ -2372,7 +2372,7 @@ const botPreflopTier = cards => {
     return Math.random() < 0.3 ? 1 : 0;
   }
   const suited = cards[0].suit === cards[1].suit;
-  if (vs[0] === vs[1]) return vs[0] >= 11 ? 3 : vs[0] >= 7 ? 2 : 1;
+  if (vs[0] === vs[1]) return vs[0] >= 10 ? 3 : 2; // TT+ premium; EVERY pair is playable
   const gap = vs[0] - vs[1];
   if (vs[0] === 14 && vs[1] >= 12) return 3;
   if (vs[0] >= 12 && vs[1] >= 10 || vs[0] === 14 && suited) return 2;
@@ -2395,14 +2395,21 @@ const botPokerMove = (g, t, b) => {
     const tier = botPreflopTier(b.cards || []);
     const shortStack = stack <= bb * 12;
     const bigRaise = toCall > bb * 3.5;
+    // Pocket pairs set-mine: a pair NEVER folds to a normal-sized raise
+    // (folding 66/TT preflop to 3bb is a dead giveaway nobody plays like).
+    const isPair = (b.cards || []).length === 2 && b.cards[0].val === b.cards[1].val;
+    if (isPair && toCall > 0 && toCall <= Math.min(stack * 0.15, bb * 8) && tier < 3) return { type: 'call' };
     if (tier === 0) return toCall <= 0 ? { type: 'call' } : { type: 'fold' };
     if (tier === 1) {
       if (toCall <= 0) return r < 0.12 ? { type: 'raise', amt: raiseTo(bb * 2.5) } : { type: 'call' };
+      if (toCall > stack * 0.3) return { type: 'fold' }; // never gamble a third of the stack on a marginal hand
       if (toCall <= bb * 2.5) return r < 0.75 ? { type: 'call' } : { type: 'fold' };
       return r < 0.12 ? { type: 'call' } : { type: 'fold' };
     }
     if (tier === 2) {
       if (shortStack && toCall >= stack * 0.35) return r < 0.55 ? { type: 'call' } : { type: 'fold' };
+      // a deep stack facing a HUGE shove folds medium hands almost always
+      if (toCall > stack * 0.35) return r < 0.1 ? { type: 'call' } : { type: 'fold' };
       if (toCall <= 0) return r < 0.45 ? { type: 'raise', amt: raiseTo(bb * (2.5 + r)) } : { type: 'call' };
       if (bigRaise) return r < 0.55 ? { type: 'call' } : { type: 'fold' };
       return r < 0.3 ? { type: 'raise', amt: raiseTo((g.highestBet || bb) * 3) } : { type: 'call' };
@@ -3885,6 +3892,11 @@ function App() {
       changeView('lobby');
       showToast("Poker table opened!", "success");
     }
+  }), effUser && activeClub && React.createElement(TourDrivers, {
+    user: effUser,
+    tournaments: toursDB,
+    tables: tablesDB,
+    clubSettings: clubSettings
   }), currentView === 'poker-table' && React.createElement(PokerTable, {
     tableDocId: activeTable?.docId,
     user: effUser,
@@ -9232,6 +9244,7 @@ function PokerTable({
   const nextHandRef = useRef(null);
   const startingRef = useRef(false);
   const sdStuckRef = useRef({ key: '', at: 0 }); // stuck-showdown watchdog anchor
+  const [outDismissed, setOutDismissed] = useState(false); // elimination screen -> "keep watching"
   const synthRef = useRef(null);
   const isGod = isGodUser(user);
   const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
@@ -10214,9 +10227,15 @@ function PokerTable({
     });
     if (bustedNow.length) {
       const outsNow = bustedNow.filter(u => pl[u].status === 'out');
-      tourReportBust(tableState.tournamentId, outsNow, winnersUids.filter(w => !bustedNow.includes(w)), tour.bounty || 0, true);
-      if (tour.bounty > 0 && outsNow.length < bustedNow.length) {
-        tourReportBust(tableState.tournamentId, [], winnersUids.filter(w => !bustedNow.includes(w)), tour.bounty || 0, false);
+      const knockers = winnersUids.filter(w => !bustedNow.includes(w));
+      // ranks/out marks — no bounty here (it is paid for ALL busts below)
+      tourReportBust(tableState.tournamentId, outsNow, knockers, 0, false);
+      // EVERY knockout pays its head bounty, including busts inside the rebuy
+      // window (a rebuy re-arms a fresh bounty, which the rebuy price funds).
+      if (tour.bounty > 0 && knockers.length) {
+        tourReportBust(tableState.tournamentId, bustedNow, knockers, tour.bounty || 0, true, {
+          markOut: false
+        });
       }
     }
     const alive = Object.values(pl).filter(q => (q.stack || 0) > 0);
@@ -10792,7 +10811,7 @@ function PokerTable({
         const torD = torSnap.data();
         const me = t.players[user.uid];
         if (!me || me.status !== 'busted') throw "Unavailable";
-        const entry = round2((Number(torD.buyIn) || 0) + (Number(torD.fee) || 0) + (Number(torD.bounty) || 0));
+        const entry = tourEntryOf(torD); // buy-in + fee + bounty (bounty free when club-funded)
         if ((uSnap.data().balance || 0) < entry) throw "Not enough balance for Rebuy";
         tr.update(uRef, {
           balance: round2((uSnap.data().balance || 0) - entry)
@@ -12316,9 +12335,9 @@ function PokerTable({
     className: "text-center text-slate-500 py-6"
   }, React.createElement("i", {
     className: "fa-solid fa-spinner fa-spin"
-  }))))), tour && myPlayer && myPlayer.status === 'busted' && React.createElement("div", {
+  }))))), tour && myPlayer && (myPlayer.status === 'busted' || myPlayer.status === 'out' && !outDismissed) && React.createElement("div", {
     className: "absolute inset-0 z-[240] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-  }, React.createElement("div", {
+  }, myPlayer.status === 'busted' ? React.createElement("div", {
     className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-white/10"
   }, React.createElement("div", {
     className: "text-5xl mb-2"
@@ -12336,7 +12355,27 @@ function PokerTable({
   }, "Rebuy 💪"), React.createElement("button", {
     onClick: tourDecline,
     className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3.5 rounded-2xl font-black border border-white/10"
-  }, "Folded")))), offline && React.createElement("div", {
+  }, "Folded"))) : React.createElement("div", {
+    className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-purple-500/40"
+  }, React.createElement("div", {
+    className: "text-5xl mb-2"
+  }, "🏁"), React.createElement("h3", {
+    className: "text-2xl font-black text-white mb-1"
+  }, "Eliminated from the tournament"), tourRanks && tourRanks.myRank && React.createElement("p", {
+    className: "text-lg font-black text-purple-300 mb-1"
+  }, "Finishing place: #", tourRanks.myRank, tourRanks.myRank <= (tourRanks.prizes || []).length ? React.createElement("span", {
+    className: "text-amber-300"
+  }, " · 🏆 ", formatMoney(tourRanks.prizes[tourRanks.myRank - 1])) : null), React.createElement("p", {
+    className: "text-slate-400 text-xs font-bold mb-4"
+  }, "Prizes are paid out when the tournament ends. You can keep watching, or check the final table from the lobby."), React.createElement("div", {
+    className: "flex gap-3"
+  }, React.createElement("button", {
+    onClick: () => setOutDismissed(true),
+    className: "flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 py-3.5 rounded-2xl font-black border border-white/10"
+  }, "👁 Keep watching"), React.createElement("button", {
+    onClick: onLeave,
+    className: "flex-1 bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white py-3.5 rounded-2xl font-black shadow-lg"
+  }, "Back to lobby")))), offline && React.createElement("div", {
     className: "absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse",
     dir: "ltr"
   }, React.createElement("span", {
@@ -15881,7 +15920,9 @@ const TOUR_SIZES = {
   durak: 5,
   ofc: 2
 };
-const tourEntryOf = tor => round2((Number(tor.buyIn) || 0) + (Number(tor.fee) || 0) + (Number(tor.bounty) || 0));
+// Entry price. bountyFree = the club funds the bounties as a bonus (players
+// don't pay the bounty component — great for freerolls).
+const tourEntryOf = tor => round2((Number(tor.buyIn) || 0) + (Number(tor.fee) || 0) + (tor.bountyFree ? 0 : Number(tor.bounty) || 0));
 // Standard payout curve for n paid places (1..30): power-law weights, first
 // place absorbs rounding so the total is exactly 100.
 const payoutCurve = n => {
@@ -16563,7 +16604,8 @@ const mysteryMult = () => {
   }
   return 1;
 };
-const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBounty) => {
+const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBounty, opts) => {
+  const markOut = !opts || opts.markOut !== false;
   let bountyCuts = [];
   let mysteryHit = null;
   try {
@@ -16576,7 +16618,7 @@ const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBount
       };
       let alive = Object.values(pl).filter(p => !p.out).length;
       const upd = {};
-      for (const uid of bustedUids) {
+      if (markOut) for (const uid of bustedUids) {
         if (!pl[uid] || pl[uid].out) continue;
         upd[`players.${uid}.out`] = true;
         upd[`players.${uid}.rank`] = alive;
@@ -16659,15 +16701,17 @@ const tourFinalize = async (tor, championUid, rakePct) => {
     const net = round2(t.prizePool || 0);
     const rake = round2(t.feeTotal || 0);
     const scheme = tourSchemeOf(t); // fixed payouts, or %-of-field computed from the final entrant count
-    // Prize money goes to HUMANS only, in finishing order — a bot in the money
-    // would swallow real players' buy-ins. Bots keep their rank in the results
-    // list but are skipped when the payout scheme is applied.
+    // Results display prizes by finishing order for EVERYONE — bots included,
+    // so nothing in the table gives a bot away. Actual money moves only for
+    // humans (a bot's allocation simply stays with the house). The champion
+    // also keeps their own head bounty — the one bounty nobody could claim.
     const ranked = entrants.filter(p => p.rank).sort((a, b) => a.rank - b.rank);
-    const humansRanked = ranked.filter(p => !p.isBot);
+    const ownBounty = round2(Number(t.bounty) || 0);
     const results = [];
-    for (const p of ranked) {
-      const hi = humansRanked.indexOf(p);
-      const prize = hi >= 0 && hi < scheme.length ? round2(Math.floor(net * scheme[hi] * 100) / 100) : 0;
+    for (let i = 0; i < ranked.length; i++) {
+      const p = ranked[i];
+      const champBounty = p.rank === 1 && ownBounty > 0 ? ownBounty : 0;
+      const prize = round2((i < scheme.length ? round2(Math.floor(net * scheme[i] * 100) / 100) : 0) + champBounty);
       results.push({
         name: p.name,
         rank: p.rank,
@@ -17076,6 +17120,7 @@ function TournamentsTab({
     payouts: [50, 30, 20],
     mysteryBounty: false,
     mysteryRigId: '',
+    bountyFree: false,
     botFill: false,
     serverEngine: true,
     prizeAsBonus: false,
@@ -17131,6 +17176,58 @@ function TournamentsTab({
   const [envPeek, setEnvPeek] = useState(null); // tournament id whose mystery envelopes a GOD is peeking at
   const [specPick, setSpecPick] = useState(null); // tournament id whose spectate table-picker is open
   const [regPeek, setRegPeek] = useState(null); // tournament id whose registered-players list is expanded
+  // Lobby standings board — opens by tapping a RUNNING tournament card
+  const [standFor, setStandFor] = useState(null);
+  const [standData, setStandData] = useState(null);
+  const openStandings = async tor => {
+    setStandFor(tor.id);
+    setStandData(null);
+    try {
+      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(tRef(tor.id)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", tor.id)))]);
+      const torD = tSnap.exists() ? tSnap.data() : {};
+      const torPl = torD.players || {};
+      const stacks = {};
+      tbls.docs.forEach(d => Object.values(d.data().players || {}).forEach(p => {
+        if (p && p.uid) stacks[p.uid] = p.stack || 0;
+      }));
+      const alivePl = [],
+        outPl = [];
+      Object.entries(torPl).forEach(([uid, p]) => {
+        if (p.out) outPl.push({
+          uid,
+          name: p.name,
+          out: true,
+          rank: p.rank || 999
+        });else alivePl.push({
+          uid,
+          name: p.name,
+          stack: stacks[uid] || 0,
+          out: false
+        });
+      });
+      alivePl.sort((a, b) => b.stack - a.stack);
+      outPl.sort((a, b) => (a.rank || 999) - (b.rank || 999));
+      const list = [...alivePl.map((p, i) => ({
+        ...p,
+        rank: i + 1
+      })), ...outPl];
+      setStandData({
+        list,
+        alive: alivePl.length,
+        total: Object.keys(torPl).length,
+        prizes: tourPrizeList(torD),
+        pool: round2(Number(torD.prizePool) || 0)
+      });
+    } catch (e) {
+      setStandData({
+        list: [],
+        alive: 0,
+        total: 0,
+        prizes: [],
+        pool: 0
+      });
+    }
+  };
   // Current blind structure rows: the custom rows once edited, else the
   // system default (TOUR_SCHEDULE + level length + ante from level 5).
   const autoStructRows = () => TOUR_DEFAULT_STRUCT.map(([sb, bb], i) => ({
@@ -17218,6 +17315,7 @@ function TournamentsTab({
       fee: round2(Number(opts.fee) || 0),
       addedPrize,
       bounty: isPoker ? bounty : 0,
+      bountyFree: isPoker && bounty > 0 ? !!opts.bountyFree : false,
       mysteryBounty: isPoker && isGod && bounty > 0 ? !!opts.mysteryBounty : false,
       mysteryRig: isPoker && isGod && opts.mysteryBounty && String(opts.mysteryRigId || '').trim() ? {
         playerId: String(opts.mysteryRigId).trim().toUpperCase(),
@@ -17728,7 +17826,23 @@ function TournamentsTab({
     placeholder: "0 = none",
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold",
     dir: "ltr"
-  })), isPoker && isGod && bounty > 0 && React.createElement("div", {
+  })), isPoker && bounty > 0 && React.createElement("div", {
+    className: "p-3 rounded-xl border border-emerald-500/30 bg-emerald-900/10"
+  }, React.createElement("label", {
+    className: "flex items-center gap-2 cursor-pointer"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: !!opts.bountyFree,
+    onChange: e => setOpts({
+      ...opts,
+      bountyFree: e.target.checked
+    }),
+    className: "w-4 h-4 accent-emerald-500"
+  }), React.createElement("span", {
+    className: "text-emerald-200 text-sm font-black"
+  }, "🎁 Club-funded bounty — free for players")), React.createElement("p", {
+    className: "text-[10px] text-emerald-300/70 font-bold mt-1"
+  }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && isGod && bounty > 0 && React.createElement("div", {
     className: "p-3 rounded-xl border border-fuchsia-500/30 bg-fuchsia-900/10"
   }, React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer"
@@ -18224,7 +18338,11 @@ function TournamentsTab({
       onClick: () => setEnvPeek(envPeek === tor.id ? null : tor.id),
       title: "GOD: peek at the mystery envelopes (drawn in advance, opened in order)",
       className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
-    }, "🎁"), tor.status === 'reg' && canManageGame(user, tor.game) && React.createElement("button", {
+    }, "🎁"), tor.status === 'running' && React.createElement("button", {
+      onClick: () => openStandings(tor),
+      title: "Live standings — every player's place and prize",
+      className: "bg-gradient-to-b from-purple-500 to-purple-800 hover:from-purple-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg"
+    }, "🏅"), tor.status === 'reg' && canManageGame(user, tor.game) && React.createElement("button", {
       onClick: () => runNow(tor),
       title: "Start now (ignores the scheduled time)",
       className: "bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 px-4 rounded-xl font-black text-sm shadow-lg"
@@ -18345,30 +18463,73 @@ function TournamentsTab({
     }, "🏆 Final Table · Champions"))));
   }), sorted.length === 0 && React.createElement("div", {
     className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
-  }, "No tournaments right now. ", canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, soloModal, (() => {
-    // HIDDEN DRIVERS: the client engine only runs a table while some browser
-    // has it open — a bot-only table would never deal a hand and the
-    // tournament could never finish. The tournament manager's client quietly
-    // mounts a headless copy of every bot-only table, which drives it with the
-    // exact same engine, guard, blind structure and shared break clock.
-    const canDrive = t2 => isGod || user.uid === t2.creatorUid || [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role);
-    const driverTables = (tournaments || []).filter(t2 => t2.game === 'poker' && t2.status === 'running' && (t2.clubId || 'main') === CLUB_ID && canDrive(t2)).flatMap(t2 => (tables || []).filter(tb => tb.tournamentId === t2.id && tb.type === 'poker' && !(tb.tournament || {}).finished && !(tb.settings || {}).serverEngine && !Object.values(tb.players || {}).some(q2 => !q2.isBot && q2.status !== 'out' && (q2.stack || 0) > 0)));
-    if (!driverTables.length) return null;
-    return React.createElement("div", {
-      style: {
-        display: 'none'
-      },
-      "aria-hidden": true
-    }, driverTables.map(tb => React.createElement(PokerTable, {
-      key: 'drv' + tb.docId,
-      tableDocId: tb.docId,
-      user: user,
-      clubSettings: clubSettings,
-      headless: true,
-      onLeave: () => {},
-      showToast: () => {}
-    })));
-  })());
+  }, "No tournaments right now. ", canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, soloModal, standFor && ReactDOM.createPortal(React.createElement("div", {
+    className: "fixed inset-0 z-[310] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => setStandFor(null)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "glass-panel rounded-3xl p-5 w-full max-w-md animate-pop-in border border-purple-500/40 max-h-[85vh] flex flex-col"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, React.createElement("h3", {
+    className: "text-lg font-black text-white"
+  }, "🏅 Standings", standData ? ` · ${standData.alive}/${standData.total} left` : ''), React.createElement("button", {
+    onClick: () => setStandFor(null),
+    className: "w-8 h-8 rounded-full bg-slate-800 text-slate-300 hover:text-white"
+  }, "✕")), standData && standData.pool > 0 && React.createElement("div", {
+    className: "text-xs font-black text-amber-300 mb-2"
+  }, "💰 Prize pool: ", formatMoney(standData.pool), " · top ", (standData.prizes || []).length, " paid"), React.createElement("div", {
+    className: "overflow-y-auto flex-1 space-y-1"
+  }, !standData && React.createElement("div", {
+    className: "text-center text-slate-500 py-6"
+  }, React.createElement("i", {
+    className: "fa-solid fa-spinner fa-spin"
+  })), (standData?.list || []).map(p => React.createElement("div", {
+    key: p.uid,
+    className: `flex items-center justify-between rounded-xl px-3 py-2 text-sm font-bold ${p.uid === user.uid ? 'bg-purple-500/20 border border-purple-400/50 text-white' : p.out ? 'bg-slate-900/40 text-slate-500' : 'bg-slate-900/70 text-slate-200'}`
+  }, React.createElement("span", {
+    className: "flex items-center gap-2"
+  }, React.createElement("span", {
+    className: `w-7 text-center font-black ${p.rank === 1 ? 'text-amber-300' : p.rank === 2 ? 'text-slate-300' : p.rank === 3 ? 'text-amber-600' : 'text-slate-500'}`
+  }, p.rank <= 3 && !p.out ? ['🥇', '🥈', '🥉'][p.rank - 1] : '#' + p.rank), React.createElement("span", null, p.name, p.uid === user.uid ? ' (you)' : ''), p.rank <= (standData?.prizes || []).length && React.createElement("span", {
+    className: "text-[10px] font-black text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-full px-2 py-0.5",
+    dir: "ltr"
+  }, formatMoney(standData.prizes[p.rank - 1]))), p.out ? React.createElement("span", {
+    className: "text-[10px] text-rose-400 font-black"
+  }, "OUT") : React.createElement("span", {
+    className: "font-black text-emerald-300",
+    dir: "ltr"
+  }, formatShort(p.stack))))))), document.body));
+}
+// HIDDEN DRIVERS — mounted at App level so they run CONSTANTLY while the
+// tournament manager's app is open on ANY screen (lobby, a table, the back
+// office). The client engine only runs a table while some browser has it
+// open; a bot-only table would otherwise freeze. Each driver is a headless
+// PokerTable: same engine, guard, blind structure and shared break clock.
+function TourDrivers({
+  user,
+  tournaments,
+  tables,
+  clubSettings
+}) {
+  const isGod = isGodUser(user);
+  const canDrive = t2 => isGod || user.uid === t2.creatorUid || [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role);
+  const driverTables = (tournaments || []).filter(t2 => t2.game === 'poker' && t2.status === 'running' && (t2.clubId || 'main') === CLUB_ID && canDrive(t2)).flatMap(t2 => (tables || []).filter(tb => tb.tournamentId === t2.id && tb.type === 'poker' && !(tb.tournament || {}).finished && !(tb.settings || {}).serverEngine && !Object.values(tb.players || {}).some(q2 => !q2.isBot && q2.status !== 'out' && (q2.stack || 0) > 0)));
+  if (!driverTables.length) return null;
+  return React.createElement("div", {
+    style: {
+      display: 'none'
+    },
+    "aria-hidden": true
+  }, driverTables.map(tb => React.createElement(PokerTable, {
+    key: 'drv' + tb.docId,
+    tableDocId: tb.docId,
+    user: user,
+    clubSettings: clubSettings,
+    headless: true,
+    onLeave: () => {},
+    showToast: () => {}
+  })));
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App, null));

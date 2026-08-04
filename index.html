@@ -10979,6 +10979,15 @@ function PokerTable({
           }
           return;
         }
+        if (BETTING.includes(g.phase) && !g.activeTurnUid && !g.allInReveal && stuckFor > 12000) {
+          // Betting street with NO active player: the client that owned the
+          // street-advance timer left mid-hand and the hand froze on
+          // "Waiting for ..." forever. Push the street forward ourselves.
+          await advancePhase({
+            ...g
+          }, clonePlayers(t.players));
+          return;
+        }
         if (BETTING.includes(g.phase) && g.activeTurnUid) {
           const actor = (t.players || {})[g.activeTurnUid];
           if (!actor || actor.status !== 'active') {

@@ -1,7 +1,7 @@
 /* PokerTen - Service Worker
    אסטרטגיה: רשת-קודם. תמיד מנסים להביא את הגרסה הטרייה מהשרת,
    והמטמון משמש רק כגיבוי לחוסר-חיבור. כך פריסות חדשות מגיעות מיידית. */
-const CACHE = 'pokerten-shell-v154';
+const CACHE = 'pokerten-shell-v155';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {

@@ -2392,6 +2392,9 @@ const botPokerMove = (g, t, b) => {
   const oppN = Math.max(1, Object.values(t.players || {}).filter(p => p.status === 'active' && p.uid !== b.uid).length);
   const r = Math.random();
   if (g.phase === 'preflop') {
+    // Crumbs rule: with ~a blind or less behind, folding is never right —
+    // any two cards go in (folding 0.8BB preflop is a dead giveaway).
+    if (toCall > 0 && stack <= bb * 1.5) return { type: 'call' };
     const tier = botPreflopTier(b.cards || []);
     const shortStack = stack <= bb * 12;
     const bigRaise = toCall > bb * 3.5;

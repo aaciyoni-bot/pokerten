@@ -9348,12 +9348,31 @@ function PokerTable({
     return o;
   };
   const saveGame = async (g, pl, extra = {}) => {
+    // Optimistic-concurrency guard. Every save carries the sequence number of
+    // the snapshot it was computed from; if the table doc moved on since (a
+    // second driver, or a phone waking from background with minutes-old state)
+    // the write is DROPPED instead of overwriting the fresher state. A stale
+    // client silently loses its echo — a pot award can no longer be erased.
+    const base = Number(g.__seq) || 0;
+    const gOut = {
+      ...g
+    };
     try {
-      await window.fb.updateDoc(tblRef(), {
-        gameState: g,
-        players: pl,
-        ...extra
+      await window.fb.runTransaction(window.fb.db, async trx => {
+        const s = await trx.get(tblRef());
+        if (!s.exists()) throw 'gone';
+        const cur = Number((s.data().gameState || {}).__seq) || 0;
+        if (cur !== base) throw 'stale';
+        gOut.__seq = cur + 1;
+        trx.update(tblRef(), {
+          gameState: gOut,
+          players: pl,
+          ...extra
+        });
       });
+      // chained flows (save → advancePhase timer with the same object) must
+      // keep matching the doc, so bump the caller's copy in place
+      g.__seq = gOut.__seq;
     } catch (e) {}
   };
   useEffect(() => {
@@ -9471,7 +9490,9 @@ function PokerTable({
     }
     gatherBetsToPots(g, pl);
     const pot = round2((g.pots || []).reduce((s, p) => s + p.amount, 0));
-    const rakeFrac = (Number(setts.rakePercent) || 0) / 100;
+    // Tournament chips are play chips — raking them DESTROYS them (the pool
+    // shrinks every hand and stacks grow decimals). Rake is cash-table only.
+    const rakeFrac = (tableRef.current || {}).tournament ? 0 : (Number(setts.rakePercent) || 0) / 100;
     const rake = (g.board || []).length > 0 ? round2(pot * rakeFrac) : 0;
     pl[winnerUid].stack = round2(pl[winnerUid].stack + pot - rake);
     pl[winnerUid].actionText = 'WINNER';
@@ -9552,7 +9573,8 @@ function PokerTable({
     const winnerNames = new Set();
     const awardMap = {};
     let winTotal = 0;
-    const rakeFrac = (Number(setts.rakePercent) || 0) / 100;
+    // No rake on tournament chips — see finishEarlyWin.
+    const rakeFrac = (tableRef.current || {}).tournament ? 0 : (Number(setts.rakePercent) || 0) / 100;
     (g.pots || []).forEach((pot, idx) => {
       // A pot with exactly ONE eligible player from the start is an uncalled
       // over-bet coming back — a REFUND, not a win. Return it silently: no
@@ -9580,12 +9602,16 @@ function PokerTable({
         amount = round2(amount - r);
       }
       const share = Math.floor(amount / winners.length * 100) / 100;
-      winTotal = round2(winTotal + share * winners.length);
-      winners.forEach(uid => {
-        pl[uid].stack = round2(pl[uid].stack + share);
+      // odd-chip rule: the rounding remainder goes to the first winner instead
+      // of silently vanishing from the table
+      const rem = round2(amount - share * winners.length);
+      winTotal = round2(winTotal + amount);
+      winners.forEach((uid, wi) => {
+        const give = round2(share + (wi === 0 ? rem : 0));
+        pl[uid].stack = round2(pl[uid].stack + give);
         pl[uid].actionText = 'WINNER';
         winnerNames.add(pl[uid].name);
-        awardMap[uid] = round2((awardMap[uid] || 0) + share);
+        awardMap[uid] = round2((awardMap[uid] || 0) + give);
       });
     });
     // Exact per-winner totals — the chips flying to each winner show what THEY
@@ -9804,7 +9830,26 @@ function PokerTable({
         p.pendingTopUp = 0;
       }
     });
-    const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
+    // A seat with no chips must NEVER be dealt in. Mark it busted right here so
+    // the sweep + rank report pick it up — "zombie" seats that kept getting
+    // cards (and posting 0-chip blinds) forever came from exactly this hole.
+    Object.values(pl).forEach(p => {
+      if (p.status === 'active' && (p.stack || 0) <= 0) {
+        p.status = 'busted';
+        p.bustedAt = p.bustedAt || Date.now();
+      }
+    });
+    const actives = Object.values(pl).filter(p => p.status === 'active' && (p.stack || 0) > 0).sort((a, b) => a.seatIndex - b.seatIndex);
+    if (actives.length < 2) {
+      // not enough live players for a hand — park the table; the busted sweep
+      // and the orchestrator take it from here
+      await saveGame({
+        ...gBase,
+        phase: 'waiting',
+        activeTurnUid: null
+      }, pl);
+      return;
+    }
     const n = GAME_CARDS[gameType] || 2;
     actives.forEach(p => {
       p.cards = sortHoleCards(deck.splice(0, n));
@@ -10028,7 +10073,7 @@ function PokerTable({
       await window.fb.updateDoc(tblRef(), {
         'settings.serverEngine': false,
         players: pl,
-        gameState: { ...g, phase: 'waiting', activeTurnUid: null, turnStartedAt: null, board: [], pots: [], highestBet: 0, minRaise: round2((setts.blinds || 0.5) * 2), allInReveal: false, lastWinners: null, lastWinAmount: 0 }
+        gameState: { ...g, __seq: (Number(g.__seq) || 0) + 1, phase: 'waiting', activeTurnUid: null, turnStartedAt: null, board: [], pots: [], highestBet: 0, minRaise: round2((setts.blinds || 0.5) * 2), allInReveal: false, lastWinners: null, lastWinAmount: 0 }
       });
       showToast('השולחן שוחרר — יד חדשה מתחילה', 'success');
       setTimeout(() => startHand(true), 1200);
@@ -11881,7 +11926,15 @@ function PokerTable({
     dir: "ltr"
   }, React.createElement("div", {
     className: "text-[14px]"
-  }, setts.tableName || variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts)), React.createElement("div", null, 'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '')), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
+  }, setts.tableName || variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts)), React.createElement("div", null, (() => {
+    // tournament table: show the LIVE level's blinds/ante, not the cash defaults
+    const tr0 = tableState.tournament;
+    if (tr0 && tr0.startedAt) {
+      const tc0 = tourClock(tr0);
+      return 'Blinds ' + formatShort(tc0.row.sb) + '/' + formatShort(tc0.row.bb) + (Number(tc0.row.ante) > 0 ? ' · Ante ' + formatShort(tc0.row.ante) : '');
+    }
+    return 'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '');
+  })()), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
     className: "text-amber-300 font-black text-xs animate-pulse"
   }, "🍍 Pineapple - discard one card...")), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
@@ -17002,7 +17055,9 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
           if (!snaps[i].exists()) continue;
           const tData = snaps[i].data();
           if (tData.gameState && !['waiting', 'showdown'].includes(tData.gameState.phase)) throw 'busy';
-          Object.values(tData.players || {}).filter(aliveAt).forEach(p => {
+          // tables are verified idle here, so a live player MUST have chips —
+          // never carry a 0-stack leftover onto the final table
+          Object.values(tData.players || {}).filter(p => aliveAt(p) && (p.stack || 0) > 0).forEach(p => {
             if (!seatPlayers[p.uid] && si < MTT_SEATS) seatPlayers[p.uid] = mttEntry(p, si++);
           });
         }
@@ -17012,6 +17067,7 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
           'tournament.final': true,
           gameState: {
             ...(keepT.gameState || {}),
+            __seq: (Number((keepT.gameState || {}).__seq) || 0) + 1,
             phase: 'waiting',
             board: [],
             pots: [],

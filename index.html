@@ -12110,15 +12110,29 @@ function PokerTable({
     },
     amount: fx.amount
   })), gs.phase === 'showdown' && (gs.lastWinAmount || 0) > 0 && gs.lastWinners && (() => {
-    const names = String(gs.lastWinners).split(', ');
-    const wIdx = displayList.map((p, i) => names.includes(p.name) ? i : -1).filter(ix => ix >= 0);
-    if (!wIdx.length) return null;
-    const share = round2((gs.lastWinAmount || 0) / wIdx.length);
-    const dur = Math.min(3.2, 0.9 + Math.log10(1 + share) * 0.55);
-    return wIdx.map((ix, k) => React.createElement(PotAward, {
-      key: 'pa' + (displayList[ix]?.uid || ix) + '_' + (gs.showdownAt || 0),
-      to: seatPos(ix),
-      amount: share,
+    // Exact per-winner amounts when available (lastAwards); legacy even split
+    // only as a fallback for hands settled by an older client.
+    let awards;
+    if (Array.isArray(gs.lastAwards) && gs.lastAwards.length) {
+      awards = gs.lastAwards.map(a => ({
+        ix: displayList.findIndex(p => p.uid === a.uid),
+        amount: a.amount
+      })).filter(a => a.ix >= 0 && a.amount > 0);
+    } else {
+      const names = String(gs.lastWinners).split(', ');
+      const wIdx = displayList.map((p, i) => names.includes(p.name) ? i : -1).filter(ix => ix >= 0);
+      const share = wIdx.length ? round2((gs.lastWinAmount || 0) / wIdx.length) : 0;
+      awards = wIdx.map(ix => ({
+        ix,
+        amount: share
+      }));
+    }
+    if (!awards.length) return null;
+    const dur = Math.min(3.2, 0.9 + Math.log10(1 + awards[0].amount) * 0.55);
+    return awards.map((a, k) => React.createElement(PotAward, {
+      key: 'pa' + (displayList[a.ix]?.uid || a.ix) + '_' + (gs.showdownAt || 0),
+      to: seatPos(a.ix),
+      amount: a.amount,
       dur: dur,
       snd: k === 0
     }));

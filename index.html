@@ -9522,8 +9522,9 @@ function PokerTable({
       logGameResult(rkUids.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share })), tableDocId);
     }
     clearTimeout(nextHandRef.current);
-    // cash keeps a snappy rhythm; tournaments keep the fuller beat
-    nextHandRef.current = setTimeout(() => startHand(), (tableRef.current || {}).tournament ? 4000 : 2500);
+    // cash keeps a snappy rhythm; tournaments keep a bit of slack for
+    // bust-report/rebalance transactions between hands
+    nextHandRef.current = setTimeout(() => startHand(), (tableRef.current || {}).tournament ? 3000 : 2500);
   };
   const runShowdown = async (g, pl) => {
     const actives = Object.values(pl).filter(p => p.status === 'active');
@@ -9636,8 +9637,9 @@ function PokerTable({
       logGameResult(rkUids2.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share2 })), tableDocId);
     }
     clearTimeout(nextHandRef.current);
-    // enough to read the showdown + pot animation; cash moves on much sooner
-    nextHandRef.current = setTimeout(() => startHand(), (tableRef.current || {}).tournament ? 9000 : 5000);
+    // enough to read the showdown + pot animation; tournaments keep an extra
+    // second of slack for bust-report/rebalance transactions between hands
+    nextHandRef.current = setTimeout(() => startHand(), (tableRef.current || {}).tournament ? 6000 : 5000);
   };
   const advancePhase = async (gIn, plIn) => {
     const g = {

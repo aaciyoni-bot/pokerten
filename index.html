@@ -17286,10 +17286,12 @@ function TournamentsTab({
   };
   const fmtCountdown = ms => {
     if (ms <= 0) return "Starting...";
-    const h = Math.floor(ms / 3600000),
+    const d = Math.floor(ms / 86400000),
+      h = Math.floor(ms % 86400000 / 3600000),
       m = Math.floor(ms % 3600000 / 60000),
       sec = Math.floor(ms % 60000 / 1000);
-    return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
+    if (d > 0) return `${d}d ${h}h ${String(m).padStart(2, '0')}m`;
+    return `${h}h ${String(m).padStart(2, '0')}m ${String(sec).padStart(2, '0')}s`;
   };
   const fillBots = async tor => {
     const cur = Object.keys(tor.players || {}).length;
@@ -18085,8 +18087,11 @@ function TournamentsTab({
   }, "Total ", (opts.payouts || []).slice(0, opts.paidPlaces).reduce((sm, x) => sm + (Number(x) || 0), 0), "%"))), React.createElement("span", {
     className: "text-xs text-slate-500 font-bold"
   }, "Entry: ", formatMoney(round2((Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) + (isPoker ? bounty : 0))), " (", formatMoney(Number(opts.buyIn) || 0), " to pool + ", formatMoney(Number(opts.fee) || 0), " to club", isPoker && bounty > 0 ? ` + ${formatMoney(bounty)} bounty` : '', ")", (Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) === 0 ? ' · 🎁 Freeroll!' : '', isPoker ? ` · stack ${Number(opts.startStack) || 1000}` : ' · knockout'), React.createElement("div", {
-    className: "flex gap-3"
-  }, React.createElement("input", {
+    className: "flex gap-3 flex-wrap items-center"
+  }, React.createElement("button", {
+    onClick: handleCreate,
+    className: "w-full sm:w-auto order-first bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white px-8 py-3 rounded-xl font-black shadow-lg text-base"
+  }, "🏆 Open registration"), React.createElement("input", {
     value: tTplName,
     onChange: e => setTTplName(e.target.value),
     placeholder: "Template name (optional)",
@@ -18099,10 +18104,7 @@ function TournamentsTab({
   }), " Save as template"), React.createElement("button", {
     onClick: () => setShowCreate(false),
     className: "px-6 py-2 text-slate-400 hover:text-white font-bold"
-  }, "Cancel"), React.createElement("button", {
-    onClick: handleCreate,
-    className: "bg-purple-600 hover:bg-purple-500 text-white px-8 py-2 rounded-xl font-bold shadow-lg"
-  }, "Open registration")))), React.createElement("div", {
+  }, "Cancel")))), React.createElement("div", {
     className: "grid grid-cols-1 md:grid-cols-2 gap-5"
   }, sorted.map(tor => {
     const me = (tor.players || {})[user.uid];
@@ -18148,7 +18150,7 @@ function TournamentsTab({
     }, React.createElement("span", {
       className: "text-[10px] text-slate-400 font-bold block"
     }, "Starts in"), React.createElement("span", {
-      className: "text-white font-black text-lg font-mono",
+      className: `font-black text-lg font-mono ${(tor.startAt || 0) - Date.now() < 300000 ? 'text-amber-300 animate-pulse' : 'text-white'}`,
       dir: "ltr"
     }, fmtCountdown((tor.startAt || 0) - Date.now())), React.createElement("span", {
       className: "text-[10px] text-slate-500 font-bold block"

@@ -4016,7 +4016,8 @@ function App() {
     showToast: showToast
   }), currentView === 'pending' && React.createElement(PendingView, {
     clubName: activeClub?.name,
-    onBack: leaveToClubs
+    onBack: leaveToClubs,
+    banned: activeMem?.status === 'banned'
   }), currentView === 'lobby' && activeClub && React.createElement(LobbyView, {
     user: effUser,
     tables: tablesDB,
@@ -4772,17 +4773,20 @@ function PlayerFileModal({
 }
 function PendingView({
   clubName,
-  onBack
+  onBack,
+  banned
 }) {
   return React.createElement("div", {
     className: "h-full w-full aurora-bg text-slate-300 flex justify-center items-center font-bold text-xl flex-col gap-4"
   }, React.createElement("i", {
-    className: "fa-solid fa-clock-rotate-left text-4xl text-amber-500 animate-spin"
+    className: banned ? "fa-solid fa-ban text-4xl text-rose-500" : "fa-solid fa-clock-rotate-left text-4xl text-amber-500 animate-spin"
   }), React.createElement("div", {
     className: "text-center"
-  }, "Pending approval from club owner", clubName ? React.createElement("span", {
+  }, banned ? React.createElement(React.Fragment, null, "Your access to this club is suspended.", React.createElement("div", {
+    className: "text-sm text-slate-500 mt-1"
+  }, "Contact the club owner.")) : React.createElement(React.Fragment, null, "Pending approval from club owner", clubName ? React.createElement("span", {
     className: "text-emerald-400"
-  }, " \"", clubName, "\"") : '', "..."), onBack && React.createElement("button", {
+  }, " \"", clubName, "\"") : '', "...")), onBack && React.createElement("button", {
     onClick: onBack,
     className: "bg-slate-800 hover:bg-slate-700 border border-white/10 text-white text-sm font-bold px-6 py-2.5 rounded-xl"
   }, "🏛️ Back to clubs list"), React.createElement("button", {
@@ -7884,6 +7888,7 @@ function BackofficeView({
     }
   };
   const [search, setSearch] = useState('');
+  const [memFilter, setMemFilter] = useState('all'); // members directory: All / Agents / Managers / Banned
   const [roleEditUser, setRoleEditUser] = useState(null);
   const [roleDraft, setRoleDraft] = useState({
     role: ROLES.PLAYER,
@@ -8309,7 +8314,7 @@ function BackofficeView({
   };
   const canApproveAll = isOwner || user.role === ROLES.MANAGER;
   const isAgentApprover = !canApproveAll && user.role === ROLES.AGENT;
-  const pendingUsers = usersList.filter(u => u.status !== 'approved' && !u.isBot && (!isAgentApprover || u.agentUid === user.uid));
+  const pendingUsers = usersList.filter(u => u.status !== 'approved' && u.status !== 'banned' && !u.isBot && (!isAgentApprover || u.agentUid === user.uid));
   const agents = usersList.filter(u => u.status === 'approved' && u.role === ROLES.AGENT && !u.isBot);
   const agentName = uid => (usersList.find(x => x.uid === uid) || {}).username || '';
   useEffect(() => {
@@ -8350,7 +8355,7 @@ function BackofficeView({
     }
   };
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot);
-  const players = usersList.filter(u => u.status === 'approved' && u.uid !== user.uid).filter(u => (isOwner || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase()));
+  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid).filter(u => (isOwner || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true);
   const statTiles = [{
     label: 'Your balance',
     value: formatMoney(user.balance),
@@ -9007,6 +9012,12 @@ function BackofficeView({
     placeholder: "Search player...",
     className: "bg-slate-900/80 border border-white/10 rounded-full pr-9 pl-4 py-2 text-sm text-white w-52 outline-none focus:border-emerald-500/50"
   }))), React.createElement("div", {
+    className: "flex gap-1.5 mb-3 flex-wrap"
+  }, [['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
+    key: k2,
+    onClick: () => setMemFilter(k2),
+    className: `text-[11px] font-black px-3 py-1.5 rounded-full border ${memFilter === k2 ? 'bg-gold-400 text-slate-900 border-gold-400' : 'bg-slate-900 text-slate-400 border-white/10 hover:text-white'}`
+  }, lb2))), React.createElement("div", {
     className: "flex flex-col gap-2 max-h-96 overflow-y-auto pl-1"
   }, players.map(u => React.createElement("div", {
     key: u.id,

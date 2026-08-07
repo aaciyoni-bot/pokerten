@@ -319,8 +319,10 @@
         @media (prefers-reduced-motion: reduce) { .card-reveal { animation-duration: 0.01s; } }
         /* End of hand: the old cards visibly leave the table (muck) after the
            winner moment, so the next deal reads as NEW cards, not a swap. */
-        @keyframes muckFade { to { opacity: 0.10; transform: translateY(7px) scale(0.94); filter: saturate(0.3) brightness(0.8); } }
-        .card-mucked { animation: muckFade 0.6s ease 2.4s both; }
+        /* Ghost, don't hide: the showdown hands must stay READABLE to the end of
+           the pause — the fade only signals "hand over", it doesn't erase it. */
+        @keyframes muckFade { to { opacity: 0.55; transform: translateY(5px) scale(0.97); filter: saturate(0.75); } }
+        .card-mucked { animation: muckFade 0.6s ease 3s both; }
         @media (prefers-reduced-motion: reduce) { .card-mucked { animation-delay: 2.4s; animation-duration: 0.01s; } }
         /* Premium navy-and-gold POKERTEN back (Durak decks re-theme it via --cb* vars) */
         .card-back {

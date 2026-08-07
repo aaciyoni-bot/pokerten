@@ -248,13 +248,15 @@
         /* WhatsApp-style speech bubble: green, clearly a MESSAGE (never mistaken
            for a chip amount), with the sender's name on top */
         .chat-bubble { position: absolute; top: -2.9rem; left: 50%; transform: translateX(-50%); background: linear-gradient(180deg, #0e6f58, #0a5748); border: 1px solid rgba(37,211,102,0.5); color: #fff; font-size: 11px; font-weight: 800; padding: 3px 11px 4px; border-radius: 12px; max-width: 150px; width: max-content; z-index: 85; box-shadow: 0 6px 14px rgba(0,0,0,0.5); animation: popIn 0.25s ease-out; pointer-events: none; text-align: start; }
-        .chat-bubble .cb-name { display: block; font-size: 8px; font-weight: 900; color: #8ff0c7; letter-spacing: 0.04em; line-height: 1.1; }
         .chat-bubble .cb-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        /* speech-bubble tail pointing at the speaker's avatar */
-        .chat-bubble::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #0a5748; }
+        /* comic-style trail: two shrinking dots from the bubble down to the
+           speaker's avatar — instantly shows WHO said it, no name needed */
+        .chat-bubble::after { content: ''; position: absolute; top: calc(100% + 2px); left: 50%; transform: translateX(-50%); width: 7px; height: 7px; border-radius: 50%; background: #0a5748; border: 1px solid rgba(37,211,102,0.5); }
+        .chat-bubble::before { content: ''; position: absolute; top: calc(100% + 12px); left: 50%; transform: translateX(-90%); width: 4px; height: 4px; border-radius: 50%; background: #0a5748; border: 1px solid rgba(37,211,102,0.4); }
         /* top-row seats: bubble hangs BELOW the pod so it never clips under the header */
         .chat-bubble-below { top: auto; bottom: -3.3rem; }
-        .chat-bubble-below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #0e6f58; }
+        .chat-bubble-below::after { top: auto; bottom: calc(100% + 2px); }
+        .chat-bubble-below::before { top: auto; bottom: calc(100% + 12px); }
         .gift-fx { position: absolute; top: -3rem; left: 50%; font-size: 36px; z-index: 95; animation: giftBoom 2s ease-out forwards; pointer-events: none; }
         @keyframes giftBoom { 0% { transform: translateX(-50%) scale(0) rotate(-30deg); opacity: 0; } 20% { transform: translateX(-50%) scale(1.6) rotate(8deg); opacity: 1; } 45% { transform: translateX(-50%) scale(1.05) rotate(0deg); } 80% { opacity: 1; } 100% { transform: translateX(-50%) scale(1.2); opacity: 0; } }
         .action-btn { background: linear-gradient(180deg, rgba(28,38,60,0.9), rgba(12,19,34,0.95)); border: 1px solid rgba(255,255,255,0.10); box-shadow: 0 6px 14px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08); transition: all 0.12s ease; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
@@ -12704,8 +12706,6 @@ function PokerTable({
     }, ch.bubbles[p.uid] && React.createElement("div", {
       className: "chat-bubble" + (fanBelow ? ' chat-bubble-below' : '')
     }, React.createElement("span", {
-      className: "cb-name"
-    }, isMe ? 'You' : p.name), React.createElement("span", {
       className: "cb-text"
     }, ch.bubbles[p.uid])), p.sitOut && (() => {
       const leftMs = tableState.tournamentId ? 0 : Math.max(0, 600000 - (Date.now() - (p.sitOutAt || Date.now())));
@@ -14834,8 +14834,6 @@ function DurakTable({
     }, ch.bubbles[p.uid] && React.createElement("div", {
       className: "chat-bubble"
     }, React.createElement("span", {
-      className: "cb-name"
-    }, p.name), React.createElement("span", {
       className: "cb-text"
     }, ch.bubbles[p.uid])), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
       key: 'g' + gi,
@@ -16453,8 +16451,6 @@ function OFCTable({
   }, ch.bubbles[p.uid] && React.createElement("div", {
     className: "chat-bubble"
   }, React.createElement("span", {
-    className: "cb-name"
-  }, p.name), React.createElement("span", {
     className: "cb-text"
   }, ch.bubbles[p.uid])), React.createElement("div", {
     className: "flex items-center gap-1.5 mb-1.5"

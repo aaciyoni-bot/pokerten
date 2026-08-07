@@ -5514,6 +5514,32 @@ function ProfileView({
     }
     setLogsLoading(false);
   };
+  // the report loads itself — no blank screen waiting for a button tap
+  useEffect(() => {
+    loadLogs();
+    loadHands();
+  }, []);
+  const [rowsShown, setRowsShown] = useState(50);
+  const [hands, setHands] = useState(null);
+  const loadHands = async () => {
+    try {
+      const s = await window.fb.getDocs(window.fb.collection(window.fb.db, "tables"));
+      const mine = [];
+      s.docs.forEach(d => {
+        const t = d.data();
+        (t.history || []).forEach(hh => {
+          if ((hh.ps || []).some(pp => pp.n === user.username)) mine.push({
+            ...hh,
+            tbl: t.settings && t.settings.tableName || tableCode(d.id)
+          });
+        });
+      });
+      mine.sort((a, b) => (b.at || 0) - (a.at || 0));
+      setHands(mine.slice(0, 30));
+    } catch (e) {
+      setHands([]);
+    }
+  };
   const filtered = (logs || []).filter(l => {
     if (fGame !== 'all' && l.game !== fGame) return false;
     if (fFrom && l.at < new Date(fFrom).getTime()) return false;
@@ -5546,16 +5572,6 @@ function ProfileView({
   };
   const winRate = stats.gamesPlayed > 0 ? Math.round(stats.gamesWon / stats.gamesPlayed * 100) : 0;
   const tiles = [{
-    label: 'Cash (withdrawable)',
-    value: formatMoney(user.balance),
-    color: 'text-emerald-400',
-    icon: 'fa-wallet'
-  }, ...((user.promoBalance || 0) > 0 ? [{
-    label: 'Bonus chips (play only)',
-    value: formatMoney(user.promoBalance),
-    color: 'text-amber-400',
-    icon: 'fa-gift'
-  }] : []), {
     label: 'Games played',
     value: stats.gamesPlayed,
     color: 'text-white',
@@ -5640,7 +5656,40 @@ function ProfileView({
     key: g,
     className: "text-[10px] bg-blue-500/15 border border-blue-500/40 text-blue-300 px-3 py-1 rounded-full font-bold"
   }, (GAMES.find(x => x.id === g) || {}).label || g)))), React.createElement("div", {
-    className: "grid grid-cols-2 sm:grid-cols-4 gap-4"
+    // ONE Wallet card: the withdrawable number is the hero, everything else
+    // (bonus / agent / club) is a labeled row beneath it — no more four
+    // identical tiles hiding the number that matters.
+    className: "glass-panel p-6 rounded-3xl mb-4 border border-emerald-500/25"
+  }, React.createElement("div", {
+    className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1"
+  }, "💰 Wallet — Cash (withdrawable)"), React.createElement("div", {
+    className: "text-4xl font-black text-emerald-400",
+    dir: "ltr"
+  }, formatMoney(user.balance)), React.createElement("div", {
+    className: "mt-3 space-y-1.5"
+  }, (user.promoBalance || 0) > 0 && React.createElement("div", {
+    className: "flex justify-between text-[12px] font-bold"
+  }, React.createElement("span", {
+    className: "text-amber-300"
+  }, "🎁 Bonus chips — play only, not withdrawable"), React.createElement("span", {
+    className: "text-amber-300 font-black",
+    dir: "ltr"
+  }, formatMoney(user.promoBalance))), (user.agentProfits || 0) > 0 && React.createElement("div", {
+    className: "flex justify-between text-[12px] font-bold"
+  }, React.createElement("span", {
+    className: "text-slate-300"
+  }, "🤝 Agent earnings"), React.createElement("span", {
+    className: "text-white font-black",
+    dir: "ltr"
+  }, formatMoney(user.agentProfits || 0))), [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role) && React.createElement("div", {
+    className: "flex justify-between text-[12px] font-bold"
+  }, React.createElement("span", {
+    className: "text-slate-300"
+  }, "🏛️ Club earnings (rake)"), React.createElement("span", {
+    className: "text-white font-black",
+    dir: "ltr"
+  }, formatMoney(user.clubProfits || 0))))), React.createElement("div", {
+    className: "grid grid-cols-3 gap-4"
   }, tiles.map((t, i) => React.createElement("div", {
     key: i,
     className: "stat-tile p-5 rounded-2xl text-center"
@@ -5651,25 +5700,7 @@ function ProfileView({
   }, t.label), React.createElement("p", {
     className: `text-xl font-black ${t.color}`,
     dir: "ltr"
-  }, t.value)))), (user.agentProfits || 0) > 0 && React.createElement("div", {
-    className: "stat-tile p-5 rounded-2xl text-center mt-4 border border-amber-500/30"
-  }, React.createElement("p", {
-    className: "text-amber-300 text-xs font-bold mb-1"
-  }, React.createElement("i", {
-    className: "fa-solid fa-handshake ml-1"
-  }), " Agent earnings"), React.createElement("p", {
-    className: "text-2xl font-black text-amber-300",
-    dir: "ltr"
-  }, formatMoney(user.agentProfits || 0))), [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role) && React.createElement("div", {
-    className: "stat-tile p-5 rounded-2xl text-center mt-4 border border-amber-500/40"
-  }, React.createElement("p", {
-    className: "text-amber-400 text-xs font-bold mb-1"
-  }, React.createElement("i", {
-    className: "fa-solid fa-building-columns ml-1"
-  }), " Club earnings (Rake)"), React.createElement("p", {
-    className: "text-2xl font-black text-amber-400",
-    dir: "ltr"
-  }, formatMoney(user.clubProfits || 0))), React.createElement("div", {
+  }, t.value)))), React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mt-6"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white mb-4 flex items-center gap-2"
@@ -5724,11 +5755,17 @@ function ProfileView({
   }, GAME_LABEL(g), " · ", t.count, " games"), React.createElement("div", {
     className: `text-base font-black ${t.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`,
     dir: "ltr"
-  }, t.profit >= 0 ? '+' : '', formatMoney(t.profit)))), filtered.length === 0 && React.createElement("div", {
+  }, t.profit >= 0 ? '+' : '', formatMoney(t.profit)))), filtered.length > 1 && React.createElement("div", {
+    className: "mb-4 bg-slate-950/50 border border-white/5 rounded-2xl p-3"
+  }, React.createElement("div", {
+    className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2"
+  }, "📈 Bankroll over time"), React.createElement(BankrollGraph, {
+    rows: filtered
+  })), filtered.length === 0 && React.createElement("div", {
     className: "text-slate-500 text-sm font-bold py-4"
   }, "No results in the selected range.")), React.createElement("div", {
     className: "flex flex-col gap-1.5 max-h-72 overflow-y-auto pl-1"
-  }, filtered.slice(0, 200).map((l, i) => React.createElement("div", {
+  }, filtered.slice(0, rowsShown).map((l, i) => React.createElement("div", {
     key: i,
     className: "flex items-center justify-between bg-slate-900/60 rounded-xl px-4 py-2 border border-white/5 text-sm"
   }, React.createElement("span", {
@@ -5744,10 +5781,132 @@ function ProfileView({
   }, tableCode(l.tableId))), React.createElement("span", {
     className: `font-black ${(l.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`,
     dir: "ltr"
-  }, (l.profit || 0) >= 0 ? '+' : '', formatMoney(l.profit)))))), logs === null && React.createElement("p", {
+  }, (l.profit || 0) >= 0 ? '+' : '', formatMoney(l.profit)))), filtered.length > rowsShown && React.createElement("button", {
+    onClick: () => setRowsShown(n => n + 100),
+    className: "mt-1 bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 py-2 rounded-xl font-bold text-xs"
+  }, "Show more (", filtered.length - rowsShown, " left)"))), logs === null && React.createElement("p", {
     className: "text-slate-500 text-xs font-bold"
-  }, "Tap \"Load report\" to view all your game results."))));
+  }, React.createElement("i", {
+    className: "fa-solid fa-spinner fa-spin mr-1"
+  }), " Loading your report…")), hands && hands.length > 0 && React.createElement("div", {
+    className: "glass-panel p-6 rounded-3xl mt-6"
+  }, React.createElement("h3", {
+    className: "text-lg font-black text-white mb-1 flex items-center gap-2"
+  }, React.createElement("span", {
+    className: "w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center"
+  }, React.createElement("i", {
+    className: "fa-solid fa-clock-rotate-left text-purple-400 text-sm"
+  })), "Recent hands"), React.createElement("p", {
+    className: "text-[10px] text-slate-500 font-bold mb-3"
+  }, "From tables that are still open — closed tables clear their history."), React.createElement("div", {
+    className: "flex flex-col gap-2 max-h-80 overflow-y-auto pl-1"
+  }, hands.map((hh, hi) => {
+    const me = (hh.ps || []).find(pp => pp.n === user.username) || {};
+    const iWon = !!me.w;
+    return React.createElement("div", {
+      key: hi,
+      className: `rounded-xl px-3 py-2 border text-[11px] font-bold ${iWon ? 'bg-emerald-950/40 border-emerald-500/25' : 'bg-slate-900/60 border-white/5'}`
+    }, React.createElement("div", {
+      className: "flex items-center justify-between mb-1.5"
+    }, React.createElement("span", {
+      className: "text-slate-400"
+    }, new Date(hh.at).toLocaleDateString('en-GB'), " ", new Date(hh.at).toLocaleTimeString('he-IL', {
+      hour: '2-digit',
+      minute: '2-digit'
+    }), " · ", hh.game || 'NLH', " · ", hh.tbl), React.createElement("span", {
+      className: iWon ? 'text-emerald-400 font-black' : 'text-slate-500'
+    }, iWon ? '🏆 Won ' + formatMoney(hh.amount || 0) : (hh.winners || ''))), React.createElement("div", {
+      className: "flex items-center gap-3 flex-wrap",
+      dir: "ltr"
+    }, React.createElement("span", {
+      className: "flex gap-0.5"
+    }, (me.c || []).map((c, ci2) => React.createElement(PCard, {
+      key: ci2,
+      card: c,
+      size: "xs"
+    })), !(me.c || []).length && React.createElement("span", {
+      className: "text-slate-600"
+    }, me.f ? 'folded' : '🂠🂠')), (hh.board || []).length > 0 && React.createElement("span", {
+      className: "flex gap-0.5 opacity-90"
+    }, hh.board.map((c, ci2) => React.createElement(PCard, {
+      key: ci2,
+      card: c,
+      size: "xs"
+    })))));
+  })))));
 }
+// Cumulative profit over time — the centerpiece of the player's stats page.
+// Pure inline SVG, no library: area fill + line + dashed zero baseline.
+const BankrollGraph = ({
+  rows
+}) => {
+  if (!rows || rows.length < 2) return null;
+  const asc = [...rows].sort((a, b) => (a.at || 0) - (b.at || 0));
+  let acc = 0;
+  const pts = asc.map(l => {
+    acc = round2(acc + (l.profit || 0));
+    return acc;
+  });
+  const W = 600,
+    H = 150,
+    P = 10;
+  const vmin = Math.min(0, ...pts),
+    vmax = Math.max(0, ...pts);
+  const span = Math.max(1, vmax - vmin);
+  const X = i => P + i / (pts.length - 1) * (W - P * 2);
+  const Y = v => P + (vmax - v) / span * (H - P * 2);
+  const line = pts.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  const up = last >= 0;
+  const col = up ? '#34d399' : '#f87171';
+  return React.createElement("div", {
+    dir: "ltr"
+  }, React.createElement("svg", {
+    viewBox: `0 0 ${W} ${H}`,
+    className: "w-full h-36 block"
+  }, React.createElement("defs", null, React.createElement("linearGradient", {
+    id: "bkg-fill",
+    x1: "0",
+    y1: "0",
+    x2: "0",
+    y2: "1"
+  }, React.createElement("stop", {
+    offset: "0",
+    stopColor: col,
+    stopOpacity: "0.28"
+  }), React.createElement("stop", {
+    offset: "1",
+    stopColor: col,
+    stopOpacity: "0"
+  }))), React.createElement("line", {
+    x1: P,
+    x2: W - P,
+    y1: Y(0),
+    y2: Y(0),
+    stroke: "rgba(255,255,255,0.18)",
+    strokeDasharray: "4 5",
+    strokeWidth: "1"
+  }), React.createElement("path", {
+    d: `${line} L${X(pts.length - 1).toFixed(1)},${Y(0)} L${X(0).toFixed(1)},${Y(0)} Z`,
+    fill: "url(#bkg-fill)"
+  }), React.createElement("path", {
+    d: line,
+    fill: "none",
+    stroke: col,
+    strokeWidth: "2.5",
+    strokeLinejoin: "round",
+    strokeLinecap: "round"
+  }), React.createElement("circle", {
+    cx: X(pts.length - 1),
+    cy: Y(last),
+    r: "4",
+    fill: col
+  })), React.createElement("div", {
+    className: "flex justify-between text-[10px] font-bold text-slate-500 px-1"
+  }, React.createElement("span", null, new Date(asc[0].at).toLocaleDateString('en-GB')), React.createElement("span", {
+    className: `font-black ${up ? 'text-emerald-400' : 'text-rose-400'}`
+  }, (last >= 0 ? '+' : '') + formatMoney(last)), React.createElement("span", null, new Date(asc[asc.length - 1].at).toLocaleDateString('en-GB'))));
+};
 const EmptyState = ({
   suit,
   title,

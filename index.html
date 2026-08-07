@@ -7838,20 +7838,49 @@ function BackofficeView({
       showToast("Error saving", "error");
     }
   };
+  const [bcHist, setBcHist] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await window.fb.getDoc(window.fb.doc(window.fb.db, "broadcasts", CLUB_ID));
+        if (s.exists()) setBcHist(s.data().history || []);
+      } catch (e) {}
+    })();
+  }, []);
   const sendBroadcast = async () => {
     const txt = bcText.trim();
     if (txt.length < 2) return showToast("Write a message", "error");
     try {
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "broadcasts", CLUB_ID), {
+      const entry = {
         text: txt.slice(0, 300),
         at: Date.now(),
-        by: user.username,
-        clubName: (window.__club || {}).name || ''
+        by: user.username
+      };
+      const hist = [...bcHist, entry].slice(-20);
+      await window.fb.setDoc(window.fb.doc(window.fb.db, "broadcasts", CLUB_ID), {
+        ...entry,
+        clubName: (window.__club || {}).name || '',
+        history: hist // every broadcast is kept (last 20), not overwritten
       });
+      setBcHist(hist);
       setBcText('');
       showToast("Message broadcast to all club members! 📣", "success");
     } catch (e) {
       showToast("Error broadcasting", "error");
+    }
+  };
+  // Ban / unban: flips club access. Balance and identity stay; if they are
+  // mid-session at a table, remove them from the seat via the table screen.
+  const toggleBan = async target => {
+    const banned = target.status === 'banned';
+    if (!window.confirm(banned ? `Unban ${target.username}? They regain access to the club.` : `Ban ${target.username}? They lose access to the club. Balance and history are kept.`)) return;
+    try {
+      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", target.id), {
+        status: banned ? 'approved' : 'banned'
+      });
+      showToast(banned ? `${target.username} unbanned` : `${target.username} banned 🚫`, "success");
+    } catch (e) {
+      showToast("Update failed", "error");
     }
   };
   const [search, setSearch] = useState('');
@@ -8027,6 +8056,7 @@ function BackofficeView({
   // Money moves through a real form — preset amounts, live preview of BOTH
   // balances, then confirm. No more window.prompt for money actions.
   const [balBox, setBalBox] = useState(null); // {target, isDeposit, val}
+  const [dzBox, setDzBox] = useState(null); // Danger-Zone typed confirmation
   const adjustBalance = (target, isDeposit) => setBalBox({
     target,
     isDeposit,
@@ -8090,8 +8120,7 @@ function BackofficeView({
     const targets = usersList.filter(u => !u.isBot && u.uid !== user.uid);
     const total = round2(targets.reduce((s, u) => s + (Number(u.balance) || 0), 0));
     if (targets.length === 0) return showToast("No players to reset", "info");
-    const ok = window.prompt(`⚠️ GENERAL RESET\n${targets.length} players → balance 0. Your balance → ${formatMoney(10000000)}. EVERYONE's rake, stats, ALL-TIME results and money history wiped to 0.\nBots keep their chips. Identity (role / agent / ID) is kept. Cannot be undone.\n\nType RESET to confirm:`);
-    if (ok !== 'RESET') return;
+    // gate lives in the Danger-Zone modal (typed club name) — no prompt here
     setResetBusy(true);
     let reclaimed = 0;
     const ZERO_STATS = { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 };
@@ -8441,7 +8470,41 @@ function BackofficeView({
   }, "Send"), React.createElement("button", {
     onClick: () => setDmBox(null),
     className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
-  }, "Cancel")))), document.body), React.createElement("div", {
+  }, "Cancel")))), document.body), dzBox && ReactDOM.createPortal((() => {
+    const clubNm = (clubSettings && clubSettings.name || '').trim() || 'RESET';
+    const match = (dzBox.typed || '').trim() === clubNm;
+    return React.createElement("div", {
+      className: "fixed inset-0 z-[470] bg-slate-950/95 backdrop-blur-sm flex items-center justify-center p-4",
+      onClick: () => setDzBox(null)
+    }, React.createElement("div", {
+      onClick: e => e.stopPropagation(),
+      className: "glass-panel rounded-3xl p-6 w-full max-w-sm animate-pop-in border-2 border-rose-500/60"
+    }, React.createElement("h3", {
+      className: "text-lg font-black text-rose-300 mb-2"
+    }, "⚠️ Danger Zone — General reset"), React.createElement("p", {
+      className: "text-[12px] text-slate-300 font-bold leading-relaxed mb-3"
+    }, "Every player's balance → 0. Your balance → ", formatMoney(10000000), ". Rake, stats, ALL-TIME results and money history are wiped. Bots keep their chips. Identity (roles / agents / IDs) is kept. ", React.createElement("b", {
+      className: "text-rose-300"
+    }, "This cannot be undone.")), React.createElement("p", {
+      className: "text-[11px] text-slate-400 font-bold mb-1"
+    }, "Type the club name to confirm: ", React.createElement("b", {
+      className: "text-white"
+    }, clubNm)), React.createElement("input", {
+      value: dzBox.typed,
+      autoFocus: true,
+      onChange: e => setDzBox({ typed: e.target.value }),
+      className: "w-full bg-slate-900 text-white border border-rose-500/40 rounded-xl p-3 text-center font-black outline-none focus:border-rose-400 mb-3"
+    }), React.createElement("div", {
+      className: "flex gap-2"
+    }, React.createElement("button", {
+      onClick: () => { setDzBox(null); resetCycle(); },
+      disabled: !match,
+      className: "flex-1 bg-gradient-to-b from-rose-500 to-rose-700 hover:from-rose-400 disabled:opacity-30 text-white py-3 rounded-2xl font-black shadow-lg"
+    }, "RESET the club"), React.createElement("button", {
+      onClick: () => setDzBox(null),
+      className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+    }, "Cancel"))));
+  })(), document.body), React.createElement("div", {
     className: "max-w-5xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
     className: "flex items-center justify-between mb-6 flex-wrap gap-3"
@@ -8489,7 +8552,7 @@ function BackofficeView({
   }, React.createElement("i", { className: `fa-solid ${s2.ico} mr-1` }), s2.label, s2.badge > 0 && React.createElement("span", {
     className: "absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border border-slate-900"
   }, s2.badge))), React.createElement("button", {
-    onClick: resetCycle,
+    onClick: () => setDzBox({ typed: '' }),
     disabled: resetBusy,
     title: "General reset: all players → 0, your balance → 10,000,000, money history wiped (bots keep theirs)",
     className: "text-xs font-black px-4 py-2.5 rounded-xl text-slate-900 shadow-lg disabled:opacity-50 shrink-0",
@@ -8647,7 +8710,14 @@ function BackofficeView({
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-6 py-3 rounded-xl font-black shadow-lg"
   }, "Broadcast 📣")), React.createElement("p", {
     className: "text-[10px] text-slate-500 font-bold mt-1.5"
-  }, "The message pops up instantly on screen for everyone online, with a sound. Anyone who allowed browser notifications gets it even when the site is in the background.")), React.createElement("div", {
+  }, "The message pops up instantly on screen for everyone online, with a sound. Anyone who allowed browser notifications gets it even when the site is in the background."), bcHist.length > 0 && React.createElement("div", {
+    className: "mt-2 space-y-1 max-h-32 overflow-y-auto"
+  }, [...bcHist].reverse().slice(0, 8).map((bh, bhi) => React.createElement("div", {
+    key: bhi,
+    className: "text-[11px] font-bold text-slate-400 bg-slate-950/50 border border-white/5 rounded-lg px-2.5 py-1.5"
+  }, React.createElement("span", {
+    className: "text-slate-600"
+  }, new Date(bh.at).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }), " · ", bh.by, ": "), bh.text)))), React.createElement("div", {
     className: "mb-4 pb-4 border-b border-white/5"
   }, React.createElement("div", {
     className: "flex items-center gap-3 mb-3 flex-wrap"
@@ -8997,6 +9067,12 @@ function BackofficeView({
     title: "Set role and agent assignment"
   }, React.createElement("i", {
     className: "fa-solid fa-user-gear text-xs"
+  })), isOwner && !u.isBot && u.uid !== user.uid && React.createElement("button", {
+    onClick: () => toggleBan(u),
+    className: `w-9 h-9 rounded-full border font-black ${u.status === 'banned' ? 'bg-rose-900/70 border-rose-500/60 text-rose-200' : 'bg-slate-800 hover:bg-rose-900 text-slate-400 hover:text-white border-white/10'}`,
+    title: u.status === 'banned' ? 'Banned — tap to unban' : 'Ban from the club'
+  }, React.createElement("i", {
+    className: "fa-solid fa-ban text-xs"
   })), isOwner && (u.photo || u.avatarSeed) && React.createElement("button", {
     onClick: () => censorPhoto(u),
     className: "w-9 h-9 rounded-full bg-slate-800 hover:bg-rose-900 text-slate-400 hover:text-white border border-white/10",

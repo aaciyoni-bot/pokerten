@@ -244,6 +244,7 @@ function executeDeal(S, gameType) {
   g.highestBet = high;
   g.minRaise = minR;
   g.phase = "preflop";
+  g.handN = (Number(g.handN) || 0) + 1; // hand counter — client keys the deal animation off it
   g.activeTurnUid = firstUid;
   g.turnStartedAt = S.now;
   S.deck = deck;

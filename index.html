@@ -7227,6 +7227,9 @@ function SettlementSection({
   const [repFull, setRepFull] = useState(false);
   const [transferFor, setTransferFor] = useState(null);
   const [closed, setClosed] = useState((window.__club || {}).closedWeeks || {});
+  // NOTE: must be declared BEFORE the loading early-return below — hooks that
+  // appear only after data loads crash React with a hook-count mismatch.
+  const [editBox, setEditBox] = useState(null); // {kind:'result'|'pct', p, val, note}
   useEffect(() => {
     (async () => {
       try {
@@ -7297,8 +7300,8 @@ function SettlementSection({
   };
   const weekLocked = !!closed[String(start)];
   // Inline edit form (replaces window.prompt): live before→after preview and a
-  // required note on every money correction.
-  const [editBox, setEditBox] = useState(null); // {kind:'result'|'pct', p, val, note}
+  // required note on every money correction. (editBox state is declared above
+  // the loading return, with the other hooks.)
   const editResult = p => {
     if (!isOwnerView || weekLocked) return;
     setEditBox({

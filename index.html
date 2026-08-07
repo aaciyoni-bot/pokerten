@@ -245,12 +245,16 @@
         }
 
         /* בועות צ'אט ומתנות בין Players */
-        .chat-bubble { position: absolute; top: -2.5rem; left: 50%; transform: translateX(-50%); background: rgba(5,7,15,0.94); border: 1px solid rgba(226,198,133,0.25); color: #fff; font-size: 11px; font-weight: 800; padding: 4px 11px; border-radius: 14px; max-width: 150px; width: max-content; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; z-index: 85; box-shadow: 0 6px 14px rgba(0,0,0,0.5); animation: popIn 0.25s ease-out; pointer-events: none; }
+        /* WhatsApp-style speech bubble: green, clearly a MESSAGE (never mistaken
+           for a chip amount), with the sender's name on top */
+        .chat-bubble { position: absolute; top: -2.9rem; left: 50%; transform: translateX(-50%); background: linear-gradient(180deg, #0e6f58, #0a5748); border: 1px solid rgba(37,211,102,0.5); color: #fff; font-size: 11px; font-weight: 800; padding: 3px 11px 4px; border-radius: 12px; max-width: 150px; width: max-content; z-index: 85; box-shadow: 0 6px 14px rgba(0,0,0,0.5); animation: popIn 0.25s ease-out; pointer-events: none; text-align: start; }
+        .chat-bubble .cb-name { display: block; font-size: 8px; font-weight: 900; color: #8ff0c7; letter-spacing: 0.04em; line-height: 1.1; }
+        .chat-bubble .cb-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         /* speech-bubble tail pointing at the speaker's avatar */
-        .chat-bubble::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: rgba(226,198,133,0.35); }
+        .chat-bubble::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #0a5748; }
         /* top-row seats: bubble hangs BELOW the pod so it never clips under the header */
-        .chat-bubble-below { top: auto; bottom: -2.9rem; }
-        .chat-bubble-below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: rgba(226,198,133,0.35); }
+        .chat-bubble-below { top: auto; bottom: -3.3rem; }
+        .chat-bubble-below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #0e6f58; }
         .gift-fx { position: absolute; top: -3rem; left: 50%; font-size: 36px; z-index: 95; animation: giftBoom 2s ease-out forwards; pointer-events: none; }
         @keyframes giftBoom { 0% { transform: translateX(-50%) scale(0) rotate(-30deg); opacity: 0; } 20% { transform: translateX(-50%) scale(1.6) rotate(8deg); opacity: 1; } 45% { transform: translateX(-50%) scale(1.05) rotate(0deg); } 80% { opacity: 1; } 100% { transform: translateX(-50%) scale(1.2); opacity: 0; } }
         .action-btn { background: linear-gradient(180deg, rgba(28,38,60,0.9), rgba(12,19,34,0.95)); border: 1px solid rgba(255,255,255,0.10); box-shadow: 0 6px 14px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08); transition: all 0.12s ease; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
@@ -319,7 +323,9 @@
 
         /* Table top toolbar: one fixed-height row that scrolls sideways instead of
            wrapping over the center labels (the ניהול/GPS overlap on narrow phones) */
-        .tbl-toolbar { display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; min-width: 0; scrollbar-width: none; -ms-overflow-style: none; }
+        .tbl-toolbar { display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; min-width: 0; scrollbar-width: none; -ms-overflow-style: none;
+            /* fade at the edge so a half-visible button reads as "scroll me", not "broken" */
+            -webkit-mask-image: linear-gradient(90deg, #000 86%, transparent 99%); mask-image: linear-gradient(90deg, #000 86%, transparent 99%); }
         .tbl-toolbar::-webkit-scrollbar { display: none; }
         .tbl-toolbar > * { flex-shrink: 0; white-space: nowrap; }
 
@@ -1940,10 +1946,11 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
       to: toUid || '',
       at: Date.now()
     };
-    // optimistic: the bubble and sound fire NOW; Firestore catches up behind it
+    // optimistic: the panel CLOSES on the tap itself, the bubble + sound fire
+    // instantly, and Firestore catches up behind it
+    setChatOpen(false);
     setPendChat(q => [...q.filter(x => Date.now() - x.at < 6000), msg]);
     playSnd(gift ? 'chip' : 'msg');
-    setTimeout(() => setChatOpen(false), 1600);
     try {
       await window.fb.updateDoc(ref(), {
         chat: [...rawChat, msg].slice(-40)
@@ -12037,13 +12044,17 @@ function PokerTable({
   };
   const betPos = i => {
     // ONE rule, every seat: the bet sits on the straight line from the seat
-    // toward the pot pill, a third of the way in. Chips always read as
-    // "in front of their player" — no hardcoded special cases.
+    // toward the pot pill — with two clamps so it never covers the top
+    // nameplates or the hero's cards.
     const [sx, sy] = seatXY(i);
     const PX = 50, PY = 38, f = 0.34;
+    const L = sx + (PX - sx) * f;
+    let T = sy + (PY - sy) * f;
+    if (sy < 30) T = Math.max(T, sy + 17); // stay below the top seat's name pod
+    if (sy > 70) T = Math.min(T, 59); // stay above the hero's cards
     return {
-      left: `${round2(sx + (PX - sx) * f)}%`,
-      top: `${round2(sy + (PY - sy) * f)}%`
+      left: `${round2(L)}%`,
+      top: `${round2(T)}%`
     };
   };
   const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
@@ -12692,7 +12703,11 @@ function PokerTable({
       className: `relative flex flex-col items-center ${folded ? isMe ? 'opacity-75' : 'opacity-40 grayscale' : ''} ${p.sitOut ? 'opacity-50' : ''}`
     }, ch.bubbles[p.uid] && React.createElement("div", {
       className: "chat-bubble" + (fanBelow ? ' chat-bubble-below' : '')
-    }, ch.bubbles[p.uid]), p.sitOut && (() => {
+    }, React.createElement("span", {
+      className: "cb-name"
+    }, isMe ? 'You' : p.name), React.createElement("span", {
+      className: "cb-text"
+    }, ch.bubbles[p.uid])), p.sitOut && (() => {
       const leftMs = tableState.tournamentId ? 0 : Math.max(0, 600000 - (Date.now() - (p.sitOutAt || Date.now())));
       const mm = Math.floor(leftMs / 60000),
         ss = Math.floor(leftMs % 60000 / 1000);
@@ -14818,7 +14833,11 @@ function DurakTable({
       className: `relative flex flex-col items-center ${p.out || p.left ? 'opacity-45' : ''}`
     }, ch.bubbles[p.uid] && React.createElement("div", {
       className: "chat-bubble"
-    }, ch.bubbles[p.uid]), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
+    }, React.createElement("span", {
+      className: "cb-name"
+    }, p.name), React.createElement("span", {
+      className: "cb-text"
+    }, ch.bubbles[p.uid])), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
       key: 'g' + gi,
       className: "gift-fx"
     }, g.giftE)), isAtt && !p.out && React.createElement("div", {
@@ -16433,7 +16452,11 @@ function OFCTable({
     className: `bg-slate-900/70 rounded-2xl p-2 border relative ${T.turnUid === p.uid && T.status === 'playing' ? 'border-amber-400/70' : 'border-white/8'} ${p.left ? 'opacity-40' : ''}`
   }, ch.bubbles[p.uid] && React.createElement("div", {
     className: "chat-bubble"
-  }, ch.bubbles[p.uid]), React.createElement("div", {
+  }, React.createElement("span", {
+    className: "cb-name"
+  }, p.name), React.createElement("span", {
+    className: "cb-text"
+  }, ch.bubbles[p.uid])), React.createElement("div", {
     className: "flex items-center gap-1.5 mb-1.5"
   }, React.createElement("img", {
     src: avatarUrl(p),

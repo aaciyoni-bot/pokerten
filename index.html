@@ -94,14 +94,16 @@
         #root { height: var(--vhpx); width: 100%; overflow: hidden; }
         html, body, #root, button, input, select, textarea { font-family: 'Heebo', 'Segoe UI', system-ui, -apple-system, sans-serif; }
 
-        /* רקע חי: גריד סייבר עדין + הילות ציאן/סגול */
+        /* רקע חי: מנורת קלאב חמה מעל, וינייטת קטיפה בקצוות, הילות ציאן/סגול עמוקות */
         #root {
             background:
-                repeating-linear-gradient(0deg, rgba(148,163,184,0.016) 0 1px, transparent 1px 46px),
-                repeating-linear-gradient(90deg, rgba(148,163,184,0.016) 0 1px, transparent 1px 46px),
-                radial-gradient(1100px 700px at 88% -12%, rgba(34,211,238,0.10), transparent 60%),
-                radial-gradient(900px 650px at -8% 112%, rgba(139,92,246,0.09), transparent 55%),
-                radial-gradient(700px 500px at 50% 115%, rgba(14,165,233,0.05), transparent 50%),
+                radial-gradient(140% 105% at 50% 46%, transparent 58%, rgba(0,0,0,0.46) 100%),
+                radial-gradient(620px 340px at 50% -8%, rgba(245,200,96,0.055), transparent 62%),
+                repeating-linear-gradient(0deg, rgba(148,163,184,0.014) 0 1px, transparent 1px 46px),
+                repeating-linear-gradient(90deg, rgba(148,163,184,0.014) 0 1px, transparent 1px 46px),
+                radial-gradient(1100px 700px at 88% -12%, rgba(34,211,238,0.085), transparent 60%),
+                radial-gradient(900px 650px at -8% 112%, rgba(139,92,246,0.10), transparent 55%),
+                radial-gradient(700px 500px at 50% 115%, rgba(14,165,233,0.045), transparent 50%),
                 #05070f;
             padding-top: env(safe-area-inset-top, 0px);
             padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -258,8 +260,9 @@
                 radial-gradient(ellipse at 50% 44%, var(--feltA, #2e6089) 0%, var(--feltB, #1f4a6e) 52%, var(--feltC, #132f47) 100%);
             border-radius: 999px;
             border: 12px solid #0f1216;
-            /* gold pinline where rail meets felt — the detail that reads "casino grade" */
-            box-shadow: inset 0 0 0 2.5px rgba(213,179,107,0.28), inset 0 10px 34px rgba(0,0,0,0.45), inset 0 0 80px rgba(0,0,0,0.28), 0 20px 55px rgba(0,0,0,0.8);
+            /* gold pinline where rail meets felt — the detail that reads "casino grade";
+               the deep drop shadow is the "one lamp over the table" of the whole room */
+            box-shadow: inset 0 0 0 2.5px rgba(213,179,107,0.4), inset 0 12px 38px rgba(0,0,0,0.5), inset 0 0 90px rgba(0,0,0,0.32), 0 26px 70px rgba(0,0,0,0.85), 0 0 110px rgba(245,200,96,0.045);
             position: relative;
         }
         .poker-table::before {
@@ -290,6 +293,12 @@
             .ft-banner { font-size: 26px; top: 18%; }
             .player-spotlight { width: 200px; height: 200px; }
         }
+
+        /* Table top toolbar: one fixed-height row that scrolls sideways instead of
+           wrapping over the center labels (the ניהול/GPS overlap on narrow phones) */
+        .tbl-toolbar { display: flex; align-items: center; gap: 6px; overflow-x: auto; overflow-y: hidden; min-width: 0; scrollbar-width: none; -ms-overflow-style: none; }
+        .tbl-toolbar::-webkit-scrollbar { display: none; }
+        .tbl-toolbar > * { flex-shrink: 0; white-space: nowrap; }
 
         .card-face {
             /* warm paper: cool top light rolling into ivory, so cards read as objects, not rectangles */
@@ -11647,7 +11656,7 @@ function PokerTable({
   }, "Add")))), document.body), React.createElement("div", {
     className: "min-h-[3.5rem] bg-slate-900/80 backdrop-blur-md border-b border-white/5 flex justify-between items-center gap-1.5 px-2 sm:px-3 py-1.5 shrink-0 z-40 relative"
   }, React.createElement("div", {
-    className: "flex items-center gap-1.5 sm:gap-2 flex-wrap shrink-0"
+    className: "tbl-toolbar shrink max-w-[62%]"
   }, React.createElement("button", {
     onClick: () => {
       if (tableState?.tournament || !isSeated) onLeave();else handleStandUp();

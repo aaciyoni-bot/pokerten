@@ -7292,55 +7292,105 @@ function SettlementSection({
     downloadCSV(rows, `settlement_${cycLabel.replace(/ /g, '_')}.csv`);
   };
   const weekLocked = !!closed[String(start)];
-  const editResult = async p => {
+  // Inline edit form (replaces window.prompt): live before→after preview and a
+  // required note on every money correction.
+  const [editBox, setEditBox] = useState(null); // {kind:'result'|'pct', p, val, note}
+  const editResult = p => {
     if (!isOwnerView || weekLocked) return;
-    const cur = round2(pres[p.uid] || 0);
-    const raw = window.prompt(`Corrected result for ${p.username} this cycle (currently ${formatMoney(cur)}):`, String(cur));
-    if (raw === null) return;
-    const next = Number(raw);
-    if (isNaN(next)) return showToastG("Invalid amount", "error");
-    const delta = round2(next - cur);
-    if (delta === 0) return;
-    setBusy(true);
-    try {
-      const entry = {
-        uid: p.uid,
-        username: p.username,
-        clubId: CLUB_ID,
-        game: 'adjust',
-        profit: delta,
-        at: Date.now(),
-        by: user.username,
-        note: 'settlement correction'
-      };
-      await window.fb.addDoc(window.fb.collection(window.fb.db, "gameLog"), entry);
-      setGLog(prev => [...(prev || []), entry]);
-      showToastG(`Result corrected (${delta > 0 ? '+' : ''}${formatMoney(delta)})`, "success");
-    } catch (e) {
-      showToastG("Correction failed", "error");
-    }
-    setBusy(false);
+    setEditBox({
+      kind: 'result',
+      p,
+      val: String(round2(pres[p.uid] || 0)),
+      note: ''
+    });
   };
-  const editPct = async p => {
+  const editPct = p => {
     if (!isOwnerView || weekLocked) return;
-    const raw = window.prompt(`Agent % for ${p.username} (0-100):`, String(p.agentPct || 0));
-    if (raw === null) return;
-    const pct = Math.max(0, Math.min(100, Number(raw)));
-    if (isNaN(pct)) return showToastG("Invalid %", "error");
-    setBusy(true);
+    setEditBox({
+      kind: 'pct',
+      p,
+      val: String(p.agentPct || 0),
+      note: ''
+    });
+  };
+  const applyEdit = async () => {
+    const eb = editBox;
+    if (!eb) return;
+    if (eb.kind === 'result') {
+      const cur = round2(pres[eb.p.uid] || 0);
+      const next = Number(eb.val);
+      if (isNaN(next)) return showToastG("Invalid amount", "error");
+      const delta = round2(next - cur);
+      if (delta === 0) return setEditBox(null);
+      if (!(eb.note || '').trim()) return showToastG("A note is required for money corrections", "error");
+      setBusy(true);
+      try {
+        const entry = {
+          uid: eb.p.uid,
+          username: eb.p.username,
+          clubId: CLUB_ID,
+          game: 'adjust',
+          profit: delta,
+          at: Date.now(),
+          by: user.username,
+          note: eb.note.trim().slice(0, 120)
+        };
+        await window.fb.addDoc(window.fb.collection(window.fb.db, "gameLog"), entry);
+        setGLog(prev => [...(prev || []), entry]);
+        showToastG(`Result corrected (${delta > 0 ? '+' : ''}${formatMoney(delta)})`, "success");
+      } catch (e) {
+        showToastG("Correction failed", "error");
+      }
+      setBusy(false);
+    } else {
+      const pct = Math.max(0, Math.min(100, Number(eb.val)));
+      if (isNaN(pct)) return showToastG("Invalid %", "error");
+      setBusy(true);
+      try {
+        await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", eb.p.id), {
+          agentPct: pct
+        });
+        setMems(prev => prev.map(m => m.id === eb.p.id ? {
+          ...m,
+          agentPct: pct
+        } : m));
+        showToastG(`Agent % set to ${pct}%`, "success");
+      } catch (e) {
+        showToastG("Update failed", "error");
+      }
+      setBusy(false);
+    }
+    setEditBox(null);
+  };
+  const markAgentPaid = async a => {
+    if (!isOwnerView || !weekLocked) return;
     try {
-      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", p.id), {
-        agentPct: pct
+      const rec = closed[String(start)] || {};
+      const paid = {
+        ...(rec.paid || {}),
+        [a.uid]: rec.paid && rec.paid[a.uid] ? undefined : {
+          at: Date.now(),
+          by: user.username
+        }
+      };
+      Object.keys(paid).forEach(k => paid[k] === undefined && delete paid[k]);
+      const upd = {
+        ...closed,
+        [String(start)]: {
+          ...rec,
+          paid
+        }
+      };
+      await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+        closedWeeks: upd
+      }, {
+        merge: true
       });
-      setMems(prev => prev.map(m => m.id === p.id ? {
-        ...m,
-        agentPct: pct
-      } : m));
-      showToastG(`Agent % set to ${pct}%`, "success");
+      setClosed(upd);
+      if (window.__club) window.__club.closedWeeks = upd;
     } catch (e) {
       showToastG("Update failed", "error");
     }
-    setBusy(false);
   };
   const reassign = async (p, agentUid) => {
     if (!isOwnerView || weekLocked) return;
@@ -7372,7 +7422,14 @@ function SettlementSection({
         totalCuts,
         houseGross,
         houseCut,
-        ownerNet
+        ownerNet,
+        // per-agent snapshot: reopening a closed week shows the settle-up
+        // numbers instantly, no recompute from raw logs
+        agents: agents.map(a2 => ({
+          uid: a2.uid,
+          name: a2.username,
+          cut: round2(cuts[a2.uid] || 0)
+        }))
       };
       const upd = {
         ...(closed || {}),
@@ -7393,7 +7450,58 @@ function SettlementSection({
   };
   return React.createElement("div", {
     className: "mb-8"
-  }, React.createElement("div", {
+  }, editBox && ReactDOM.createPortal((() => {
+    const isRes = editBox.kind === 'result';
+    const cur = isRes ? round2(pres[editBox.p.uid] || 0) : Number(editBox.p.agentPct || 0);
+    const nxt = Number(editBox.val);
+    const delta = isRes && !isNaN(nxt) ? round2(nxt - cur) : 0;
+    return React.createElement("div", {
+      className: "fixed inset-0 z-[460] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
+      onClick: () => setEditBox(null)
+    }, React.createElement("div", {
+      onClick: e => e.stopPropagation(),
+      className: "glass-panel rounded-3xl p-6 w-full max-w-sm animate-pop-in border border-gold-400/40"
+    }, React.createElement("h3", {
+      className: "text-lg font-black text-white mb-3"
+    }, isRes ? '✏️ Correct result — ' : '✏️ Agent % — ', editBox.p.username), React.createElement("div", {
+      className: "flex items-center gap-3 mb-3",
+      dir: "ltr"
+    }, React.createElement("span", {
+      className: "text-slate-400 text-sm font-bold"
+    }, isRes ? formatMoney(cur) : cur + '%'), React.createElement("span", {
+      className: "text-slate-600"
+    }, "→"), React.createElement("input", {
+      type: "number",
+      value: editBox.val,
+      autoFocus: true,
+      onChange: e => setEditBox(b => ({
+        ...b,
+        val: e.target.value
+      })),
+      className: "flex-1 bg-slate-900 text-white border border-slate-700 rounded-xl p-2.5 text-center font-black outline-none focus:border-gold-400"
+    }), !isRes && React.createElement("span", {
+      className: "text-slate-400 font-black"
+    }, "%")), isRes && React.createElement("div", {
+      className: `text-[12px] font-black mb-3 ${delta === 0 ? 'text-slate-500' : delta > 0 ? 'text-emerald-400' : 'text-rose-400'}`,
+      dir: "ltr"
+    }, "Δ ", delta > 0 ? '+' : '', formatMoney(delta)), isRes && React.createElement("input", {
+      value: editBox.note,
+      onChange: e => setEditBox(b => ({
+        ...b,
+        note: e.target.value
+      })),
+      placeholder: "Why? (required — goes to the audit log)",
+      className: "w-full bg-slate-900 text-white border border-white/10 rounded-xl p-2.5 text-sm font-bold outline-none focus:border-gold-400 mb-3"
+    }), React.createElement("div", {
+      className: "flex gap-2"
+    }, React.createElement("button", {
+      onClick: applyEdit,
+      className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3 rounded-2xl font-black shadow-lg"
+    }, "Save"), React.createElement("button", {
+      onClick: () => setEditBox(null),
+      className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+    }, "Cancel"))));
+  })(), document.body), React.createElement("div", {
     className: "flex items-center justify-between flex-wrap gap-2 mb-4"
   }, React.createElement("h3", {
     className: "text-sm font-black text-emerald-400 uppercase tracking-widest"
@@ -7635,9 +7743,17 @@ function SettlementSection({
     }, a.username, " ", React.createElement("span", {
       className: "text-[9px] bg-blue-500/15 border border-blue-500/40 text-blue-300 px-1.5 py-0.5 rounded-full"
     }, ROLE_LABELS[a.role] || 'Agent')), React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, React.createElement("div", {
       className: "text-xs font-black text-purple-300",
       dir: "ltr"
-    }, "cut ", formatMoney(cuts[a.uid] || 0))), pls.length === 0 ? React.createElement("div", {
+    }, "cut ", formatMoney(cuts[a.uid] || 0)), weekLocked && isOwnerView && (() => {
+      const paid = !!((closed[String(start)] || {}).paid || {})[a.uid];
+      return React.createElement("button", {
+        onClick: () => markAgentPaid(a),
+        className: `text-[10px] font-black px-2.5 py-1 rounded-full border ${paid ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300' : 'bg-slate-900 border-white/15 text-slate-400 hover:text-white'}`
+      }, paid ? '✓ Paid' : 'Mark paid');
+    })())), pls.length === 0 ? React.createElement("div", {
       className: "text-[11px] text-slate-500 font-bold"
     }, "No players assigned.") : React.createElement("div", {
       className: "space-y-1"
@@ -7884,9 +8000,16 @@ function BackofficeView({
       showToast("Decline error", "error");
     }
   };
-  const sendDirectMsg = async target => {
-    const txt = (window.prompt(`Personal message to ${target.username}:`) || '').trim();
+  const [dmBox, setDmBox] = useState(null); // {target, text} — replaces window.prompt
+  const sendDirectMsg = target => setDmBox({
+    target,
+    text: ''
+  });
+  const applyDm = async () => {
+    const target = dmBox.target;
+    const txt = (dmBox.text || '').trim();
     if (txt.length < 2) return;
+    setDmBox(null);
     try {
       const cur = Array.isArray(target.inbox) ? target.inbox : [];
       await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", target.id), {
@@ -7901,10 +8024,22 @@ function BackofficeView({
       showToast("Error sending message", "error");
     }
   };
-  const adjustBalance = async (target, isDeposit) => {
-    const raw = window.prompt(isDeposit ? `How many chips to deposit to ${target.username}? (deducted from your balance)` : `How many chips to withdraw from ${target.username}? (added to your balance)`, "100");
-    const amount = parseFloat(raw);
-    if (!amount || isNaN(amount) || amount <= 0) return;
+  // Money moves through a real form — preset amounts, live preview of BOTH
+  // balances, then confirm. No more window.prompt for money actions.
+  const [balBox, setBalBox] = useState(null); // {target, isDeposit, val}
+  const adjustBalance = (target, isDeposit) => setBalBox({
+    target,
+    isDeposit,
+    val: '100'
+  });
+  const applyBalance = async () => {
+    const {
+      target,
+      isDeposit
+    } = balBox;
+    const amount = parseFloat(balBox.val);
+    if (!amount || isNaN(amount) || amount <= 0) return showToast("Enter a valid amount", "error");
+    setBalBox(null);
     try {
       await window.fb.runTransaction(window.fb.db, async tr => {
         const ownerRef = memDoc(user.uid);
@@ -8213,7 +8348,100 @@ function BackofficeView({
       overflowX: "hidden"
     },
     className: "scrollable-content aurora-bg p-4 sm:p-6"
+  }, balBox && ReactDOM.createPortal((() => {
+    const t = balBox.target;
+    const amt = Math.max(0, parseFloat(balBox.val) || 0);
+    const myAfter = round2((user.balance || 0) + (balBox.isDeposit ? -amt : amt));
+    const theirAfter = round2((Number(t.balance) || 0) + (balBox.isDeposit ? amt : -amt));
+    const bad = balBox.isDeposit ? myAfter < 0 : theirAfter < 0;
+    return React.createElement("div", {
+      className: "fixed inset-0 z-[460] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
+      onClick: () => setBalBox(null)
+    }, React.createElement("div", {
+      onClick: e => e.stopPropagation(),
+      className: "glass-panel rounded-3xl p-6 w-full max-w-sm animate-pop-in border border-gold-400/40"
+    }, React.createElement("h3", {
+      className: "text-lg font-black text-white mb-1"
+    }, balBox.isDeposit ? '⬆️ Deposit to ' : '⬇️ Withdraw from ', t.username), React.createElement("p", {
+      className: "text-[11px] text-slate-400 font-bold mb-4"
+    }, balBox.isDeposit ? 'Chips move from YOUR balance to the player.' : "Chips move from the player's balance to YOURS."), React.createElement("div", {
+      className: "flex gap-2 mb-3"
+    }, [100, 500, 1000, 5000].map(v => React.createElement("button", {
+      key: v,
+      onClick: () => setBalBox(b => ({
+        ...b,
+        val: String(v)
+      })),
+      className: `flex-1 py-2 rounded-xl font-black text-xs border ${String(v) === balBox.val ? 'bg-gold-400 text-slate-900 border-gold-400' : 'bg-slate-900 text-slate-300 border-white/10 hover:text-white'}`
+    }, formatShort(v))), React.createElement("input", {
+      type: "number",
+      value: balBox.val,
+      onChange: e => setBalBox(b => ({
+        ...b,
+        val: e.target.value
+      })),
+      className: "w-24 bg-slate-900 text-white border border-slate-700 rounded-xl p-2 text-center font-black outline-none focus:border-gold-400",
+      dir: "ltr"
+    })), React.createElement("div", {
+      className: "bg-slate-950/60 border border-white/10 rounded-2xl p-3 mb-4 text-[12px] font-bold space-y-1",
+      dir: "ltr"
+    }, React.createElement("div", {
+      className: "flex justify-between"
+    }, React.createElement("span", {
+      className: "text-slate-400"
+    }, "You"), React.createElement("span", {
+      className: myAfter < 0 ? 'text-rose-400' : 'text-white'
+    }, formatMoney(user.balance || 0), " → ", formatMoney(myAfter))), React.createElement("div", {
+      className: "flex justify-between"
+    }, React.createElement("span", {
+      className: "text-slate-400"
+    }, t.username), React.createElement("span", {
+      className: theirAfter < 0 ? 'text-rose-400' : 'text-white'
+    }, formatMoney(Number(t.balance) || 0), " → ", formatMoney(theirAfter)))), React.createElement("div", {
+      className: "flex gap-2"
+    }, React.createElement("button", {
+      onClick: applyBalance,
+      disabled: bad || amt <= 0,
+      className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-40 text-white py-3 rounded-2xl font-black shadow-lg"
+    }, "Confirm"), React.createElement("button", {
+      onClick: () => setBalBox(null),
+      className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+    }, "Cancel"))));
+  })(), document.body), dmBox && ReactDOM.createPortal(React.createElement("div", {
+    className: "fixed inset-0 z-[460] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => setDmBox(null)
   }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "glass-panel rounded-3xl p-6 w-full max-w-sm animate-pop-in border border-white/15"
+  }, React.createElement("h3", {
+    className: "text-lg font-black text-white mb-3"
+  }, "✉️ Message to ", dmBox.target.username), Array.isArray(dmBox.target.inbox) && dmBox.target.inbox.length > 0 && React.createElement("div", {
+    className: "max-h-32 overflow-y-auto space-y-1 mb-3"
+  }, dmBox.target.inbox.slice(-5).map((m, mi) => React.createElement("div", {
+    key: mi,
+    className: "text-[11px] font-bold text-slate-300 bg-slate-900/70 rounded-lg px-2.5 py-1.5"
+  }, React.createElement("span", {
+    className: "text-slate-500"
+  }, m.from, " · ", new Date(m.at).toLocaleDateString('en-GB'), ": "), m.text))), React.createElement("textarea", {
+    value: dmBox.text,
+    onChange: e => setDmBox(b => ({
+      ...b,
+      text: e.target.value
+    })),
+    rows: 3,
+    maxLength: 300,
+    placeholder: "Write your message…",
+    className: "w-full bg-slate-900 text-white border border-white/10 rounded-xl p-3 text-sm font-bold outline-none focus:border-gold-400 mb-3"
+  }), React.createElement("div", {
+    className: "flex gap-2"
+  }, React.createElement("button", {
+    onClick: applyDm,
+    disabled: (dmBox.text || '').trim().length < 2,
+    className: "flex-1 bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 disabled:opacity-40 text-white py-3 rounded-2xl font-black shadow-lg"
+  }, "Send"), React.createElement("button", {
+    onClick: () => setDmBox(null),
+    className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+  }, "Cancel")))), document.body), React.createElement("div", {
     className: "max-w-5xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
     className: "flex items-center justify-between mb-6 flex-wrap gap-3"

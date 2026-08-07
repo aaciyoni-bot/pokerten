@@ -301,6 +301,14 @@
             .player-spotlight { width: 200px; height: 200px; }
         }
 
+        /* View transitions: the entering screen fades/slides in (no hard cuts) */
+        @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+        .view-anim { animation: viewIn 0.28s cubic-bezier(0.2,0.8,0.2,1) both; }
+        /* Toast exit: fade+slide out instead of vanishing in one frame */
+        @keyframes toastOut { to { opacity: 0; transform: translateY(-8px) scale(0.96); } }
+        .toast-leave { animation: toastOut 0.28s ease-in both; }
+        @media (prefers-reduced-motion: reduce) { .view-anim, .toast-leave { animation-duration: 0.01s; } }
+
         /* A bet flies IN from the player toward its spot (no more teleporting) */
         @keyframes betFly {
             from { transform: translate(-50%,-50%) translate(var(--bfx, 0px), var(--bfy, 0px)) scale(0.72); opacity: 0.25; }
@@ -1326,10 +1334,10 @@ try {
   window.__pkMuted = false;
 }
 try {
-  // four-color deck is the DEFAULT — opt out with pkDeck4='0'
-  window.__pkDeck4 = localStorage.getItem('pkDeck4') !== '0';
+  // classic two-color deck by default (owner preference); 4-color stays opt-in
+  window.__pkDeck4 = localStorage.getItem('pkDeck4') === '1';
 } catch (e) {
-  window.__pkDeck4 = true;
+  window.__pkDeck4 = false;
 }
 const playSnd = (type, times = 1, gapSec = 0) => {
   // "your turn": silent haptic pulse instead of a sound (works even when muted)
@@ -3371,6 +3379,7 @@ function App() {
     setShowInstall(true);
   };
   const [tablesDB, setTablesDB] = useState([]);
+  const [tablesLoaded, setTablesLoaded] = useState(false); // lobby shows a skeleton until the first snapshot
   const [toursDB, setToursDB] = useState([]);
   const toursRef = useRef([]);
   const tablesRef2 = useRef([]);
@@ -3485,9 +3494,9 @@ function App() {
       msg,
       type
     }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    // fade out, THEN remove — no one-frame vanish
+    setTimeout(() => setToasts(prev => prev.map(t => t.id === id ? { ...t, leaving: true } : t)), 3700);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4050);
   };
   const changeView = (view, tableObj = null) => {
     setCurrentView(view);
@@ -3820,6 +3829,7 @@ function App() {
         docId: d.id,
         ...d.data()
       })));
+      setTablesLoaded(true);
     });
     const unsubTours = window.fb.onSnapshot(window.fb.collection(window.fb.db, "tournaments"), s => {
       setToursDB(s.docs.map(d => ({
@@ -3945,31 +3955,27 @@ function App() {
     className: "bg-slate-900/80 backdrop-blur-xl px-4 py-3 z-40 shrink-0 border-b border-white/5 shadow-xl flex justify-between items-center"
   }, React.createElement("div", {
     className: "flex items-center gap-2 sm:gap-3"
-  }, React.createElement("button", {
-    onClick: leaveToClubs,
-    title: "Switch club",
-    className: "w-10 h-10 rounded-xl bg-slate-800/80 text-emerald-400 border border-emerald-500/30 hover:text-white hover:bg-emerald-700 transition-colors flex items-center justify-center"
+  }, [{
+    k: 'clubs', ico: 'fa-building-columns', label: 'Clubs', on: leaveToClubs, show: true, active: false
+  }, {
+    k: 'backoffice', ico: 'fa-chart-line', label: 'Manage', on: () => changeView(currentView === 'backoffice' ? 'lobby' : 'backoffice'),
+    show: [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER, ROLES.MANAGER, ROLES.AGENT].includes(effUser.role), active: currentView === 'backoffice'
+  }, {
+    k: 'leaders', ico: 'fa-ranking-star', label: 'Ranks', on: () => changeView(currentView === 'leaders' ? 'lobby' : 'leaders'),
+    show: true, active: currentView === 'leaders'
+  }, {
+    k: 'install', ico: 'fa-circle-down', label: 'Install', on: triggerInstall, show: !isStandaloneApp, active: false
+  }].filter(b => b.show).map(b => React.createElement("button", {
+    key: b.k,
+    onClick: b.on,
+    title: b.label,
+    // ONE accent for the whole nav: quiet slate at rest, gold when active
+    className: `w-11 h-11 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-colors ${b.active ? 'bg-slate-700/90 text-gold-400 border-gold-400/40' : 'bg-slate-800/80 text-slate-300 border-white/5 hover:text-white hover:bg-slate-700'}`
   }, React.createElement("i", {
-    className: "fa-solid fa-building-columns"
-  })), [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER, ROLES.MANAGER, ROLES.AGENT].includes(effUser.role) && React.createElement("button", {
-    onClick: () => changeView(currentView === 'backoffice' ? 'lobby' : 'backoffice'),
-    className: `w-10 h-10 rounded-xl border flex items-center justify-center transition-colors ${currentView === 'backoffice' ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800/80 text-blue-400 border-white/5 hover:text-white'}`,
-    title: "Club Management"
-  }, React.createElement("i", {
-    className: "fa-solid fa-chart-line"
-  })), React.createElement("button", {
-    onClick: () => changeView(currentView === 'leaders' ? 'lobby' : 'leaders'),
-    className: `w-10 h-10 rounded-xl border transition-colors flex items-center justify-center ${currentView === 'leaders' ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800/80 text-amber-400 border-white/5 hover:bg-amber-700 hover:text-white'}`,
-    title: "Leaderboard"
-  }, React.createElement("i", {
-    className: "fa-solid fa-ranking-star"
-  })), !isStandaloneApp && React.createElement("button", {
-    onClick: triggerInstall,
-    className: "w-10 h-10 rounded-xl border border-emerald-500/40 bg-emerald-600/15 text-emerald-300 hover:bg-emerald-600 hover:text-white flex items-center justify-center transition-colors animate-pulse",
-    title: "Install app"
-  }, React.createElement("i", {
-    className: "fa-solid fa-circle-down"
-  })), React.createElement("button", {
+    className: `fa-solid ${b.ico} text-[15px]`
+  }), React.createElement("span", {
+    className: "text-[8px] font-black tracking-wide leading-none"
+  }, b.label))), React.createElement("button", {
     onClick: () => changeView(currentView === 'profile' ? 'lobby' : 'profile'),
     className: "w-10 h-10 rounded-full overflow-hidden border border-gold-400/40 hover:border-gold-400 transition-colors",
     title: "My profile"
@@ -3986,21 +3992,11 @@ function App() {
     className: "fa-solid fa-chess-king text-emerald-400 text-[10px]"
   }), isGodUser(dbUser) && React.createElement("i", {
     className: "fa-solid fa-eye text-purple-400 text-[10px]"
-  })), React.createElement("span", {
-    className: "flex items-center gap-2"
-  }, React.createElement(Coin, {
-    amount: effUser.balance,
-    className: "text-xs"
-  }), (effUser.promoBalance || 0) > 0 && React.createElement("span", {
-    className: "text-[11px] font-black text-amber-400 flex items-center gap-1",
-    title: "Bonus chips — play only, not withdrawable"
-  }, React.createElement("i", {
-    className: "fa-solid fa-gift text-[9px]"
-  }), formatShort(effUser.promoBalance))))), React.createElement("div", {
+  })))), React.createElement("div", {
     className: "flex flex-col items-end cursor-pointer",
     onClick: () => changeView('lobby')
   }, React.createElement("h1", {
-    className: "text-xl font-black tracking-wider logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400"
+    className: "text-lg sm:text-xl font-black tracking-wider logo-shine text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400"
   }, "POKERTEN"), React.createElement("p", {
     className: "text-[10px] text-emerald-400/90 font-black tracking-widest leading-none flex items-center gap-1"
   }, clubSettings?.logo ? React.createElement("img", {
@@ -4010,7 +4006,8 @@ function App() {
   }) : '🏛️', " ", clubSettings?.name || activeClub.name, " ", React.createElement("span", {
     className: "text-slate-600"
   }, "")))), React.createElement("main", {
-    className: "flex-1 overflow-hidden relative z-0"
+    key: currentView, // remount per view so the enter animation plays
+    className: "flex-1 overflow-hidden relative z-0 view-anim"
   }, currentView === 'auth' && React.createElement(AuthView, null), currentView === 'clubs' && dbUser && React.createElement(ClubsView, {
     user: dbUser,
     clubs: clubsList,
@@ -4023,6 +4020,7 @@ function App() {
   }), currentView === 'lobby' && activeClub && React.createElement(LobbyView, {
     user: effUser,
     tables: tablesDB,
+    tablesLoaded: tablesLoaded,
     tournaments: toursDB,
     clubSettings: clubSettings,
     tab: lobbyTab,
@@ -4235,7 +4233,7 @@ function App() {
     key: t.id,
     // three distinct voices — success / error / info — each with its icon,
     // so the eye reads the outcome before the words
-    className: `animate-pop-in px-5 py-3 rounded-2xl font-bold text-sm text-center border backdrop-blur-md shadow-xl flex items-center gap-2.5 justify-center ${t.type === 'error' ? 'bg-rose-950/95 border-rose-500/60 text-rose-100' : t.type === 'success' ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100' : 'bg-slate-900/95 border-white/15 text-slate-200'}`
+    className: `${t.leaving ? 'toast-leave' : 'animate-pop-in'} px-5 py-3 rounded-2xl font-bold text-sm text-center border backdrop-blur-md shadow-xl flex items-center gap-2.5 justify-center ${t.type === 'error' ? 'bg-rose-950/95 border-rose-500/60 text-rose-100' : t.type === 'success' ? 'bg-emerald-950/95 border-emerald-500/50 text-emerald-100' : 'bg-slate-900/95 border-white/15 text-slate-200'}`
   }, React.createElement("i", {
     className: `fa-solid ${t.type === 'error' ? 'fa-triangle-exclamation text-rose-400' : t.type === 'success' ? 'fa-circle-check text-emerald-400' : 'fa-circle-info text-slate-300'} shrink-0`
   }), React.createElement("span", null, t.msg)))));
@@ -5412,8 +5410,15 @@ function ClubsView({
   }) : 'Create')), React.createElement("p", {
     className: "text-[11px] text-slate-500 font-bold mt-2"
   }, "You'll be the club owner: you start with 100,000,000 chips to distribute, approve members, set the rules, appoint managers and agents - and the profits are yours.")), React.createElement("div", {
-    className: "pt-hero mt-6 mb-4 h-32 sm:h-40 w-full"
-  })));
+    // hero banner earns its place: message + the screen's primary action
+    className: "pt-hero mt-6 mb-4 h-32 sm:h-40 w-full relative overflow-hidden flex items-end"
+  }, React.createElement("div", {
+    className: "w-full p-4 bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-transparent"
+  }, React.createElement("div", {
+    className: "text-white font-black text-base leading-tight mb-0.5"
+  }, "Private club games & tournaments"), React.createElement("div", {
+    className: "text-[11px] text-slate-300 font-bold"
+  }, "Join a club with its code — or open your own and run the tables.")))));
 }
 function ProfileView({
   user,
@@ -5773,6 +5778,7 @@ const EmptyState = ({
   }
 }, sub));
 function LobbyView({
+  tablesLoaded,
   user,
   tables,
   tournaments,
@@ -5917,6 +5923,7 @@ function LobbyView({
   const BONUS_W = [800, 100, 35, 25, 18, 12, 5, 5];
   const [bonusOpen, setBonusOpen] = useState(false);
   const [giftOpen, setGiftOpen] = useState(false);
+  const [cashierOpen, setCashierOpen] = useState(false);
   const SCR_HOURS = 7 * 24;
   const [scrOpen, setScrOpen] = useState(false);
   const [scr, setScr] = useState(null);
@@ -6260,7 +6267,38 @@ function LobbyView({
   }, "Save"), React.createElement("button", {
     onClick: () => setBuyinEdit(null),
     className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
-  }, "Cancel")))), document.body), React.createElement("div", {
+  }, "Cancel")))), document.body), cashierOpen && ReactDOM.createPortal(React.createElement("div", {
+    className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
+    onClick: () => setCashierOpen(false)
+  }, React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    className: "glass-panel rounded-3xl p-6 w-full max-w-sm animate-pop-in border border-gold-400/40"
+  }, React.createElement("h3", {
+    className: "text-xl font-black text-white mb-4"
+  }, "💳 Cashier"), React.createElement("div", {
+    className: "bg-slate-950/60 border border-white/10 rounded-2xl p-4 mb-3",
+    dir: "ltr"
+  }, React.createElement("div", {
+    className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1"
+  }, "Cash balance"), React.createElement("div", {
+    className: "text-3xl font-black text-emerald-400"
+  }, formatMoney(user.balance || 0)), (user.promoBalance || 0) > 0 && React.createElement("div", {
+    className: "text-[11px] font-bold text-amber-300 mt-2"
+  }, "🎁 + ", formatMoney(user.promoBalance), " bonus chips (play only, not withdrawable)")), React.createElement("div", {
+    className: "text-[12px] text-slate-300 font-bold leading-relaxed mb-3"
+  }, "Deposits and withdrawals are settled with your club manager or agent. Give them your player ID:"), React.createElement("button", {
+    onClick: () => {
+      try {
+        navigator.clipboard.writeText(String(user.playerId || ''));
+        showToast('Player ID copied', 'success');
+      } catch (e) {}
+    },
+    className: "w-full bg-slate-900 border border-gold-400/30 text-gold-400 py-3 rounded-2xl font-black text-lg tracking-widest mb-3",
+    dir: "ltr"
+  }, user.playerId || '—', " 📋"), React.createElement("button", {
+    onClick: () => setCashierOpen(false),
+    className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
+  }, "Close"))), document.body), React.createElement("div", {
     className: "max-w-6xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
     className: "flex items-center justify-between gap-3 mb-5"
@@ -6275,7 +6313,10 @@ function LobbyView({
     className: "lw-val"
   }, React.createElement(Coin, {
     amount: user.balance
-  })))), React.createElement("div", {
+  }))), React.createElement("button", {
+    onClick: () => setCashierOpen(true),
+    className: "btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
+  }, "💳 Cashier")), React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
   }, bonusEnabled && React.createElement("button", {
     onClick: () => setGiftOpen(true),
@@ -6612,7 +6653,7 @@ function LobbyView({
     }, React.createElement("i", {
       className: "fa-solid fa-trash"
     })));
-  }), ofcTables.length === 0 && React.createElement(EmptyState, {
+  }), ofcTables.length === 0 && !tablesLoaded && React.createElement("div", { className: "space-y-2" }, [0, 1].map(i2 => React.createElement("div", { key: i2, className: "h-[72px] rounded-2xl bg-slate-900/60 border border-white/5 animate-pulse" }))), ofcTables.length === 0 && tablesLoaded && React.createElement(EmptyState, {
     suit: "♣",
     title: "No open Chinese Poker (OFC) tables",
     sub: "Open one above and challenge a friend — tables appear here live for the whole club."
@@ -6791,7 +6832,7 @@ function LobbyView({
     }, React.createElement("i", {
       className: "fa-solid fa-trash"
     })));
-  }), shownPoker.length === 0 && React.createElement(EmptyState, {
+  }), shownPoker.length === 0 && !tablesLoaded && React.createElement("div", { className: "space-y-2" }, [0, 1].map(i2 => React.createElement("div", { key: i2, className: "h-[72px] rounded-2xl bg-slate-900/60 border border-white/5 animate-pulse" }))), shownPoker.length === 0 && tablesLoaded && React.createElement(EmptyState, {
     suit: "♠",
     title: `No open ${pokFilter === 'all' ? 'Poker' : variantLabel(pokFilter)} tables right now`,
     sub: "New tables appear here live the moment they open — no refresh needed."
@@ -6991,7 +7032,7 @@ function LobbyView({
     }, React.createElement("i", {
       className: "fa-solid fa-trash"
     })));
-  }), durakTables.length === 0 && React.createElement(EmptyState, {
+  }), durakTables.length === 0 && !tablesLoaded && React.createElement("div", { className: "space-y-2" }, [0, 1].map(i2 => React.createElement("div", { key: i2, className: "h-[72px] rounded-2xl bg-slate-900/60 border border-white/5 animate-pulse" }))), durakTables.length === 0 && tablesLoaded && React.createElement(EmptyState, {
     suit: "♦",
     title: "No open Durak tables right now",
     sub: "New tables appear here live the moment they open — no refresh needed."

@@ -2854,7 +2854,8 @@ const botMissions = uid => {
 const PlayerPeek = ({
   peek,
   onClose,
-  clubId
+  clubId,
+  onKick
 }) => {
   const [mi, setMi] = React.useState(null);
   React.useEffect(() => {
@@ -2899,7 +2900,11 @@ const PlayerPeek = ({
     }, m.e);
   })), mi === null && React.createElement("div", {
     className: "text-center text-slate-500 text-[10px] font-bold mt-2"
-  }, "Loading…"));
+  }, "Loading…"), onKick && React.createElement("button", {
+    // manager action lives HERE, not as a permanent ✕ on every seat
+    onClick: onKick,
+    className: "w-full mt-2.5 bg-rose-950/60 hover:bg-rose-800 border border-rose-500/40 text-rose-300 hover:text-white py-2 rounded-xl font-black text-[11px]"
+  }, "🚪 Remove from table"));
 };
 const SPIN_SEGS = [2, 3, 100, 2, 5, 3, 10, 2, 3, 20, 4, 3];
 const SEG_COL = {
@@ -12186,13 +12191,7 @@ function PokerTable({
         },
         dir: "ltr"
       }, "🚪 ", Math.floor(lms / 60000), ":", String(Math.floor(lms % 60000 / 1000)).padStart(2, '0'));
-    })(), !isMe && canManageGame(user, 'poker') && React.createElement("button", {
-      onClick: async e => {
-        e.stopPropagation();
-        if (await askConfirm(`Remove ${p.name} from the table? Their stack returns to their wallet.`)) kickSeat(p.uid, true);
-      },
-      className: "absolute bottom-0 -left-6 z-30 w-5 h-5 rounded-full bg-slate-900/90 border border-rose-500/50 text-rose-400 hover:bg-rose-800 hover:text-white text-[9px] font-black flex items-center justify-center opacity-60 hover:opacity-100"
-    }, "✕"), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
+    })(), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
       key: 'g' + gi,
       className: "gift-fx"
     }, g.giftE)), showCards && (isMe || !fanBelow) && (() => {
@@ -12763,7 +12762,13 @@ function PokerTable({
   }), peek && React.createElement(PlayerPeek, {
     peek: peek,
     onClose: () => setPeek(null),
-    clubId: CLUB_ID
+    clubId: CLUB_ID,
+    onKick: peek.uid !== user.uid && canManageGame(user, 'poker') ? async () => {
+      if (await askConfirm(`Remove ${peek.name} from the table? Their stack returns to their wallet.`)) {
+        kickSeat(peek.uid, true);
+        setPeek(null);
+      }
+    } : null
   }), podium && React.createElement(PodiumScreen, {
     place: podium.place,
     amount: podium.amount,

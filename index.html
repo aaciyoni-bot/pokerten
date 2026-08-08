@@ -6015,6 +6015,46 @@ function LobbyView({
   onCreatePoker,
   showToast
 }) {
+  // Give up a seat straight from the lobby: refunds the stack to the wallet
+  // when the hand is idle, otherwise queues the exit for the end of the hand.
+  const leaveFromLobby = async t => {
+    const me0 = (t.players || {})[user.uid] || {};
+    if (t.tournamentId) return showToast("Tournament seat — sit out from the table instead", "error");
+    const ref = window.fb.doc(window.fb.db, "tables", t.docId || t.id);
+    try {
+      const g0 = t.gameState || {};
+      if (!['waiting', 'showdown'].includes(g0.phase) && me0.status === 'active') {
+        await window.fb.updateDoc(ref, {
+          [`players.${user.uid}.leaveReq`]: Date.now()
+        });
+        return showToast("🚪 You'll leave that table when the hand ends", "info");
+      }
+      let refund = 0;
+      await window.fb.runTransaction(window.fb.db, async tr => {
+        const uRef = memDoc(user.uid);
+        const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(ref)];
+        if (!tSnap.exists()) return;
+        const td = tSnap.data();
+        const me = (td.players || {})[user.uid];
+        if (!me) return;
+        const pl = {
+          ...td.players
+        };
+        delete pl[user.uid];
+        refund = round2(me.stack || 0);
+        if (uSnap.exists() && refund > 0) tr.update(uRef, {
+          balance: round2((uSnap.data().balance || 0) + refund)
+        });
+        tr.update(ref, {
+          players: pl,
+          'gameState.__seq': (Number((td.gameState || {}).__seq) || 0) + 1
+        });
+      });
+      showToast(refund > 0 ? `Left the table — ${formatMoney(refund)} back in your wallet` : "Seat given up", "success");
+    } catch (e) {
+      showToast("Could not leave that table right now", "error");
+    }
+  };
   const [showCreateDurak, setShowCreateDurak] = useState(false);
   const [durakOpts, setDurakOpts] = useState({
     deckSize: 36,
@@ -6114,8 +6154,12 @@ function LobbyView({
     }
   };
   const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
-  const variantCount = v => pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === v).length;
-  const shownPoker = pokFilter === 'all' ? pokerTables : pokFilter === 'tours' ? [] : pokerTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === pokFilter);
+  const variantCount = v => pokerTables.filter(t => !(t.settings || {}).spinMode && ((t.settings || {}).baseGameType || 'NLH') === v).length;
+  // Spin & Cash lives in its OWN section (where the tournaments block sits),
+  // so it never mixes into the ring-game list.
+  const spinTables = pokerTables.filter(t => (t.settings || {}).spinMode);
+  const ringTables = pokerTables.filter(t => !(t.settings || {}).spinMode);
+  const shownPoker = pokFilter === 'all' ? ringTables : pokFilter === 'tours' ? [] : ringTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === pokFilter);
   const showPokerTours = pokFilter === 'all' || pokFilter === 'tours';
   const durakTables = tables.filter(t => t.type === 'durak' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const ofcTables = tables.filter(t => t.type === 'ofc' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -6757,7 +6801,16 @@ function LobbyView({
   }, "Close"))), document.body), (() => {
     // Still seated somewhere? One tap back — a manager who stepped out to the
     // lobby/console must not have to hunt for his own table.
-    const mine = (tables || []).filter(t => (t.players || {})[user.uid] && (t.clubId || 'main') === CLUB_ID);
+    // LIVE seats only: a busted/out player, or a 0-chip cash seat, is a dead
+    // record from a finished game — not somewhere to "go back" to.
+    const mine = (tables || []).filter(t => {
+      if ((t.clubId || 'main') !== CLUB_ID) return false;
+      const me = (t.players || {})[user.uid];
+      if (!me) return false;
+      if (['out', 'busted'].includes(me.status)) return false;
+      if (!t.tournamentId && !((me.stack || 0) > 0 || (me.bet || 0) > 0)) return false;
+      return true;
+    });
     if (!mine.length) return null;
     return React.createElement("div", {
       className: "mb-4 flex flex-col gap-2"
@@ -6765,12 +6818,12 @@ function LobbyView({
       const s = t.settings || {};
       const label = t.type === 'durak' ? 'Durak' : t.type === 'ofc' ? 'Chinese Poker' : s.tableName || variantLabel(s.baseGameType || 'NLH', s);
       const me = (t.players || {})[user.uid] || {};
-      return React.createElement("button", {
+      return React.createElement("div", {
         key: 'bk' + t.id,
         onClick: () => {
           if (t.type === 'durak') onJoinDurak(t);else if (t.type === 'ofc') onJoinOfc(t);else onJoinPoker(t);
         },
-        className: "w-full flex items-center gap-3 bg-gradient-to-r from-emerald-600/25 to-emerald-800/15 border border-emerald-500/45 rounded-2xl px-4 py-3 shadow-lg active:scale-[0.99] transition-transform"
+        className: "w-full flex items-center gap-2.5 bg-gradient-to-r from-emerald-600/20 to-emerald-800/10 border border-emerald-500/35 rounded-2xl px-3 py-2 shadow-lg cursor-pointer active:scale-[0.99] transition-transform"
       }, React.createElement("span", {
         className: "text-xl"
       }, "\uD83E\uDE91"), React.createElement("span", {
@@ -6782,7 +6835,14 @@ function LobbyView({
         dir: "ltr"
       }, t.tournamentId ? 'Tournament table' : `Stack ${formatShort(me.stack || 0)}`, me.sitOut ? ' \u00b7 \u2615 sitting out' : '')), React.createElement("span", {
         className: "shrink-0 bg-emerald-500 text-slate-900 font-black text-xs rounded-xl px-3 py-2 whitespace-nowrap"
-      }, "Back to table \u21a9"));
+      }, "Back \u21a9"), !t.tournamentId && React.createElement("span", {
+        onClick: e => {
+          e.stopPropagation();
+          leaveFromLobby(t);
+        },
+        title: "Give up this seat",
+        className: "shrink-0 w-8 h-8 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-rose-300 hover:border-rose-500/40 flex items-center justify-center text-sm"
+      }, "\u2715"));
     }));
   })(), tab === 'ofc' && React.createElement("div", {
     className: "animate-fade-in"
@@ -7090,7 +7150,94 @@ function LobbyView({
     suit: "♠",
     title: `No open ${pokFilter === 'all' ? 'Poker' : variantLabel(pokFilter)} tables right now`,
     sub: "New tables appear here live the moment they open — no refresh needed."
-  })), showPokerTours && React.createElement("div", {
+  })), pokFilter !== 'tours' && React.createElement("div", {
+    className: "border-t border-white/5 my-8"
+  }), pokFilter !== 'tours' && React.createElement("div", {
+    className: "mb-2"
+  }, React.createElement("div", {
+    className: "flex justify-between items-center mb-4"
+  }, React.createElement("h2", {
+    className: "text-xl font-black text-white flex items-center gap-2"
+  }, "\uD83C\uDFA1 Spin & Cash", spinTables.length > 0 && React.createElement("span", {
+    className: "text-[10px] font-black bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-full px-2 py-0.5"
+  }, spinTables.length)), canManageGame(user, 'poker') && React.createElement("button", {
+    onClick: onCreatePoker,
+    className: "bg-gradient-to-b from-fuchsia-600 to-amber-600 hover:from-fuchsia-500 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(217,70,239,0.3)] text-sm"
+  }, React.createElement("i", {
+    className: "fa-solid fa-plus ml-2"
+  }), "New spin")), React.createElement("div", {
+    className: "flex flex-col gap-2.5"
+  }, spinTables.map(t => {
+    const s = t.settings || {};
+    const gt = s.baseGameType || 'NLH';
+    const spinRunning = !!t.spin;
+    const seated = Object.keys(t.players || {}).length;
+    const cap = s.maxPlayers || 3;
+    return React.createElement("div", {
+      key: t.docId,
+      className: "tbl-row tbl-spin",
+      onClick: () => onJoinPoker(t)
+    }, React.createElement("div", {
+      className: "tbl-spine",
+      style: {
+        '--spineC': '#f59e0b'
+      }
+    }, React.createElement("span", null, "SPIN")), React.createElement("div", {
+      className: "tbl-seats"
+    }, React.createElement("svg", {
+      className: "tbl-ring",
+      viewBox: "0 0 44 44"
+    }, React.createElement("circle", {
+      cx: "22",
+      cy: "22",
+      r: "19",
+      fill: "none",
+      stroke: "rgba(255,255,255,0.08)",
+      strokeWidth: "3"
+    }), React.createElement("circle", {
+      cx: "22",
+      cy: "22",
+      r: "19",
+      fill: "none",
+      stroke: "#f59e0b",
+      strokeWidth: "3",
+      strokeLinecap: "round",
+      strokeDasharray: `${119.4 * Math.min(1, seated / cap)} 119.4`,
+      transform: "rotate(-90 22 22)"
+    })), React.createElement("span", {
+      dir: "ltr"
+    }, seated, React.createElement("span", {
+      className: "seat-cap"
+    }, "/", cap))), React.createElement("div", {
+      className: "tbl-main"
+    }, React.createElement("div", {
+      className: "tbl-name"
+    }, variantLabel(gt, s), t.players && t.players[user.uid] && React.createElement("span", {
+      className: "tbl-me"
+    }, "You're seated")), React.createElement("div", {
+      className: "tbl-stakes",
+      dir: "ltr"
+    }, "Win up to ", formatShort((Number(s.spinBuyIn) || 50) * 100)), React.createElement("div", {
+      className: "tbl-sub"
+    }, spinRunning ? React.createElement("span", {
+      className: "tbl-live"
+    }, "\u25cf In progress") : `Waiting \u00b7 ${formatShort(s.spinStack || 1000)} chips \u00b7 blinds ${formatShort(s.blinds || 10)}/${formatShort((s.blinds || 10) * 2)}`)), React.createElement("div", {
+      className: "tbl-buyin"
+    }, React.createElement("span", {
+      className: "tbl-buyin-label"
+    }, "Entry"), React.createElement("span", {
+      className: "tbl-buyin-val"
+    }, spinRunning ? "\uD83D\uDC41" : formatMoney(Number(s.spinBuyIn) || 50))), canManageGame(user, 'poker') && React.createElement("button", {
+      onClick: e => handleDelete(e, t),
+      className: "tbl-del"
+    }, React.createElement("i", {
+      className: "fa-solid fa-trash"
+    })));
+  }), spinTables.length === 0 && tablesLoaded && React.createElement(EmptyState, {
+    suit: "\uD83C\uDFA1",
+    title: "No Spin & Cash tables right now",
+    sub: "3 players, winner takes the wheel prize \u2014 open one and it appears here live."
+  }))), showPokerTours && React.createElement("div", {
     className: "border-t border-white/5 my-8"
   }), showPokerTours && React.createElement(TournamentsTab, {
     game: "poker",
@@ -13884,10 +14031,19 @@ function PokerTable({
         await window.fb.updateDoc(tblRef(), {
           'settings.blinds': sb,
           'settings.spinBuyIn': entry,
-          'settings.spinStack': stack
+          'settings.spinStack': stack,
+          // the lobby's BUY-IN column reads minBuyIn — keep it in step with
+          // the entry price or the row keeps advertising the old number
+          'settings.minBuyIn': entry,
+          'settings.maxBuyIn': entry,
+          'settings.minBuyInBB': 0,
+          'settings.maxBuyInBB': 0
         });
         setSpinEdit(null);
-      } catch (e) {}
+        showToast('Spin updated: entry ' + formatMoney(entry) + ' · blinds ' + formatShort(sb) + '/' + formatShort(sb * 2), 'success');
+      } catch (e) {
+        showToast('Could not save: ' + (e && e.message ? e.message : e), 'error');
+      }
     },
     className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3 rounded-2xl font-black"
   }, "Save"), React.createElement("button", {

@@ -6754,7 +6754,37 @@ function LobbyView({
   }, "Spinning... 🤞"), (!bonusSpin || bonusSpin.done) && React.createElement("button", {
     onClick: () => setBonusOpen(false),
     className: "mt-3 text-slate-500 hover:text-white underline text-sm font-bold"
-  }, "Close"))), document.body), tab === 'ofc' && React.createElement("div", {
+  }, "Close"))), document.body), (() => {
+    // Still seated somewhere? One tap back — a manager who stepped out to the
+    // lobby/console must not have to hunt for his own table.
+    const mine = (tables || []).filter(t => (t.players || {})[user.uid] && (t.clubId || 'main') === CLUB_ID);
+    if (!mine.length) return null;
+    return React.createElement("div", {
+      className: "mb-4 flex flex-col gap-2"
+    }, mine.map(t => {
+      const s = t.settings || {};
+      const label = t.type === 'durak' ? 'Durak' : t.type === 'ofc' ? 'Chinese Poker' : s.tableName || variantLabel(s.baseGameType || 'NLH', s);
+      const me = (t.players || {})[user.uid] || {};
+      return React.createElement("button", {
+        key: 'bk' + t.id,
+        onClick: () => {
+          if (t.type === 'durak') onJoinDurak(t);else if (t.type === 'ofc') onJoinOfc(t);else onJoinPoker(t);
+        },
+        className: "w-full flex items-center gap-3 bg-gradient-to-r from-emerald-600/25 to-emerald-800/15 border border-emerald-500/45 rounded-2xl px-4 py-3 shadow-lg active:scale-[0.99] transition-transform"
+      }, React.createElement("span", {
+        className: "text-xl"
+      }, "\uD83E\uDE91"), React.createElement("span", {
+        className: "flex-1 min-w-0 text-right"
+      }, React.createElement("span", {
+        className: "block text-emerald-300 font-black text-sm truncate"
+      }, "You're still seated at ", label), React.createElement("span", {
+        className: "block text-slate-400 font-bold text-[11px]",
+        dir: "ltr"
+      }, t.tournamentId ? 'Tournament table' : `Stack ${formatShort(me.stack || 0)}`, me.sitOut ? ' \u00b7 \u2615 sitting out' : '')), React.createElement("span", {
+        className: "shrink-0 bg-emerald-500 text-slate-900 font-black text-xs rounded-xl px-3 py-2 whitespace-nowrap"
+      }, "Back to table \u21a9"));
+    }));
+  })(), tab === 'ofc' && React.createElement("div", {
     className: "animate-fade-in"
   }, React.createElement("div", {
     className: "flex justify-between items-center mb-5"

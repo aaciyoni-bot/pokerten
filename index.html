@@ -12424,101 +12424,6 @@ function PokerTable({
     },
     className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
   }, "Add")))), document.body), React.createElement("div", {
-    className: "min-h-[3.5rem] bg-slate-900/80 backdrop-blur-md border-b border-white/5 flex justify-between items-center gap-1.5 px-2 sm:px-3 py-1.5 shrink-0 z-40 relative"
-  }, React.createElement("div", {
-    className: "tbl-toolbar shrink max-w-[62%]"
-  }, React.createElement("button", {
-    onClick: () => {
-      if (tableState?.tournament || !isSeated) onLeave();else handleStandUp();
-    },
-    className: "px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-rose-700 hover:text-white text-xs font-bold border border-white/10"
-  }, React.createElement("i", {
-    className: "fa-solid fa-door-open ml-1"
-  }), tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave'), React.createElement("button", {
-    onClick: () => {
-      setHistoryOpen(true);
-      setHistExpand(null);
-    },
-    className: "px-2.5 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white text-[10px] font-black border border-white/10",
-    title: "Hand history"
-  }, React.createElement("i", {
-    className: "fa-solid fa-clock-rotate-left"
-  })), isSeated && setts.straddle && !tableState.tournament && React.createElement("button", {
-    onClick: async () => {
-      try {
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.straddleNext`]: !myPlayer?.straddleNext
-        });
-      } catch (e) {}
-    },
-    className: `px-2.5 py-1.5 rounded-lg text-[10px] font-black border transition-all ${myPlayer?.straddleNext ? 'bg-amber-600 text-white border-amber-400' : 'bg-slate-800 text-amber-300 border-white/10'}`,
-    title: "Straddle next hand (when you're UTG)"
-  }, "ST"), isGod && React.createElement("button", {
-    onClick: () => setGodView(!godView),
-    className: `px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${godView ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_12px_purple]' : 'bg-slate-800 text-purple-400 border-white/10'}`
-  }, React.createElement("i", {
-    className: "fa-solid fa-eye ml-1"
-  }), "GOD"), isSuperAdmin && React.createElement(React.Fragment, null, React.createElement("button", {
-    onClick: handleAddBot,
-    className: "px-2.5 py-1.5 rounded-lg bg-slate-800 text-purple-300 text-[10px] font-black border border-white/10",
-    title: "Add bot"
-  }, React.createElement("i", {
-    className: "fa-solid fa-robot"
-  })), ['waiting', 'showdown'].includes(gs.phase) && eligibleCount >= 2 && React.createElement("button", {
-    onClick: () => startHand(),
-    className: "px-2.5 py-1.5 rounded-lg bg-emerald-700 text-white text-[10px] font-black border border-emerald-500"
-  }, "Deal"), React.createElement("button", {
-    onClick: forceUnstick,
-    className: "px-2.5 py-1.5 rounded-lg bg-rose-700 text-white text-[10px] font-black border border-rose-400",
-    title: "Force-unstick a frozen table: refund bets, switch to client engine, deal fresh"
-  }, "🔧 Unstick")), (isSuperAdmin || canManageGame(user, 'poker')) && !tableState?.tournamentId && React.createElement("button", {
-    onClick: () => setBuyinEdit({
-      min: String(buyInMin(setts)),
-      max: String(buyInMax(setts))
-    }),
-    className: "px-2.5 py-1.5 rounded-lg bg-slate-800 text-amber-300 text-[10px] font-black border border-white/10",
-    title: "Adjust table buy-in (min/max)"
-  }, React.createElement("i", {
-    className: "fa-solid fa-coins"
-  })), onManage && React.createElement("button", {
-    onClick: async () => {
-      // Owner/manager: hop to Club Management WITHOUT standing up — the seat
-      // is kept, the current hand plays out as sit-out, and coming back through
-      // the lobby returns you straight to your chips.
-      try {
-        if (isSeated) {
-          const midHand = !['waiting', 'showdown'].includes(gs.phase);
-          await window.fb.updateDoc(tblRef(), midHand ? {
-            [`players.${user.uid}.sitOutNext`]: true
-          } : {
-            [`players.${user.uid}.sitOut`]: true,
-            [`players.${user.uid}.sitAuto`]: false
-          });
-        }
-      } catch (e) {}
-      onManage();
-    },
-    className: "px-2.5 py-1.5 rounded-lg bg-slate-800 text-blue-300 text-[10px] font-black border border-blue-500/40",
-    title: "Sit out and open Club Management — your seat and chips stay at the table"
-  }, React.createElement("i", {
-    className: "fa-solid fa-chart-line"
-  }), " Manage")), React.createElement("div", {
-    className: "flex-1 min-w-0 flex flex-col items-center px-1"
-  }, React.createElement("span", {
-    className: "text-amber-400 font-black text-xs sm:text-sm tracking-wider truncate max-w-full"
-  }, variantLabel(gs.currentGameType || setts.baseGameType, setts), " ", setts.isDealerChoice && React.createElement("span", {
-    className: "text-rose-400 text-[9px] align-middle"
-  }, "DC")), React.createElement("span", {
-    className: "text-slate-400 text-[10px] sm:text-[11px] font-bold truncate max-w-full",
-    dir: "ltr"
-  }, (() => {
-    const tr0 = tableState.tournament;
-    if (tr0 && tr0.startedAt) {
-      const tc0 = tourClock(tr0);
-      return `${formatShort(tc0.row.sb)}/${formatShort(tc0.row.bb)}`;
-    }
-    return `${formatShort(setts.blinds)}/${formatShort(BB)}`;
-  })()))), React.createElement("div", {
     className: "pt-stage flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0"
   }, godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (() => {
     const board = gs.board || [];
@@ -12565,7 +12470,7 @@ function PokerTable({
       size: "sm"
     }) : null)))));
   })(), React.createElement("div", {
-    className: "poker-table w-full max-w-[95vw] sm:max-w-[470px] h-full max-h-[calc(100dvh-185px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
+    className: "poker-table w-full max-w-[95vw] sm:max-w-[470px] h-full max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
     style: (() => {
       const F = {
         'NLH': ['#2f7d4d', '#215c37', '#123a20'],
@@ -12634,7 +12539,7 @@ function PokerTable({
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 top-[11%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
+    className: "absolute left-1/2 top-[3.5%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
     dir: "ltr"
   }, React.createElement("div", {
     className: "text-[10px] font-bold text-slate-200/90 leading-tight"
@@ -13624,18 +13529,18 @@ function PokerTable({
     onToggleTableMute: ch.toggleTableMute,
     onCallFloor: tableState?.tournamentId && isSeated ? ch.callFloor : null
   }), ch.floorCall && ch.canModerate && React.createElement("div", {
-    className: "absolute top-16 left-1/2 -translate-x-1/2 z-[210] bg-amber-500/95 text-slate-950 font-black text-xs px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-pulse"
+    className: "absolute top-3 left-1/2 -translate-x-1/2 z-[210] bg-amber-500/95 text-slate-950 font-black text-xs px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-pulse"
   }, "🟡 FLOOR: ", ch.floorCall.name, " needs a manager", React.createElement("button", {
     onClick: ch.clearFloor,
     className: "bg-slate-950/20 hover:bg-slate-950/40 rounded-full px-2 py-0.5"
   }, "Resolve ✓")), isSeated && myPlayer?.sitOut && React.createElement("div", {
-    className: "absolute top-16 left-1/2 -translate-x-1/2 z-[70] bg-amber-500/95 text-slate-900 font-black text-xs rounded-full px-4 py-2 shadow-xl cursor-pointer",
+    className: "absolute top-3 left-1/2 -translate-x-1/2 z-[70] bg-amber-500/95 text-slate-900 font-black text-xs rounded-full px-4 py-2 shadow-xl cursor-pointer",
     onClick: toggleSitOut
   }, "☕ You're in Sit out - tap to return ✋"), isSeated && React.createElement("div", {
     className: "absolute bottom-20 left-3 z-[60] flex flex-col-reverse items-start gap-2"
   }, React.createElement("button", {
     onClick: () => setToolsOpen(o => !o),
-    title: "Table tools",
+    title: "Table menu — exit, history, chat, settings",
     className: `w-11 h-11 rounded-2xl shadow-xl text-lg border relative ${toolsOpen ? 'bg-amber-500 text-slate-900 border-amber-300' : 'glass-panel border-transparent text-slate-300 hover:text-white'}`
   }, React.createElement("i", {
     className: `fa-solid ${toolsOpen ? 'fa-xmark' : 'fa-bars'}`
@@ -13693,7 +13598,61 @@ function PokerTable({
     className: "absolute -top-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full shadow",
     dir: "ltr",
     title: "Queued — added at end of hand"
-  }, "+", formatShort(myPlayer.pendingTopUp)))), gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
+  }, "+", formatShort(myPlayer.pendingTopUp))), React.createElement("button", {
+    // relocated from the old top bar — the felt top stays clean
+    onClick: () => {
+      setHistoryOpen(true);
+      setHistExpand(null);
+    },
+    title: "Hand history",
+    className: "w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl text-lg"
+  }, "🕐"), isGod && React.createElement("button", {
+    onClick: () => setGodView(!godView),
+    title: "GOD view",
+    className: `w-11 h-11 rounded-2xl border shadow-xl text-lg ${godView ? 'bg-purple-600 text-white border-purple-400' : 'glass-panel border-transparent text-purple-300'}`
+  }, "👁"), isSuperAdmin && React.createElement("button", {
+    onClick: handleAddBot,
+    title: "Add bot",
+    className: "w-11 h-11 rounded-2xl glass-panel text-purple-300 hover:text-white shadow-xl text-lg"
+  }, "🤖"), isSuperAdmin && ['waiting', 'showdown'].includes(gs.phase) && eligibleCount >= 2 && React.createElement("button", {
+    onClick: () => startHand(),
+    title: "Deal now",
+    className: "w-11 h-11 rounded-2xl border border-emerald-500 bg-emerald-700 text-white shadow-xl text-[10px] font-black"
+  }, "DEAL"), isSuperAdmin && React.createElement("button", {
+    onClick: forceUnstick,
+    title: "Force-unstick a frozen table",
+    className: "w-11 h-11 rounded-2xl border border-rose-400 bg-rose-700 text-white shadow-xl text-lg"
+  }, "🔧"), (isSuperAdmin || canManageGame(user, 'poker')) && !tableState?.tournamentId && React.createElement("button", {
+    onClick: () => setBuyinEdit({
+      min: String(buyInMin(setts)),
+      max: String(buyInMax(setts))
+    }),
+    title: "Adjust table buy-in",
+    className: "w-11 h-11 rounded-2xl glass-panel text-amber-300 hover:text-white shadow-xl text-lg"
+  }, "🪙"), onManage && React.createElement("button", {
+    onClick: async () => {
+      try {
+        if (isSeated) {
+          const midHand = !['waiting', 'showdown'].includes(gs.phase);
+          await window.fb.updateDoc(tblRef(), midHand ? {
+            [`players.${user.uid}.sitOutNext`]: true
+          } : {
+            [`players.${user.uid}.sitOut`]: true,
+            [`players.${user.uid}.sitAuto`]: false
+          });
+        }
+      } catch (e) {}
+      onManage();
+    },
+    title: "Sit out and open Club Management",
+    className: "w-11 h-11 rounded-2xl glass-panel text-blue-300 hover:text-white shadow-xl text-lg"
+  }, "📊"), React.createElement("button", {
+    onClick: () => {
+      if (tableState?.tournament || !isSeated) onLeave();else handleStandUp();
+    },
+    title: tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave',
+    className: "w-11 h-11 rounded-2xl border border-rose-500/40 bg-slate-900/90 text-rose-300 hover:bg-rose-800 hover:text-white shadow-xl text-lg"
+  }, "🚪")), gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
     onClick: async () => {
       try {
         if (srvEngine) {

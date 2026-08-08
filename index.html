@@ -316,7 +316,8 @@
            edges at its widest — that's what makes it feel huge). Skins are
            applied by rotating the image's hue toward the chosen felt color. */
         .pt-fsvg {
-            position: absolute; left: 50%; top: 16.6dvh; width: 99.4vw; height: 76.4dvh;
+            position: absolute; left: 50%; width: 99.4vw;
+            top: calc(var(--vhpx, 100dvh) * 0.105); height: calc(var(--vhpx, 100dvh) * 0.695);
             transform: translateX(-50%); pointer-events: none;
         }
         .pt-fsvg svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
@@ -12497,14 +12498,14 @@ function PokerTable({
     // SVG felt (top 18% / bottom 96.3% of the container). Hero bottom-center.
     // Rings are per TABLE CAPACITY (physical seats), not per seated count —
     // vacant slots render as small "sit here" discs, exactly like ClubGG.
-    2: [[50, 71.5], [50, 18.5]],
-    3: [[50, 71.5], [11, 54], [89, 54]],
-    4: [[50, 71.5], [11, 54], [50, 18.5], [89, 54]],
-    5: [[50, 71.5], [14, 64], [32, 19], [68, 19], [86, 64]],
-    6: [[50, 71.5], [13, 64], [13, 36], [50, 18.5], [87, 36], [87, 64]],
-    7: [[50, 71.5], [15, 68], [9, 47], [32, 19], [68, 19], [91, 47], [85, 68]],
-    8: [[50, 71.5], [15, 68], [9, 47], [14, 27], [50, 18.5], [86, 27], [91, 47], [85, 68]],
-    9: [[50, 71.5], [16, 71], [8, 54], [14, 30], [34, 18.5], [66, 18.5], [86, 30], [92, 54], [84, 71]]
+    2: [[50, 74], [50, 15]],
+    3: [[50, 74], [11, 45], [89, 45]],
+    4: [[50, 74], [11, 45], [50, 15], [89, 45]],
+    5: [[50, 74], [13, 63], [30, 16], [70, 16], [87, 63]],
+    6: [[50, 74], [12, 63], [12, 31], [50, 15], [88, 31], [88, 63]],
+    7: [[50, 74], [14, 67], [9, 42], [30, 16], [70, 16], [91, 42], [86, 67]],
+    8: [[50, 74], [14, 67], [9, 42], [14, 23], [50, 15], [86, 23], [91, 42], [86, 67]],
+    9: [[50, 74], [15, 69], [8, 48], [13, 26], [33, 15], [67, 15], [87, 26], [92, 48], [85, 69]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -12518,7 +12519,7 @@ function PokerTable({
     // Overflow slot (10+): place on the table ellipse instead of stacking
     // players in the middle / off-screen.
     const ang = Math.PI / 2 + s / Math.max(capN, 2) * Math.PI * 2;
-    return [Math.round(50 + 42 * Math.cos(ang)), Math.round(54.5 + 33 * Math.sin(ang))];
+    return [Math.round(50 + 42 * Math.cos(ang)), Math.round(45 + 30 * Math.sin(ang))];
   };
   const slotOf = i => {
     const p = displayList[i];
@@ -12539,23 +12540,23 @@ function PokerTable({
     // nameplates, the board row (49-58%), or the hero's cards.
     const [sx, sy] = seatXY(i);
     let L, T;
-    if (sy < 16) {
+    if (sy < 13) {
       // top-center seats: bet under their own cards (0.6 keeps the two
       // top-center bet spots apart instead of colliding at 50%)
       L = sx + (50 - sx) * 0.6;
       T = sy + 8;
-    } else if (sy < 40) {
+    } else if (sy < 34) {
       // upper corners: inward, between the pot pill and the board
       L = sx + (50 - sx) * 0.8;
       T = sy + 9;
-    } else if (sy <= 73) {
+    } else if (sy <= 71) {
       // equator + lower flanks: beside the pot-chip column, above hero cards
       L = sx + (50 - sx) * 0.48;
-      T = Math.min(Math.max(sy + (54.6 - sy) * 0.42, 55), 60);
+      T = Math.min(Math.max(sy + (45 - sy) * 0.42, 49), 54);
     } else {
       // hero: left of his own cards
       L = 26;
-      T = 63;
+      T = 58;
     }
     return {
       left: `${round2(L)}%`,
@@ -12985,7 +12986,7 @@ function PokerTable({
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 top-[40%] -translate-x-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
+    className: "absolute left-1/2 top-[34%] -translate-x-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
     style: {
       background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.22) 60%, rgba(0,0,0,0) 100%)',
       textShadow: '0 1px 3px rgba(0,0,0,0.85)'
@@ -13009,13 +13010,13 @@ function PokerTable({
     }
     return formatShort(setts.blinds) + '/' + formatShort(BB);
   })())), React.createElement("div", {
-    className: "absolute left-1/2 top-[45.5%] -translate-x-1/2 flex gap-5 items-start z-40"
+    className: "absolute left-1/2 top-[39%] -translate-x-1/2 flex gap-5 items-start z-40"
   }, (gs.pots || []).map((pot, i) => React.createElement(CasinoChipStack, {
     key: i,
     amount: pot.amount,
     scale: 0.9
   }))), (gs.board2 || []).length > 0 && React.createElement("div", {
-    className: "absolute left-1/2 top-[62%] -translate-x-1/2 flex gap-1 items-center z-30",
+    className: "absolute left-1/2 top-[54%] -translate-x-1/2 flex gap-1 items-center z-30",
     dir: "ltr"
   }, React.createElement("span", {
     className: "text-[8px] font-black text-gold-400 bg-slate-950/85 rounded px-1 py-0.5"
@@ -13029,7 +13030,7 @@ function PokerTable({
     card: c,
     size: "sm"
   })))), React.createElement("div", {
-    className: "absolute left-1/2 top-[54%] -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
+    className: "absolute left-1/2 top-[46%] -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
     dir: "ltr"
   }, gs.phase !== 'waiting' && playersCount > 0 && (gs.board || []).map((c, i) => React.createElement("span", {
     key: i,
@@ -13056,7 +13057,7 @@ function PokerTable({
       height: '4.4rem'
     }
   }))), React.createElement("div", {
-    className: "absolute left-1/2 top-[27%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%] opacity-70"
+    className: "absolute left-1/2 top-[21%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%] opacity-70"
   }, tour && tour.final && React.createElement("div", {
     className: "font-black text-transparent bg-clip-text mb-1",
     dir: "ltr",
@@ -13153,7 +13154,7 @@ function PokerTable({
     const seatXv = parseFloat(seatPos(i).left);
     const seatYv = parseFloat(seatPos(i).top);
     // 2.5D depth cue per spec: near pods 1.0, far pods ~30% smaller (1.30:1)
-    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (71.5 - seatYv) / 61.5));
+    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (74 - seatYv) / 59));
     const farPod = !isMe && seatYv <= 22;
     const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
     const inX = -(seatXv - 50) / 50;
@@ -13186,7 +13187,11 @@ function PokerTable({
       // a talking player's whole seat lifts above the bet stacks (z-35) —
       // the bubble's own z is trapped inside the seat's stacking context
       className: "absolute " + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
-      style: {
+      style: isMe ? {
+        left: '50%',
+        bottom: '150px',
+        transform: 'translateX(-50%)'
+      } : {
         ...seatPos(i),
         transform: 'translate(-50%, -50%)' + (podScale < 1 ? ` scale(${podScale.toFixed(2)})` : '')
       }
@@ -13296,7 +13301,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
+        size: isMe ? nC > 4 ? 'md' : 'lg' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))) : React.createElement("span", {
         key: `h${handKey}:${ci}`,
@@ -13307,7 +13312,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
+        size: isMe ? nC > 4 ? 'md' : 'lg' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))));
     })(), React.createElement("div", {
@@ -13444,7 +13449,7 @@ function PokerTable({
     from: fx.from,
     to: {
       left: '50%',
-      top: '41%' // land on the Total Pot pill (above the board)
+      top: '35%' // land on the Total Pot pill (above the board)
     },
     amount: fx.amount,
     snd: !headless && fxi === 0

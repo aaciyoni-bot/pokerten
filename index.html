@@ -10085,6 +10085,21 @@ function PokerTable({
     const minB = Math.max(buyInMin(setts), lock);
     if (buyAmt < minB) setBuyAmt(round2(minB));
   }, [tableState]);
+  // Self-heal MY seat identity: if a write ever left my entry with a blank or
+  // corrupt name/avatar/uid (the "I have no avatar" report), repair it from
+  // the live profile. Converges in one write, no loops.
+  useEffect(() => {
+    const me = (tableState?.players || {})[user.uid];
+    if (!me) return;
+    const fix = {};
+    if (!me.uid) fix[`players.${user.uid}.uid`] = user.uid;
+    if (!me.name) fix[`players.${user.uid}.name`] = user.username || 'Player' + String(user.playerId || '').slice(-3);
+    const wantPhoto = user.photo || '';
+    const okPhoto = !wantPhoto || wantPhoto.startsWith('data:image');
+    if (okPhoto && (me.photo || '') !== wantPhoto) fix[`players.${user.uid}.photo`] = wantPhoto;
+    if (!wantPhoto && !me.avatarSeed) fix[`players.${user.uid}.avatarSeed`] = user.avatarSeed || user.uid;
+    if (Object.keys(fix).length) window.fb.updateDoc(tblRef(), fix).catch(() => {});
+  }, [tableState?.players?.[user.uid]?.name, tableState?.players?.[user.uid]?.photo, tableState?.players?.[user.uid]?.avatarSeed]);
   const [preCF, setPreCF] = useState(false);
   useEffect(() => {
     if (!isMyTurn || !preCF) return;

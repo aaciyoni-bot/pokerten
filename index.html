@@ -10036,13 +10036,29 @@ function PokerTable({
           const delta = round2(after - before);
           const sameSeats = Object.keys(d0.players || {}).length === Object.keys(pl || {}).length;
           if (sameSeats && Math.abs(delta) > 0.011) {
-            gOut.__chipDelta = {
+            // per-player breakdown: exactly WHOSE chips moved in this write
+            const perP = [];
+            Object.keys(pl || {}).forEach(k => {
+              const b2 = d0.players && d0.players[k] || {};
+              const a2 = pl[k] || {};
+              const dd = round2((Number(a2.stack) || 0) + (Number(a2.bet) || 0) - (Number(b2.stack) || 0) - (Number(b2.bet) || 0));
+              if (Math.abs(dd) > 0.011) perP.push({
+                n: a2.name || k,
+                d: dd
+              });
+            });
+            const entry2 = {
               at: Date.now(),
               delta,
               phase: (d0.gameState || {}).phase + '→' + gOut.phase,
-              by: user.uid
+              by: user.uid,
+              who: perP.slice(0, 6)
             };
-            console.warn('CHIP DELTA', delta, gOut.__chipDelta.phase);
+            // capped forensic log ON the table doc — survives across hands
+            gOut.__chipLog = [...((d0.gameState || {}).__chipLog || []), entry2].slice(-12);
+            console.warn('CHIP DELTA', delta, entry2.phase, JSON.stringify(perP));
+          } else if ((d0.gameState || {}).__chipLog) {
+            gOut.__chipLog = d0.gameState.__chipLog; // carry the log forward
           }
         } catch (e2) {}
         trx.update(tblRef(), {

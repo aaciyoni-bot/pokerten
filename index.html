@@ -311,9 +311,9 @@
                still reaches just above the controls. Background ONLY — the
                gameplay layer stays upright. */
             .pt-felt3d {
-                inset: -34% -4% -18% -4%;
+                inset: -30% -3% 15% -3%;
                 transform: perspective(820px) rotateX(33deg);
-                transform-origin: 50% 46%;
+                transform-origin: 50% 40%;
             }
         }
 
@@ -13023,7 +13023,7 @@ function PokerTable({
   }), players[gs.dcUid]?.name, " is picking the next game...")), gs.phase === 'waiting' && isSeated && React.createElement("div", {
     className: "absolute top-16 left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
-    className: "shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 p-3 z-40 min-h-[110px] flex flex-col justify-center"
+    className: "shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 px-3 pt-1.5 pb-[max(6px,env(safe-area-inset-bottom))] z-40 min-h-[86px] flex flex-col justify-center"
   }, isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
     className: "flex justify-center gap-2 mb-2"
   }, !gs.allInReveal && myHand && React.createElement("span", {
@@ -13168,7 +13168,7 @@ function PokerTable({
     onClick: () => setPreCF(v => !v),
     // reads as a real pressable button: raised gradient, visible border,
     // drop shadow + inner highlight (was a flat text pill)
-    className: `px-7 py-3 rounded-2xl font-black text-sm border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
+    className: `px-7 py-2.5 rounded-2xl font-black text-sm border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
   }, preCF ? '✓ CHECK/FOLD armed — tap to cancel' : 'CHECK / FOLD'), React.createElement("div", {
     className: "text-center text-slate-500 font-bold text-xs"
   }, playersCount === 0 ? 'Waiting for players to sit down...' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...')), spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {

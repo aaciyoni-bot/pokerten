@@ -90,6 +90,10 @@ exports.spinDailyBonus = onCall(async (request) => {
       });
       tx.update(memRef, {
         balance: round2((Number(mem.balance) || 0) + prize),
+        // bonusTotal = lifetime gifts; bonusOpen = the part still owed back to
+        // the club at settlement (ratcheted down in watchBalances when lost).
+        bonusTotal: round2((Number(mem.bonusTotal) || 0) + prize),
+        bonusOpen: round2((Number(mem.bonusOpen) || 0) + prize),
         lastBonusAt: now,
       });
       return {prize, idx, fromBank: true};
@@ -158,6 +162,8 @@ exports.claimWeeklyScratch = onCall(async (request) => {
       });
       tx.update(memRef, {
         balance: round2((Number(mem.balance) || 0) + prize),
+        bonusTotal: round2((Number(mem.bonusTotal) || 0) + prize),
+        bonusOpen: round2((Number(mem.bonusOpen) || 0) + prize),
         lastScratchAt: now,
       });
       tx.update(clubRef, {scratch: sc});
@@ -194,9 +200,25 @@ exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
       const prev = before ? (Number(before.balance) || 0) : 0;
       const next = Number(after.balance) || 0;
       const delta = round2(next - prev);
-      if (delta < ALERT_MIN_JUMP) return;
 
       const memId = String(event.params.memId);
+      // --- Bonus ratchet -------------------------------------------------
+      // bonusOpen is the slice of a player's balance that came from gifts
+      // (wheel / scratch / freeroll) and is therefore owed back to the club
+      // at settlement. A player can PLAY with it, but never cash it. If they
+      // lose it at the tables the debt shrinks with them — so bonusOpen can
+      // never exceed the balance actually sitting there. Enforced here, on
+      // every write, because this trigger cannot be bypassed by a client.
+      const openNow = Number(after.bonusOpen) || 0;
+      if (openNow > next + 0.005) {
+        try {
+          await db.doc(`memberships/${memId}`).update({bonusOpen: round2(Math.max(0, next))});
+        } catch (e) { /* doc vanished mid-flight — nothing to ratchet */ }
+      }
+      // -------------------------------------------------------------------
+
+      if (delta < ALERT_MIN_JUMP) return;
+
       const clubId = after.clubId || memId.split("_").slice(1).join("_") || "";
       const authType = event.authType || "unknown";
       const byUid = event.authId || "";

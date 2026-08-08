@@ -274,7 +274,6 @@
         .poker-table {
             position: relative;
             border-radius: 999px;
-            perspective: 1150px;
         }
         .pt-felt3d {
             position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
@@ -306,12 +305,15 @@
         /* flat variant (Durak/OFC): same rail & felt, no perspective */
         .pt-flat .pt-felt3d { transform: none !important; inset: 0 !important; }
         @media (max-width: 1023px) {
-            /* half-lying-down: far end ~2/3 the width of the near end, top bleeds
-               off-screen. ONLY the background tilts — play stays upright. */
+            /* REAL foreshortening: perspective() inside the transform makes the
+               far end visibly ~2/3 the width of the near end. Vertical squeeze
+               from the rotation is repaid with a tall bleed so the near edge
+               still reaches just above the controls. Background ONLY — the
+               gameplay layer stays upright. */
             .pt-felt3d {
-                inset: -13% -2% -1% -2%;
-                transform: rotateX(30deg) scaleY(1.28);
-                transform-origin: 50% 44%;
+                inset: -34% -4% -18% -4%;
+                transform: perspective(820px) rotateX(33deg);
+                transform-origin: 50% 46%;
             }
         }
 
@@ -12426,7 +12428,7 @@ function PokerTable({
     },
     className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
   }, "Add")))), document.body), React.createElement("div", {
-    className: "pt-stage flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0"
+    className: "pt-stage flex-1 relative flex items-center justify-center px-1 pt-0 pb-1 sm:p-5 min-h-0"
   }, godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (() => {
     const board = gs.board || [];
     const bl = board.length;
@@ -12472,7 +12474,7 @@ function PokerTable({
       size: "sm"
     }) : null)))));
   })(), React.createElement("div", {
-    className: "poker-table w-full max-w-[95vw] sm:max-w-[470px] h-full max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
+    className: "poker-table w-full max-w-[96vw] sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
     style: (() => {
       const F = {
         'NLH': ['#2f7d4d', '#215c37', '#123a20'],
@@ -12550,7 +12552,17 @@ function PokerTable({
   }, React.createElement(CountNum, {
     value: totalPot,
     fmt: formatShort
-  }))), React.createElement("div", {
+  })), React.createElement("div", {
+    className: "sm:hidden text-[8px] font-bold text-slate-400 leading-tight",
+    dir: "ltr"
+  }, variantLabel(gs.currentGameType || setts.baseGameType, setts), " · ", (() => {
+    const tr0 = tableState.tournament;
+    if (tr0 && tr0.startedAt) {
+      const tc0 = tourClock(tr0);
+      return formatShort(tc0.row.sb) + '/' + formatShort(tc0.row.bb);
+    }
+    return formatShort(setts.blinds) + '/' + formatShort(BB);
+  })())), React.createElement("div", {
     className: "absolute left-1/2 top-[63.5%] -translate-x-1/2 flex gap-5 items-start z-40"
   }, (gs.pots || []).map((pot, i) => React.createElement(CasinoChipStack, {
     key: i,
@@ -12581,24 +12593,24 @@ function PokerTable({
     }
   }, React.createElement(PCard, {
     card: c,
-    size: "lg",
+    size: "xl",
     hl: !!(winHL && winHL.has(cid(c)))
   }))), rabbit.length > 0 && rabbit.map((c, i) => React.createElement("div", {
     key: 'rb' + i,
     className: "relative opacity-75"
   }, React.createElement(PCard, {
     card: c,
-    size: "lg"
+    size: "xl"
   }), React.createElement("span", {
     className: "absolute -top-2 -right-1 text-xs"
   }, "🐰"))), gs.phase !== 'waiting' && playersCount > 0 && [...Array(Math.max(0, 5 - (gs.board || []).length - rabbit.length))].map((_, i) => React.createElement("div", {
     key: 'ph' + i,
-    className: "w-11 sm:w-12 opacity-0",
+    className: "w-14 opacity-0",
     style: {
-      height: '4.4rem'
+      height: '5.1rem'
     }
   }))), React.createElement("div", {
-    className: "absolute left-1/2 top-[65%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%]"
+    className: "hidden sm:block absolute left-1/2 top-[60%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%] opacity-70"
   }, tour && tour.final && React.createElement("div", {
     className: "font-black text-transparent bg-clip-text mb-1",
     dir: "ltr",
@@ -12784,7 +12796,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : gs.phase === 'showdown' ? 'md' : 'sm',
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))) : React.createElement("span", {
         key: `h${handKey}:${ci}`,
@@ -12795,7 +12807,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'xs' : gs.phase === 'showdown' ? 'md' : 'sm',
+        size: isMe ? nC > 4 ? 'lg' : 'xl' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))));
     })(), React.createElement("div", {
@@ -12874,7 +12886,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: hidden ? 'xs' : gs.phase === 'showdown' ? 'md' : 'sm',
+        size: hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))) : React.createElement("span", {
         key: `h${handKey}:${ci}`,
@@ -12885,7 +12897,7 @@ function PokerTable({
       }, React.createElement(PCard, {
         card: c,
         hidden: hidden,
-        size: hidden ? 'xs' : gs.phase === 'showdown' ? 'md' : 'sm',
+        size: hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))));
     })(), (gs.allInReveal || gs.phase === 'showdown') && realEq && realEq[p.uid] !== undefined && p.status === 'active' && React.createElement("div", {
@@ -12932,7 +12944,7 @@ function PokerTable({
     from: fx.from,
     to: {
       left: '50%',
-      top: '38%' // land on the actual Total Pot pill, not below center
+      top: '6%' // land on the Total Pot pill (top-center)
     },
     amount: fx.amount,
     snd: !headless && fxi === 0
@@ -13539,7 +13551,7 @@ function PokerTable({
     className: "absolute top-3 left-1/2 -translate-x-1/2 z-[70] bg-amber-500/95 text-slate-900 font-black text-xs rounded-full px-4 py-2 shadow-xl cursor-pointer",
     onClick: toggleSitOut
   }, "☕ You're in Sit out - tap to return ✋"), isSeated && React.createElement("div", {
-    className: "absolute bottom-20 left-3 z-[60] flex flex-col-reverse items-start gap-2"
+    className: "absolute bottom-[10.5rem] left-2 z-[60] flex flex-col-reverse items-start gap-2"
   }, React.createElement("button", {
     onClick: () => setToolsOpen(o => !o),
     title: "Table menu — exit, history, chat, settings",

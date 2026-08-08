@@ -307,3 +307,115 @@ exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
         }, {merge: true});
       });
     });
+
+/**
+ * guardTables — chip-conservation tripwire on every table write.
+ *
+ * The owner has now been bitten twice by a seat quietly showing 0 chips. The
+ * client-side sensor could only see writes made by the browser it ran in, and
+ * only when the seat count was unchanged — so the write that actually loses
+ * the chips (a seat appearing or disappearing) slipped past it.
+ *
+ * This runs on EVERY write to a table, by any client, and balances the books:
+ *
+ *   chips(after) - chips(before) = (chips brought in by seats that appeared)
+ *                                - (chips carried out by seats that vanished)
+ *                                - (rake booked into history by this write)
+ *
+ * Anything left over is chips created or destroyed. It is recorded in
+ * `securityAlerts` with the table, the phase, the account that made the write
+ * and the exact per-player breakdown, so the owner sees WHO lost WHAT and can
+ * put it back — instead of finding out from a player the next day.
+ *
+ * Detection only: a table mid-hand must never be rewritten by a trigger.
+ */
+const CHIP_EPS = 0.02;
+
+const seatChips = (p) => (Number((p || {}).stack) || 0) + (Number((p || {}).bet) || 0) +
+    (Number((p || {}).pendingTopUp) || 0);
+const potChips = (g) => ((g || {}).pots || []).reduce((a, p) => a + (Number(p.amount) || 0), 0);
+
+exports.guardTables = onDocumentWrittenWithAuthContext("tables/{tableId}",
+    async (event) => {
+      const before = event.data.before.exists ? event.data.before.data() : null;
+      const after = event.data.after.exists ? event.data.after.data() : null;
+      if (!before || !after) return; // table opened or closed — nothing to balance
+
+      const pb = before.players || {};
+      const pa = after.players || {};
+      let sumBefore = 0; let sumAfter = 0; let broughtIn = 0; let carriedOut = 0;
+      const moved = [];
+      Object.keys(pb).forEach((uid) => {
+        sumBefore += seatChips(pb[uid]);
+        if (!pa[uid]) carriedOut += seatChips(pb[uid]);
+      });
+      Object.keys(pa).forEach((uid) => {
+        sumAfter += seatChips(pa[uid]);
+        if (!pb[uid]) broughtIn += seatChips(pa[uid]);
+        else {
+          const d = round2(seatChips(pa[uid]) - seatChips(pb[uid]));
+          if (Math.abs(d) > CHIP_EPS) moved.push({n: pa[uid].name || uid, uid, d});
+        }
+      });
+      // rake leaves the table when a hand is booked into history
+      const hb = (before.history || []).length;
+      const ha = (after.history || []).length;
+      let rake = 0;
+      for (let i = hb; i < ha; i++) rake += Number((after.history[i] || {}).rake) || 0;
+
+      const delta = round2((sumAfter + potChips(after.gameState)) -
+          (sumBefore + potChips(before.gameState)) - broughtIn + carriedOut + rake);
+
+      // Two seats sharing an index (or a seat that lost its index entirely)
+      // render as two pods stacked on the same spot — the owner has seen this
+      // twice. Catch the write that creates it, not the screenshot afterwards.
+      const seatIx = Object.values(pa).map((p) => p.seatIndex);
+      const bad = [];
+      const seen = {};
+      Object.entries(pa).forEach(([uid, p]) => {
+        const ix = p.seatIndex;
+        if (!Number.isFinite(Number(ix))) bad.push(`${p.name || uid}: no seat index`);
+        else if (seen[ix]) bad.push(`${p.name || uid} + ${seen[ix]} both on seat ${ix}`);
+        else seen[ix] = p.name || uid;
+      });
+      const cap = Math.max(2, Number((after.settings || {}).maxPlayers) || 6);
+      seatIx.forEach((ix) => {
+        if (Number(ix) >= cap) bad.push(`seat ${ix} is beyond capacity ${cap}`);
+      });
+
+      if (Math.abs(delta) <= CHIP_EPS && !bad.length) return; // books balance — the normal case
+
+      const authType = event.authType || "unknown";
+      const byUid = event.authId || "";
+      const clubId = after.clubId || "main";
+      const tableId = String(event.params.tableId);
+      const now = Date.now();
+      const il = new Date(new Date(now).toLocaleString("en-US", {timeZone: "Asia/Jerusalem"}));
+      const dayKey = `${il.getFullYear()}-${String(il.getMonth() + 1).padStart(2, "0")}-${String(il.getDate()).padStart(2, "0")}`;
+      const aRef = db.doc(`securityAlerts/${bad.length && Math.abs(delta) <= CHIP_EPS ? "seats" : "chips"}_${clubId}_${tableId}_${dayKey}`);
+      // biggest loser in this write — that is the seat the owner has to fix
+      const worst = moved.slice().sort((a, b) => a.d - b.d)[0] || null;
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(aRef);
+        const cur = s.exists ? s.data() : {};
+        tx.set(aRef, {
+          kind: "chips",
+          at: now,
+          day: dayKey,
+          clubId,
+          tableId,
+          tableName: (after.settings || {}).tableName || "",
+          uid: (worst || {}).uid || "",
+          username: (worst || {}).n || "",
+          count: (Number(cur.count) || 0) + 1,
+          delta,
+          total: round2((Number(cur.total) || 0) + delta),
+          phase: `${(before.gameState || {}).phase}→${(after.gameState || {}).phase}`,
+          moved: moved.slice(0, 8),
+          seatFault: bad.slice(0, 6),
+          byUid,
+          authType,
+          selfWrite: false,
+        }, {merge: true});
+      });
+    });

@@ -9163,7 +9163,7 @@ function BackofficeView({
     className: "flex items-center justify-between mb-2"
   }, React.createElement("h4", {
     className: "font-black text-rose-300 text-sm"
-  }, "🚨 Security alerts — big balance jumps (", secAlerts.length, ")"), React.createElement("button", {
+  }, "🚨 Security alerts (", secAlerts.length, ")"), React.createElement("button", {
     onClick: async () => {
       const on = clubSettings?.guardRevert !== false;
       if (on && !window.confirm("Turn the auto-revert OFF?\n\nUnbacked self-credits will then only be reported here, not undone.")) return;
@@ -9183,7 +9183,27 @@ function BackofficeView({
   }, "Clear all")), React.createElement("div", {
     className: "space-y-1 max-h-48 overflow-y-auto",
     dir: "ltr"
-  }, secAlerts.slice(0, 50).map(a => React.createElement("div", {
+  }, secAlerts.slice(0, 50).map(a => a.kind === 'chips' ? React.createElement("div", {
+    key: a.id,
+    className: "text-xs flex flex-wrap items-baseline gap-x-2"
+  }, React.createElement("span", {
+    className: "text-slate-500"
+  }, new Date(a.at || 0).toLocaleString('en-GB')), React.createElement("span", {
+    className: "font-black text-orange-300"
+  }, (a.seatFault || []).length ? "\u{1FA91} SEAT FAULT" : "\u{1F4B0} CHIPS OFF"), React.createElement("span", {
+    className: "font-bold text-white"
+  }, a.tableName || a.tableId), Math.abs(a.delta || 0) > 0.02 && React.createElement("span", {
+    className: `font-black ${(a.delta || 0) < 0 ? 'text-rose-300' : 'text-emerald-300'}`,
+    dir: "ltr"
+  }, (a.delta || 0) > 0 ? '+' : '', formatMoney(a.delta || 0)), React.createElement("span", {
+    className: "text-slate-500"
+  }, a.phase || ''), (a.seatFault || []).length ? React.createElement("span", {
+    className: "text-orange-200 font-bold"
+  }, a.seatFault.join(' · ')) : React.createElement("span", {
+    className: "text-slate-400"
+  }, (a.moved || []).map(m => `${m.n} ${m.d > 0 ? '+' : ''}${formatMoney(m.d)}`).join(' · ')), (a.count || 1) > 1 && React.createElement("span", {
+    className: "text-slate-500"
+  }, "\u00d7", a.count, " today")) : React.createElement("div", {
     key: a.id,
     className: "text-xs text-slate-300 flex flex-wrap items-baseline gap-x-2"
   }, React.createElement("span", {
@@ -11486,9 +11506,11 @@ function PokerTable({
           });else if ((uSnap.data().balance || 0) >= entry) tr.update(uRef, {
             balance: round2((uSnap.data().balance || 0) - entry)
           });else throw "Not enough balance in wallet";
+          const cap2 = Math.max(2, Math.min(10, Number(sSp.maxPlayers) || 3));
+          const tk2 = new Set(Object.values(pl).map(p => Number(p.seatIndex) || 0));
           let si2 = 0;
-          const tk2 = new Set(Object.values(pl).map(p => p.seatIndex));
-          while (tk2.has(si2)) si2++;
+          while (si2 < cap2 && tk2.has(si2)) si2++;
+          if (si2 >= cap2) throw "This spin table is full";
           tr.update(tblRef(), {
             'gameState.__seq': (Number((t.gameState || {}).__seq) || 0) + 1,
             [`players.${user.uid}`]: {
@@ -11518,9 +11540,15 @@ function PokerTable({
         if ((uSnap.data().balance || 0) < buyAmt) throw "Not enough balance in wallet";
         const left = (t.leftStacks || {})[user.uid];
         if (left && Date.now() - left.at < 12 * 60 * 60 * 1000 && buyAmt < round2(left.amount)) throw `You left this table with ${formatMoney(left.amount)} - you must return with at least this amount`;
-        const taken = new Set(Object.values(pl).map(p => p.seatIndex));
-        let seatIndex = Number.isFinite(pickSeat) && !taken.has(pickSeat) ? pickSeat : 0;
-        while (taken.has(seatIndex)) seatIndex++;
+        // Seats must stay inside the table's capacity: an index handed out past
+        // maxPlayers wraps onto an occupied slot in the renderer (slotOf uses
+        // mod capN) and two players end up drawn on top of each other.
+        const cap = Math.max(2, Math.min(10, Number(t.settings.maxPlayers) || 6));
+        const taken = new Set(Object.values(pl).map(p => Number(p.seatIndex) || 0));
+        if (taken.size >= cap) throw "This table is full";
+        let seatIndex = Number.isFinite(pickSeat) && !taken.has(pickSeat) && pickSeat < cap ? pickSeat : -1;
+        if (seatIndex < 0) { seatIndex = 0; while (seatIndex < cap && taken.has(seatIndex)) seatIndex++; }
+        if (seatIndex >= cap) throw "This table is full";
         const midHand = !['waiting', 'showdown'].includes(t.gameState.phase);
         tr.update(uRef, {
           balance: round2(uSnap.data().balance - buyAmt)
@@ -12715,11 +12743,33 @@ function PokerTable({
     const ang = Math.PI / 2 + s / Math.max(capN, 2) * Math.PI * 2;
     return [Math.round(50 + 42 * Math.cos(ang)), Math.round(45 + 30 * Math.sin(ang))];
   };
-  const slotOf = i => {
-    const p = displayList[i];
-    if (!p) return 0;
-    return (((Number(p.seatIndex) || 0) - heroSeatIx) % capN + capN) % capN;
-  };
+  // Slot assignment is COLLISION-PROOF by construction. The natural mapping is
+  // (seatIndex - heroSeat) mod capN, but that maps two players onto the same
+  // physical slot whenever a seatIndex is missing (reads as 0), duplicated, or
+  // capN apart — and then two pods render exactly on top of each other, which
+  // is what a player saw: his own 0-chip pod stacked over another player's.
+  // Whatever the data does, every seated player now gets a slot of their own:
+  // the hero claims the bottom slot first, the rest take their natural slot or
+  // the next free one going round the ring.
+  const slotMap = (() => {
+    const m = new Array(displayList.length).fill(0);
+    const used = new Set();
+    const natural = i => {
+      const p = displayList[i];
+      return p ? (((Number(p.seatIndex) || 0) - heroSeatIx) % capN + capN) % capN : 0;
+    };
+    const order = displayList.map((p, i) => i)
+        .sort((a, b) => (displayList[a].uid === user.uid ? -1 : displayList[b].uid === user.uid ? 1 : 0) ||
+            natural(a) - natural(b) || String(displayList[a].uid).localeCompare(String(displayList[b].uid)));
+    order.forEach(i => {
+      let s = natural(i);
+      for (let g = 0; g < capN && used.has(s); g++) s = (s + 1) % capN;
+      used.add(s);
+      m[i] = s;
+    });
+    return m;
+  })();
+  const slotOf = i => slotMap[i] || 0;
   const seatXY = i => slotXY(slotOf(i));
   const seatPos = i => {
     const [x, y] = seatXY(i);

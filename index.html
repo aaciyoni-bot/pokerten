@@ -10015,6 +10015,7 @@ function PokerTable({
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [buyinEdit, setBuyinEdit] = useState(null);
   const [spinEdit, setSpinEdit] = useState(null);
+  const [pickSeat, setPickSeat] = useState(null); // seat chosen by tapping a "+" disc
   const [confirmBox, setConfirmBox] = useState(null);
   const askConfirm = msg => new Promise(resolve => setConfirmBox({
     msg,
@@ -10910,6 +10911,7 @@ function PokerTable({
   };
   const handleSit = async () => {
     if (tableState?.tournament) return showToast("Tournament table - join via registration in the lobby", "error");
+    const clearPick = () => setPickSeat(null);
     try {
       let becameFull = false;
       await window.fb.runTransaction(window.fb.db, async tr => {
@@ -10962,8 +10964,8 @@ function PokerTable({
         if ((uSnap.data().balance || 0) < buyAmt) throw "Not enough balance in wallet";
         const left = (t.leftStacks || {})[user.uid];
         if (left && Date.now() - left.at < 12 * 60 * 60 * 1000 && buyAmt < round2(left.amount)) throw `You left this table with ${formatMoney(left.amount)} - you must return with at least this amount`;
-        let seatIndex = 0;
         const taken = new Set(Object.values(pl).map(p => p.seatIndex));
+        let seatIndex = Number.isFinite(pickSeat) && !taken.has(pickSeat) ? pickSeat : 0;
         while (taken.has(seatIndex)) seatIndex++;
         const midHand = !['waiting', 'showdown'].includes(t.gameState.phase);
         tr.update(uRef, {
@@ -12735,24 +12737,32 @@ function PokerTable({
         transform: 'translate(-50%,-50%)'
       }
     }, "D");
-  })(), (() => {
-    // Vacant seats — small "sit here" discs on the ring (GG-style): the ring
-    // always shows the table's full capacity, never a player floating alone.
+  })(), !isSeated && !tableState?.tournamentId && (() => {
+    // Vacant seats: tap a "+" to pick THAT seat, then confirm the buy-in.
+    // Hidden the moment you are seated (owner request).
     const occ = new Set(displayList.map((p, i) => slotOf(i)));
+    const taken = new Set(Object.values(players).map(p => Number(p.seatIndex) || 0));
     const out = [];
     for (let s = 0; s < capN && s < 9; s++) {
       if (occ.has(s)) continue;
       const [ex, ey] = slotXY(s);
-      out.push(React.createElement("div", {
+      const realSeat = (s + heroSeatIx) % capN;
+      if (taken.has(realSeat)) continue;
+      out.push(React.createElement("button", {
         key: 'es' + s,
-        className: "absolute z-10 pointer-events-none " + (gs.phase !== 'waiting' ? 'opacity-40' : ''),
+        onClick: () => {
+          setPickSeat(realSeat);
+          setSpectate(false);
+        },
+        title: "Sit here",
+        className: "absolute z-20",
         style: {
           left: `${ex}%`,
           top: `${ey}%`,
           transform: 'translate(-50%,-50%)'
         }
       }, React.createElement("div", {
-        className: "w-10 h-10 rounded-full bg-slate-950/60 border border-gold-400/30 flex items-center justify-center text-gold-400/40 text-base font-black shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)]"
+        className: `w-10 h-10 rounded-full flex items-center justify-center text-base font-black shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] active:scale-90 transition-transform ${pickSeat === realSeat ? 'bg-amber-500/85 border-2 border-amber-200 text-slate-900' : 'bg-slate-950/60 border border-gold-400/30 text-gold-400/50'}`
       }, "+")));
     }
     return out;
@@ -13654,12 +13664,7 @@ function PokerTable({
     }, a.a, a.amt > 0 && a.a !== 'Check' ? ' ' + formatShort(a.amt) : '')))));
   }))))), (tableState.history || []).length === 0 && React.createElement("div", {
     className: "text-center text-slate-500 font-bold text-xs py-10"
-  }, "No hands have been played at this table yet.")))), !isSeated && React.createElement("button", {
-    onClick: () => ch.setChatOpen(!ch.chatOpen),
-    className: "absolute bottom-20 left-3 z-[60] w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl"
-  }, React.createElement("i", {
-    className: "fa-solid fa-comment-dots"
-  })), ch.chatOpen && React.createElement(ChatPanel, {
+  }, "No hands have been played at this table yet.")))), ch.chatOpen && React.createElement(ChatPanel, {
     chat: ch.chatArr,
     meUid: user.uid,
     onSend: ch.sendChat,
@@ -13895,7 +13900,7 @@ function PokerTable({
     className: "fa-solid fa-coins text-4xl text-gold-400 mb-3"
   }), React.createElement("h3", {
     className: "text-xl font-black text-white mb-1"
-  }, needRebuy ? 'Out of chips - Rebuy' : 'Table buy-in'), React.createElement("p", {
+  }, needRebuy ? 'Out of chips - Rebuy' : Number.isFinite(pickSeat) ? `Seat ${pickSeat + 1} — buy-in` : 'Table buy-in'), React.createElement("p", {
     className: "text-slate-400 text-xs font-bold mb-4",
     dir: "ltr"
   }, "Blinds ", formatShort(setts.blinds), "/", formatShort(BB), " · Balance: ", formatMoney(user.balance)), React.createElement("div", {

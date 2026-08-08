@@ -6273,7 +6273,8 @@ function LobbyView({
         delete pl[user.uid];
         refund = round2(me.stack || 0);
         if (uSnap.exists() && refund > 0) tr.update(uRef, {
-          balance: round2((uSnap.data().balance || 0) + refund)
+          balance: round2((uSnap.data().balance || 0) + refund),
+          lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
         });
         tr.update(ref, {
           players: pl,
@@ -9074,6 +9075,17 @@ function BackofficeView({
     className: "font-black text-rose-300 text-sm"
   }, "🚨 Security alerts — big balance jumps (", secAlerts.length, ")"), React.createElement("button", {
     onClick: async () => {
+      const on = clubSettings?.guardRevert !== false;
+      if (on && !window.confirm("Turn the auto-revert OFF?\n\nUnbacked self-credits will then only be reported here, not undone.")) return;
+      try {
+        await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), { guardRevert: !on });
+        showToast(on ? "Auto-revert off — alerts only" : "Auto-revert on \u21ba", on ? "info" : "success");
+      } catch (e) { showToast("Could not change the setting", "error"); }
+    },
+    title: "When on, a self-credit with no game bookkeeping behind it is put back automatically",
+    className: `text-[10px] font-black px-2 py-1 rounded-lg border ${clubSettings?.guardRevert === false ? 'border-slate-600 text-slate-400' : 'border-emerald-500/60 text-emerald-300'}`
+  }, clubSettings?.guardRevert === false ? "Auto-revert OFF" : "\u21ba Auto-revert ON"), React.createElement("button", {
+    onClick: async () => {
       for (const a of secAlerts) { try { await window.fb.deleteDoc(window.fb.doc(window.fb.db, "securityAlerts", a.id)); } catch (e) {} }
       setSecAlerts([]);
     },
@@ -9095,7 +9107,10 @@ function BackofficeView({
   }, "(", formatMoney(a.before || 0), " → ", formatMoney(a.after || 0), ")"), a.selfWrite && React.createElement("span", {
     className: "font-black text-rose-400",
     title: "The player wrote their own balance"
-  }, "SELF-WRITE"), React.createElement("span", {
+  }, "SELF-WRITE"), a.reverted && React.createElement("span", {
+    className: "font-black text-emerald-300",
+    title: "Unbacked self-credit — the server put it back automatically" + (a.revertedTotal ? " (" + formatMoney(a.revertedTotal) + " total)" : "")
+  }, "↺ REVERTED"), React.createElement("span", {
     className: "text-amber-300/90",
     title: "The signed-in account that actually performed the write (" + (a.authType || "?") + ")"
   }, "by ", a.byUid ? (usersList.find(m => m.uid === a.byUid) || {}).username || a.byUid.slice(0, 10) : "unknown"), (a.count || 1) > 1 && React.createElement("span", {
@@ -11739,7 +11754,8 @@ function PokerTable({
         };
         delete pl[uid];
         if (ms && ms.exists()) tr.update(ms.ref, {
-          balance: round2((ms.data().balance || 0) + (p.stack || 0) + (p.pendingTopUp || 0) + (inHand ? 0 : p.bet || 0))
+          balance: round2((ms.data().balance || 0) + (p.stack || 0) + (p.pendingTopUp || 0) + (inHand ? 0 : p.bet || 0)),
+          lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
         });
         tr.update(tblRef(), {
           players: pl,
@@ -11934,7 +11950,8 @@ function PokerTable({
           });
         }
         tr.update(uRef, {
-          balance: round2((uSnap.data().balance || 0) + (me.stack || 0))
+          balance: round2((uSnap.data().balance || 0) + (me.stack || 0)),
+          lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
         });
         const upd = {
           players: pl,
@@ -12633,17 +12650,23 @@ function PokerTable({
       L = sx + (50 - sx) * 0.6;
       T = sy + 8;
     } else if (sy < 34) {
-      // upper corners: inward, between the pot pill and the board
-      L = sx + (50 - sx) * 0.8;
+      // upper corners: inward, between the pot pill and the board (7, not 9 —
+      // the chip graphic hangs below the amount pill and was clipping the
+      // board's top edge)
+      L = sx + (50 - sx) * 0.6;
       T = sy + 9;
     } else if (sy <= 71) {
-      // equator + lower flanks: beside the pot-chip column, above hero cards
-      L = sx + (50 - sx) * 0.48;
-      T = Math.min(Math.max(sy + (45 - sy) * 0.42, 49), 54);
+      // equator + lower flanks share one narrow lane between the board's
+      // bottom edge (~50%) and the hero's bet (57%), so they fan out
+      // horizontally instead: the equator seats stay wide, the lower flanks
+      // come further in. Two rows, never on top of each other.
+      const inward = sy < 60 ? 0.36 : 0.55;
+      L = sx + (50 - sx) * inward;
+      T = sy < 60 ? 52 : 54;
     } else {
-      // hero: left of his own cards
-      L = 26;
-      T = 58;
+      // hero: straight above his own cards, clear of the board row
+      L = 50;
+      T = 57;
     }
     return {
       left: `${round2(L)}%`,
@@ -13082,11 +13105,18 @@ function PokerTable({
   }, React.createElement("div", {
     className: "text-[10px] font-bold text-slate-200/90 leading-tight"
   }, "Total Pot"), React.createElement("div", {
+    className: "flex items-center justify-center gap-1.5"
+  }, (gs.pots || []).map((pot, i) => React.createElement(CasinoChipStack, {
+    key: i,
+    amount: pot.amount,
+    scale: 0.5,
+    showLabel: false
+  })), React.createElement("div", {
     className: "text-[14px] font-black text-amber-300 leading-tight"
   }, React.createElement(CountNum, {
     value: totalPot,
     fmt: formatShort
-  })), React.createElement("div", {
+  }))), React.createElement("div", {
     className: "sm:hidden text-[8px] font-bold text-slate-400 leading-tight",
     dir: "ltr"
   }, variantLabel(gs.currentGameType || setts.baseGameType, setts), " · ", (() => {
@@ -13096,13 +13126,7 @@ function PokerTable({
       return formatShort(tc0.row.sb) + '/' + formatShort(tc0.row.bb);
     }
     return formatShort(setts.blinds) + '/' + formatShort(BB);
-  })())), React.createElement("div", {
-    className: "absolute left-1/2 top-[39%] -translate-x-1/2 flex gap-5 items-start z-40"
-  }, (gs.pots || []).map((pot, i) => React.createElement(CasinoChipStack, {
-    key: i,
-    amount: pot.amount,
-    scale: 0.9
-  }))), (gs.board2 || []).length > 0 && React.createElement("div", {
+  })())), (gs.board2 || []).length > 0 && React.createElement("div", {
     className: "absolute left-1/2 top-[54%] -translate-x-1/2 flex gap-1 items-center z-30",
     dir: "ltr"
   }, React.createElement("span", {
@@ -13187,8 +13211,11 @@ function PokerTable({
     const dxD = sxD - 50,
       dyD = syD - 50;
     const lenD = Math.max(1, Math.hypot(dxD, dyD));
-    let left = 50 + dxD * 0.55 + -dyD / lenD * 8;
-    let top = 50 + dyD * 0.62 + dxD / lenD * 8;
+    // 0.74/0.78 keeps the button hugging its own seat instead of drifting into
+    // the betting ring (bets sit at ~0.48 of the way in) — owner report: the
+    // dealer button was covering a player's bet amount.
+    let left = 50 + dxD * 0.74 + -dyD / lenD * 11;
+    let top = 50 + dyD * 0.78 + dxD / lenD * 11;
     if (isSeated && di === 0) {
       left = 29;
       top = 73;
@@ -13615,7 +13642,7 @@ function PokerTable({
   }), players[gs.dcUid]?.name, " is picking the next game...")), gs.phase === 'waiting' && isSeated && React.createElement("div", {
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
-    className: "absolute bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2 pt-2 pb-[max(5px,env(safe-area-inset-bottom))] min-h-[64px] flex flex-col justify-center"
+    className: "absolute bottom-0 left-0 right-0 z-[70] bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2 pt-2 pb-[max(5px,env(safe-area-inset-bottom))] min-h-[64px] flex flex-col justify-center"
   }, isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
     className: "absolute left-2 mb-1.5 flex gap-1.5 z-40 pointer-events-none",
     style: {
@@ -14811,6 +14838,7 @@ function DurakTable({
           };
           tr.update(s.ref, {
             balance: round2((s.data().balance || 0) + share),
+            lastRefundAt: Date.now(), // receipt — see guardBalances
             'stats.gamesPlayed': (st.gamesPlayed || 0) + 1,
             'stats.gamesWon': (st.gamesWon || 0) + 1,
             'stats.totalProfit': round2((st.totalProfit || 0) + share - buyIn)
@@ -15830,7 +15858,8 @@ function useShowdownSweep(T, refGetter, maxPlayers, seatWaitlistFn, cashStacks) 
             for (const p of payable) snaps.push([p, await tr.get(memDoc(p.uid))]);
             for (const [p, ms] of snaps) {
               if (ms.exists()) tr.update(ms.ref, {
-                balance: round2((ms.data().balance || 0) + p.stack)
+                balance: round2((ms.data().balance || 0) + p.stack),
+                lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
               });
             }
           }
@@ -16678,7 +16707,8 @@ function OFCTable({
         delete pl[user.uid];
         const backAmt = round2((p.stack || 0) + (p.pendingTopUp || 0));
         if (ms.exists() && backAmt > 0) tr.update(ms.ref, {
-          balance: round2((ms.data().balance || 0) + backAmt)
+          balance: round2((ms.data().balance || 0) + backAmt),
+          lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
         });
         if (Object.keys(pl).length === 0) {
           tr.delete(tblRef());
@@ -17690,7 +17720,8 @@ const creditBalance = async (uid, amt, statsPatch, asBonus) => {
       const sn = await tr.get(r);
       if (!sn.exists()) return;
       const upd = {
-        balance: round2((sn.data().balance || 0) + amt)
+        balance: round2((sn.data().balance || 0) + amt),
+        lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
       };
       if (asBonus) {
         upd.bonusTotal = round2((sn.data().bonusTotal || 0) + amt);
@@ -17935,6 +17966,8 @@ const payTourPrize = async (torId, uid, amt, statsPatch, asBonus) => {
         const upd = {};
         if (amt) {
           upd.balance = round2((mSnap.data().balance || 0) + amt);
+          upd.lastRefundAt = Date.now(); // receipt — see guardBalances
+
           if (asBonus) {
             upd.bonusTotal = round2((mSnap.data().bonusTotal || 0) + amt);
             upd.bonusOpen = round2((mSnap.data().bonusOpen || 0) + amt);
@@ -18020,7 +18053,8 @@ const tourRegister = async (tor, user, showToast) => {
               feeTotal: round2((t.feeTotal || 0) - (Number(t.fee) || 0))
             });
             if (uSnap.exists()) tr.update(uRef, {
-              balance: round2((uSnap.data().balance || 0) + (meP.paid || 0))
+              balance: round2((uSnap.data().balance || 0) + (meP.paid || 0)),
+              lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
             });
           });
         } catch (e2) {}
@@ -18047,7 +18081,8 @@ const tourUnregister = async (tor, user, showToast) => {
       };
       delete pl[user.uid];
       tr.update(uRef, {
-        balance: round2((uSnap.data().balance || 0) + (me.paid || 0))
+        balance: round2((uSnap.data().balance || 0) + (me.paid || 0)),
+        lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
       });
       tr.update(tRef(tor.id), {
         players: pl,

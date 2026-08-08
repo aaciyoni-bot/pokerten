@@ -183,14 +183,38 @@ exports.claimWeeklyScratch = onCall(async (request) => {
  * (app, dev console, REST) — a client cannot bypass or even see it. Any
  * single-write balance jump of ALERT_MIN_JUMP+ that wasn't made by the club
  * owner / the admin SDK is recorded in `securityAlerts`, which only the club
- * owner and super admin can read (see firestore.rules). Alert-only by design:
- * an auto-revert could eat a legitimate big win, a false alert costs nothing.
+ * owner and super admin can read (see firestore.rules).
  *
  * At a 500-chip threshold every cash-out from a table qualifies, so alerts
  * are AGGREGATED per player per day (one doc, running count/total) — the
  * owner sees "player X: 7 jumps, +12,400 today" instead of a flooded panel.
+ *
+ * It also REVERTS the one shape that can only be tampering: a player raising
+ * their OWN balance with nothing to show for it. Firestore rules cannot close
+ * this — the client engine pays wins from players' browsers, so membership
+ * writes have to stay open — but every legitimate self-credit in the app
+ * touches a bookkeeping field alongside the balance:
+ *
+ *   cash-out / seat refund / registration rollback -> lastRefundAt
+ *   pot or tournament win .......................... stats
+ *   wheel / scratch card ........................... lastBonusAt, lastScratchAt,
+ *                                                    bonusTotal, bonusOpen
+ *   rake to the club / agent cut ................... clubProfits, agentProfits
+ *
+ * A bare {balance: bigger} poke from a browser console carries none of them,
+ * and is put straight back. Only SELF-writes are reverted: credits written by
+ * another player's client are how the engine pays everyone, so those stay
+ * alert-only. Set `guardRevert: false` on the club doc to fall back to
+ * alert-only if a legitimate path is ever caught.
  */
 const ALERT_MIN_JUMP = 500;
+const REVERT_MIN_JUMP = 100;
+// Changing any of these alongside the balance proves the credit came from real
+// game bookkeeping rather than a hand-written balance.
+const RECEIPT_FIELDS = ["lastRefundAt", "stats", "bonusTotal", "bonusOpen",
+  "lastBonusAt", "lastScratchAt", "clubProfits", "agentProfits", "spinPaid"];
+const changed = (a, b, k) => JSON.stringify((a || {})[k] === undefined ? null : a[k]) !==
+    JSON.stringify((b || {})[k] === undefined ? null : b[k]);
 
 exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
     async (event) => {
@@ -217,7 +241,7 @@ exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
       }
       // -------------------------------------------------------------------
 
-      if (delta < ALERT_MIN_JUMP) return;
+      if (delta < REVERT_MIN_JUMP) return;
 
       const clubId = after.clubId || memId.split("_").slice(1).join("_") || "";
       const authType = event.authType || "unknown";
@@ -226,11 +250,33 @@ exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
       // Admin-SDK writes (our own functions / owner console) are trusted.
       if (authType === "service_account" || authType === "system") return;
       // The club owner moving money (deposits, GENERAL RESET) is legitimate.
+      let club = {};
       try {
         const clubSnap = await db.doc(`clubs/${clubId}`).get();
-        const ownerUid = clubSnap.exists ? (clubSnap.data().ownerUid || "") : "";
-        if (byUid && byUid === ownerUid) return;
-      } catch (e) { /* can't verify → alert anyway */ }
+        club = clubSnap.exists ? clubSnap.data() : {};
+        if (byUid && byUid === (club.ownerUid || "")) return;
+      } catch (e) { /* can't verify → carry on and alert */ }
+
+      const selfWrite = !!byUid && memId.indexOf(byUid + "_") === 0;
+      // --- Unbacked self-credit: put it straight back ---------------------
+      let reverted = false;
+      if (selfWrite && club.guardRevert !== false &&
+          !RECEIPT_FIELDS.some((k) => changed(before, after, k))) {
+        try {
+          await db.runTransaction(async (tx) => {
+            const ref = db.doc(`memberships/${memId}`);
+            const cur = await tx.get(ref);
+            // only undo if nothing legitimate landed in the meantime
+            if (cur.exists && Math.abs((Number(cur.data().balance) || 0) - next) < 0.005) {
+              tx.update(ref, {balance: round2(prev)});
+            }
+          });
+          reverted = true;
+        } catch (e) { /* revert failed — the alert below still fires */ }
+      }
+      // --------------------------------------------------------------------
+
+      if (delta < ALERT_MIN_JUMP && !reverted) return;
 
       const now = Date.now();
       const il = new Date(new Date(now).toLocaleString("en-US", {timeZone: "Asia/Jerusalem"}));
@@ -255,7 +301,9 @@ exports.watchBalances = onDocumentWrittenWithAuthContext("memberships/{memId}",
           delta,
           byUid,
           authType,
-          selfWrite: !!cur.selfWrite || (!!byUid && memId.indexOf(byUid + "_") === 0),
+          selfWrite: !!cur.selfWrite || selfWrite,
+          reverted: !!cur.reverted || reverted,
+          revertedTotal: round2((Number(cur.revertedTotal) || 0) + (reverted ? delta : 0)),
         }, {merge: true});
       });
     });

@@ -267,23 +267,28 @@
         .action-btn:hover { border-color: rgba(226,198,133,0.4); }
         .action-btn:active { transform: translateY(2px); box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
 
-        /* ===== Poker: GG-match table — thick glossy rim, felt color per game (blue
-           Omaha / green NLH), soft top light, inner racetrack line ===== */
+        /* ===== Poker table v2 — SPLIT LAYERS (ClubGG-style geometry):
+           .pt-felt3d = felt+rail BACKGROUND, tilted into perspective on mobile;
+           .poker-table = upright OVERLAY container (cards/chips/pods keep their
+           % coordinates and are never skewed). ===== */
         .poker-table {
+            position: relative;
+            border-radius: 999px;
+            perspective: 1150px;
+        }
+        .pt-felt3d {
+            position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 0;
             background:
-                radial-gradient(ellipse at 50% 26%, rgba(255,255,255,0.06), transparent 55%),
+                radial-gradient(ellipse at 50% 40%, rgba(255,255,255,0.07), transparent 55%),
                 repeating-linear-gradient(0deg, rgba(255,255,255,0.009) 0 1px, transparent 1px 3px),
                 repeating-linear-gradient(90deg, rgba(0,0,0,0.012) 0 1px, transparent 1px 3px),
                 radial-gradient(ellipse at 50% 44%, var(--feltA, #2e6089) 0%, var(--feltB, #1f4a6e) 52%, var(--feltC, #132f47) 100%);
-            border-radius: 999px;
-            border: 12px solid #0f1216;
-            /* gold pinline where rail meets felt — the detail that reads "casino grade";
-               the deep drop shadow is the "one lamp over the table" of the whole room */
-            box-shadow: inset 0 0 0 2.5px rgba(213,179,107,0.4), inset 0 12px 38px rgba(0,0,0,0.5), inset 0 0 90px rgba(0,0,0,0.32), 0 26px 70px rgba(0,0,0,0.85), 0 0 110px rgba(245,200,96,0.045);
-            position: relative;
+            border: 14px solid #0f1216;
+            /* gold pinline + lamp + vignette (rail reads casino-grade) */
+            box-shadow: inset 0 0 0 2.5px rgba(213,179,107,0.4), inset 0 1px 0 rgba(255,255,255,0.12), inset 0 12px 38px rgba(0,0,0,0.5), inset 0 0 90px rgba(0,0,0,0.32), 0 26px 70px rgba(0,0,0,0.85), 0 0 110px rgba(245,200,96,0.045);
         }
-        .poker-table::before {
-            content: ''; position: absolute; inset: -12px; border-radius: inherit; pointer-events: none;
+        .pt-felt3d::before {
+            content: ''; position: absolute; inset: -14px; border-radius: inherit; pointer-events: none;
             border: 3px solid transparent;
             background:
                 linear-gradient(178deg, rgba(255,255,255,0.14), rgba(255,255,255,0.02) 26%, transparent 42%),
@@ -291,10 +296,21 @@
             -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
             -webkit-mask-composite: xor; mask-composite: exclude;
         }
-        .poker-table::after {
-            content: ''; position: absolute; inset: 30px; border-radius: inherit; pointer-events: none;
+        .pt-felt3d::after {
+            content: ''; position: absolute; inset: 11%; border-radius: inherit; pointer-events: none;
             border: 1.5px solid rgba(255,255,255,0.08);
             box-shadow: inset 0 0 26px rgba(0,0,0,0.20);
+        }
+        /* the stage crops the receding far end off the top */
+        .pt-stage { overflow: hidden; }
+        @media (max-width: 1023px) {
+            /* half-lying-down: far end ~2/3 the width of the near end, top bleeds
+               off-screen. ONLY the background tilts — play stays upright. */
+            .pt-felt3d {
+                inset: -13% -2% -1% -2%;
+                transform: rotateX(30deg) scaleY(1.28);
+                transform-origin: 50% 44%;
+            }
         }
 
         /* דסקטופ: שולחן קפסולה רחב במקום עיגול */
@@ -306,7 +322,8 @@
                 border-radius: 26% / 50%;
                 margin: auto;
             }
-            .poker-table::after { inset: 14px; }
+            .pt-felt3d { transform: none; inset: 0; }
+            .pt-felt3d::after { inset: 14px; }
             .ft-banner { font-size: 26px; top: 18%; }
             .player-spotlight { width: 200px; height: 200px; }
         }
@@ -12082,18 +12099,17 @@ function PokerTable({
   }
   const N = Math.max(displayList.length, 2);
   const SEAT_LAYOUTS = {
-    // top-row seats sit at >=12% so the avatar's blind/dealer badge clears the
-    // sticky table header on tall phones (at 9% the BB pill hid behind it).
-    // Hero (bottom) sits at 86% — at 91% the name/stack pod spilled under the
-    // bottom action bar and the amount was half-hidden.
-    2: [[50, 86], [50, 12]],
-    3: [[50, 86], [8, 24], [92, 24]],
-    4: [[50, 86], [7, 66], [50, 12], [93, 66]],
-    5: [[50, 86], [7, 68], [13, 15], [87, 15], [93, 68]],
-    6: [[50, 86], [6, 68], [9, 18], [50, 12], [91, 18], [94, 68]],
-    7: [[50, 86], [6, 70], [6, 30], [28, 12], [72, 12], [94, 30], [94, 70]],
-    8: [[50, 86], [6, 70], [5, 38], [18, 13], [50, 12], [82, 13], [95, 38], [94, 70]],
-    9: [[50, 86], [6, 72], [5, 42], [12, 17], [36, 12], [64, 12], [88, 17], [95, 42], [94, 72]]
+    // v2 perspective ring: pods sit ON the rail (perimeter), Y compressed
+    // toward the far (top) end and spread wide at the near end — the center
+    // of the felt stays open for board + pot. Hero bottom-center.
+    2: [[50, 88], [50, 15]],
+    3: [[50, 88], [13, 30], [87, 30]],
+    4: [[50, 88], [9, 55], [50, 15], [91, 55]],
+    5: [[50, 88], [10, 70], [20, 20], [80, 20], [90, 70]],
+    6: [[50, 88], [10, 72], [12, 26], [50, 15], [88, 26], [90, 72]],
+    7: [[50, 88], [11, 74], [9, 38], [30, 17], [70, 17], [91, 38], [89, 74]],
+    8: [[50, 88], [11, 76], [8, 45], [24, 19], [50, 15], [76, 19], [92, 45], [89, 76]],
+    9: [[50, 88], [12, 78], [7, 52], [16, 26], [38, 16], [62, 16], [84, 26], [93, 52], [88, 78]]
   };
   const seatXY = i => {
     const lay = (SEAT_LAYOUTS[Math.min(9, Math.max(2, N))] || SEAT_LAYOUTS[6])[i];
@@ -12115,7 +12131,7 @@ function PokerTable({
     // toward the pot pill — with two clamps so it never covers the top
     // nameplates or the hero's cards.
     const [sx, sy] = seatXY(i);
-    const PX = 50, PY = 38, f = 0.34;
+    const PX = 50, PY = 42, f = 0.34;
     const L = sx + (PX - sx) * f;
     let T = sy + (PY - sy) * f;
     if (sy < 30) T = Math.max(T, sy + 17); // stay below the top seat's name pod
@@ -12503,7 +12519,7 @@ function PokerTable({
     }
     return `${formatShort(setts.blinds)}/${formatShort(BB)}`;
   })()))), React.createElement("div", {
-    className: "flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0"
+    className: "pt-stage flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0"
   }, godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (() => {
     const board = gs.board || [];
     const bl = board.length;
@@ -12549,7 +12565,7 @@ function PokerTable({
       size: "sm"
     }) : null)))));
   })(), React.createElement("div", {
-    className: "poker-table w-full max-w-[470px] h-full max-h-[calc(100dvh-185px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
+    className: "poker-table w-full max-w-[95vw] sm:max-w-[470px] h-full max-h-[calc(100dvh-185px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
     style: (() => {
       const F = {
         'NLH': ['#2f7d4d', '#215c37', '#123a20'],
@@ -12601,7 +12617,9 @@ function PokerTable({
         ...CB
       };
     })()
-  }, tableState.tournament && tableState.tournament.final && React.createElement("div", {
+  }, React.createElement("div", {
+    className: "pt-felt3d"
+  }), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "absolute inset-0 pointer-events-none z-[6]",
     style: {
       borderRadius: 'inherit',
@@ -12616,7 +12634,7 @@ function PokerTable({
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 top-[32.5%] -translate-x-1/2 z-40 bg-black/40 rounded-2xl px-5 py-1 text-center pointer-events-none",
+    className: "absolute left-1/2 top-[11%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
     dir: "ltr"
   }, React.createElement("div", {
     className: "text-[10px] font-bold text-slate-200/90 leading-tight"

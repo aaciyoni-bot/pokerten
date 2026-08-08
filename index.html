@@ -17757,6 +17757,23 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
   for (const it of info) if (it.count === 0 && it.idle) await mttDelTable(it.tb.docId);
   let live = info.filter(it => it.count > 0);
   const rankAlive = Object.values(tor.players || {}).filter(p => !p.out);
+  // ── ZOMBIE RECONCILER ──────────────────────────────────────────────────
+  // A tournament-doc player who is NOT marked out but holds zero chips at
+  // every table (checked only while ALL tables are idle, so all-in players
+  // and stacks in flight are never touched) gets their bust recorded with a
+  // proper finishing place. This is what kept standings showing "alive with
+  // 0" after a clobbered bust report — now it self-repairs within seconds.
+  if (info.every(it => it.idle)) {
+    const chipsOf = {};
+    myTables.forEach(tb => Object.values(tb.players || {}).forEach(p => {
+      if (!['out', 'busted'].includes(p.status)) chipsOf[p.uid] = Math.max(chipsOf[p.uid] || 0, Number(p.stack) || 0);
+    }));
+    const zombies = rankAlive.filter(p => !((chipsOf[p.uid] || 0) > 0)).map(p => p.uid);
+    if (zombies.length && zombies.length < rankAlive.length) {
+      await tourReportBust(tor.id, zombies, [], 0, false);
+      return; // ranks recorded — re-evaluate merges/finalize on the next tick
+    }
+  }
   if (!live.length) {
     await tourFinalize(tor, rankAlive.length === 1 ? rankAlive[0].uid : null, rakePct);
     return;

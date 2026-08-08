@@ -165,5 +165,12 @@ check('saveGame carries the __seq optimistic-concurrency guard',
   /const base = Number\(g\.__seq\) \|\| 0;[\s\S]{0,600}?if \(cur !== base\) throw 'stale';/.test(bundle),
   'saveGame must run in a transaction and abort when gameState.__seq moved on');
 
+// 18) TOURNAMENT INTEGRITY: the zombie reconciler exists. Without it, a
+//     clobbered bust report leaves players 'alive with 0' in the standings
+//     forever (the trial-tournament screenshot).
+check('mttOrchestrate reconciles zombie players (alive with 0 chips)',
+  /ZOMBIE RECONCILER/.test(bundle) && /zombies\.length && zombies\.length < rankAlive\.length/.test(bundle),
+  'the idle-gated zombie sweep in mttOrchestrate must stay');
+
 console.log('\n' + (fails ? `FAILED: ${fails} check(s) failed, ${passes} passed — DO NOT DEPLOY` : `OK: all ${passes} checks passed`));
 process.exit(fails ? 1 : 0);

@@ -10889,6 +10889,11 @@ function PokerTable({
           });
           return;
         }
+        // HARD GUARD: sitting with a zero/below-minimum stack is impossible.
+        // (buyAmt starts at 0 until the table loads — a fast tap could seat a
+        // player with 0 chips at a random free seat. Never again.)
+        const minSit = Math.max(0.01, buyInMin(t.settings || {}));
+        if (!(Number(buyAmt) >= minSit)) throw `Pick a buy-in first (minimum ${formatMoney(minSit)})`;
         if ((uSnap.data().balance || 0) < buyAmt) throw "Not enough balance in wallet";
         const left = (t.leftStacks || {})[user.uid];
         if (left && Date.now() - left.at < 12 * 60 * 60 * 1000 && buyAmt < round2(left.amount)) throw `You left this table with ${formatMoney(left.amount)} - you must return with at least this amount`;

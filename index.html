@@ -409,9 +409,10 @@
             border: 1px solid color-mix(in srgb, var(--cbEdge, #c8a55e) 45%, transparent);
         }
         .card-back::after {
-            content: '♠'; position: absolute; inset: 0; pointer-events: none;
+            content: 'P'; position: absolute; inset: 0; pointer-events: none;
             display: flex; align-items: center; justify-content: center;
-            font-size: 1.3em; line-height: 1;
+            font-family: 'Rubik', sans-serif; font-weight: 900;
+            font-size: 1.45em; line-height: 1; letter-spacing: 0.02em;
             color: color-mix(in srgb, var(--cbEdge, #c8a55e) 70%, transparent);
             text-shadow: 0 1px 2px rgba(0,0,0,0.45);
         }
@@ -878,6 +879,31 @@
         .tbl-seats .seat-cap { color: #5b6b82; }
 
         /* ===== Club picker: a swipeable deck (GG-style) ===== */
+        .cl-code-wrap { background: var(--pt-raised, #131a26); border: 1px solid rgba(213,179,107,0.28); border-radius: 18px; padding: 12px 12px 14px; box-shadow: 0 10px 26px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04); }
+        .cl-code-title { display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--pt-text-2, #8b98ad); font-size: 11.5px; font-weight: 700; margin-bottom: 10px; }
+        .cl-code-title i { color: var(--pt-gold, #D5B36B); font-size: 11px; }
+        .cl-code { position: relative; display: flex; gap: 7px; justify-content: center; cursor: text; }
+        .cl-box {
+            width: 44px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            background: #0b0f16; border: 1.5px solid rgba(255,255,255,0.09);
+            color: #fff; font-size: 22px; font-weight: 800; font-family: 'Rubik', sans-serif;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.5); transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .cl-box-filled { border-color: rgba(213,179,107,0.5); }
+        .cl-box-on { border-color: var(--pt-gold, #D5B36B); box-shadow: inset 0 2px 6px rgba(0,0,0,0.5), 0 0 0 3px rgba(213,179,107,0.16); }
+        .cl-code-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: none; background: transparent; font-size: 16px; }
+        @media (max-width: 380px) { .cl-box { width: 40px; height: 48px; font-size: 20px; } }
+
+        .cl-banner { position: relative; overflow: hidden; border-radius: 20px; padding: 16px 18px; margin-top: 18px;
+            background: linear-gradient(115deg, #1a2130 0%, #101722 45%, #1d1608 100%);
+            border: 1px solid rgba(213,179,107,0.3); box-shadow: 0 14px 34px rgba(0,0,0,0.5); }
+        .cl-banner::after { content: ''; position: absolute; right: -30px; top: -40px; width: 170px; height: 170px; border-radius: 50%; background: radial-gradient(circle, rgba(213,179,107,0.22), transparent 68%); pointer-events: none; }
+        .cl-banner-t { color: #fff; font-size: 15px; font-weight: 800; line-height: 1.25; }
+        .cl-banner-s { color: var(--pt-text-2, #8b98ad); font-size: 11.5px; font-weight: 600; margin-top: 4px; line-height: 1.45; }
+        .cl-banner-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+        .cl-banner-pill { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); border-radius: 99px; padding: 5px 11px; color: #cbd5e1; font-size: 11px; font-weight: 700; }
+        .cl-banner-pill i { color: var(--pt-gold, #D5B36B); font-size: 10px; }
+
         .cl-search { display: flex; align-items: center; gap: 10px; background: var(--pt-raised, #131a26); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 12px 14px; }
         .cl-search i { color: #64748b; font-size: 14px; flex: none; }
         .cl-search input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: #e8edf4; font-weight: 600; font-size: 14px; letter-spacing: 0.06em; }
@@ -887,9 +913,9 @@
         .cl-deck { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 4px 0 6px; scrollbar-width: none; }
         .cl-deck::-webkit-scrollbar { display: none; }
         .cl-card {
-            flex: 0 0 76%; max-width: 300px; scroll-snap-align: center;
+            flex: 0 0 44%; max-width: 168px; scroll-snap-align: center;
             background: var(--pt-raised, #131a26); border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 24px; padding: 14px; display: flex; flex-direction: column;
+            border-radius: 18px; padding: 9px; display: flex; flex-direction: column;
             box-shadow: 0 18px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
         }
         .cl-art {
@@ -899,26 +925,26 @@
             display: flex; align-items: center; justify-content: center;
         }
         .cl-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .cl-art-letter { font-size: 68px; font-weight: 800; color: rgba(213,179,107,0.55); font-family: 'Rubik', sans-serif; }
+        .cl-art-letter { font-size: 44px; font-weight: 800; color: rgba(213,179,107,0.55); font-family: 'Rubik', sans-serif; }
         .cl-owner { position: absolute; top: 8px; left: 8px; font-size: 9px; font-weight: 800; letter-spacing: 0.12em; color: #12151b; background: var(--pt-gold, #D5B36B); border-radius: 99px; padding: 2px 8px; }
         .cl-del { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 10px; border: none; background: rgba(0,0,0,0.5); color: #64748b; font-size: 11px; }
         .cl-del:hover { color: #fb7185; }
-        .cl-name { margin-top: 12px; text-align: center; color: #fff; font-size: 18px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .cl-id { text-align: center; color: var(--pt-text-2, #8b98ad); font-size: 11px; font-weight: 600; margin-top: 2px; }
-        .cl-stats { display: flex; gap: 8px; margin: 12px 0 12px; }
-        .cl-stat { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 8px 4px; color: #cbd5e1; font-size: 13px; font-weight: 700; }
+        .cl-name { margin-top: 8px; text-align: center; color: #fff; font-size: 14px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cl-id { text-align: center; color: var(--pt-text-2, #8b98ad); font-size: 9.5px; font-weight: 600; margin-top: 1px; }
+        .cl-stats { display: flex; gap: 5px; margin: 8px 0 8px; }
+        .cl-stat { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 9px; padding: 5px 2px; color: #cbd5e1; font-size: 11px; font-weight: 700; }
         .cl-stat i { color: var(--pt-gold, #D5B36B); font-size: 11px; opacity: 0.85; }
-        .cl-cta { margin-top: auto; width: 100%; border: none; border-radius: 14px; padding: 13px 0; font-size: 15px; font-weight: 800; background: linear-gradient(180deg, #e7c680, #c39d4f); color: #12151b; box-shadow: 0 6px 18px rgba(213,179,107,0.22); }
-        .cl-cta-wait { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--pt-text-2, #8b98ad); font-size: 13px; box-shadow: none; text-align: center; }
+        .cl-cta { margin-top: auto; width: 100%; border: none; border-radius: 11px; padding: 9px 0; font-size: 13px; font-weight: 800; background: linear-gradient(180deg, #e7c680, #c39d4f); color: #12151b; box-shadow: 0 6px 18px rgba(213,179,107,0.22); }
+        .cl-cta-wait { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--pt-text-2, #8b98ad); font-size: 10.5px; box-shadow: none; text-align: center; }
         .cl-cta-create { background: linear-gradient(180deg, #17b26a, #0e8a50); color: #fff; box-shadow: 0 6px 18px rgba(23,178,106,0.28); }
         .cl-art-create { flex-direction: column; gap: 10px; background: linear-gradient(160deg, #141b26, #090c12); }
-        .cl-create-cap { color: #94a3b8; font-size: 12.5px; font-weight: 700; text-align: center; padding: 0 18px; line-height: 1.35; }
+        .cl-create-cap { color: #94a3b8; font-size: 10.5px; font-weight: 700; text-align: center; padding: 0 18px; line-height: 1.35; }
         .cl-dots { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 12px; }
         .cl-dot { width: 7px; height: 7px; border-radius: 99px; border: none; background: rgba(255,255,255,0.18); padding: 0; transition: width 0.2s ease, background 0.2s ease; }
         .cl-dot-on { width: 20px; background: var(--pt-gold, #D5B36B); }
         .cl-dot-plus { width: 16px; height: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(213,179,107,0.35); color: var(--pt-gold, #D5B36B); font-size: 10px; font-weight: 900; line-height: 1; }
         .cl-dot-plus.cl-dot-on { width: 16px; background: var(--pt-gold, #D5B36B); color: #12151b; }
-        @media (min-width: 640px) { .cl-card { flex-basis: 300px; } }
+        @media (min-width: 640px) { .cl-card { flex-basis: 168px; } }
 
         /* ── Club landing page: section labels get a gold accent for structure ── */
         .club-sec-label { display: flex; align-items: center; gap: 9px; }
@@ -5371,20 +5397,35 @@ function ClubsView({
     // "Create" as the last card. No walls of inputs for a first-time player.
     className: "mb-5"
   }, React.createElement("div", {
-    className: "cl-search"
+    className: "cl-code-wrap"
+  }, React.createElement("div", {
+    className: "cl-code-title"
   }, React.createElement("i", {
     className: "fa-solid fa-magnifying-glass"
-  }), React.createElement("input", {
-    value: searchCode,
-    onChange: e => setSearchCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6)),
-    onKeyDown: e => e.key === 'Enter' && doClubSearch(),
-    placeholder: "Search club by 6-digit code",
+  }), "Join a club \u2014 enter its 6-digit code"), React.createElement("div", {
+    className: "cl-code",
     dir: "ltr",
-    maxLength: 6
-  }), searchCode.length === 6 && React.createElement("button", {
-    onClick: doClubSearch,
-    className: "cl-search-go"
-  }, "Search")), foundClub && (!memOf(foundClub.id) || memOf(foundClub.id).status === 'rejected') && React.createElement("div", {
+    onClick: () => {
+      const el = document.getElementById('clubCodeIn');
+      if (el) el.focus();
+    }
+  }, [0, 1, 2, 3, 4, 5].map(i => React.createElement("span", {
+    key: i,
+    className: `cl-box ${searchCode.length === i ? 'cl-box-on' : ''} ${searchCode[i] ? 'cl-box-filled' : ''}`
+  }, searchCode[i] || '')), React.createElement("input", {
+    id: "clubCodeIn",
+    value: searchCode,
+    onChange: e => {
+      const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+      setSearchCode(v);
+      if (v.length === 6) setTimeout(doClubSearch, 60);
+    },
+    onKeyDown: e => e.key === 'Enter' && doClubSearch(),
+    inputMode: "numeric",
+    maxLength: 6,
+    className: "cl-code-input",
+    dir: "ltr"
+  }))), foundClub && (!memOf(foundClub.id) || memOf(foundClub.id).status === 'rejected') && React.createElement("div", {
     className: "mt-3"
   }, React.createElement(ClubCard, {
     c: foundClub,
@@ -5415,7 +5456,7 @@ function ClubsView({
       }, React.createElement(SuitGlyph, {
         s: '\u2660',
         color: 'rgba(213,179,107,0.5)',
-        size: "76px"
+        size: "44px"
       }), React.createElement("div", {
         className: "cl-create-cap"
       }, "Create a club and run your own poker room")), React.createElement("button", {
@@ -5570,15 +5611,26 @@ function ClubsView({
     onClick: () => setCreateOpen(false),
     className: "text-slate-500 hover:text-white underline text-xs font-bold"
   }, "Cancel"))), document.body), React.createElement("div", {
-    // hero banner earns its place: message + the screen's primary action
-    className: "pt-hero mt-6 mb-4 h-32 sm:h-40 w-full relative overflow-hidden flex items-end"
+    className: "cl-banner"
   }, React.createElement("div", {
-    className: "w-full p-4 bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-transparent"
-  }, React.createElement("div", {
-    className: "text-white font-black text-base leading-tight mb-0.5"
-  }, "Private club games & tournaments"), React.createElement("div", {
-    className: "text-[11px] text-slate-300 font-bold"
-  }, "Join a club with its code — or open your own and run the tables.")))));
+    className: "cl-banner-t"
+  }, "Your club. Your rules. Your table."), React.createElement("div", {
+    className: "cl-banner-s"
+  }, "Cash games, tournaments, Spin & Cash and Durak \u2014 run privately for your own crowd, settled to the last chip."), React.createElement("div", {
+    className: "cl-banner-row"
+  }, React.createElement("span", {
+    className: "cl-banner-pill"
+  }, React.createElement("i", {
+    className: "fa-solid fa-shield-halved"
+  }), "Private & invite-only"), React.createElement("span", {
+    className: "cl-banner-pill"
+  }, React.createElement("i", {
+    className: "fa-solid fa-scale-balanced"
+  }), "Chip-exact settlement"), React.createElement("span", {
+    className: "cl-banner-pill"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bolt"
+  }), "Live in seconds")))));
 }
 function ProfileView({
   user,
@@ -12408,14 +12460,14 @@ function PokerTable({
     // SVG felt (top 18% / bottom 96.3% of the container). Hero bottom-center.
     // Rings are per TABLE CAPACITY (physical seats), not per seated count —
     // vacant slots render as small "sit here" discs, exactly like ClubGG.
-    2: [[50, 75], [50, 18.5]],
-    3: [[50, 75], [11, 54], [89, 54]],
-    4: [[50, 75], [11, 54], [50, 18.5], [89, 54]],
-    5: [[50, 75], [14, 64], [32, 19], [68, 19], [86, 64]],
-    6: [[50, 75], [13, 64], [13, 36], [50, 18.5], [87, 36], [87, 64]],
-    7: [[50, 75], [15, 68], [9, 47], [32, 19], [68, 19], [91, 47], [85, 68]],
-    8: [[50, 75], [15, 68], [9, 47], [14, 27], [50, 18.5], [86, 27], [91, 47], [85, 68]],
-    9: [[50, 75], [16, 71], [8, 54], [14, 30], [34, 18.5], [66, 18.5], [86, 30], [92, 54], [84, 71]]
+    2: [[50, 71], [50, 18.5]],
+    3: [[50, 71], [11, 54], [89, 54]],
+    4: [[50, 71], [11, 54], [50, 18.5], [89, 54]],
+    5: [[50, 71], [14, 64], [32, 19], [68, 19], [86, 64]],
+    6: [[50, 71], [13, 64], [13, 36], [50, 18.5], [87, 36], [87, 64]],
+    7: [[50, 71], [15, 68], [9, 47], [32, 19], [68, 19], [91, 47], [85, 68]],
+    8: [[50, 71], [15, 68], [9, 47], [14, 27], [50, 18.5], [86, 27], [91, 47], [85, 68]],
+    9: [[50, 71], [16, 71], [8, 54], [14, 30], [34, 18.5], [66, 18.5], [86, 30], [92, 54], [84, 71]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -12896,7 +12948,11 @@ function PokerTable({
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 top-[25.5%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
+    className: "absolute left-1/2 top-[40%] -translate-x-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
+    style: {
+      background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.22) 60%, rgba(0,0,0,0) 100%)',
+      textShadow: '0 1px 3px rgba(0,0,0,0.85)'
+    },
     dir: "ltr"
   }, React.createElement("div", {
     className: "text-[10px] font-bold text-slate-200/90 leading-tight"
@@ -12916,13 +12972,13 @@ function PokerTable({
     }
     return formatShort(setts.blinds) + '/' + formatShort(BB);
   })())), React.createElement("div", {
-    className: "absolute left-1/2 top-[55.5%] -translate-x-1/2 flex gap-5 items-start z-40"
+    className: "absolute left-1/2 top-[57%] -translate-x-1/2 flex gap-5 items-start z-40"
   }, (gs.pots || []).map((pot, i) => React.createElement(CasinoChipStack, {
     key: i,
     amount: pot.amount,
     scale: 0.9
   }))), (gs.board2 || []).length > 0 && React.createElement("div", {
-    className: "absolute left-1/2 top-[38.5%] -translate-x-1/2 flex gap-1 items-center z-30",
+    className: "absolute left-1/2 top-[64%] -translate-x-1/2 flex gap-1 items-center z-30",
     dir: "ltr"
   }, React.createElement("span", {
     className: "text-[8px] font-black text-gold-400 bg-slate-950/85 rounded px-1 py-0.5"
@@ -12936,7 +12992,7 @@ function PokerTable({
     card: c,
     size: "sm"
   })))), React.createElement("div", {
-    className: "absolute left-1/2 top-[49%] -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
+    className: "absolute left-1/2 top-[50%] -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
     dir: "ltr"
   }, gs.phase !== 'waiting' && playersCount > 0 && (gs.board || []).map((c, i) => React.createElement("span", {
     key: i,
@@ -12963,7 +13019,7 @@ function PokerTable({
       height: '4.4rem'
     }
   }))), React.createElement("div", {
-    className: "absolute left-1/2 top-[57%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%] opacity-60"
+    className: "absolute left-1/2 top-[27%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%] opacity-70"
   }, tour && tour.final && React.createElement("div", {
     className: "font-black text-transparent bg-clip-text mb-1",
     dir: "ltr",
@@ -12977,8 +13033,17 @@ function PokerTable({
     className: "text-slate-100/30 font-bold text-[13px] leading-relaxed",
     dir: "ltr"
   }, React.createElement("div", {
-    className: "text-[14px]"
-  }, setts.tableName || variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts)), React.createElement("div", null, (() => {
+    // brand watermark on the felt (GG puts its logo here) — readable but
+    // never louder than the cards
+    className: "font-black tracking-[0.22em] mb-0.5",
+    style: {
+      fontSize: '22px',
+      color: 'rgba(255,255,255,0.16)',
+      textShadow: '0 1px 0 rgba(0,0,0,0.35)'
+    }
+  }, "POKERTEN"), React.createElement("div", {
+    className: "text-[13px]"
+  }, setts.tableName || variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts), " \u00b7 ", (() => {
     // tournament table: show the LIVE level's blinds/ante, not the cash defaults
     const tr0 = tableState.tournament;
     if (tr0 && tr0.startedAt) {
@@ -12986,7 +13051,9 @@ function PokerTable({
       return 'Blinds ' + formatShort(tc0.row.sb) + '/' + formatShort(tc0.row.bb) + (Number(tc0.row.ante) > 0 ? ' · Ante ' + formatShort(tc0.row.ante) : '');
     }
     return 'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '');
-  })()), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
+  })()), React.createElement("div", {
+    className: "flex items-center justify-center gap-3 mt-0.5 text-[11px]"
+  }, React.createElement("span", null, "GPS \u00b7 ON"), React.createElement("span", null, "IP \u00b7 ON")), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
     className: "text-amber-300 font-black text-xs animate-pulse"
   }, "🍍 Pineapple - discard one card...")), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
@@ -13002,11 +13069,15 @@ function PokerTable({
       top = 73;
     }
     return React.createElement("div", {
-      className: "absolute z-30 w-6 h-6 rounded-full bg-gradient-to-b from-amber-300 to-amber-600 text-amber-950 text-[10px] font-black flex items-center justify-center shadow-[0_2px_6px_rgba(0,0,0,0.6)] border border-amber-200",
+      className: "absolute z-50 w-7 h-7 rounded-full text-[11px] font-black flex items-center justify-center",
       style: {
         left: `${left}%`,
         top: `${top}%`,
-        transform: 'translate(-50%,-50%)'
+        transform: 'translate(-50%,-50%)',
+        background: 'radial-gradient(circle at 38% 30%, #fffbe8 0%, #ffe08a 38%, #e0aa38 72%, #a8761c 100%)',
+        color: '#3a2a05',
+        border: '1.5px solid #fff3c4',
+        boxShadow: '0 3px 10px rgba(0,0,0,0.65), 0 0 12px rgba(255,214,102,0.45), inset 0 -1px 2px rgba(0,0,0,0.25)'
       }
     }, "D");
   })(), !isSeated && !tableState?.tournamentId && (() => {
@@ -13045,7 +13116,7 @@ function PokerTable({
     const seatXv = parseFloat(seatPos(i).left);
     const seatYv = parseFloat(seatPos(i).top);
     // 2.5D depth cue per spec: near pods 1.0, far pods ~30% smaller (1.30:1)
-    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (75 - seatYv) / 65));
+    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (71 - seatYv) / 61));
     const farPod = !isMe && seatYv <= 22;
     const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
     const inX = -(seatXv - 50) / 50;
@@ -13084,7 +13155,23 @@ function PokerTable({
       }
     }, isTurn && React.createElement("div", {
       className: "player-spotlight"
-    }), p.actionText && React.createElement("div", {
+    }), isMe && React.createElement("div", {
+      // hero's plate goes ABOVE his avatar: the action row owns the bottom of
+      // the screen and must never cover your own stack
+      className: "absolute left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-lg bg-slate-950/90 border border-gold-400/25 shadow-md text-center whitespace-nowrap z-30",
+      style: {
+        bottom: 'calc(100% + 4px)',
+        width: '92px'
+      }
+    }, React.createElement("div", {
+      className: "text-[10px] font-bold text-white leading-tight"
+    }, "You"), React.createElement("div", {
+      className: "text-gold-400 font-black text-[12px] leading-tight",
+      dir: "ltr"
+    }, React.createElement(CountNum, {
+      value: myPlayer?.stack || 0,
+      fmt: formatShort
+    }))), p.actionText && React.createElement("div", {
       className: `action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
       style: isMe ? {} : farPod ? {
         top: 'auto',
@@ -13234,7 +13321,7 @@ function PokerTable({
     }))), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
       className: "absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30"
     }, "DC"), React.createElement("div", {
-      className: "mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
+      className: (isMe ? "hidden " : "") + "mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
       style: {
         // far pods slimmer (spec: 72px far / 88px near = 0.24T);
         // centered under the avatar (GG) — no inward shift, bets clear it
@@ -13336,7 +13423,7 @@ function PokerTable({
     from: fx.from,
     to: {
       left: '50%',
-      top: '26.5%' // land on the Total Pot pill (above the board)
+      top: '41%' // land on the Total Pot pill (above the board)
     },
     amount: fx.amount,
     snd: !headless && fxi === 0

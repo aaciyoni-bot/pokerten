@@ -1266,6 +1266,7 @@ const EMOJI_AV_BG = ['16243c,0e7490', '1f1533,6b21a8', '33200e,b45309', '0e2b22,
 const dicebearUrl = seed => {
   let style = 'personas',
     sd = String(seed || 'x');
+  if (!sd.startsWith('av3d::') && !sd.startsWith('data:')) return av3dUrl(av3dPick(sd));
   if (sd.startsWith('emoji::')) {
     const parts = sd.split('::');
     const em = parts[1] || '🙂';
@@ -1281,12 +1282,22 @@ const dicebearUrl = seed => {
   }
   return `https://api.dicebear.com/7.x/${style}/svg?seed=${encodeURIComponent(sd)}&backgroundType=gradientLinear&backgroundColor=16243c,0b1322`;
 };
+// Stable hash so the same player always lands on the same 3D avatar.
+const av3dPick = seed => {
+  const s = String(seed || 'x');
+  let hsh = 0;
+  for (let i = 0; i < s.length; i++) hsh = (hsh * 31 + s.charCodeAt(i)) >>> 0;
+  return AV3D[hsh % AV3D.length];
+};
 const avatarUrl = x => {
   if (x && typeof x === 'object') {
     if (x.photo) return x.photo;
-    return dicebearUrl(x.avatarSeed || x.uid);
+    const sd = x.avatarSeed || '';
+    // legacy flat seeds (personas/notionists/emoji/...) are retired: map them
+    // onto the 3D pack instead of ever rendering the old artwork again
+    return dicebearUrl(String(sd).startsWith('av3d::') ? sd : av3dPick(sd || x.uid));
   }
-  return dicebearUrl(x);
+  return dicebearUrl(String(x || '').startsWith('av3d::') ? x : av3dPick(x));
 };
 // 3D avatar pack: Microsoft Fluent Emoji "3D" renders (MIT), served from
 // jsDelivr. Each entry is [folder, file] exactly as it exists in the repo.

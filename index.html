@@ -304,14 +304,22 @@
         .pt-stage { overflow: hidden; }
         /* flat variant (Durak/OFC): same rail & felt, no perspective */
         .pt-flat .pt-felt3d { transform: none !important; inset: 0 !important; }
-        /* Mobile felt = symmetric stadium ellipse per the measured GG spec:
-           box X 7-93% / Y 12-71% of the table container, center up at 41.5%.
-           Depth comes from POD SCALING + the lamp light — no outline
-           distortion, no 3D transforms. Bottom 29% = control zone. */
+        /* Real 2.5D (spec v4): a CAMERA wrap carries perspective; the felt
+           stadium is tilted rotateX(62deg) INSIDE it. Pre-tilt height (708px
+           at 390x844) + perspective 2400px are solved so the PROJECTED felt
+           lands exactly on the measured GG box: X 7-93%, Y 12-71%, near:far
+           foreshortening 1.30. Seats/cards live on the separate upright
+           overlay at the final projected coords — they are never skewed. */
+        .pt-wrap { position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: inherit; }
         @media (max-width: 1023px) {
+            .pt-wrap {
+                left: 9%; right: 9%; top: -7.7%; bottom: 16.9%;
+                perspective: 2400px; perspective-origin: 50% -15%;
+            }
             .pt-felt3d {
-                inset: 12% 7% 29% 7%;
-                border-radius: 9999px;
+                border-radius: 999px;
+                transform: rotateX(62deg);
+                transform-style: preserve-3d;
             }
         }
 
@@ -12552,8 +12560,10 @@ function PokerTable({
       };
     })()
   }, React.createElement("div", {
+    className: "pt-wrap"
+  }, React.createElement("div", {
     className: "pt-felt3d"
-  }), tableState.tournament && tableState.tournament.final && React.createElement("div", {
+  })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "absolute inset-0 pointer-events-none z-[6]",
     style: {
       borderRadius: 'inherit',

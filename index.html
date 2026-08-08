@@ -315,9 +315,13 @@
         .pt-fsvg {
             position: absolute; left: 50%; top: 12dvh; width: 86vw; height: 59dvh;
             transform: translateX(-50%); pointer-events: none;
-            background-image: url('assets/table-gg.webp');
-            background-size: 100% 100%; background-repeat: no-repeat;
             filter: drop-shadow(0 16px 24px rgba(0,0,0,0.6));
+        }
+        .pt-fsvg svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+        .pt-fsvg::after {
+            content: ''; position: absolute; inset: 0;
+            background-image: url('assets/table-frame.webp');
+            background-size: 100% 100%; background-repeat: no-repeat;
         }
 
         /* דסקטופ: שולחן קפסולה רחב במקום עיגול */
@@ -2617,6 +2621,22 @@ const CardPips = ({
     size: "0.72em"
   }))));
 };
+/* Skinnable felt color layer: the frame (bumper/shading/pinline) is a
+   baked image on top; this SVG underneath supplies ONLY the felt color,
+   driven by the --feltA/B/C skin variables — so table skins work. */
+const PT_FELT_SVG = `
+<svg viewBox="26 90.28 338 498" preserveAspectRatio="none">
+ <defs>
+  <radialGradient id="ptFeltC" cx="0.5" cy="0.38" r="0.78">
+   <stop offset="0" style="stop-color:var(--feltA,#2f8a4a)"/>
+   <stop offset="0.5" style="stop-color:var(--feltB,#20713a)"/>
+   <stop offset="1" style="stop-color:var(--feltC,#0e4423)"/>
+  </radialGradient>
+ </defs>
+ <g transform="scale(1,0.7781)">
+  <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="url(#ptFeltC)"/>
+ </g>
+</svg>`;
 const PCard = ({
   card,
   hidden,
@@ -12561,7 +12581,10 @@ function PokerTable({
   }, React.createElement("div", {
     className: "pt-felt3d hidden lg:block"
   }), React.createElement("div", {
-    className: "pt-fsvg lg:hidden"
+    className: "pt-fsvg lg:hidden",
+    dangerouslySetInnerHTML: {
+      __html: PT_FELT_SVG
+    }
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "absolute inset-0 pointer-events-none z-[6]",
     style: {

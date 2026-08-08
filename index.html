@@ -12897,7 +12897,7 @@ function PokerTable({
         size: hidden ? 'xs' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))));
-    })(), isMe && showCards && !gs.allInReveal && (myHand || myEquity !== null) && gs.phase !== 'showdown' && React.createElement("div", {
+    })(), isMe && showCards && !gs.allInReveal && (myHand || myEquity !== null) && BETTING.includes(gs.phase) && React.createElement("div", {
       className: "flex gap-1 mt-1 z-30"
     }, myHand && React.createElement("span", {
       className: "bg-slate-950/90 border border-white/15 text-white text-[10px] font-black px-2 py-0.5 rounded-md whitespace-nowrap"
@@ -13565,13 +13565,19 @@ function PokerTable({
   })), toolsOpen && React.createElement("div", {
     className: "flex flex-col gap-2 animate-pop-in"
   }, React.createElement("button", {
-    onClick: () => ch.setChatOpen(!ch.chatOpen),
+    onClick: () => {
+      setToolsOpen(false); // picking an item folds the menu back to ☰
+      ch.setChatOpen(!ch.chatOpen);
+    },
     title: "Table chat",
     className: "w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl text-lg"
   }, React.createElement("i", {
     className: "fa-solid fa-comment-dots"
   })), React.createElement("button", {
-    onClick: () => setSkinOpen(true),
+    onClick: () => {
+      setToolsOpen(false);
+      setSkinOpen(true);
+    },
     title: "My table look — only you see it",
     className: "w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-amber-300 shadow-xl text-lg"
   }, "🎨"), React.createElement("button", {
@@ -13582,6 +13588,7 @@ function PokerTable({
         localStorage.setItem('pkMuted', m ? '1' : '');
       } catch (e) {}
       setMuteTick(x => x + 1);
+      setToolsOpen(false);
     },
     title: "Sound on/off",
     className: `w-11 h-11 rounded-2xl shadow-xl text-lg border ${window.__pkMuted ? 'bg-rose-900/60 border-rose-500/50 text-rose-300' : 'glass-panel border-transparent text-slate-300 hover:text-white'}`

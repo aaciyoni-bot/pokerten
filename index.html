@@ -10016,6 +10016,7 @@ function PokerTable({
   const [acting, setActing] = useState(false);
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [buyinEdit, setBuyinEdit] = useState(null);
+  const [spinEdit, setSpinEdit] = useState(null);
   const [confirmBox, setConfirmBox] = useState(null);
   const askConfirm = msg => new Promise(resolve => setConfirmBox({
     msg,
@@ -13768,12 +13769,62 @@ function PokerTable({
   }, "✓ SHOWN — the table sees your cards")), canShowBuyIn && setts.spinMode && !tableState.spin ? React.createElement("div", {
     className: "absolute inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
-    className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/30"
-  }, React.createElement("div", {
+    className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/30 relative"
+  }, (isSuperAdmin || canManageGame(user, 'poker')) && !spinEdit && React.createElement("button", {
+    onClick: () => setSpinEdit({
+      sb: String(Number(setts.blinds) || 25),
+      entry: String(Number(setts.spinBuyIn) || 50),
+      stack: String(Number(setts.spinStack) || 1000)
+    }),
+    title: "Edit blinds / entry / chips",
+    className: "absolute top-3 left-3 w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-amber-300 text-sm"
+  }, React.createElement("i", {
+    className: "fa-solid fa-pen"
+  })), React.createElement("div", {
     className: "text-4xl mb-2"
   }, "🎡"), React.createElement("h3", {
     className: "text-xl font-black text-white mb-1"
-  }, "Spin & Cash"), React.createElement("p", {
+  }, "Spin & Cash"), spinEdit ? React.createElement("div", null, React.createElement("div", {
+    className: "grid grid-cols-3 gap-2 mb-3",
+    dir: "ltr"
+  }, [['Small blind', 'sb'], ['Entry', 'entry'], ['Chips', 'stack']].map(([lb, k]) => React.createElement("div", {
+    key: k
+  }, React.createElement("div", {
+    className: "text-[9px] text-slate-400 font-black uppercase tracking-widest mb-1"
+  }, lb), React.createElement("input", {
+    type: "number",
+    min: "1",
+    value: spinEdit[k],
+    onChange: e => setSpinEdit({
+      ...spinEdit,
+      [k]: e.target.value
+    }),
+    className: "w-full bg-slate-950/70 border border-white/15 rounded-xl px-1 py-2 text-white font-black text-sm text-center"
+  })))), React.createElement("div", {
+    className: "text-[11px] text-slate-400 font-bold mb-3",
+    dir: "ltr"
+  }, "Blinds ", formatShort(Number(spinEdit.sb) || 0), "/", formatShort((Number(spinEdit.sb) || 0) * 2), " · Top prize ", formatShort((Number(spinEdit.entry) || 0) * 100)), React.createElement("div", {
+    className: "flex gap-2"
+  }, React.createElement("button", {
+    onClick: async () => {
+      const sb = Number(spinEdit.sb),
+        entry = Number(spinEdit.entry),
+        stack = Number(spinEdit.stack);
+      if (!(sb > 0) || !(entry > 0) || !(stack > 0)) return;
+      try {
+        await window.fb.updateDoc(tblRef(), {
+          'settings.blinds': sb,
+          'settings.spinBuyIn': entry,
+          'settings.spinStack': stack
+        });
+        setSpinEdit(null);
+      } catch (e) {}
+    },
+    className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3 rounded-2xl font-black"
+  }, "Save"), React.createElement("button", {
+    onClick: () => setSpinEdit(null),
+    className: "flex-1 bg-slate-800 border border-white/10 text-slate-300 py-3 rounded-2xl font-black"
+  }, "Cancel"))) : React.createElement(React.Fragment, null, React.createElement("p", {
     className: "text-slate-400 text-xs font-bold mb-4",
     dir: "ltr"
   }, "3 players · winner takes the wheel prize · Balance: ", formatMoney(user.balance)), React.createElement("div", {
@@ -13802,7 +13853,7 @@ function PokerTable({
   }), " Spectate"), React.createElement("button", {
     onClick: onLeave,
     className: "block mx-auto mt-2 text-slate-500 hover:text-white text-xs font-bold underline"
-  }, "Back to lobby"))) : (canShowBuyIn || needRebuy) && React.createElement("div", {
+  }, "Back to lobby")))) : (canShowBuyIn || needRebuy) && React.createElement("div", {
     className: "absolute inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
     className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/30"

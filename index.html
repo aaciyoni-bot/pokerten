@@ -308,7 +308,7 @@
            top at 18% / bottom at 96.3% of the table container) — a known rail
            path the seat ring aligns to. Background ONLY; gameplay stays upright. */
         .pt-fsvg {
-            position: absolute; left: 0; top: 18%; width: 100%; height: 78.3%;
+            position: absolute; inset: 0;
             z-index: 0; pointer-events: none;
             filter: drop-shadow(0 16px 30px rgba(0,0,0,0.55));
         }
@@ -2617,11 +2617,11 @@ const CardPips = ({
    so seats can be placed ON the rail with zero guesswork. Felt colors come
    from the --feltA/B/C skin variables. */
 const PT_FELT_SVG = `
-<svg viewBox="0 0 355 611" preserveAspectRatio="none">
+<svg viewBox="0 0 390 844" preserveAspectRatio="none">
  <defs>
   <linearGradient id="ptRail" x1="0" y1="0" x2="0" y2="1">
-   <stop offset="0" stop-color="#3a4048"/><stop offset="0.42" stop-color="#0b0d10"/>
-   <stop offset="0.8" stop-color="#23272e"/><stop offset="1" stop-color="#07080a"/>
+   <stop offset="0" stop-color="#33383f"/><stop offset="0.35" stop-color="#0f1216"/>
+   <stop offset="0.85" stop-color="#1c2026"/><stop offset="1" stop-color="#08090b"/>
   </linearGradient>
   <radialGradient id="ptFelt" cx="0.5" cy="0.42" r="0.72">
    <stop offset="0" style="stop-color:var(--feltA,#2e6089)"/>
@@ -2635,12 +2635,12 @@ const PT_FELT_SVG = `
    <stop offset="0.55" stop-color="rgba(0,0,0,0)"/><stop offset="1" stop-color="rgba(0,0,0,0.4)"/>
   </radialGradient>
  </defs>
- <path d="M69.9 87.1 A110 110 0 1 1 285.1 87.1 L351.1 396.5 A177.5 177.5 0 1 1 3.9 396.5 Z" fill="url(#ptRail)"/>
- <path d="M83.6 90 A96 96 0 1 1 271.4 90 L337.4 399.4 A163.5 163.5 0 1 1 17.6 399.4 Z" fill="url(#ptFelt)"/>
- <path d="M83.6 90 A96 96 0 1 1 271.4 90 L337.4 399.4 A163.5 163.5 0 1 1 17.6 399.4 Z" fill="url(#ptLamp)"/>
- <path d="M83.6 90 A96 96 0 1 1 271.4 90 L337.4 399.4 A163.5 163.5 0 1 1 17.6 399.4 Z" fill="url(#ptVin)"/>
- <path d="M83.6 90 A96 96 0 1 1 271.4 90 L337.4 399.4 A163.5 163.5 0 1 1 17.6 399.4 Z" fill="none" stroke="rgba(213,179,107,0.4)" stroke-width="2.5"/>
- <path d="M96.3 92.7 A83 83 0 1 1 258.7 92.7 L324.7 402.1 A150.5 150.5 0 1 1 30.3 402.1 Z" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1.5"/>
+ <path d="M118,138 Q64,146 48,240 Q24,410 28,528 Q34,648 122,718 Q195,740 268,718 Q356,648 362,528 Q366,410 342,240 Q326,146 272,138 Q195,120 118,138 Z" fill="url(#ptRail)"/>
+ <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="url(#ptFelt)"/>
+ <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="url(#ptLamp)"/>
+ <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="url(#ptVin)"/>
+ <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="none" stroke="rgba(213,179,107,0.4)" stroke-width="2"/>
+ <path d="M140,190 Q100,198 88,268 Q70,414 74,522 Q80,614 148,668 Q195,684 242,668 Q310,614 316,522 Q320,414 302,268 Q290,198 250,190 Q195,176 140,190 Z" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1.5"/>
 </svg>`;
 const PCard = ({
   card,
@@ -12135,14 +12135,14 @@ function PokerTable({
     // SVG felt (top 18% / bottom 96.3% of the container). Hero bottom-center.
     // Rings are per TABLE CAPACITY (physical seats), not per seated count —
     // vacant slots render as small "sit here" discs, exactly like ClubGG.
-    2: [[50, 90], [50, 19]],
-    3: [[50, 90], [15, 45], [85, 45]],
-    4: [[50, 90], [11, 62], [50, 19], [89, 62]],
-    5: [[50, 90], [11, 70], [22, 25], [78, 25], [89, 70]],
-    6: [[50, 90], [12, 73], [15, 44], [50, 19], [85, 44], [88, 73]],
-    7: [[50, 90], [12, 76], [11, 52], [26, 24], [74, 24], [89, 52], [88, 76]],
-    8: [[50, 90], [12, 78], [10, 56], [16, 34], [50, 19], [84, 34], [90, 56], [88, 78]],
-    9: [[50, 90], [12, 80], [9, 60], [14, 40], [30, 23], [70, 23], [86, 40], [91, 60], [88, 80]]
+    2: [[50, 89], [50, 18]],
+    3: [[50, 89], [14, 44], [86, 44]],
+    4: [[50, 89], [11, 60], [50, 18], [89, 60]],
+    5: [[50, 89], [11, 68], [22, 24], [78, 24], [89, 68]],
+    6: [[50, 89], [12, 72], [16, 44], [50, 18], [85, 44], [88, 72]],
+    7: [[50, 89], [12, 76], [11, 50], [27, 23], [73, 23], [89, 50], [88, 76]],
+    8: [[50, 89], [12, 78], [10, 54], [16, 32], [50, 18], [84, 32], [90, 54], [88, 78]],
+    9: [[50, 89], [12, 80], [9, 58], [14, 38], [30, 22], [70, 22], [86, 38], [91, 58], [88, 80]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -12718,14 +12718,14 @@ function PokerTable({
       const [ex, ey] = slotXY(s);
       out.push(React.createElement("div", {
         key: 'es' + s,
-        className: "absolute z-10 pointer-events-none",
+        className: "absolute z-10 pointer-events-none " + (gs.phase !== 'waiting' ? 'opacity-40' : ''),
         style: {
           left: `${ex}%`,
           top: `${ey}%`,
           transform: 'translate(-50%,-50%)'
         }
       }, React.createElement("div", {
-        className: "w-11 h-11 rounded-full bg-slate-950/50 border border-gold-400/25 flex items-center justify-center text-gold-400/45 text-lg font-black shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)]"
+        className: "w-10 h-10 rounded-full bg-slate-950/60 border border-gold-400/30 flex items-center justify-center text-gold-400/40 text-base font-black shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)]"
       }, "+")));
     }
     return out;

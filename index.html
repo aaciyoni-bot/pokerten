@@ -311,9 +311,9 @@
                still reaches just above the controls. Background ONLY — the
                gameplay layer stays upright. */
             .pt-felt3d {
-                inset: -30% -3% 15% -3%;
-                transform: perspective(820px) rotateX(33deg);
-                transform-origin: 50% 40%;
+                inset: -27% 8.5% 1.5% 8.5%;
+                transform: perspective(1050px) rotateX(33deg);
+                transform-origin: 50% 75%;
             }
         }
 
@@ -12106,14 +12106,14 @@ function PokerTable({
     // v2 perspective ring: pods sit ON the rail (perimeter), Y compressed
     // toward the far (top) end and spread wide at the near end — the center
     // of the felt stays open for board + pot. Hero bottom-center.
-    2: [[50, 88], [50, 15]],
-    3: [[50, 88], [13, 30], [87, 30]],
-    4: [[50, 88], [9, 55], [50, 15], [91, 55]],
-    5: [[50, 88], [10, 70], [20, 20], [80, 20], [90, 70]],
-    6: [[50, 88], [10, 72], [12, 26], [50, 15], [88, 26], [90, 72]],
-    7: [[50, 88], [11, 74], [9, 38], [30, 17], [70, 17], [91, 38], [89, 74]],
-    8: [[50, 88], [11, 76], [8, 45], [24, 19], [50, 15], [76, 19], [92, 45], [89, 76]],
-    9: [[50, 88], [12, 78], [7, 52], [16, 26], [38, 16], [62, 16], [84, 26], [93, 52], [88, 78]]
+    2: [[50, 88], [50, 14]],
+    3: [[50, 88], [21, 30], [79, 30]],
+    4: [[50, 88], [15, 55], [50, 14], [85, 55]],
+    5: [[50, 88], [13, 70], [23, 20], [77, 20], [87, 70]],
+    6: [[50, 88], [13, 72], [21, 26], [50, 14], [79, 26], [87, 72]],
+    7: [[50, 88], [13, 74], [18, 38], [33, 16], [67, 16], [82, 38], [87, 74]],
+    8: [[50, 88], [13, 76], [17, 45], [26, 19], [50, 14], [74, 19], [83, 45], [87, 76]],
+    9: [[50, 88], [13, 78], [15, 55], [21, 30], [34, 15], [66, 15], [79, 30], [85, 55], [87, 78]]
   };
   const seatXY = i => {
     const lay = (SEAT_LAYOUTS[Math.min(9, Math.max(2, N))] || SEAT_LAYOUTS[6])[i];
@@ -12121,7 +12121,7 @@ function PokerTable({
     // Overflow seat (10+): place on the table ellipse instead of stacking
     // players in the middle / off-screen.
     const ang = Math.PI / 2 + i / Math.max(N, 2) * Math.PI * 2;
-    return [Math.round(50 + 44 * Math.cos(ang)), Math.round(50 + 41 * Math.sin(ang))];
+    return [Math.round(50 + 36 * Math.cos(ang)), Math.round(50 + 40 * Math.sin(ang))];
   };
   const seatPos = i => {
     const [x, y] = seatXY(i);
@@ -12135,7 +12135,7 @@ function PokerTable({
     // toward the pot pill — with two clamps so it never covers the top
     // nameplates or the hero's cards.
     const [sx, sy] = seatXY(i);
-    const PX = 50, PY = 42, f = 0.34;
+    const PX = 50, PY = 42, f = 0.45;
     const L = sx + (PX - sx) * f;
     let T = sy + (PY - sy) * f;
     if (sy < 30) T = Math.max(T, sy + 17); // stay below the top seat's name pod
@@ -12543,7 +12543,7 @@ function PokerTable({
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 top-[3.5%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
+    className: "absolute left-1/2 top-[36.5%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
     dir: "ltr"
   }, React.createElement("div", {
     className: "text-[10px] font-bold text-slate-200/90 leading-tight"
@@ -12944,7 +12944,7 @@ function PokerTable({
     from: fx.from,
     to: {
       left: '50%',
-      top: '6%' // land on the Total Pot pill (top-center)
+      top: '38%' // land on the Total Pot pill (above the board)
     },
     amount: fx.amount,
     snd: !headless && fxi === 0
@@ -13170,8 +13170,29 @@ function PokerTable({
     // drop shadow + inner highlight (was a flat text pill)
     className: `px-7 py-2.5 rounded-2xl font-black text-sm border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
   }, preCF ? '✓ CHECK/FOLD armed — tap to cancel' : 'CHECK / FOLD'), React.createElement("div", {
-    className: "text-center text-slate-500 font-bold text-xs"
-  }, playersCount === 0 ? 'Waiting for players to sit down...' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...')), spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
+    className: "flex items-center gap-2"
+  }, React.createElement("div", {
+    className: "flex gap-1.5 shrink-0"
+  }, React.createElement("button", {
+    onClick: () => ch.setChatOpen(!ch.chatOpen),
+    title: "Table chat",
+    className: "w-8 h-8 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white text-sm"
+  }, React.createElement("i", {
+    className: "fa-solid fa-comment-dots"
+  })), React.createElement("button", {
+    onClick: () => {
+      setHistoryOpen(true);
+      setHistExpand(null);
+    },
+    title: "Hand history",
+    className: "w-8 h-8 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white text-sm"
+  }, React.createElement("i", {
+    className: "fa-solid fa-clock-rotate-left"
+  }))), React.createElement("div", {
+    className: "flex-1 text-center text-slate-500 font-bold text-xs"
+  }, playersCount === 0 ? 'Waiting for players to sit down...' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), React.createElement("div", {
+    className: "w-[70px] shrink-0"
+  }))), spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
     onClick: () => setSpectate(false),
     className: "mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg"
   }, "Take a seat 🪑")), tour && (() => {
@@ -13565,15 +13586,6 @@ function PokerTable({
   }, React.createElement("button", {
     onClick: () => {
       setToolsOpen(false); // picking an item folds the menu back to ☰
-      ch.setChatOpen(!ch.chatOpen);
-    },
-    title: "Table chat",
-    className: "w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl text-lg"
-  }, React.createElement("i", {
-    className: "fa-solid fa-comment-dots"
-  })), React.createElement("button", {
-    onClick: () => {
-      setToolsOpen(false);
       setSkinOpen(true);
     },
     title: "My table look — only you see it",
@@ -13612,15 +13624,7 @@ function PokerTable({
     className: "absolute -top-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full shadow",
     dir: "ltr",
     title: "Queued — added at end of hand"
-  }, "+", formatShort(myPlayer.pendingTopUp))), React.createElement("button", {
-    // relocated from the old top bar — the felt top stays clean
-    onClick: () => {
-      setHistoryOpen(true);
-      setHistExpand(null);
-    },
-    title: "Hand history",
-    className: "w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl text-lg"
-  }, "🕐"), isGod && React.createElement("button", {
+  }, "+", formatShort(myPlayer.pendingTopUp))), isGod && React.createElement("button", {
     onClick: () => setGodView(!godView),
     title: "GOD view",
     className: `w-11 h-11 rounded-2xl border shadow-xl text-lg ${godView ? 'bg-purple-600 text-white border-purple-400' : 'glass-panel border-transparent text-purple-300'}`

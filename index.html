@@ -10886,6 +10886,7 @@ function PokerTable({
           const tk2 = new Set(Object.values(pl).map(p => p.seatIndex));
           while (tk2.has(si2)) si2++;
           tr.update(tblRef(), {
+            'gameState.__seq': (Number((t.gameState || {}).__seq) || 0) + 1,
             [`players.${user.uid}`]: {
               uid: user.uid,
               name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
@@ -10922,6 +10923,7 @@ function PokerTable({
         });
         tr.update(tblRef(), {
           [`leftStacks.${user.uid}`]: null,
+          'gameState.__seq': (Number((t.gameState || {}).__seq) || 0) + 1,
           [`players.${user.uid}`]: {
             uid: user.uid,
             name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
@@ -11241,7 +11243,8 @@ function PokerTable({
           balance: round2((ms.data().balance || 0) + (p.stack || 0) + (p.pendingTopUp || 0) + (inHand ? 0 : p.bet || 0))
         });
         tr.update(tblRef(), {
-          players: pl
+          players: pl,
+          'gameState.__seq': (Number((t.gameState || {}).__seq) || 0) + 1
         });
       });
     } catch (e) {}
@@ -13226,7 +13229,9 @@ function PokerTable({
     className: "flex flex-col items-center gap-1.5"
   }, inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn && React.createElement("button", {
     onClick: () => setPreCF(v => !v),
-    className: `px-6 py-2.5 rounded-xl font-black text-sm border transition-all active:scale-95 ${preCF ? 'bg-gradient-to-b from-amber-500 to-amber-700 text-white border-amber-300 ring-2 ring-amber-300/60' : 'bg-slate-800/90 text-slate-300 border-white/10 hover:text-white'}`
+    // reads as a real pressable button: raised gradient, visible border,
+    // drop shadow + inner highlight (was a flat text pill)
+    className: `px-7 py-3 rounded-2xl font-black text-sm border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
   }, preCF ? '✓ CHECK/FOLD armed — tap to cancel' : 'CHECK / FOLD'), React.createElement("div", {
     className: "text-center text-slate-500 font-bold text-xs"
   }, inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...')), spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
@@ -17094,7 +17099,8 @@ const tourLateSeat = async (tor, p) => {
           buyTotal: 0
         };
         tr.update(ref, {
-          players: pl
+          players: pl,
+          'gameState.__seq': (Number((t.gameState || {}).__seq) || 0) + 1
         });
         return true;
       });
@@ -17825,14 +17831,20 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
             ...sS.data().players
           };
           delete sPl[mover.uid];
+          // bump BOTH engines' __seq: any in-flight save computed from a
+          // pre-move snapshot aborts as stale instead of erasing the moved
+          // player (that erase destroyed the whole stack — the vanished-chips
+          // incident).
           trx.update(sRef, {
-            players: sPl
+            players: sPl,
+            'gameState.__seq': (Number((sS.data().gameState || {}).__seq) || 0) + 1
           });
           trx.update(dRef, {
             players: {
               ...dS.data().players,
               [mover.uid]: mttEntry(sp, mttFreeSeat(dS.data().players))
-            }
+            },
+            'gameState.__seq': (Number((dS.data().gameState || {}).__seq) || 0) + 1
           });
         });
       } catch (e) {}
@@ -17907,7 +17919,8 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
             players: {
               ...dS.data().players,
               [mover.uid]: mttEntry(sp, mttFreeSeat(dS.data().players))
-            }
+            },
+            'gameState.__seq': (Number((dS.data().gameState || {}).__seq) || 0) + 1
           });
           trx.delete(sRef);
         });
@@ -17931,13 +17944,15 @@ const mttOrchestrate = async (tor, myTables, rakePct) => {
         };
         delete sPl[mover.uid];
         trx.update(sRef, {
-          players: sPl
+          players: sPl,
+          'gameState.__seq': (Number((sS.data().gameState || {}).__seq) || 0) + 1
         });
         trx.update(dRef, {
           players: {
             ...dS.data().players,
             [mover.uid]: mttEntry(sp, mttFreeSeat(dS.data().players))
-          }
+          },
+          'gameState.__seq': (Number((dS.data().gameState || {}).__seq) || 0) + 1
         });
       });
     } catch (e) {}

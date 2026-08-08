@@ -303,6 +303,8 @@
         }
         /* the stage crops the receding far end off the top */
         .pt-stage { overflow: hidden; }
+        /* flat variant (Durak/OFC): same rail & felt, no perspective */
+        .pt-flat .pt-felt3d { transform: none !important; inset: 0 !important; }
         @media (max-width: 1023px) {
             /* half-lying-down: far end ~2/3 the width of the near end, top bleeds
                off-screen. ONLY the background tilts — play stays upright. */
@@ -14820,8 +14822,10 @@ function DurakTable({
   }, (T.deck || []).length))), React.createElement("span", {
     className: "text-[10px] text-slate-400 font-bold bg-black/40 px-2 py-1 rounded-full whitespace-nowrap"
   }, "🗑 ", T.discard || 0))), React.createElement("div", {
-    className: "poker-table w-full max-w-[440px] h-full max-h-[calc(100dvh-265px)] relative"
-  }, T.status === 'playing' && React.createElement("div", {
+    className: "poker-table pt-flat w-full max-w-[440px] h-full max-h-[calc(100dvh-265px)] relative"
+  }, React.createElement("div", {
+    className: "pt-felt3d"
+  }), T.status === 'playing' && React.createElement("div", {
     className: "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-wrap justify-center items-center gap-x-5 gap-y-4 w-[62%] z-10",
     dir: "ltr"
   }, pairs.map((x, i) => React.createElement("div", {

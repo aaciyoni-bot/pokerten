@@ -1273,6 +1273,7 @@ const dicebearUrl = seed => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#' + bg[0] + '"/><stop offset="1" stop-color="#' + bg[1] + '"/></linearGradient></defs><rect width="100" height="100" fill="url(#g)"/><text x="50" y="54" font-size="56" text-anchor="middle" dominant-baseline="central">' + em + '</text></svg>';
     return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
   }
+  if (sd.startsWith('av3d::')) return av3dUrl(sd);
   if (sd.includes('::')) {
     const parts = sd.split('::');
     style = parts[0];
@@ -1287,7 +1288,37 @@ const avatarUrl = x => {
   }
   return dicebearUrl(x);
 };
+// 3D avatar pack: Microsoft Fluent Emoji "3D" renders (MIT), served from
+// jsDelivr. Each entry is [folder, file] exactly as it exists in the repo.
+// A tile that fails to load quietly falls back to the flat avatar.
+const AV3D_BASE = 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/';
+const AV3D = [
+  ['Sunglasses', 'sunglasses'], ['Crown', 'crown'], ['Fire', 'fire'], ['Rocket', 'rocket'],
+  ['Trophy', 'trophy'], ['Game die', 'game_die'], ['Money bag', 'money_bag'], ['Gem stone', 'gem_stone'],
+  ['Spade suit', 'spade_suit'], ['Heart suit', 'heart_suit'], ['Diamond suit', 'diamond_suit'], ['Club suit', 'club_suit'],
+  ['Joker', 'joker'], ['Alien', 'alien'], ['Robot', 'robot'], ['Ghost', 'ghost'],
+  ['Skull', 'skull'], ['Dragon face', 'dragon_face'], ['Unicorn', 'unicorn'], ['Lion', 'lion'],
+  ['Tiger face', 'tiger_face'], ['Fox', 'fox'], ['Wolf', 'wolf'], ['Bear', 'bear'],
+  ['Panda', 'panda'], ['Koala', 'koala'], ['Monkey face', 'monkey_face'], ['Dog face', 'dog_face'],
+  ['Cat face', 'cat_face'], ['Eagle', 'eagle'], ['Owl', 'owl'], ['Shark', 'shark'],
+  ['Octopus', 'octopus'], ['Snake', 'snake'], ['Whale', 'whale'], ['Butterfly', 'butterfly'],
+  ['Ninja', 'ninja'], ['Cowboy hat face', 'cowboy_hat_face'], ['Smiling face with sunglasses', 'smiling_face_with_sunglasses'],
+  ['Face with monocle', 'face_with_monocle'], ['Nerd face', 'nerd_face'], ['Star-struck', 'star-struck'],
+  ['Partying face', 'partying_face'], ['Exploding head', 'exploding_head'], ['Zany face', 'zany_face'],
+  ['Money-mouth face', 'money-mouth_face'], ['Smirking face', 'smirking_face'], ['Detective', 'detective'],
+  ['Mage', 'mage'], ['Superhero', 'superhero'], ['Supervillain', 'supervillain'], ['Vampire', 'vampire'],
+  ['Genie', 'genie'], ['Zombie', 'zombie'], ['Elf', 'elf'], ['Mechanical arm', 'mechanical_arm'],
+  ['Crystal ball', 'crystal_ball'], ['Bomb', 'bomb'], ['High voltage', 'high_voltage'], ['Star', 'star'],
+  ['Comet', 'comet'], ['Volcano', 'volcano'], ['Chess pawn', 'chess_pawn'], ['Direct hit', 'direct_hit']
+].map(x => 'av3d::' + x[0] + '::' + x[1]);
+const av3dUrl = key => {
+  const p = String(key).split('::');
+  return AV3D_BASE + encodeURIComponent(p[1]) + '/3D/' + p[2] + '_3d.png';
+};
 const AVATAR_STYLES = [{
+  id: 'av3d',
+  label: '3D'
+}, {
   id: 'personas',
   label: 'Classic'
 }, {
@@ -1314,9 +1345,28 @@ const AVATAR_STYLES = [{
 }, {
   id: 'pixel-art',
   label: 'Pixel'
+}, {
+  id: 'thumbs',
+  label: 'Thumbs'
+}, {
+  id: 'big-ears',
+  label: 'Big Ears'
+}, {
+  id: 'croodles',
+  label: 'Doodle'
+}, {
+  id: 'avataaars',
+  label: 'Avataaars'
+}, {
+  id: 'fun-emoji',
+  label: 'Fun'
+}, {
+  id: 'emoji-elements',
+  label: 'Elements'
 }];
 const AVATAR_SEEDS = ['Leo', 'Maya', 'Rocky', 'Ziv', 'Nova', 'Ace', 'Luna', 'Rex', 'Miko', 'Dana', 'Tigra', 'Boss', 'Dino', 'Draco', 'Neko', 'Kuro', 'Pika', 'Fox', 'Wolf', 'Simba'];
 const EMOJI_SETS = {
+  'av3d': AV3D,
   'emoji-animals': ['🦁', '🐯', '🦊', '🐺', '🐼', '🐨', '🦅', '🦉', '🐍', '🦈', '🐉', '🦍', '🐘', '🦄', '🐙', '🦋', '🐢', '🐬'].map((e, i) => 'emoji::' + e + '::' + i),
   'emoji-elements': ['🔥', '⚡', '❄️', '🌊', '🌪️', '☀️', '🌙', '⭐', '☄️', '🌋', '💎', '🌈', '🌀', '💠', '⚔️', '🛡️', '👑', '🧿'].map((e, i) => 'emoji::' + e + '::' + i)
 };
@@ -5829,6 +5879,9 @@ function ProfileView({
   }, (EMOJI_SETS[avStyle] || AVATAR_SEEDS.map(sd => avStyle === 'avataaars' ? sd : avStyle + '::' + sd)).map(full => React.createElement("img", {
     key: full,
     src: dicebearUrl(full),
+    onError: e => {
+      e.currentTarget.style.display = 'none';
+    },
     onClick: () => setSeed(full),
     className: `w-12 h-12 rounded-full bg-slate-800 cursor-pointer border-2 transition-all hover:scale-110 ${user.avatarSeed === full ? 'border-gold-400 shadow-[0_0_10px_#D5B36B]' : 'border-transparent'}`
   }))), React.createElement("div", {

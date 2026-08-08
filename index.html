@@ -304,18 +304,15 @@
         .pt-stage { overflow: hidden; }
         /* flat variant (Durak/OFC): same rail & felt, no perspective */
         .pt-flat .pt-felt3d { transform: none !important; inset: 0 !important; }
-        @media (max-width: 1023px) {
-            /* REAL foreshortening: perspective() inside the transform makes the
-               far end visibly ~2/3 the width of the near end. Vertical squeeze
-               from the rotation is repaid with a tall bleed so the near edge
-               still reaches just above the controls. Background ONLY — the
-               gameplay layer stays upright. */
-            .pt-felt3d {
-                inset: -27% 8.5% 1.5% 8.5%;
-                transform: perspective(1050px) rotateX(33deg);
-                transform-origin: 50% 75%;
-            }
+        /* Mobile felt = exact SVG capsule (near end 91vw, far end 0.62×near,
+           top at 18% / bottom at 96.3% of the table container) — a known rail
+           path the seat ring aligns to. Background ONLY; gameplay stays upright. */
+        .pt-fsvg {
+            position: absolute; left: 0; top: 18%; width: 100%; height: 78.3%;
+            z-index: 0; pointer-events: none;
+            filter: drop-shadow(0 16px 30px rgba(0,0,0,0.55));
         }
+        .pt-fsvg svg { display: block; width: 100%; height: 100%; }
 
         /* דסקטופ: שולחן קפסולה רחב במקום עיגול */
         @media (min-width: 1024px) {
@@ -426,7 +423,7 @@
         /* casino-standard denominations: 1 white, 5 red, 25 green, 100 black, 500 purple, 1000 gold */
         .chip-1000 { --chipC: #c99a2e; } .chip-500 { --chipC: #7c3aed; } .chip-100 { --chipC: #1a1d24; } .chip-25 { --chipC: #0e7a45; } .chip-5 { --chipC: #bf2626; } .chip-1 { --chipC: #8494a8; }
 
-        .player-pod { width: 48px; height: 48px; border-radius: 50%; background-color: #121a2a; border: 2px solid #31415f; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.05), inset 0 0 12px rgba(0,0,0,0.3); background-size: cover; background-position: center; position: relative; }
+        .player-pod { width: 52px; height: 52px; border-radius: 50%; background-color: #121a2a; border: 2px solid #31415f; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.05), inset 0 0 12px rgba(0,0,0,0.3); background-size: cover; background-position: center; position: relative; }
         .active-glow { border-color: #f5c860 !important; animation: pulseBorder 1.5s infinite; }
         @keyframes pulseBorder { 0%,100% { box-shadow: 0 0 10px rgba(245,200,96,0.4); } 50% { box-shadow: 0 0 24px rgba(245,200,96,0.85); } }
 
@@ -2614,6 +2611,37 @@ const CardPips = ({
     size: "0.72em"
   }))));
 };
+/* Mobile table background: a tapered capsule drawn as exact SVG geometry
+   (355×611 design space; near half-width 177.5, far half-width 110). The
+   rail, gold pinline and inner deco line are strokes on the same known path,
+   so seats can be placed ON the rail with zero guesswork. Felt colors come
+   from the --feltA/B/C skin variables. */
+const PT_FELT_SVG = `
+<svg viewBox="0 0 355 611" preserveAspectRatio="none">
+ <defs>
+  <linearGradient id="ptRail" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#3a4048"/><stop offset="0.42" stop-color="#0b0d10"/>
+   <stop offset="0.8" stop-color="#23272e"/><stop offset="1" stop-color="#07080a"/>
+  </linearGradient>
+  <radialGradient id="ptFelt" cx="0.5" cy="0.42" r="0.72">
+   <stop offset="0" style="stop-color:var(--feltA,#2e6089)"/>
+   <stop offset="0.55" style="stop-color:var(--feltB,#1f4a6e)"/>
+   <stop offset="1" style="stop-color:var(--feltC,#132f47)"/>
+  </radialGradient>
+  <radialGradient id="ptLamp" cx="0.5" cy="0.4" r="0.55">
+   <stop offset="0" stop-color="rgba(255,255,255,0.10)"/><stop offset="1" stop-color="rgba(255,255,255,0)"/>
+  </radialGradient>
+  <radialGradient id="ptVin" cx="0.5" cy="0.45" r="0.75">
+   <stop offset="0.55" stop-color="rgba(0,0,0,0)"/><stop offset="1" stop-color="rgba(0,0,0,0.4)"/>
+  </radialGradient>
+ </defs>
+ <path d="M69.9 87.1 A110 110 0 1 1 285.1 87.1 L351.1 396.5 A177.5 177.5 0 1 1 3.9 396.5 Z" fill="url(#ptRail)"/>
+ <path d="M83.6 90 A96 96 0 1 1 271.4 90 L337.4 399.4 A163.5 163.5 0 1 1 17.6 399.4 Z" fill="url(#ptFelt)"/>
+ <path d="M83.6 90 A96 96 0 1 1 271.4 90 L337.4 399.4 A163.5 163.5 0 1 1 17.6 399.4 Z" fill="url(#ptLamp)"/>
+ <path d="M83.6 90 A96 96 0 1 1 271.4 90 L337.4 399.4 A163.5 163.5 0 1 1 17.6 399.4 Z" fill="url(#ptVin)"/>
+ <path d="M83.6 90 A96 96 0 1 1 271.4 90 L337.4 399.4 A163.5 163.5 0 1 1 17.6 399.4 Z" fill="none" stroke="rgba(213,179,107,0.4)" stroke-width="2.5"/>
+ <path d="M96.3 92.7 A83 83 0 1 1 258.7 92.7 L324.7 402.1 A150.5 150.5 0 1 1 30.3 402.1 Z" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="1.5"/>
+</svg>`;
 const PCard = ({
   card,
   hidden,
@@ -12103,26 +12131,39 @@ function PokerTable({
   }
   const N = Math.max(displayList.length, 2);
   const SEAT_LAYOUTS = {
-    // v2 perspective ring: pods sit ON the rail (perimeter), Y compressed
-    // toward the far (top) end and spread wide at the near end — the center
-    // of the felt stays open for board + pot. Hero bottom-center.
-    2: [[50, 88], [50, 14]],
-    3: [[50, 88], [21, 30], [79, 30]],
-    4: [[50, 88], [15, 55], [50, 14], [85, 55]],
-    5: [[50, 88], [13, 70], [23, 20], [77, 20], [87, 70]],
-    6: [[50, 88], [13, 72], [21, 26], [50, 14], [79, 26], [87, 72]],
-    7: [[50, 88], [13, 74], [18, 38], [33, 16], [67, 16], [82, 38], [87, 74]],
-    8: [[50, 88], [13, 76], [17, 45], [26, 19], [50, 14], [74, 19], [83, 45], [87, 76]],
-    9: [[50, 88], [13, 78], [15, 55], [21, 30], [34, 15], [66, 15], [79, 30], [85, 55], [87, 78]]
+    // GG-style ring: avatar centers sit ON the rail line of the full-capsule
+    // SVG felt (top 18% / bottom 96.3% of the container). Hero bottom-center.
+    // Rings are per TABLE CAPACITY (physical seats), not per seated count —
+    // vacant slots render as small "sit here" discs, exactly like ClubGG.
+    2: [[50, 90], [50, 19]],
+    3: [[50, 90], [15, 45], [85, 45]],
+    4: [[50, 90], [11, 62], [50, 19], [89, 62]],
+    5: [[50, 90], [11, 70], [22, 25], [78, 25], [89, 70]],
+    6: [[50, 90], [12, 73], [15, 44], [50, 19], [85, 44], [88, 73]],
+    7: [[50, 90], [12, 76], [11, 52], [26, 24], [74, 24], [89, 52], [88, 76]],
+    8: [[50, 90], [12, 78], [10, 56], [16, 34], [50, 19], [84, 34], [90, 56], [88, 78]],
+    9: [[50, 90], [12, 80], [9, 60], [14, 40], [30, 23], [70, 23], [86, 40], [91, 60], [88, 80]]
   };
-  const seatXY = i => {
-    const lay = (SEAT_LAYOUTS[Math.min(9, Math.max(2, N))] || SEAT_LAYOUTS[6])[i];
-    if (lay) return lay;
-    // Overflow seat (10+): place on the table ellipse instead of stacking
+  // Physical-slot mapping: each player keeps his real seat around the ring,
+  // rotated so the hero's own seat lands on the bottom slot. Capacity covers
+  // every real seatIndex so two players can never share a slot.
+  const maxSeatIx = list.reduce((m, p) => Math.max(m, Number(p.seatIndex) || 0), 0);
+  const capN = Math.max(2, Math.min(10, Math.max(Number(setts.maxPlayers) || 0, maxSeatIx + 1, N)));
+  const heroSeatIx = isSeated ? Number(players[user.uid]?.seatIndex) || 0 : 0;
+  const slotXY = s => {
+    const ring = SEAT_LAYOUTS[Math.min(9, Math.max(2, capN))] || SEAT_LAYOUTS[6];
+    if (ring[s]) return ring[s];
+    // Overflow slot (10+): place on the table ellipse instead of stacking
     // players in the middle / off-screen.
-    const ang = Math.PI / 2 + i / Math.max(N, 2) * Math.PI * 2;
-    return [Math.round(50 + 36 * Math.cos(ang)), Math.round(50 + 40 * Math.sin(ang))];
+    const ang = Math.PI / 2 + s / Math.max(capN, 2) * Math.PI * 2;
+    return [Math.round(50 + 36 * Math.cos(ang)), Math.round(50 + 38 * Math.sin(ang))];
   };
+  const slotOf = i => {
+    const p = displayList[i];
+    if (!p) return 0;
+    return (((Number(p.seatIndex) || 0) - heroSeatIx) % capN + capN) % capN;
+  };
+  const seatXY = i => slotXY(slotOf(i));
   const seatPos = i => {
     const [x, y] = seatXY(i);
     return {
@@ -12132,14 +12173,20 @@ function PokerTable({
   };
   const betPos = i => {
     // ONE rule, every seat: the bet sits on the straight line from the seat
-    // toward the pot pill — with two clamps so it never covers the top
-    // nameplates or the hero's cards.
+    // toward the pot pill (50,40) — with clamps so it never covers the top
+    // nameplates, the board row (49-58%), or the hero's cards.
     const [sx, sy] = seatXY(i);
-    const PX = 50, PY = 42, f = 0.45;
-    const L = sx + (PX - sx) * f;
-    let T = sy + (PY - sy) * f;
-    if (sy < 30) T = Math.max(T, sy + 17); // stay below the top seat's name pod
-    if (sy > 70) T = Math.min(T, 59); // stay above the hero's cards
+    let L, T;
+    if (sy < 30) {
+      // far seats: push well inward and keep ABOVE the pot pill row (38%)
+      L = sx + (50 - sx) * 0.8;
+      T = sy + 11;
+    } else {
+      L = sx + (50 - sx) * 0.48;
+      T = sy + (40 - sy) * 0.42;
+      if (sy >= 50 && sy <= 70) T = Math.max(T, 60); // mid seats: BELOW the board row
+      if (sy > 70) T = Math.min(Math.max(T, 60), 69); // above hero cards, below pot chips
+    }
     return {
       left: `${round2(L)}%`,
       top: `${round2(T)}%`
@@ -12474,7 +12521,7 @@ function PokerTable({
       size: "sm"
     }) : null)))));
   })(), React.createElement("div", {
-    className: "poker-table w-full max-w-[96vw] sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
+    className: "poker-table w-full max-w-[91vw] sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
     style: (() => {
       const F = {
         'NLH': ['#2f7d4d', '#215c37', '#123a20'],
@@ -12527,7 +12574,12 @@ function PokerTable({
       };
     })()
   }, React.createElement("div", {
-    className: "pt-felt3d"
+    className: "pt-felt3d hidden lg:block"
+  }), React.createElement("div", {
+    className: "pt-fsvg lg:hidden",
+    dangerouslySetInnerHTML: {
+      __html: PT_FELT_SVG
+    }
   }), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "absolute inset-0 pointer-events-none z-[6]",
     style: {
@@ -12543,7 +12595,7 @@ function PokerTable({
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 top-[36.5%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
+    className: "absolute left-1/2 top-[38%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
     dir: "ltr"
   }, React.createElement("div", {
     className: "text-[10px] font-bold text-slate-200/90 leading-tight"
@@ -12563,13 +12615,13 @@ function PokerTable({
     }
     return formatShort(setts.blinds) + '/' + formatShort(BB);
   })())), React.createElement("div", {
-    className: "absolute left-1/2 top-[63.5%] -translate-x-1/2 flex gap-5 items-start z-40"
+    className: "absolute left-1/2 top-[59%] -translate-x-1/2 flex gap-5 items-start z-40"
   }, (gs.pots || []).map((pot, i) => React.createElement(CasinoChipStack, {
     key: i,
     amount: pot.amount,
     scale: 0.9
   }))), (gs.board2 || []).length > 0 && React.createElement("div", {
-    className: "absolute left-1/2 top-[57.5%] -translate-x-1/2 flex gap-1 items-center z-30",
+    className: "absolute left-1/2 top-[66%] -translate-x-1/2 flex gap-1 items-center z-30",
     dir: "ltr"
   }, React.createElement("span", {
     className: "text-[8px] font-black text-gold-400 bg-slate-950/85 rounded px-1 py-0.5"
@@ -12583,7 +12635,7 @@ function PokerTable({
     card: c,
     size: "sm"
   })))), React.createElement("div", {
-    className: "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
+    className: "absolute left-1/2 top-[53%] -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
     dir: "ltr"
   }, gs.phase !== 'waiting' && playersCount > 0 && (gs.board || []).map((c, i) => React.createElement("span", {
     key: i,
@@ -12593,21 +12645,21 @@ function PokerTable({
     }
   }, React.createElement(PCard, {
     card: c,
-    size: "xl",
+    size: "lg",
     hl: !!(winHL && winHL.has(cid(c)))
   }))), rabbit.length > 0 && rabbit.map((c, i) => React.createElement("div", {
     key: 'rb' + i,
     className: "relative opacity-75"
   }, React.createElement(PCard, {
     card: c,
-    size: "xl"
+    size: "lg"
   }), React.createElement("span", {
     className: "absolute -top-2 -right-1 text-xs"
   }, "🐰"))), gs.phase !== 'waiting' && playersCount > 0 && [...Array(Math.max(0, 5 - (gs.board || []).length - rabbit.length))].map((_, i) => React.createElement("div", {
     key: 'ph' + i,
-    className: "w-14 opacity-0",
+    className: "w-11 sm:w-12 opacity-0",
     style: {
-      height: '5.1rem'
+      height: '4.4rem'
     }
   }))), React.createElement("div", {
     className: "hidden sm:block absolute left-1/2 top-[60%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%] opacity-70"
@@ -12656,11 +12708,33 @@ function PokerTable({
         transform: 'translate(-50%,-50%)'
       }
     }, "D");
+  })(), (() => {
+    // Vacant seats — small "sit here" discs on the ring (GG-style): the ring
+    // always shows the table's full capacity, never a player floating alone.
+    const occ = new Set(displayList.map((p, i) => slotOf(i)));
+    const out = [];
+    for (let s = 0; s < capN && s < 9; s++) {
+      if (occ.has(s)) continue;
+      const [ex, ey] = slotXY(s);
+      out.push(React.createElement("div", {
+        key: 'es' + s,
+        className: "absolute z-10 pointer-events-none",
+        style: {
+          left: `${ex}%`,
+          top: `${ey}%`,
+          transform: 'translate(-50%,-50%)'
+        }
+      }, React.createElement("div", {
+        className: "w-11 h-11 rounded-full bg-slate-950/50 border border-gold-400/25 flex items-center justify-center text-gold-400/45 text-lg font-black shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)]"
+      }, "+")));
+    }
+    return out;
   })(), displayList.map((p, i) => {
     const isTurn = gs.activeTurnUid === p.uid && inBetting;
     const isMe = p.uid === user.uid;
     const topSeat = parseFloat(seatPos(i).top) < 34;
     const seatXv = parseFloat(seatPos(i).left);
+    const farPod = !isMe && parseFloat(seatPos(i).top) <= 42;
     const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
     const inX = -(seatXv - 50) / 50;
     let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
@@ -12694,13 +12768,19 @@ function PokerTable({
       className: "absolute " + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       style: {
         ...seatPos(i),
-        transform: 'translate(-50%, -50%)'
+        transform: 'translate(-50%, -50%)' + (farPod ? ' scale(0.82)' : '')
       }
     }, isTurn && React.createElement("div", {
       className: "player-spotlight"
     }), p.actionText && React.createElement("div", {
       className: `action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
-      style: isMe ? {} : {
+      style: isMe ? {} : farPod ? {
+        top: 'auto',
+        bottom: '-18px',
+        left: '50%',
+        right: 'auto',
+        transform: 'translateX(-50%)'
+      } : {
         top: '-12px',
         left: '50%',
         right: 'auto',
@@ -12819,7 +12899,7 @@ function PokerTable({
           isBot: !!p.isBot
         });
       },
-      className: `player-pod cursor-pointer ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
+      className: `player-pod cursor-pointer ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-[58px] h-[58px]' : ''}`,
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }
@@ -12844,9 +12924,9 @@ function PokerTable({
     }, "DC"), React.createElement("div", {
       className: "mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
       style: {
-        // 9-max: slimmer pods so neighbors never touch (P2 crowding)
-        width: displayList.length >= 8 ? '76px' : displayList.length >= 6 ? '84px' : '92px',
-        transform: `translateX(${Math.round(inX * 30)}px)`
+        // far pods slimmer (spec: 72px far / 88px near = 0.24T);
+        // centered under the avatar (GG) — no inward shift, bets clear it
+        width: farPod ? '72px' : capN >= 8 ? '80px' : '88px'
       }
     }, React.createElement("div", {
       className: "text-[10px] font-bold text-white truncate leading-tight",
@@ -12866,7 +12946,7 @@ function PokerTable({
       return React.createElement("div", {
         className: `flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
         style: {
-          transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)`
+          transform: `translateX(${Math.round(inX * 12)}px)`
         },
         dir: "ltr"
       }, dispCards.map((c, ci) => doFan ? React.createElement("span", {
@@ -12944,7 +13024,7 @@ function PokerTable({
     from: fx.from,
     to: {
       left: '50%',
-      top: '38%' // land on the Total Pot pill (above the board)
+      top: '39%' // land on the Total Pot pill (above the board)
     },
     amount: fx.amount,
     snd: !headless && fxi === 0
@@ -13021,11 +13101,11 @@ function PokerTable({
   }, React.createElement("i", {
     className: "fa-solid fa-crown ml-2 text-rose-300"
   }), players[gs.dcUid]?.name, " is picking the next game...")), gs.phase === 'waiting' && isSeated && React.createElement("div", {
-    className: "absolute top-16 left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
+    className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
-    className: "shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 px-3 pt-1.5 pb-[max(6px,env(safe-area-inset-bottom))] z-40 min-h-[86px] flex flex-col justify-center"
+    className: "shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 px-2 pt-1 pb-[max(5px,env(safe-area-inset-bottom))] z-40 min-h-[64px] flex flex-col justify-center relative"
   }, isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
-    className: "flex justify-center gap-2 mb-2"
+    className: "absolute bottom-full left-2 mb-1.5 flex gap-1.5 z-40 pointer-events-none"
   }, !gs.allInReveal && myHand && React.createElement("span", {
     className: "bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg"
   }, myHand), !gs.allInReveal && myEquity !== null && React.createElement("span", {
@@ -13120,17 +13200,17 @@ function PokerTable({
     }, React.createElement("button", {
       disabled: acting,
       onClick: () => myAct('fold'),
-      className: "btn-fold text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform"
+      className: "btn-fold text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform"
     }, "FOLD"), toCallMe === 0 && React.createElement("button", {
       disabled: acting,
       onClick: () => myAct('call'),
-      className: "btn-call text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform"
+      className: "btn-call text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform"
     }, "CHECK"), React.createElement("button", {
       disabled: acting,
       onClick: () => {
         toCallMe > 0 && toCallMe >= (myPlayer?.stack || 0) ? myAct('call') : myAct('raise', allInTo);
       },
-      className: "bg-gradient-to-b from-rose-500 to-rose-800 text-white py-4 rounded-xl font-black text-base shadow-lg active:scale-95 transition-transform"
+      className: "bg-gradient-to-b from-rose-500 to-rose-800 text-white py-2 rounded-xl font-black text-base shadow-lg active:scale-95 transition-transform"
     }, "🔥 ALL IN")) : React.createElement("div", {
       className: `grid grid-cols-3 gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`
     }, React.createElement("button", {
@@ -13139,14 +13219,14 @@ function PokerTable({
         setRaiseOpen(false);
         myAct('fold');
       },
-      className: "btn-fold text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform"
+      className: "btn-fold text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform"
     }, "FOLD"), React.createElement("button", {
       disabled: acting,
       onClick: () => {
         setRaiseOpen(false);
         myAct('call');
       },
-      className: "btn-call text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform"
+      className: "btn-call text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform"
     }, toCallMe > 0 ? React.createElement("span", null, "CALL ", React.createElement("span", {
       dir: "ltr",
       className: "block text-[11px] opacity-90"
@@ -13156,27 +13236,20 @@ function PokerTable({
         if (!raiseOpen) setRaiseAmt(minRaiseTo);
         setRaiseOpen(o => !o);
       },
-      className: `btn-raise text-white py-4 font-black text-base shadow-lg active:scale-95 transition-transform ${raiseOpen ? 'ring-2 ring-amber-300/70' : ''}`
+      className: `btn-raise text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform ${raiseOpen ? 'ring-2 ring-amber-300/70' : ''}`
     }, "RAISE ", React.createElement("span", {
       className: "block text-[11px] opacity-90"
     }, raiseOpen ? '▼ close' : '▲'))));
   })() : gs.phase === 'discard' && isSeated && myCards.length === 3 ? React.createElement("div", {
     className: "text-center text-amber-300 font-black text-sm animate-pulse"
   }, "🍍 Tap a top card to discard it") : React.createElement("div", {
-    className: "flex flex-col items-center gap-1.5"
-  }, inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn && React.createElement("button", {
-    onClick: () => setPreCF(v => !v),
-    // reads as a real pressable button: raised gradient, visible border,
-    // drop shadow + inner highlight (was a flat text pill)
-    className: `px-7 py-2.5 rounded-2xl font-black text-sm border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
-  }, preCF ? '✓ CHECK/FOLD armed — tap to cancel' : 'CHECK / FOLD'), React.createElement("div", {
-    className: "flex items-center gap-2"
+    className: "flex items-center gap-2 pl-10"
   }, React.createElement("div", {
     className: "flex gap-1.5 shrink-0"
   }, React.createElement("button", {
     onClick: () => ch.setChatOpen(!ch.chatOpen),
     title: "Table chat",
-    className: "w-8 h-8 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white text-sm"
+    className: "w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white text-sm"
   }, React.createElement("i", {
     className: "fa-solid fa-comment-dots"
   })), React.createElement("button", {
@@ -13185,14 +13258,18 @@ function PokerTable({
       setHistExpand(null);
     },
     title: "Hand history",
-    className: "w-8 h-8 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white text-sm"
+    className: "w-9 h-9 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-white text-sm"
   }, React.createElement("i", {
     className: "fa-solid fa-clock-rotate-left"
   }))), React.createElement("div", {
-    className: "flex-1 text-center text-slate-500 font-bold text-xs"
-  }, playersCount === 0 ? 'Waiting for players to sit down...' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), React.createElement("div", {
-    className: "w-[70px] shrink-0"
-  }))), spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
+    className: "flex-1 text-center text-slate-500 font-bold text-xs truncate"
+  }, playersCount === 0 ? 'Waiting for players to sit down...' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn ? React.createElement("button", {
+    onClick: () => setPreCF(v => !v),
+    // reads as a real pressable button: raised gradient, visible border
+    className: `shrink-0 px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
+  }, preCF ? '✓ CHECK/FOLD' : 'CHECK / FOLD') : React.createElement("div", {
+    className: "w-9 shrink-0"
+  })), spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
     onClick: () => setSpectate(false),
     className: "mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg"
   }, "Take a seat 🪑")), tour && (() => {
@@ -13572,11 +13649,11 @@ function PokerTable({
     className: "absolute top-3 left-1/2 -translate-x-1/2 z-[70] bg-amber-500/95 text-slate-900 font-black text-xs rounded-full px-4 py-2 shadow-xl cursor-pointer",
     onClick: toggleSitOut
   }, "☕ You're in Sit out - tap to return ✋"), isSeated && React.createElement("div", {
-    className: "absolute bottom-[10.5rem] left-2 z-[60] flex flex-col-reverse items-start gap-2"
+    className: "absolute bottom-[max(13px,env(safe-area-inset-bottom))] left-2 z-[60] flex flex-col-reverse items-start gap-2"
   }, React.createElement("button", {
     onClick: () => setToolsOpen(o => !o),
-    title: "Table menu — exit, history, chat, settings",
-    className: `w-11 h-11 rounded-2xl shadow-xl text-lg border relative ${toolsOpen ? 'bg-amber-500 text-slate-900 border-amber-300' : 'glass-panel border-transparent text-slate-300 hover:text-white'}`
+    title: "Table menu",
+    className: `w-9 h-9 rounded-xl shadow-xl text-base border relative ${toolsOpen ? 'bg-amber-500 text-slate-900 border-amber-300' : 'glass-panel border-transparent text-slate-300 hover:text-white'}`
   }, React.createElement("i", {
     className: `fa-solid ${toolsOpen ? 'fa-xmark' : 'fa-bars'}`
   }), !toolsOpen && (myPlayer?.sitOut || myPlayer?.sitOutNext || (myPlayer?.pendingTopUp || 0) > 0) && React.createElement("span", {
@@ -14926,7 +15003,7 @@ function DurakTable({
       hidden: !showAll,
       size: "sm"
     })))), React.createElement("div", {
-      className: `player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-14 h-14' : ''}`,
+      className: `player-pod ${isTurn ? 'active-glow' : ''} ${isMe ? 'w-[58px] h-[58px]' : ''}`,
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }

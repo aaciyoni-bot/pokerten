@@ -879,12 +879,44 @@
         .tbl-seats .seat-cap { color: #5b6b82; }
 
         /* ===== Club picker: a swipeable deck (GG-style) ===== */
-        .cl-code-wrap { background: var(--pt-raised, #131a26); border: 1px solid rgba(213,179,107,0.28); border-radius: 18px; padding: 12px 12px 14px; box-shadow: 0 10px 26px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04); }
-        .cl-code-title { display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--pt-text-2, #8b98ad); font-size: 11.5px; font-weight: 700; margin-bottom: 10px; }
+        /* the club page must fit one screen — the deck absorbs whatever height
+           is left over, so nothing ever pushes the page into a scroll */
+        @media (max-width: 639px) {
+            .cl-page { display: flex; flex-direction: column; overflow: hidden !important; }
+            .cl-page > div { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+            .cl-deck { flex: 1 1 auto; min-height: 0; align-items: stretch; }
+            .cl-card { height: 100%; }
+            .cl-art { height: auto !important; flex: 1 1 auto; min-height: 56px; }
+        }
+        /* short phones: trade a little chrome for a page that always fits */
+        @media (max-width: 400px), (max-height: 800px) {
+            .cl-banner-pill:nth-child(3) { display: none; }
+        }
+        @media (max-width: 639px) and (max-height: 800px) {
+            .cl-page .logo-shine { font-size: 20px; }
+            .cl-page .cl-code-wrap { padding: 6px 8px 7px; }
+            .cl-box { width: 36px; height: 36px; font-size: 17px; }
+            .cl-banner-t { font-size: 13px; }
+            .cl-banner-pill { padding: 4px 9px; font-size: 10px; }
+        }
+        @media (max-width: 639px) and (max-height: 830px) {
+            .cl-code-wrap { padding: 7px 8px 8px; }
+            .cl-code-title { font-size: 10px; margin-bottom: 5px; }
+            .cl-box { width: 38px; height: 40px; font-size: 18px; }
+            .cl-banner { padding: 9px 12px; margin-top: 8px; }
+            .cl-banner-s { display: none; }
+            .cl-banner-row { margin-top: 7px; flex-wrap: nowrap; overflow: hidden; }
+            .cl-banner-pill { white-space: nowrap; }
+            .cl-name { font-size: 13px; margin-top: 4px; }
+            .cl-stats { margin: 5px 0; }
+            .cl-dots { margin-top: 6px; }
+        }
+        .cl-code-wrap { background: var(--pt-raised, #131a26); border: 1px solid rgba(213,179,107,0.28); border-radius: 18px; padding: 9px 10px 11px; box-shadow: 0 10px 26px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04); }
+        .cl-code-title { display: flex; align-items: center; justify-content: center; gap: 7px; color: var(--pt-text-2, #8b98ad); font-size: 11px; font-weight: 700; margin-bottom: 7px; }
         .cl-code-title i { color: var(--pt-gold, #D5B36B); font-size: 11px; }
         .cl-code { position: relative; display: flex; gap: 7px; justify-content: center; cursor: text; }
         .cl-box {
-            width: 44px; height: 52px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            width: 42px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
             background: #0b0f16; border: 1.5px solid rgba(255,255,255,0.09);
             color: #fff; font-size: 22px; font-weight: 800; font-family: 'Rubik', sans-serif;
             box-shadow: inset 0 2px 6px rgba(0,0,0,0.5); transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -892,15 +924,15 @@
         .cl-box-filled { border-color: rgba(213,179,107,0.5); }
         .cl-box-on { border-color: var(--pt-gold, #D5B36B); box-shadow: inset 0 2px 6px rgba(0,0,0,0.5), 0 0 0 3px rgba(213,179,107,0.16); }
         .cl-code-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: none; background: transparent; font-size: 16px; }
-        @media (max-width: 380px) { .cl-box { width: 40px; height: 48px; font-size: 20px; } }
+        @media (max-width: 380px) { .cl-box { width: 38px; height: 44px; font-size: 19px; } }
 
-        .cl-banner { position: relative; overflow: hidden; border-radius: 20px; padding: 16px 18px; margin-top: 18px;
+        .cl-banner { position: relative; overflow: hidden; border-radius: 18px; padding: 12px 14px; margin-top: 12px;
             background: linear-gradient(115deg, #1a2130 0%, #101722 45%, #1d1608 100%);
             border: 1px solid rgba(213,179,107,0.3); box-shadow: 0 14px 34px rgba(0,0,0,0.5); }
         .cl-banner::after { content: ''; position: absolute; right: -30px; top: -40px; width: 170px; height: 170px; border-radius: 50%; background: radial-gradient(circle, rgba(213,179,107,0.22), transparent 68%); pointer-events: none; }
-        .cl-banner-t { color: #fff; font-size: 15px; font-weight: 800; line-height: 1.25; }
-        .cl-banner-s { color: var(--pt-text-2, #8b98ad); font-size: 11.5px; font-weight: 600; margin-top: 4px; line-height: 1.45; }
-        .cl-banner-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+        .cl-banner-t { color: #fff; font-size: 14px; font-weight: 800; line-height: 1.25; }
+        .cl-banner-s { color: var(--pt-text-2, #8b98ad); font-size: 11px; font-weight: 600; margin-top: 3px; line-height: 1.4; }
+        .cl-banner-row { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
         .cl-banner-pill { display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.09); border-radius: 99px; padding: 5px 11px; color: #cbd5e1; font-size: 11px; font-weight: 700; }
         .cl-banner-pill i { color: var(--pt-gold, #D5B36B); font-size: 10px; }
 
@@ -913,13 +945,13 @@
         .cl-deck { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; padding: 4px 0 6px; scrollbar-width: none; }
         .cl-deck::-webkit-scrollbar { display: none; }
         .cl-card {
-            flex: 0 0 44%; max-width: 168px; scroll-snap-align: center;
+            flex: 0 0 42%; max-width: 156px; scroll-snap-align: center;
             background: var(--pt-raised, #131a26); border: 1px solid rgba(255,255,255,0.07);
             border-radius: 18px; padding: 9px; display: flex; flex-direction: column;
             box-shadow: 0 18px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
         }
         .cl-art {
-            position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: 18px; overflow: hidden;
+            position: relative; width: 100%; height: clamp(96px, 17vh, 150px); border-radius: 18px; overflow: hidden;
             background: linear-gradient(160deg, #1b2432, #0b0f16);
             border: 1px solid rgba(213,179,107,0.22);
             display: flex; align-items: center; justify-content: center;
@@ -929,17 +961,17 @@
         .cl-owner { position: absolute; top: 8px; left: 8px; font-size: 9px; font-weight: 800; letter-spacing: 0.12em; color: #12151b; background: var(--pt-gold, #D5B36B); border-radius: 99px; padding: 2px 8px; }
         .cl-del { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border-radius: 10px; border: none; background: rgba(0,0,0,0.5); color: #64748b; font-size: 11px; }
         .cl-del:hover { color: #fb7185; }
-        .cl-name { margin-top: 8px; text-align: center; color: #fff; font-size: 14px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cl-name { margin-top: 6px; text-align: center; color: #fff; font-size: 14px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .cl-id { text-align: center; color: var(--pt-text-2, #8b98ad); font-size: 9.5px; font-weight: 600; margin-top: 1px; }
-        .cl-stats { display: flex; gap: 5px; margin: 8px 0 8px; }
+        .cl-stats { display: flex; gap: 5px; margin: 6px 0 6px; }
         .cl-stat { flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); border-radius: 9px; padding: 5px 2px; color: #cbd5e1; font-size: 11px; font-weight: 700; }
         .cl-stat i { color: var(--pt-gold, #D5B36B); font-size: 11px; opacity: 0.85; }
-        .cl-cta { margin-top: auto; width: 100%; border: none; border-radius: 11px; padding: 9px 0; font-size: 13px; font-weight: 800; background: linear-gradient(180deg, #e7c680, #c39d4f); color: #12151b; box-shadow: 0 6px 18px rgba(213,179,107,0.22); }
+        .cl-cta { margin-top: auto; width: 100%; border: none; border-radius: 11px; padding: 8px 0; font-size: 13px; font-weight: 800; background: linear-gradient(180deg, #e7c680, #c39d4f); color: #12151b; box-shadow: 0 6px 18px rgba(213,179,107,0.22); }
         .cl-cta-wait { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--pt-text-2, #8b98ad); font-size: 10.5px; box-shadow: none; text-align: center; }
         .cl-cta-create { background: linear-gradient(180deg, #17b26a, #0e8a50); color: #fff; box-shadow: 0 6px 18px rgba(23,178,106,0.28); }
         .cl-art-create { flex-direction: column; gap: 10px; background: linear-gradient(160deg, #141b26, #090c12); }
         .cl-create-cap { color: #94a3b8; font-size: 10.5px; font-weight: 700; text-align: center; padding: 0 18px; line-height: 1.35; }
-        .cl-dots { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 12px; }
+        .cl-dots { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 9px; }
         .cl-dot { width: 7px; height: 7px; border-radius: 99px; border: none; background: rgba(255,255,255,0.18); padding: 0; transition: width 0.2s ease, background 0.2s ease; }
         .cl-dot-on { width: 20px; background: var(--pt-gold, #D5B36B); }
         .cl-dot-plus { width: 16px; height: 16px; background: rgba(255,255,255,0.08); border: 1px solid rgba(213,179,107,0.35); color: var(--pt-gold, #D5B36B); font-size: 10px; font-weight: 900; line-height: 1; }
@@ -4673,7 +4705,7 @@ function LeadersView({
     style: {
       overflowX: "hidden"
     },
-    className: "scrollable-content aurora-bg px-4 py-3 sm:p-8 h-full"
+    className: "scrollable-content cl-page aurora-bg px-4 py-2 sm:p-8 h-full"
   }, React.createElement("div", {
     className: "max-w-2xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
@@ -5260,10 +5292,10 @@ function ClubsView({
   }, React.createElement("div", {
     className: "max-w-2xl mx-auto animate-fade-in relative z-10 min-h-full flex flex-col"
   }, React.createElement("div", {
-    className: "text-center mb-4 mt-1"
+    className: "text-center mb-3 mt-0 shrink-0"
   }, React.createElement("div", {
     // brand emblem — gives the club landing page identity, matches the sign-in screen
-    className: "w-11 h-11 mx-auto mb-2.5 rounded-2xl flex items-center justify-center",
+    className: "w-9 h-9 mx-auto mb-1.5 rounded-2xl flex items-center justify-center",
     style: {
       background: 'var(--pt-raised)',
       border: '1px solid rgba(213,179,107,0.35)',
@@ -5272,27 +5304,27 @@ function ClubsView({
   }, React.createElement(SuitGlyph, {
     s: '♠',
     color: '#D5B36B',
-    size: "22px"
+    size: "18px"
   })), React.createElement("h1", {
-    className: "logo-shine text-3xl sm:text-4xl tracking-[0.15em] text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400",
+    className: "logo-shine text-2xl sm:text-4xl tracking-[0.15em] text-transparent bg-clip-text bg-gradient-to-l from-gold-400 via-amber-100 to-gold-400",
     style: {
       fontWeight: 700
     }
   }, "POKERTEN"), React.createElement("p", {
-    className: "text-[10px] sm:text-[11px] tracking-[0.3em] uppercase mt-2",
+    className: "hidden sm:block text-[11px] tracking-[0.3em] uppercase mt-2",
     style: {
       color: 'var(--pt-text-2)',
       fontWeight: 500
     }
   }, "Private club games & tournaments"), React.createElement("p", {
-    className: "text-sm mt-3",
+    className: "text-[13px] mt-2",
     style: {
       color: 'var(--pt-text-2)',
       fontWeight: 500
     }
   }, "Hi ", user.username, " — swipe to pick a club"), React.createElement("button", {
     onClick: () => window.fb.signOut(window.fb.auth),
-    className: "text-xs text-slate-500 underline font-bold mt-1"
+    className: "text-[11px] text-slate-500 underline font-bold mt-0.5"
   }, "Log out"), !isStandalone && (canInstall || isIOS || isAndroidMob) && React.createElement("div", {
     className: "mt-4"
   }, React.createElement("button", {
@@ -5413,7 +5445,7 @@ function ClubsView({
   }, "\u2b07\ufe0f"))), document.body)), React.createElement("div", {
     // GG-style: one search bar, then a swipeable deck of club cards with
     // "Create" as the last card. No walls of inputs for a first-time player.
-    className: "mb-5"
+    className: "mb-4 shrink-0"
   }, React.createElement("div", {
     className: "cl-code-wrap"
   }, React.createElement("div", {
@@ -5456,7 +5488,9 @@ function ClubsView({
   }, "You're already ", memOf(foundClub.id).status === 'approved' ? 'a member' : 'pending approval', " in this club.")), (() => {
     // deck = my clubs, then pending, then the Create card (always last)
     const deck = [...myClubs.map(c => ({ c, kind: 'mine' })), ...pendingClubs.map(c => ({ c, kind: 'pending' })), { kind: 'create' }];
-    return React.createElement("div", null, React.createElement("div", {
+    return React.createElement("div", {
+      className: "flex flex-col flex-1 min-h-0"
+    }, React.createElement("div", {
       className: "cl-deck",
       ref: deckRef,
       onScroll: e => {
@@ -5629,7 +5663,7 @@ function ClubsView({
     onClick: () => setCreateOpen(false),
     className: "text-slate-500 hover:text-white underline text-xs font-bold"
   }, "Cancel"))), document.body), React.createElement("div", {
-    className: "cl-banner mt-auto"
+    className: "cl-banner mt-3 shrink-0"
   }, React.createElement("div", {
     className: "cl-banner-t"
   }, "Your club. Your rules. Your table."), React.createElement("div", {
@@ -12485,14 +12519,14 @@ function PokerTable({
     // SVG felt (top 18% / bottom 96.3% of the container). Hero bottom-center.
     // Rings are per TABLE CAPACITY (physical seats), not per seated count —
     // vacant slots render as small "sit here" discs, exactly like ClubGG.
-    2: [[50, 69], [50, 18.5]],
-    3: [[50, 69], [11, 54], [89, 54]],
-    4: [[50, 69], [11, 54], [50, 18.5], [89, 54]],
-    5: [[50, 69], [14, 64], [32, 19], [68, 19], [86, 64]],
-    6: [[50, 69], [13, 64], [13, 36], [50, 18.5], [87, 36], [87, 64]],
-    7: [[50, 69], [15, 68], [9, 47], [32, 19], [68, 19], [91, 47], [85, 68]],
-    8: [[50, 69], [15, 68], [9, 47], [14, 27], [50, 18.5], [86, 27], [91, 47], [85, 68]],
-    9: [[50, 69], [16, 71], [8, 54], [14, 30], [34, 18.5], [66, 18.5], [86, 30], [92, 54], [84, 71]]
+    2: [[50, 71.5], [50, 18.5]],
+    3: [[50, 71.5], [11, 54], [89, 54]],
+    4: [[50, 71.5], [11, 54], [50, 18.5], [89, 54]],
+    5: [[50, 71.5], [14, 64], [32, 19], [68, 19], [86, 64]],
+    6: [[50, 71.5], [13, 64], [13, 36], [50, 18.5], [87, 36], [87, 64]],
+    7: [[50, 71.5], [15, 68], [9, 47], [32, 19], [68, 19], [91, 47], [85, 68]],
+    8: [[50, 71.5], [15, 68], [9, 47], [14, 27], [50, 18.5], [86, 27], [91, 47], [85, 68]],
+    9: [[50, 71.5], [16, 71], [8, 54], [14, 30], [34, 18.5], [66, 18.5], [86, 30], [92, 54], [84, 71]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -13141,7 +13175,7 @@ function PokerTable({
     const seatXv = parseFloat(seatPos(i).left);
     const seatYv = parseFloat(seatPos(i).top);
     // 2.5D depth cue per spec: near pods 1.0, far pods ~30% smaller (1.30:1)
-    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (69 - seatYv) / 59));
+    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (71.5 - seatYv) / 61.5));
     const farPod = !isMe && seatYv <= 22;
     const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
     const inX = -(seatXv - 50) / 50;

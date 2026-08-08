@@ -12686,7 +12686,9 @@ function PokerTable({
     const isWinner = gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name);
     return React.createElement("div", {
       key: p.uid,
-      className: "absolute z-20",
+      // a talking player's whole seat lifts above the bet stacks (z-35) —
+      // the bubble's own z is trapped inside the seat's stacking context
+      className: "absolute " + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       style: {
         ...seatPos(i),
         transform: 'translate(-50%, -50%)'
@@ -14822,7 +14824,9 @@ function DurakTable({
     const oppFan = !isMe && !p.out && (p.cards || []).length > 0 && T.status === 'playing';
     return React.createElement("div", {
       key: p.uid,
-      className: "absolute z-20",
+      // a talking player's whole seat lifts above the bet stacks (z-35) —
+      // the bubble's own z is trapped inside the seat's stacking context
+      className: "absolute " + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       style: {
         ...seatPos(i),
         transform: 'translate(-50%, -50%)'

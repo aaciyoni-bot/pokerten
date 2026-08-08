@@ -304,24 +304,12 @@
         .pt-stage { overflow: hidden; }
         /* flat variant (Durak/OFC): same rail & felt, no perspective */
         .pt-flat .pt-felt3d { transform: none !important; inset: 0 !important; }
-        /* Real 2.5D (spec v4): a CAMERA wrap carries perspective; the felt
-           stadium is tilted rotateX(62deg) INSIDE it. Pre-tilt height (708px
-           at 390x844) + perspective 2400px are solved so the PROJECTED felt
-           lands exactly on the measured GG box: X 7-93%, Y 12-71%, near:far
-           foreshortening 1.30. Seats/cards live on the separate upright
-           overlay at the final projected coords — they are never skewed. */
+        /* Trace-based felt (no 3D): the GG table outline is baked into the
+           SVG bezier paths and stretched over the full table container. The
+           gameplay overlay's % coordinates land on it 1:1. */
         .pt-wrap { position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: inherit; }
-        @media (max-width: 1023px) {
-            .pt-wrap {
-                left: 9%; right: 9%; top: -7.7%; bottom: 16.9%;
-                perspective: 2400px; perspective-origin: 50% -15%;
-            }
-            .pt-felt3d {
-                border-radius: 999px;
-                transform: rotateX(62deg);
-                transform-style: preserve-3d;
-            }
-        }
+        .pt-fsvg { position: absolute; inset: 0; pointer-events: none; filter: drop-shadow(0 14px 26px rgba(0,0,0,0.55)); }
+        .pt-fsvg svg { display: block; width: 100%; height: 100%; }
 
         /* דסקטופ: שולחן קפסולה רחב במקום עיגול */
         @media (min-width: 1024px) {
@@ -2620,6 +2608,36 @@ const CardPips = ({
     size: "0.72em"
   }))));
 };
+/* Traced GG table background (designer trace, viewBox = full 390x844
+   screen): the taper is baked into the bezier PATHS — no 3D transforms
+   anywhere. Stretched responsively over the full table container; the
+   upright overlay's % coords land on it 1:1. Felt colors stay skinnable. */
+const PT_FELT_SVG = `
+<svg viewBox="0 0 390 844" preserveAspectRatio="none">
+ <defs>
+  <linearGradient id="ptRail" x1="0" y1="0" x2="0" y2="1">
+   <stop offset="0" stop-color="#33383f"/><stop offset="0.35" stop-color="#0f1216"/>
+   <stop offset="0.85" stop-color="#1c2026"/><stop offset="1" stop-color="#08090b"/>
+  </linearGradient>
+  <radialGradient id="ptFelt" cx="0.5" cy="0.38" r="0.75">
+   <stop offset="0" style="stop-color:var(--feltA,#2e6089)"/>
+   <stop offset="0.55" style="stop-color:var(--feltB,#1f4a6e)"/>
+   <stop offset="1" style="stop-color:var(--feltC,#132f47)"/>
+  </radialGradient>
+  <radialGradient id="ptLamp" cx="0.5" cy="0.34" r="0.55">
+   <stop offset="0" stop-color="rgba(255,255,255,0.10)"/><stop offset="1" stop-color="rgba(255,255,255,0)"/>
+  </radialGradient>
+  <radialGradient id="ptVin" cx="0.5" cy="0.45" r="0.75">
+   <stop offset="0.55" stop-color="rgba(0,0,0,0)"/><stop offset="1" stop-color="rgba(0,0,0,0.4)"/>
+  </radialGradient>
+ </defs>
+ <path d="M118,138 Q64,146 48,240 Q24,410 28,528 Q34,648 122,718 Q195,740 268,718 Q356,648 362,528 Q366,410 342,240 Q326,146 272,138 Q195,120 118,138 Z" fill="url(#ptRail)"/>
+ <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="url(#ptFelt)"/>
+ <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="url(#ptLamp)"/>
+ <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="url(#ptVin)"/>
+ <path d="M126,153 Q76,161 60,248 Q38,412 42,527 Q48,636 130,700 Q195,720 260,700 Q342,636 348,527 Q352,412 330,248 Q314,161 264,153 Q195,136 126,153 Z" fill="none" stroke="rgba(213,179,107,0.4)" stroke-width="2"/>
+ <path d="M140,190 Q100,198 88,268 Q70,414 74,522 Q80,614 148,668 Q195,684 242,668 Q310,614 316,522 Q320,414 302,268 Q290,198 250,190 Q195,176 140,190 Z" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1.5"/>
+</svg>`;
 const PCard = ({
   card,
   hidden,
@@ -12114,14 +12132,14 @@ function PokerTable({
     // SVG felt (top 18% / bottom 96.3% of the container). Hero bottom-center.
     // Rings are per TABLE CAPACITY (physical seats), not per seated count —
     // vacant slots render as small "sit here" discs, exactly like ClubGG.
-    2: [[50, 74], [50, 10]],
-    3: [[50, 74], [13, 41.5], [87, 41.5]],
-    4: [[50, 74], [13, 41.5], [50, 10], [87, 41.5]],
-    5: [[50, 74], [16, 57], [36, 10], [64, 10], [84, 57]],
-    6: [[50, 74], [16, 57], [16, 26], [50, 10], [84, 26], [84, 57]],
-    7: [[50, 74], [18, 60], [13, 34], [36, 10], [64, 10], [87, 34], [82, 60]],
-    8: [[50, 74], [20, 62], [13, 41.5], [22, 20], [50, 10], [78, 20], [87, 41.5], [80, 62]],
-    9: [[50, 74], [22, 63], [13, 41.5], [22, 20], [36, 10], [64, 10], [78, 20], [87, 41.5], [78, 63]]
+    2: [[50, 80], [50, 11]],
+    3: [[50, 80], [12, 48], [88, 48]],
+    4: [[50, 80], [12, 48], [50, 11], [88, 48]],
+    5: [[50, 80], [14, 62], [30, 15], [70, 15], [86, 62]],
+    6: [[50, 80], [13, 66], [13, 30], [50, 11], [87, 30], [87, 66]],
+    7: [[50, 80], [16, 72], [10, 45], [30, 14], [70, 14], [90, 45], [84, 72]],
+    8: [[50, 80], [16, 72], [10, 45], [17, 22], [50, 11], [83, 22], [90, 45], [84, 72]],
+    9: [[50, 80], [18, 76], [10, 52], [15, 27], [36, 11], [64, 11], [85, 27], [90, 52], [82, 76]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -12135,7 +12153,7 @@ function PokerTable({
     // Overflow slot (10+): place on the table ellipse instead of stacking
     // players in the middle / off-screen.
     const ang = Math.PI / 2 + s / Math.max(capN, 2) * Math.PI * 2;
-    return [Math.round(50 + 37 * Math.cos(ang)), Math.round(41.5 + 27 * Math.sin(ang))];
+    return [Math.round(50 + 44 * Math.cos(ang)), Math.round(55 + 39 * Math.sin(ang))];
   };
   const slotOf = i => {
     const p = displayList[i];
@@ -12160,18 +12178,18 @@ function PokerTable({
       // top-center seats: bet just under their cards, clear of the pot pill
       L = sx + (50 - sx) * 0.9;
       T = sy + 10;
-    } else if (sy < 25) {
+    } else if (sy < 35) {
       // upper corners: inward, between the pot pill and the board
       L = sx + (50 - sx) * 0.8;
       T = sy + 13;
-    } else if (sy <= 68) {
-      // equator + lower flanks: alongside the board/pot column
+    } else if (sy <= 70) {
+      // equator + lower flanks: BELOW the board row, beside the pot chips
       L = sx + (50 - sx) * 0.48;
-      T = Math.min(Math.max(sy + (41.5 - sy) * 0.42, 48), 54);
+      T = Math.min(Math.max(sy + (55 - sy) * 0.42, 58), 60);
     } else {
-      // hero: above his own cards, below the pot chips
-      L = 50;
-      T = 55;
+      // hero: left of his own cards, clear of the pot chips column
+      L = 30;
+      T = 61;
     }
     return {
       left: `${round2(L)}%`,
@@ -12562,7 +12580,12 @@ function PokerTable({
   }, React.createElement("div", {
     className: "pt-wrap"
   }, React.createElement("div", {
-    className: "pt-felt3d"
+    className: "pt-felt3d hidden lg:block"
+  }), React.createElement("div", {
+    className: "pt-fsvg lg:hidden",
+    dangerouslySetInnerHTML: {
+      __html: PT_FELT_SVG
+    }
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "absolute inset-0 pointer-events-none z-[6]",
     style: {
@@ -12578,7 +12601,7 @@ function PokerTable({
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
+    className: "absolute left-1/2 top-[32%] -translate-x-1/2 z-40 bg-black/55 border border-gold-400/25 rounded-2xl px-5 py-1 text-center pointer-events-none",
     dir: "ltr"
   }, React.createElement("div", {
     className: "text-[10px] font-bold text-slate-200/90 leading-tight"
@@ -12598,13 +12621,13 @@ function PokerTable({
     }
     return formatShort(setts.blinds) + '/' + formatShort(BB);
   })())), React.createElement("div", {
-    className: "absolute left-1/2 top-[47%] -translate-x-1/2 flex gap-5 items-start z-40"
+    className: "absolute left-1/2 top-[57%] -translate-x-1/2 flex gap-5 items-start z-40"
   }, (gs.pots || []).map((pot, i) => React.createElement(CasinoChipStack, {
     key: i,
     amount: pot.amount,
     scale: 0.9
   }))), (gs.board2 || []).length > 0 && React.createElement("div", {
-    className: "absolute left-1/2 top-[53%] -translate-x-1/2 flex gap-1 items-center z-30",
+    className: "absolute left-1/2 top-[63%] -translate-x-1/2 flex gap-1 items-center z-30",
     dir: "ltr"
   }, React.createElement("span", {
     className: "text-[8px] font-black text-gold-400 bg-slate-950/85 rounded px-1 py-0.5"
@@ -12618,7 +12641,7 @@ function PokerTable({
     card: c,
     size: "sm"
   })))), React.createElement("div", {
-    className: "absolute left-1/2 top-[41.5%] -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
+    className: "absolute left-1/2 top-[50%] -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
     dir: "ltr"
   }, gs.phase !== 'waiting' && playersCount > 0 && (gs.board || []).map((c, i) => React.createElement("span", {
     key: i,
@@ -12719,7 +12742,7 @@ function PokerTable({
     const seatXv = parseFloat(seatPos(i).left);
     const seatYv = parseFloat(seatPos(i).top);
     // 2.5D depth cue per spec: near pods 1.0, far pods ~30% smaller (1.30:1)
-    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (74 - seatYv) / 64));
+    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (80 - seatYv) / 69));
     const farPod = !isMe && seatYv <= 22;
     const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
     const inX = -(seatXv - 50) / 50;
@@ -13010,7 +13033,7 @@ function PokerTable({
     from: fx.from,
     to: {
       left: '50%',
-      top: '24%' // land on the Total Pot pill (above the board)
+      top: '33%' // land on the Total Pot pill (above the board)
     },
     amount: fx.amount,
     snd: !headless && fxi === 0

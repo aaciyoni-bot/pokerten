@@ -1299,56 +1299,35 @@ const avatarUrl = x => {
   }
   return dicebearUrl(String(x || '').startsWith('av3d::') ? x : av3dPick(x));
 };
-// 3D avatar pack: Microsoft Fluent Emoji "3D" renders (MIT), served from
-// jsDelivr. Each entry is [folder, file] exactly as it exists in the repo.
-// A tile that fails to load quietly falls back to the flat avatar.
-const AV3D_BASE = 'https://cdn.jsdelivr.net/gh/microsoft/fluentui-emoji@main/assets/';
+// 3D avatar pack — the club's own purchased renders, served from this site
+// (assets/avatars). Files are pre-cropped square and downscaled to 256px WebP,
+// so a seat costs ~7KB instead of the 3MB the 2k source PNGs weighed.
+const AV3D_BASE = 'assets/avatars/av-';
 const AV3D = [
-  // poker & luck
-  ['Spade suit', 'spade_suit'], ['Heart suit', 'heart_suit'], ['Diamond suit', 'diamond_suit'], ['Club suit', 'club_suit'],
-  ['Joker', 'joker'], ['Game die', 'game_die'], ['Slot machine', 'slot_machine'], ['Trophy', 'trophy'],
-  ['Crown', 'crown'], ['Money bag', 'money_bag'], ['Gem stone', 'gem_stone'], ['Dollar banknote', 'dollar_banknote'],
-  ['Fire', 'fire'], ['High voltage', 'high_voltage'], ['Direct hit', 'direct_hit'], ['Rocket', 'rocket'],
-  ['Star', 'star'], ['Glowing star', 'glowing_star'], ['Comet', 'comet'], ['Crystal ball', 'crystal_ball'],
-  ['Bomb', 'bomb'], ['Chess pawn', 'chess_pawn'], ['Sunglasses', 'sunglasses'], ['Top hat', 'top_hat'],
-  // animals
-  ['Lion', 'lion'], ['Tiger face', 'tiger_face'], ['Leopard', 'leopard'], ['Fox', 'fox'],
-  ['Wolf', 'wolf'], ['Bear', 'bear'], ['Polar bear', 'polar_bear'], ['Panda', 'panda'],
-  ['Koala', 'koala'], ['Monkey face', 'monkey_face'], ['Gorilla', 'gorilla'], ['Orangutan', 'orangutan'],
-  ['Dog face', 'dog_face'], ['Cat face', 'cat_face'], ['Horse face', 'horse_face'], ['Zebra', 'zebra'],
-  ['Giraffe', 'giraffe'], ['Elephant', 'elephant'], ['Rhinoceros', 'rhinoceros'], ['Hippopotamus', 'hippopotamus'],
-  ['Camel', 'camel'], ['Kangaroo', 'kangaroo'], ['Sloth', 'sloth'], ['Otter', 'otter'],
-  ['Skunk', 'skunk'], ['Hedgehog', 'hedgehog'], ['Bat', 'bat'], ['Rabbit face', 'rabbit_face'],
-  ['Mouse face', 'mouse_face'], ['Hamster', 'hamster'], ['Boar', 'boar'], ['Bison', 'bison'],
-  ['Ox', 'ox'], ['Ram', 'ram'], ['Goat', 'goat'], ['Deer', 'deer'],
-  ['Eagle', 'eagle'], ['Owl', 'owl'], ['Peacock', 'peacock'], ['Parrot', 'parrot'],
-  ['Swan', 'swan'], ['Flamingo', 'flamingo'], ['Penguin', 'penguin'], ['Rooster', 'rooster'],
-  ['Shark', 'shark'], ['Whale', 'whale'], ['Dolphin', 'dolphin'], ['Octopus', 'octopus'],
-  ['Crab', 'crab'], ['Lobster', 'lobster'], ['Snake', 'snake'], ['Crocodile', 'crocodile'],
-  ['Turtle', 'turtle'], ['Frog', 'frog'], ['Scorpion', 'scorpion'], ['Spider', 'spider'],
-  ['Butterfly', 'butterfly'], ['T-Rex', 't-rex'], ['Sauropod', 'sauropod'], ['Mammoth', 'mammoth'],
-  ['Dodo', 'dodo'], ['Beaver', 'beaver'], ['Badger', 'badger'], ['Bug', 'bug'],
-  // fantasy & characters
-  ['Unicorn', 'unicorn'], ['Dragon face', 'dragon_face'], ['Dragon', 'dragon'], ['Ghost', 'ghost'],
-  ['Alien', 'alien'], ['Alien monster', 'alien_monster'], ['Robot', 'robot'], ['Skull', 'skull'],
-  ['Ogre', 'ogre'], ['Goblin', 'goblin'], ['Clown face', 'clown_face'], ['Jack-o-lantern', 'jack-o-lantern'],
-  ['Ninja', 'ninja'], ['Detective', 'detective'], ['Mage', 'mage'], ['Superhero', 'superhero'],
-  ['Supervillain', 'supervillain'], ['Vampire', 'vampire'], ['Zombie', 'zombie'], ['Elf', 'elf'],
-  ['Genie', 'genie'], ['Merperson', 'merperson'], ['Fairy', 'fairy'], ['Prince', 'prince'],
-  ['Princess', 'princess'], ['Astronaut', 'astronaut'], ['Guard', 'guard'], ['Pirate flag', 'pirate_flag'],
-  // expressive faces
-  ['Smiling face with sunglasses', 'smiling_face_with_sunglasses'], ['Cowboy hat face', 'cowboy_hat_face'],
-  ['Face with monocle', 'face_with_monocle'], ['Nerd face', 'nerd_face'], ['Star-struck', 'star-struck'],
-  ['Partying face', 'partying_face'], ['Exploding head', 'exploding_head'], ['Zany face', 'zany_face'],
-  ['Money-mouth face', 'money-mouth_face'], ['Smirking face', 'smirking_face'], ['Shushing face', 'shushing_face'],
-  ['Face with raised eyebrow', 'face_with_raised_eyebrow'], ['Hot face', 'hot_face'], ['Cold face', 'cold_face'],
-  ['Winking face', 'winking_face'], ['Grinning face', 'grinning_face'], ['Smiling face with horns', 'smiling_face_with_horns'],
-  ['Angry face with horns', 'angry_face_with_horns'], ['Robot', 'robot']
-].map(x => 'av3d::' + x[0] + '::' + x[1]);
-const av3dUrl = key => {
-  const p = String(key).split('::');
-  return AV3D_BASE + encodeURIComponent(p[1]) + '/3D/' + p[2] + '_3d.png';
-};
+  'ant', 'artist', 'asia-woman', 'asian-man', 'astronaut', 'astronout',
+  'baby', 'babychick', 'bat', 'bearface', 'bird', 'black-man',
+  'black-woman', 'blowfish', 'boar', 'bug', 'builder-man', 'builder-woman',
+  'bussinesman', 'butterfly', 'call-operator', 'camel', 'cat', 'catface',
+  'chef-woman', 'chef', 'chickenface', 'college-student', 'consctruction-woman', 'construction-worker',
+  'constructon-engineer', 'cow', 'cowface', 'crab', 'cricket', 'crocodile',
+  'deerface', 'designer', 'doctor', 'dog', 'dogface', 'dolphin',
+  'dragon', 'dragonface', 'eagleface', 'elephant', 'employee-woman', 'ewe',
+  'farmer-man', 'farmer-woman', 'farmer', 'firefighter', 'fish', 'flamingo',
+  'foxface', 'frogface', 'gamer', 'giraffe', 'goat', 'gorilla',
+  'graduation-student', 'grand-father', 'grand-mother', 'hamster', 'hatchingchick', 'hedgehogface',
+  'hippopotamus', 'honeybee', 'horse', 'horseface', 'indian-man', 'koalaface',
+  'ladybeetle', 'lionface', 'lizard', 'llama', 'lobster', 'man-wearing-shawl',
+  'microbe', 'monkey', 'monkeyface', 'mosquitos', 'mouse', 'mouseface',
+  'muslim-woman', 'nerd-woman', 'octopus', 'owl', 'ox', 'pandaface',
+  'parrot', 'pig', 'pigface', 'pinguin', 'poodle', 'professor',
+  'rabbit', 'rabbitface', 'racoonface', 'ram', 'rhinoface', 'rooster',
+  'sauropod', 'schrimp', 'scorpion', 'shark', 'skunk', 'snake',
+  'spider', 'spiderweb', 'spiralsheel', 'spoutingwhale', 'swan', 'teacher',
+  'thief', 'tiger', 'tigerface', 'trex', 'tropicalfish', 'turkey',
+  'turtle', 'unicornface', 'waterbuffalo', 'west-woman', 'western-man', 'whale',
+  'wolfface', 'young-man', 'zebraface'
+].map(x => 'av3d::' + x);
+const av3dUrl = key => AV3D_BASE + String(key).split('::')[1] + '.webp';
 const AVATAR_STYLES = [{
   id: 'av3d',
   label: '3D Avatars'

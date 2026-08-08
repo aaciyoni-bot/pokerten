@@ -8421,6 +8421,28 @@ function BackofficeView({
       } catch (e) {}
     })();
   }, [isOwner]);
+  // Chips in circulation: the club is a closed system — every chip lives either
+  // in a membership balance or on a table (stack/bet/pot). The total may only
+  // change when the owner mints chips (general reset). If it grows on its own,
+  // chips were created out of thin air — that is the decisive tamper test.
+  const [chipsOnTables, setChipsOnTables] = useState(null);
+  useEffect(() => {
+    if (!isOwner) return;
+    (async () => {
+      try {
+        const ts = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("clubId", "==", CLUB_ID)));
+        let onT = 0;
+        ts.docs.forEach(d => {
+          const t = d.data() || {};
+          Object.values(t.players || {}).forEach(p => {
+            onT += (Number(p.stack) || 0) + (Number(p.bet) || 0) + (Number(p.pendingTopUp) || 0);
+          });
+          ((t.gameState || {}).pots || []).forEach(pt => onT += Number(pt.amount) || 0);
+        });
+        setChipsOnTables(round2(onT));
+      } catch (e) {}
+    })();
+  }, [isOwner]);
   const [resetBusy, setResetBusy] = useState(false);
   const [assignFor, setAssignFor] = useState(null);
   const approveWith = async (memId, agent) => {
@@ -8798,6 +8820,12 @@ function BackofficeView({
     value: realPlayers.length,
     icon: 'fa-id-card',
     color: 'text-emerald-400'
+  }, {
+    label: 'Chips in circulation',
+    value: chipsOnTables === null ? '…' : formatMoney(round2(usersList.reduce((s, u) => s + (Number(u.balance) || 0), 0) + chipsOnTables)),
+    icon: 'fa-coins',
+    color: 'text-fuchsia-400',
+    hint: 'All balances + all chips on tables. This number must NOT grow on its own.'
   }];
   return React.createElement("div", {
     style: {
@@ -9014,10 +9042,16 @@ function BackofficeView({
   }, "(", formatMoney(a.before || 0), " → ", formatMoney(a.after || 0), ")"), a.selfWrite && React.createElement("span", {
     className: "font-black text-rose-400",
     title: "The player wrote their own balance"
-  }, "SELF-WRITE"))))), React.createElement("div", {
+  }, "SELF-WRITE"), React.createElement("span", {
+    className: "text-amber-300/90",
+    title: "The signed-in account that actually performed the write (" + (a.authType || "?") + ")"
+  }, "by ", a.byUid ? (usersList.find(m => m.uid === a.byUid) || {}).username || a.byUid.slice(0, 10) : "unknown"), (a.count || 1) > 1 && React.createElement("span", {
+    className: "text-slate-500"
+  }, "×", a.count, " today, +", formatMoney(a.total || 0), " total"))))), React.createElement("div", {
     className: "grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
   }, statTiles.map((t, i) => React.createElement("div", {
     key: i,
+    title: t.hint || '',
     className: "stat-tile p-5 rounded-2xl"
   }, React.createElement("div", {
     className: "flex items-center justify-between mb-2"

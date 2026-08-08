@@ -7698,6 +7698,7 @@ function SettlementSection({
   const [sortBy, setSortBy] = useState('result');
   const [groupAg, setGroupAg] = useState(false);
   const [repFull, setRepFull] = useState(false);
+  const [agOpen, setAgOpen] = useState({}); // expanded agents in the settlement summary
   const [transferFor, setTransferFor] = useState(null);
   const [closed, setClosed] = useState((window.__club || {}).closedWeeks || {});
   // NOTE: must be declared BEFORE the loading early-return below — hooks that
@@ -7726,9 +7727,10 @@ function SettlementSection({
   }, React.createElement("i", {
     className: "fa-solid fa-spinner fa-spin text-2xl"
   }));
-  const start = cycleStartIL(cyc),
-    end = cyc === 0 ? Infinity : cycleStartIL(cyc - 1);
-  const inCyc = at => (at || 0) >= start && (at || 0) < end;
+  const allTime = cyc < 0;
+  const start = allTime ? 0 : cycleStartIL(cyc),
+    end = allTime || cyc === 0 ? Infinity : cycleStartIL(cyc - 1);
+  const inCyc = at => allTime || ((at || 0) >= start && (at || 0) < end);
   const cuts = {};
   let houseGross = 0;
   aLog.forEach(e => {
@@ -7758,7 +7760,7 @@ function SettlementSection({
   let agents = mems.filter(m => [ROLES.AGENT, ROLES.MANAGER, ROLES.CLUB_OWNER].includes(m.role) || cuts[m.uid] || playersByAgent[m.uid]);
   if (!isOwnerView) agents = agents.filter(a => a.uid === user.uid);
   agents.sort((a, b) => (cuts[b.uid] || 0) - (cuts[a.uid] || 0));
-  const cycLabel = cyc === 0 ? 'Current week' : cyc === 1 ? 'Previous week' : `${cyc} weeks ago`;
+  const cycLabel = allTime ? 'All time' : cyc === 0 ? 'Current week' : cyc === 1 ? 'Previous week' : `${cyc} weeks ago`;
   const exportCSV = () => {
     const rows = [['Cycle', cycLabel], [], ['Agent', 'Player', 'Player ID', 'Real name', 'Result', 'Agent %']];
     agents.forEach(a => {
@@ -7993,7 +7995,7 @@ function SettlementSection({
     className: "fa-solid fa-lock"
   }), " Locked")), React.createElement("div", {
     className: "flex items-center gap-2"
-  }, isOwnerView && !weekLocked && React.createElement("button", {
+  }, isOwnerView && !weekLocked && !allTime && React.createElement("button", {
     disabled: busy,
     onClick: closeWeek,
     className: "text-xs bg-rose-900/40 hover:bg-rose-900/70 border border-rose-500/40 text-rose-200 px-3 py-1.5 rounded-lg font-black disabled:opacity-50"
@@ -8006,7 +8008,7 @@ function SettlementSection({
     className: "fa-solid fa-file-csv ml-1"
   }), " Export CSV"))), React.createElement("div", {
     className: "flex gap-1.5 mb-4 flex-wrap"
-  }, [[0, 'This week'], [1, 'Last week'], [2, '2 wks'], [3, '3 wks']].map(([k, l]) => React.createElement("button", {
+  }, [[0, 'This week'], [1, 'Last week'], [2, '2 wks'], [3, '3 wks'], [-1, 'All time']].map(([k, l]) => React.createElement("button", {
     key: k,
     onClick: () => setCyc(k),
     className: `px-3 py-1.5 rounded-lg font-bold text-xs border transition-colors ${cyc === k ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:text-white'}`
@@ -8204,7 +8206,95 @@ function SettlementSection({
     }, formatMoney(tot.rk)), React.createElement("td", {
       className: `py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
     }, formatMoney(tot.all)))))));
-    return React.createElement(React.Fragment, null, panel(false), repFull && ReactDOM.createPortal(React.createElement("div", {
+    // Settlement summary: one line per agent — how many players, what they made
+    // or lost between them, and how much rake they generated. This is the sheet
+    // the club settles on at the end of a cycle.
+    const agRows = Object.entries(rows.reduce((acc, m) => {
+      const k = m.agentUid || '_none';
+      (acc[k] = acc[k] || []).push(m);
+      return acc;
+    }, {})).map(([k, arr]) => ({
+      key: k,
+      name: k === '_none' ? 'No agent' : (byUid[k] || {}).username || k,
+      players: arr.length,
+      result: round2(arr.reduce((a, m) => a + (pres[m.uid] || 0), 0)),
+      rake: round2(arr.reduce((a, m) => a + (rakes[m.uid] || 0), 0)),
+      cut: round2(cuts[k] || 0),
+      list: [...arr].sort((x, y) => (pres[y.uid] || 0) - (pres[x.uid] || 0))
+    })).sort((a, b) => b.rake - a.rake || b.result - a.result);
+    const agTot = agRows.reduce((t, a) => ({
+      players: t.players + a.players,
+      result: round2(t.result + a.result),
+      rake: round2(t.rake + a.rake),
+      cut: round2(t.cut + a.cut)
+    }), {players: 0, result: 0, rake: 0, cut: 0});
+    const csvSettle = () => {
+      const out = [['Settlement by agent', cycLabel], [],
+        ['Agent', 'Player', 'Player ID', 'Result (profit/loss)', 'Rake generated']];
+      agRows.forEach(a => {
+        a.list.forEach(m => out.push([a.name, m.username, m.playerId || '',
+          formatMoney(pres[m.uid] || 0), formatMoney(rakes[m.uid] || 0)]));
+        out.push([a.name + ' — SUBTOTAL', a.players + ' players', '', formatMoney(a.result), formatMoney(a.rake)]);
+        out.push([]);
+      });
+      out.push(['TOTAL', agTot.players + ' players', '', formatMoney(agTot.result), formatMoney(agTot.rake)]);
+      downloadCSV(out, `settlement_by_agent_${cycLabel.replace(/ /g, '_')}.csv`);
+    };
+    const money = (v, invert) => React.createElement("span", {
+      className: `font-black ${(invert ? -v : v) > 0 ? 'text-emerald-300' : (invert ? -v : v) < 0 ? 'text-rose-300' : 'text-slate-400'}`,
+      dir: "ltr"
+    }, v > 0 ? '+' : '', formatMoney(v));
+    const settleBlock = React.createElement("div", {
+      className: "glass-panel rounded-2xl p-4 mb-5"
+    }, React.createElement("div", {
+      className: "flex items-center justify-between flex-wrap gap-2 mb-3"
+    }, React.createElement("h4", {
+      className: "font-black text-emerald-300 uppercase tracking-widest text-xs"
+    }, React.createElement("i", {
+      className: "fa-solid fa-handshake ml-1"
+    }), " Settlement by agent · ", cycLabel), React.createElement("button", {
+      onClick: csvSettle,
+      title: "Export the full agent \u2192 player breakdown",
+      className: "text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-emerald-300 px-2.5 py-1.5 rounded-lg font-black"
+    }, React.createElement("i", {
+      className: "fa-solid fa-file-csv ml-1"
+    }), " CSV")), React.createElement("div", {
+      className: "overflow-x-auto"
+    }, React.createElement("table", {
+      className: "w-full text-xs"
+    }, React.createElement("thead", null, React.createElement("tr", {
+      className: "text-slate-500 text-[10px] uppercase tracking-widest border-b border-white/10"
+    }, React.createElement("th", {className: "text-left py-2 pr-3"}, "Agent"),
+      React.createElement("th", {className: "text-right py-2 pr-3"}, "Players"),
+      React.createElement("th", {className: "text-right py-2 pr-3"}, "Result (P/L)"),
+      React.createElement("th", {className: "text-right py-2 pr-3"}, "Rake"),
+      React.createElement("th", {className: "text-right py-2 pr-3"}, "Agent cut"))),
+    React.createElement("tbody", null, agRows.map(a => React.createElement(React.Fragment, {key: a.key},
+      React.createElement("tr", {
+        onClick: () => setAgOpen(o => ({...o, [a.key]: !o[a.key]})),
+        className: "border-b border-white/5 cursor-pointer hover:bg-white/5"
+      }, React.createElement("td", {className: "py-2 pr-3 font-black text-white"},
+        React.createElement("i", {className: `fa-solid ${agOpen[a.key] ? 'fa-caret-down' : 'fa-caret-left'} text-slate-500 ml-1.5`}), a.name),
+        React.createElement("td", {className: "py-2 pr-3 text-right text-slate-300 font-bold", dir: "ltr"}, a.players),
+        React.createElement("td", {className: "py-2 pr-3 text-right"}, money(a.result)),
+        React.createElement("td", {className: "py-2 pr-3 text-right text-amber-300 font-black", dir: "ltr"}, formatMoney(a.rake)),
+        React.createElement("td", {className: "py-2 pr-3 text-right text-purple-300 font-black", dir: "ltr"}, formatMoney(a.cut))),
+      agOpen[a.key] && a.list.map(m => React.createElement("tr", {
+        key: m.uid,
+        className: "border-b border-white/5 bg-slate-950/40"
+      }, React.createElement("td", {className: "py-1.5 pr-3 pr-6 text-slate-300"}, "\u00a0\u00a0\u00a0", m.username,
+        React.createElement("span", {className: "text-slate-600 text-[10px] mr-1.5", dir: "ltr"}, m.playerId || '')),
+        React.createElement("td", {className: "py-1.5 pr-3"}, ""),
+        React.createElement("td", {className: "py-1.5 pr-3 text-right"}, money(pres[m.uid] || 0)),
+        React.createElement("td", {className: "py-1.5 pr-3 text-right text-amber-300/80 font-bold", dir: "ltr"}, (rakes[m.uid] || 0) > 0 ? formatMoney(rakes[m.uid]) : '\u2014'),
+        React.createElement("td", {className: "py-1.5 pr-3"}, ""))))),
+      React.createElement("tr", {className: "border-t-2 border-emerald-500/40"},
+        React.createElement("td", {className: "py-2.5 pr-3 font-black text-emerald-300"}, "TOTAL"),
+        React.createElement("td", {className: "py-2.5 pr-3 text-right font-black text-white", dir: "ltr"}, agTot.players),
+        React.createElement("td", {className: "py-2.5 pr-3 text-right"}, money(agTot.result)),
+        React.createElement("td", {className: "py-2.5 pr-3 text-right text-amber-300 font-black", dir: "ltr"}, formatMoney(agTot.rake)),
+        React.createElement("td", {className: "py-2.5 pr-3 text-right text-purple-300 font-black", dir: "ltr"}, formatMoney(agTot.cut)))))));
+    return React.createElement(React.Fragment, null, settleBlock, panel(false), repFull && ReactDOM.createPortal(React.createElement("div", {
       className: "fixed inset-0 z-[600] bg-slate-950 overflow-auto p-3 sm:p-6"
     }, panel(true)), document.body));
   })(), React.createElement("div", {
@@ -13303,7 +13393,13 @@ function PokerTable({
       className: "absolute " + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       style: isMe ? {
         left: '50%',
-        bottom: '150px',
+        // The hero is anchored in PIXELS so the fixed-height action bar can
+        // never cover his stack — but the board sits at a percentage, so on a
+        // short viewport (phone browser with URL bar + toolbar, ~560-600px)
+        // the two converged and the board landed on his hole cards. Scaling
+        // the anchor with the app's own height model keeps them apart down to
+        // ~480px while leaving tall screens exactly where they were.
+        bottom: 'clamp(84px, calc(var(--vhpx, 900px) * 0.1667), 150px)',
         transform: 'translateX(-50%)'
       } : {
         ...seatPos(i),

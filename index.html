@@ -7,6 +7,9 @@
     <title>POKERTEN</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#05070f">
+    <!-- dark color-scheme: Android paints the system-bar / keyboard / overscroll
+         areas DARK in the installed app instead of a light strip -->
+    <meta name="color-scheme" content="dark">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="apple-touch-icon" href="icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -82,6 +85,7 @@
         /* secondary text unified to the token tier */
         .tbl-sub, .tbl-buyin-label { color: var(--text-3); }
         html {
+            color-scheme: dark; /* system-painted areas (nav bar, scrollbars, keyboard) follow the app's dark look */
             background-color: #05070f;
             color: #f8fafc; margin: 0; padding: 0;
             height: var(--vhpx); width: 100vw;
@@ -451,7 +455,8 @@
             box-shadow: 0 8px 20px rgba(227,174,78,0.28), inset 0 1px 0 rgba(255,255,255,0.55), inset 0 -6px 12px rgba(146,95,20,0.25);
         }
         .btn-raise:not(:disabled):hover { filter: brightness(1.06); }
-        .timer-ring { transform: rotate(-90deg); transition: stroke-dashoffset 1s linear, stroke 0.35s ease; filter: drop-shadow(0 0 4px currentColor); }
+        /* starts at 12 o'clock and drains CLOCKWISE (scaleX flip — owner request) */
+        .timer-ring { transform: rotate(-90deg) scaleX(-1); transition: stroke-dashoffset 1s linear, stroke 0.35s ease; filter: drop-shadow(0 0 4px currentColor); }
         /* Gentle "no signal" blink: wifi + diagonal slash */
         .no-signal { color: #fca5a5; font-size: 12px; animation: nsBlink 1.2s ease-in-out infinite; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
         .ns-slash { position: absolute; left: 50%; top: 50%; width: 16px; height: 2px; background: #f43f5e; transform: translate(-50%, -50%) rotate(-45deg); border-radius: 2px; }
@@ -10017,9 +10022,29 @@ function PokerTable({
       await window.fb.runTransaction(window.fb.db, async trx => {
         const s = await trx.get(tblRef());
         if (!s.exists()) throw 'gone';
-        const cur = Number((s.data().gameState || {}).__seq) || 0;
+        const d0 = s.data();
+        const cur = Number((d0.gameState || {}).__seq) || 0;
         if (cur !== base) throw 'stale';
         gOut.__seq = cur + 1;
+        // chip-conservation sensor: total chips on the table must not change
+        // except for rake leaving at showdown or approved top-ups entering.
+        // A mismatch is recorded ON the doc for forensics (non-blocking).
+        try {
+          const tot = (px, gx) => round2(Object.values(px || {}).reduce((s2, q) => s2 + (Number(q.stack) || 0) + (Number(q.bet) || 0), 0) + ((gx || {}).pots || []).reduce((s2, q) => s2 + (Number(q.amount) || 0), 0));
+          const before = tot(d0.players, d0.gameState);
+          const after = tot(pl, gOut);
+          const delta = round2(after - before);
+          const sameSeats = Object.keys(d0.players || {}).length === Object.keys(pl || {}).length;
+          if (sameSeats && Math.abs(delta) > 0.011) {
+            gOut.__chipDelta = {
+              at: Date.now(),
+              delta,
+              phase: (d0.gameState || {}).phase + '→' + gOut.phase,
+              by: user.uid
+            };
+            console.warn('CHIP DELTA', delta, gOut.__chipDelta.phase);
+          }
+        } catch (e2) {}
         trx.update(tblRef(), {
           gameState: gOut,
           players: pl,
@@ -10832,9 +10857,9 @@ function PokerTable({
           tr.update(tblRef(), {
             [`players.${user.uid}`]: {
               uid: user.uid,
-              name: user.username,
+              name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
               photo: user.photo || '',
-              avatarSeed: user.avatarSeed || '',
+              avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid),
               seatIndex: si2,
               stack: round2(Number(sSp.spinStack) || 1000),
               bet: 0,
@@ -10863,9 +10888,9 @@ function PokerTable({
           [`leftStacks.${user.uid}`]: null,
           [`players.${user.uid}`]: {
             uid: user.uid,
-            name: user.username,
+            name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
             photo: user.photo || '',
-            avatarSeed: user.avatarSeed || '',
+            avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid),
             seatIndex,
             stack: round2(buyAmt),
             bet: 0,
@@ -14430,9 +14455,9 @@ function DurakTable({
         tr.update(tblRef(), {
           [`players.${user.uid}`]: {
             uid: user.uid,
-            name: user.username,
+            name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
             photo: user.photo || '',
-            avatarSeed: user.avatarSeed || '',
+            avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid),
             seatIndex,
             cards: [],
             isBot: false,
@@ -15796,9 +15821,9 @@ function OFCTable({
         tr.update(tblRef(), {
           [`players.${user.uid}`]: {
             uid: user.uid,
-            name: user.username,
+            name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
             photo: user.photo || '',
-            avatarSeed: user.avatarSeed || '',
+            avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid),
             seatIndex,
             stack: buyIn,
             top: [],

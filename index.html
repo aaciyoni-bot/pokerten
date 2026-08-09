@@ -10919,8 +10919,15 @@ function PokerTable({
         if (pl[uid0]) pl[uid0].stack = round2(pl[uid0].stack + pot.amount);
         return;
       }
-      const elig = (pot.eligible || []).filter(uid => pl[uid] && pl[uid].status === 'active');
-      if (elig.length === 0) return;
+      let elig = (pot.eligible || []).filter(uid => pl[uid] && pl[uid].status === 'active');
+      if (elig.length === 0) {
+        // Everyone who could contest this side pot folded. The chips are real
+        // — dropping the pot destroyed them. Give it to whoever is still in
+        // the hand, and if nobody is, hand it back to the contributors.
+        const stillIn = Object.values(pl).filter(p => p.status === 'active').map(p => p.uid);
+        elig = stillIn.length ? stillIn : (pot.eligible || []).filter(uid => pl[uid]);
+        if (elig.length === 0) return;
+      }
       let bestS = -1;
       let winners = [];
       elig.forEach(uid => {

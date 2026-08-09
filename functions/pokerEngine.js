@@ -539,8 +539,17 @@ function runShowdown(S) {
       if (pl[uid0]) pl[uid0].stack = round2(pl[uid0].stack + potObj.amount);
       return;
     }
-    const elig = potObj.eligible.filter((uid) => pl[uid] && pl[uid].status === "active");
-    if (!elig.length) return; // client parity: dropped (index.html:9165)
+    let elig = potObj.eligible.filter((uid) => pl[uid] && pl[uid].status === "active");
+    if (!elig.length) {
+      // Every player who could contest this side pot has folded. These are
+      // real chips someone put in — dropping the pot destroyed them (soak
+      // caught a 12-chip pot vanishing this way). Award it to whoever is
+      // still in the hand; if literally nobody is, return it to the players
+      // who built it.
+      const stillIn = activesOf(pl).map((p) => p.uid);
+      elig = stillIn.length ? stillIn : (potObj.eligible || []).filter((uid) => pl[uid]);
+      if (!elig.length) return; // those seats have left the table entirely
+    }
     let amount = potObj.amount;
     if (idx === 0 && rakeFrac > 0) {
       const r = round2(amount * rakeFrac);
@@ -625,16 +634,139 @@ function settleAfterHand(S, rake, winnerUids) {
 }
 
 // Bot policy port — index.html:10287-10306.
+/* --------------------------- bot brain ---------------------------------
+ * This used to be three coin flips that never looked at the cards: it called
+ * any bet 82% of the time and called an ALL-IN half the time regardless of
+ * what it held. On the felt that reads exactly as it played — paying off
+ * shoves with high card. It is now the same brain the cash tables use:
+ * a preflop hand tier, and postflop a Monte-Carlo equity against the live
+ * opponent count weighed against the pot odds.
+ * ---------------------------------------------------------------------- */
+const RANK_V = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
+  "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14};
+
+// 0 = trash, 1 = playable, 2 = strong, 3 = premium
+function preflopTier(cards) {
+  const vs = (cards || []).map((c) => RANK_V[c.val] || 0).sort((a, b) => b - a);
+  if (!cards || cards.length !== 2) { // Omaha & friends: count high cards
+    const hi = vs.filter((v) => v >= 11).length;
+    const paired = new Set(vs).size < vs.length;
+    const suits = {};
+    (cards || []).forEach((c) => { suits[c.suit] = (suits[c.suit] || 0) + 1; });
+    const suited = Object.values(suits).some((n) => n >= 2);
+    if (hi >= 3 || (paired && hi >= 2)) return 2;
+    if (hi >= 2 || paired || (suited && hi >= 1)) return 1;
+    return rnd() < 0.3 ? 1 : 0;
+  }
+  const suited = cards[0].suit === cards[1].suit;
+  if (vs[0] === vs[1]) return vs[0] >= 10 ? 3 : 2; // every pair is playable
+  const gap = vs[0] - vs[1];
+  if (vs[0] === 14 && vs[1] >= 12) return 3;
+  if ((vs[0] >= 12 && vs[1] >= 10) || (vs[0] === 14 && suited)) return 2;
+  if (vs[0] === 14 || (gap <= 1 && vs[1] >= 5) || (gap <= 3 && suited && vs[1] >= 4) ||
+      (vs[0] >= 10 && vs[1] >= 8)) return 1;
+  return 0;
+}
+
+// Monte-Carlo equity against `oppCount` random hands. Returns 0..1, or null
+// when the hand is unknown — callers must treat null as "do not gamble".
+function equityOf(myCards, board, oppCount, gameType) {
+  try {
+    if (!myCards || !myCards.length) return null;
+    const omaha = (gameType || "").startsWith("Omaha");
+    const iters = omaha ? 90 : 200;
+    const known = new Set([...myCards, ...(board || [])].map((c) => c.id));
+    const rest = C.pokerDeck().filter((c) => !known.has(c.id));
+    let score = 0;
+    for (let i = 0; i < iters; i++) {
+      // cheap partial shuffle of the remaining deck
+      const d = rest.slice();
+      for (let k = d.length - 1; k > 0; k--) {
+        const j = Math.floor(rnd() * (k + 1));
+        [d[k], d[j]] = [d[j], d[k]];
+      }
+      const opps = [];
+      for (let o = 0; o < oppCount; o++) opps.push(d.splice(0, myCards.length));
+      const fb = [...(board || [])];
+      while (fb.length < 5) fb.push(d.pop());
+      const my = C.bestScoreFull(myCards, fb, gameType);
+      let lose = false; let tie = false;
+      for (const oc of opps) {
+        const sc = C.bestScoreFull(oc, fb, gameType);
+        if (sc > my) { lose = true; break; }
+        if (sc === my) tie = true;
+      }
+      if (!lose) score += tie ? 0.5 : 1;
+    }
+    return score / iters;
+  } catch (e) {
+    return null;
+  }
+}
+
 function botAction(S, uid) {
   const g = S.gameState;
   const b = S.players[uid];
+  const cards = (S.priv && S.priv[uid]) || b.cards || [];
+  const bb = (Number(S.settings.blinds) || 0.5) * 2;
   const toCall = round2(Math.max(0, g.highestBet - (b.bet || 0)));
-  if (toCall <= 0) {
-    if (rnd() < 0.85 || b.stack <= g.minRaise) return {action: "call"};
-    return {action: "raise", amount: round2(g.highestBet + g.minRaise)};
+  const stack = b.stack || 0;
+  const potNow = round2((g.pots || []).reduce((s, p) => s + (p.amount || 0), 0) +
+      Object.values(S.players).reduce((s, p) => s + (p.bet || 0), 0));
+  const oppN = Math.max(1, activesOf(S.players).filter((p) => p.uid !== uid).length);
+  const snap = (x) => Math.max(bb, Math.round(x / bb) * bb);
+  const raiseTo = (x) => round2(Math.min(Math.max(snap(x), round2(g.highestBet + (g.minRaise || bb))),
+      round2(stack + (b.bet || 0))));
+  const r = rnd();
+
+  if (g.phase === "preflop") {
+    // with a blind or less behind, folding is never right
+    if (toCall > 0 && stack <= bb * 1.5) return {action: "call"};
+    const tier = preflopTier(cards);
+    const isPair = cards.length === 2 && cards[0].val === cards[1].val;
+    if (isPair && toCall > 0 && toCall <= Math.min(stack * 0.15, bb * 8) && tier < 3) return {action: "call"};
+    if (tier === 0) return toCall <= 0 ? {action: "call"} : {action: "fold"};
+    if (tier === 1) {
+      if (toCall <= 0) return r < 0.12 ? {action: "raise", amount: raiseTo(bb * 2.5)} : {action: "call"};
+      if (toCall > stack * 0.3) return {action: "fold"};
+      if (toCall <= bb * 2.5) return r < 0.75 ? {action: "call"} : {action: "fold"};
+      return r < 0.12 ? {action: "call"} : {action: "fold"};
+    }
+    if (tier === 2) {
+      if (stack <= bb * 12 && toCall >= stack * 0.35) return r < 0.55 ? {action: "call"} : {action: "fold"};
+      if (toCall > stack * 0.35) return r < 0.1 ? {action: "call"} : {action: "fold"};
+      if (toCall <= 0) return r < 0.45 ? {action: "raise", amount: raiseTo(bb * (2.5 + r))} : {action: "call"};
+      if (toCall > bb * 3.5) return r < 0.55 ? {action: "call"} : {action: "fold"};
+      return r < 0.3 ? {action: "raise", amount: raiseTo((g.highestBet || bb) * 3)} : {action: "call"};
+    }
+    if (stack <= bb * 12) return {action: "raise", amount: round2(stack + (b.bet || 0))};
+    if (toCall <= 0) return r < 0.8 ? {action: "raise", amount: raiseTo(bb * (2.8 + r))} : {action: "call"};
+    return r < 0.7 ? {action: "raise", amount: raiseTo((g.highestBet || bb) * (2.7 + r * 0.8))} : {action: "call"};
   }
-  if (toCall >= b.stack) return rnd() < 0.5 ? {action: "call"} : {action: "fold"};
-  return rnd() < 0.82 ? {action: "call"} : {action: "fold"};
+
+  const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), g.currentGameType || "NLH");
+  const eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
+  const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
+  const committed = potNow > 0 && stack <= potNow * 0.6;
+
+  if (toCall <= 0) {
+    const river = g.phase === "river";
+    if (eq > 0.9) return (river ? r < 0.05 : r < 0.15) ? {action: "call"} :
+      {action: "raise", amount: raiseTo((b.bet || 0) + potNow * (0.65 + r * 0.35))};
+    if (eq > 0.78) return (river ? r < 0.12 : r < 0.25) ? {action: "call"} :
+      {action: "raise", amount: raiseTo((b.bet || 0) + potNow * (0.55 + r * 0.3))};
+    if (eq > 0.55) return r < 0.5 ? {action: "raise", amount: raiseTo((b.bet || 0) + potNow * (0.4 + r * 0.25))} : {action: "call"};
+    return r < 0.11 ? {action: "raise", amount: raiseTo((b.bet || 0) + potNow * 0.55)} : {action: "call"};
+  }
+  // facing an ALL-IN: this is the one that was a coin flip before
+  if (toCall >= stack) return eq > Math.max(0.42, potOdds) ? {action: "call"} : {action: "fold"};
+  if (eq > potOdds + 0.18 && eq > 0.62) {
+    if (r < 0.3) return {action: "raise", amount: raiseTo(g.highestBet + Math.min(potNow, (g.highestBet || bb) * 1.6))};
+    return {action: "call"};
+  }
+  if (eq > potOdds + 0.02) return {action: "call"};
+  if (committed && eq > potOdds - 0.06) return {action: "call"};
+  return r < 0.07 ? {action: "raise", amount: raiseTo(g.highestBet + potNow * 0.7)} : {action: "fold"};
 }
 
 /* ============================ Firestore plumbing ============================ */
@@ -1216,4 +1348,4 @@ exports.tourAutoStart = onSchedule("every 1 minutes", async () => {
 });
 
 // Test hook — a plain object, ignored by the Functions deploy loader.
-exports.__engineInternals = {startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction};
+exports.__engineInternals = {startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, preflopTier, equityOf};

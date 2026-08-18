@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ZADALOG — שילוח בינלאומי ופריקת מכולות</title>
+<meta name="description" content="ZADALOG — חברת לוגיסטיקה ישראלית. ניהול שילוח בינלאומי מקצה לקצה, פריקת מכולות, עמילות מכס ואחסנה. מכולה נפרקת. שרשרת נשמרת.">
+<meta name="theme-color" content="#050B14">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="canonical" href="https://zadalog.com/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ZADALOG">
+<meta property="og:title" content="ZADALOG — שילוח בינלאומי ופריקת מכולות">
+<meta property="og:description" content="ניהול שילוח בינלאומי מקצה לקצה, פריקת מכולות, עמילות מכס ואחסנה.">
+<meta property="og:url" content="https://zadalog.com/">
+<meta property="og:image" content="https://zadalog.com/assets/og.svg">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles/main.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "MovingCompany",
+  "name": "ZADALOG",
+  "alternateName": "זאדאלוג",
+  "url": "https://zadalog.com",
+  "description": "Israeli logistics company specialising in international freight forwarding and container unloading.",
+  "areaServed": "IL",
+  "knowsLanguage": ["he", "en"],
+  "serviceType": ["International freight forwarding", "Container unloading", "Customs brokerage", "Warehousing"]
+}
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#main" data-i18n="skip">דילוג לתוכן</a>
+
+<!-- ============ GRAIN + AMBIENT ============ -->
+<div class="ambient" aria-hidden="true">
+  <div class="ambient__glow ambient__glow--a"></div>
+  <div class="ambient__glow ambient__glow--b"></div>
+  <div class="ambient__grid"></div>
+</div>
+
+<!-- ============ VOYAGE RAIL ============ -->
+<nav class="voyage" aria-label="Voyage progress" aria-hidden="true">
+  <div class="voyage__track">
+    <div class="voyage__fill" id="voyageFill"></div>
+    <div class="voyage__ship" id="voyageShip">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 17h18l-2 4H5l-2-4Zm2-2V9l7-4 7 4v6H5Z" fill="currentColor"/></svg>
+    </div>
+  </div>
+  <ul class="voyage__ports" id="voyagePorts"></ul>
+</nav>
+
+<!-- ============ HEADER ============ -->
+<header class="nav" id="nav">
+  <a class="brand" href="#top" aria-label="ZADALOG">
+    <svg class="brand__mark" viewBox="0 0 44 44" aria-hidden="true">
+      <defs>
+        <linearGradient id="bm" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#12283C"/><stop offset="1" stop-color="#081420"/>
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="42" height="42" rx="13" fill="url(#bm)" stroke="rgba(255,255,255,.14)"/>
+      <path d="M13 14.5H30.5L13.5 29.5H31" fill="none" stroke="#FF6B2C" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="13" cy="14.5" r="3.1" fill="#21D4C4"/>
+      <circle cx="31" cy="29.5" r="3.1" fill="#FF6B2C"/>
+    </svg>
+    <span class="brand__text">
+      <span class="brand__name">ZADALOG</span>
+      <span class="brand__tag" data-i18n="brandTag">לוגיסטיקה בינלאומית</span>
+    </span>
+  </a>
+
+  <ul class="nav__links" id="navLinks">
+    <li><a href="#services" data-i18n="navServices">שירותים</a></li>
+    <li><a href="#planner" data-i18n="navPlanner">מחשבון מכולה</a></li>
+    <li><a href="#track" data-i18n="navTrack">מעקב משלוח</a></li>
+    <li><a href="#process" data-i18n="navProcess">איך זה עובד</a></li>
+    <li><a href="#network" data-i18n="navNetwork">הרשת שלנו</a></li>
+  </ul>
+
+  <div class="nav__actions">
+    <button class="lang" id="langToggle" type="button" aria-label="Switch language">
+      <span class="lang__opt is-on" data-lang="he">עב</span>
+      <span class="lang__sep"></span>
+      <span class="lang__opt" data-lang="en">EN</span>
+    </button>
+    <a class="btn btn--primary btn--sm" href="#contact" data-i18n="navCta">קבלו הצעה</a>
+    <button class="burger" id="burger" type="button" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+  </div>
+</header>
+
+<main id="main">
+<span id="top"></span>
+
+<!-- ============ HERO ============ -->
+<section class="hero" data-port="hero" data-port-he="נמל הבית" data-port-en="Home Port">
+  <div class="hero__map" aria-hidden="true">
+    <svg id="worldMap" viewBox="0 0 720 300" preserveAspectRatio="xMidYMid slice"></svg>
+  </div>
+
+  <div class="hero__inner">
+    <div class="hero__copy">
+      <div class="eyebrow reveal">
+        <span class="eyebrow__pulse"></span>
+        <span data-i18n="heroEyebrow">שילוח בינלאומי · פריקת מכולות · ישראל</span>
+      </div>
+
+      <h1 class="hero__title reveal" data-delay="1">
+        <span class="line" data-i18n="heroT1">המכולה שלכם</span>
+        <span class="line hero__title--accent" data-i18n="heroT2">לא נעצרת בנמל.</span>
+      </h1>
+
+      <p class="hero__sub reveal" data-delay="2" data-i18n="heroSub">
+        ZADALOG מנהלת את המסע המלא — מהמפעל בסין ועד הרצפה במחסן שלכם בישראל. הזמנת שטח, מכס, נמל, פריקת מכולה ופריסה. ספק אחד, אחריות אחת, בלי הפתעות.
+      </p>
+
+      <div class="hero__cta reveal" data-delay="3">
+        <a class="btn btn--primary" href="#contact">
+          <span data-i18n="heroCta1">בואו נתמחר משלוח</span>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M5 12h13m0 0-5-5m5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn btn--ghost" href="#planner" data-i18n="heroCta2">נסו את מחשבון המכולה</a>
+      </div>
+
+      <dl class="hero__stats reveal" data-delay="4">
+        <div><dt data-i18n="stat1">מכולות בשנה</dt><dd class="num" data-count="2400" data-suffix="+">0</dd></div>
+        <div><dt data-i18n="stat2">נמלי מוצא</dt><dd class="num" data-count="60" data-suffix="+">0</dd></div>
+        <div><dt data-i18n="stat3">פריקה בתוך</dt><dd class="num" data-count="4" data-suffix="h">0</dd></div>
+        <div><dt data-i18n="stat4">שביעות רצון</dt><dd class="num" data-count="98" data-suffix="%">0</dd></div>
+      </dl>
+    </div>
+
+    <aside class="ticker" aria-label="Live operations">
+      <div class="ticker__head">
+        <span class="ticker__dot"></span>
+        <span data-i18n="tickerTitle">חדר מבצעים · חי</span>
+      </div>
+      <ul class="ticker__list" id="tickerList"></ul>
+      <div class="ticker__foot">
+        <span data-i18n="tickerFoot">נתוני הדגמה · מתעדכן כל 3 שניות</span>
+      </div>
+    </aside>
+  </div>
+
+  <div class="hero__scroll" aria-hidden="true">
+    <span data-i18n="scroll">גללו</span>
+    <i></i>
+  </div>
+</section>
+
+<!-- ============ MARQUEE ============ -->
+<div class="marquee" aria-hidden="true">
+  <div class="marquee__row" id="marqueeRow"></div>
+</div>
+
+<!-- ============ SERVICES ============ -->
+<section class="section" id="services" data-port="services" data-port-he="שירותים" data-port-en="Services">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <span class="sec-num">01</span>
+      <h2 data-i18n="svcTitle">ארבע חוליות. שרשרת אחת.</h2>
+      <p data-i18n="svcSub">רוב המשלוחים נשברים בתפרים — בין הסוכן לעמיל, בין הנמל למחסן. אנחנו מחזיקים את כל התפרים בעצמנו.</p>
+    </header>
+
+    <div class="svc-grid" id="svcGrid">
+      <article class="svc reveal" data-svc="freight">
+        <div class="svc__icon">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M2 24h28l-3 5H5l-3-5Z" fill="currentColor" opacity=".35"/><path d="M5 22V11l11-6 11 6v11H5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 22v-7h12v7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        </div>
+        <h3 data-i18n="svc1t">שילוח בינלאומי</h3>
+        <p data-i18n="svc1d">ים, אוויר ויבשה. FCL ו‑LCL, שטח מובטח בעונות שיא, קונסולידציה במוצא וניהול ספקים מולכם בעברית.</p>
+        <ul class="svc__list">
+          <li data-i18n="svc1a">FCL · LCL · Air</li>
+          <li data-i18n="svc1b">קונסולידציה בסין ובאירופה</li>
+          <li data-i18n="svc1c">ביטוח מטען</li>
+        </ul>
+      </article>
+
+      <article class="svc reveal" data-delay="1" data-svc="unload">
+        <div class="svc__icon">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="18" height="14" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M7 9v14M11 9v14M15 9v14" stroke="currentColor" stroke-width="1.2" opacity=".6"/><path d="M24 23V7h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="24" cy="25" r="2" fill="currentColor"/></svg>
+        </div>
+        <h3 data-i18n="svc2t">פריקת מכולות</h3>
+        <p data-i18n="svc2d">ההתמחות שלנו. צוותי פריקה מיומנים, ציוד שינוע, ספירה ובקרת נזקים בזמן אמת — ודוח פריקה מצולם לפני שהנהג עוזב.</p>
+        <ul class="svc__list">
+          <li data-i18n="svc2a">פריקה ידנית ומכנית</li>
+          <li data-i18n="svc2b">מיון, ספירה ופלטיזציה</li>
+          <li data-i18n="svc2c">דוח מצולם + חתימה דיגיטלית</li>
+        </ul>
+      </article>
+
+      <article class="svc reveal" data-delay="2" data-svc="customs">
+        <div class="svc__icon">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3l11 5v8c0 7-4.6 11-11 13C9.6 27 5 23 5 16V8l11-5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M11 16l3.5 3.5L21 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h3 data-i18n="svc3t">עמילות מכס</h3>
+        <p data-i18n="svc3d">סיווג נכון מראש, טיפול בתקנים ובאישורי יבוא, ושחרור מהיר. פחות ימי אחסנה בנמל זה כסף שנשאר אצלכם.</p>
+        <ul class="svc__list">
+          <li data-i18n="svc3a">סיווג ותכנון מכס</li>
+          <li data-i18n="svc3b">תקנים ואישורי יבוא</li>
+          <li data-i18n="svc3c">שחרור מהיר מהנמל</li>
+        </ul>
+      </article>
+
+      <article class="svc reveal" data-delay="3" data-svc="warehouse">
+        <div class="svc__icon">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M3 13l13-8 13 8v15H3V13Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><rect x="9" y="18" width="6" height="5" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="17" y="18" width="6" height="5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+        </div>
+        <h3 data-i18n="svc4t">אחסנה והפצה</h3>
+        <p data-i18n="svc4d">אחסנה גמישה לפי מ״ר או לפי מיקום, ליקוט והפצה לנקודות קצה בכל הארץ — כולל שילוח ללקוח הסופי.</p>
+        <ul class="svc__list">
+          <li data-i18n="svc4a">אחסנה קצרה וארוכה</li>
+          <li data-i18n="svc4b">ליקוט ואריזה</li>
+          <li data-i18n="svc4c">הפצה ארצית</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ UNLOAD SCENE ============ -->
+<section class="unload" id="unload" data-port="unload" data-port-he="פריקה" data-port-en="Unloading">
+  <div class="unload__sticky">
+    <div class="wrap unload__grid">
+      <div class="unload__copy">
+        <span class="sec-num">02</span>
+        <h2 data-i18n="unTitle">מכולה נפרקת. שרשרת נשמרת.</h2>
+        <ol class="unload__steps" id="unloadSteps">
+          <li data-step="0"><b data-i18n="un1t">המכולה מגיעה</b><span data-i18n="un1d">חותם נבדק ומצולם מול תעודת המשלוח, לפני שנוגעים בדלת.</span></li>
+          <li data-step="1"><b data-i18n="un2t">הדלתות נפתחות</b><span data-i18n="un2d">תיעוד מצב המטען כפי שהוא — הראיה שלכם מול הספק ומול הביטוח.</span></li>
+          <li data-step="2"><b data-i18n="un3t">פריקה וספירה</b><span data-i18n="un3d">צוות קבוע, ציוד שינוע מתאים, ספירה מול רשימת אריזה תוך כדי עבודה.</span></li>
+          <li data-step="3"><b data-i18n="un4t">פלטיזציה ומסירה</b><span data-i18n="un4d">מיון לפלטות, עטיפה, ודוח פריקה מצולם שנשלח אליכם באותו יום.</span></li>
+        </ol>
+        <a class="btn btn--ghost btn--sm" href="#contact" data-i18n="unCta">לתאם פריקה</a>
+      </div>
+
+      <div class="unload__stage" aria-hidden="true">
+        <div class="cont" id="contScene">
+          <div class="cont__body">
+            <div class="cont__corr"></div>
+            <div class="cont__label" dir="ltr"><span>ZADA</span><span class="cont__code">4 5 8 2 1 9 0</span></div>
+          </div>
+          <div class="cont__door cont__door--l"><i></i></div>
+          <div class="cont__door cont__door--r"><i></i></div>
+          <div class="cont__cargo" id="contCargo"></div>
+          <div class="cont__floor"></div>
+        </div>
+        <div class="unload__progress"><span id="unloadPct">0%</span><i><b id="unloadBar"></b></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="unload__spacer"></div>
+</section>
+
+<!-- ============ CONTAINER PLANNER ============ -->
+<section class="section section--alt" id="planner" data-port="planner" data-port-he="מחשבון" data-port-en="Planner">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <span class="sec-num">03</span>
+      <h2 data-i18n="plTitle">כמה באמת נכנס למכולה?</h2>
+      <p data-i18n="plSub">הכלי שחסר לכל יבואן. הכניסו את המטען — ותראו בשנייה כמה יחידות נכנסות, כמה מכולות תצטרכו, ומה החסם האמיתי: נפח או משקל.</p>
+    </header>
+
+    <div class="planner reveal">
+      <div class="planner__form">
+        <div class="field">
+          <label data-i18n="plCargo">סוג מטען</label>
+          <div class="chips" id="cargoChips"></div>
+        </div>
+
+        <div class="field-row">
+          <div class="field"><label data-i18n="plLen">אורך (ס״מ)</label><input type="number" id="inLen" min="1" max="1300" value="120"></div>
+          <div class="field"><label data-i18n="plWid">רוחב (ס״מ)</label><input type="number" id="inWid" min="1" max="235" value="80"></div>
+          <div class="field"><label data-i18n="plHei">גובה (ס״מ)</label><input type="number" id="inHei" min="1" max="269" value="150"></div>
+        </div>
+
+        <div class="field-row">
+          <div class="field"><label data-i18n="plWgt">משקל ליחידה (ק״ג)</label><input type="number" id="inWgt" min="0.1" step="0.1" value="600"></div>
+          <div class="field"><label data-i18n="plQty">כמות יחידות</label><input type="number" id="inQty" min="1" max="99999" value="40"></div>
+        </div>
+
+        <div class="field">
+          <label data-i18n="plCont">סוג מכולה</label>
+          <div class="chips chips--cont" id="contChips"></div>
+        </div>
+
+        <label class="switch">
+          <input type="checkbox" id="inStack" checked>
+          <span class="switch__ui"></span>
+          <span data-i18n="plStack">ניתן לערום יחידות זו על זו</span>
+        </label>
+
+        <p class="planner__note" data-i18n="plNote">הערכה הנדסית לצורך תכנון בלבד. ערכי פלטות סטנדרטיים מבוססים על תכולות מקובלות בענף. תמיד נאמת מולכם לפני הזמנת שטח.</p>
+      </div>
+
+      <div class="planner__out">
+        <div class="planner__viz">
+          <svg id="isoBox" viewBox="0 0 460 300" aria-hidden="true"></svg>
+          <div class="planner__vizTag" id="vizTag">40' HC</div>
+        </div>
+
+        <div class="kpis">
+          <div class="kpi"><span class="kpi__l" data-i18n="kpi1">נכנסות למכולה</span><span class="kpi__v" id="kFit">—</span></div>
+          <div class="kpi"><span class="kpi__l" data-i18n="kpi2">מכולות דרושות</span><span class="kpi__v" id="kCont">—</span></div>
+          <div class="kpi"><span class="kpi__l" data-i18n="kpi3">ניצולת נפח</span><span class="kpi__v" id="kVol">—</span></div>
+          <div class="kpi"><span class="kpi__l" data-i18n="kpi4">ניצולת משקל</span><span class="kpi__v" id="kWgt">—</span></div>
+        </div>
+
+        <div class="bars">
+          <div class="bar"><span data-i18n="barVol">נפח</span><i><b id="barVol"></b></i><em id="barVolTxt">0%</em></div>
+          <div class="bar"><span data-i18n="barWgt">משקל</span><i><b id="barWgt" class="is-w"></b></i><em id="barWgtTxt">0%</em></div>
+        </div>
+
+        <div class="verdict" id="verdict"></div>
+
+        <div class="planner__actions">
+          <button class="btn btn--primary btn--sm" id="plQuote" type="button" data-i18n="plQuoteBtn">שלחו לי תמחור לפי החישוב</button>
+          <button class="btn btn--ghost btn--sm" id="plReset" type="button" data-i18n="plResetBtn">איפוס</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ TRACK ============ -->
+<section class="section" id="track" data-port="track" data-port-he="מעקב" data-port-en="Tracking">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <span class="sec-num">04</span>
+      <h2 data-i18n="trTitle">איפה המשלוח שלי?</h2>
+      <p data-i18n="trSub">מספר אחד. תמונה מלאה — נמל, אונייה, ETA, ומה קורה ברגע זה. נסו: <code>ZDL‑8842‑IL</code></p>
+    </header>
+
+    <form class="track reveal" id="trackForm" autocomplete="off">
+      <div class="track__bar">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="trackInput" type="text" placeholder="ZDL-8842-IL" aria-label="Tracking number" value="">
+        <button class="btn btn--primary btn--sm" type="submit" data-i18n="trBtn">מעקב</button>
+      </div>
+      <div class="track__hint" id="trackHint" data-i18n="trHint">נתוני הדגמה. במערכת החיה מוזן מספר ה‑B/L או מספר ההזמנה שלכם.</div>
+    </form>
+
+    <div class="result" id="trackResult" hidden>
+      <div class="result__head">
+        <div>
+          <span class="result__id" id="rId">—</span>
+          <span class="result__badge" id="rStatus">—</span>
+        </div>
+        <div class="result__eta"><span data-i18n="trEta">הגעה משוערת</span><b id="rEta">—</b></div>
+      </div>
+
+      <div class="result__route">
+        <div class="result__port"><b id="rFrom">—</b><span data-i18n="trFrom">מוצא</span></div>
+        <div class="result__line"><i><b id="rProg"></b></i><span class="result__vessel" id="rVessel">—</span></div>
+        <div class="result__port result__port--end"><b id="rTo">—</b><span data-i18n="trTo">יעד</span></div>
+      </div>
+
+      <ul class="steps" id="rSteps"></ul>
+
+      <div class="result__meta" id="rMeta"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROCESS ============ -->
+<section class="section section--alt" id="process" data-port="process" data-port-he="תהליך" data-port-en="Process">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <span class="sec-num">05</span>
+      <h2 data-i18n="prTitle">המסע, שלב אחר שלב</h2>
+      <p data-i18n="prSub">שבעה שלבים בין המפעל למחסן שלכם. על כל אחד מהם יושב אצלנו איש אחד עם שם וטלפון.</p>
+    </header>
+
+    <ol class="proc" id="proc">
+      <li class="proc__item reveal"><span class="proc__n">01</span><h3 data-i18n="pr1t">אפיון ותמחור</h3><p data-i18n="pr1d">מבינים מה אתם מייבאים, מאיפה, ובאיזו תדירות — ובונים תמחור אמיתי, כולל העלויות שאף אחד לא מספר עליהן.</p></li>
+      <li class="proc__item reveal" data-delay="1"><span class="proc__n">02</span><h3 data-i18n="pr2t">איסוף במוצא</h3><p data-i18n="pr2d">הסוכן שלנו אוסף מהמפעל, בודק אריזה וסימון, ומאחד משלוחים לחיסכון בשטח.</p></li>
+      <li class="proc__item reveal" data-delay="2"><span class="proc__n">03</span><h3 data-i18n="pr3t">הזמנת שטח והפלגה</h3><p data-i18n="pr3d">שריון מקום מול חברות הספנות, מסמכי מטען, וביטוח — ואז ההפלגה מתחילה.</p></li>
+      <li class="proc__item reveal" data-delay="3"><span class="proc__n">04</span><h3 data-i18n="pr4t">מעקב בזמן אמת</h3><p data-i18n="pr4d">עדכון בכל נקודת ציון, כולל התרעה מוקדמת על עיכובים לפני שהם הופכים לבעיה.</p></li>
+      <li class="proc__item reveal"><span class="proc__n">05</span><h3 data-i18n="pr5t">מכס ושחרור</h3><p data-i18n="pr5d">הכנת התיק מראש כדי שהמכולה לא תשב בנמל ותצבור ימי אחסנה.</p></li>
+      <li class="proc__item reveal" data-delay="1"><span class="proc__n">06</span><h3 data-i18n="pr6t">הובלה ופריקה</h3><p data-i18n="pr6d">מוביל, צוות פריקה וציוד — מתואמים לאותו חלון זמן. אתם מקבלים מכולה פרוקה, לא כאב ראש.</p></li>
+      <li class="proc__item reveal" data-delay="2"><span class="proc__n">07</span><h3 data-i18n="pr7t">דוח וסגירה</h3><p data-i18n="pr7d">דוח פריקה מצולם, התאמת ספירה מול רשימת אריזה, וסיכום עלויות שקוף.</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============ NETWORK ============ -->
+<section class="section" id="network" data-port="network" data-port-he="רשת" data-port-en="Network">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <span class="sec-num">06</span>
+      <h2 data-i18n="ntTitle">הרשת שמאחורי המשלוח</h2>
+      <p data-i18n="ntSub">נמלי מוצא קבועים, זמני שיט אמיתיים, ותדירות הפלגות שאפשר לתכנן לפיה.</p>
+    </header>
+
+    <div class="net reveal">
+      <table class="net__table">
+        <thead>
+          <tr>
+            <th data-i18n="ntC1">נמל מוצא</th>
+            <th data-i18n="ntC2">יעד</th>
+            <th data-i18n="ntC3">זמן שיט</th>
+            <th data-i18n="ntC4">תדירות</th>
+            <th data-i18n="ntC5">שירות</th>
+          </tr>
+        </thead>
+        <tbody id="netBody"></tbody>
+      </table>
+      <p class="net__note" data-i18n="ntNote">זמני שיט ממוצעים, כפופים לזמינות שטח ולתנאי נמל.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WHY ============ -->
+<section class="section section--alt" id="why" data-port="why" data-port-he="למה אנחנו" data-port-en="Why us">
+  <div class="wrap">
+    <div class="why">
+      <div class="why__copy reveal">
+        <span class="sec-num">07</span>
+        <h2 data-i18n="whTitle">למה יבואנים נשארים אצלנו</h2>
+        <ul class="why__list">
+          <li><b data-i18n="wh1t">איש קשר אחד</b><span data-i18n="wh1d">לא מוקד. בן אדם שמכיר את המשלוח שלכם בשם.</span></li>
+          <li><b data-i18n="wh2t">תמחור בלי כוכביות</b><span data-i18n="wh2d">כל העלויות על השולחן מראש — כולל אגרות, אחסנה והובלה יבשתית.</span></li>
+          <li><b data-i18n="wh3t">פריקה בבית</b><span data-i18n="wh3d">אנחנו לא מעבירים אתכם לקבלן. הצוות שפורק הוא הצוות שלנו.</span></li>
+          <li><b data-i18n="wh4t">תיעוד שמגן עליכם</b><span data-i18n="wh4d">כל פריקה מצולמת. כשיש ויכוח עם ספק — יש לכם ראיות.</span></li>
+        </ul>
+      </div>
+
+      <div class="quotes reveal" data-delay="1">
+        <div class="quotes__viewport" id="quotesViewport"></div>
+        <div class="quotes__nav" id="quotesNav"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CONTACT ============ -->
+<section class="section contact" id="contact" data-port="contact" data-port-he="יצירת קשר" data-port-en="Contact">
+  <div class="wrap contact__grid">
+    <div class="contact__copy reveal">
+      <span class="sec-num">08</span>
+      <h2 data-i18n="ctTitle">נתחיל ממשלוח אחד</h2>
+      <p data-i18n="ctSub">ספרו לנו מה אתם מייבאים ומאיפה. תוך יום עסקים אחד תקבלו תמחור מלא, זמן שיט צפוי ותוכנית פריקה.</p>
+
+      <ul class="contact__meta">
+        <li><span data-i18n="ctPhone">טלפון</span><a href="tel:+972000000000" dir="ltr">+972 00-000-0000</a></li>
+        <li><span data-i18n="ctMail">אימייל</span><a href="mailto:info@zadalog.com" dir="ltr">info@zadalog.com</a></li>
+        <li><span data-i18n="ctAddr">משרד</span><b data-i18n="ctAddrV">אשדוד, ישראל</b></li>
+        <li><span data-i18n="ctHours">שעות</span><b data-i18n="ctHoursV">א׳–ה׳ 08:00–18:00</b></li>
+      </ul>
+    </div>
+
+    <form class="form reveal" data-delay="1" id="quoteForm" novalidate>
+      <div class="field-row">
+        <div class="field"><label for="fName" data-i18n="fName">שם מלא</label><input id="fName" name="name" required></div>
+        <div class="field"><label for="fCompany" data-i18n="fCompany">חברה</label><input id="fCompany" name="company"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="fPhone" data-i18n="fPhone">טלפון</label><input id="fPhone" name="phone" inputmode="tel" required></div>
+        <div class="field"><label for="fEmail" data-i18n="fEmail">אימייל</label><input id="fEmail" name="email" type="email" required></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="fOrigin" data-i18n="fOrigin">נמל / מדינת מוצא</label><input id="fOrigin" name="origin" placeholder="Shanghai"></div>
+        <div class="field">
+          <label for="fType" data-i18n="fType">סוג שירות</label>
+          <select id="fType" name="service">
+            <option value="fcl" data-i18n="fOpt1">מכולה מלאה (FCL)</option>
+            <option value="lcl" data-i18n="fOpt2">משלוח מאוחד (LCL)</option>
+            <option value="air" data-i18n="fOpt3">שילוח אווירי</option>
+            <option value="unload" data-i18n="fOpt4">פריקת מכולה בלבד</option>
+            <option value="full" data-i18n="fOpt5">ניהול מקצה לקצה</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label for="fMsg" data-i18n="fMsg">פרטי המטען</label><textarea id="fMsg" name="message" rows="4" placeholder="40' HC, 22 טון, ריהוט"></textarea></div>
+
+      <button class="btn btn--primary btn--full" type="submit" data-i18n="fSubmit">שליחה — נחזור תוך יום עסקים</button>
+      <div class="form__status" id="formStatus" role="status"></div>
+      <p class="form__alt" data-i18n="fAlt">ממהרים? כתבו לנו בוואטסאפ ונענה מיד.</p>
+    </form>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="foot">
+  <div class="wrap foot__grid">
+    <div>
+      <div class="brand brand--foot">
+        <svg class="brand__mark" viewBox="0 0 44 44" aria-hidden="true">
+          <rect x="1" y="1" width="42" height="42" rx="13" fill="#0B1622" stroke="rgba(255,255,255,.12)"/>
+          <path d="M13 14.5H30.5L13.5 29.5H31" fill="none" stroke="#FF6B2C" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="13" cy="14.5" r="3.1" fill="#21D4C4"/><circle cx="31" cy="29.5" r="3.1" fill="#FF6B2C"/>
+        </svg>
+        <span class="brand__text"><span class="brand__name">ZADALOG</span></span>
+      </div>
+      <p class="foot__line" data-i18n="footLine">מכולה נפרקת. שרשרת נשמרת.</p>
+    </div>
+
+    <nav class="foot__nav" aria-label="Footer">
+      <h4 data-i18n="footSvc">שירותים</h4>
+      <a href="#services" data-i18n="svc1t">שילוח בינלאומי</a>
+      <a href="#unload" data-i18n="svc2t">פריקת מכולות</a>
+      <a href="#services" data-i18n="svc3t">עמילות מכס</a>
+      <a href="#services" data-i18n="svc4t">אחסנה והפצה</a>
+    </nav>
+
+    <nav class="foot__nav" aria-label="Tools">
+      <h4 data-i18n="footTools">כלים</h4>
+      <a href="#planner" data-i18n="navPlanner">מחשבון מכולה</a>
+      <a href="#track" data-i18n="navTrack">מעקב משלוח</a>
+      <a href="#network" data-i18n="navNetwork">הרשת שלנו</a>
+      <a href="#contact" data-i18n="navCta">קבלו הצעה</a>
+    </nav>
+
+    <div class="foot__contact">
+      <h4 data-i18n="footContact">יצירת קשר</h4>
+      <a href="mailto:info@zadalog.com" dir="ltr">info@zadalog.com</a>
+      <a href="tel:+972000000000" dir="ltr">+972 00-000-0000</a>
+      <span data-i18n="ctAddrV">אשדוד, ישראל</span>
+    </div>
+  </div>
+
+  <div class="wrap foot__bar">
+    <span>© <span id="year">2026</span> ZADALOG</span>
+    <span data-i18n="footRights">כל הזכויות שמורות</span>
+  </div>
+</footer>
+
+<a class="wa" id="waBtn" href="https://wa.me/972000000000" target="_blank" rel="noopener" aria-label="WhatsApp">
+  <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M16 3C8.8 3 3 8.8 3 16c0 2.3.6 4.5 1.7 6.4L3 29l6.8-1.8c1.9 1 4 1.6 6.2 1.6 7.2 0 13-5.8 13-13S23.2 3 16 3Zm0 23.6c-2 0-3.9-.5-5.5-1.5l-.4-.2-4 1.1 1.1-3.9-.3-.4A10.5 10.5 0 0 1 5.4 16C5.4 10.2 10.2 5.4 16 5.4S26.6 10.2 26.6 16 21.8 26.6 16 26.6Zm5.9-7.9c-.3-.2-1.9-.9-2.2-1s-.5-.2-.7.2c-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.3-.2-1.4-.5-2.6-1.6-1-.9-1.6-1.9-1.8-2.3-.2-.3 0-.5.1-.7l.5-.6c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.6l-1-2.3c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.6.1-.9.4-.3.3-1.2 1.2-1.2 2.8s1.2 3.3 1.4 3.5c.2.2 2.4 3.7 5.8 5.1.8.4 1.5.6 2 .7.8.3 1.6.2 2.2.1.7-.1 2-.8 2.2-1.6.3-.8.3-1.5.2-1.6-.1-.2-.3-.3-.6-.4Z"/></svg>
+</a>
+
+<script src="/scripts/data.js"></script>
+<script src="/scripts/i18n.js"></script>
+<script src="/scripts/worldmap.js"></script>
+<script src="/scripts/planner.js"></script>
+<script src="/scripts/tracking.js"></script>
+<script src="/scripts/main.js"></script>
+</body>
+</html>

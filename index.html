@@ -343,6 +343,30 @@
             .player-spotlight { width: 200px; height: 200px; }
         }
 
+        /* The capsule table above is gated on width >= 1024px, so a browser
+           window 990px wide got the PHONE layout: an image felt sized from
+           --vhpx stretched to 99.4vw, which in a short wide window becomes a
+           pancake with the seats crushed down one side. What decides the
+           layout is the SHAPE of the window, not its pixel width — so any
+           landscape window tall enough to hold a table gets the desktop one.
+           The min-height keeps a phone held sideways on the phone layout. */
+        @media (min-aspect-ratio: 13/10) and (min-height: 520px) {
+            .poker-table {
+                max-width: min(960px, calc((var(--vhpx, 100dvh) - 230px) * 1.85)) !important;
+                height: auto !important;
+                aspect-ratio: 1.85 / 1;
+                border-radius: 26% / 50%;
+                margin: auto;
+            }
+            .pt-wrap .pt-fsvg { display: none !important; }
+            /* the hero joins the ring instead of hanging off the bottom edge */
+            .poker-table { --heroBottom: 26%; }
+            .pt-wrap .pt-felt3d { display: block !important; transform: none; inset: 0; }
+            .pt-wrap .pt-felt3d::after { inset: 14px; }
+            .ft-banner { font-size: 26px; top: 18%; }
+            .player-spotlight { width: 200px; height: 200px; }
+        }
+
         /* View transitions: the entering screen fades/slides in (no hard cuts) */
         @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
         .view-anim { animation: viewIn 0.28s cubic-bezier(0.2,0.8,0.2,1) both; }
@@ -13243,8 +13267,14 @@ function PokerTable({
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 top-[34%] -translate-x-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
+    className: "absolute left-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
     style: {
+      // The board row is centred at 46% and is a FIXED 70px tall, so a
+      // percentage put the pill on top of the cards as soon as the window got
+      // short (every desktop size). Hang the pill's bottom 10px above the
+      // board's top edge instead — true at any viewport.
+      top: 'calc(46% - 45px)',
+      transform: 'translate(-50%, -100%)',
       background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.22) 60%, rgba(0,0,0,0) 100%)',
       textShadow: '0 1px 3px rgba(0,0,0,0.85)'
     },
@@ -13450,13 +13480,11 @@ function PokerTable({
       className: "absolute " + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       style: isMe ? {
         left: '50%',
-        // The hero is anchored in PIXELS so the fixed-height action bar can
-        // never cover his stack — but the board sits at a percentage, so on a
-        // short viewport (phone browser with URL bar + toolbar, ~560-600px)
-        // the two converged and the board landed on his hole cards. Scaling
-        // the anchor with the app's own height model keeps them apart down to
-        // ~480px while leaving tall screens exactly where they were.
-        bottom: 'clamp(84px, calc(var(--vhpx, 900px) * 0.1667), 150px)',
+        // Anchored in pixels on the phone so the fixed-height action bar can
+        // never cover his stack (see .pt-hero — on a landscape/desktop window
+        // the action bar sits BELOW the table, so there he takes the ring's
+        // bottom seat like everyone else, instead of floating mid-felt).
+        bottom: 'var(--heroBottom, clamp(84px, calc(var(--vhpx, 900px) * 0.1667), 150px))',
         transform: 'translateX(-50%)'
       } : {
         ...seatPos(i),

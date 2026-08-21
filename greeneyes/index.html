@@ -1319,16 +1319,24 @@
     }
     if (!isAdminRole()) { $('scrAdmin').innerHTML = '<div class="spin">אין הרשאת ניהול</div>'; return; }
     var st = S.stock[S.adminUnit] || {};
-    // (re)load the signed-holders buffer when switching unit
+    // (re)load the per-piece buffer when switching unit. For tracked items,
+    // rebuild the rows from the saved pieces — or, when the item was saved as
+    // a plain quantity WITHOUT צ׳, recreate that many empty rows so the quantity
+    // still shows and re-saves (previously it looked blank / "unsaved").
     if (S.instEdit.unit !== S.adminUnit) {
       S.instEdit = { unit: S.adminUnit, open: {}, data: {} };
       ['ammo', 'equip'].forEach(function (kind) {
         var m = st[kind] || {};
         Object.keys(m).forEach(function (iid) {
-          if (m[iid] && m[iid].inst && m[iid].inst.length) {
-            S.instEdit.data[kind + ':' + iid] = m[iid].inst.map(function (r) {
+          var e = m[iid];
+          if (!e || trackOf(iid) === 'qty') return;
+          if (e.inst && e.inst.length) {
+            S.instEdit.data[kind + ':' + iid] = e.inst.map(function (r) {
               return { s: r.s || '', owner: r.owner || '', num: r.num || '' };
             });
+          } else if (typeof e.q === 'number' && e.q > 0) {
+            var arr = []; for (var i = 0; i < Math.min(999, e.q); i++) arr.push({ s: '', owner: '', num: '' });
+            S.instEdit.data[kind + ':' + iid] = arr;
           }
         });
       });
@@ -1539,9 +1547,12 @@
     if (S.instEdit.unit === S.adminUnit) {
       Object.keys(S.instEdit.data).forEach(function (key) {
         var p = key.split(':'), kind = p[0], iid = p[1];
+        // Every row is one physical piece — KEEP it even if its צ׳/holder is
+        // blank (a quantity without serials must still be saved). The number
+        // of rows is the quantity.
         var arr = (S.instEdit.data[key] || []).map(function (r) {
           return { s: (r.s || '').trim(), owner: (r.owner || '').trim(), num: (r.num || '').trim() };
-        }).filter(function (r) { return r.s || r.owner || r.num; });
+        });
         if (arr.length) {
           var old2 = prev[kind] && prev[kind][iid];
           next[kind][iid] = { t: (old2 && old2.t) || Date.now(), inst: arr, q: arr.length };

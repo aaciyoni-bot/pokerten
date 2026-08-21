@@ -17,29 +17,30 @@
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; padding: 0; height: 100%; }
+  html { height: 100%; }
   body {
+    margin: 0; padding: 0; min-height: 100%;
     font-family: 'Heebo', Arial, sans-serif;
     background: #f2f5f0;
     color: #1a2e22;
-    /* generous clearance so the submit button is never hidden behind the fixed bottom nav */
-    padding-bottom: calc(130px + env(safe-area-inset-bottom));
   }
   header.app {
     background: linear-gradient(135deg, #081c12, #1b4332);
     color: #fff;
-    padding: 10px 14px;
+    padding: calc(10px + env(safe-area-inset-top)) 14px 10px;
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     position: sticky; top: 0; z-index: 50;
     box-shadow: 0 2px 10px rgba(0,0,0,.25);
   }
   header.app .ttl { font-weight: 900; font-size: 17px; line-height: 1.1; }
-  header.app .sub { font-size: 11px; opacity: .75; font-weight: 400; }
-  header.app .who { font-size: 11px; opacity: .85; text-align: left; }
-  header.app .who button { background: none; border: none; color: #a7f3d0; font-size: 11px; cursor: pointer; padding: 0; font-family: inherit; }
-  .rolebadge { display: inline-block; background: rgba(167,243,208,.18); color: #a7f3d0; border-radius: 7px; padding: 1px 7px; font-size: 10px; font-weight: 700; }
+  header.app .sub { font-size: 11px; opacity: .75; font-weight: 400; margin-top: 1px; }
+  header.app .who { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  header.app .who .nm { font-size: 12px; font-weight: 700; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header.app .who .logout { display: flex; align-items: center; gap: 5px; background: rgba(255,255,255,.12); border: none; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; padding: 6px 12px; border-radius: 20px; font-family: inherit; }
+  header.app .who .logout:active { background: rgba(255,255,255,.25); }
+  .rolebadge { display: inline-block; background: rgba(167,243,208,.18); color: #a7f3d0; border-radius: 7px; padding: 2px 8px; font-size: 10px; font-weight: 700; }
 
-  .wrap { max-width: 640px; margin: 0 auto; padding: 10px 12px; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 10px 12px calc(120px + env(safe-area-inset-bottom)); }
 
   /* ── date strip ── */
   .dates { display: flex; gap: 6px; overflow-x: auto; padding: 8px 2px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
@@ -123,12 +124,17 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
   nav.tabs button {
-    flex: 1; border: none; background: none; font-family: inherit; padding: 8px 2px 9px;
+    flex: 1; border: none; background: none; font-family: inherit; padding: 9px 2px 10px;
     font-size: 11px; font-weight: 700; color: #7d8f83; cursor: pointer;
+    transition: color .15s; position: relative;
   }
-  nav.tabs button .ic { display: block; font-size: 20px; margin-bottom: 1px; }
+  nav.tabs button .ic { display: block; font-size: 22px; margin-bottom: 2px; transition: transform .15s; }
   nav.tabs button.on { color: #1b4332; }
-  nav.tabs button.on .ic { transform: scale(1.12); }
+  nav.tabs button.on .ic { transform: scale(1.15) translateY(-1px); }
+  nav.tabs button.on::before { content: ''; position: absolute; top: 0; right: 22%; left: 22%; height: 3px; border-radius: 0 0 3px 3px; background: #16a34a; }
+  nav.tabs button:active .ic { transform: scale(.9); }
+  .btn-primary:active, .gbtn:active, .btn-ghost:active, .btn-mini:active, .vbtn:active, .xbtn:active, .missbtn:active { transform: scale(.97); }
+  .btn-primary, .gbtn, .btn-ghost, .btn-mini, .vbtn, .xbtn, .missbtn { transition: transform .08s; }
 
   /* ── report table ── */
   table.rep { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -161,9 +167,10 @@
   .instbox { grid-column: 1 / -1; background: #eef4f0; border-radius: 10px; padding: 8px; }
   .instbox .irow { display: flex; gap: 5px; margin-bottom: 6px; align-items: center; }
   .instbox .irow input { padding: 7px 6px; font-size: 13px; font-weight: 400; text-align: right; min-width: 0; }
-  .instbox .irow input.n1 { flex: 0 0 72px; text-align: center; }
-  .instbox .irow input.n2 { flex: 1 1 auto; }
-  .instbox .irow input.n3 { flex: 0 0 88px; text-align: center; }
+  .instbox .irow { flex-wrap: wrap; }
+  .instbox .irow input.n1 { flex: 0 0 58px; text-align: center; }
+  .instbox .irow input.n2 { flex: 1 1 120px; }
+  .instbox .irow input.n3 { flex: 0 0 66px; text-align: center; }
   .instbox .irow button { border: none; background: none; color: #b91c1c; font-size: 15px; cursor: pointer; flex: 0 0 auto; padding: 2px; }
   .instbox .note { font-size: 10.5px; color: #6b7f72; margin-top: 2px; }
   .missbtn { flex: 0 0 auto; font-family: inherit; font-size: 12px; font-weight: 700; border-radius: 9px; border: 1.5px solid #dc2626; color: #dc2626; background: #fff; padding: 7px 9px; cursor: pointer; }
@@ -202,7 +209,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -220,7 +227,11 @@
   // works on any domain). Admins upgrade with email+password — that difference
   // is what the Firestore rules use to gate quantity edits server-side.
   window.fb = { auth: _auth, db: getFirestore(app), signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, query, where };
-  window.dispatchEvent(new Event('firebase-ready'));
+  // Keep the session on THIS device: an admin who logged in stays logged in
+  // across reloads and app relaunches until they explicitly tap התנתקות.
+  setPersistence(_auth, browserLocalPersistence)
+    .catch(function () {})
+    .finally(function () { window.dispatchEvent(new Event('firebase-ready')); });
 </script>
 </head>
 <body>
@@ -280,8 +291,8 @@
       <div class="sub">גדוד 1895 · ספירה יומית</div>
     </div>
     <div class="who">
-      <div id="whoName"></div>
-      <div><span class="rolebadge" id="whoRole"></span> <button id="btnLogout">התנתקות</button></div>
+      <div class="nm"><span id="whoName"></span> <span class="rolebadge" id="whoRole"></span></div>
+      <button class="logout" id="btnLogout"><span id="logoutIc">🚪</span> <span id="logoutTxt">התנתקות</span></button>
     </div>
   </header>
 
@@ -294,7 +305,7 @@
 
   <nav class="tabs">
     <button data-tab="count" id="tabCount" class="on"><span class="ic">✅</span>ספירה</button>
-    <button data-tab="usage"><span class="ic">📉</span>שימוש</button>
+    <button data-tab="usage" id="tabUsage" style="display:none"><span class="ic">📉</span>שימוש</button>
     <button data-tab="report"><span class="ic">📊</span>דוח</button>
     <button data-tab="admin" id="tabAdmin" style="display:none"><span class="ic">⚙️</span>ניהול</button>
   </nav>
@@ -542,8 +553,11 @@
   function start() {
     var fb = window.fb;
     $('btnLogout').onclick = function () {
-      if (S.role === 'admin') fb.signOut(fb.auth);   // drops back to an anonymous session
-      else showPicker();                             // regular user: change framework
+      if (S.role === 'admin') {
+        if (confirm('להתנתק מחשבון המנהל?')) { S.loggedLoad = true; fb.signOut(fb.auth); }
+      } else {
+        showPicker();                                // regular user: change framework
+      }
     };
     wirePicker();
     fb.onAuthStateChanged(fb.auth, function (user) {
@@ -670,8 +684,10 @@
       ? (S.user.email || '').split('@')[0]
       : (homeUnit ? homeUnit.full : GROUP_NAMES[role]);
     $('whoRole').textContent = role === 'admin' ? 'מנהל' : GROUP_NAMES[role];
-    $('btnLogout').textContent = role === 'admin' ? 'התנתקות' : 'החלפת מסגרת';
+    $('logoutTxt').textContent = role === 'admin' ? 'התנתקות' : 'החלפת מסגרת';
+    $('logoutIc').textContent = role === 'admin' ? '🚪' : '🔄';
     $('tabAdmin').style.display = role === 'admin' ? '' : 'none';
+    $('tabUsage').style.display = role === 'admin' ? '' : 'none'; // usage log is command-level (armory) only
     // keep the selected unit inside the allowed scope
     if (!UNIT_BY_ID[S.unit] || myGroups().indexOf(UNIT_BY_ID[S.unit].grp) < 0) {
       S.unit = myUnits()[0] ? myUnits()[0].id : 'a_armon';
@@ -723,7 +739,7 @@
   }
 
   function setTab(tab) {
-    if (tab === 'admin' && !isAdminRole()) tab = 'report';
+    if ((tab === 'admin' || tab === 'usage') && !isAdminRole()) tab = 'report';
     S.tab = tab;
     document.querySelectorAll('nav.tabs button').forEach(function (b) {
       b.classList.toggle('on', b.getAttribute('data-tab') === tab);
@@ -860,7 +876,7 @@
             '<button class="vbtn" data-ik="' + kind + '" data-ii="' + it.id + '" data-ix="' + i + '" aria-label="קיים">✓</button>' +
             '<div class="iname"><div class="nm">' + esc(it.name) + (inst.length > 1 ? ' <span style="color:#6b7f72;font-size:12px">(' + (i + 1) + '/' + inst.length + ')</span>' : '') +
             (ins.s ? ' · <span class="serial">צ׳ ' + esc(ins.s) + '</span>' : '') + '</div>' +
-            '<div class="exp">חתום: <b>' + esc(ins.owner || '—') + '</b>' + (ins.num ? ' · מ.א ' + esc(ins.num) : '') + '</div></div>' +
+            (ins.owner ? '<div class="exp">חתום: <b>' + esc(ins.owner) + '</b>' + (ins.num ? ' · מ.א ' + esc(ins.num) : '') + '</div>' : '<div class="exp">פריט ' + (i + 1) + '</div>') + '</div>' +
             '<button class="missbtn" data-mk="' + kind + '" data-mi="' + it.id + '" data-mx="' + i + '">חסר</button>' +
             '</div>';
         });
@@ -1276,55 +1292,45 @@
         });
       });
     }
+    // per-piece editor: each physical item is its own row with its own צ׳ (+ חתום)
     function instEditorHtml(kind, iid) {
       var key = kind + ':' + iid;
       if (!S.instEdit.open[key]) return '';
       var rows = (S.instEdit.data[key] || []).map(function (r, ri) {
         return '<div class="irow">' +
+          '<span style="flex:0 0 22px;font-size:12px;color:#6b7f72;font-weight:700">' + (ri + 1) + '.</span>' +
           '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.s) + '" placeholder="צ׳">' +
-          '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="שם החתום">' +
+          '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="שם החתום (לא חובה)">' +
           '<input class="n3" data-if="num" data-ik2="' + key + '" data-ri="' + ri + '" inputmode="numeric" value="' + esc(r.num) + '" placeholder="מ.א">' +
           '<button data-irm="' + key + '|' + ri + '">✕</button></div>';
       }).join('');
       return '<div class="instbox">' + rows +
-        '<button class="btn-mini" data-iadd="' + key + '">＋ הוסף חתום</button>' +
-        '<div class="note">כשמוגדרים חתומים — הצפי לפריט = מספר החתומים, וכל אחד מופיע בשורה נפרדת בספירה עם שמו וה-צ׳ שלו. אל תשכחו ״שמירת כמויות״.</div></div>';
+        '<button class="btn-mini" data-iadd="' + key + '">＋ הוסף עוד פריט (צ׳)</button>' +
+        '<div class="note">כל שורה = פריט פיזי אחד עם ה-צ׳ שלו. הכמות = מספר השורות. אצל החייל כל פריט מופיע בנפרד. אל תשכחו ״שמירה״.</div></div>';
     }
-    function instLnk(kind, iid) {
-      var key = kind + ':' + iid;
-      var n = (S.instEdit.data[key] || []).length;
-      return '<button class="instlnk" data-il="' + key + '">👤 חתומים (' + n + ')</button>';
+    function stockRow(kind, it) {
+      var e = st[kind] && st[kind][it.id];
+      var key = kind + ':' + it.id;
+      var pcs = S.instEdit.data[key] || [];
+      var open = S.instEdit.open[key];
+      var qtyVal = open || pcs.length ? (pcs.length || '') : (e && typeof e.q === 'number' ? e.q : '');
+      var cur = pcs.length ? '<div class="cur">' + pcs.length + ' פריטים · צ׳ לכל אחד</div>'
+        : (e && typeof e.q === 'number' && e.q > 0) ? '<div class="cur">כמות ' + e.q + '</div>'
+        : '<div class="cur">לא הוגדר</div>';
+      return '<div>' + esc(it.name) + cur +
+        '<button class="instlnk" data-il="' + key + '">' + (open ? '▲ סגירת פירוט' : '🔢 פירוט צ׳ לכל פריט') + '</button></div>' +
+        '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—"' + (open ? ' disabled title="נקבע לפי מספר השורות למטה"' : '') + '>' +
+        instEditorHtml(kind, it.id);
     }
     var h = '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
-      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">פריט עם כמות 0 או ריקה לא מופיע אצל היחידה. ״חתומים״ = מעקב פרטני עם שם לכל פריט.</div>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. ״פירוט צ׳״ = לכל פריט שורה עם צ׳ וחתום (מטולון/מטול/עכבר/רימון רסס/מטול נפיץ...).</div>' +
       '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit) +
       '<div class="sec-head"><h2>תחמושת</h2></div><div class="stock-grid">';
-    ammoList().forEach(function (it) {
-      var e = st.ammo && st.ammo[it.id];
-      var exp = expectedFor(S.adminUnit, 'ammo', it.id);
-      var hasInst = (S.instEdit.data['ammo:' + it.id] || []).length > 0;
-      h += '<div>' + esc(it.name) +
-        (hasInst ? '<div class="cur">לפי חתומים</div>' :
-         e && typeof e.q === 'number' ? '<div class="cur">בסיס ' + e.q + (exp !== e.q ? ' · צפי נוכחי ' + exp : '') + '</div>' : '<div class="cur">לא הוגדר</div>') +
-        instLnk('ammo', it.id) + '</div>' +
-        '<input type="number" inputmode="numeric" min="0" data-sk="ammo" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—"' + (hasInst ? ' disabled' : '') + '>' +
-        instEditorHtml('ammo', it.id);
-    });
-    h += '</div><div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid g3">';
-    h += '<div class="hdr"></div><div class="hdr" style="text-align:center">כמות</div><div class="hdr" style="text-align:center">מספר צ׳</div>';
-    equipList().forEach(function (it) {
-      var e = st.equip && st.equip[it.id];
-      var hasInst = (S.instEdit.data['equip:' + it.id] || []).length > 0;
-      h += '<div>' + esc(it.name) +
-        (hasInst ? '<div class="cur">לפי חתומים</div>' :
-         e && typeof e.q === 'number' ? '<div class="cur">בסיס ' + e.q + '</div>' : '<div class="cur">לא הוגדר</div>') +
-        instLnk('equip', it.id) + '</div>' +
-        '<input type="number" inputmode="numeric" min="0" data-sk="equip" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—"' + (hasInst ? ' disabled' : '') + '>' +
-        '<input type="text" data-ss="' + it.id + '" value="' + esc((e && e.s) || '') + '" placeholder="צ׳"' + (hasInst ? ' disabled' : '') + '>' +
-        instEditorHtml('equip', it.id);
-    });
-    h += '</div><button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">שמירת כמויות ליחידה</button>' +
-      '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות לפריט מאפס את חישוב השימוש עבורו — הצפי החדש הוא הבסיס שהוזן</div></div>';
+    ammoList().forEach(function (it) { h += stockRow('ammo', it); });
+    h += '</div><div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid">';
+    equipList().forEach(function (it) { h += stockRow('equip', it); });
+    h += '</div><button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">💾 שמירת כמויות ליחידה</button>' +
+      '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות מאפס את חישוב השימוש לפריט — הכמות שהוזנה היא הבסיס החדש</div></div>';
 
     // custom items
     var cAmmo = (S.config && S.config.customAmmo) || [];
@@ -1364,21 +1370,27 @@
     });
     h += '</div></div>';
 
-    h += '<div class="card"><h3>🖨️ מדבקות QR לרכבים</h3>' +
-      '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">מדביקים מדבקה בכל רכב/סיור — סריקה פותחת את האפליקציה ישר על היחידה הנכונה, בלי לבחור כלום.</div>' +
-      '<a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="/qr.html" target="_blank" rel="noopener">פתיחת דף המדבקות להדפסה</a></div>';
+    h += '<div class="card"><h3>🔳 קודי QR</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">לכל מסגרת יש קוד משלה — סריקה פותחת את האפליקציה ישר על אותה מסגרת. אפשר להדפיס את כל הקודים או קוד בודד.</div>' +
+      '<a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="/qr.html" target="_blank" rel="noopener">🖨️ פתיחת דף הקודים להדפסה</a></div>';
 
     $('scrAdmin').innerHTML = h;
     var sel = $('aUnit'); sel.value = S.adminUnit;
     sel.onchange = function () { S.adminUnit = sel.value; renderAdmin(); };
     $('btnStock').onclick = saveStock;
 
-    // signed-holders editor wiring
+    // per-piece editor wiring
     document.querySelectorAll('[data-il]').forEach(function (b) {
       b.onclick = function () {
         var k = b.getAttribute('data-il');
         S.instEdit.open[k] = !S.instEdit.open[k];
-        if (S.instEdit.open[k] && !(S.instEdit.data[k] || []).length) S.instEdit.data[k] = [{ s: '', owner: '', num: '' }];
+        if (S.instEdit.open[k] && !(S.instEdit.data[k] || []).length) {
+          // seed rows from the quantity already typed (type 5 → open → 5 rows)
+          var inp = document.querySelector('input[data-sk="' + k.split(':')[0] + '"][data-si="' + k.split(':')[1] + '"]');
+          var n = Math.max(1, Math.min(50, Math.floor(+(inp && inp.value) || 1)));
+          var arr = []; for (var i = 0; i < n; i++) arr.push({ s: '', owner: '', num: '' });
+          S.instEdit.data[k] = arr;
+        }
         renderAdmin();
       };
     });
@@ -1456,15 +1468,8 @@
       if (old && old.q === q) next[kind][iid] = { q: q, t: old.t || 0 };  // unchanged — keep the usage anchor
       else { next[kind][iid] = { q: q, t: Date.now() }; changed++; }
     });
-    // equipment צ׳ serials — free text per item, shown to soldiers in the count rows
-    document.querySelectorAll('#scrAdmin input[data-ss]').forEach(function (inp) {
-      var iid = inp.getAttribute('data-ss');
-      var s = (inp.value || '').trim();
-      if (!s) return;
-      if (!next.equip[iid]) next.equip[iid] = { t: Date.now() };
-      next.equip[iid].s = s;
-    });
-    // signed holders — when present they define the item's quantity
+    // per-piece detail — when open/present it DEFINES the item's quantity;
+    // each kept row is a physical piece with its own צ׳ (+ optional signed holder)
     if (S.instEdit.unit === S.adminUnit) {
       Object.keys(S.instEdit.data).forEach(function (key) {
         var p = key.split(':'), kind = p[0], iid = p[1];
@@ -1473,9 +1478,7 @@
         }).filter(function (r) { return r.s || r.owner || r.num; });
         if (arr.length) {
           var old2 = prev[kind] && prev[kind][iid];
-          if (!next[kind][iid]) next[kind][iid] = { t: (old2 && old2.t) || Date.now() };
-          next[kind][iid].inst = arr;
-          next[kind][iid].q = arr.length;
+          next[kind][iid] = { t: (old2 && old2.t) || Date.now(), inst: arr, q: arr.length };
         } else if (next[kind][iid]) {
           delete next[kind][iid].inst;
         }

@@ -148,6 +148,22 @@
   .usage-row { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid #e5ebe6; font-size: 13px; align-items: center; }
   .usage-row .m { color: #6b7f72; font-size: 11px; }
 
+  /* central inventory pivot */
+  .pivot-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid #e5ebe6; border-radius: 10px; }
+  table.pivot { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+  table.pivot th, table.pivot td { padding: 6px 8px; border-bottom: 1px solid #eef2ef; text-align: center; }
+  table.pivot thead th { background: #1b4332; color: #fff; font-weight: 700; position: sticky; top: 0; font-size: 11px; }
+  table.pivot th.name, table.pivot td.name { position: sticky; right: 0; background: #fff; text-align: right; font-weight: 700; z-index: 1; box-shadow: -6px 0 6px -6px rgba(0,0,0,.15); min-width: 96px; }
+  table.pivot thead th.name { background: #1b4332; z-index: 2; }
+  table.pivot td.z { color: #cbd5cf; }
+  table.pivot td.tot, table.pivot th.tot { background: #dcfce7; font-weight: 900; color: #14532d; }
+  table.pivot tr.totrow td { background: #eef4f0; font-weight: 900; border-top: 2px solid #1b4332; }
+  table.pivot tr.totrow td.name { background: #eef4f0; }
+  .kpi { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+  .kpi .box { flex: 1 1 90px; background: #f0fdf4; border: 1.5px solid #16a34a; border-radius: 12px; padding: 8px 10px; text-align: center; }
+  .kpi .box .n { font-size: 20px; font-weight: 900; color: #14532d; }
+  .kpi .box .l { font-size: 11px; color: #4b5f52; }
+
   .chip-admin { background: #eef4f0; border-radius: 9px; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; margin: 4px 0; font-size: 13px; gap: 8px; }
   .chip-admin .em { direction: ltr; text-align: left; overflow-wrap: anywhere; }
   .chip-admin button { border: none; background: none; color: #b91c1c; cursor: pointer; font-size: 15px; flex: 0 0 auto; }
@@ -1301,6 +1317,89 @@
     dl('דוח_ספירות_מפורט_1895.csv', rows);
   }
 
+  /* ═══════════ central inventory (admin) ═══════════ */
+  var GRP_LETTER = { a: 'א', b: 'ב', d: 'ד', bn: 'גד' };
+  function stockQty(unitId, kind, iid) {
+    var e = S.stock[unitId] && S.stock[unitId][kind] && S.stock[unitId][kind][iid];
+    return e && typeof e.q === 'number' ? e.q : 0;
+  }
+  function shortLabel(u) { return u.grp === 'bn' ? u.name : GRP_LETTER[u.grp] + '·' + u.name; }
+  function unitsWithStock(kind) {
+    return UNITS.filter(function (u) {
+      var list = kind === 'ammo' ? ammoList() : equipList();
+      return list.some(function (it) { return stockQty(u.id, kind, it.id) > 0; });
+    });
+  }
+  function itemsInUse(kind, units) {
+    return (kind === 'ammo' ? ammoList() : equipList()).filter(function (it) {
+      return units.some(function (u) { return stockQty(u.id, kind, it.id) > 0; });
+    });
+  }
+  function pivotTableHtml(kind, title) {
+    var units = unitsWithStock(kind);
+    var items = itemsInUse(kind, units);
+    if (!items.length) return '<div style="font-size:12px;color:#6b7f72;padding:6px">אין ' + title + ' מוגדרים עדיין</div>';
+    var colTot = {}, grand = 0;
+    var h = '<div class="pivot-wrap"><table class="pivot"><thead><tr><th class="name">' + esc(title) + '</th>';
+    units.forEach(function (u) { h += '<th>' + esc(shortLabel(u)) + '</th>'; colTot[u.id] = 0; });
+    h += '<th class="tot">סה״כ</th></tr></thead><tbody>';
+    items.forEach(function (it) {
+      var rowTot = 0;
+      h += '<tr><td class="name">' + esc(it.name) + '</td>';
+      units.forEach(function (u) {
+        var q = stockQty(u.id, kind, it.id);
+        rowTot += q; colTot[u.id] += q;
+        h += q > 0 ? '<td>' + q + '</td>' : '<td class="z">·</td>';
+      });
+      grand += rowTot;
+      h += '<td class="tot">' + rowTot + '</td></tr>';
+    });
+    h += '<tr class="totrow"><td class="name">סה״כ מסגרת</td>';
+    units.forEach(function (u) { h += '<td>' + colTot[u.id] + '</td>'; });
+    h += '<td class="tot">' + grand + '</td></tr></tbody></table></div>';
+    return h;
+  }
+  function centralInventoryHtml() {
+    var au = unitsWithStock('ammo'), eu = unitsWithStock('equip');
+    var allUnits = {};
+    au.concat(eu).forEach(function (u) { allUnits[u.id] = 1; });
+    var totA = 0, totE = 0;
+    UNITS.forEach(function (u) {
+      ammoList().forEach(function (it) { totA += stockQty(u.id, 'ammo', it.id); });
+      equipList().forEach(function (it) { totE += stockQty(u.id, 'equip', it.id); });
+    });
+    var h = '<div class="card"><h3>📊 מצבת מרכז — כל המסגרות</h3>' +
+      '<div class="kpi">' +
+      '<div class="box"><div class="n">' + Object.keys(allUnits).length + '</div><div class="l">מסגרות עם מלאי</div></div>' +
+      '<div class="box"><div class="n">' + totA + '</div><div class="l">סה״כ תחמושת</div></div>' +
+      '<div class="box"><div class="n">' + totE + '</div><div class="l">סה״כ אמצעים</div></div>' +
+      '</div>';
+    h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:10px 0 4px">תחמושת</div>' + pivotTableHtml('ammo', 'תחמושת');
+    h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:12px 0 4px">אמצעים</div>' + pivotTableHtml('equip', 'אמצעים');
+    h += '<div style="font-size:11px;color:#6b7f72;margin-top:6px">גלילה לצדדים לכל המסגרות · שם הפריט תמיד מוצמד מימין. הכמויות הן מה שאמור להיות בכל מסגרת.</div>';
+    h += '<button class="btn-ghost" id="expCentral" style="margin-top:8px">📤 יצוא מצבת מרכז — CSV</button></div>';
+    return h;
+  }
+  function exportCentral() {
+    var rows = [];
+    ['ammo', 'equip'].forEach(function (kind) {
+      var units = unitsWithStock(kind);
+      var items = itemsInUse(kind, units);
+      if (!items.length) return;
+      rows.push([kind === 'ammo' ? 'תחמושת' : 'אמצעים']);
+      rows.push(['פריט'].concat(units.map(function (u) { return u.full; })).concat(['סה״כ']));
+      var colTot = units.map(function () { return 0; });
+      items.forEach(function (it) {
+        var rt = 0;
+        var line = [it.name].concat(units.map(function (u, i) { var q = stockQty(u.id, kind, it.id); rt += q; colTot[i] += q; return q || ''; }));
+        line.push(rt); rows.push(line);
+      });
+      rows.push(['סה״כ מסגרת'].concat(colTot).concat([colTot.reduce(function (a, b) { return a + b; }, 0)]));
+      rows.push([]);
+    });
+    dl('מצבת_מרכז_ירוק_בעיניים_1895.csv', rows);
+  }
+
   function exportUsage() {
     var rows = [['תאריך', 'שעה', 'פלוגה', 'יחידה', 'פריט', 'כמות שנוצלה', 'מדווח', 'מספר אישי', 'הערה']];
     S.usage.slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); }).forEach(function (u) {
@@ -1376,7 +1475,8 @@
         '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—">' +
         instEditorHtml(kind, it.id);
     }
-    var h = '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
+    var h = centralInventoryHtml();
+    h += '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
       '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. פריטים עם צ׳/סדרה — מזינים כמות והשורות נפתחות למילוי.</div>' +
       '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit);
     if (adminOnly !== 'equip') {
@@ -1438,6 +1538,7 @@
     var sel = $('aUnit'); sel.value = S.adminUnit;
     sel.onchange = function () { S.adminUnit = sel.value; renderAdmin(); };
     $('btnStock').onclick = saveStock;
+    if ($('expCentral')) $('expCentral').onclick = exportCentral;
 
     // per-piece editor wiring
     // For tracked items the quantity input drives the number of piece-rows —

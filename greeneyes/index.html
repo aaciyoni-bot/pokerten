@@ -327,7 +327,7 @@
 
   <nav class="tabs">
     <button data-tab="count" id="tabCount" class="on"><span class="ic">✅</span>ספירה</button>
-    <button data-tab="usage" id="tabUsage" style="display:none"><span class="ic">📉</span>שימוש</button>
+    <button data-tab="usage" id="tabUsage" style="display:none"><span class="ic">📉</span>עדכון שצ״ל</button>
     <button data-tab="report" style="position:relative"><span class="ic">📊</span>דוחות<span id="gapBadge" class="tabbadge" style="display:none">0</span></button>
     <button data-tab="admin" id="tabAdmin" style="display:none"><span class="ic">⚙️</span>ניהול</button>
   </nav>
@@ -1085,7 +1085,7 @@
       return;
     }
     var h = '';
-    h += '<div class="card"><h3>📉 דיווח שימוש בתחמושת</h3>' +
+    h += '<div class="card"><h3>📉 עדכון דיווח שצ״ל</h3>' +
       '<label class="fld">יחידה</label>' + unitSelectHtml('uUnit', S.unit) +
       '<div class="grid2">' +
       '<div><label class="fld">פריט</label><select id="uItem">' +
@@ -1106,17 +1106,17 @@
       '<div><label class="fld">מספר אישי</label><input type="text" id="uNum" inputmode="numeric" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
       '</div>' +
       '<label class="fld">הערה (לא חובה)</label><input type="text" id="uNote" placeholder="אימון / מבצעי...">' +
-      '<button class="btn-primary" id="btnUsage" style="font-size:16px;padding:12px">דיווח שימוש</button>' +
+      '<button class="btn-primary" id="btnUsage" style="font-size:16px;padding:12px">עדכון דיווח</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center">הצפי לספירה מתעדכן אוטומטית לפי הדיווח</div>' +
       '</div>';
 
     var units = myUnits();
-    h += '<div class="sec-head"><h2>יומן שימוש</h2><select id="uFilter" style="width:auto;font-size:13px;padding:5px 8px">' +
+    h += '<div class="sec-head"><h2>יומן עדכונים</h2><select id="uFilter" style="width:auto;font-size:13px;padding:5px 8px">' +
       '<option value="all"' + (S.usageFilter === 'all' ? ' selected' : '') + '>' + (units.length > 5 ? 'כל היחידות' : 'כל הפלוגה') + '</option>' +
       units.map(function (u) { return '<option value="' + u.id + '"' + (S.usageFilter === u.id ? ' selected' : '') + '>' + esc(u.full) + '</option>'; }).join('') +
       '</select></div><div class="card" style="padding:4px 12px">';
     var list = S.usage.filter(function (u) { return S.usageFilter === 'all' || u.unitId === S.usageFilter; }).slice(0, 40);
-    if (!list.length) h += '<div style="padding:12px;color:#6b7f72;font-size:13px;text-align:center">אין דיווחי שימוש</div>';
+    if (!list.length) h += '<div style="padding:12px;color:#6b7f72;font-size:13px;text-align:center">אין עדכונים</div>';
     list.forEach(function (u) {
       var un = UNIT_BY_ID[u.unitId];
       h += '<div class="usage-row"><div>' +
@@ -1136,7 +1136,7 @@
     $('btnUsage').onclick = submitUsage;
     document.querySelectorAll('[data-del]').forEach(function (b) {
       b.onclick = function () {
-        if (!confirm('למחוק את דיווח השימוש? הצפי יחזור לקדמותו.')) return;
+        if (!confirm('למחוק את העדכון? הצפי יחזור לקדמותו.')) return;
         window.fb.deleteDoc(window.fb.doc(window.fb.db, 'ammo_usage', b.getAttribute('data-del')))
           .then(function () { toast('הדיווח נמחק'); })
           .catch(function (e) { toast('שגיאה: ' + e.message); });
@@ -1161,7 +1161,7 @@
       byEmail: S.user.email || '', byUid: S.user.uid, ts: Date.now()
     }).then(function () {
       btn.disabled = false; $('uQty').value = ''; $('uNote').value = '';
-      toast('✓ נרשם שימוש: ' + itemName('ammo', item) + ' −' + qty);
+      toast('✓ נרשם עדכון: ' + itemName('ammo', item) + ' −' + qty);
     }).catch(function (e) { btn.disabled = false; toast('שגיאה: ' + e.message); });
   }
 
@@ -1289,7 +1289,7 @@
     h += '<div class="card"><h3>📤 יצוא דוח מרכז</h3>' +
       '<button class="btn-ghost" id="expSummary">דוח סיכום יומי (כל הימים) — CSV</button>' +
       '<button class="btn-ghost" id="expFull">דוח ספירות מפורט (כל פריט) — CSV</button>' +
-      '<button class="btn-ghost" id="expUsage">יומן שימוש בתחמושת — CSV</button>' +
+      '<button class="btn-ghost" id="expUsage">יומן עדכוני שצ״ל — CSV</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-top:4px">קבצי CSV נפתחים ישירות באקסל (עברית מלאה)' +
       (S.role !== 'admin' ? ' · הדוח כולל את הפלוגה שלך בלבד' : '') + '</div></div>';
 
@@ -1406,24 +1406,20 @@
     var units = unitsWithStock(kind);
     var items = itemsInUse(kind, units);
     if (!items.length) return '<div style="font-size:12px;color:#6b7f72;padding:6px">אין ' + title + ' מוגדרים עדיין</div>';
-    var colTot = {}, grand = 0;
     var h = '<div class="pivot-wrap"><table class="pivot"><thead><tr><th class="name">' + esc(title) + '</th>';
-    units.forEach(function (u) { h += '<th>' + esc(shortLabel(u)) + '</th>'; colTot[u.id] = 0; });
-    h += '<th class="tot">סה״כ</th></tr></thead><tbody>';
+    units.forEach(function (u) { h += '<th>' + esc(shortLabel(u)) + '</th>'; });
+    h += '<th class="tot">בגדוד</th></tr></thead><tbody>';
     items.forEach(function (it) {
       var rowTot = 0;
       h += '<tr><td class="name">' + esc(it.name) + '</td>';
       units.forEach(function (u) {
         var q = stockQty(u.id, kind, it.id);
-        rowTot += q; colTot[u.id] += q;
+        rowTot += q;
         h += q > 0 ? '<td>' + q + '</td>' : '<td class="z">·</td>';
       });
-      grand += rowTot;
       h += '<td class="tot">' + rowTot + '</td></tr>';
     });
-    h += '<tr class="totrow"><td class="name">סה״כ מסגרת</td>';
-    units.forEach(function (u) { h += '<td>' + colTot[u.id] + '</td>'; });
-    h += '<td class="tot">' + grand + '</td></tr></tbody></table></div>';
+    h += '</tbody></table></div>';
     return h;
   }
   function centralInventoryHtml() {
@@ -1454,14 +1450,12 @@
       var items = itemsInUse(kind, units);
       if (!items.length) return;
       rows.push([kind === 'ammo' ? 'תחמושת' : 'אמצעים']);
-      rows.push(['פריט'].concat(units.map(function (u) { return u.full; })).concat(['סה״כ']));
-      var colTot = units.map(function () { return 0; });
+      rows.push(['פריט'].concat(units.map(function (u) { return u.full; })).concat(['בגדוד']));
       items.forEach(function (it) {
         var rt = 0;
-        var line = [it.name].concat(units.map(function (u, i) { var q = stockQty(u.id, kind, it.id); rt += q; colTot[i] += q; return q || ''; }));
+        var line = [it.name].concat(units.map(function (u) { var q = stockQty(u.id, kind, it.id); rt += q; return q || ''; }));
         line.push(rt); rows.push(line);
       });
-      rows.push(['סה״כ מסגרת'].concat(colTot).concat([colTot.reduce(function (a, b) { return a + b; }, 0)]));
       rows.push([]);
     });
     dl('מצבת_מרכז_ירוק_בעיניים_1895.csv', rows);

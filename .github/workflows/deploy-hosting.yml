@@ -12,11 +12,13 @@ on:
     paths:
       - 'index.html'
       - 'ammo.html'
+      - 'greeneyes/**'
       - 'manifest.json'
       - 'sw.js'
       - 'assets/**'
       - 'icon-*.png'
       - 'firebase.json'
+      - '.firebaserc'
   workflow_dispatch: {}
 
 jobs:
@@ -28,6 +30,15 @@ jobs:
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
+
+      # The "ירוק בעיניים" app (greeneyes/) lives on its own hosting site inside
+      # the same Firebase project — greeneyes95.web.app (+ the greeneyes95.com
+      # custom domain, connected once in the Firebase console). First run
+      # creates the site; later runs find it existing and continue.
+      - name: Ensure greeneyes95 site exists
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: firebase hosting:sites:create greeneyes95 --project pokerten --non-interactive || echo "greeneyes95 site already exists — continuing"
 
       - name: Deploy hosting
         env:

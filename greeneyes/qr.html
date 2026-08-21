@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מדבקות QR — ירוק בעיניים · גדוד 1895</title>
+<link rel="icon" href="/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Heebo', Arial, sans-serif; background: #f2f5f0; color: #1a2e22; margin: 0; padding: 16px; }
+  .top { max-width: 760px; margin: 0 auto 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .top h1 { font-size: 20px; margin: 0; color: #1b4332; }
+  .top p { margin: 2px 0 0; font-size: 12px; color: #6b7f72; }
+  .top button {
+    font-family: inherit; font-size: 15px; font-weight: 900; background: #1b4332; color: #fff;
+    border: none; border-radius: 12px; padding: 12px 22px; cursor: pointer;
+  }
+  .sheet { max-width: 760px; margin: 0 auto; }
+  h2.grp { font-size: 15px; color: #1b4332; border-bottom: 2px solid #1b4332; padding-bottom: 4px; margin: 18px 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+  .stk {
+    background: #fff; border: 2px dashed #9ab0a1; border-radius: 12px; padding: 12px;
+    text-align: center; page-break-inside: avoid; break-inside: avoid;
+  }
+  .stk .nm { font-size: 17px; font-weight: 900; color: #1b4332; margin-bottom: 8px; }
+  .stk svg { width: 150px; height: 150px; }
+  .stk .cap { font-size: 11px; color: #4b5f52; margin-top: 6px; font-weight: 700; }
+  .stk .url { font-size: 9px; color: #9ab0a1; direction: ltr; }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .top button { display: none; }
+    .top { margin-bottom: 6px; }
+  }
+</style>
+</head>
+<body>
+<div class="top">
+  <div>
+    <h1>🟢 מדבקות QR — ירוק בעיניים · גדוד 1895</h1>
+    <p>גוזרים לפי הקו המקווקו ומדביקים בכל רכב/סיור. סריקה פותחת את האפליקציה ישר על היחידה.</p>
+  </div>
+  <button onclick="window.print()">🖨️ הדפסה</button>
+</div>
+<div class="sheet" id="sheet"></div>
+
+<script>
+(function () {
+  'use strict';
+  var BASE = 'https://greeneyes95.com/?unit=';
+  var GROUPS = [
+    { name: 'פלוגה א׳', units: [
+      ['a_armon', 'ארמון'], ['a_siyur', 'סיור'], ['a_carmel', 'כרמל'], ['a_hapak', 'חפ״ק מ״פ']
+    ]},
+    { name: 'פלוגה ב׳', units: [
+      ['b_armon', 'ארמון'], ['b_siyur1', 'סיור 1'], ['b_siyur2', 'סיור 2'], ['b_carmel', 'כרמל'], ['b_hapak', 'חפ״ק מ״פ']
+    ]},
+    { name: 'פלוגה ד׳', units: [
+      ['d_armon', 'ארמון'], ['d_siyur1', 'סיור 1'], ['d_siyur2', 'סיור 2'], ['d_carmel', 'כרמל'], ['d_hapak', 'חפ״ק מ״פ']
+    ]},
+    { name: 'גדוד', units: [
+      ['bn_magad', 'חפ״ק מג״ד'], ['bn_samgad', 'חפ״ק סמג״ד'], ['bn_mapam', 'חפ״ק מפ״ם']
+    ]}
+  ];
+  var html = '';
+  GROUPS.forEach(function (g) {
+    html += '<h2 class="grp">' + g.name + '</h2><div class="grid">';
+    g.units.forEach(function (u) {
+      var url = BASE + u[0];
+      var q = qrcode(0, 'M');
+      q.addData(url);
+      q.make();
+      html += '<div class="stk">' +
+        '<div class="nm">' + (g.name === 'גדוד' ? '' : g.name + ' · ') + u[1] + '</div>' +
+        q.createSvgTag({ cellSize: 4, margin: 0, scalable: true }) +
+        '<div class="cap">ירוק בעיניים — ספירה יומית</div>' +
+        '<div class="url">' + url + '</div>' +
+        '</div>';
+    });
+    html += '</div>';
+  });
+  document.getElementById('sheet').innerHTML = html;
+})();
+</script>
+</body>
+</html>

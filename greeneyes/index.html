@@ -379,6 +379,15 @@
     unsubData: [],
     dataScope: ''          // which role/group the data listeners were opened for
   };
+  // QR stickers open the app preset to a unit: https://greeneyes95.com/?unit=<id>
+  // (role scoping still applies — applyRole() resets it if out of the user's scope)
+  (function () {
+    var qUnit = new URLSearchParams(location.search).get('unit');
+    if (qUnit && UNIT_BY_ID[qUnit]) {
+      S.unit = qUnit; S.adminUnit = qUnit;
+      try { localStorage.setItem('yb_unit', qUnit); } catch (e) {}
+    }
+  })();
 
   /* ═══════════ helpers ═══════════ */
   function $(id) { return document.getElementById(id); }
@@ -1071,6 +1080,10 @@
       '<select id="coGroup" style="flex:0 0 110px">' +
       Object.keys(GROUP_NAMES).map(function (g) { return '<option value="' + g + '">' + esc(GROUP_NAMES[g]) + '</option>'; }).join('') +
       '</select><button class="btn-mini" id="btnAddCo">הוסף</button></div></div>';
+
+    h += '<div class="card"><h3>🖨️ מדבקות QR לרכבים</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">מדביקים מדבקה בכל רכב/סיור — סריקה פותחת את האפליקציה ישר על היחידה הנכונה, בלי לבחור כלום.</div>' +
+      '<a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="/qr.html" target="_blank" rel="noopener">פתיחת דף המדבקות להדפסה</a></div>';
 
     $('scrAdmin').innerHTML = h;
     var sel = $('aUnit'); sel.value = S.adminUnit;

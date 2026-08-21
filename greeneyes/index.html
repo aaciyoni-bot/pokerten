@@ -1305,8 +1305,7 @@
           '<button data-irm="' + key + '|' + ri + '">✕</button></div>';
       }).join('');
       return '<div class="instbox">' + rows +
-        '<button class="btn-mini" data-iadd="' + key + '">＋ הוסף עוד פריט (צ׳)</button>' +
-        '<div class="note">כל שורה = פריט פיזי אחד עם ה-צ׳ שלו. הכמות = מספר השורות. אצל החייל כל פריט מופיע בנפרד. אל תשכחו ״שמירה״.</div></div>';
+        '<button class="btn-mini" data-iadd="' + key + '">＋ הוסף</button></div>';
     }
     function stockRow(kind, it) {
       var e = st[kind] && st[kind][it.id];
@@ -1314,16 +1313,16 @@
       var pcs = S.instEdit.data[key] || [];
       var open = S.instEdit.open[key];
       var qtyVal = open || pcs.length ? (pcs.length || '') : (e && typeof e.q === 'number' ? e.q : '');
-      var cur = pcs.length ? '<div class="cur">' + pcs.length + ' פריטים · צ׳ לכל אחד</div>'
+      var cur = pcs.length ? '<div class="cur">' + pcs.length + ' × צ׳</div>'
         : (e && typeof e.q === 'number' && e.q > 0) ? '<div class="cur">כמות ' + e.q + '</div>'
         : '<div class="cur">לא הוגדר</div>';
       return '<div>' + esc(it.name) + cur +
-        '<button class="instlnk" data-il="' + key + '">' + (open ? '▲ סגירת פירוט' : '🔢 פירוט צ׳ לכל פריט') + '</button></div>' +
-        '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—"' + (open ? ' disabled title="נקבע לפי מספר השורות למטה"' : '') + '>' +
+        '<button class="instlnk" data-il="' + key + '">' + (open ? '▲ סגירה' : '🔢 צ׳') + '</button></div>' +
+        '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—"' + (open ? ' disabled' : '') + '>' +
         instEditorHtml(kind, it.id);
     }
     var h = '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
-      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. ״פירוט צ׳״ = לכל פריט שורה עם צ׳ וחתום (מטולון/מטול/עכבר/רימון רסס/מטול נפיץ...).</div>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה.</div>' +
       '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit) +
       '<div class="sec-head"><h2>תחמושת</h2></div><div class="stock-grid">';
     ammoList().forEach(function (it) { h += stockRow('ammo', it); });

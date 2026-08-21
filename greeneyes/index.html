@@ -321,7 +321,7 @@
   var START = '2026-08-23', END = '2026-09-17';
 
   var AMMO_ITEMS = [
-    { id: 'rimon',           name: 'רימון' },
+    { id: 'rimon',           name: 'רימון רסס' },
     { id: 'rimon_helem',     name: 'רימון הלם' },
     { id: 'matol_teura',     name: 'מטול תאורה' },
     { id: 'matol_nefitz',    name: 'מטול נפיץ' },
@@ -352,6 +352,23 @@
     { id: 'matolon',       name: 'מטולון' },
     { id: 'ringo',         name: 'רינגו' }
   ];
+  // Per-item tracking mode:
+  //   'serial' → each piece has a צ׳ + optional holder (equipment)
+  //   'series' → each piece has a סדרה (often shared) + holder name/מ.א
+  //   'holder' → each piece has just the holder (name/מ.א), no serial/series
+  //   (unlisted) → plain quantity, no per-piece detail
+  var TRACK = {
+    // ammo
+    rimon: 'series',        // רימון רסס
+    matol_nefitz: 'series', // מטול נפיץ
+    lau: 'holder',          // לאו — who holds it
+    // equipment with a צ׳
+    yuval: 'serial', mag: 'serial', rachfanim: 'serial', matol: 'serial',
+    mepro: 'serial', achbar: 'serial', kela: 'serial', kela_akila: 'serial',
+    kela_trijicon: 'serial', melani: 'serial', matolon: 'serial', ringo: 'serial'
+  };
+  function trackOf(id) { return TRACK[id] || 'qty'; }
+  function firstFieldLabel(id) { var t = trackOf(id); return t === 'series' ? 'סדרה' : 'צ׳'; }
   var GROUP_NAMES = { a: 'פלוגה א׳', b: 'פלוגה ב׳', d: 'פלוגה ד׳', bn: 'גדוד' };
   var UNIT_GROUPS = [
     { g: 'a', name: 'פלוגה א׳', units: [
@@ -377,13 +394,15 @@
     { g: 'bn', name: 'גדוד', units: [
       { id: 'bn_magad',  name: 'חפ״ק מג״ד' },
       { id: 'bn_samgad', name: 'חפ״ק סמג״ד' },
-      { id: 'bn_mapam',  name: 'חפ״ק מפ״ם' }
+      { id: 'bn_mapam',  name: 'חפ״ק מפ״ם' },
+      { id: 'bn_bunker', name: 'בונקר גדוד', only: 'ammo' },  // תחמושת בלבד
+      { id: 'bn_armon',  name: 'ארמון גדוד', only: 'equip' }  // אמצעים בלבד
     ]}
   ];
   var UNITS = [];
   UNIT_GROUPS.forEach(function (g) {
     g.units.forEach(function (u) {
-      UNITS.push({ id: u.id, name: u.name, grp: g.g, group: g.name, full: (g.g === 'bn' ? u.name : g.name + ' · ' + u.name) });
+      UNITS.push({ id: u.id, name: u.name, grp: g.g, group: g.name, only: u.only || null, full: (g.g === 'bn' ? u.name : g.name + ' · ' + u.name) });
     });
   });
   var UNIT_BY_ID = {};
@@ -661,9 +680,8 @@
       .catch(function (e) {
         btn.disabled = false;
         var c = e.code || '';
-        if (c === 'auth/operation-not-allowed') toast('יש להפעיל Email/Password בקונסול Firebase');
-        else if (c === 'auth/too-many-requests') toast('יותר מדי ניסיונות — המתינו דקה ונסו שוב');
-        else toast('שם משתמש או סיסמה שגויים — המשתמש חייב להיות ' + u + ' (' + c + ')');
+        if (c === 'auth/too-many-requests') toast('יותר מדי ניסיונות — המתינו דקה ונסו שוב');
+        else toast('שם משתמש או סיסמה שגויים');
       });
   }
 
@@ -816,22 +834,25 @@
       h += '<div class="banner-done">✓ נספר ב־' + fmtTime(existing.ts) + ' ע״י <b>' + esc(existing.counterName) +
            '</b> (מ.א ' + esc(existing.counterNum) + ')' + ' — שליחה חוזרת תעדכן את הספירה.</div>';
     }
-    if (equipDay) {
+    var only = UNIT_BY_ID[S.unit] && UNIT_BY_ID[S.unit].only; // 'ammo' | 'equip' | null
+    var showAmmo = only !== 'equip';
+    var showEquip = only === 'equip' || (!only && equipDay);
+    if (!only && equipDay) {
       h += '<div class="banner-warn">📦 יום ' + DAY_HE[isoDow(S.date)] + ' — היום סופרים גם <b>אמצעים</b>.</div>';
     }
 
-    var ammoVis = visibleItems('ammo');
-    var equipVis = equipDay ? visibleItems('equip') : [];
+    var ammoVis = showAmmo ? visibleItems('ammo') : [];
+    var equipVis = showEquip ? visibleItems('equip') : [];
     var nothing = !ammoVis.length && !equipVis.length;
     if (nothing) {
-      h += '<div class="banner-warn" style="margin-top:14px">📋 עדיין לא הוגדר מלאי ליחידה זו.<br>המנהל מזין כמויות וחתומים בטאב ניהול — ומיד יופיעו כאן הפריטים לספירה.</div>';
+      h += '<div class="banner-warn" style="margin-top:14px">📋 עדיין לא הוגדר מלאי ליחידה זו.<br>המנהל מזין כמויות בטאב ניהול — ומיד יופיעו כאן הפריטים לספירה.</div>';
     } else {
       if (ammoVis.length) {
         h += '<div class="sec-head"><h2>תחמושת</h2><button class="btn-mini" id="allAmmo">סמן הכל ✓</button></div>';
         h += itemsHtml('ammo', ammoVis);
       }
-      if (equipDay && equipVis.length) {
-        h += '<div class="sec-head"><h2>אמצעים (שלישי + שישי)</h2><button class="btn-mini" id="allEquip">סמן הכל ✓</button></div>';
+      if (equipVis.length) {
+        h += '<div class="sec-head"><h2>אמצעים' + (only === 'equip' ? '' : ' (שלישי + שישי)') + '</h2><button class="btn-mini" id="allEquip">סמן הכל ✓</button></div>';
         h += itemsHtml('equip', equipVis);
       }
 
@@ -870,13 +891,14 @@
       if (inst) {
         // piece-tracked item: one row per signed holder, ✓ or "חסר" each
         var marks = (S.buf[kind][it.id] && S.buf[kind][it.id].inst) || {};
+        var slbl = firstFieldLabel(it.id); // 'צ׳' or 'סדרה'
         inst.forEach(function (ins, i) {
           var stt = marks[i]; // 'ok' | 'miss' | undefined
           h += '<div class="item' + (stt === 'ok' ? ' ok' : stt === 'miss' ? ' diff' : '') + '">' +
             '<button class="vbtn" data-ik="' + kind + '" data-ii="' + it.id + '" data-ix="' + i + '" aria-label="קיים">✓</button>' +
             '<div class="iname"><div class="nm">' + esc(it.name) + (inst.length > 1 ? ' <span style="color:#6b7f72;font-size:12px">(' + (i + 1) + '/' + inst.length + ')</span>' : '') +
-            (ins.s ? ' · <span class="serial">צ׳ ' + esc(ins.s) + '</span>' : '') + '</div>' +
-            (ins.owner ? '<div class="exp">חתום: <b>' + esc(ins.owner) + '</b>' + (ins.num ? ' · מ.א ' + esc(ins.num) : '') + '</div>' : '<div class="exp">פריט ' + (i + 1) + '</div>') + '</div>' +
+            (ins.s ? ' · <span class="serial">' + slbl + ' ' + esc(ins.s) + '</span>' : '') + '</div>' +
+            (ins.owner ? '<div class="exp">בידי: <b>' + esc(ins.owner) + '</b>' + (ins.num ? ' · מ.א ' + esc(ins.num) : '') + '</div>' : '<div class="exp">פריט ' + (i + 1) + '</div>') + '</div>' +
             '<button class="missbtn" data-mk="' + kind + '" data-mi="' + it.id + '" data-mx="' + i + '">חסר</button>' +
             '</div>';
         });
@@ -999,9 +1021,10 @@
         else notMarked.push(it.name);
       });
     }
-    var items = {}; collect('ammo', items);
+    var only = UNIT_BY_ID[S.unit] && UNIT_BY_ID[S.unit].only;
+    var items = {}; if (only !== 'equip') collect('ammo', items);
     var equip = null;
-    if (equipDay) { equip = {}; collect('equip', equip); }
+    if (only === 'equip' || (!only && equipDay)) { equip = {}; collect('equip', equip); }
     if (notMarked.length) {
       toast('חסר סימון: ' + notMarked.slice(0, 3).join(', ') + (notMarked.length > 3 ? ' ועוד ' + (notMarked.length - 3) : ''));
       return;
@@ -1238,20 +1261,32 @@
 
   function exportFull() {
     var units = myUnits();
-    var rows = [['תאריך', 'יום', 'פלוגה', 'יחידה', 'סוג', 'פריט', 'צ׳', 'צפי', 'נספר בפועל', 'תקין', 'סופר', 'מספר אישי', 'שעה']];
+    var rows = [['תאריך', 'יום', 'פלוגה', 'יחידה', 'סוג', 'פריט', 'צ׳/סדרה', 'בידי', 'מ.א', 'צפי', 'נספר בפועל', 'תקין', 'סופר', 'מספר אישי', 'שעה']];
     DATES.forEach(function (d) {
       units.forEach(function (u) {
         var c = S.counts[countId(u.id, d)];
         if (!c) return;
         [['items', 'תחמושת', 'ammo'], ['equip', 'אמצעים', 'equip']].forEach(function (t) {
           var src = c[t[0]]; if (!src) return;
+          var st = S.stock[u.id];
           Object.keys(src).forEach(function (iid) {
             var v = src[iid]; if (!v) return;
-            var st = S.stock[u.id];
-            var ser = t[2] === 'equip' ? ((st && st.equip && st.equip[iid] && st.equip[iid].s) || '') : '';
+            var stItem = st && st[t[2]] && st[t[2]][iid];
+            var inst = stItem && stItem.inst;
+            if (inst && inst.length) {
+              // one row per physical piece with its serial/series + holder + status
+              var missIdx = v.missIdx || [];
+              inst.forEach(function (ins, i) {
+                var present = missIdx.indexOf(i) < 0;
+                rows.push([d, DAY_HE[isoDow(d)], u.group, u.name, t[1], itemName(t[2], iid),
+                  ins.s || '', ins.owner || '', ins.num || '', 1, present ? 1 : 0, present ? 'V' : 'חסר',
+                  c.counterName, c.counterNum, fmtTime(c.ts)]);
+              });
+              return;
+            }
             var actual = v.ok ? (v.expected != null ? v.expected : '') : (typeof v.actual === 'number' ? v.actual : '');
             var okTxt = v.ok || (typeof v.actual === 'number' && v.actual === v.expected) ? 'V' : 'לא תואם';
-            rows.push([d, DAY_HE[isoDow(d)], u.group, u.name, t[1], itemName(t[2], iid), ser,
+            rows.push([d, DAY_HE[isoDow(d)], u.group, u.name, t[1], itemName(t[2], iid), '', '', '',
               v.expected != null ? v.expected : '', actual, okTxt, c.counterName, c.counterNum, fmtTime(c.ts)]);
           });
         });
@@ -1292,43 +1327,55 @@
         });
       });
     }
-    // per-piece editor: each physical item is its own row with its own צ׳ (+ חתום)
+    var adminOnly = UNIT_BY_ID[S.adminUnit] && UNIT_BY_ID[S.adminUnit].only; // 'ammo'|'equip'|null
+    // per-piece detail — tracked items are ALWAYS expanded; qty items show none
     function instEditorHtml(kind, iid) {
+      var track = trackOf(iid);
+      if (track === 'qty') return '';
       var key = kind + ':' + iid;
-      if (!S.instEdit.open[key]) return '';
-      var rows = (S.instEdit.data[key] || []).map(function (r, ri) {
+      var pcs = S.instEdit.data[key] || [];
+      if (!pcs.length) return '';
+      var f1 = track === 'series' ? 'סדרה' : track === 'holder' ? '' : 'צ׳';
+      var rows = pcs.map(function (r, ri) {
         return '<div class="irow">' +
-          '<span style="flex:0 0 22px;font-size:12px;color:#6b7f72;font-weight:700">' + (ri + 1) + '.</span>' +
-          '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.s) + '" placeholder="צ׳">' +
-          '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="שם החתום (לא חובה)">' +
+          '<span style="flex:0 0 20px;font-size:12px;color:#6b7f72;font-weight:700">' + (ri + 1) + '.</span>' +
+          (f1 ? '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.s) + '" placeholder="' + f1 + '">' : '') +
+          '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="שם החייל">' +
           '<input class="n3" data-if="num" data-ik2="' + key + '" data-ri="' + ri + '" inputmode="numeric" value="' + esc(r.num) + '" placeholder="מ.א">' +
           '<button data-irm="' + key + '|' + ri + '">✕</button></div>';
       }).join('');
-      return '<div class="instbox">' + rows +
+      var copyBtn = (track === 'series' && pcs.length > 1)
+        ? '<button class="btn-mini" data-icopy="' + key + '" style="background:#e0e7ff;color:#3730a3">📋 העתק סדרה לכולם</button> ' : '';
+      return '<div class="instbox">' + rows + copyBtn +
         '<button class="btn-mini" data-iadd="' + key + '">＋ הוסף</button></div>';
     }
     function stockRow(kind, it) {
       var e = st[kind] && st[kind][it.id];
       var key = kind + ':' + it.id;
+      var track = trackOf(it.id);
       var pcs = S.instEdit.data[key] || [];
-      var open = S.instEdit.open[key];
-      var qtyVal = open || pcs.length ? (pcs.length || '') : (e && typeof e.q === 'number' ? e.q : '');
-      var cur = pcs.length ? '<div class="cur">' + pcs.length + ' × צ׳</div>'
-        : (e && typeof e.q === 'number' && e.q > 0) ? '<div class="cur">כמות ' + e.q + '</div>'
-        : '<div class="cur">לא הוגדר</div>';
-      return '<div>' + esc(it.name) + cur +
-        '<button class="instlnk" data-il="' + key + '">' + (open ? '▲ סגירה' : '🔢 צ׳') + '</button></div>' +
-        '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—"' + (open ? ' disabled' : '') + '>' +
+      var qtyVal = track !== 'qty' ? (pcs.length || '') : (e && typeof e.q === 'number' ? e.q : '');
+      var cur = track !== 'qty'
+        ? (pcs.length ? '<div class="cur">' + pcs.length + ' פריטים · ' + (track === 'series' ? 'סדרה' : track === 'holder' ? 'חייל' : 'צ׳') + '</div>' : '<div class="cur">הזן כמות ⃪</div>')
+        : (e && typeof e.q === 'number' && e.q > 0) ? '<div class="cur">כמות ' + e.q + '</div>' : '<div class="cur">לא הוגדר</div>';
+      return '<div>' + esc(it.name) + cur + '</div>' +
+        '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—">' +
         instEditorHtml(kind, it.id);
     }
     var h = '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
-      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה.</div>' +
-      '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit) +
-      '<div class="sec-head"><h2>תחמושת</h2></div><div class="stock-grid">';
-    ammoList().forEach(function (it) { h += stockRow('ammo', it); });
-    h += '</div><div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid">';
-    equipList().forEach(function (it) { h += stockRow('equip', it); });
-    h += '</div><button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">💾 שמירת כמויות ליחידה</button>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. פריטים עם צ׳/סדרה — מזינים כמות והשורות נפתחות למילוי.</div>' +
+      '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit);
+    if (adminOnly !== 'equip') {
+      h += '<div class="sec-head"><h2>תחמושת</h2></div><div class="stock-grid">';
+      ammoList().forEach(function (it) { h += stockRow('ammo', it); });
+      h += '</div>';
+    }
+    if (adminOnly !== 'ammo') {
+      h += '<div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid">';
+      equipList().forEach(function (it) { h += stockRow('equip', it); });
+      h += '</div>';
+    }
+    h += '<button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">💾 שמירת כמויות ליחידה</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות מאפס את חישוב השימוש לפריט — הכמות שהוזנה היא הבסיס החדש</div></div>';
 
     // custom items
@@ -1379,24 +1426,38 @@
     $('btnStock').onclick = saveStock;
 
     // per-piece editor wiring
-    document.querySelectorAll('[data-il]').forEach(function (b) {
-      b.onclick = function () {
-        var k = b.getAttribute('data-il');
-        S.instEdit.open[k] = !S.instEdit.open[k];
-        if (S.instEdit.open[k] && !(S.instEdit.data[k] || []).length) {
-          // seed rows from the quantity already typed (type 5 → open → 5 rows)
-          var inp = document.querySelector('input[data-sk="' + k.split(':')[0] + '"][data-si="' + k.split(':')[1] + '"]');
-          var n = Math.max(1, Math.min(50, Math.floor(+(inp && inp.value) || 1)));
-          var arr = []; for (var i = 0; i < n; i++) arr.push({ s: '', owner: '', num: '' });
-          S.instEdit.data[k] = arr;
-        }
+    // For tracked items the quantity input drives the number of piece-rows —
+    // change the number and the rows appear/adjust (always visible, no toggle).
+    document.querySelectorAll('#scrAdmin input[data-sk]').forEach(function (inp) {
+      var iid = inp.getAttribute('data-si');
+      if (trackOf(iid) === 'qty') return;
+      var key = inp.getAttribute('data-sk') + ':' + iid;
+      inp.onchange = function () {
+        var n = Math.max(0, Math.min(60, Math.floor(+inp.value || 0)));
+        var arr = (S.instEdit.data[key] || []).slice();
+        var last = arr.length ? arr[arr.length - 1] : null;
+        while (arr.length < n) arr.push({ s: (last && trackOf(iid) === 'series' ? last.s : ''), owner: '', num: '' });
+        if (arr.length > n) arr = arr.slice(0, n);
+        S.instEdit.data[key] = arr;
         renderAdmin();
       };
     });
     document.querySelectorAll('[data-iadd]').forEach(function (b) {
       b.onclick = function () {
         var k = b.getAttribute('data-iadd');
-        (S.instEdit.data[k] = S.instEdit.data[k] || []).push({ s: '', owner: '', num: '' });
+        var arr = (S.instEdit.data[k] = S.instEdit.data[k] || []);
+        var last = arr.length ? arr[arr.length - 1] : null;
+        var iid = k.split(':')[1];
+        arr.push({ s: (last && trackOf(iid) === 'series' ? last.s : ''), owner: '', num: '' });
+        renderAdmin();
+      };
+    });
+    document.querySelectorAll('[data-icopy]').forEach(function (b) {
+      b.onclick = function () {
+        var k = b.getAttribute('data-icopy');
+        var arr = S.instEdit.data[k] || [];
+        var s = arr[0] ? arr[0].s : '';
+        arr.forEach(function (r) { r.s = s; });
         renderAdmin();
       };
     });

@@ -153,21 +153,30 @@
   .stock-grid { display: grid; grid-template-columns: 1fr 84px; gap: 6px 8px; align-items: center; font-size: 14px; }
   .stock-grid input { text-align: center; padding: 7px 4px; font-weight: 700; }
   .stock-grid .cur { font-size: 11px; color: #6b7f72; }
+  .stock-grid.g3 { grid-template-columns: 1fr 62px 96px; }
+  .stock-grid .hdr { font-size: 11px; font-weight: 700; color: #4b5f52; }
+  .serial { color: #0e7490; font-weight: 700; }
 
   /* ── login / no access ── */
-  #login, #noaccess {
+  #login {
     min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
     background: linear-gradient(160deg, #081c12, #1b4332 60%, #2d6a4f); color: #fff; text-align: center; padding: 24px;
   }
   #login h1 { font-size: 34px; font-weight: 900; margin: 6px 0 2px; }
   #login .g { color: #a7f3d0; }
-  #login p, #noaccess p { opacity: .85; font-size: 14px; margin: 4px 0 26px; }
-  #login button, #noaccess button {
+  #login p { opacity: .85; font-size: 14px; margin: 4px 0 18px; }
+  #login button {
     font-family: inherit; font-size: 17px; font-weight: 700; background: #fff; color: #1b4332;
     border: none; border-radius: 14px; padding: 14px 26px; cursor: pointer; box-shadow: 0 4px 18px rgba(0,0,0,.3);
   }
-  #noaccess h1 { font-size: 24px; font-weight: 900; margin: 6px 0; }
-  #noaccess .em { background: rgba(255,255,255,.12); border-radius: 10px; padding: 6px 14px; direction: ltr; font-size: 15px; margin-bottom: 20px; }
+  .pickbox { width: 100%; max-width: 340px; display: flex; flex-direction: column; gap: 10px; }
+  .pick-title { font-size: 16px; font-weight: 900; color: #a7f3d0; margin-bottom: 2px; }
+  #login .gbtn { width: 100%; font-size: 18px; font-weight: 900; padding: 15px 10px; border-radius: 14px; }
+  #login .gbtn .gsub { display: block; font-size: 11px; font-weight: 400; color: #4b5f52; }
+  #login .gbtn.confirm { background: #16a34a; color: #fff; }
+  #login .linkish { background: none; box-shadow: none; color: #a7f3d0; font-size: 14px; padding: 8px; }
+  .confirm-txt { background: rgba(255,255,255,.1); border: 1.5px solid #a7f3d0; border-radius: 12px; padding: 14px; font-size: 15px; line-height: 1.5; }
+  #login input { font-family: inherit; font-size: 17px; border: none; border-radius: 12px; padding: 13px; width: 100%; }
   .spin { text-align: center; padding: 40px; color: #6b7f72; }
 
   .toast {
@@ -181,7 +190,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getAuth, signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -195,18 +204,10 @@
   };
   const app = initializeApp(firebaseConfig);
   const _auth = getAuth(app);
-  window.fb = { auth: _auth, db: getFirestore(app), onAuthStateChanged, signOut, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, query, where };
-  // Popup first — redirect breaks on mobile browsers when authDomain differs from origin.
-  window.fb.signIn = async () => {
-    try { return await signInWithPopup(_auth, new GoogleAuthProvider()); }
-    catch (e) {
-      const code = (e && e.code) || '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request' || code === 'auth/user-cancelled') return;
-      try { return await signInWithRedirect(_auth, new GoogleAuthProvider()); }
-      catch (e2) { alert('התחברות נכשלה: ' + (e2 && e2.message ? e2.message : e2)); }
-    }
-  };
-  getRedirectResult(_auth).catch(() => {});
+  // Soldiers enter with an invisible anonymous session (no account, no password,
+  // works on any domain). Admins upgrade with email+password — that difference
+  // is what the Firestore rules use to gate quantity edits server-side.
+  window.fb = { auth: _auth, db: getFirestore(app), signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, query, where };
   window.dispatchEvent(new Event('firebase-ready'));
 </script>
 </head>
@@ -215,18 +216,44 @@
 <div id="login" style="display:none">
   <div style="font-size:56px">🟢</div>
   <h1>ירוק <span class="g">בעיניים</span></h1>
-  <p>גדוד 1895 · ספירת תחמושת ואמצעים יומית<br>פלוגות א׳ · ב׳ · ד׳ · חפ״קים</p>
-  <button id="btnLogin">התחברות עם Google</button>
+  <p>גדוד 1895 · ספירת תחמושת ואמצעים יומית</p>
+
+  <!-- step 1: company (or battalion-level frameworks that have no company) -->
+  <div id="pickStep1" class="pickbox">
+    <div class="pick-title">לאיזו מסגרת את/ה שייך/ת?</div>
+    <button class="gbtn" data-g="a">פלוגה א׳</button>
+    <button class="gbtn" data-g="b">פלוגה ב׳</button>
+    <button class="gbtn" data-g="d">פלוגה ד׳</button>
+    <button class="gbtn" data-g="bn">חפ״ק גדוד <span class="gsub">מג״ד · סמג״ד · מפ״ם</span></button>
+  </div>
+
+  <!-- step 2: framework inside the company -->
+  <div id="pickStep2" class="pickbox" style="display:none">
+    <div class="pick-title" id="pick2Title"></div>
+    <div id="pick2Btns"></div>
+    <button class="linkish" id="pickBack">→ חזרה לבחירת פלוגה</button>
+  </div>
+
+  <!-- step 3: confirmation -->
+  <div id="pickConfirm" class="pickbox" style="display:none">
+    <div class="pick-title">וידוא שיוך</div>
+    <div class="confirm-txt" id="confirmTxt"></div>
+    <button class="gbtn confirm" id="btnConfirmPick">✓ מאשר/ת — כניסה</button>
+    <button class="linkish" id="confirmBack">→ חזרה</button>
+  </div>
+
+  <!-- admin login: email (or short username) + password -->
+  <div id="admBox" class="pickbox" style="display:none">
+    <div class="pick-title">🔑 כניסת מנהל</div>
+    <input type="text" id="admUser" placeholder="שם משתמש" autocomplete="username" style="direction:ltr;text-align:center">
+    <input type="password" id="admPass" placeholder="סיסמה" autocomplete="current-password" style="direction:ltr;text-align:center">
+    <button class="gbtn confirm" id="btnAdmLogin">כניסה</button>
+    <button class="linkish" id="admBack">→ חזרה</button>
+  </div>
+
+  <button class="linkish" id="lnkAdmin">🔑 כניסת מנהל</button>
   <button id="btnInstall" style="display:none;margin-top:12px;background:#16a34a;color:#fff">📲 התקנת האפליקציה</button>
   <p id="iosHint" style="display:none;font-size:12px;margin-top:14px">להתקנה באייפון: לחצו על <b>שיתוף</b> ⬆️ ואז <b>״הוספה למסך הבית״</b></p>
-</div>
-
-<div id="noaccess" style="display:none">
-  <div style="font-size:48px">🔒</div>
-  <h1>אין הרשאת גישה</h1>
-  <div class="em" id="naEmail"></div>
-  <p>בקש/י מהאדמין להוסיף את החשבון הזה<br>(פלוגה, צפייה או ניהול) — הגישה תיפתח מיידית.</p>
-  <button id="btnLogout2">התנתקות</button>
 </div>
 
 <div id="app" style="display:none">
@@ -268,7 +295,6 @@
   'use strict';
 
   /* ═══════════ constants ═══════════ */
-  var SUPER_ADMIN = 'aaci.yoni@gmail.com';
   var START = '2026-08-23', END = '2026-09-17';
 
   var AMMO_ITEMS = [
@@ -357,7 +383,6 @@
     var d = new Date(ts);
     return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
-  function emailKey(em) { return String(em || '').toLowerCase().replace(/\./g, ','); }
 
   /* ═══════════ state ═══════════ */
   var S = {
@@ -380,10 +405,12 @@
     dataScope: ''          // which role/group the data listeners were opened for
   };
   // QR stickers open the app preset to a unit: https://greeneyes95.com/?unit=<id>
-  // (role scoping still applies — applyRole() resets it if out of the user's scope)
+  // First-time scanners jump straight to the belonging-confirmation for it.
+  var QR_UNIT = null;
   (function () {
     var qUnit = new URLSearchParams(location.search).get('unit');
     if (qUnit && UNIT_BY_ID[qUnit]) {
+      QR_UNIT = qUnit;
       S.unit = qUnit; S.adminUnit = qUnit;
       try { localStorage.setItem('yb_unit', qUnit); } catch (e) {}
     }
@@ -412,10 +439,9 @@
     return id;
   }
 
-  function isViewer() { return S.role === 'viewer'; }
   function isAdminRole() { return S.role === 'admin'; }
   function myGroups() {
-    if (S.role === 'admin' || S.role === 'viewer') return ['a', 'b', 'd', 'bn'];
+    if (S.role === 'admin') return ['a', 'b', 'd', 'bn'];
     return S.role ? [S.role] : [];
   }
   function myUnits() {
@@ -453,88 +479,149 @@
     return h + '</select>';
   }
 
-  /* ═══════════ auth + role + subscriptions ═══════════ */
+  /* ═══════════ auth + framework picker + subscriptions ═══════════
+     Soldiers: invisible anonymous session, then pick company → framework →
+     confirm belonging. Admins: username+password (email/password provider) —
+     the server rules key off that provider for privileged writes. */
+  var pickedGroup = null, pickedUnit = null;
+
   function start() {
     var fb = window.fb;
-    $('btnLogin').onclick = function () { fb.signIn(); };
-    $('btnLogout').onclick = function () { fb.signOut(fb.auth); };
-    $('btnLogout2').onclick = function () { fb.signOut(fb.auth); };
+    $('btnLogout').onclick = function () {
+      if (S.role === 'admin') fb.signOut(fb.auth);   // drops back to an anonymous session
+      else showPicker();                             // regular user: change framework
+    };
+    wirePicker();
     fb.onAuthStateChanged(fb.auth, function (user) {
       S.user = user;
       if (!user) {
-        stopAll();
-        show('login');
+        fb.signInAnonymously(fb.auth).catch(function (e) {
+          toast('שגיאת התחברות (' + (e.code || e.message) + ') — יש להפעיל כניסה אנונימית ב-Firebase');
+        });
         return;
       }
-      // wait for the config doc before deciding what this user may see
       if (S.unsubCfg) { try { S.unsubCfg(); } catch (e) {} }
       S.unsubCfg = fb.onSnapshot(fb.doc(fb.db, 'ammo_config', 'main'), function (snap) {
         S.config = snap.exists() ? snap.data() : null;
         applyRole();
       }, function () { S.config = null; applyRole(); });
+      applyRole();
     });
     document.querySelectorAll('nav.tabs button').forEach(function (b) {
       b.onclick = function () { setTab(b.getAttribute('data-tab')); };
     });
   }
 
-  function stopAll() {
-    if (S.unsubCfg) { try { S.unsubCfg(); } catch (e) {} S.unsubCfg = null; }
-    S.unsubData.forEach(function (u) { try { u(); } catch (e) {} });
-    S.unsubData = [];
-    S.dataScope = '';
-    S.stock = {}; S.usage = []; S.counts = {};
-    show('login');
-  }
-
   function show(which) {
     $('login').style.display = which === 'login' ? 'flex' : 'none';
-    $('noaccess').style.display = which === 'noaccess' ? 'flex' : 'none';
     $('app').style.display = which === 'app' ? 'block' : 'none';
   }
 
+  function pickerPanes(visible) {
+    ['pickStep1', 'pickStep2', 'pickConfirm', 'admBox'].forEach(function (id) {
+      $(id).style.display = id === visible ? '' : 'none';
+    });
+    $('lnkAdmin').style.display = visible === 'admBox' ? 'none' : '';
+  }
+
+  function showPicker() {
+    pickedGroup = null; pickedUnit = null;
+    pickerPanes('pickStep1');
+    show('login');
+    if (QR_UNIT) {  // arrived by scanning a unit's QR sticker — confirm it directly
+      var u = QR_UNIT; QR_UNIT = null;
+      pickedGroup = UNIT_BY_ID[u].grp;
+      openConfirm(u);
+    }
+  }
+
+  function wirePicker() {
+    document.querySelectorAll('#pickStep1 .gbtn').forEach(function (b) {
+      b.onclick = function () { openStep2(b.getAttribute('data-g')); };
+    });
+    $('pickBack').onclick = showPicker;
+    $('confirmBack').onclick = function () { openStep2(pickedGroup); };
+    $('btnConfirmPick').onclick = function () {
+      localStorage.setItem('yb_group', pickedGroup);
+      localStorage.setItem('yb_unit', pickedUnit);
+      S.unit = pickedUnit; S.adminUnit = pickedUnit; S.bufKey = '';
+      S.tab = 'count';
+      applyRole();
+    };
+    $('lnkAdmin').onclick = function () { pickerPanes('admBox'); };
+    $('admBack').onclick = showPicker;
+    $('btnAdmLogin').onclick = adminLogin;
+    $('admPass').addEventListener('keydown', function (e) { if (e.key === 'Enter') adminLogin(); });
+  }
+
+  function openStep2(g) {
+    pickedGroup = g;
+    var grp = null;
+    UNIT_GROUPS.forEach(function (x) { if (x.g === g) grp = x; });
+    $('pick2Title').textContent = (g === 'bn' ? 'חפ״ק גדוד' : grp.name) + ' — באיזו מסגרת?';
+    $('pick2Btns').innerHTML = grp.units.map(function (u) {
+      return '<button class="gbtn" data-u="' + u.id + '" style="margin-bottom:8px">' + esc(u.name) + '</button>';
+    }).join('');
+    document.querySelectorAll('#pick2Btns .gbtn').forEach(function (b) {
+      b.onclick = function () { openConfirm(b.getAttribute('data-u')); };
+    });
+    pickerPanes('pickStep2');
+  }
+
+  function openConfirm(unitId) {
+    pickedUnit = unitId;
+    $('confirmTxt').innerHTML = 'אני מאשר/ת שאני משרת/ת ב<b>' + esc(UNIT_BY_ID[unitId].full) +
+      '</b> בגדוד 1895, ושהדיווחים שאמסור נכונים.';
+    pickerPanes('pickConfirm');
+  }
+
+  function adminLogin() {
+    var fb = window.fb;
+    var u = ($('admUser').value || '').trim();
+    var p = $('admPass').value || '';
+    if (!u || !p) { toast('יש למלא שם משתמש וסיסמה'); return; }
+    if (u.indexOf('@') < 0) u = u + '@greeneyes95.com';  // short usernames map to app emails
+    var btn = $('btnAdmLogin'); btn.disabled = true;
+    fb.signInWithEmailAndPassword(fb.auth, u, p)
+      .then(function () { btn.disabled = false; $('admPass').value = ''; S.tab = 'report'; })
+      .catch(function (e) {
+        btn.disabled = false;
+        toast('כניסה נכשלה — בדקו שם משתמש וסיסמה (' + (e.code || '') + ')');
+      });
+  }
+
   function computeRole() {
-    var em = (S.user && S.user.email || '').toLowerCase();
-    if (!em) return null;
-    if (em === SUPER_ADMIN) return 'admin';
-    var c = S.config || {};
-    if ((c.adminEmails || []).indexOf(em) >= 0) return 'admin';
-    if ((c.viewerEmails || []).indexOf(em) >= 0) return 'viewer';
-    var g = (c.companyOf || {})[emailKey(em)];
-    return (g && GROUP_NAMES[g]) ? g : null;
+    if (!S.user) return null;
+    if (S.user.email) return 'admin';                    // password user ⇒ admin
+    var g = localStorage.getItem('yb_group');
+    return GROUP_NAMES[g] ? g : null;
   }
 
   function applyRole() {
     var role = computeRole();
-    var changed = role !== S.role;
     S.role = role;
-    if (!role) {
-      S.unsubData.forEach(function (u) { try { u(); } catch (e) {} });
-      S.unsubData = []; S.dataScope = '';
-      $('naEmail').textContent = (S.user && S.user.email) || '';
-      show('noaccess');
-      return;
-    }
+    if (!role) { showPicker(); return; }
     show('app');
-    $('whoName').textContent = (S.user.displayName || S.user.email || '');
-    $('whoRole').textContent = role === 'admin' ? 'ADMIN' : role === 'viewer' ? 'צפייה בלבד' : GROUP_NAMES[role];
+    var homeUnit = UNIT_BY_ID[localStorage.getItem('yb_unit')];
+    $('whoName').textContent = role === 'admin'
+      ? (S.user.email || '').split('@')[0]
+      : (homeUnit ? homeUnit.full : GROUP_NAMES[role]);
+    $('whoRole').textContent = role === 'admin' ? 'מנהל' : GROUP_NAMES[role];
+    $('btnLogout').textContent = role === 'admin' ? 'התנתקות' : 'החלפת מסגרת';
     $('tabAdmin').style.display = role === 'admin' ? '' : 'none';
-    $('tabCount').style.display = role === 'viewer' ? 'none' : '';
     // keep the selected unit inside the allowed scope
     if (!UNIT_BY_ID[S.unit] || myGroups().indexOf(UNIT_BY_ID[S.unit].grp) < 0) {
       S.unit = myUnits()[0] ? myUnits()[0].id : 'a_armon';
       S.bufKey = '';
     }
     if (!UNIT_BY_ID[S.adminUnit] || myGroups().indexOf(UNIT_BY_ID[S.adminUnit].grp) < 0) S.adminUnit = S.unit;
-    if (changed && ((role === 'viewer' && (S.tab === 'count' || S.tab === 'admin')) || (role !== 'admin' && S.tab === 'admin'))) {
-      S.tab = role === 'viewer' ? 'report' : 'count';
-    }
+    if (S.tab === 'admin' && role !== 'admin') S.tab = 'count';
     resubscribeData();
     setTab(S.tab);
   }
 
   function resubscribeData() {
-    var scope = S.role === 'admin' || S.role === 'viewer' ? 'all' : S.role;
+    var scope = S.role === 'admin' ? 'all' : S.role;
     if (scope === S.dataScope) { renderAll(); return; }
     S.dataScope = scope;
     var fb = window.fb, db = fb.db;
@@ -561,7 +648,6 @@
 
   function setTab(tab) {
     if (tab === 'admin' && !isAdminRole()) tab = 'report';
-    if (tab === 'count' && isViewer()) tab = 'report';
     S.tab = tab;
     document.querySelectorAll('nav.tabs button').forEach(function (b) {
       b.classList.toggle('on', b.getAttribute('data-tab') === tab);
@@ -603,7 +689,6 @@
   }
 
   function renderCount() {
-    if (isViewer()) { $('scrCount').innerHTML = ''; return; }
     // don't wipe an input mid-typing — retry after the field blurs
     var ae = document.activeElement;
     if (ae && ae.tagName === 'INPUT' && $('scrCount').contains(ae)) {
@@ -673,14 +758,17 @@
     var h = '';
     items.forEach(function (it) {
       var exp = expectedFor(S.unit, kind, it.id);
+      var st = S.stock[S.unit];
+      var ser = kind === 'equip' ? ((st && st.equip && st.equip[it.id] && st.equip[it.id].s) || '') : '';
+      var serTxt = ser ? ' · <span class="serial">צ׳ ' + esc(ser) + '</span>' : '';
       var m = S.buf[kind][it.id];
       var cls = m ? (m.ok ? ' ok' : ' diff') : '';
       h += '<div class="item' + cls + '" id="row_' + kind + '_' + it.id + '">' +
         '<button class="vbtn" data-k="' + kind + '" data-i="' + it.id + '" aria-label="אישור">✓</button>' +
         '<div class="iname"><div class="nm">' + esc(it.name) + '</div>' +
         (exp == null
-          ? '<div class="exp none">אין צפי — יש להקליד כמות</div>'
-          : '<div class="exp">צפי: <b>' + exp + '</b></div>') +
+          ? '<div class="exp none">אין צפי — יש להקליד כמות' + serTxt + '</div>'
+          : '<div class="exp">צפי: <b>' + exp + '</b>' + serTxt + '</div>') +
         '</div>' +
         (m && !m.ok
           ? '<div class="ainp"><input type="number" inputmode="numeric" min="0" data-k="' + kind + '" data-i="' + it.id + '" value="' + (typeof m.actual === 'number' ? m.actual : '') + '" placeholder="כמות"></div>'
@@ -780,24 +868,22 @@
       return;
     }
     var h = '';
-    if (!isViewer()) {
-      h += '<div class="card"><h3>📉 דיווח שימוש בתחמושת</h3>' +
-        '<label class="fld">יחידה</label>' + unitSelectHtml('uUnit', S.unit) +
-        '<div class="grid2">' +
-        '<div><label class="fld">פריט</label><select id="uItem">' +
-        ammoList().map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + '</option>'; }).join('') +
-        '</select></div>' +
-        '<div><label class="fld">כמות שנוצלה</label><input type="number" id="uQty" inputmode="numeric" min="1" placeholder="0"></div>' +
-        '</div>' +
-        '<div class="grid2">' +
-        '<div><label class="fld">שם המדווח</label><input type="text" id="uName" value="' + esc(localStorage.getItem('yb_name') || '') + '"></div>' +
-        '<div><label class="fld">מספר אישי</label><input type="text" id="uNum" inputmode="numeric" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
-        '</div>' +
-        '<label class="fld">הערה (לא חובה)</label><input type="text" id="uNote" placeholder="אימון / מבצעי...">' +
-        '<button class="btn-primary" id="btnUsage" style="font-size:16px;padding:12px">דיווח שימוש</button>' +
-        '<div style="font-size:11px;color:#6b7f72;text-align:center">הצפי לספירה מתעדכן אוטומטית לפי הדיווח</div>' +
-        '</div>';
-    }
+    h += '<div class="card"><h3>📉 דיווח שימוש בתחמושת</h3>' +
+      '<label class="fld">יחידה</label>' + unitSelectHtml('uUnit', S.unit) +
+      '<div class="grid2">' +
+      '<div><label class="fld">פריט</label><select id="uItem">' +
+      ammoList().map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div><label class="fld">כמות שנוצלה</label><input type="number" id="uQty" inputmode="numeric" min="1" placeholder="0"></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+      '<div><label class="fld">שם המדווח</label><input type="text" id="uName" value="' + esc(localStorage.getItem('yb_name') || '') + '"></div>' +
+      '<div><label class="fld">מספר אישי</label><input type="text" id="uNum" inputmode="numeric" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
+      '</div>' +
+      '<label class="fld">הערה (לא חובה)</label><input type="text" id="uNote" placeholder="אימון / מבצעי...">' +
+      '<button class="btn-primary" id="btnUsage" style="font-size:16px;padding:12px">דיווח שימוש</button>' +
+      '<div style="font-size:11px;color:#6b7f72;text-align:center">הצפי לספירה מתעדכן אוטומטית לפי הדיווח</div>' +
+      '</div>';
 
     var units = myUnits();
     h += '<div class="sec-head"><h2>יומן שימוש</h2><select id="uFilter" style="width:auto;font-size:13px;padding:5px 8px">' +
@@ -820,11 +906,9 @@
     $('scrUsage').innerHTML = h;
 
     $('uFilter').onchange = function () { S.usageFilter = $('uFilter').value; renderUsage(); };
-    if (!isViewer()) {
-      $('uUnit').value = S.unit;
-      $('uUnit').onchange = function () { S.unit = $('uUnit').value; localStorage.setItem('yb_unit', S.unit); };
-      $('btnUsage').onclick = submitUsage;
-    }
+    $('uUnit').value = S.unit;
+    $('uUnit').onchange = function () { S.unit = $('uUnit').value; };
+    $('btnUsage').onclick = submitUsage;
     document.querySelectorAll('[data-del]').forEach(function (b) {
       b.onclick = function () {
         if (!confirm('למחוק את דיווח השימוש? הצפי יחזור לקדמותו.')) return;
@@ -920,7 +1004,7 @@
       '<button class="btn-ghost" id="expFull">דוח ספירות מפורט (כל פריט) — CSV</button>' +
       '<button class="btn-ghost" id="expUsage">יומן שימוש בתחמושת — CSV</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-top:4px">קבצי CSV נפתחים ישירות באקסל (עברית מלאה)' +
-      (S.role !== 'admin' && S.role !== 'viewer' ? ' · הדוח כולל את הפלוגה שלך בלבד' : '') + '</div></div>';
+      (S.role !== 'admin' ? ' · הדוח כולל את הפלוגה שלך בלבד' : '') + '</div></div>';
 
     $('scrReport').innerHTML = h;
     document.querySelectorAll('#rstrip .dchip').forEach(function (b) {
@@ -975,7 +1059,7 @@
 
   function exportFull() {
     var units = myUnits();
-    var rows = [['תאריך', 'יום', 'פלוגה', 'יחידה', 'סוג', 'פריט', 'צפי', 'נספר בפועל', 'תקין', 'סופר', 'מספר אישי', 'שעה']];
+    var rows = [['תאריך', 'יום', 'פלוגה', 'יחידה', 'סוג', 'פריט', 'צ׳', 'צפי', 'נספר בפועל', 'תקין', 'סופר', 'מספר אישי', 'שעה']];
     DATES.forEach(function (d) {
       units.forEach(function (u) {
         var c = S.counts[countId(u.id, d)];
@@ -984,9 +1068,11 @@
           var src = c[t[0]]; if (!src) return;
           Object.keys(src).forEach(function (iid) {
             var v = src[iid]; if (!v) return;
+            var st = S.stock[u.id];
+            var ser = t[2] === 'equip' ? ((st && st.equip && st.equip[iid] && st.equip[iid].s) || '') : '';
             var actual = v.ok ? (v.expected != null ? v.expected : '') : (typeof v.actual === 'number' ? v.actual : '');
             var okTxt = v.ok || (typeof v.actual === 'number' && v.actual === v.expected) ? 'V' : 'לא תואם';
-            rows.push([d, DAY_HE[isoDow(d)], u.group, u.name, t[1], itemName(t[2], iid),
+            rows.push([d, DAY_HE[isoDow(d)], u.group, u.name, t[1], itemName(t[2], iid), ser,
               v.expected != null ? v.expected : '', actual, okTxt, c.counterName, c.counterNum, fmtTime(c.ts)]);
           });
         });
@@ -1024,11 +1110,13 @@
         '</div>' +
         '<input type="number" inputmode="numeric" min="0" data-sk="ammo" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—">';
     });
-    h += '</div><div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid">';
+    h += '</div><div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid g3">';
+    h += '<div class="hdr"></div><div class="hdr" style="text-align:center">כמות</div><div class="hdr" style="text-align:center">מספר צ׳</div>';
     equipList().forEach(function (it) {
       var e = st.equip && st.equip[it.id];
       h += '<div>' + esc(it.name) + (e && typeof e.q === 'number' ? '<div class="cur">בסיס ' + e.q + '</div>' : '<div class="cur">לא הוגדר</div>') + '</div>' +
-        '<input type="number" inputmode="numeric" min="0" data-sk="equip" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—">';
+        '<input type="number" inputmode="numeric" min="0" data-sk="equip" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—">' +
+        '<input type="text" data-ss="' + it.id + '" value="' + esc((e && e.s) || '') + '" placeholder="צ׳">';
     });
     h += '</div><button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">שמירת כמויות ליחידה</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות לפריט מאפס את חישוב השימוש עבורו — הצפי החדש הוא הבסיס שהוזן</div></div>';
@@ -1051,35 +1139,13 @@
     h += '<div class="addrow" style="margin-top:5px"><input type="text" id="newEquip" placeholder="שם אמצעי חדש"><button class="btn-mini" id="btnAddEquip">הוסף</button></div>';
     h += '<div style="font-size:11px;color:#6b7f72;margin-top:8px">פריט שנוסף מופיע מיד בכל מסכי הספירה של כל היחידות</div></div>';
 
-    // roles
-    var admins = (S.config && S.config.adminEmails) || [];
-    var viewers = (S.config && S.config.viewerEmails) || [];
-    var companyOf = (S.config && S.config.companyOf) || {};
-    h += '<div class="card"><h3>👤 הרשאות גישה</h3>' +
-      '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">מי שלא ברשימה — לא רואה כלום. פלוגה רואה רק את עצמה; צפייה (מג״ד/סמג״ד/מפ״ם/ארמון) רואה הכל בלי לשנות; ADMIN שולט בהכל.</div>';
-
-    h += '<label class="fld">ADMIN — שליטה מלאה</label>';
-    h += '<div class="chip-admin"><span class="em">' + esc(SUPER_ADMIN) + '</span><span class="tag">SUPER</span></div>';
-    admins.forEach(function (em, i) {
-      h += '<div class="chip-admin"><span class="em">' + esc(em) + '</span><button data-rmadm="' + i + '">✕</button></div>';
-    });
-    h += '<div class="addrow"><input type="email" id="admEmail" placeholder="name@gmail.com" style="direction:ltr"><button class="btn-mini" id="btnAddAdm">הוסף</button></div>';
-
-    h += '<label class="fld" style="margin-top:12px">צפייה בלבד — רואים את כל הפלוגות</label>';
-    viewers.forEach(function (em, i) {
-      h += '<div class="chip-admin"><span class="em">' + esc(em) + '</span><button data-rmvw="' + i + '">✕</button></div>';
-    });
-    h += '<div class="addrow"><input type="email" id="vwEmail" placeholder="name@gmail.com" style="direction:ltr"><button class="btn-mini" id="btnAddVw">הוסף</button></div>';
-
-    h += '<label class="fld" style="margin-top:12px">חברי פלוגה — סופרים ורואים רק את הפלוגה שלהם</label>';
-    Object.keys(companyOf).sort().forEach(function (k) {
-      var em = k.replace(/,/g, '.');
-      h += '<div class="chip-admin"><span class="em">' + esc(em) + '</span><span class="tag">' + esc(GROUP_NAMES[companyOf[k]] || companyOf[k]) + '</span><button data-rmco="' + esc(k) + '">✕</button></div>';
-    });
-    h += '<div class="addrow"><input type="email" id="coEmail" placeholder="name@gmail.com" style="direction:ltr">' +
-      '<select id="coGroup" style="flex:0 0 110px">' +
-      Object.keys(GROUP_NAMES).map(function (g) { return '<option value="' + g + '">' + esc(GROUP_NAMES[g]) + '</option>'; }).join('') +
-      '</select><button class="btn-mini" id="btnAddCo">הוסף</button></div></div>';
+    // admins are Firebase email/password users — managed in the console, not here
+    h += '<div class="card"><h3>👤 מנהלים</h3>' +
+      '<div style="font-size:13px;color:#4b5f52;line-height:1.7">' +
+      'מנהל = משתמש עם שם משתמש וסיסמה (חיילים נכנסים בלי סיסמה ורואים רק את הפלוגה שבחרו).<br>' +
+      'הוספת מנהל חדש: קונסול Firebase ← Authentication ← Users ← <b>Add user</b> — ' +
+      'אימייל בתבנית <b style="direction:ltr;unicode-bidi:embed">name@greeneyes95.com</b> + סיסמה.<br>' +
+      'באפליקציה מתחברים עם השם בלבד (למשל ״name״) והסיסמה.</div></div>';
 
     h += '<div class="card"><h3>🖨️ מדבקות QR לרכבים</h3>' +
       '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">מדביקים מדבקה בכל רכב/סיור — סריקה פותחת את האפליקציה ישר על היחידה הנכונה, בלי לבחור כלום.</div>' +
@@ -1103,45 +1169,8 @@
       };
     });
 
-    $('btnAddAdm').onclick = function () { addEmailTo('adminEmails', $('admEmail').value); };
-    $('btnAddVw').onclick = function () { addEmailTo('viewerEmails', $('vwEmail').value); };
-    $('btnAddCo').onclick = function () {
-      var em = normEmail($('coEmail').value); if (!em) return;
-      var map = Object.assign({}, (S.config && S.config.companyOf) || {});
-      map[emailKey(em)] = $('coGroup').value;
-      saveConfig(cfgPatch('companyOf', map));
-    };
-    document.querySelectorAll('[data-rmadm]').forEach(function (b) {
-      b.onclick = function () { removeEmailFrom('adminEmails', +b.getAttribute('data-rmadm')); };
-    });
-    document.querySelectorAll('[data-rmvw]').forEach(function (b) {
-      b.onclick = function () { removeEmailFrom('viewerEmails', +b.getAttribute('data-rmvw')); };
-    });
-    document.querySelectorAll('[data-rmco]').forEach(function (b) {
-      b.onclick = function () {
-        var map = Object.assign({}, (S.config && S.config.companyOf) || {});
-        delete map[b.getAttribute('data-rmco')];
-        saveConfig(cfgPatch('companyOf', map));
-      };
-    });
   }
 
-  function normEmail(v) {
-    var em = String(v || '').trim().toLowerCase();
-    if (!em || em.indexOf('@') < 1) { toast('אימייל לא תקין'); return null; }
-    return em;
-  }
-  function addEmailTo(field, v) {
-    var em = normEmail(v); if (!em) return;
-    var list = ((S.config && S.config[field]) || []).slice();
-    if (list.indexOf(em) < 0) list.push(em);
-    saveConfig(cfgPatch(field, list));
-  }
-  function removeEmailFrom(field, idx) {
-    var list = ((S.config && S.config[field]) || []).slice();
-    list.splice(idx, 1);
-    saveConfig(cfgPatch(field, list));
-  }
   function addCustomItem(field, name) {
     name = String(name || '').trim();
     if (!name) { toast('יש להזין שם פריט'); return; }
@@ -1149,13 +1178,10 @@
     list.push({ id: 'c_' + Date.now().toString(36), name: name });
     saveConfig(cfgPatch(field, list));
   }
-  // full config write — rules require complete field set, so always send all fields
+  // full config write — always send the complete field set
   function cfgPatch(field, value) {
     var c = S.config || {};
     var full = {
-      adminEmails: c.adminEmails || [],
-      viewerEmails: c.viewerEmails || [],
-      companyOf: c.companyOf || {},
       customAmmo: c.customAmmo || [],
       customEquip: c.customEquip || []
     };
@@ -1181,8 +1207,16 @@
       if (inp.value === '') return;
       var q = Math.max(0, Math.floor(+inp.value || 0));
       var old = prev[kind] && prev[kind][iid];
-      if (old && old.q === q) next[kind][iid] = old;           // unchanged — keep the usage anchor
+      if (old && old.q === q) next[kind][iid] = { q: q, t: old.t || 0 };  // unchanged — keep the usage anchor
       else { next[kind][iid] = { q: q, t: Date.now() }; changed++; }
+    });
+    // equipment צ׳ serials — free text per item, shown to soldiers in the count rows
+    document.querySelectorAll('#scrAdmin input[data-ss]').forEach(function (inp) {
+      var iid = inp.getAttribute('data-ss');
+      var s = (inp.value || '').trim();
+      if (!s) return;
+      if (!next.equip[iid]) next.equip[iid] = { t: Date.now() };
+      next.equip[iid].s = s;
     });
     var btn = $('btnStock'); btn.disabled = true;
     fb.setDoc(fb.doc(fb.db, 'ammo_stock', S.adminUnit), next)

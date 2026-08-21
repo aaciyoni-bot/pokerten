@@ -57,58 +57,41 @@ service cloud.firestore {
     match /tournaments/{id}  { allow read, write: if signedIn(); }
     match /broadcasts/{id}   { allow read, write: if signedIn(); }
 
-    // ═══ Gadud 1895 — "ירוק בעיניים" daily ammo counter (ammo.html) ═══
-    // Role model (all stored in ammo_config/main, editable by admins only):
-    //   adminEmails  — full access: see all companies, edit quantities, manage roles.
-    //   viewerEmails — view-only across ALL companies (מג"ד/סמג"ד/מפ"ם/ארמון): no writes.
-    //   companyOf    — map of email-key (dots→commas) → company group ('a'/'b'/'d'/'bn'):
-    //                  may count + report usage ONLY for their own company, sees only it.
-    //   Anyone signed in but not listed anywhere gets NOTHING (default deny).
-    // superAdmin() is checked first so everything bootstraps while the config doc
-    // doesn't exist yet (get() on a missing doc errors → rule denies for others).
-    function ammoCfg() {
-      return get(/databases/$(database)/documents/ammo_config/main).data;
-    }
+    // ═══ Gadud 1895 — "ירוק בעיניים" daily ammo counter (greeneyes app) ═══
+    // Soldiers enter with an INVISIBLE ANONYMOUS session (no account, no
+    // password) — they pick their company in the app and confirm belonging.
+    // Admins sign in with email+password; that provider is what grants the
+    // privileged writes below, enforced server-side. Company scoping for
+    // soldiers is a UX concern in the app; the server guards the sensitive ops.
     function ammoAdmin() {
-      return superAdmin() ||
-        (signedIn() && request.auth.token.email in ammoCfg().adminEmails);
+      return signedIn() &&
+        (request.auth.token.firebase.sign_in_provider == 'password' || superAdmin());
     }
-    function ammoViewer() {
-      return signedIn() && request.auth.token.email in ammoCfg().viewerEmails;
-    }
-    // Firestore map keys can't contain '.', so emails are keyed with ',' instead.
-    function ammoGroup() {
-      return ammoCfg().companyOf[request.auth.token.email.replace('\\.', ',')];
-    }
-    function ammoCanSee(g)   { return ammoAdmin() || ammoViewer() || ammoGroup() == g; }
-    function ammoCanCount(g) { return ammoAdmin() || ammoGroup() == g; }
 
-    // Config must stay readable to any signed-in user so the client can learn
-    // its own role; writes (roles + custom item lists) are admin-only.
+    // App config (admin-added custom item lists) — read by all, admin writes.
     match /ammo_config/{doc} { allow read: if signedIn(); allow write: if ammoAdmin(); }
 
     // Baseline quantities per unit — ONLY admins may set/update quantities.
-    // Docs carry a 'group' field so company members can read just their own.
     match /ammo_stock/{unit} {
-      allow read: if ammoCanSee(resource.data.group);
+      allow read: if signedIn();
       allow write: if ammoAdmin() &&
         request.resource.data.group == unit.split('_')[0];
     }
 
-    // Usage reports — append-only for a company's own members (auto-adjusts the
-    // expected count); viewers can read everything; edits/deletes are admin-only.
+    // Usage reports — append-only for counters (auto-adjusts the expected
+    // count); corrections/deletions are admin-only.
     match /ammo_usage/{id} {
-      allow read: if ammoCanSee(resource.data.group);
-      allow create: if ammoCanCount(request.resource.data.group) &&
+      allow read: if signedIn();
+      allow create: if signedIn() &&
         request.resource.data.group == request.resource.data.unitId.split('_')[0];
       allow update, delete: if ammoAdmin();
     }
 
-    // Daily counts — a company member submits/resubmits only for their own
-    // company; doc id is pinned to '<unitId>_<date>'; only admins delete.
+    // Daily counts — anyone in the unit submits/resubmits; doc id is pinned
+    // to '<unitId>_<date>'; only admins delete.
     match /ammo_counts/{id} {
-      allow read: if ammoCanSee(resource.data.group);
-      allow create, update: if ammoCanCount(request.resource.data.group) &&
+      allow read: if signedIn();
+      allow create, update: if signedIn() &&
         request.resource.data.group == request.resource.data.unitId.split('_')[0] &&
         id == request.resource.data.unitId + '_' + request.resource.data.date;
       allow delete: if ammoAdmin();

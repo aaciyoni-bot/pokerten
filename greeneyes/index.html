@@ -733,7 +733,7 @@
     $('logoutTxt').textContent = role === 'admin' ? 'התנתקות' : 'החלפת מסגרת';
     $('logoutIc').textContent = role === 'admin' ? '🚪' : '🔄';
     $('tabAdmin').style.display = role === 'admin' ? '' : 'none';
-    $('tabUsage').style.display = role === 'admin' ? '' : 'none'; // usage log is command-level (armory) only
+    $('tabUsage').style.display = ''; // everyone may report שצ״ל for their own scope
     // keep the selected unit inside the allowed scope
     if (!UNIT_BY_ID[S.unit] || myGroups().indexOf(UNIT_BY_ID[S.unit].grp) < 0) {
       S.unit = myUnits()[0] ? myUnits()[0].id : 'a_armon';
@@ -786,7 +786,7 @@
   }
 
   function setTab(tab) {
-    if ((tab === 'admin' || tab === 'usage') && !isAdminRole()) tab = 'report';
+    if (tab === 'admin' && !isAdminRole()) tab = 'report';
     S.tab = tab;
     document.querySelectorAll('nav.tabs button').forEach(function (b) {
       b.classList.toggle('on', b.getAttribute('data-tab') === tab);
@@ -857,7 +857,7 @@
     });
     h += '</div>';
 
-    h += '<label class="fld">יחידה</label>' + unitSelectHtml('selUnit', S.unit);
+    h += '<label class="fld">מסגרת לספירה' + (myUnits().length > 1 ? ' <span style="font-weight:400;color:#6b7f72">— אפשר להחליף כאן</span>' : '') + '</label>' + unitSelectHtml('selUnit', S.unit);
 
     if (existing) {
       h += '<div class="banner-done">✓ נספר ב־' + fmtTime(existing.ts) + ' ע״י <b>' + esc(existing.counterName) +
@@ -1255,7 +1255,7 @@
     h += '</div>';
 
     // 📊 central inventory (admins) — the "how much should be where" report
-    if (isAdminRole()) h += centralInventoryHtml();
+    h += centralInventoryHtml();
 
     h += '<div class="dates" id="rstrip">';
     DATES.forEach(function (d) {
@@ -1431,7 +1431,8 @@
       ammoList().forEach(function (it) { totA += stockQty(u.id, 'ammo', it.id); });
       equipList().forEach(function (it) { totE += stockQty(u.id, 'equip', it.id); });
     });
-    var h = '<div class="card"><h3>📊 מצבת מרכז — כל המסגרות</h3>' +
+    var scopeTitle = isAdminRole() ? 'כל המסגרות' : (GROUP_NAMES[S.role] || 'הפלוגה שלי');
+    var h = '<div class="card"><h3>📊 מצבת מרכז — ' + esc(scopeTitle) + '</h3>' +
       '<div class="kpi">' +
       '<div class="box"><div class="n">' + Object.keys(allUnits).length + '</div><div class="l">מסגרות עם מלאי</div></div>' +
       '<div class="box"><div class="n">' + totA + '</div><div class="l">סה״כ תחמושת</div></div>' +

@@ -776,7 +776,7 @@ function saveVehicle(id){
     category:type==='נגרר'?'trailer':'vehicle',permit:type==='נגרר'?'גרירת נגרר':type};
   if(!data.tz){alert('חובה למלא מספר צ׳');return;}
   if(id)Object.assign(vById(id),data);
-  else S.vehicles.push(Object.assign({id:uid('v')},data));
+  else S.vehicles.push(Object.assign({id:uid('v'),missingEquip:[],keyLocation:'לוח מפתחות'},data));
   save();closeModal();render();
 }
 function delVehicle(id){
@@ -1117,7 +1117,7 @@ function saveDriver(id){
     civilClass:g('d_class'),civilExpiry:g('d_ce'),militaryExpiry:g('d_me'),permits};
   if(!data.name){alert('חובה למלא שם');return;}
   if(id)Object.assign(dById(id),data);
-  else S.drivers.push(Object.assign({id:uid('d')},data));
+  else S.drivers.push(Object.assign({id:uid('d'),safetyDay:''},data));
   save();closeModal();render();
 }
 function delDriver(id){

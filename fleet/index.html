@@ -1,0 +1,1033 @@
+<title>מצבת רכב גדודית</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&family=Secular+One&display=swap">
+<style>
+:root{
+  --bg:#F2F3EE; --surface:#FFFFFF; --surface2:#E9EBE2; --ink:#1E2419; --muted:#5C6455;
+  --line:#D5D9CC; --accent:#4E6636; --accent-soft:#E3EAD5; --accent-ink:#FFFFFF;
+  --good:#2F7D4F; --good-soft:#DDEEE3; --warn:#A96F1F; --warn-soft:#F4E8D2;
+  --crit:#B3372E; --crit-soft:#F6DCD9; --info:#31708F; --info-soft:#DBE9F0;
+  --shadow:0 1px 3px rgba(30,36,25,.10);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#161A13; --surface:#1F2419; --surface2:#262C1F; --ink:#E8EADF; --muted:#9AA28C;
+    --line:#39402F; --accent:#8FA860; --accent-soft:#33401F; --accent-ink:#141810;
+    --good:#6FBF8B; --good-soft:#1E3527; --warn:#D9A24A; --warn-soft:#3B2F17;
+    --crit:#E07B6E; --crit-soft:#3E211D; --info:#6FAECB; --info-soft:#1D3340;
+    --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#161A13; --surface:#1F2419; --surface2:#262C1F; --ink:#E8EADF; --muted:#9AA28C;
+  --line:#39402F; --accent:#8FA860; --accent-soft:#33401F; --accent-ink:#141810;
+  --good:#6FBF8B; --good-soft:#1E3527; --warn:#D9A24A; --warn-soft:#3B2F17;
+  --crit:#E07B6E; --crit-soft:#3E211D; --info:#6FAECB; --info-soft:#1D3340;
+  --shadow:0 1px 3px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html{direction:rtl}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:'Heebo',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:15px; line-height:1.55;
+}
+h1,h2,h3{font-family:'Secular One','Heebo',sans-serif; font-weight:400; margin:0; text-wrap:balance}
+button{font-family:inherit; font-size:14px; cursor:pointer}
+input,select,textarea{
+  font-family:inherit; font-size:14px; color:var(--ink); background:var(--surface);
+  border:1px solid var(--line); border-radius:6px; padding:7px 10px; width:100%;
+}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent); outline-offset:1px}
+label{font-size:13px; color:var(--muted); display:block; margin-bottom:3px}
+
+/* ---------- header + nav ---------- */
+header.app{
+  background:var(--accent); color:var(--accent-ink); padding:14px 22px 0;
+}
+header.app .top{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+header.app h1{font-size:26px; letter-spacing:.5px}
+header.app .sub{opacity:.85; font-size:13px}
+header.app .spacer{flex:1}
+nav.tabs{display:flex; gap:2px; margin-top:12px; flex-wrap:wrap}
+nav.tabs button{
+  background:transparent; color:var(--accent-ink); border:none; opacity:.82;
+  padding:9px 14px; border-radius:8px 8px 0 0; font-size:14.5px; position:relative;
+}
+nav.tabs button .bdg{
+  background:var(--crit); color:#fff; border-radius:999px; font-size:11px;
+  padding:0 6px; margin-inline-start:5px; display:inline-block; min-width:18px; text-align:center;
+}
+nav.tabs button.on{background:var(--bg); color:var(--ink); opacity:1}
+main{max-width:1240px; margin:0 auto; padding:20px 22px 60px}
+
+/* ---------- cards / layout ---------- */
+.cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(155px,1fr)); gap:12px; margin-bottom:18px}
+.card{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:13px 15px; box-shadow:var(--shadow)}
+.card .num{font-size:30px; font-family:'Secular One',sans-serif; line-height:1.1; font-variant-numeric:tabular-nums}
+.card .lbl{font-size:12.5px; color:var(--muted); letter-spacing:.04em}
+.card.good .num{color:var(--good)} .card.warn .num{color:var(--warn)} .card.crit .num{color:var(--crit)} .card.info .num{color:var(--info)}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); margin-bottom:18px; overflow:hidden}
+.panel>.hd{display:flex; align-items:center; gap:10px; padding:11px 16px; border-bottom:1px solid var(--line); background:var(--surface2); flex-wrap:wrap}
+.panel>.hd h2{font-size:17px}
+.panel>.hd .spacer{flex:1}
+.panel>.bd{padding:14px 16px}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+@media(max-width:860px){.grid2{grid-template-columns:1fr}}
+
+/* ---------- tables ---------- */
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse; width:100%; font-size:14px}
+th{font-size:12.5px; color:var(--muted); text-align:right; font-weight:500; letter-spacing:.03em}
+th,td{padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap}
+td{font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface2)}
+td.wrap{white-space:normal; min-width:140px}
+
+/* ---------- chips / pills ---------- */
+.pill{display:inline-block; padding:1px 9px; border-radius:999px; font-size:12.5px; font-weight:500}
+.p-good{background:var(--good-soft); color:var(--good)}
+.p-warn{background:var(--warn-soft); color:var(--warn)}
+.p-crit{background:var(--crit-soft); color:var(--crit)}
+.p-info{background:var(--info-soft); color:var(--info)}
+.p-mut{background:var(--surface2); color:var(--muted)}
+
+/* ---------- buttons ---------- */
+.btn{background:var(--accent); color:var(--accent-ink); border:none; border-radius:7px; padding:8px 14px; font-weight:500}
+.btn.sec{background:var(--surface); color:var(--ink); border:1px solid var(--line)}
+.btn.danger{background:var(--crit); color:#fff}
+.btn.sm{padding:3px 9px; font-size:12.5px; border-radius:6px}
+.btn:hover{filter:brightness(1.06)}
+
+/* ---------- filter bar ---------- */
+.filters{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.filters select,.filters input{width:auto; min-width:120px}
+.filters input[type=search]{min-width:170px}
+
+/* ---------- alerts list ---------- */
+ul.alerts{list-style:none; margin:0; padding:0}
+ul.alerts li{display:flex; gap:10px; align-items:baseline; padding:7px 4px; border-bottom:1px dashed var(--line)}
+ul.alerts li:last-child{border-bottom:none}
+ul.alerts .dot{width:9px; height:9px; border-radius:50%; flex:none; align-self:center}
+.dot.crit{background:var(--crit)} .dot.warn{background:var(--warn)} .dot.info{background:var(--info)}
+.empty{color:var(--muted); font-size:14px; padding:14px 4px; text-align:center}
+
+/* ---------- modal ---------- */
+.overlay{position:fixed; inset:0; background:rgba(20,24,16,.55); display:none; align-items:flex-start; justify-content:center; padding:40px 16px; z-index:50; overflow:auto}
+.overlay.open{display:flex}
+.modal{background:var(--surface); border:1px solid var(--line); border-radius:12px; width:100%; max-width:640px; box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.modal .hd{display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line)}
+.modal .hd h3{font-size:18px; flex:1}
+.modal .bd{padding:16px 18px; display:grid; grid-template-columns:1fr 1fr; gap:12px}
+.modal .bd .full{grid-column:1/-1}
+.modal .ft{display:flex; gap:10px; justify-content:flex-start; padding:14px 18px; border-top:1px solid var(--line)}
+.x{background:none; border:none; font-size:20px; color:var(--muted); line-height:1}
+
+/* ---------- weekly board ---------- */
+.week{display:grid; grid-template-columns:repeat(6,1fr); gap:10px}
+@media(max-width:980px){.week{grid-template-columns:repeat(2,1fr)}}
+.day{background:var(--surface2); border:1px solid var(--line); border-radius:9px; padding:9px; min-height:130px}
+.day h4{margin:0 0 8px; font-size:13.5px; color:var(--muted); font-weight:500; text-align:center}
+.mnt{background:var(--surface); border:1px solid var(--line); border-radius:7px; padding:6px 8px; margin-bottom:6px; font-size:13px}
+.mnt .t{font-weight:500}
+.mnt.done{border-inline-start:3px solid var(--good)}
+.mnt.todo{border-inline-start:3px solid var(--warn)}
+.mnt .row{display:flex; gap:6px; align-items:center; justify-content:space-between; margin-top:3px}
+
+/* ---------- dohh 1 form ---------- */
+.checkgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:8px}
+.chk{display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface2); border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:13.5px}
+.chk .opts{display:flex; gap:4px}
+.chk .opts button{border:1px solid var(--line); background:var(--surface); border-radius:6px; padding:2px 9px; font-size:12.5px; color:var(--muted)}
+.chk .opts button.ok{background:var(--good); border-color:var(--good); color:#fff}
+.chk .opts button.bad{background:var(--crit); border-color:var(--crit); color:#fff}
+
+.small{font-size:12.5px; color:var(--muted)}
+.sec-title{font-size:15px; margin:14px 0 6px; color:var(--muted); font-family:'Heebo'; font-weight:700}
+.due-neg{color:var(--crit); font-weight:700}
+.due-soon{color:var(--warn); font-weight:700}
+
+@media print{
+  header.app, .filters, .btn, .noprint{display:none !important}
+  body{background:#fff; color:#000}
+  .panel{box-shadow:none; border-color:#999; break-inside:avoid}
+  main{max-width:none; padding:0}
+}
+</style>
+
+<header class="app">
+  <div class="top">
+    <h1>מצבת רכב גדודית</h1>
+    <span class="sub">מערכת קצין רכב · גדוד מילואים · 3 פלוגות לוחמות + פלוגת מפקדה</span>
+    <span class="spacer"></span>
+    <span class="sub" id="todayLbl"></span>
+  </div>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+<main id="main"></main>
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script>
+'use strict';
+/* ============================ data model ============================ */
+const LS_KEY='fleet_mgmt_v1';
+const COMPANIES=['פלוגה א','פלוגה ב','פלוגה ג','פלוגת מפקדה'];
+const VTYPES=['האמר','היילקס','רכב סיור','רכב מנהלה','משאית משא','משאית תדלוק','אמבולנס','מיניבוס','רכב חילוץ','נגרר'];
+const PERMITS=['האמר','היילקס','רכב סיור','רכב מנהלה','משאית משא','משאית תדלוק','אמבולנס','מיניבוס','רכב חילוץ','גרירת נגרר'];
+const STATUSES=['כשיר','בטיפול','מושבת'];
+const DAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי'];
+const TRAINING_TYPES=['יום בטיחות שנתי','יום עיון נהגים','רענון נהגים','מבדק נהיגה'];
+const SAFETY_VALID_DAYS=365;
+const CHECK_ITEMS=['מים / מצנן','שמן מנוע','דלק (מעל 3/4)','צמיגים + לחץ אוויר','גלגל רזרבי + מגבה','בלמים','בלם חניה','אורות ופנסים','מגבים ומתזים','מראות','חגורות בטיחות','מטפה כיבוי תקף','משולש אזהרה','דליפות (שמן/דלק/מים)','מצבר וחיבורים','היגוי','צופר','ניקיון ומטען מאובטח'];
+
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function addDays(dstr,n){const d=new Date(dstr+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+function daysUntil(dstr){if(!dstr)return null;const a=new Date(todayStr()+'T12:00:00'),b=new Date(dstr+'T12:00:00');return Math.round((b-a)/86400000);}
+function fmtDate(dstr){if(!dstr)return '—';const[y,m,d]=dstr.split('-');return d+'.'+m+'.'+y.slice(2);}
+function weekStart(dstr){const d=new Date(dstr+'T12:00:00');d.setDate(d.getDate()-d.getDay());return d.toISOString().slice(0,10);}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function uid(p){return p+'_'+Math.random().toString(36).slice(2,9);}
+
+/* ---------- seed ---------- */
+function seed(){
+  const t=todayStr();
+  const V=[];let n=0;
+  function veh(type,model,company,extra){n++;V.push(Object.assign({
+    id:'v'+n, tz:String(600000+n*137).slice(0,6)+'-'+String(10+n), type, model, company,
+    category:type==='נגרר'?'trailer':'vehicle',
+    status:'כשיר', km:type==='נגרר'?0:8000+((n*3719)%42000),
+    lastServiceKm:0, serviceIntervalKm:5000,
+    testDate:addDays(t,20+((n*53)%330)), insuranceDate:addDays(t,40+((n*37)%320)),
+    permit:type==='נגרר'?'גרירת נגרר':type, notes:''
+  },extra||{}));}
+  // 5 האמרים
+  veh('האמר','האמר M240','פלוגה א');veh('האמר','האמר M240','פלוגה א');
+  veh('האמר','האמר M240','פלוגה ב');veh('האמר','האמר M240','פלוגה ב');
+  veh('האמר','האמר M240','פלוגה ג');
+  // 9 היילקסים
+  for(const c of ['פלוגה א','פלוגה ב','פלוגה ג'])for(let i=0;i<3;i++)veh('היילקס','טויוטה היילקס',c);
+  // 9 רכבי סיור
+  for(const c of ['פלוגה א','פלוגה ב','פלוגה ג'])for(let i=0;i<3;i++)veh('רכב סיור','רכב סיור ממוגן',c);
+  // 8 מנהלה
+  veh('רכב מנהלה','פורד טרנזיט','פלוגת מפקדה');veh('רכב מנהלה','פורד טרנזיט','פלוגת מפקדה');
+  veh('רכב מנהלה','סקודה אוקטביה','פלוגת מפקדה');veh('רכב מנהלה','טויוטה קורולה','פלוגת מפקדה');
+  veh('רכב מנהלה','סוזוקי ויטרה','פלוגת מפקדה');
+  veh('רכב מנהלה','פורד טרנזיט','פלוגה א');veh('רכב מנהלה','פורד טרנזיט','פלוגה ב');veh('רכב מנהלה','פורד טרנזיט','פלוגה ג');
+  // משאיות
+  veh('משאית משא','מאן TGM משא','פלוגת מפקדה');veh('משאית משא','מאן TGM משא','פלוגת מפקדה');
+  veh('משאית תדלוק','משאית תדלוק גזרתית','פלוגת מפקדה',{notes:'משרתת את כל הגזרה'});
+  veh('אמבולנס','אמבולנס פינוי','פלוגת מפקדה');
+  // תוספות מומלצות לגדוד מילואים
+  veh('מיניבוס','מיניבוס הסעות 20 מק','פלוגת מפקדה',{notes:'הסעות חיילים / יציאות'});
+  veh('רכב חילוץ','רכב חילוץ וגרירה','פלוגת מפקדה',{notes:'חילוץ רכב תקוע בגזרה'});
+  // נגררים
+  veh('נגרר','נגרר מים 750 ל','פלוגה א');veh('נגרר','נגרר מים 750 ל','פלוגה ב');
+  veh('נגרר','נגרר גנרטור 15kVA','פלוגת מפקדה');veh('נגרר','נגרר תאורה','פלוגת מפקדה');
+  veh('נגרר','עגלת ציוד / תחמושת','פלוגה ג');veh('נגרר','עגלת ציוד / תחמושת','פלוגת מפקדה');
+  veh('נגרר','נגרר מטבח שדה','פלוגת מפקדה');
+  V.forEach(v=>{v.lastServiceKm=Math.max(0,v.km-((n+v.km)%v.serviceIntervalKm)-(v.id==='v3'?5600:0));});
+  // מצבים לדוגמה
+  V[2].status='מושבת';V[2].notes='ממתין לחלף — מערכת בלמים';
+  V[7].status='בטיפול';V[7].notes='טיפול 5,000 בסדנא';
+  V[11].testDate=addDays(t,9); V[15].testDate=addDays(t,-3); V[20].insuranceDate=addDays(t,12);
+
+  const namePool=['יוסי כהן','אבי לוי','משה פרץ','דודו אזולאי','איתי בר','שלומי דהן','נדב שרון','עומר גל','אלון פרידמן','תומר אשכנזי','ליאור מזרחי','רועי ביטון','גיא אוחיון','אור חדד','עידן סבן','ברק ניסים','אסף טל','ירדן קדוש','שי אלבז','דור עמר'];
+  const D=namePool.map((nm,i)=>{
+    const comp=COMPANIES[i%4];
+    const heavy=i%5===0;
+    const permits=['רכב מנהלה'];
+    if(i%2===0)permits.push('היילקס','רכב סיור');
+    if(i%3===0)permits.push('האמר');
+    if(heavy)permits.push('משאית משא','גרירת נגרר');
+    if(i===4)permits.push('משאית תדלוק');
+    if(i===8)permits.push('אמבולנס');
+    if(i===12)permits.push('מיניבוס','גרירת נגרר');
+    return {id:'d'+(i+1), name:nm, personal:String(7000000+i*91237), company:comp,
+      phone:'050-'+String(1000000+i*53219).slice(0,7),
+      civilClass:heavy?'C1':'B', civilExpiry:addDays(t,i===3?8:(i===9?-5:120+i*40)),
+      militaryExpiry:addDays(t,i===6?14:90+i*25), permits,
+      safetyDay:addDays(t,-(i===2?380:(i===7?350:60+i*15))), notes:''};
+  });
+  const TR=[
+    {id:uid('tr'),type:'יום בטיחות שנתי',date:addDays(t,10),notes:'בסיס האם — כל נהגי הגדוד שחורגים מהתוקף',attendees:['d3','d8'],done:false},
+    {id:uid('tr'),type:'יום עיון נהגים',date:addDays(t,24),notes:'נהיגה בשטח והתנהגות בציר',attendees:[],done:false},
+  ];
+
+  const M=[
+    {id:uid('m'),name:'סיור בטחון שוטף ציר צפוני',date:t,timeFrom:'06:00',timeTo:'14:00',company:'פלוגה א',destination:'ציר צפוני',assignments:[{vehicleId:'v6',driverId:'d1'},{vehicleId:'v15',driverId:'d3'}],notes:'',status:'מאושרת'},
+    {id:uid('m'),name:'שינוע ציוד למוצב 12',date:addDays(t,1),timeFrom:'09:00',timeTo:'12:00',company:'פלוגת מפקדה',destination:'מוצב 12',assignments:[{vehicleId:'v32',driverId:'d6'}],notes:'העמסה ברמפה',status:'מתוכננת'},
+    {id:uid('m'),name:'הסעה ליציאת סבב',date:addDays(t,2),timeFrom:'08:00',timeTo:'18:00',company:'פלוגת מפקדה',destination:'צומת מרכזית',assignments:[{vehicleId:'v36',driverId:'d13'}],notes:'',status:'מתוכננת'},
+  ];
+  const ws=weekStart(t);
+  const MT=[
+    {id:uid('mt'),vehicleId:'v1',week:ws,day:0,done:true,doneDate:t,notes:''},
+    {id:uid('mt'),vehicleId:'v6',week:ws,day:1,done:false,notes:''},
+    {id:uid('mt'),vehicleId:'v20',week:ws,day:2,done:false,notes:''},
+    {id:uid('mt'),vehicleId:'v31',week:ws,day:3,done:false,notes:'כולל בדיקת עיגונים'},
+  ];
+  const F=[
+    {id:uid('f'),vehicleId:'v3',date:addDays(t,-4),desc:'רעידות בבלימה — צלחות בלם',severity:'משביתה',status:'פתוחה',reporter:'דוח 1'},
+    {id:uid('f'),vehicleId:'v12',date:addDays(t,-2),desc:'פנס אחורי שמאלי שבור',severity:'לא משביתה',status:'פתוחה',reporter:'נהג'},
+  ];
+  return {vehicles:V,drivers:D,missions:M,maintenance:MT,reports:[],faults:F,trainings:TR,settings:{unit:'גדוד 8XXX'}};
+}
+
+let S;
+function load(){
+  try{const raw=localStorage.getItem(LS_KEY); if(raw){S=JSON.parse(raw);
+    if(!S.trainings)S.trainings=[];
+    S.drivers.forEach(d=>{if(!('safetyDay' in d))d.safetyDay='';});
+    return;}}catch(e){}
+  S=seed(); save();
+}
+function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){}}
+
+/* ============================ derived ============================ */
+const vById=id=>S.vehicles.find(v=>v.id===id);
+const dById=id=>S.drivers.find(d=>d.id===id);
+function kmToService(v){return v.lastServiceKm+v.serviceIntervalKm-v.km;}
+function safetyDaysLeft(d){if(!d.safetyDay)return null;return SAFETY_VALID_DAYS+daysUntil(d.safetyDay);}
+function safetyCell(d){
+  const left=safetyDaysLeft(d);
+  if(left===null)return '<span class="pill p-crit">לא עבר</span>';
+  if(left<0)return `<span class="pill p-crit">חורג ${-left} ימים</span>`;
+  if(left<=30)return `<span class="pill p-warn">${fmtDate(d.safetyDay)} · נותרו ${left} ימים</span>`;
+  return `<span class="pill p-good">${fmtDate(d.safetyDay)}</span>`;
+}
+function openFaults(vid){return S.faults.filter(f=>f.vehicleId===vid&&f.status==='פתוחה');}
+
+function licenseAlerts(){
+  const out=[];
+  for(const v of S.vehicles){
+    const dt=daysUntil(v.testDate);
+    if(dt!==null&&dt<0)out.push({sev:'crit',txt:`טסט פג תוקף — ${v.type} צ׳ ${v.tz} (לפני ${-dt} ימים)`,tab:'vehicles'});
+    else if(dt!==null&&dt<=30)out.push({sev:'warn',txt:`טסט מתקרב — ${v.type} צ׳ ${v.tz} בעוד ${dt} ימים`,tab:'vehicles'});
+    const di=daysUntil(v.insuranceDate);
+    if(di!==null&&di<0)out.push({sev:'crit',txt:`ביטוח/רישוי פג — ${v.type} צ׳ ${v.tz}`,tab:'vehicles'});
+    else if(di!==null&&di<=30)out.push({sev:'warn',txt:`ביטוח/רישוי מתקרב — ${v.type} צ׳ ${v.tz} בעוד ${di} ימים`,tab:'vehicles'});
+  }
+  for(const d of S.drivers){
+    const c=daysUntil(d.civilExpiry);
+    if(c!==null&&c<0)out.push({sev:'crit',txt:`רישיון אזרחי פג — ${d.name} (${d.company})`,tab:'drivers'});
+    else if(c!==null&&c<=30)out.push({sev:'warn',txt:`רישיון אזרחי של ${d.name} פג בעוד ${c} ימים`,tab:'drivers'});
+    const m=daysUntil(d.militaryExpiry);
+    if(m!==null&&m<0)out.push({sev:'crit',txt:`רישיון צבאי פג — ${d.name} (${d.company})`,tab:'drivers'});
+    else if(m!==null&&m<=30)out.push({sev:'warn',txt:`רישיון צבאי של ${d.name} פג בעוד ${m} ימים`,tab:'drivers'});
+    const sl=safetyDaysLeft(d);
+    if(sl===null)out.push({sev:'crit',txt:`יום בטיחות שנתי — ${d.name} (${d.company}) לא עבר כלל`,tab:'training'});
+    else if(sl<0)out.push({sev:'crit',txt:`יום בטיחות שנתי של ${d.name} חורג ב-${-sl} ימים`,tab:'training'});
+    else if(sl<=30)out.push({sev:'warn',txt:`יום בטיחות שנתי של ${d.name} פג בעוד ${sl} ימים`,tab:'training'});
+  }
+  return out;
+}
+function serviceAlerts(){
+  const out=[];
+  for(const v of S.vehicles){
+    if(v.category==='trailer')continue;
+    const left=kmToService(v);
+    if(left<=0)out.push({sev:'crit',txt:`טיפול חורג — ${v.type} צ׳ ${v.tz} (חריגה של ${(-left).toLocaleString()} ק"מ)`,tab:'maintenance'});
+    else if(left<=500)out.push({sev:'warn',txt:`טיפול מתקרב — ${v.type} צ׳ ${v.tz} בעוד ${left.toLocaleString()} ק"מ`,tab:'maintenance'});
+  }
+  return out;
+}
+function report1MissingToday(){
+  const t=todayStr();
+  const usedToday=new Set();
+  for(const m of S.missions)if(m.date===t)for(const a of m.assignments)usedToday.add(a.vehicleId);
+  const reported=new Set(S.reports.filter(r=>r.date===t).map(r=>r.vehicleId));
+  return [...usedToday].filter(vid=>!reported.has(vid)).map(vById).filter(Boolean);
+}
+
+/* ============================ UI shell ============================ */
+const TABS=[
+  {id:'dash',lbl:'דשבורד'},
+  {id:'vehicles',lbl:'מצבת רכבים'},
+  {id:'missions',lbl:'משימות'},
+  {id:'maintenance',lbl:'טיפול שבועי'},
+  {id:'drivers',lbl:'נהגים ורישיונות'},
+  {id:'training',lbl:'הדרכות ובטיחות'},
+  {id:'report1',lbl:'דוח 1'},
+  {id:'faults',lbl:'תקלות'},
+  {id:'backup',lbl:'גיבוי'},
+];
+let TAB='dash';
+let vehFilter={company:'',type:'',status:'',cat:'',q:''};
+let mntWeek=weekStart(todayStr());
+let r1draft=null;
+
+function setTab(t){TAB=t;render();}
+function render(){
+  document.getElementById('todayLbl').textContent='היום: '+fmtDate(todayStr());
+  const openF=S.faults.filter(f=>f.status==='פתוחה').length;
+  const alerts=licenseAlerts().concat(serviceAlerts()).filter(a=>a.sev==='crit').length;
+  document.getElementById('tabs').innerHTML=TABS.map(t=>{
+    let b='';
+    if(t.id==='faults'&&openF)b=`<span class="bdg">${openF}</span>`;
+    if(t.id==='dash'&&alerts)b=`<span class="bdg">${alerts}</span>`;
+    return `<button class="${TAB===t.id?'on':''}" onclick="setTab('${t.id}')">${t.lbl}${b}</button>`;
+  }).join('');
+  const R={dash:rDash,vehicles:rVehicles,missions:rMissions,maintenance:rMnt,drivers:rDrivers,training:rTraining,report1:rReport1,faults:rFaults,backup:rBackup};
+  document.getElementById('main').innerHTML=R[TAB]();
+}
+
+/* ============================ dashboard ============================ */
+function rDash(){
+  const vs=S.vehicles.filter(v=>v.category==='vehicle');
+  const tr=S.vehicles.filter(v=>v.category==='trailer');
+  const ok=vs.filter(v=>v.status==='כשיר').length;
+  const mnt=vs.filter(v=>v.status==='בטיפול').length;
+  const down=vs.filter(v=>v.status==='מושבת').length;
+  const pct=vs.length?Math.round(ok/vs.length*100):0;
+  const alerts=[...licenseAlerts(),...serviceAlerts()].sort((a,b)=>(a.sev==='crit'?0:1)-(b.sev==='crit'?0:1));
+  const t=todayStr();
+  const todayMissions=S.missions.filter(m=>m.date===t);
+  const missing=report1MissingToday();
+  const byComp=COMPANIES.map(c=>{
+    const cv=vs.filter(v=>v.company===c);
+    return `<tr><td>${c}</td><td>${cv.length}</td>
+      <td><span class="pill p-good">${cv.filter(v=>v.status==='כשיר').length}</span></td>
+      <td><span class="pill p-warn">${cv.filter(v=>v.status==='בטיפול').length}</span></td>
+      <td><span class="pill p-crit">${cv.filter(v=>v.status==='מושבת').length}</span></td></tr>`;
+  }).join('');
+  return `
+  <div class="cards">
+    <div class="card"><div class="num">${vs.length}</div><div class="lbl">כלי רכב במצבה</div></div>
+    <div class="card good"><div class="num">${ok}</div><div class="lbl">כשירים</div></div>
+    <div class="card warn"><div class="num">${mnt}</div><div class="lbl">בטיפול</div></div>
+    <div class="card crit"><div class="num">${down}</div><div class="lbl">מושבתים</div></div>
+    <div class="card info"><div class="num">${pct}%</div><div class="lbl">כשירות מבצעית</div></div>
+    <div class="card"><div class="num">${tr.length}</div><div class="lbl">נגררים</div></div>
+  </div>
+  <div class="grid2">
+    <div class="panel"><div class="hd"><h2>התראות רישוי, טסטים וטיפולים</h2></div><div class="bd">
+      ${alerts.length?`<ul class="alerts">${alerts.map(a=>`<li><span class="dot ${a.sev}"></span><span>${esc(a.txt)}</span></li>`).join('')}</ul>`:'<div class="empty">אין התראות — כל הרישיונות והטיפולים בתוקף</div>'}
+    </div></div>
+    <div>
+      <div class="panel"><div class="hd"><h2>משימות היום (${todayMissions.length})</h2></div><div class="bd">
+        ${todayMissions.length?todayMissions.map(m=>`<div style="padding:6px 0;border-bottom:1px dashed var(--line)">
+          <b>${esc(m.name)}</b> · ${m.timeFrom}–${m.timeTo} · ${esc(m.company)}<br>
+          <span class="small">${m.assignments.map(a=>{const v=vById(a.vehicleId),d=dById(a.driverId);return (v?v.type+' צ׳ '+v.tz:'?')+' — '+(d?d.name:'ללא נהג');}).join(' | ')}</span>
+        </div>`).join(''):'<div class="empty">אין משימות מתוכננות להיום</div>'}
+      </div></div>
+      <div class="panel"><div class="hd"><h2>דוח 1 חסר להיום</h2></div><div class="bd">
+        ${missing.length?`<ul class="alerts">${missing.map(v=>`<li><span class="dot warn"></span>${v.type} צ׳ ${v.tz} — משובץ למשימה ולא מולא דוח 1</li>`).join('')}</ul>`:'<div class="empty">כל הרכבים המשובצים היום מילאו דוח 1</div>'}
+      </div></div>
+    </div>
+  </div>
+  <div class="panel"><div class="hd"><h2>כשירות לפי פלוגה</h2></div><div class="bd tblwrap">
+    <table><thead><tr><th>פלוגה</th><th>סה"כ</th><th>כשיר</th><th>בטיפול</th><th>מושבת</th></tr></thead><tbody>${byComp}</tbody></table>
+  </div></div>`;
+}
+
+/* ============================ vehicles ============================ */
+function testCell(dstr){
+  const d=daysUntil(dstr);
+  if(d===null)return '—';
+  const cls=d<0?'due-neg':(d<=30?'due-soon':'');
+  return `<span class="${cls}">${fmtDate(dstr)}</span>`;
+}
+function rVehicles(){
+  const f=vehFilter;
+  let list=S.vehicles.filter(v=>
+    (!f.company||v.company===f.company)&&(!f.type||v.type===f.type)&&
+    (!f.status||v.status===f.status)&&(!f.cat||v.category===f.cat)&&
+    (!f.q||(v.tz+' '+v.model+' '+v.type).includes(f.q)));
+  const rows=list.map(v=>{
+    const left=kmToService(v);
+    const fl=openFaults(v.id).length;
+    const pc={'כשיר':'p-good','בטיפול':'p-warn','מושבת':'p-crit'}[v.status];
+    return `<tr>
+      <td><b>${esc(v.tz)}</b></td><td>${esc(v.type)}</td><td class="wrap">${esc(v.model)}</td><td>${esc(v.company)}</td>
+      <td><span class="pill ${pc}">${v.status}</span>${fl?` <span class="pill p-crit">${fl} תקלות</span>`:''}</td>
+      <td>${v.category==='trailer'?'—':v.km.toLocaleString()}</td>
+      <td>${v.category==='trailer'?'—':`<span class="${left<=0?'due-neg':(left<=500?'due-soon':'')}">${left.toLocaleString()}</span>`}</td>
+      <td>${testCell(v.testDate)}</td><td>${testCell(v.insuranceDate)}</td>
+      <td class="noprint"><button class="btn sm sec" onclick="editVehicle('${v.id}')">עריכה</button></td>
+    </tr>`;
+  }).join('');
+  return `<div class="panel"><div class="hd">
+    <h2>מצבת רכבים ונגררים (${list.length})</h2><span class="spacer"></span>
+    <div class="filters noprint">
+      <input type="search" placeholder="חיפוש צ׳ / דגם" value="${esc(f.q)}" oninput="vehFilter.q=this.value;render()">
+      <select onchange="vehFilter.cat=this.value;render()"><option value="">רכב + נגרר</option><option value="vehicle" ${f.cat==='vehicle'?'selected':''}>רכבים</option><option value="trailer" ${f.cat==='trailer'?'selected':''}>נגררים</option></select>
+      <select onchange="vehFilter.company=this.value;render()"><option value="">כל הפלוגות</option>${COMPANIES.map(c=>`<option ${f.company===c?'selected':''}>${c}</option>`).join('')}</select>
+      <select onchange="vehFilter.type=this.value;render()"><option value="">כל הסוגים</option>${VTYPES.map(c=>`<option ${f.type===c?'selected':''}>${c}</option>`).join('')}</select>
+      <select onchange="vehFilter.status=this.value;render()"><option value="">כל המצבים</option>${STATUSES.map(c=>`<option ${f.status===c?'selected':''}>${c}</option>`).join('')}</select>
+      <button class="btn" onclick="editVehicle('')">+ הוספת כלי</button>
+      <button class="btn sec" onclick="window.print()">הדפסת מצבה</button>
+    </div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>צ׳</th><th>סוג</th><th>דגם</th><th>פלוגה</th><th>מצב</th><th>ק"מ</th><th>ק"מ לטיפול</th><th>טסט</th><th>ביטוח/רישוי</th><th class="noprint"></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="10" class="empty">לא נמצאו כלים</td></tr>'}</tbody></table>
+  </div></div>`;
+}
+function editVehicle(id){
+  const v=id?vById(id):{id:'',tz:'',type:'האמר',model:'',company:COMPANIES[0],category:'vehicle',status:'כשיר',km:0,lastServiceKm:0,serviceIntervalKm:5000,testDate:'',insuranceDate:'',permit:'האמר',notes:''};
+  openModal(`
+    <div class="hd"><h3>${id?'עריכת כלי — צ׳ '+esc(v.tz):'הוספת כלי'}</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div><label>מספר צ׳</label><input id="f_tz" value="${esc(v.tz)}"></div>
+      <div><label>סוג</label><select id="f_type">${VTYPES.map(t=>`<option ${v.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div><label>דגם</label><input id="f_model" value="${esc(v.model)}"></div>
+      <div><label>פלוגה</label><select id="f_comp">${COMPANIES.map(c=>`<option ${v.company===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div><label>מצב</label><select id="f_status">${STATUSES.map(s=>`<option ${v.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div><label>ק"מ נוכחי</label><input id="f_km" type="number" value="${v.km}"></div>
+      <div><label>ק"מ בטיפול אחרון</label><input id="f_lsk" type="number" value="${v.lastServiceKm}"></div>
+      <div><label>מרווח טיפול (ק"מ)</label><input id="f_int" type="number" value="${v.serviceIntervalKm}"></div>
+      <div><label>תוקף טסט</label><input id="f_test" type="date" value="${v.testDate}"></div>
+      <div><label>תוקף ביטוח/רישוי</label><input id="f_ins" type="date" value="${v.insuranceDate}"></div>
+      <div class="full"><label>הערות</label><input id="f_notes" value="${esc(v.notes)}"></div>
+    </div>
+    <div class="ft">
+      <button class="btn" onclick="saveVehicle('${id}')">שמירה</button>
+      <button class="btn sec" onclick="closeModal()">ביטול</button>
+      ${id?`<span style="flex:1"></span><button class="btn danger" onclick="delVehicle('${id}')">מחיקה</button>`:''}
+    </div>`);
+}
+function saveVehicle(id){
+  const g=i=>document.getElementById(i).value;
+  const type=g('f_type');
+  const data={tz:g('f_tz').trim(),type,model:g('f_model').trim(),company:g('f_comp'),status:g('f_status'),
+    km:+g('f_km')||0,lastServiceKm:+g('f_lsk')||0,serviceIntervalKm:+g('f_int')||5000,
+    testDate:g('f_test'),insuranceDate:g('f_ins'),notes:g('f_notes'),
+    category:type==='נגרר'?'trailer':'vehicle',permit:type==='נגרר'?'גרירת נגרר':type};
+  if(!data.tz){alert('חובה למלא מספר צ׳');return;}
+  if(id)Object.assign(vById(id),data);
+  else S.vehicles.push(Object.assign({id:uid('v')},data));
+  save();closeModal();render();
+}
+function delVehicle(id){
+  const v=vById(id);
+  if(!confirm('למחוק את '+v.type+' צ׳ '+v.tz+' מהמצבה?'))return;
+  S.vehicles=S.vehicles.filter(x=>x.id!==id);
+  S.missions.forEach(m=>m.assignments=m.assignments.filter(a=>a.vehicleId!==id));
+  S.maintenance=S.maintenance.filter(x=>x.vehicleId!==id);
+  save();closeModal();render();
+}
+
+/* ============================ missions ============================ */
+function missionConflicts(m,skipId){
+  const issues=[];
+  for(const a of m.assignments){
+    const v=vById(a.vehicleId),d=dById(a.driverId);
+    if(v&&v.status!=='כשיר')issues.push(`${v.type} צ׳ ${v.tz} במצב "${v.status}"`);
+    if(v){
+      const clash=S.missions.find(o=>o.id!==skipId&&o.date===m.date&&o.assignments.some(x=>x.vehicleId===v.id));
+      if(clash)issues.push(`${v.type} צ׳ ${v.tz} כבר משובץ ל"${clash.name}" באותו יום`);
+    }
+    if(d){
+      const clash=S.missions.find(o=>o.id!==skipId&&o.date===m.date&&o.assignments.some(x=>x.driverId===d.id));
+      if(clash)issues.push(`${d.name} כבר משובץ ל"${clash.name}" באותו יום`);
+      const ce=daysUntil(d.civilExpiry),me=daysUntil(d.militaryExpiry);
+      if(ce!==null&&ce<0)issues.push(`רישיון אזרחי של ${d.name} פג תוקף`);
+      if(me!==null&&me<0)issues.push(`רישיון צבאי של ${d.name} פג תוקף`);
+      const sl=safetyDaysLeft(d);
+      if(sl===null||sl<0)issues.push(`${d.name} ללא יום בטיחות שנתי בתוקף`);
+      if(v&&!d.permits.includes(v.permit))issues.push(`${d.name} ללא היתר ל${v.permit}`);
+    }
+  }
+  return issues;
+}
+function rMissions(){
+  const list=[...S.missions].sort((a,b)=>a.date<b.date?-1:1);
+  const rows=list.map(m=>{
+    const iss=missionConflicts(m,m.id);
+    const past=m.date<todayStr();
+    return `<tr>
+      <td>${fmtDate(m.date)}</td><td>${m.timeFrom}–${m.timeTo}</td>
+      <td class="wrap"><b>${esc(m.name)}</b>${m.destination?` <span class="small">→ ${esc(m.destination)}</span>`:''}</td>
+      <td>${esc(m.company)}</td>
+      <td class="wrap">${m.assignments.map(a=>{const v=vById(a.vehicleId),d=dById(a.driverId);
+        return `<div class="small">${v?v.type+' צ׳ '+v.tz:'?'} — ${d?esc(d.name):'<span class="due-neg">ללא נהג</span>'}</div>`;}).join('')||'<span class="small">—</span>'}</td>
+      <td>${past?'<span class="pill p-mut">הסתיימה</span>':`<span class="pill ${m.status==='מאושרת'?'p-good':'p-info'}">${m.status}</span>`}
+          ${iss.length?`<div class="small due-neg" style="white-space:normal;max-width:220px">⚠ ${iss.map(esc).join(' · ')}</div>`:''}</td>
+      <td class="noprint"><button class="btn sm sec" onclick="editMission('${m.id}')">עריכה</button></td>
+    </tr>`;
+  }).join('');
+  return `<div class="panel"><div class="hd">
+    <h2>תכנון משימות (${list.length})</h2><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="editMission('')">+ משימה חדשה</button><button class="btn sec" onclick="window.print()">הדפסה</button></div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>תאריך</th><th>שעות</th><th>משימה</th><th>פלוגה</th><th>שיבוץ רכב — נהג</th><th>מצב</th><th class="noprint"></th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="7" class="empty">אין משימות — הוסף משימה חדשה</td></tr>'}</tbody></table>
+  </div></div>`;
+}
+let missionDraft=null;
+function editMission(id){
+  const m=id?S.missions.find(x=>x.id===id):{id:'',name:'',date:todayStr(),timeFrom:'08:00',timeTo:'12:00',company:COMPANIES[0],destination:'',assignments:[],notes:'',status:'מתוכננת'};
+  missionDraft=JSON.parse(JSON.stringify(m));
+  missionDraft._editId=id;
+  renderMissionModal();
+}
+function renderMissionModal(){
+  const m=missionDraft,id=m._editId;
+  const iss=missionConflicts(m,id);
+  const okVeh=S.vehicles.filter(v=>v.category==='vehicle');
+  openModal(`
+    <div class="hd"><h3>${id?'עריכת משימה':'משימה חדשה'}</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div class="full"><label>שם המשימה</label><input id="m_name" value="${esc(m.name)}" oninput="missionDraft.name=this.value"></div>
+      <div><label>תאריך</label><input id="m_date" type="date" value="${m.date}" onchange="missionDraft.date=this.value;renderMissionModal()"></div>
+      <div><label>פלוגה</label><select onchange="missionDraft.company=this.value">${COMPANIES.map(c=>`<option ${m.company===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div><label>משעה</label><input type="time" value="${m.timeFrom}" onchange="missionDraft.timeFrom=this.value"></div>
+      <div><label>עד שעה</label><input type="time" value="${m.timeTo}" onchange="missionDraft.timeTo=this.value"></div>
+      <div><label>יעד</label><input value="${esc(m.destination)}" oninput="missionDraft.destination=this.value"></div>
+      <div><label>מצב</label><select onchange="missionDraft.status=this.value">${['מתוכננת','מאושרת','בוטלה'].map(s=>`<option ${m.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="full">
+        <div class="sec-title">שיבוץ רכבים ונהגים</div>
+        ${m.assignments.map((a,i)=>{
+          const v=vById(a.vehicleId);
+          return `<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center">
+          <select style="flex:1" onchange="missionDraft.assignments[${i}].vehicleId=this.value;renderMissionModal()">
+            <option value="">בחר רכב…</option>
+            ${okVeh.map(x=>`<option value="${x.id}" ${a.vehicleId===x.id?'selected':''}>${x.type} צ׳ ${x.tz} (${x.company})${x.status!=='כשיר'?' — '+x.status:''}</option>`).join('')}
+          </select>
+          <select style="flex:1" onchange="missionDraft.assignments[${i}].driverId=this.value;renderMissionModal()">
+            <option value="">בחר נהג…</option>
+            ${S.drivers.map(x=>{const has=!v||x.permits.includes(v.permit);
+              return `<option value="${x.id}" ${a.driverId===x.id?'selected':''}>${x.name} (${x.company})${has?'':' — ללא היתר'}</option>`;}).join('')}
+          </select>
+          <button class="btn sm danger" onclick="missionDraft.assignments.splice(${i},1);renderMissionModal()">✕</button>
+        </div>`;}).join('')}
+        <button class="btn sm sec" onclick="missionDraft.assignments.push({vehicleId:'',driverId:''});renderMissionModal()">+ הוספת רכב</button>
+      </div>
+      <div class="full"><label>הערות</label><input value="${esc(m.notes)}" oninput="missionDraft.notes=this.value"></div>
+      ${iss.length?`<div class="full" style="background:var(--crit-soft);color:var(--crit);border-radius:7px;padding:8px 12px;font-size:13px">⚠ ${iss.map(esc).join('<br>⚠ ')}</div>`:''}
+    </div>
+    <div class="ft">
+      <button class="btn" onclick="saveMission()">שמירה</button>
+      <button class="btn sec" onclick="closeModal()">ביטול</button>
+      ${id?`<span style="flex:1"></span><button class="btn danger" onclick="delMission('${id}')">מחיקה</button>`:''}
+    </div>`);
+}
+function saveMission(){
+  const m=missionDraft;
+  if(!m.name.trim()){alert('חובה למלא שם משימה');return;}
+  m.assignments=m.assignments.filter(a=>a.vehicleId);
+  const id=m._editId; delete m._editId;
+  if(id){const i=S.missions.findIndex(x=>x.id===id);S.missions[i]=Object.assign({id},m);}
+  else S.missions.push(Object.assign({},m,{id:uid('m')}));
+  save();closeModal();render();
+}
+function delMission(id){
+  if(!confirm('למחוק את המשימה?'))return;
+  S.missions=S.missions.filter(x=>x.id!==id);
+  save();closeModal();render();
+}
+
+/* ============================ weekly maintenance ============================ */
+function rMnt(){
+  const entries=S.maintenance.filter(e=>e.week===mntWeek);
+  const dueList=S.vehicles.filter(v=>v.category==='vehicle'&&kmToService(v)<=500&&!entries.some(e=>e.vehicleId===v.id));
+  const days=DAYS.map((dn,di)=>{
+    const dayDate=addDays(mntWeek,di);
+    const items=entries.filter(e=>e.day===di).map(e=>{
+      const v=vById(e.vehicleId); if(!v)return '';
+      return `<div class="mnt ${e.done?'done':'todo'}">
+        <div class="t">${v.type} צ׳ ${v.tz}</div>
+        <div class="small">${esc(v.company)}${e.notes?' · '+esc(e.notes):''}</div>
+        <div class="row noprint">
+          ${e.done?`<span class="pill p-good">בוצע ${fmtDate(e.doneDate)}</span>`:`<button class="btn sm" onclick="mntDone('${e.id}')">סמן בוצע</button>`}
+          <button class="btn sm sec" onclick="mntDel('${e.id}')">✕</button>
+        </div>
+      </div>`;}).join('');
+    return `<div class="day"><h4>${dn} · ${fmtDate(dayDate)}</h4>${items}
+      <select class="noprint" style="font-size:12.5px" onchange="mntAdd(this.value,${di});this.value=''">
+        <option value="">+ שבץ רכב…</option>
+        ${S.vehicles.filter(v=>!entries.some(e=>e.vehicleId===v.id)).map(v=>`<option value="${v.id}">${v.type} צ׳ ${v.tz}${v.category==='vehicle'&&kmToService(v)<=500?' ⚠':''}</option>`).join('')}
+      </select></div>`;
+  }).join('');
+  return `<div class="panel"><div class="hd">
+    <h2>תכנון טיפול שבועי</h2>
+    <span class="small">שבוע ${fmtDate(mntWeek)} – ${fmtDate(addDays(mntWeek,5))}</span>
+    <span class="spacer"></span>
+    <div class="filters noprint">
+      <button class="btn sec sm" onclick="mntWeek=addDays(mntWeek,-7);render()">◀ שבוע קודם</button>
+      <button class="btn sec sm" onclick="mntWeek=weekStart(todayStr());render()">השבוע</button>
+      <button class="btn sec sm" onclick="mntWeek=addDays(mntWeek,7);render()">שבוע הבא ▶</button>
+      <button class="btn sm" onclick="mntAuto()">שיבוץ אוטומטי לפי ק"מ</button>
+      <button class="btn sec sm" onclick="window.print()">הדפסה</button>
+    </div>
+  </div><div class="bd">
+    <div class="week">${days}</div>
+    ${dueList.length?`<div class="sec-title">ממתינים לשיבוץ — הגיעו לחלון טיפול (${dueList.length})</div>
+      <div class="small">${dueList.map(v=>`${v.type} צ׳ ${v.tz} (${kmToService(v)<=0?'חריגה '+(-kmToService(v)).toLocaleString():'עוד '+kmToService(v).toLocaleString()} ק"מ)`).join(' · ')}</div>`:''}
+    <div class="small" style="margin-top:12px">טיפול שבועי כולל: בדיקת נוזלים, לחץ אוויר וסוליות צמיגים, אורות, מתיחת חגורות ועיגונים, שטיפה, הנעת רכבים עומדים, ובדיקת ציוד חובה. נגררים — בדיקת תקינות וו גרירה, תאורה וצמיגים.</div>
+  </div></div>`;
+}
+function mntAdd(vid,day){if(!vid)return;S.maintenance.push({id:uid('mt'),vehicleId:vid,week:mntWeek,day,done:false,notes:''});save();render();}
+function mntDone(id){const e=S.maintenance.find(x=>x.id===id);e.done=true;e.doneDate=todayStr();
+  const v=vById(e.vehicleId);
+  if(v&&v.category==='vehicle'&&kmToService(v)<=500){v.lastServiceKm=v.km;if(v.status==='בטיפול')v.status='כשיר';}
+  save();render();}
+function mntDel(id){S.maintenance=S.maintenance.filter(x=>x.id!==id);save();render();}
+function mntAuto(){
+  const entries=S.maintenance.filter(e=>e.week===mntWeek);
+  const due=S.vehicles.filter(v=>v.category==='vehicle'&&kmToService(v)<=500&&!entries.some(e=>e.vehicleId===v.id))
+    .sort((a,b)=>kmToService(a)-kmToService(b));
+  let day=0;
+  const perDay={};entries.forEach(e=>perDay[e.day]=(perDay[e.day]||0)+1);
+  for(const v of due){
+    while((perDay[day]||0)>=3&&day<5)day++;
+    S.maintenance.push({id:uid('mt'),vehicleId:v.id,week:mntWeek,day,done:false,notes:'שיבוץ אוטומטי — טיפול ק"מ'});
+    perDay[day]=(perDay[day]||0)+1;
+  }
+  save();render();
+}
+
+/* ============================ drivers ============================ */
+function rDrivers(){
+  const rows=S.drivers.map(d=>{
+    const ce=daysUntil(d.civilExpiry),me=daysUntil(d.militaryExpiry);
+    const nextMissions=S.missions.filter(m=>m.date>=todayStr()&&m.assignments.some(a=>a.driverId===d.id))
+      .sort((a,b)=>a.date<b.date?-1:1).slice(0,2);
+    return `<tr>
+      <td><b>${esc(d.name)}</b><div class="small">${esc(d.personal)}</div></td>
+      <td>${esc(d.company)}</td><td>${esc(d.phone)}</td>
+      <td>${esc(d.civilClass)} · ${testCell(d.civilExpiry)}</td>
+      <td>${testCell(d.militaryExpiry)}</td>
+      <td class="wrap" style="max-width:230px">${d.permits.map(p=>`<span class="pill p-mut" style="margin:1px">${p}</span>`).join(' ')}</td>
+      <td class="wrap">${nextMissions.map(m=>`<div class="small">${fmtDate(m.date)} — ${esc(m.name)}</div>`).join('')||'<span class="small">—</span>'}</td>
+      <td class="noprint"><button class="btn sm sec" onclick="editDriver('${d.id}')">עריכה</button></td>
+    </tr>`;
+  }).join('');
+  return `<div class="panel"><div class="hd">
+    <h2>נהגים ובדיקת רישיונות (${S.drivers.length})</h2><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="editDriver('')">+ הוספת נהג</button><button class="btn sec" onclick="window.print()">הדפסה</button></div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>שם</th><th>פלוגה</th><th>טלפון</th><th>רישיון אזרחי</th><th>רישיון צבאי</th><th>היתרים</th><th>משימות קרובות</th><th class="noprint"></th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="small" style="margin-top:8px">תאריך אדום = פג תוקף · כתום = פג בתוך 30 יום. נהג עם רישיון פג ייחסם אוטומטית בשיבוץ למשימה.</div>
+  </div></div>`;
+}
+function editDriver(id){
+  const d=id?dById(id):{id:'',name:'',personal:'',company:COMPANIES[0],phone:'',civilClass:'B',civilExpiry:'',militaryExpiry:'',permits:[],notes:''};
+  openModal(`
+    <div class="hd"><h3>${id?'עריכת נהג — '+esc(d.name):'הוספת נהג'}</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div><label>שם מלא</label><input id="d_name" value="${esc(d.name)}"></div>
+      <div><label>מספר אישי</label><input id="d_pers" value="${esc(d.personal)}"></div>
+      <div><label>פלוגה</label><select id="d_comp">${COMPANIES.map(c=>`<option ${d.company===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div><label>טלפון</label><input id="d_phone" value="${esc(d.phone)}"></div>
+      <div><label>דרגת רישיון אזרחי</label><select id="d_class">${['B','C1','C','C+E','D'].map(c=>`<option ${d.civilClass===c?'selected':''}>${c}</option>`).join('')}</select></div>
+      <div><label>תוקף רישיון אזרחי</label><input id="d_ce" type="date" value="${d.civilExpiry}"></div>
+      <div><label>תוקף רישיון צבאי</label><input id="d_me" type="date" value="${d.militaryExpiry}"></div>
+      <div class="full"><label>היתרים צבאיים</label>
+        <div class="checkgrid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+          ${PERMITS.map(p=>`<label style="display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink)"><input type="checkbox" style="width:auto" class="d_perm" value="${p}" ${d.permits.includes(p)?'checked':''}>${p}</label>`).join('')}
+        </div></div>
+    </div>
+    <div class="ft">
+      <button class="btn" onclick="saveDriver('${id}')">שמירה</button>
+      <button class="btn sec" onclick="closeModal()">ביטול</button>
+      ${id?`<span style="flex:1"></span><button class="btn danger" onclick="delDriver('${id}')">מחיקה</button>`:''}
+    </div>`);
+}
+function saveDriver(id){
+  const g=i=>document.getElementById(i).value;
+  const permits=[...document.querySelectorAll('.d_perm:checked')].map(x=>x.value);
+  const data={name:g('d_name').trim(),personal:g('d_pers').trim(),company:g('d_comp'),phone:g('d_phone'),
+    civilClass:g('d_class'),civilExpiry:g('d_ce'),militaryExpiry:g('d_me'),permits};
+  if(!data.name){alert('חובה למלא שם');return;}
+  if(id)Object.assign(dById(id),data);
+  else S.drivers.push(Object.assign({id:uid('d')},data));
+  save();closeModal();render();
+}
+function delDriver(id){
+  if(!confirm('למחוק את הנהג?'))return;
+  S.drivers=S.drivers.filter(x=>x.id!==id);
+  S.missions.forEach(m=>m.assignments.forEach(a=>{if(a.driverId===id)a.driverId='';}));
+  save();closeModal();render();
+}
+
+/* ============================ training & safety ============================ */
+function rTraining(){
+  const upcoming=S.trainings.filter(e=>!e.done).sort((a,b)=>a.date<b.date?-1:1);
+  const past=S.trainings.filter(e=>e.done).sort((a,b)=>a.date<b.date?1:-1).slice(0,10);
+  const evRow=e=>`<tr>
+    <td>${fmtDate(e.date)}</td><td><b>${esc(e.type)}</b></td>
+    <td class="wrap" style="max-width:260px">${esc(e.notes||'')}</td>
+    <td class="wrap" style="max-width:280px">${e.attendees.length?e.attendees.map(id=>{const d=dById(id);return d?`<span class="pill p-mut" style="margin:1px">${esc(d.name)}</span>`:'';}).join(' '):'<span class="small">טרם שובצו</span>'}</td>
+    <td class="noprint">${e.done?'<span class="pill p-good">בוצע</span>':`
+      <button class="btn sm sec" onclick="editTraining('${e.id}')">עריכה</button>
+      <button class="btn sm" onclick="doneTraining('${e.id}')">בוצע ✓</button>`}</td>
+  </tr>`;
+  const overdue=S.drivers.filter(d=>{const l=safetyDaysLeft(d);return l===null||l<0;});
+  const rows=S.drivers.map(d=>`<tr>
+    <td><b>${esc(d.name)}</b></td><td>${esc(d.company)}</td>
+    <td>${safetyCell(d)}</td>
+    <td class="noprint"><button class="btn sm sec" onclick="markSafety('${d.id}')">עבר היום</button></td>
+  </tr>`).join('');
+  return `<div class="panel"><div class="hd">
+    <h2>ימי עיון, ימי בטיחות ורענונים</h2><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="editTraining('')">+ אירוע הדרכה</button><button class="btn sec" onclick="window.print()">הדפסה</button></div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>תאריך</th><th>סוג</th><th>הערות</th><th>משתתפים</th><th class="noprint"></th></tr></thead>
+    <tbody>${upcoming.map(evRow).join('')||'<tr><td colspan="5" class="empty">אין אירועי הדרכה מתוכננים</td></tr>'}</tbody></table>
+    ${past.length?`<div class="sec-title">אירועים שבוצעו</div><div class="tblwrap"><table><tbody>${past.map(evRow).join('')}</tbody></table></div>`:''}
+    <div class="small" style="margin-top:8px">סימון אירוע מסוג "יום בטיחות שנתי" או "רענון נהגים" כבוצע — מעדכן אוטומטית את תוקף יום הבטיחות לכל המשתתפים.</div>
+  </div></div>
+  <div class="panel"><div class="hd"><h2>מעקב יום בטיחות שנתי לפי נהג</h2>
+    ${overdue.length?`<span class="pill p-crit">${overdue.length} נהגים ללא תוקף</span>`:'<span class="pill p-good">כל הנהגים בתוקף</span>'}
+    <span class="spacer"></span>
+    ${overdue.length?`<button class="btn sm noprint" onclick="scheduleOverdue()">שבץ חורגים ליום בטיחות</button>`:''}
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>נהג</th><th>פלוגה</th><th>יום בטיחות אחרון (תוקף ${SAFETY_VALID_DAYS} ימים)</th><th class="noprint"></th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div></div>`;
+}
+let trDraft=null;
+function editTraining(id){
+  const e=id?S.trainings.find(x=>x.id===id):{id:'',type:TRAINING_TYPES[0],date:todayStr(),notes:'',attendees:[],done:false};
+  trDraft=JSON.parse(JSON.stringify(e));trDraft._editId=id;
+  renderTrainingModal();
+}
+function renderTrainingModal(){
+  const e=trDraft,id=e._editId;
+  openModal(`
+    <div class="hd"><h3>${id?'עריכת אירוע הדרכה':'אירוע הדרכה חדש'}</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div><label>סוג</label><select onchange="trDraft.type=this.value">${TRAINING_TYPES.map(t=>`<option ${e.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div><label>תאריך</label><input type="date" value="${e.date}" onchange="trDraft.date=this.value"></div>
+      <div class="full"><label>הערות (מיקום, נושאים)</label><input value="${esc(e.notes)}" oninput="trDraft.notes=this.value"></div>
+      <div class="full"><label>משתתפים</label>
+        <div class="checkgrid" style="grid-template-columns:repeat(auto-fill,minmax(160px,1fr))">
+          ${S.drivers.map(d=>{const l=safetyDaysLeft(d),od=l===null||l<0;
+            return `<label style="display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink)">
+            <input type="checkbox" style="width:auto" ${e.attendees.includes(d.id)?'checked':''}
+              onchange="if(this.checked)trDraft.attendees.push('${d.id}');else trDraft.attendees=trDraft.attendees.filter(x=>x!=='${d.id}')">
+            ${esc(d.name)}${od?' <span class="pill p-crit" style="font-size:10.5px">חורג</span>':''}</label>`;}).join('')}
+        </div></div>
+    </div>
+    <div class="ft">
+      <button class="btn" onclick="saveTraining()">שמירה</button>
+      <button class="btn sec" onclick="closeModal()">ביטול</button>
+      ${id?`<span style="flex:1"></span><button class="btn danger" onclick="delTraining('${id}')">מחיקה</button>`:''}
+    </div>`);
+}
+function saveTraining(){
+  const e=trDraft;const id=e._editId;delete e._editId;
+  if(id){const i=S.trainings.findIndex(x=>x.id===id);S.trainings[i]=Object.assign({id},e);}
+  else S.trainings.push(Object.assign({},e,{id:uid('tr')}));
+  trDraft=null;save();closeModal();render();
+}
+function delTraining(id){
+  if(!confirm('למחוק את האירוע?'))return;
+  S.trainings=S.trainings.filter(x=>x.id!==id);
+  trDraft=null;save();closeModal();render();
+}
+function doneTraining(id){
+  const e=S.trainings.find(x=>x.id===id);
+  e.done=true;
+  if(e.type==='יום בטיחות שנתי'||e.type==='רענון נהגים'){
+    e.attendees.forEach(did=>{const d=dById(did);if(d)d.safetyDay=e.date;});
+  }
+  save();render();
+}
+function markSafety(did){
+  const d=dById(did);
+  if(!confirm('לעדכן ש'+d.name+' עבר יום בטיחות היום?'))return;
+  d.safetyDay=todayStr();save();render();
+}
+function scheduleOverdue(){
+  const overdue=S.drivers.filter(d=>{const l=safetyDaysLeft(d);return l===null||l<0;}).map(d=>d.id);
+  let ev=S.trainings.find(e=>!e.done&&e.type==='יום בטיחות שנתי');
+  if(!ev){ev={id:uid('tr'),type:'יום בטיחות שנתי',date:addDays(todayStr(),14),notes:'שיבוץ אוטומטי — נהגים חורגים',attendees:[],done:false};S.trainings.push(ev);}
+  ev.attendees=[...new Set([...ev.attendees,...overdue])];
+  save();render();
+  alert('שובצו '+overdue.length+' נהגים לאירוע "'+ev.type+'" בתאריך '+fmtDate(ev.date));
+}
+
+/* ============================ report 1 ============================ */
+function rReport1(){
+  if(r1draft)return rReport1Form();
+  const rows=[...S.reports].sort((a,b)=>a.date<b.date?1:-1).slice(0,60).map(r=>{
+    const v=vById(r.vehicleId),d=dById(r.driverId);
+    return `<tr>
+      <td>${fmtDate(r.date)}</td>
+      <td>${v?v.type+' צ׳ '+v.tz:'—'}</td>
+      <td>${d?esc(d.name):'—'}</td>
+      <td>${r.km?r.km.toLocaleString():'—'}</td>
+      <td>${r.ok?'<span class="pill p-good">תקין</span>':'<span class="pill p-crit">נמצאו ליקויים</span>'}</td>
+      <td class="wrap" style="max-width:260px">${esc(r.faultsText||'')}</td>
+    </tr>`;}).join('');
+  return `<div class="panel"><div class="hd">
+    <h2>דוח 1 — בדיקת רכב יומית</h2><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="startR1()">+ מילוי דוח 1</button><button class="btn sec" onclick="window.print()">הדפסת יומן</button></div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>תאריך</th><th>רכב</th><th>נהג</th><th>ק"מ</th><th>תוצאה</th><th>ליקויים</th></tr></thead>
+    <tbody>${rows||'<tr><td colspan="6" class="empty">טרם מולאו דוחות. נהג ממלא דוח 1 לפני כל יציאה לנסיעה.</td></tr>'}</tbody></table>
+  </div></div>`;
+}
+function startR1(){
+  r1draft={driverId:'',vehicleId:'',km:'',items:{},faultsText:''};
+  CHECK_ITEMS.forEach(c=>r1draft.items[c]=null);
+  render();
+}
+function rReport1Form(){
+  const r=r1draft;
+  const v=r.vehicleId?vById(r.vehicleId):null;
+  const allAnswered=CHECK_ITEMS.every(c=>r.items[c]!==null);
+  const hasBad=CHECK_ITEMS.some(c=>r.items[c]===false);
+  return `<div class="panel"><div class="hd"><h2>מילוי דוח 1 — ${fmtDate(todayStr())}</h2><span class="spacer"></span>
+    <button class="btn sec sm noprint" onclick="r1draft=null;render()">חזרה ליומן</button></div>
+  <div class="bd">
+    <div class="grid2" style="margin-bottom:12px">
+      <div><label>נהג</label><select onchange="r1draft.driverId=this.value;render()">
+        <option value="">בחר נהג…</option>
+        ${S.drivers.map(d=>`<option value="${d.id}" ${r.driverId===d.id?'selected':''}>${d.name} (${d.company})</option>`).join('')}
+      </select></div>
+      <div><label>רכב</label><select onchange="r1draft.vehicleId=this.value;render()">
+        <option value="">בחר רכב…</option>
+        ${S.vehicles.filter(x=>x.category==='vehicle').map(x=>`<option value="${x.id}" ${r.vehicleId===x.id?'selected':''}>${x.type} צ׳ ${x.tz} (${x.company})</option>`).join('')}
+      </select></div>
+      <div><label>ק"מ בשעון</label><input type="number" value="${r.km}" onchange="r1draft.km=this.value"></div>
+      ${v&&r.driverId&&!dById(r.driverId).permits.includes(v.permit)?`<div style="align-self:end"><span class="pill p-crit">⚠ לנהג אין היתר ל${v.permit}</span></div>`:''}
+    </div>
+    <div class="sec-title">פרטי בדיקה — סמן תקין / לא תקין לכל סעיף</div>
+    <div class="checkgrid">
+      ${CHECK_ITEMS.map((c,i)=>`<div class="chk"><span>${c}</span>
+        <span class="opts">
+          <button class="${r.items[c]===true?'ok':''}" onclick="r1draft.items['${c.replace(/'/g,"\\'")}']=true;render()">תקין</button>
+          <button class="${r.items[c]===false?'bad':''}" onclick="r1draft.items['${c.replace(/'/g,"\\'")}']=false;render()">לא תקין</button>
+        </span></div>`).join('')}
+    </div>
+    ${hasBad?`<div style="margin-top:12px"><label>פירוט הליקויים שנמצאו</label>
+      <textarea rows="2" oninput="r1draft.faultsText=this.value">${esc(r.faultsText)}</textarea></div>`:''}
+    <div style="margin-top:14px;display:flex;gap:10px;align-items:center" class="noprint">
+      <button class="btn" ${(!r.driverId||!r.vehicleId||!allAnswered)?'disabled style="opacity:.5"':''} onclick="submitR1()">חתימה והגשה</button>
+      <span class="small">${!allAnswered?'יש לענות על כל הסעיפים':(hasBad?'ליקויים ייפתחו אוטומטית כתקלות ברכב':'')}</span>
+    </div>
+  </div></div>`;
+}
+function submitR1(){
+  const r=r1draft;
+  const bad=CHECK_ITEMS.filter(c=>r.items[c]===false);
+  const rec={id:uid('r1'),date:todayStr(),driverId:r.driverId,vehicleId:r.vehicleId,km:+r.km||0,
+    items:r.items,ok:bad.length===0,faultsText:bad.length?(r.faultsText||bad.join(', ')):''};
+  S.reports.push(rec);
+  const v=vById(r.vehicleId);
+  if(v&&rec.km>v.km)v.km=rec.km;
+  if(bad.length){
+    S.faults.push({id:uid('f'),vehicleId:r.vehicleId,date:todayStr(),
+      desc:'דוח 1: '+bad.join(', ')+(r.faultsText?' — '+r.faultsText:''),
+      severity:'לא משביתה',status:'פתוחה',reporter:dById(r.driverId)?.name||'נהג'});
+  }
+  r1draft=null; save(); render();
+  alert(bad.length?'הדוח נקלט. נפתחו תקלות לטיפול קצין הרכב.':'הדוח נקלט — הרכב תקין ומאושר לנסיעה.');
+}
+
+/* ============================ faults ============================ */
+function rFaults(){
+  const open=S.faults.filter(f=>f.status==='פתוחה');
+  const closed=S.faults.filter(f=>f.status!=='פתוחה').slice(-20).reverse();
+  const row=f=>{
+    const v=vById(f.vehicleId);
+    return `<tr>
+      <td>${fmtDate(f.date)}</td>
+      <td>${v?v.type+' צ׳ '+v.tz:'—'}</td>
+      <td class="wrap" style="max-width:320px">${esc(f.desc)}</td>
+      <td><span class="pill ${f.severity==='משביתה'?'p-crit':'p-warn'}">${f.severity}</span></td>
+      <td>${esc(f.reporter||'')}</td>
+      <td class="noprint">${f.status==='פתוחה'?`
+        <button class="btn sm" onclick="closeFault('${f.id}')">נסגרה</button>
+        <button class="btn sm sec" onclick="toggleSev('${f.id}')">${f.severity==='משביתה'?'לא משביתה':'משביתה'}</button>`
+        :'<span class="pill p-good">טופלה</span>'}</td>
+    </tr>`;};
+  return `<div class="panel"><div class="hd">
+    <h2>תקלות פתוחות (${open.length})</h2><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="newFault()">+ דיווח תקלה</button></div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>תאריך</th><th>רכב</th><th>תיאור</th><th>חומרה</th><th>מדווח</th><th class="noprint"></th></tr></thead>
+    <tbody>${open.map(row).join('')||'<tr><td colspan="6" class="empty">אין תקלות פתוחות</td></tr>'}</tbody></table>
+    ${closed.length?`<div class="sec-title">תקלות שטופלו לאחרונה</div><div class="tblwrap"><table><tbody>${closed.map(row).join('')}</tbody></table></div>`:''}
+    <div class="small" style="margin-top:8px">תקלה "משביתה" משביתה את הרכב אוטומטית במצבה. סגירת כל התקלות המשביתות מחזירה את הרכב לכשירות.</div>
+  </div></div>`;
+}
+function newFault(){
+  openModal(`
+    <div class="hd"><h3>דיווח תקלה</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div class="full"><label>רכב</label><select id="ft_v">${S.vehicles.map(v=>`<option value="${v.id}">${v.type} צ׳ ${v.tz} (${v.company})</option>`).join('')}</select></div>
+      <div class="full"><label>תיאור התקלה</label><textarea id="ft_d" rows="2"></textarea></div>
+      <div><label>חומרה</label><select id="ft_s"><option>לא משביתה</option><option>משביתה</option></select></div>
+      <div><label>מדווח</label><input id="ft_r" value="קצין רכב"></div>
+    </div>
+    <div class="ft"><button class="btn" onclick="saveFault()">שמירה</button><button class="btn sec" onclick="closeModal()">ביטול</button></div>`);
+}
+function saveFault(){
+  const g=i=>document.getElementById(i).value;
+  if(!g('ft_d').trim()){alert('חובה למלא תיאור');return;}
+  const f={id:uid('f'),vehicleId:g('ft_v'),date:todayStr(),desc:g('ft_d').trim(),severity:g('ft_s'),status:'פתוחה',reporter:g('ft_r')};
+  S.faults.push(f);
+  if(f.severity==='משביתה'){const v=vById(f.vehicleId);if(v)v.status='מושבת';}
+  save();closeModal();render();
+}
+function toggleSev(id){
+  const f=S.faults.find(x=>x.id===id);
+  f.severity=f.severity==='משביתה'?'לא משביתה':'משביתה';
+  syncVehicleFromFaults(f.vehicleId);
+  save();render();
+}
+function closeFault(id){
+  const f=S.faults.find(x=>x.id===id);
+  f.status='טופלה';f.closedDate=todayStr();
+  syncVehicleFromFaults(f.vehicleId);
+  save();render();
+}
+function syncVehicleFromFaults(vid){
+  const v=vById(vid);if(!v)return;
+  const disabling=openFaults(vid).some(f=>f.severity==='משביתה');
+  if(disabling)v.status='מושבת';
+  else if(v.status==='מושבת')v.status='כשיר';
+}
+
+/* ============================ backup ============================ */
+function rBackup(){
+  return `<div class="panel"><div class="hd"><h2>גיבוי ושחזור</h2></div><div class="bd">
+    <p class="small">הנתונים נשמרים בדפדפן זה בלבד. מומלץ לייצא גיבוי בסוף כל יום עבודה ולשמור אותו — כך אפשר לעבור מחשב או לשחזר אחרי ניקוי דפדפן.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" onclick="exportData()">ייצוא גיבוי (העתקה)</button>
+      <button class="btn sec" onclick="importData()">ייבוא גיבוי (הדבקה)</button>
+      <button class="btn danger" onclick="resetData()">איפוס לנתוני דוגמה</button>
+    </div>
+    <textarea id="bk" rows="8" style="margin-top:12px" placeholder="כאן יופיע הגיבוי לייצוא, או הדבק כאן גיבוי לייבוא"></textarea>
+  </div></div>`;
+}
+function exportData(){
+  const ta=document.getElementById('bk');
+  ta.value=JSON.stringify(S);
+  ta.select();
+  try{document.execCommand('copy');alert('הגיבוי הועתק ללוח. שמור אותו בקובץ.');}catch(e){alert('סמן והעתק את הטקסט ידנית.');}
+}
+function importData(){
+  const ta=document.getElementById('bk');
+  try{
+    const d=JSON.parse(ta.value);
+    if(!d.vehicles||!d.drivers)throw 0;
+    if(!confirm('לייבא את הגיבוי? הנתונים הנוכחיים יוחלפו.'))return;
+    if(!d.trainings)d.trainings=[];
+    if(!d.reports)d.reports=[];
+    if(!d.faults)d.faults=[];
+    d.drivers.forEach(x=>{if(!('safetyDay' in x))x.safetyDay='';});
+    S=d;save();render();alert('הגיבוי נטען בהצלחה.');
+  }catch(e){alert('הטקסט שהודבק אינו גיבוי תקין.');}
+}
+function resetData(){
+  if(!confirm('לאפס את כל הנתונים ולחזור לנתוני הדוגמה?'))return;
+  S=seed();save();render();
+}
+
+/* ============================ modal helpers ============================ */
+function openModal(html){
+  document.getElementById('modal').innerHTML=html;
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal(){document.getElementById('overlay').classList.remove('open');missionDraft=null;}
+document.getElementById('overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
+
+load();render();
+</script>

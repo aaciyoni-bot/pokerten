@@ -181,6 +181,10 @@ const STATUSES=['כשיר','בטיפול','מושבת'];
 const DAYS=['ראשון','שני','שלישי','רביעי','חמישי','שישי'];
 const TRAINING_TYPES=['יום בטיחות שנתי','יום עיון נהגים','רענון נהגים','מבדק נהיגה'];
 const SAFETY_VALID_DAYS=365;
+const PRESENCE_STATUSES=['ביחידה','משימה מחוץ ליחידה','חופשה / בבית','גימלים','קורס / הדרכה','נפקד'];
+const PRESENT_SET=new Set(['ביחידה','משימה מחוץ ליחידה']);
+const EQUIP_ITEMS=['מגבה + מפתח גלגלים','גלגל רזרבי','מטפה כיבוי','משולש אזהרה','ערכת עזרה ראשונה','כבל גרירה / שרשרת','כבלי התנעה','אפוד זוהר','תיק רכב (רישיונות)','פנס עבודה','ג\'ריקן מים','טריז עצירה'];
+const FUEL_SOURCES=['משאית תדלוק גזרתית','תחנת דלק (דלקן)','בסיס אם'];
 const CHECK_ITEMS=['מים / מצנן','שמן מנוע','דלק (מעל 3/4)','צמיגים + לחץ אוויר','גלגל רזרבי + מגבה','בלמים','בלם חניה','אורות ופנסים','מגבים ומתזים','מראות','חגורות בטיחות','מטפה כיבוי תקף','משולש אזהרה','דליפות (שמן/דלק/מים)','מצבר וחיבורים','היגוי','צופר','ניקיון ומטען מאובטח'];
 
 function todayStr(){return new Date().toISOString().slice(0,10);}
@@ -272,18 +276,54 @@ function seed(){
     {id:uid('f'),vehicleId:'v3',date:addDays(t,-4),desc:'רעידות בבלימה — צלחות בלם',severity:'משביתה',status:'פתוחה',reporter:'דוח 1'},
     {id:uid('f'),vehicleId:'v12',date:addDays(t,-2),desc:'פנס אחורי שמאלי שבור',severity:'לא משביתה',status:'פתוחה',reporter:'נהג'},
   ];
-  return {vehicles:V,drivers:D,missions:M,maintenance:MT,reports:[],faults:F,trainings:TR,settings:{unit:'גדוד 8XXX'}};
+  V.forEach(v=>{v.missingEquip=[];v.keyLocation='לוח מפתחות';});
+  V[11].missingEquip=['כבלי התנעה','פנס עבודה'];
+  V[5].keyLocation='אצל יוסי כהן';
+  const presence={};presence[t]={};
+  ['d1','d2','d3','d4','d5','d6','d7','d8'].forEach((id,i)=>{presence[t][id]=i<5?'ביחידה':(i===5?'חופשה / בבית':(i===6?'גימלים':'משימה מחוץ ליחידה'));});
+  const TRIPS=[
+    {id:uid('tp'),vehicleId:'v6',driverId:'d1',date:t,timeOut:'06:00',timeIn:'',purpose:'סיור בטחון שוטף ציר צפוני',kmStart:30314,kmEnd:null,open:true},
+    {id:uid('tp'),vehicleId:'v26',driverId:'d2',date:addDays(t,-1),timeOut:'09:00',timeIn:'13:30',purpose:'שינוע קצינים לחטיבה',kmStart:13100,kmEnd:13256,open:false},
+  ];
+  const FUELS=[
+    {id:uid('fu'),vehicleId:'v6',date:addDays(t,-2),liters:62,km:30100,source:'משאית תדלוק גזרתית'},
+    {id:uid('fu'),vehicleId:'v26',date:addDays(t,-1),liters:48,km:13200,source:'תחנת דלק (דלקן)'},
+  ];
+  const ACC=[
+    {id:uid('ac'),date:addDays(t,-12),vehicleId:'v18',driverId:'d5',desc:'פגיעה קלה במראה בנסיעה לאחור ברמפה',severity:'קל',status:'בטיפול קצין רכב'},
+  ];
+  const SLOG=[
+    {id:uid('sl'),vehicleId:'v1',date:t,km:11719,type:'טיפול שבועי',notes:''},
+    {id:uid('sl'),vehicleId:'v8',date:addDays(t,-6),km:37500,type:'טיפול 5,000',notes:'סדנא גדודית'},
+  ];
+  const STANDBY=[
+    {id:uid('sb'),date:t,company:'פלוגה א',vehicleId:'v7',driverId:'d5'},
+    {id:uid('sb'),date:t,company:'פלוגת מפקדה',vehicleId:'v28',driverId:'d4'},
+  ];
+  return {vehicles:V,drivers:D,missions:M,maintenance:MT,reports:[],faults:F,trainings:TR,
+    presence,trips:TRIPS,fuels:FUELS,accidents:ACC,serviceLog:SLOG,standby:STANDBY,docs:[],settings:{unit:'גדוד 8XXX'}};
 }
 
 let S;
 function load(){
-  try{const raw=localStorage.getItem(LS_KEY); if(raw){S=JSON.parse(raw);
-    if(!S.trainings)S.trainings=[];
-    S.drivers.forEach(d=>{if(!('safetyDay' in d))d.safetyDay='';});
-    return;}}catch(e){}
+  try{const raw=localStorage.getItem(LS_KEY); if(raw){S=JSON.parse(raw);migrate(S);return;}}catch(e){}
   S=seed(); save();
 }
 function save(){try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){}}
+function migrate(d){
+  if(!d.trainings)d.trainings=[];
+  if(!d.reports)d.reports=[];
+  if(!d.faults)d.faults=[];
+  if(!d.presence)d.presence={};
+  if(!d.trips)d.trips=[];
+  if(!d.fuels)d.fuels=[];
+  if(!d.accidents)d.accidents=[];
+  if(!d.serviceLog)d.serviceLog=[];
+  if(!d.standby)d.standby=[];
+  if(!d.docs)d.docs=[];
+  d.drivers.forEach(x=>{if(!('safetyDay' in x))x.safetyDay='';});
+  d.vehicles.forEach(v=>{if(!v.missingEquip)v.missingEquip=[];if(!('keyLocation' in v))v.keyLocation='לוח מפתחות';});
+}
 
 /* ============================ derived ============================ */
 const vById=id=>S.vehicles.find(v=>v.id===id);
@@ -333,25 +373,50 @@ function serviceAlerts(){
   }
   return out;
 }
-function report1MissingToday(){
+function vcheckMissingToday(){
   const t=todayStr();
   const usedToday=new Set();
   for(const m of S.missions)if(m.date===t)for(const a of m.assignments)usedToday.add(a.vehicleId);
   const reported=new Set(S.reports.filter(r=>r.date===t).map(r=>r.vehicleId));
   return [...usedToday].filter(vid=>!reported.has(vid)).map(vById).filter(Boolean);
 }
+function presenceOf(date,did){return (S.presence[date]||{})[did]||null;}
+function presenceSummary(date){
+  const day=S.presence[date]||{};
+  const counts={};PRESENCE_STATUSES.forEach(s=>counts[s]=0);
+  let marked=0;
+  for(const d of S.drivers){const st=day[d.id];if(st){marked++;if(counts[st]!==undefined)counts[st]++;}}
+  return {counts,marked,total:S.drivers.length};
+}
+function driverScore(d){
+  let s=100;
+  s-=15*S.accidents.filter(a=>a.driverId===d.id).length;
+  const ce=daysUntil(d.civilExpiry),me=daysUntil(d.militaryExpiry),sl=safetyDaysLeft(d);
+  if(ce!==null&&ce<0)s-=10;
+  if(me!==null&&me<0)s-=10;
+  if(sl===null||sl<0)s-=10;
+  return Math.max(0,s);
+}
+function scorePill(n){
+  const c=n>=90?'p-good':(n>=70?'p-warn':'p-crit');
+  return `<span class="pill ${c}">${n}</span>`;
+}
+function openTrips(){return S.trips.filter(t=>t.open);}
 
 /* ============================ UI shell ============================ */
 const TABS=[
   {id:'dash',lbl:'דשבורד'},
   {id:'vehicles',lbl:'מצבת רכבים'},
+  {id:'report1',lbl:'דוח 1'},
   {id:'missions',lbl:'משימות'},
   {id:'maintenance',lbl:'טיפול שבועי'},
   {id:'drivers',lbl:'נהגים ורישיונות'},
   {id:'training',lbl:'הדרכות ובטיחות'},
-  {id:'report1',lbl:'דוח 1'},
-  {id:'faults',lbl:'תקלות'},
-  {id:'backup',lbl:'גיבוי'},
+  {id:'log',lbl:'יומן רכב'},
+  {id:'vcheck',lbl:'בדיקת רכב'},
+  {id:'faults',lbl:'תקלות ותאונות'},
+  {id:'standby',lbl:'כוננות ומפתחות'},
+  {id:'backup',lbl:'גיבוי וייצוא'},
 ];
 let TAB='dash';
 let vehFilter={company:'',type:'',status:'',cat:'',q:''};
@@ -369,7 +434,7 @@ function render(){
     if(t.id==='dash'&&alerts)b=`<span class="bdg">${alerts}</span>`;
     return `<button class="${TAB===t.id?'on':''}" onclick="setTab('${t.id}')">${t.lbl}${b}</button>`;
   }).join('');
-  const R={dash:rDash,vehicles:rVehicles,missions:rMissions,maintenance:rMnt,drivers:rDrivers,training:rTraining,report1:rReport1,faults:rFaults,backup:rBackup};
+  const R={dash:rDash,vehicles:rVehicles,report1:rPresence,missions:rMissions,maintenance:rMnt,drivers:rDrivers,training:rTraining,log:rLog,vcheck:rVcheck,faults:rFaults,standby:rStandby,backup:rBackup};
   document.getElementById('main').innerHTML=R[TAB]();
 }
 
@@ -384,7 +449,11 @@ function rDash(){
   const alerts=[...licenseAlerts(),...serviceAlerts()].sort((a,b)=>(a.sev==='crit'?0:1)-(b.sev==='crit'?0:1));
   const t=todayStr();
   const todayMissions=S.missions.filter(m=>m.date===t);
-  const missing=report1MissingToday();
+  const missing=vcheckMissingToday();
+  const ps=presenceSummary(t);
+  const out=openTrips();
+  const sb=S.standby.filter(x=>x.date===t);
+  const equipMissing=S.vehicles.filter(v=>v.missingEquip&&v.missingEquip.length);
   const byComp=COMPANIES.map(c=>{
     const cv=vs.filter(v=>v.company===c);
     return `<tr><td>${c}</td><td>${cv.length}</td>
@@ -412,8 +481,15 @@ function rDash(){
           <span class="small">${m.assignments.map(a=>{const v=vById(a.vehicleId),d=dById(a.driverId);return (v?v.type+' צ׳ '+v.tz:'?')+' — '+(d?d.name:'ללא נהג');}).join(' | ')}</span>
         </div>`).join(''):'<div class="empty">אין משימות מתוכננות להיום</div>'}
       </div></div>
-      <div class="panel"><div class="hd"><h2>דוח 1 חסר להיום</h2></div><div class="bd">
-        ${missing.length?`<ul class="alerts">${missing.map(v=>`<li><span class="dot warn"></span>${v.type} צ׳ ${v.tz} — משובץ למשימה ולא מולא דוח 1</li>`).join('')}</ul>`:'<div class="empty">כל הרכבים המשובצים היום מילאו דוח 1</div>'}
+      <div class="panel"><div class="hd"><h2>דוח 1 היום — ${ps.marked}/${ps.total} דווחו</h2></div><div class="bd">
+        ${ps.marked?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${PRESENCE_STATUSES.filter(s=>ps.counts[s]).map(s=>`<span class="pill ${PRESENT_SET.has(s)?'p-good':(s==='נפקד'?'p-crit':'p-mut')}">${s}: ${ps.counts[s]}</span>`).join('')}</div>`:''}
+        ${ps.marked<ps.total?`<div class="small due-soon">⚠ ${ps.total-ps.marked} נהגים טרם דווחו בדוח 1 — <a href="#" onclick="setTab('report1');return false">למילוי</a></div>`:'<div class="small" style="color:var(--good)">דוח 1 הוגש במלואו ✓</div>'}
+      </div></div>
+      <div class="panel"><div class="hd"><h2>רכבים בחוץ · כוננות · בדיקות</h2></div><div class="bd">
+        ${out.length?`<div class="small"><b>בחוץ כעת (${out.length}):</b> ${out.map(tp=>{const v=vById(tp.vehicleId),d=dById(tp.driverId);return (v?v.type+' צ׳ '+v.tz:'?')+(d?' — '+d.name:'');}).join(' · ')}</div>`:'<div class="small">כל הרכבים ביחידה</div>'}
+        ${sb.length?`<div class="small" style="margin-top:6px"><b>כונן היום:</b> ${sb.map(x=>{const v=vById(x.vehicleId),d=dById(x.driverId);return x.company+': '+(v?v.type+' צ׳ '+v.tz:'—')+(d?' ('+d.name+')':'');}).join(' · ')}</div>`:'<div class="small due-soon" style="margin-top:6px">⚠ לא הוגדר רכב כונן להיום</div>'}
+        ${missing.length?`<div class="small due-soon" style="margin-top:6px">⚠ בדיקת רכב לפני נסיעה חסרה: ${missing.map(v=>v.type+' צ׳ '+v.tz).join(', ')}</div>`:''}
+        ${equipMissing.length?`<div class="small due-soon" style="margin-top:6px">⚠ צל"ם חסר ב-${equipMissing.length} רכבים: ${equipMissing.map(v=>'צ׳ '+v.tz).join(', ')}</div>`:''}
       </div></div>
     </div>
   </div>
@@ -441,11 +517,11 @@ function rVehicles(){
     const pc={'כשיר':'p-good','בטיפול':'p-warn','מושבת':'p-crit'}[v.status];
     return `<tr>
       <td><b>${esc(v.tz)}</b></td><td>${esc(v.type)}</td><td class="wrap">${esc(v.model)}</td><td>${esc(v.company)}</td>
-      <td><span class="pill ${pc}">${v.status}</span>${fl?` <span class="pill p-crit">${fl} תקלות</span>`:''}</td>
+      <td><span class="pill ${pc}">${v.status}</span>${fl?` <span class="pill p-crit">${fl} תקלות</span>`:''}${v.missingEquip&&v.missingEquip.length?` <span class="pill p-warn">צל"ם חסר</span>`:''}</td>
       <td>${v.category==='trailer'?'—':v.km.toLocaleString()}</td>
       <td>${v.category==='trailer'?'—':`<span class="${left<=0?'due-neg':(left<=500?'due-soon':'')}">${left.toLocaleString()}</span>`}</td>
       <td>${testCell(v.testDate)}</td><td>${testCell(v.insuranceDate)}</td>
-      <td class="noprint"><button class="btn sm sec" onclick="editVehicle('${v.id}')">עריכה</button></td>
+      <td class="noprint"><button class="btn sm" onclick="vehicleFile('${v.id}')">תיק רכב</button> <button class="btn sm sec" onclick="editVehicle('${v.id}')">עריכה</button></td>
     </tr>`;
   }).join('');
   return `<div class="panel"><div class="hd">
@@ -526,6 +602,8 @@ function missionConflicts(m,skipId){
       if(me!==null&&me<0)issues.push(`רישיון צבאי של ${d.name} פג תוקף`);
       const sl=safetyDaysLeft(d);
       if(sl===null||sl<0)issues.push(`${d.name} ללא יום בטיחות שנתי בתוקף`);
+      const pr=presenceOf(m.date,d.id);
+      if(pr&&!PRESENT_SET.has(pr))issues.push(`${d.name} מסומן בדוח 1 כ"${pr}"`);
       if(v&&!d.permits.includes(v.permit))issues.push(`${d.name} ללא היתר ל${v.permit}`);
     }
   }
@@ -661,7 +739,9 @@ function rMnt(){
 function mntAdd(vid,day){if(!vid)return;S.maintenance.push({id:uid('mt'),vehicleId:vid,week:mntWeek,day,done:false,notes:''});save();render();}
 function mntDone(id){const e=S.maintenance.find(x=>x.id===id);e.done=true;e.doneDate=todayStr();
   const v=vById(e.vehicleId);
-  if(v&&v.category==='vehicle'&&kmToService(v)<=500){v.lastServiceKm=v.km;if(v.status==='בטיפול')v.status='כשיר';}
+  let type='טיפול שבועי';
+  if(v&&v.category==='vehicle'&&kmToService(v)<=500){v.lastServiceKm=v.km;if(v.status==='בטיפול')v.status='כשיר';type='טיפול ק"מ';}
+  if(v)S.serviceLog.push({id:uid('sl'),vehicleId:v.id,date:todayStr(),km:v.km,type,notes:e.notes||''});
   save();render();}
 function mntDel(id){S.maintenance=S.maintenance.filter(x=>x.id!==id);save();render();}
 function mntAuto(){
@@ -679,6 +759,17 @@ function mntAuto(){
 }
 
 /* ============================ drivers ============================ */
+function waReminder(d){
+  const items=[];
+  const ce=daysUntil(d.civilExpiry),me=daysUntil(d.militaryExpiry),sl=safetyDaysLeft(d);
+  if(ce!==null&&ce<=30)items.push('רישיון נהיגה אזרחי ('+(ce<0?'פג תוקף':'פג בעוד '+ce+' ימים')+')');
+  if(me!==null&&me<=30)items.push('רישיון צבאי ('+(me<0?'פג תוקף':'פג בעוד '+me+' ימים')+')');
+  if(sl===null||sl<0)items.push('יום בטיחות שנתי (נדרש חידוש)');
+  if(!items.length)return '';
+  const phone='972'+String(d.phone||'').replace(/\D/g,'').replace(/^0/,'');
+  const msg=encodeURIComponent('שלום '+d.name+', כאן קצין הרכב הגדודי. תזכורת לחידוש: '+items.join(', ')+'. נא לטפל ולעדכן אותי. תודה!');
+  return `<a class="btn sm sec noprint" style="text-decoration:none" href="https://wa.me/${phone}?text=${msg}" target="_blank" rel="noopener">📱 תזכורת</a>`;
+}
 function rDrivers(){
   const rows=S.drivers.map(d=>{
     const ce=daysUntil(d.civilExpiry),me=daysUntil(d.militaryExpiry);
@@ -689,18 +780,19 @@ function rDrivers(){
       <td>${esc(d.company)}</td><td>${esc(d.phone)}</td>
       <td>${esc(d.civilClass)} · ${testCell(d.civilExpiry)}</td>
       <td>${testCell(d.militaryExpiry)}</td>
+      <td>${scorePill(driverScore(d))}</td>
       <td class="wrap" style="max-width:230px">${d.permits.map(p=>`<span class="pill p-mut" style="margin:1px">${p}</span>`).join(' ')}</td>
       <td class="wrap">${nextMissions.map(m=>`<div class="small">${fmtDate(m.date)} — ${esc(m.name)}</div>`).join('')||'<span class="small">—</span>'}</td>
-      <td class="noprint"><button class="btn sm sec" onclick="editDriver('${d.id}')">עריכה</button></td>
+      <td class="noprint"><button class="btn sm sec" onclick="editDriver('${d.id}')">עריכה</button> ${waReminder(d)}</td>
     </tr>`;
   }).join('');
   return `<div class="panel"><div class="hd">
     <h2>נהגים ובדיקת רישיונות (${S.drivers.length})</h2><span class="spacer"></span>
     <div class="filters noprint"><button class="btn" onclick="editDriver('')">+ הוספת נהג</button><button class="btn sec" onclick="window.print()">הדפסה</button></div>
   </div><div class="bd tblwrap">
-    <table><thead><tr><th>שם</th><th>פלוגה</th><th>טלפון</th><th>רישיון אזרחי</th><th>רישיון צבאי</th><th>היתרים</th><th>משימות קרובות</th><th class="noprint"></th></tr></thead>
+    <table><thead><tr><th>שם</th><th>פלוגה</th><th>טלפון</th><th>רישיון אזרחי</th><th>רישיון צבאי</th><th>ציון בטיחות</th><th>היתרים</th><th>משימות קרובות</th><th class="noprint"></th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <div class="small" style="margin-top:8px">תאריך אדום = פג תוקף · כתום = פג בתוך 30 יום. נהג עם רישיון פג ייחסם אוטומטית בשיבוץ למשימה.</div>
+    <div class="small" style="margin-top:8px">תאריך אדום = פג תוקף · כתום = פג בתוך 30 יום. נהג עם רישיון פג ייחסם אוטומטית בשיבוץ למשימה. ציון הבטיחות נגזר מתאונות ומתוקפי רישיונות ויום בטיחות.</div>
   </div></div>`;
 }
 function editDriver(id){
@@ -719,6 +811,7 @@ function editDriver(id){
         <div class="checkgrid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
           ${PERMITS.map(p=>`<label style="display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink)"><input type="checkbox" style="width:auto" class="d_perm" value="${p}" ${d.permits.includes(p)?'checked':''}>${p}</label>`).join('')}
         </div></div>
+      ${id?docSection('driver',id,'editDriver'):'<div class="full small">שמור את הנהג תחילה — ואז ניתן להעלות מסמכים (צילום רישיון וכו׳) בעריכה.</div>'}
     </div>
     <div class="ft">
       <button class="btn" onclick="saveDriver('${id}')">שמירה</button>
@@ -841,9 +934,59 @@ function scheduleOverdue(){
   alert('שובצו '+overdue.length+' נהגים לאירוע "'+ev.type+'" בתאריך '+fmtDate(ev.date));
 }
 
-/* ============================ report 1 ============================ */
-function rReport1(){
-  if(r1draft)return rReport1Form();
+/* ============================ doch 1 — presence ============================ */
+let presDate=todayStr();
+function rPresence(){
+  const day=S.presence[presDate]||{};
+  const ps=presenceSummary(presDate);
+  const groups=COMPANIES.map(c=>{
+    const ds=S.drivers.filter(d=>d.company===c);
+    if(!ds.length)return '';
+    const rows=ds.map(d=>{
+      const st=day[d.id]||null;
+      return `<tr>
+        <td><b>${esc(d.name)}</b><div class="small">${esc(d.personal)}</div></td>
+        <td class="wrap">${PRESENCE_STATUSES.map(s=>`<button class="btn sm ${st===s?'':'sec'}" style="margin:1px ${st===s&&s==='נפקד'?';background:var(--crit)':''}" onclick="setPresence('${d.id}','${s}')">${s}</button>`).join('')}</td>
+        <td>${st?`<span class="pill ${PRESENT_SET.has(st)?'p-good':(st==='נפקד'?'p-crit':'p-mut')}">${st}</span>`:'<span class="pill p-warn">טרם דווח</span>'}</td>
+      </tr>`;}).join('');
+    return `<div class="sec-title">${c} (${ds.filter(d=>day[d.id]).length}/${ds.length} דווחו)</div>
+      <div class="tblwrap"><table><thead><tr><th>נהג</th><th class="noprint">סימון מצבה</th><th>מצב</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }).join('');
+  return `<div class="panel"><div class="hd">
+    <h2>דוח 1 — מצבת נוכחות נהגים</h2>
+    <span class="small">${fmtDate(presDate)}${presDate===todayStr()?' (היום)':''}</span>
+    <span class="spacer"></span>
+    <div class="filters noprint">
+      <button class="btn sec sm" onclick="presDate=addDays(presDate,-1);render()">◀ יום קודם</button>
+      <button class="btn sec sm" onclick="presDate=todayStr();render()">היום</button>
+      <button class="btn sec sm" onclick="presDate=addDays(presDate,1);render()">יום הבא ▶</button>
+      <button class="btn sm" onclick="markRestPresent()">סמן את כל הנותרים "ביחידה"</button>
+      <button class="btn sec sm" onclick="window.print()">הדפסה</button>
+    </div>
+  </div><div class="bd">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+      <span class="pill p-info">דווחו: ${ps.marked}/${ps.total}</span>
+      ${PRESENCE_STATUSES.filter(s=>ps.counts[s]).map(s=>`<span class="pill ${PRESENT_SET.has(s)?'p-good':(s==='נפקד'?'p-crit':'p-mut')}">${s}: ${ps.counts[s]}</span>`).join('')}
+    </div>
+    ${groups}
+    <div class="small" style="margin-top:8px">דוח 1 מוגש מדי בוקר ומדווח את מצבת כוח האדם: מי ביחידה, במשימה מחוץ ליחידה, בחופשה, בגימלים או בקורס. נהג שאינו "ביחידה"/"במשימה" יסומן באזהרה אם שובץ למשימה באותו יום.</div>
+  </div></div>`;
+}
+function setPresence(did,st){
+  if(!S.presence[presDate])S.presence[presDate]={};
+  S.presence[presDate][did]=S.presence[presDate][did]===st?null:st;
+  if(!S.presence[presDate][did])delete S.presence[presDate][did];
+  save();render();
+}
+function markRestPresent(){
+  if(!S.presence[presDate])S.presence[presDate]={};
+  S.drivers.forEach(d=>{if(!S.presence[presDate][d.id])S.presence[presDate][d.id]='ביחידה';});
+  save();render();
+}
+
+/* ============================ vehicle pre-trip check ============================ */
+function rVcheck(){
+  if(r1draft)return rVcheckForm();
   const rows=[...S.reports].sort((a,b)=>a.date<b.date?1:-1).slice(0,60).map(r=>{
     const v=vById(r.vehicleId),d=dById(r.driverId);
     return `<tr>
@@ -855,24 +998,24 @@ function rReport1(){
       <td class="wrap" style="max-width:260px">${esc(r.faultsText||'')}</td>
     </tr>`;}).join('');
   return `<div class="panel"><div class="hd">
-    <h2>דוח 1 — בדיקת רכב יומית</h2><span class="spacer"></span>
-    <div class="filters noprint"><button class="btn" onclick="startR1()">+ מילוי דוח 1</button><button class="btn sec" onclick="window.print()">הדפסת יומן</button></div>
+    <h2>בדיקת רכב לפני נסיעה (בדיקות שגרה)</h2><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="startVcheck()">+ מילוי בדיקה</button><button class="btn sec" onclick="window.print()">הדפסת יומן</button></div>
   </div><div class="bd tblwrap">
     <table><thead><tr><th>תאריך</th><th>רכב</th><th>נהג</th><th>ק"מ</th><th>תוצאה</th><th>ליקויים</th></tr></thead>
-    <tbody>${rows||'<tr><td colspan="6" class="empty">טרם מולאו דוחות. נהג ממלא דוח 1 לפני כל יציאה לנסיעה.</td></tr>'}</tbody></table>
+    <tbody>${rows||'<tr><td colspan="6" class="empty">טרם מולאו בדיקות. הנהג ממלא בדיקת רכב לפני כל יציאה לנסיעה.</td></tr>'}</tbody></table>
   </div></div>`;
 }
-function startR1(){
+function startVcheck(){
   r1draft={driverId:'',vehicleId:'',km:'',items:{},faultsText:''};
   CHECK_ITEMS.forEach(c=>r1draft.items[c]=null);
   render();
 }
-function rReport1Form(){
+function rVcheckForm(){
   const r=r1draft;
   const v=r.vehicleId?vById(r.vehicleId):null;
   const allAnswered=CHECK_ITEMS.every(c=>r.items[c]!==null);
   const hasBad=CHECK_ITEMS.some(c=>r.items[c]===false);
-  return `<div class="panel"><div class="hd"><h2>מילוי דוח 1 — ${fmtDate(todayStr())}</h2><span class="spacer"></span>
+  return `<div class="panel"><div class="hd"><h2>בדיקת רכב לפני נסיעה — ${fmtDate(todayStr())}</h2><span class="spacer"></span>
     <button class="btn sec sm noprint" onclick="r1draft=null;render()">חזרה ליומן</button></div>
   <div class="bd">
     <div class="grid2" style="margin-bottom:12px">
@@ -898,12 +1041,12 @@ function rReport1Form(){
     ${hasBad?`<div style="margin-top:12px"><label>פירוט הליקויים שנמצאו</label>
       <textarea rows="2" oninput="r1draft.faultsText=this.value">${esc(r.faultsText)}</textarea></div>`:''}
     <div style="margin-top:14px;display:flex;gap:10px;align-items:center" class="noprint">
-      <button class="btn" ${(!r.driverId||!r.vehicleId||!allAnswered)?'disabled style="opacity:.5"':''} onclick="submitR1()">חתימה והגשה</button>
+      <button class="btn" ${(!r.driverId||!r.vehicleId||!allAnswered)?'disabled style="opacity:.5"':''} onclick="submitVcheck()">חתימה והגשה</button>
       <span class="small">${!allAnswered?'יש לענות על כל הסעיפים':(hasBad?'ליקויים ייפתחו אוטומטית כתקלות ברכב':'')}</span>
     </div>
   </div></div>`;
 }
-function submitR1(){
+function submitVcheck(){
   const r=r1draft;
   const bad=CHECK_ITEMS.filter(c=>r.items[c]===false);
   const rec={id:uid('r1'),date:todayStr(),driverId:r.driverId,vehicleId:r.vehicleId,km:+r.km||0,
@@ -913,11 +1056,182 @@ function submitR1(){
   if(v&&rec.km>v.km)v.km=rec.km;
   if(bad.length){
     S.faults.push({id:uid('f'),vehicleId:r.vehicleId,date:todayStr(),
-      desc:'דוח 1: '+bad.join(', ')+(r.faultsText?' — '+r.faultsText:''),
+      desc:'בדיקת רכב: '+bad.join(', ')+(r.faultsText?' — '+r.faultsText:''),
       severity:'לא משביתה',status:'פתוחה',reporter:dById(r.driverId)?.name||'נהג'});
   }
   r1draft=null; save(); render();
-  alert(bad.length?'הדוח נקלט. נפתחו תקלות לטיפול קצין הרכב.':'הדוח נקלט — הרכב תקין ומאושר לנסיעה.');
+  alert(bad.length?'הבדיקה נקלטה. נפתחו תקלות לטיפול קצין הרכב.':'הבדיקה נקלטה — הרכב תקין ומאושר לנסיעה.');
+}
+
+/* ============================ trip & fuel log ============================ */
+function rLog(){
+  const open=openTrips();
+  const closed=S.trips.filter(t=>!t.open).sort((a,b)=>a.date<b.date?1:-1).slice(0,40);
+  const tripRow=tp=>{
+    const v=vById(tp.vehicleId),d=dById(tp.driverId);
+    const dist=(tp.kmEnd!=null&&tp.kmStart!=null)?(tp.kmEnd-tp.kmStart):null;
+    return `<tr>
+      <td>${fmtDate(tp.date)}</td>
+      <td>${v?v.type+' צ׳ '+v.tz:'—'}</td>
+      <td>${d?esc(d.name):'—'}</td>
+      <td class="wrap" style="max-width:220px">${esc(tp.purpose)}</td>
+      <td>${tp.timeOut}${tp.timeIn?'–'+tp.timeIn:''}</td>
+      <td>${dist!=null?dist.toLocaleString()+' ק"מ':(tp.open?'<span class="pill p-info">בחוץ</span>':'—')}</td>
+      <td class="noprint">${tp.open?`<button class="btn sm" onclick="closeTrip('${tp.id}')">חזרה ✓</button>`:''}</td>
+    </tr>`;};
+  const fuelRows=[...S.fuels].sort((a,b)=>a.date<b.date?1:-1).slice(0,40).map(f=>{
+    const v=vById(f.vehicleId);
+    return `<tr><td>${fmtDate(f.date)}</td><td>${v?v.type+' צ׳ '+v.tz:'—'}</td>
+      <td>${f.liters} ל׳</td><td>${(+f.km||0).toLocaleString()}</td><td>${esc(f.source)}</td></tr>`;}).join('');
+  const month=todayStr().slice(0,7);
+  const monthLiters=S.fuels.filter(f=>f.date.startsWith(month)).reduce((s,f)=>s+(+f.liters||0),0);
+  return `<div class="panel"><div class="hd">
+    <h2>יומן נסיעות${open.length?` — ${open.length} רכבים בחוץ`:''}</h2><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="newTrip()">+ יציאה לנסיעה</button><button class="btn sec" onclick="window.print()">הדפסה</button></div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>תאריך</th><th>רכב</th><th>נהג</th><th>מטרה</th><th>שעות</th><th>מרחק</th><th class="noprint"></th></tr></thead>
+    <tbody>${open.map(tripRow).join('')}${closed.map(tripRow).join('')||(open.length?'':'<tr><td colspan="7" class="empty">אין נסיעות ביומן</td></tr>')}</tbody></table>
+    <div class="small" style="margin-top:6px">סגירת נסיעה מעדכנת אוטומטית את מד הק"מ של הרכב במצבה.</div>
+  </div></div>
+  <div class="panel"><div class="hd">
+    <h2>יומן תדלוק</h2><span class="pill p-info">החודש: ${monthLiters.toLocaleString()} ליטר</span><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="newFuel()">+ תדלוק</button></div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>תאריך</th><th>רכב</th><th>כמות</th><th>ק"מ בתדלוק</th><th>מקור</th></tr></thead>
+    <tbody>${fuelRows||'<tr><td colspan="5" class="empty">אין תדלוקים ביומן</td></tr>'}</tbody></table>
+  </div></div>`;
+}
+function newTrip(){
+  const vehOpts=S.vehicles.filter(v=>v.category==='vehicle'&&!openTrips().some(t=>t.vehicleId===v.id));
+  openModal(`
+    <div class="hd"><h3>יציאה לנסיעה</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div><label>רכב</label><select id="tp_v" onchange="const v=vById(this.value);if(v)document.getElementById('tp_ks').value=v.km">
+        ${vehOpts.map(v=>`<option value="${v.id}">${v.type} צ׳ ${v.tz} (${v.company})${v.status!=='כשיר'?' — '+v.status:''}</option>`).join('')}</select></div>
+      <div><label>נהג</label><select id="tp_d">${S.drivers.map(d=>`<option value="${d.id}">${d.name} (${d.company})</option>`).join('')}</select></div>
+      <div class="full"><label>מטרת הנסיעה</label><input id="tp_p"></div>
+      <div><label>שעת יציאה</label><input id="tp_t" type="time" value="${new Date().toTimeString().slice(0,5)}"></div>
+      <div><label>ק"מ ביציאה</label><input id="tp_ks" type="number" value="${vehOpts.length?vehOpts[0].km:0}"></div>
+    </div>
+    <div class="ft"><button class="btn" onclick="saveTrip()">רישום יציאה</button><button class="btn sec" onclick="closeModal()">ביטול</button></div>`);
+}
+function saveTrip(){
+  const g=i=>document.getElementById(i).value;
+  if(!g('tp_v')){alert('אין רכב פנוי');return;}
+  if(!g('tp_p').trim()){alert('חובה למלא מטרת נסיעה');return;}
+  const v=vById(g('tp_v')),d=dById(g('tp_d'));
+  if(v&&d&&!d.permits.includes(v.permit)&&!confirm(d.name+' ללא היתר ל'+v.permit+'. להמשיך בכל זאת?'))return;
+  S.trips.push({id:uid('tp'),vehicleId:g('tp_v'),driverId:g('tp_d'),date:todayStr(),
+    timeOut:g('tp_t'),timeIn:'',purpose:g('tp_p').trim(),kmStart:+g('tp_ks')||0,kmEnd:null,open:true});
+  save();closeModal();render();
+}
+function closeTrip(id){
+  const tp=S.trips.find(x=>x.id===id);
+  const v=vById(tp.vehicleId);
+  const kmEnd=prompt('ק"מ בחזרה עבור '+(v?v.type+' צ׳ '+v.tz:'')+':',v?v.km:tp.kmStart);
+  if(kmEnd===null)return;
+  if(+kmEnd<tp.kmStart){alert('ק"מ בחזרה קטן מהק"מ ביציאה');return;}
+  tp.kmEnd=+kmEnd;tp.timeIn=new Date().toTimeString().slice(0,5);tp.open=false;
+  if(v&&tp.kmEnd>v.km)v.km=tp.kmEnd;
+  save();render();
+}
+function newFuel(){
+  openModal(`
+    <div class="hd"><h3>רישום תדלוק</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div><label>רכב</label><select id="fu_v" onchange="const v=vById(this.value);if(v)document.getElementById('fu_k').value=v.km">
+        ${S.vehicles.filter(v=>v.category==='vehicle').map(v=>`<option value="${v.id}">${v.type} צ׳ ${v.tz} (${v.company})</option>`).join('')}</select></div>
+      <div><label>כמות (ליטר)</label><input id="fu_l" type="number" min="1"></div>
+      <div><label>ק"מ בתדלוק</label><input id="fu_k" type="number" value="${S.vehicles[0]?S.vehicles[0].km:0}"></div>
+      <div><label>מקור</label><select id="fu_s">${FUEL_SOURCES.map(s=>`<option>${s}</option>`).join('')}</select></div>
+    </div>
+    <div class="ft"><button class="btn" onclick="saveFuel()">שמירה</button><button class="btn sec" onclick="closeModal()">ביטול</button></div>`);
+}
+function saveFuel(){
+  const g=i=>document.getElementById(i).value;
+  if(!+g('fu_l')){alert('חובה למלא כמות');return;}
+  S.fuels.push({id:uid('fu'),vehicleId:g('fu_v'),date:todayStr(),liters:+g('fu_l'),km:+g('fu_k')||0,source:g('fu_s')});
+  const v=vById(g('fu_v'));
+  if(v&&+g('fu_k')>v.km)v.km=+g('fu_k');
+  save();closeModal();render();
+}
+
+/* ============================ standby & keys ============================ */
+function rStandby(){
+  const t=todayStr();
+  const sb=S.standby.filter(x=>x.date===t);
+  const rows=COMPANIES.map(c=>{
+    const cur=sb.find(x=>x.company===c);
+    const vehOpts=S.vehicles.filter(v=>v.category==='vehicle'&&v.status==='כשיר');
+    return `<tr><td><b>${c}</b></td>
+      <td><select onchange="setStandby('${c}','vehicleId',this.value)">
+        <option value="">— בחר רכב כונן —</option>
+        ${vehOpts.map(v=>`<option value="${v.id}" ${cur&&cur.vehicleId===v.id?'selected':''}>${v.type} צ׳ ${v.tz}</option>`).join('')}</select></td>
+      <td><select onchange="setStandby('${c}','driverId',this.value)">
+        <option value="">— בחר נהג כונן —</option>
+        ${S.drivers.filter(d=>{const p=presenceOf(t,d.id);return !p||PRESENT_SET.has(p);}).map(d=>`<option value="${d.id}" ${cur&&cur.driverId===d.id?'selected':''}>${d.name}</option>`).join('')}</select></td>
+      <td>${cur&&cur.vehicleId&&cur.driverId?'<span class="pill p-good">מאויש</span>':'<span class="pill p-warn">חסר</span>'}</td></tr>`;
+  }).join('');
+  const keyRows=S.vehicles.map(v=>`<tr>
+    <td>${v.type} <b>צ׳ ${v.tz}</b></td><td>${esc(v.company)}</td>
+    <td><input style="max-width:220px" value="${esc(v.keyLocation)}" onchange="vById('${v.id}').keyLocation=this.value;save()"></td>
+    <td>${v.keyLocation==='לוח מפתחות'?'<span class="pill p-good">בלוח</span>':'<span class="pill p-warn">הוצא</span>'}</td>
+  </tr>`).join('');
+  return `<div class="panel"><div class="hd"><h2>רכב כונן — ${fmtDate(t)}</h2></div><div class="bd tblwrap">
+    <table><thead><tr><th>פלוגה</th><th>רכב כונן</th><th>נהג כונן</th><th>מצב</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="small" style="margin-top:6px">רכב הכונן נשאר מתודלק, בדוק וזמין ליציאה מיידית. רק נהגים הנוכחים לפי דוח 1 מוצגים לבחירה.</div>
+  </div></div>
+  <div class="panel"><div class="hd"><h2>ניהול מפתחות</h2>
+    <span class="pill p-mut">${S.vehicles.filter(v=>v.keyLocation!=='לוח מפתחות').length} מפתחות מחוץ ללוח</span>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>כלי</th><th>פלוגה</th><th>מיקום המפתח</th><th></th></tr></thead><tbody>${keyRows}</tbody></table>
+  </div></div>`;
+}
+function setStandby(company,field,val){
+  const t=todayStr();
+  let cur=S.standby.find(x=>x.date===t&&x.company===company);
+  if(!cur){cur={id:uid('sb'),date:t,company,vehicleId:'',driverId:''};S.standby.push(cur);}
+  cur[field]=val;
+  save();render();
+}
+
+/* ============================ vehicle file (תיק רכב) ============================ */
+function vehicleFile(id){
+  const v=vById(id);
+  const hist=[];
+  S.serviceLog.filter(x=>x.vehicleId===id).forEach(x=>hist.push({date:x.date,txt:`טיפול: ${x.type}${x.notes?' — '+x.notes:''} (${(+x.km||0).toLocaleString()} ק"מ)`}));
+  S.fuels.filter(x=>x.vehicleId===id).forEach(x=>hist.push({date:x.date,txt:`תדלוק ${x.liters} ל׳ — ${x.source}`}));
+  S.trips.filter(x=>x.vehicleId===id).forEach(x=>{const d=dById(x.driverId);hist.push({date:x.date,txt:`נסיעה: ${x.purpose}${d?' ('+d.name+')':''}${x.open?' — בחוץ':''}`});});
+  S.faults.filter(x=>x.vehicleId===id).forEach(x=>hist.push({date:x.date,txt:`תקלה (${x.severity}${x.status!=='פתוחה'?', טופלה':''}): ${x.desc}`}));
+  S.accidents.filter(x=>x.vehicleId===id).forEach(x=>hist.push({date:x.date,txt:`תאונה (${x.severity}): ${x.desc}`}));
+  hist.sort((a,b)=>a.date<b.date?1:-1);
+  openModal(`
+    <div class="hd"><h3>תיק רכב — ${v.type} צ׳ ${esc(v.tz)}</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div class="full small">
+        ${esc(v.model)} · ${esc(v.company)} · <span class="pill ${{'כשיר':'p-good','בטיפול':'p-warn','מושבת':'p-crit'}[v.status]}">${v.status}</span>
+        · ${v.km.toLocaleString()} ק"מ · טסט ${fmtDate(v.testDate)} · ביטוח ${fmtDate(v.insuranceDate)} · מפתח: ${esc(v.keyLocation)}
+      </div>
+      <div class="full"><div class="sec-title">צל"ם — ציוד חובה (סמן פריט חסר)</div>
+        <div class="checkgrid" style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))">
+        ${EQUIP_ITEMS.map(e=>`<label style="display:flex;gap:6px;align-items:center;font-size:13px;color:var(--ink)">
+          <input type="checkbox" style="width:auto" ${v.missingEquip.includes(e)?'checked':''}
+            onchange="toggleEquip('${id}','${e.replace(/'/g,"\\'")}');">
+          ${e}${v.missingEquip.includes(e)?' <span class="pill p-crit" style="font-size:10.5px">חסר</span>':''}</label>`).join('')}
+        </div></div>
+      ${docSection('vehicle',id,'vehicleFile')}
+      <div class="full"><div class="sec-title">היסטוריה (${hist.length})</div>
+        ${hist.length?`<div style="max-height:240px;overflow:auto"><ul class="alerts">${hist.slice(0,30).map(h=>`<li><span class="small" style="min-width:56px">${fmtDate(h.date)}</span><span style="font-size:13.5px">${esc(h.txt)}</span></li>`).join('')}</ul></div>`:'<div class="empty">אין רישומים</div>'}
+      </div>
+    </div>
+    <div class="ft"><button class="btn sec" onclick="closeModal()">סגירה</button>
+      <span style="flex:1"></span><button class="btn" onclick="closeModal();editVehicle('${id}')">עריכת פרטי הכלי</button></div>`);
+}
+function toggleEquip(vid,item){
+  const v=vById(vid);
+  if(v.missingEquip.includes(item))v.missingEquip=v.missingEquip.filter(x=>x!==item);
+  else v.missingEquip.push(item);
+  save();vehicleFile(vid);
 }
 
 /* ============================ faults ============================ */
@@ -945,7 +1259,46 @@ function rFaults(){
     <tbody>${open.map(row).join('')||'<tr><td colspan="6" class="empty">אין תקלות פתוחות</td></tr>'}</tbody></table>
     ${closed.length?`<div class="sec-title">תקלות שטופלו לאחרונה</div><div class="tblwrap"><table><tbody>${closed.map(row).join('')}</tbody></table></div>`:''}
     <div class="small" style="margin-top:8px">תקלה "משביתה" משביתה את הרכב אוטומטית במצבה. סגירת כל התקלות המשביתות מחזירה את הרכב לכשירות.</div>
+  </div></div>
+  <div class="panel"><div class="hd">
+    <h2>תאונות ואירועי בטיחות (${S.accidents.length})</h2><span class="spacer"></span>
+    <div class="filters noprint"><button class="btn" onclick="newAccident()">+ דיווח תאונה</button></div>
+  </div><div class="bd tblwrap">
+    <table><thead><tr><th>תאריך</th><th>רכב</th><th>נהג</th><th>תיאור</th><th>חומרה</th><th>מצב</th><th class="noprint"></th></tr></thead>
+    <tbody>${[...S.accidents].sort((a,b)=>a.date<b.date?1:-1).map(a=>{
+      const v=vById(a.vehicleId),d=dById(a.driverId);
+      return `<tr><td>${fmtDate(a.date)}</td>
+        <td>${v?v.type+' צ׳ '+v.tz:'—'}</td><td>${d?esc(d.name):'—'}</td>
+        <td class="wrap" style="max-width:300px">${esc(a.desc)}</td>
+        <td><span class="pill ${a.severity==='חמור'?'p-crit':(a.severity==='בינוני'?'p-warn':'p-mut')}">${a.severity}</span></td>
+        <td>${a.status==='נסגר'?'<span class="pill p-good">נסגר</span>':`<span class="pill p-info">${esc(a.status)}</span>`}</td>
+        <td class="noprint">${a.status!=='נסגר'?`<button class="btn sm" onclick="closeAccident('${a.id}')">סגירת אירוע</button>`:''}</td></tr>`;
+    }).join('')||'<tr><td colspan="7" class="empty">אין תאונות רשומות</td></tr>'}</tbody></table>
+    <div class="small" style="margin-top:8px">כל תאונה מורידה 15 נקודות מציון הבטיחות של הנהג ומתועדת בתיק הרכב.</div>
   </div></div>`;
+}
+function newAccident(){
+  openModal(`
+    <div class="hd"><h3>דיווח תאונה / אירוע בטיחות</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="bd">
+      <div><label>רכב</label><select id="ac_v">${S.vehicles.map(v=>`<option value="${v.id}">${v.type} צ׳ ${v.tz}</option>`).join('')}</select></div>
+      <div><label>נהג מעורב</label><select id="ac_d"><option value="">—</option>${S.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div>
+      <div><label>תאריך</label><input id="ac_dt" type="date" value="${todayStr()}"></div>
+      <div><label>חומרה</label><select id="ac_s"><option>קל</option><option>בינוני</option><option>חמור</option></select></div>
+      <div class="full"><label>תיאור האירוע</label><textarea id="ac_desc" rows="2"></textarea></div>
+    </div>
+    <div class="ft"><button class="btn" onclick="saveAccident()">שמירה</button><button class="btn sec" onclick="closeModal()">ביטול</button></div>`);
+}
+function saveAccident(){
+  const g=i=>document.getElementById(i).value;
+  if(!g('ac_desc').trim()){alert('חובה למלא תיאור');return;}
+  S.accidents.push({id:uid('ac'),date:g('ac_dt')||todayStr(),vehicleId:g('ac_v'),driverId:g('ac_d'),
+    desc:g('ac_desc').trim(),severity:g('ac_s'),status:'בטיפול קצין רכב'});
+  save();closeModal();render();
+}
+function closeAccident(id){
+  const a=S.accidents.find(x=>x.id===id);
+  a.status='נסגר';save();render();
 }
 function newFault(){
   openModal(`
@@ -987,7 +1340,17 @@ function syncVehicleFromFaults(vid){
 
 /* ============================ backup ============================ */
 function rBackup(){
-  return `<div class="panel"><div class="hd"><h2>גיבוי ושחזור</h2></div><div class="bd">
+  return `<div class="panel"><div class="hd"><h2>ייצוא דוחות (CSV)</h2></div><div class="bd">
+    <p class="small">הייצוא נכתב לתיבה למטה — העתק והדבק לאקסל / Google Sheets. הקידוד תואם עברית.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+      <button class="btn sec" onclick="exportCsv('vehicles')">מצבת רכבים</button>
+      <button class="btn sec" onclick="exportCsv('drivers')">נהגים ורישיונות</button>
+      <button class="btn sec" onclick="exportCsv('presence')">דוח 1 להיום</button>
+      <button class="btn sec" onclick="exportCsv('trips')">יומן נסיעות</button>
+      <button class="btn sec" onclick="exportCsv('fuels')">יומן תדלוק</button>
+    </div>
+  </div></div>
+  <div class="panel"><div class="hd"><h2>גיבוי ושחזור</h2></div><div class="bd">
     <p class="small">הנתונים נשמרים בדפדפן זה בלבד. מומלץ לייצא גיבוי בסוף כל יום עבודה ולשמור אותו — כך אפשר לעבור מחשב או לשחזר אחרי ניקוי דפדפן.</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
       <button class="btn" onclick="exportData()">ייצוא גיבוי (העתקה)</button>
@@ -996,6 +1359,32 @@ function rBackup(){
     </div>
     <textarea id="bk" rows="8" style="margin-top:12px" placeholder="כאן יופיע הגיבוי לייצוא, או הדבק כאן גיבוי לייבוא"></textarea>
   </div></div>`;
+}
+function exportCsv(kind){
+  const q=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  let rows=[];
+  if(kind==='vehicles'){
+    rows=[['צ׳','סוג','דגם','פלוגה','מצב','ק"מ','ק"מ לטיפול','טסט','ביטוח','מפתח','צל"ם חסר','הערות']];
+    S.vehicles.forEach(v=>rows.push([v.tz,v.type,v.model,v.company,v.status,v.km,v.category==='trailer'?'':kmToService(v),v.testDate,v.insuranceDate,v.keyLocation,(v.missingEquip||[]).join(' | '),v.notes]));
+  }else if(kind==='drivers'){
+    rows=[['שם','מספר אישי','פלוגה','טלפון','רישיון אזרחי','תוקף אזרחי','תוקף צבאי','יום בטיחות','ציון בטיחות','היתרים']];
+    S.drivers.forEach(d=>rows.push([d.name,d.personal,d.company,d.phone,d.civilClass,d.civilExpiry,d.militaryExpiry,d.safetyDay,driverScore(d),d.permits.join(' | ')]));
+  }else if(kind==='presence'){
+    const day=S.presence[todayStr()]||{};
+    rows=[['תאריך','שם','מספר אישי','פלוגה','מצבה']];
+    S.drivers.forEach(d=>rows.push([todayStr(),d.name,d.personal,d.company,day[d.id]||'טרם דווח']));
+  }else if(kind==='trips'){
+    rows=[['תאריך','צ׳','נהג','מטרה','יציאה','חזרה','ק"מ יציאה','ק"מ חזרה']];
+    S.trips.forEach(t=>{const v=vById(t.vehicleId),d=dById(t.driverId);
+      rows.push([t.date,v?v.tz:'',d?d.name:'',t.purpose,t.timeOut,t.timeIn,t.kmStart,t.kmEnd??'']);});
+  }else if(kind==='fuels'){
+    rows=[['תאריך','צ׳','ליטרים','ק"מ','מקור']];
+    S.fuels.forEach(f=>{const v=vById(f.vehicleId);rows.push([f.date,v?v.tz:'',f.liters,f.km,f.source]);});
+  }
+  const ta=document.getElementById('bk');
+  ta.value=rows.map(r=>r.map(q).join(',')).join('\n');
+  ta.select();
+  try{document.execCommand('copy');alert('ה-CSV הועתק ללוח — הדבק באקסל.');}catch(e){}
 }
 function exportData(){
   const ta=document.getElementById('bk');
@@ -1009,16 +1398,81 @@ function importData(){
     const d=JSON.parse(ta.value);
     if(!d.vehicles||!d.drivers)throw 0;
     if(!confirm('לייבא את הגיבוי? הנתונים הנוכחיים יוחלפו.'))return;
-    if(!d.trainings)d.trainings=[];
-    if(!d.reports)d.reports=[];
-    if(!d.faults)d.faults=[];
-    d.drivers.forEach(x=>{if(!('safetyDay' in x))x.safetyDay='';});
+    migrate(d);
     S=d;save();render();alert('הגיבוי נטען בהצלחה.');
   }catch(e){alert('הטקסט שהודבק אינו גיבוי תקין.');}
 }
 function resetData(){
   if(!confirm('לאפס את כל הנתונים ולחזור לנתוני הדוגמה?'))return;
   S=seed();save();render();
+}
+
+/* ============================ documents ============================ */
+function docsOf(type,id){return S.docs.filter(x=>x.ownerType===type&&x.ownerId===id);}
+function handleDocUpload(type,id,input,reopen){
+  const file=input.files&&input.files[0];
+  if(!file)return;
+  const isImg=file.type.startsWith('image/');
+  const isPdf=file.type==='application/pdf';
+  if(!isImg&&!isPdf){alert('ניתן להעלות תמונה או PDF בלבד');return;}
+  const finish=dataUrl=>{
+    if(dataUrl.length>1600000){alert('הקובץ גדול מדי גם אחרי דחיסה. צלם בתאורה טובה ונסה שוב.');return;}
+    S.docs.push({id:uid('doc'),ownerType:type,ownerId:id,name:file.name,date:todayStr(),kind:isPdf?'pdf':'img',dataUrl});
+    try{localStorage.setItem(LS_KEY,JSON.stringify(S));}
+    catch(e){S.docs.pop();alert('אין מקום באחסון הדפדפן — מחק מסמכים ישנים או ייצא גיבוי ואפס.');return;}
+    if(reopen)window[reopen](id);
+  };
+  if(isPdf){
+    if(file.size>1200000){alert('PDF עד 1.2MB. סרוק באיכות נמוכה יותר או צלם תמונה.');input.value='';return;}
+    const r=new FileReader();r.onload=()=>finish(r.result);r.readAsDataURL(file);
+  }else{
+    const r=new FileReader();
+    r.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const MAX=1000;
+        let w=img.width,h=img.height;
+        if(Math.max(w,h)>MAX){const k=MAX/Math.max(w,h);w=Math.round(w*k);h=Math.round(h*k);}
+        const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        finish(cv.toDataURL('image/jpeg',0.7));
+      };
+      img.src=r.result;
+    };
+    r.readAsDataURL(file);
+  }
+  input.value='';
+}
+function delDoc(docId,type,id,reopen){
+  if(!confirm('למחוק את המסמך?'))return;
+  S.docs=S.docs.filter(x=>x.id!==docId);
+  save();
+  if(reopen)window[reopen](id);
+}
+function viewDoc(docId){
+  const d=S.docs.find(x=>x.id===docId);
+  if(!d)return;
+  openModal(`
+    <div class="hd"><h3>${esc(d.name)}</h3><span class="small" style="margin-inline-start:10px">הועלה ${fmtDate(d.date)}</span><span style="flex:1"></span><button class="x" onclick="closeModal()">✕</button></div>
+    <div style="padding:10px;text-align:center;max-height:70vh;overflow:auto">
+      ${d.kind==='pdf'?`<iframe src="${d.dataUrl}" style="width:100%;height:62vh;border:none"></iframe>`:`<img src="${d.dataUrl}" style="max-width:100%;border-radius:8px" alt="${esc(d.name)}">`}
+    </div>`);
+}
+function docSection(type,id,reopen){
+  const docs=docsOf(type,id);
+  return `<div class="full"><div class="sec-title">מסמכים סרוקים (${docs.length}) — רישיונות, ביטוח, טפסים</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      ${docs.map(d=>`<span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:3px 6px">
+        ${d.kind==='img'?`<img src="${d.dataUrl}" style="height:40px;border-radius:4px;cursor:pointer" onclick="viewDoc('${d.id}')" alt="">`:`<button class="btn sm sec" onclick="viewDoc('${d.id}')">📄 PDF</button>`}
+        <span class="small" style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${esc(d.name)}</span>
+        <button class="x" style="font-size:14px" onclick="delDoc('${d.id}','${type}','${id}','${reopen}')">✕</button>
+      </span>`).join('')}
+      <label class="btn sec sm" style="display:inline-block">+ העלאת מסמך
+        <input type="file" accept="image/*,application/pdf" style="display:none" onchange="handleDocUpload('${type}','${id}',this,'${reopen}')">
+      </label>
+    </div>
+    <div class="small" style="margin-top:4px">תמונות נדחסות אוטומטית. האחסון מקומי לדפדפן — מומלץ לגבות.</div>
+  </div>`;
 }
 
 /* ============================ modal helpers ============================ */

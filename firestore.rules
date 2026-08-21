@@ -87,6 +87,14 @@ service cloud.firestore {
       allow update, delete: if ammoAdmin();
     }
 
+    // Access log — every app entry is recorded (append-only); reading it is
+    // commander-level (admins, e.g. the armory) only.
+    match /ammo_log/{id} {
+      allow create: if signedIn();
+      allow read, delete: if ammoAdmin();
+      allow update: if false;
+    }
+
     // Daily counts — anyone in the unit submits/resubmits; doc id is pinned
     // to '<unitId>_<date>'; only admins delete.
     match /ammo_counts/{id} {

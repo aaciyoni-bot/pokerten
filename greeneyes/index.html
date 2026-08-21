@@ -157,6 +157,17 @@
   .stock-grid.g3 { grid-template-columns: 1fr 62px 96px; }
   .stock-grid .hdr { font-size: 11px; font-weight: 700; color: #4b5f52; }
   .serial { color: #0e7490; font-weight: 700; }
+  .instlnk { display: block; background: none; border: none; font-family: inherit; font-size: 11px; font-weight: 700; color: #2d6a4f; padding: 2px 0 0; cursor: pointer; text-align: right; }
+  .instbox { grid-column: 1 / -1; background: #eef4f0; border-radius: 10px; padding: 8px; }
+  .instbox .irow { display: flex; gap: 5px; margin-bottom: 6px; align-items: center; }
+  .instbox .irow input { padding: 7px 6px; font-size: 13px; font-weight: 400; text-align: right; min-width: 0; }
+  .instbox .irow input.n1 { flex: 0 0 72px; text-align: center; }
+  .instbox .irow input.n2 { flex: 1 1 auto; }
+  .instbox .irow input.n3 { flex: 0 0 88px; text-align: center; }
+  .instbox .irow button { border: none; background: none; color: #b91c1c; font-size: 15px; cursor: pointer; flex: 0 0 auto; padding: 2px; }
+  .instbox .note { font-size: 10.5px; color: #6b7f72; margin-top: 2px; }
+  .missbtn { flex: 0 0 auto; font-family: inherit; font-size: 12px; font-weight: 700; border-radius: 9px; border: 1.5px solid #dc2626; color: #dc2626; background: #fff; padding: 7px 9px; cursor: pointer; }
+  .item.diff .missbtn { background: #dc2626; color: #fff; }
 
   /* ── login / no access ── */
   #login {
@@ -177,7 +188,7 @@
   #login .gbtn.confirm { background: #16a34a; color: #fff; }
   #login .linkish { background: none; box-shadow: none; color: #a7f3d0; font-size: 14px; padding: 8px; }
   .confirm-txt { background: rgba(255,255,255,.1); border: 1.5px solid #a7f3d0; border-radius: 12px; padding: 14px; font-size: 15px; line-height: 1.5; }
-  #login input { font-family: inherit; font-size: 17px; border: none; border-radius: 12px; padding: 13px; width: 100%; }
+  #login input { font-family: inherit; font-size: 17px; border: none; border-radius: 12px; padding: 13px; width: 100%; color: #1a2e22; background: #fff; }
   .spin { text-align: center; padding: 40px; color: #6b7f72; }
 
   .toast {
@@ -387,6 +398,11 @@
     var d = new Date(ts);
     return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   }
+  function fmtDT(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    return d.getDate() + '/' + (d.getMonth() + 1) + ' ' + fmtTime(ts);
+  }
 
   /* ═══════════ state ═══════════ */
   var S = {
@@ -396,6 +412,9 @@
     stock: {},             // unitId -> {group, ammo:{id:{q,t}}, equip:{id:{q,t}}}
     usage: [],             // [{id, group, unitId, itemId, qty, date, ts, reporterName, reporterNum, note}]
     counts: {},            // `${unit}_${date}` -> count doc
+    entryLog: [],          // access log (admins only)
+    instEdit: { unit: null, open: {}, data: {} }, // signed-holders editor buffer (admin)
+    loggedLoad: false,     // entry already logged for this page load
     unit: localStorage.getItem('yb_unit') || 'a_armon',
     date: clampDate(todayIso()),
     repDate: clampDate(todayIso()),
@@ -434,6 +453,18 @@
   }
   function countId(unit, date) { return unit + '_' + date; }
 
+  // access log — every entry (framework pick / admin login / remembered session)
+  function logEntry(type, extra) {
+    try {
+      var fb = window.fb;
+      fb.addDoc(fb.collection(fb.db, 'ammo_log'), Object.assign({
+        type: type, ts: Date.now(),
+        name: localStorage.getItem('yb_name') || '',
+        num: localStorage.getItem('yb_num') || ''
+      }, extra || {})).catch(function () {});
+    } catch (e) {}
+  }
+
   // merged built-in + admin-added custom items
   function ammoList() { return AMMO_ITEMS.concat((S.config && S.config.customAmmo) || []); }
   function equipList() { return EQUIP_ITEMS.concat((S.config && S.config.customEquip) || []); }
@@ -457,11 +488,21 @@
     return UNIT_GROUPS.filter(function (g) { return gs.indexOf(g.g) >= 0; });
   }
 
-  // expected quantity = admin baseline − usage reported after the baseline was set
+  // signed-holder list for an item, when the admin tracks it piece-by-piece
+  function instOf(unitId, kind, itemId) {
+    var st = S.stock[unitId];
+    var e = st && st[kind] && st[kind][itemId];
+    return (e && e.inst && e.inst.length) ? e.inst : null;
+  }
+
+  // expected quantity = admin baseline − usage reported after the baseline was
+  // set; for piece-tracked items the signed-holder list is the source of truth
   function expectedFor(unitId, kind, itemId) {
     var st = S.stock[unitId]; if (!st) return null;
     var e = st[kind] && st[kind][itemId];
-    if (!e || typeof e.q !== 'number') return null;
+    if (!e) return null;
+    if (e.inst && e.inst.length) return e.inst.length;
+    if (typeof e.q !== 'number') return null;
     if (kind === 'equip') return e.q;
     var used = 0;
     for (var i = 0; i < S.usage.length; i++) {
@@ -469,6 +510,15 @@
       if (u.unitId === unitId && u.itemId === itemId && (u.ts || 0) > (e.t || 0)) used += (+u.qty || 0);
     }
     return e.q - used;
+  }
+
+  // a unit's count screen only shows items it actually holds
+  function visibleItems(kind) {
+    var st = S.stock[S.unit];
+    return (kind === 'ammo' ? ammoList() : equipList()).filter(function (it) {
+      var e = st && st[kind] && st[kind][it.id];
+      return !!e && ((e.inst && e.inst.length) || (typeof e.q === 'number' && e.q > 0));
+    });
   }
 
   function unitSelectHtml(id, selected) {
@@ -550,6 +600,8 @@
       localStorage.setItem('yb_unit', pickedUnit);
       S.unit = pickedUnit; S.adminUnit = pickedUnit; S.bufKey = '';
       S.tab = 'count';
+      logEntry('unit', { unitId: pickedUnit, group: pickedGroup });
+      S.loggedLoad = true;
       applyRole();
     };
     $('lnkAdmin').onclick = function () { pickerPanes('admBox'); };
@@ -581,16 +633,23 @@
 
   function adminLogin() {
     var fb = window.fb;
-    var u = ($('admUser').value || '').trim();
+    var u = ($('admUser').value || '').trim().toLowerCase();
     var p = $('admPass').value || '';
     if (!u || !p) { toast('יש למלא שם משתמש וסיסמה'); return; }
     if (u.indexOf('@') < 0) u = u + '@greeneyes95.com';  // short usernames map to app emails
     var btn = $('btnAdmLogin'); btn.disabled = true;
     fb.signInWithEmailAndPassword(fb.auth, u, p)
-      .then(function () { btn.disabled = false; $('admPass').value = ''; S.tab = 'report'; })
+      .then(function () {
+        btn.disabled = false; $('admPass').value = ''; S.tab = 'report';
+        logEntry('admin', { user: u.split('@')[0] });
+        S.loggedLoad = true;
+      })
       .catch(function (e) {
         btn.disabled = false;
-        toast('כניסה נכשלה — בדקו שם משתמש וסיסמה (' + (e.code || '') + ')');
+        var c = e.code || '';
+        if (c === 'auth/operation-not-allowed') toast('יש להפעיל Email/Password בקונסול Firebase');
+        else if (c === 'auth/too-many-requests') toast('יותר מדי ניסיונות — המתינו דקה ונסו שוב');
+        else toast('שם משתמש או סיסמה שגויים — המשתמש חייב להיות ' + u + ' (' + c + ')');
       });
   }
 
@@ -620,6 +679,11 @@
     }
     if (!UNIT_BY_ID[S.adminUnit] || myGroups().indexOf(UNIT_BY_ID[S.adminUnit].grp) < 0) S.adminUnit = S.unit;
     if (S.tab === 'admin' && role !== 'admin') S.tab = 'count';
+    if (!S.loggedLoad) { // remembered session — log this entry too
+      S.loggedLoad = true;
+      if (role === 'admin') logEntry('admin', { user: (S.user.email || '').split('@')[0] });
+      else logEntry('unit', { unitId: localStorage.getItem('yb_unit') || S.unit, group: role });
+    }
     resubscribeData();
     setTab(S.tab);
   }
@@ -648,6 +712,14 @@
       var m = {}; qs.forEach(function (d) { m[d.id] = d.data(); });
       S.counts = m; renderAll();
     }, function (e) { toast('שגיאת הרשאות (ספירות): ' + e.code); }));
+    if (scope === 'all') { // access log is commander data — admins only
+      S.unsubData.push(fb.onSnapshot(fb.collection(db, 'ammo_log'), function (qs) {
+        var a = []; qs.forEach(function (d) { a.push(d.data()); });
+        a.sort(function (x, y) { return (y.ts || 0) - (x.ts || 0); });
+        S.entryLog = a;
+        if (S.tab === 'admin') renderAdmin();
+      }, function () {}));
+    }
   }
 
   function setTab(tab) {
@@ -685,8 +757,16 @@
         if (!src) return;
         Object.keys(src).forEach(function (iid) {
           var v = src[iid];
-          if (v && v.ok) S.buf[kind][iid] = { ok: true };
-          else if (v && typeof v.actual === 'number') S.buf[kind][iid] = { actual: v.actual };
+          if (!v) return;
+          var inst = instOf(S.unit, kind, iid);
+          if (inst) {
+            var o = {}, missIdx = v.missIdx || [];
+            inst.forEach(function (_, i) { o[i] = missIdx.indexOf(i) >= 0 ? 'miss' : 'ok'; });
+            if (v.ok || typeof v.actual === 'number') S.buf[kind][iid] = { inst: o };
+            return;
+          }
+          if (v.ok) S.buf[kind][iid] = { ok: true };
+          else if (typeof v.actual === 'number') S.buf[kind][iid] = { actual: v.actual };
         });
       });
     }
@@ -724,20 +804,29 @@
       h += '<div class="banner-warn">📦 יום ' + DAY_HE[isoDow(S.date)] + ' — היום סופרים גם <b>אמצעים</b>.</div>';
     }
 
-    h += '<div class="sec-head"><h2>תחמושת</h2><button class="btn-mini" id="allAmmo">סמן הכל ✓</button></div>';
-    h += itemsHtml('ammo', ammoList());
-    if (equipDay) {
-      h += '<div class="sec-head"><h2>אמצעים (שלישי + שישי)</h2><button class="btn-mini" id="allEquip">סמן הכל ✓</button></div>';
-      h += itemsHtml('equip', equipList());
+    var ammoVis = visibleItems('ammo');
+    var equipVis = equipDay ? visibleItems('equip') : [];
+    var nothing = !ammoVis.length && !equipVis.length;
+    if (nothing) {
+      h += '<div class="banner-warn" style="margin-top:14px">📋 עדיין לא הוגדר מלאי ליחידה זו.<br>המנהל מזין כמויות וחתומים בטאב ניהול — ומיד יופיעו כאן הפריטים לספירה.</div>';
+    } else {
+      if (ammoVis.length) {
+        h += '<div class="sec-head"><h2>תחמושת</h2><button class="btn-mini" id="allAmmo">סמן הכל ✓</button></div>';
+        h += itemsHtml('ammo', ammoVis);
+      }
+      if (equipDay && equipVis.length) {
+        h += '<div class="sec-head"><h2>אמצעים (שלישי + שישי)</h2><button class="btn-mini" id="allEquip">סמן הכל ✓</button></div>';
+        h += itemsHtml('equip', equipVis);
+      }
+
+      h += '<div class="card"><h3>פרטי הסופר</h3><div class="grid2">' +
+        '<div><label class="fld">שם מלא</label><input type="text" id="cName" autocomplete="off" value="' + esc(localStorage.getItem('yb_name') || '') + '"></div>' +
+        '<div><label class="fld">מספר אישי</label><input type="text" id="cNum" inputmode="numeric" autocomplete="off" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
+        '</div></div>';
+
+      h += '<button class="btn-primary" id="btnSubmit">שליחת ספירה ✓</button>';
+      h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-bottom:8px">V ירוק = קיים ותואם · ״שונה״ = הקלדת הכמות בפועל (גם 0) · ״חסר״ = פריט חתום שלא נמצא</div>';
     }
-
-    h += '<div class="card"><h3>פרטי הסופר</h3><div class="grid2">' +
-      '<div><label class="fld">שם מלא</label><input type="text" id="cName" autocomplete="off" value="' + esc(localStorage.getItem('yb_name') || '') + '"></div>' +
-      '<div><label class="fld">מספר אישי</label><input type="text" id="cNum" inputmode="numeric" autocomplete="off" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
-      '</div></div>';
-
-    h += '<button class="btn-primary" id="btnSubmit">שליחת ספירה ✓</button>';
-    h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-bottom:8px">V ירוק = הכמות תואמת את הצפי · ״שונה״ = הקלדת הכמות שנספרה בפועל</div>';
 
     $('scrCount').innerHTML = h;
 
@@ -751,16 +840,32 @@
     };
     var chip = document.querySelector('#dstrip .dchip.sel');
     if (chip) chip.scrollIntoView({ inline: 'center', block: 'nearest' });
-    $('allAmmo').onclick = function () { markAll('ammo', ammoList()); };
-    if (equipDay) $('allEquip').onclick = function () { markAll('equip', equipList()); };
+    if ($('allAmmo')) $('allAmmo').onclick = function () { markAll('ammo', ammoVis); };
+    if ($('allEquip')) $('allEquip').onclick = function () { markAll('equip', equipVis); };
     wireItemRows('ammo');
     if (equipDay) wireItemRows('equip');
-    $('btnSubmit').onclick = submitCount;
+    if ($('btnSubmit')) $('btnSubmit').onclick = submitCount;
   }
 
   function itemsHtml(kind, items) {
     var h = '';
     items.forEach(function (it) {
+      var inst = instOf(S.unit, kind, it.id);
+      if (inst) {
+        // piece-tracked item: one row per signed holder, ✓ or "חסר" each
+        var marks = (S.buf[kind][it.id] && S.buf[kind][it.id].inst) || {};
+        inst.forEach(function (ins, i) {
+          var stt = marks[i]; // 'ok' | 'miss' | undefined
+          h += '<div class="item' + (stt === 'ok' ? ' ok' : stt === 'miss' ? ' diff' : '') + '">' +
+            '<button class="vbtn" data-ik="' + kind + '" data-ii="' + it.id + '" data-ix="' + i + '" aria-label="קיים">✓</button>' +
+            '<div class="iname"><div class="nm">' + esc(it.name) + (inst.length > 1 ? ' <span style="color:#6b7f72;font-size:12px">(' + (i + 1) + '/' + inst.length + ')</span>' : '') +
+            (ins.s ? ' · <span class="serial">צ׳ ' + esc(ins.s) + '</span>' : '') + '</div>' +
+            '<div class="exp">חתום: <b>' + esc(ins.owner || '—') + '</b>' + (ins.num ? ' · מ.א ' + esc(ins.num) : '') + '</div></div>' +
+            '<button class="missbtn" data-mk="' + kind + '" data-mi="' + it.id + '" data-mx="' + i + '">חסר</button>' +
+            '</div>';
+        });
+        return;
+      }
       var exp = expectedFor(S.unit, kind, it.id);
       var st = S.stock[S.unit];
       var ser = kind === 'equip' ? ((st && st.equip && st.equip[it.id] && st.equip[it.id].s) || '') : '';
@@ -785,7 +890,14 @@
 
   function markAll(kind, items) {
     items.forEach(function (it) {
-      if (expectedFor(S.unit, kind, it.id) != null) S.buf[kind][it.id] = { ok: true };
+      var inst = instOf(S.unit, kind, it.id);
+      if (inst) {
+        var o = {};
+        inst.forEach(function (_, i) { o[i] = 'ok'; });
+        S.buf[kind][it.id] = { inst: o };
+      } else if (expectedFor(S.unit, kind, it.id) != null) {
+        S.buf[kind][it.id] = { ok: true };
+      }
     });
     renderCount();
   }
@@ -819,6 +931,23 @@
         S.buf[kind][iid] = { actual: v };
       };
     });
+    // piece-tracked rows: ✓ = present, "חסר" = missing (each toggles off on re-tap)
+    document.querySelectorAll('.vbtn[data-ik="' + kind + '"]').forEach(function (b) {
+      b.onclick = function () {
+        var iid = b.getAttribute('data-ii'), ix = b.getAttribute('data-ix');
+        var e = S.buf[kind][iid] = S.buf[kind][iid] && S.buf[kind][iid].inst ? S.buf[kind][iid] : { inst: {} };
+        if (e.inst[ix] === 'ok') delete e.inst[ix]; else e.inst[ix] = 'ok';
+        renderCount();
+      };
+    });
+    document.querySelectorAll('.missbtn[data-mk="' + kind + '"]').forEach(function (b) {
+      b.onclick = function () {
+        var iid = b.getAttribute('data-mi'), ix = b.getAttribute('data-mx');
+        var e = S.buf[kind][iid] = S.buf[kind][iid] && S.buf[kind][iid].inst ? S.buf[kind][iid] : { inst: {} };
+        if (e.inst[ix] === 'miss') delete e.inst[ix]; else e.inst[ix] = 'miss';
+        renderCount();
+      };
+    });
   }
 
   function submitCount() {
@@ -826,27 +955,43 @@
     var num = ($('cNum').value || '').trim();
     if (!name || !num) { toast('יש למלא שם מלא ומספר אישי'); return; }
     var equipDay = isEquipDay(S.date);
-    var items = {}, equip = null, missing = [];
-
-    ammoList().forEach(function (it) {
-      var m = S.buf.ammo[it.id];
-      var exp = expectedFor(S.unit, 'ammo', it.id);
-      if (m && m.ok) items[it.id] = { ok: true, expected: exp };
-      else if (m && typeof m.actual === 'number') items[it.id] = { actual: m.actual, expected: exp };
-      else missing.push(it.name);
-    });
-    if (equipDay) {
-      equip = {};
-      equipList().forEach(function (it) {
-        var m = S.buf.equip[it.id];
-        var exp = expectedFor(S.unit, 'equip', it.id);
-        if (m && m.ok) equip[it.id] = { ok: true, expected: exp };
-        else if (m && typeof m.actual === 'number') equip[it.id] = { actual: m.actual, expected: exp };
-        else missing.push(it.name);
+    var notMarked = [];
+    function collect(kind, target) {
+      visibleItems(kind).forEach(function (it) {
+        var inst = instOf(S.unit, kind, it.id);
+        if (inst) {
+          // piece-tracked: every signed holder must be marked קיים/חסר
+          var mm = (S.buf[kind][it.id] && S.buf[kind][it.id].inst) || {};
+          var present = 0, marked = 0, missIdx = [], missingArr = [];
+          inst.forEach(function (ins, i) {
+            if (mm[i] === 'ok') { marked++; present++; }
+            else if (mm[i] === 'miss') {
+              marked++; missIdx.push(i);
+              missingArr.push({ s: ins.s || '', owner: ins.owner || '', num: ins.num || '' });
+            }
+          });
+          if (marked < inst.length) { notMarked.push(it.name); return; }
+          target[it.id] = present === inst.length
+            ? { ok: true, expected: inst.length }
+            : { actual: present, expected: inst.length, missIdx: missIdx, missing: missingArr };
+          return;
+        }
+        var m = S.buf[kind][it.id];
+        var exp = expectedFor(S.unit, kind, it.id);
+        if (m && m.ok) target[it.id] = { ok: true, expected: exp };
+        else if (m && typeof m.actual === 'number') target[it.id] = { actual: m.actual, expected: exp };
+        else notMarked.push(it.name);
       });
     }
-    if (missing.length) {
-      toast('חסר סימון: ' + missing.slice(0, 3).join(', ') + (missing.length > 3 ? ' ועוד ' + (missing.length - 3) : ''));
+    var items = {}; collect('ammo', items);
+    var equip = null;
+    if (equipDay) { equip = {}; collect('equip', equip); }
+    if (notMarked.length) {
+      toast('חסר סימון: ' + notMarked.slice(0, 3).join(', ') + (notMarked.length > 3 ? ' ועוד ' + (notMarked.length - 3) : ''));
+      return;
+    }
+    if (!Object.keys(items).length && (!equip || !Object.keys(equip).length)) {
+      toast('אין פריטים לספירה ביחידה זו');
       return;
     }
     localStorage.setItem('yb_name', name);
@@ -876,7 +1021,15 @@
       '<label class="fld">יחידה</label>' + unitSelectHtml('uUnit', S.unit) +
       '<div class="grid2">' +
       '<div><label class="fld">פריט</label><select id="uItem">' +
-      ammoList().map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + '</option>'; }).join('') +
+      (function () { // only ammo the selected unit actually holds
+        var st = S.stock[S.unit];
+        var list = ammoList().filter(function (i) {
+          var e = st && st.ammo && st.ammo[i.id];
+          return e && ((e.inst && e.inst.length) || (typeof e.q === 'number' && e.q > 0));
+        });
+        if (!list.length) list = ammoList();
+        return list.map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + '</option>'; }).join('');
+      })() +
       '</select></div>' +
       '<div><label class="fld">כמות שנוצלה</label><input type="number" id="uQty" inputmode="numeric" min="1" placeholder="0"></div>' +
       '</div>' +
@@ -911,7 +1064,7 @@
 
     $('uFilter').onchange = function () { S.usageFilter = $('uFilter').value; renderUsage(); };
     $('uUnit').value = S.unit;
-    $('uUnit').onchange = function () { S.unit = $('uUnit').value; };
+    $('uUnit').onchange = function () { S.unit = $('uUnit').value; renderUsage(); };
     $('btnUsage').onclick = submitUsage;
     document.querySelectorAll('[data-del]').forEach(function (b) {
       b.onclick = function () {
@@ -964,7 +1117,13 @@
       Object.keys(src).forEach(function (iid) {
         var v = src[iid];
         if (v && !v.ok) {
-          parts.push(itemName(pair[1], iid) + ': ' + (typeof v.actual === 'number' ? v.actual : '?') + (v.expected != null ? ' (צפי ' + v.expected + ')' : ''));
+          if (v.missing && v.missing.length) {
+            parts.push(itemName(pair[1], iid) + ' חסר: ' + v.missing.map(function (mi) {
+              return (mi.owner || '?') + (mi.num ? ' (מ.א ' + mi.num + ')' : '') + (mi.s ? ' צ׳ ' + mi.s : '');
+            }).join('; '));
+          } else {
+            parts.push(itemName(pair[1], iid) + ': ' + (typeof v.actual === 'number' ? v.actual : '?') + (v.expected != null ? ' (צפי ' + v.expected + ')' : ''));
+          }
         }
       });
     });
@@ -1103,24 +1262,66 @@
     }
     if (!isAdminRole()) { $('scrAdmin').innerHTML = '<div class="spin">אין הרשאת ניהול</div>'; return; }
     var st = S.stock[S.adminUnit] || {};
+    // (re)load the signed-holders buffer when switching unit
+    if (S.instEdit.unit !== S.adminUnit) {
+      S.instEdit = { unit: S.adminUnit, open: {}, data: {} };
+      ['ammo', 'equip'].forEach(function (kind) {
+        var m = st[kind] || {};
+        Object.keys(m).forEach(function (iid) {
+          if (m[iid] && m[iid].inst && m[iid].inst.length) {
+            S.instEdit.data[kind + ':' + iid] = m[iid].inst.map(function (r) {
+              return { s: r.s || '', owner: r.owner || '', num: r.num || '' };
+            });
+          }
+        });
+      });
+    }
+    function instEditorHtml(kind, iid) {
+      var key = kind + ':' + iid;
+      if (!S.instEdit.open[key]) return '';
+      var rows = (S.instEdit.data[key] || []).map(function (r, ri) {
+        return '<div class="irow">' +
+          '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.s) + '" placeholder="צ׳">' +
+          '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="שם החתום">' +
+          '<input class="n3" data-if="num" data-ik2="' + key + '" data-ri="' + ri + '" inputmode="numeric" value="' + esc(r.num) + '" placeholder="מ.א">' +
+          '<button data-irm="' + key + '|' + ri + '">✕</button></div>';
+      }).join('');
+      return '<div class="instbox">' + rows +
+        '<button class="btn-mini" data-iadd="' + key + '">＋ הוסף חתום</button>' +
+        '<div class="note">כשמוגדרים חתומים — הצפי לפריט = מספר החתומים, וכל אחד מופיע בשורה נפרדת בספירה עם שמו וה-צ׳ שלו. אל תשכחו ״שמירת כמויות״.</div></div>';
+    }
+    function instLnk(kind, iid) {
+      var key = kind + ':' + iid;
+      var n = (S.instEdit.data[key] || []).length;
+      return '<button class="instlnk" data-il="' + key + '">👤 חתומים (' + n + ')</button>';
+    }
     var h = '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">פריט עם כמות 0 או ריקה לא מופיע אצל היחידה. ״חתומים״ = מעקב פרטני עם שם לכל פריט.</div>' +
       '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit) +
       '<div class="sec-head"><h2>תחמושת</h2></div><div class="stock-grid">';
     ammoList().forEach(function (it) {
       var e = st.ammo && st.ammo[it.id];
       var exp = expectedFor(S.adminUnit, 'ammo', it.id);
+      var hasInst = (S.instEdit.data['ammo:' + it.id] || []).length > 0;
       h += '<div>' + esc(it.name) +
-        (e && typeof e.q === 'number' ? '<div class="cur">בסיס ' + e.q + (exp !== e.q ? ' · צפי נוכחי ' + exp : '') + '</div>' : '<div class="cur">לא הוגדר</div>') +
-        '</div>' +
-        '<input type="number" inputmode="numeric" min="0" data-sk="ammo" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—">';
+        (hasInst ? '<div class="cur">לפי חתומים</div>' :
+         e && typeof e.q === 'number' ? '<div class="cur">בסיס ' + e.q + (exp !== e.q ? ' · צפי נוכחי ' + exp : '') + '</div>' : '<div class="cur">לא הוגדר</div>') +
+        instLnk('ammo', it.id) + '</div>' +
+        '<input type="number" inputmode="numeric" min="0" data-sk="ammo" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—"' + (hasInst ? ' disabled' : '') + '>' +
+        instEditorHtml('ammo', it.id);
     });
     h += '</div><div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid g3">';
     h += '<div class="hdr"></div><div class="hdr" style="text-align:center">כמות</div><div class="hdr" style="text-align:center">מספר צ׳</div>';
     equipList().forEach(function (it) {
       var e = st.equip && st.equip[it.id];
-      h += '<div>' + esc(it.name) + (e && typeof e.q === 'number' ? '<div class="cur">בסיס ' + e.q + '</div>' : '<div class="cur">לא הוגדר</div>') + '</div>' +
-        '<input type="number" inputmode="numeric" min="0" data-sk="equip" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—">' +
-        '<input type="text" data-ss="' + it.id + '" value="' + esc((e && e.s) || '') + '" placeholder="צ׳">';
+      var hasInst = (S.instEdit.data['equip:' + it.id] || []).length > 0;
+      h += '<div>' + esc(it.name) +
+        (hasInst ? '<div class="cur">לפי חתומים</div>' :
+         e && typeof e.q === 'number' ? '<div class="cur">בסיס ' + e.q + '</div>' : '<div class="cur">לא הוגדר</div>') +
+        instLnk('equip', it.id) + '</div>' +
+        '<input type="number" inputmode="numeric" min="0" data-sk="equip" data-si="' + it.id + '" value="' + (e && typeof e.q === 'number' ? e.q : '') + '" placeholder="—"' + (hasInst ? ' disabled' : '') + '>' +
+        '<input type="text" data-ss="' + it.id + '" value="' + esc((e && e.s) || '') + '" placeholder="צ׳"' + (hasInst ? ' disabled' : '') + '>' +
+        instEditorHtml('equip', it.id);
     });
     h += '</div><button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">שמירת כמויות ליחידה</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות לפריט מאפס את חישוב השימוש עבורו — הצפי החדש הוא הבסיס שהוזן</div></div>';
@@ -1151,6 +1352,18 @@
       'אימייל בתבנית <b style="direction:ltr;unicode-bidi:embed">name@greeneyes95.com</b> + סיסמה.<br>' +
       'באפליקציה מתחברים עם השם בלבד (למשל ״name״) והסיסמה.</div></div>';
 
+    // access log — who entered, when, as which framework / admin
+    h += '<div class="card"><h3>🕘 יומן כניסות</h3><div style="max-height:280px;overflow-y:auto">';
+    if (!S.entryLog.length) h += '<div style="padding:10px;color:#6b7f72;font-size:12px;text-align:center">אין כניסות עדיין</div>';
+    S.entryLog.slice(0, 60).forEach(function (l) {
+      var who = l.type === 'admin'
+        ? '🔑 מנהל: <b>' + esc(l.user || '') + '</b>'
+        : '👤 ' + esc(UNIT_BY_ID[l.unitId] ? UNIT_BY_ID[l.unitId].full : (GROUP_NAMES[l.group] || '—'));
+      var nm = (l.type !== 'admin' && l.name) ? '<div class="m">' + esc(l.name) + (l.num ? ' · מ.א ' + esc(l.num) : '') + '</div>' : '';
+      h += '<div class="usage-row"><div>' + who + nm + '</div><div class="m">' + fmtDT(l.ts) + '</div></div>';
+    });
+    h += '</div></div>';
+
     h += '<div class="card"><h3>🖨️ מדבקות QR לרכבים</h3>' +
       '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">מדביקים מדבקה בכל רכב/סיור — סריקה פותחת את האפליקציה ישר על היחידה הנכונה, בלי לבחור כלום.</div>' +
       '<a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="/qr.html" target="_blank" rel="noopener">פתיחת דף המדבקות להדפסה</a></div>';
@@ -1159,6 +1372,35 @@
     var sel = $('aUnit'); sel.value = S.adminUnit;
     sel.onchange = function () { S.adminUnit = sel.value; renderAdmin(); };
     $('btnStock').onclick = saveStock;
+
+    // signed-holders editor wiring
+    document.querySelectorAll('[data-il]').forEach(function (b) {
+      b.onclick = function () {
+        var k = b.getAttribute('data-il');
+        S.instEdit.open[k] = !S.instEdit.open[k];
+        if (S.instEdit.open[k] && !(S.instEdit.data[k] || []).length) S.instEdit.data[k] = [{ s: '', owner: '', num: '' }];
+        renderAdmin();
+      };
+    });
+    document.querySelectorAll('[data-iadd]').forEach(function (b) {
+      b.onclick = function () {
+        var k = b.getAttribute('data-iadd');
+        (S.instEdit.data[k] = S.instEdit.data[k] || []).push({ s: '', owner: '', num: '' });
+        renderAdmin();
+      };
+    });
+    document.querySelectorAll('[data-irm]').forEach(function (b) {
+      b.onclick = function () {
+        var p = b.getAttribute('data-irm').split('|');
+        S.instEdit.data[p[0]].splice(+p[1], 1);
+        renderAdmin();
+      };
+    });
+    document.querySelectorAll('.instbox input[data-ik2]').forEach(function (inp) {
+      inp.oninput = function () {
+        S.instEdit.data[inp.getAttribute('data-ik2')][+inp.getAttribute('data-ri')][inp.getAttribute('data-if')] = inp.value;
+      };
+    });
 
     $('btnAddAmmo').onclick = function () { addCustomItem('customAmmo', $('newAmmo').value); };
     $('btnAddEquip').onclick = function () { addCustomItem('customEquip', $('newEquip').value); };
@@ -1222,6 +1464,23 @@
       if (!next.equip[iid]) next.equip[iid] = { t: Date.now() };
       next.equip[iid].s = s;
     });
+    // signed holders — when present they define the item's quantity
+    if (S.instEdit.unit === S.adminUnit) {
+      Object.keys(S.instEdit.data).forEach(function (key) {
+        var p = key.split(':'), kind = p[0], iid = p[1];
+        var arr = (S.instEdit.data[key] || []).map(function (r) {
+          return { s: (r.s || '').trim(), owner: (r.owner || '').trim(), num: (r.num || '').trim() };
+        }).filter(function (r) { return r.s || r.owner || r.num; });
+        if (arr.length) {
+          var old2 = prev[kind] && prev[kind][iid];
+          if (!next[kind][iid]) next[kind][iid] = { t: (old2 && old2.t) || Date.now() };
+          next[kind][iid].inst = arr;
+          next[kind][iid].q = arr.length;
+        } else if (next[kind][iid]) {
+          delete next[kind][iid].inst;
+        }
+      });
+    }
     var btn = $('btnStock'); btn.disabled = true;
     fb.setDoc(fb.doc(fb.db, 'ammo_stock', S.adminUnit), next)
       .then(function () { btn.disabled = false; toast('✓ נשמרו כמויות — ' + UNIT_BY_ID[S.adminUnit].full + (changed ? ' (' + changed + ' עודכנו)' : '')); })

@@ -982,6 +982,7 @@ function dayModal(date){
 function rMnt(){
   const entries=S.maintenance.filter(e=>e.week===mntWeek);
   const dueList=S.vehicles.filter(v=>v.category==='vehicle'&&kmToService(v)<=500&&!entries.some(e=>e.vehicleId===v.id));
+  const unscheduled=S.vehicles.filter(v=>!entries.some(e=>e.vehicleId===v.id));
   const days=DAYS.map((dn,di)=>{
     const dayDate=addDays(mntWeek,di);
     const items=entries.filter(e=>e.day===di).map(e=>{
@@ -1003,19 +1004,20 @@ function rMnt(){
   return `<div class="panel"><div class="hd">
     <h2>תכנון טיפול שבועי</h2>
     <span class="small">שבוע ${fmtDate(mntWeek)} – ${fmtDate(addDays(mntWeek,5))}</span>
+    ${unscheduled.length?`<span class="pill p-warn">${unscheduled.length} כלים ללא שיבוץ השבוע</span>`:'<span class="pill p-good">כל הכלים משובצים ✓</span>'}
     <span class="spacer"></span>
     <div class="filters noprint">
       <button class="btn sec sm" onclick="mntWeek=addDays(mntWeek,-7);render()">◀ שבוע קודם</button>
       <button class="btn sec sm" onclick="mntWeek=weekStart(todayStr());render()">השבוע</button>
       <button class="btn sec sm" onclick="mntWeek=addDays(mntWeek,7);render()">שבוע הבא ▶</button>
-      <button class="btn sm" onclick="mntAuto()">שיבוץ אוטומטי לפי ק"מ</button>
+      <button class="btn sm" onclick="mntAuto()">שיבוץ שבועי מלא — כל הכלים</button>
       <button class="btn sec sm" onclick="window.print()">הדפסה</button>
     </div>
   </div><div class="bd">
     <div class="week">${days}</div>
-    ${dueList.length?`<div class="sec-title">ממתינים לשיבוץ — הגיעו לחלון טיפול (${dueList.length})</div>
+    ${dueList.length?`<div class="sec-title">בדחיפות — הגיעו לחלון טיפול ק"מ (${dueList.length})</div>
       <div class="small">${dueList.map(v=>`${v.type} צ׳ ${v.tz} (${kmToService(v)<=0?'חריגה '+(-kmToService(v)).toLocaleString():'עוד '+kmToService(v).toLocaleString()} ק"מ)`).join(' · ')}</div>`:''}
-    <div class="small" style="margin-top:12px">טיפול שבועי כולל: בדיקת נוזלים, לחץ אוויר וסוליות צמיגים, אורות, מתיחת חגורות ועיגונים, שטיפה, הנעת רכבים עומדים, ובדיקת ציוד חובה. נגררים — בדיקת תקינות וו גרירה, תאורה וצמיגים.</div>
+    <div class="small" style="margin-top:12px"><b>על פי הפקודות, טיפול שבועי מחייב כל כלי רכב — גם רכב שעמד ולא נסע</b> (עמידה שוחקת: מצבר, לחץ צמיגים, נוזלים, גומיות). הטיפול כולל: בדיקת נוזלים, לחץ אוויר וסוליות צמיגים, אורות, הנעה והרצת מנוע לרכבים עומדים, שטיפה ובדיקת ציוד חובה. נגררים — וו גרירה, תאורה וצמיגים. כפתור השיבוץ המלא מפזר את כל כלי הגדוד על פני השבוע, כשהדחופים לפי ק"מ משובצים ראשונים.</div>
   </div></div>`;
 }
 function mntAdd(vid,day){if(!vid)return;S.maintenance.push({id:uid('mt'),vehicleId:vid,week:mntWeek,day,done:false,notes:''});save();render();}
@@ -1028,13 +1030,20 @@ function mntDone(id){const e=S.maintenance.find(x=>x.id===id);e.done=true;e.done
 function mntDel(id){S.maintenance=S.maintenance.filter(x=>x.id!==id);save();render();}
 function mntAuto(){
   const entries=S.maintenance.filter(e=>e.week===mntWeek);
-  const due=S.vehicles.filter(v=>v.category==='vehicle'&&kmToService(v)<=500&&!entries.some(e=>e.vehicleId===v.id))
-    .sort((a,b)=>kmToService(a)-kmToService(b));
-  let day=0;
+  const todo=S.vehicles.filter(v=>!entries.some(e=>e.vehicleId===v.id))
+    .sort((a,b)=>{
+      const ka=a.category==='vehicle'?kmToService(a):Infinity;
+      const kb=b.category==='vehicle'?kmToService(b):Infinity;
+      return ka-kb;
+    });
+  if(!todo.length)return;
+  const cap=Math.ceil((entries.length+todo.length)/6);
   const perDay={};entries.forEach(e=>perDay[e.day]=(perDay[e.day]||0)+1);
-  for(const v of due){
-    while((perDay[day]||0)>=3&&day<5)day++;
-    S.maintenance.push({id:uid('mt'),vehicleId:v.id,week:mntWeek,day,done:false,notes:'שיבוץ אוטומטי — טיפול ק"מ'});
+  let day=0;
+  for(const v of todo){
+    while((perDay[day]||0)>=cap&&day<5)day++;
+    const kmDue=v.category==='vehicle'&&kmToService(v)<=500;
+    S.maintenance.push({id:uid('mt'),vehicleId:v.id,week:mntWeek,day,done:false,notes:kmDue?'דחוף — טיפול ק"מ':''});
     perDay[day]=(perDay[day]||0)+1;
   }
   save();render();

@@ -113,5 +113,39 @@ const BRAINS = [["client (index.html)", askClient], ["server (pokerEngine)", ask
   });
 }
 
+/* --- rule 3: the god guard, and the line it must never cross ------------- */
+{
+  // Turn: A K 9 4 rainbow. The bot holds KQ — a real pair, so the "no pair no
+  // draw" rule alone would let it play. The opponent holds AA: the bot is
+  // drawing dead. On a bots-only table the guard must see that and fold.
+  const board = [card("A", "\u2660"), card("K", "\u2666"), card("9", "\u2663"), card("4", "\u2665")];
+  const mine = [card("K", "\u2663"), card("Q", "\u2660")];
+  const nuts = [card("A", "\u2665"), card("A", "\u2666")];
+  const table = (humanSeated, guard) => {
+    const S = {id: "t", settings: {blinds: 0.5, baseGameType: "NLH", maxPlayers: 6,
+      ...(guard === undefined ? {} : {botGodGuard: guard})},
+    players: {me: {uid: "me", seatIndex: 0, status: "active", bet: 0, stack: 100, isBot: true},
+      opp: {uid: "opp", seatIndex: 1, status: "active", bet: 70, stack: 100, isBot: !humanSeated}},
+    gameState: {phase: "turn", board, pots: [{amount: 60, eligible: []}], highestBet: 70,
+      minRaise: 1, currentGameType: "NLH", activeTurnUid: "me"},
+    priv: {me: mine, opp: nuts}, table: {}, raw: {}, effects: [], now: 17e11};
+    let folds = 0;
+    for (let i = 0; i < 120; i++) {
+      const mv = E.botAction(S, "me") || {action: "call"};
+      if (mv.action === "fold") folds++;
+    }
+    return folds;
+  };
+  check("god guard: bots-only table folds a drawing-dead stack-off", table(false) === 120,
+    `folded ${table(false)}/120`);
+  // With a human at the table the guard is off — the bot must decide blind,
+  // which on this board means it does NOT always fold. If this ever starts
+  // folding 120/120 too, a bot is reading a human's cards.
+  check("god guard: OFF the moment a human is seated", table(true) < 120,
+    `folded ${table(true)}/120 with a human seated — check the botsOnly gate`);
+  check("god guard: can be switched off per table", table(false, false) < 120,
+    `botGodGuard:false still folded ${table(false, false)}/120`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

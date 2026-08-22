@@ -353,7 +353,12 @@ exports.guardTables = onDocumentWrittenWithAuthContext("tables/{tableId}",
         sumAfter += seatChips(pa[uid]);
         if (!pb[uid]) broughtIn += seatChips(pa[uid]);
         else {
-          const d = round2(seatChips(pa[uid]) - seatChips(pb[uid]));
+          // A top-up, or a bot re-buying on a showcase table, is money
+          // arriving at the table — not chips appearing from nowhere.
+          // buyTotal is the receipt for it.
+          const addedIn = round2((Number(pa[uid].buyTotal) || 0) - (Number(pb[uid].buyTotal) || 0));
+          if (addedIn > 0) broughtIn += addedIn;
+          const d = round2(seatChips(pa[uid]) - seatChips(pb[uid]) - Math.max(0, addedIn));
           if (Math.abs(d) > CHIP_EPS) moved.push({n: pa[uid].name || uid, uid, d});
         }
       });

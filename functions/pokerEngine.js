@@ -730,6 +730,10 @@ function equityOf(myCards, board, oppCount, gameType, range) {
 /* How strong to assume the opponents' range is, from what they just did.
  * A check is no information; a small bet is barely any; a pot-sized bet or a
  * shove is a lot. This is the whole of "the bot pays attention". */
+/* Below this real equity a bot will not put 40%+ of its stack in, on a
+   bots-only table. A live flush draw is ~35%; hopeless is under 15%. */
+const GOD_FLOOR = 0.20;
+
 function rangeFacing(toCall, potNow, bb) {
   if (toCall <= 0) return 1;
   const ratio = toCall / Math.max(bb, potNow);
@@ -737,6 +741,46 @@ function rangeFacing(toCall, potNow, bb) {
   if (ratio >= 0.6) return 3;
   if (ratio >= 0.3) return 2;
   return 1;
+}
+
+/* GOD GUARD — equity against the cards the opponents are ACTUALLY holding.
+   Used on bots-only tables and nowhere else: a bot must never see a human's
+   cards. And it is used in one direction only — to REFUSE a commitment that
+   is genuinely hopeless. It never makes a bot bet more, call more, or bluff
+   better. Its whole job is that nobody watching ever sees a stack go in
+   drawing dead and then get there on the river. */
+function trueEquityVs(mine, oppHands, board, gameType) {
+  try {
+    if (!mine || !mine.length || !oppHands.length) return null;
+    const beat = (fb) => {
+      const my = C.bestScoreFull(mine, fb, gameType);
+      let best = my; let ties = 1; let beaten = false;
+      for (const h of oppHands) {
+        const sc = C.bestScoreFull(h, fb, gameType);
+        if (sc > best) { best = sc; beaten = true; break; }
+        if (sc === best) ties++;
+      }
+      return beaten ? 0 : 1 / ties;
+    };
+    if ((board || []).length >= 5) return beat(board);
+    const known = new Set([...mine, ...(board || []), ...oppHands.flat()].map((c) => c.id));
+    const rest = C.pokerDeck().filter((c) => !known.has(c.id));
+    const iters = 150;
+    let win = 0;
+    for (let i = 0; i < iters; i++) {
+      const d = rest.slice();
+      for (let x = d.length - 1; x > 0; x--) {
+        const j = Math.floor(rnd() * (x + 1));
+        [d[x], d[j]] = [d[j], d[x]];
+      }
+      const fb = [...(board || [])];
+      while (fb.length < 5) fb.push(d.pop());
+      win += beat(fb);
+    }
+    return win / iters;
+  } catch (e) {
+    return null;
+  }
 }
 
 /* Does the hand have a body? A stack must never go in on a hand that is
@@ -806,19 +850,37 @@ function botAction(S, uid) {
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
   const body = handBody(cards, g.board || [], gt);
-  const hasSomething = body.made >= 1 || body.outs >= 8;
+  const hasBody = body.made >= 1 || body.outs >= 8;
+  // The god guard only exists on a table where every seat is a bot. One real
+  // player sits down and it is off for the whole table, permanently.
+  const botsOnly = Object.values(S.players).every((p) => p.isBot);
+  const guardOn = botsOnly && S.settings.botGodGuard !== false;
+  let godSeen = null;
+  const godOK = () => {
+    if (!guardOn) return true;
+    if (godSeen === null) {
+      const opps = activesOf(S.players).filter((p) => p.uid !== uid)
+          .map((p) => ((S.priv || {})[p.uid] || []))
+          .filter((c) => c.length === (cards || []).length);
+      const real = opps.length ? trueEquityVs(cards, opps, g.board || [], gt) : null;
+      godSeen = real == null ? true : real >= GOD_FLOOR;
+    }
+    return godSeen;
+  };
+  // Every gate below asks this before a stack goes in.
+  const hasSomething = () => hasBody && godOK();
   // Sizing is priced off the POT, never off the opponent's bet.
   const raisePot = (frac) => {
     const potAfterCall = potNow + toCall;
     const target = raiseTo(g.highestBet + Math.max(bb * 2, potAfterCall * frac));
     const allIn = target >= round2(stack + (b.bet || 0)) - 0.01;
-    if (allIn && !hasSomething) return null;
+    if (allIn && !hasSomething()) return null;
     if (!allIn && target - g.highestBet < potAfterCall * 0.25) return null;
     return {action: "raise", amount: target};
   };
   const betPot = (frac) => {
     const target = raiseTo((b.bet || 0) + potNow * frac);
-    if (target >= round2(stack + (b.bet || 0)) - 0.01 && !hasSomething) return null;
+    if (target >= round2(stack + (b.bet || 0)) - 0.01 && !hasSomething()) return null;
     return {action: "raise", amount: target};
   };
 
@@ -831,8 +893,8 @@ function botAction(S, uid) {
   }
   // Facing a shove, or a bet that costs most of the stack: a hand with neither
   // a pair nor a real draw folds. No exceptions, no miracle river.
-  if (toCall >= stack) return hasSomething && eq > Math.max(0.45, potOdds) ? {action: "call"} : {action: "fold"};
-  if (toCall >= stack * 0.4 && !hasSomething) return {action: "fold"};
+  if (toCall >= stack) return hasSomething() && eq > Math.max(0.45, potOdds) ? {action: "call"} : {action: "fold"};
+  if (toCall >= stack * 0.4 && !hasSomething()) return {action: "fold"};
   if (eq > potOdds + 0.18 && eq > 0.62) {
     if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
     return {action: "call"};
@@ -1031,6 +1093,21 @@ async function tickTable(id) {
           (p.leavingAt && now >= p.leavingAt) ||
           (p.status === "busted" && p.bustedAt && (p.isBot || now - p.bustedAt > 300000));
         if (!idle) continue;
+        // A showcase table must not drain seat by seat until it dies. With no
+        // human in it, a busted bot re-buys instead of standing up, so the
+        // game is still running whenever somebody looks. buyTotal records it,
+        // so the chip audit still balances (guardTables reads that receipt).
+        if (p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot)) {
+          const bbNow = (Number(S.settings.blinds) || 0.5) * 2;
+          const buy = round2(Math.max(bbNow * 100, Number(S.settings.minBuyIn) || 0));
+          p.stack = buy;
+          p.bet = 0;
+          p.buyTotal = round2((p.buyTotal || 0) + buy);
+          p.status = "active";
+          delete p.bustedAt;
+          dirty = true;
+          continue;
+        }
         removeSeat(S, p.uid, false);
         dirty = true;
       }
@@ -1420,6 +1497,56 @@ exports.tourAutoStart = onSchedule("every 1 minutes", async () => {
     } catch (e) { /* raced another starter — fine */ }
   }
 });
+
+/* ============================ the table driver ============================
+   tickTable is a complete driver — it deals the next hand, acts for the bots,
+   force-acts a player who walked away, and reaps empty seats. The only reason
+   a table ever froze is that nothing called it: pkTick is onCall, so it ran
+   only while somebody had the table open in a browser. No admin tab, no game.
+
+   This calls it. Every minute, for ~50 seconds, so a table keeps moving with
+   nobody watching — which is also the whole point: a visitor looking at the
+   lobby should find a game in progress, not a photograph of one. */
+const DRIVE_WINDOW_MS = 50000;   // stay well inside the function timeout
+const DRIVE_STEP_MS = 1500;      // a bot acts every ~2.2s, so this is enough
+const DRIVE_MAX_TABLES = 12;     // a hard ceiling: a runaway must not bill
+
+exports.tableAutoDrive = onSchedule(
+    {schedule: "every 1 minutes", timeoutSeconds: 120, memory: "512MiB", region: "us-central1"},
+    async () => {
+      const started = Date.now();
+      const snap = await db().collection("tables")
+          .where("settings.serverEngine", "==", true).get();
+      const live = [];
+      let skipped = 0;
+      for (const d of snap.docs) {
+        const t = d.data();
+        if (t.tournamentId) continue;
+        const pl = Object.values(t.players || {});
+        if (!pl.some((p) => p.isBot)) continue;   // nothing here needs driving
+        const ready = pl.filter((p) => (p.stack > 0 || p.pendingTopUp > 0) &&
+            !p.sitOut && !["busted", "out"].includes(p.status));
+        if (ready.length < 2) continue;
+        if (live.length >= DRIVE_MAX_TABLES) { skipped++; continue; }
+        live.push(d.id);
+      }
+      if (skipped) console.log(`tableAutoDrive: ${skipped} table(s) over the ${DRIVE_MAX_TABLES} cap were not driven`);
+      if (!live.length) return;
+      let ticks = 0;
+      while (Date.now() - started < DRIVE_WINDOW_MS) {
+        for (const id of live) {
+          try {
+            await tickTable(id);
+            ticks++;
+          } catch (e) {
+            // one sick table must never stop the others
+            console.error(`tableAutoDrive ${id}: ${e && e.message}`);
+          }
+        }
+        await new Promise((r) => setTimeout(r, DRIVE_STEP_MS));
+      }
+      console.log(`tableAutoDrive: drove ${live.length} table(s), ${ticks} ticks`);
+    });
 
 // Test hook — a plain object, ignored by the Functions deploy loader.
 exports.__engineInternals = {startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, preflopTier, equityOf};

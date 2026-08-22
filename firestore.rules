@@ -71,6 +71,10 @@ service cloud.firestore {
     // App config (admin-added custom item lists) — read by all, admin writes.
     match /ammo_config/{doc} { allow read: if signedIn(); allow write: if ammoAdmin(); }
 
+    // Reference roster (soldiers/weapons/identifiers imported for autocomplete)
+    // — read by all signed-in users, written only by admins.
+    match /ammo_ref/{doc} { allow read: if signedIn(); allow write: if ammoAdmin(); }
+
     // Baseline quantities per unit — ONLY admins may set/update quantities.
     match /ammo_stock/{unit} {
       allow read: if signedIn();

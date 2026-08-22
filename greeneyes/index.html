@@ -1311,6 +1311,29 @@
     }).catch(function (e) { btn.disabled = false; toast('שגיאה: ' + e.message); });
   }
 
+  // שצ״ל reporting from the ניהול tab — same record, for S.adminUnit
+  function submitUsageAdmin() {
+    var unit = S.adminUnit, item = $('auItem') ? $('auItem').value : '';
+    var qty = Math.floor(+($('auQty').value) || 0);
+    var name = ($('auName').value || '').trim(), num = ($('auNum').value || '').trim();
+    if (!item) { toast('אין פריט לדיווח ביחידה זו'); return; }
+    if (qty <= 0) { toast('יש להזין כמות'); return; }
+    if (!name || !num) { toast('יש למלא שם ומספר אישי'); return; }
+    localStorage.setItem('yb_name', name);
+    localStorage.setItem('yb_num', num);
+    var fb = window.fb;
+    var btn = $('btnAuUsage'); btn.disabled = true;
+    fb.addDoc(fb.collection(fb.db, 'ammo_usage'), {
+      group: UNIT_BY_ID[unit].grp,
+      unitId: unit, itemId: item, qty: qty, date: todayIso(),
+      reporterName: name, reporterNum: num, note: ($('auNote').value || '').trim(),
+      byEmail: S.user.email || '', byUid: S.user.uid, ts: Date.now()
+    }).then(function () {
+      btn.disabled = false; $('auQty').value = ''; $('auNote').value = '';
+      toast('✓ נרשם עדכון: ' + itemName('ammo', item) + ' −' + qty + ' · ' + UNIT_BY_ID[unit].name);
+    }).catch(function (e) { btn.disabled = false; toast('שגיאה: ' + e.message); });
+  }
+
   /* ═══════════ REPORT screen ═══════════ */
   function countMismatches(c) {
     var n = 0;
@@ -1679,7 +1702,7 @@
         var f1 = track === 'holder' ? '' : 'צ׳';
         return '<div class="irow">' +
           '<span class="rn">' + (ri + 1) + '.</span>' +
-          (f1 ? '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.s) + '" placeholder="' + f1 + '">' : '') +
+          (f1 ? '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" list="identlist" value="' + esc(r.s) + '" placeholder="' + f1 + '">' : '') +
           '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="שם החייל">' +
           '<input class="n3" data-if="num" data-ik2="' + key + '" data-ri="' + ri + '" inputmode="numeric" value="' + esc(r.num) + '" placeholder="מ.א">' +
           idInp +
@@ -1711,12 +1734,20 @@
         '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—">' +
         instEditorHtml(kind, it.id);
     }
-    // datalist of known identifiers for autocomplete (stock + imported roster)
+    // datalist of known lookup keys for autocomplete (stock + imported roster):
+    // every key — מזהה / צ׳ / מ.א / מסד — suggests the soldier, showing the full
+    // data (name · מ.א · פלוגה) so you can pick the right one before it fills.
     var reg = identRegistry();
-    var identOpts = Object.keys(reg).map(function (k) { return '<option value="' + esc(reg[k].id) + '">' + esc(reg[k].owner) + '</option>'; }).join('');
+    var seenOpt = {}, identOpts = '';
+    Object.keys(reg).forEach(function (k) {
+      var id = reg[k].id; if (!id || seenOpt[id]) return; seenOpt[id] = 1;
+      identOpts += '<option value="' + esc(id) + '">' + esc(reg[k].owner || '') + '</option>';
+    });
     Object.keys(S.roster).forEach(function (k) {
+      if (seenOpt[k]) return; seenOpt[k] = 1;
       var r = S.roster[k];
-      if (r.k === 'מזהה נשק' && r.n) identOpts += '<option value="' + esc(k) + '">' + esc(r.n) + (r.c ? ' · ' + esc(r.c) : '') + '</option>';
+      var lbl = (r.n || '') + (r.mi ? ' · מ.א ' + r.mi : '') + (r.c ? ' · ' + r.c : '');
+      identOpts += '<option value="' + esc(k) + '">' + esc(lbl.trim() || r.k || '') + '</option>';
     });
     var h = '<datalist id="identlist">' + identOpts + '</datalist>';
     h += '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
@@ -1734,6 +1765,30 @@
     }
     h += '<button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">💾 שמירת כמויות ליחידה</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות מאפס את חישוב השימוש לפריט — הכמות שהוזנה היא הבסיס החדש</div></div>';
+
+    // שצ״ל reporting straight from ניהול — for the unit selected above
+    h += '<div class="card"><h3>📉 עדכון דיווח שצ״ל — ' + esc(UNIT_BY_ID[S.adminUnit] ? UNIT_BY_ID[S.adminUnit].name : '') + '</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">הדיווח מתייחס ליחידה שנבחרה למעלה · הצפי לספירה מתעדכן אוטומטית.</div>' +
+      '<div class="grid2">' +
+      '<div><label class="fld">פריט</label><select id="auItem">' +
+      (function () {
+        var st = S.stock[S.adminUnit];
+        var list = ammoList().filter(function (i) {
+          var e = st && st.ammo && st.ammo[i.id];
+          return e && ((e.inst && e.inst.length) || (typeof e.q === 'number' && e.q > 0));
+        });
+        if (!list.length) list = ammoList();
+        return list.map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + '</option>'; }).join('');
+      })() +
+      '</select></div>' +
+      '<div><label class="fld">כמות שנוצלה</label><input type="number" id="auQty" inputmode="numeric" min="1" placeholder="0"></div>' +
+      '</div>' +
+      '<div class="grid2">' +
+      '<div><label class="fld">שם המדווח</label><input type="text" id="auName" value="' + esc(localStorage.getItem('yb_name') || '') + '"></div>' +
+      '<div><label class="fld">מספר אישי</label><input type="text" id="auNum" inputmode="numeric" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
+      '</div>' +
+      '<label class="fld">הערה (לא חובה)</label><input type="text" id="auNote" placeholder="אימון / מבצעי...">' +
+      '<button class="btn-primary" id="btnAuUsage">עדכון דיווח שצ״ל</button></div>';
 
     // custom items
     var cAmmo = (S.config && S.config.customAmmo) || [];
@@ -1791,6 +1846,7 @@
     var sel = $('aUnit'); sel.value = S.adminUnit;
     sel.onchange = function () { S.adminUnit = sel.value; renderAdmin(); };
     $('btnStock').onclick = saveStock;
+    if ($('btnAuUsage')) $('btnAuUsage').onclick = submitUsageAdmin;
     if ($('ctrUnit')) $('ctrUnit').onclick = function () { S.centralView = S.centralView === 'unit' ? null : 'unit'; renderAdmin(); };
     if ($('ctrAll')) $('ctrAll').onclick = function () { S.centralView = S.centralView === 'all' ? null : 'all'; renderAdmin(); };
     if ($('expCentral')) $('expCentral').onclick = exportCentral;
@@ -1837,22 +1893,31 @@
     var reg2 = identRegistry();
     document.querySelectorAll('.instbox input[data-ik2]').forEach(function (inp) {
       inp.oninput = function () {
-        var row = S.instEdit.data[inp.getAttribute('data-ik2')][+inp.getAttribute('data-ri')];
+        var key2 = inp.getAttribute('data-ik2');
+        var row = S.instEdit.data[key2][+inp.getAttribute('data-ri')];
         var field = inp.getAttribute('data-if');
         row[field] = field === 'q' ? (inp.value === '' ? undefined : Math.max(0, Math.floor(+inp.value))) : inp.value;
-        // autocomplete (gentle, non-locking): a known מזהה / מספר אישי / צ׳
-        // fills the name ONLY into an empty field, updating the input in place
-        // (no re-render) so you can freely type over it — data changes a lot.
-        if (field === 'id' || field === 'num' || field === 's') {
+        // autocomplete: the מזהה / צ׳ / מ.א is a LOOKUP KEY into the roster.
+        // For a series row the first field is a סדרה (batch number), not a
+        // soldier key — never resolve it as one.
+        var track2 = trackOf(key2.split(':')[1]);
+        if (track2 !== 'series' && (field === 'id' || field === 's' || field === 'num')) {
           var v = (inp.value || '').trim();
-          var hit = rosterGet(v) || reg2[v.toLowerCase()];
+          var hit = v ? (rosterGet(v) || reg2[v.toLowerCase()]) : null;
+          var irow = inp.closest('.irow');
+          var oInp = irow && irow.querySelector('input[data-if="owner"]');
+          var nInp = irow && irow.querySelector('input[data-if="num"]');
           if (hit) {
-            var nm = hit.n || hit.owner, mi = hit.mi || hit.num;
-            var irow = inp.closest('.irow');
-            var oInp = irow && irow.querySelector('input[data-if="owner"]');
-            var nInp = irow && irow.querySelector('input[data-if="num"]');
-            if (nm && oInp && !row.owner) { row.owner = nm; oInp.value = nm; }
-            if (mi && nInp && !row.num && field !== 'num') { row.num = mi; nInp.value = mi; }
+            var nm = hit.n || hit.owner || '', mi = hit.mi || hit.num || '';
+            if (field === 'id' || field === 's') {
+              // the identifier / צ׳ drives the soldier — change it and the name
+              // + מ.א follow to the matched soldier (overwrite, updates in place).
+              if (nm && oInp) { row.owner = nm; oInp.value = nm; }
+              if (mi && nInp) { row.num = mi; nInp.value = mi; }
+            } else if (nm && oInp && !row.owner) {
+              // typing a מ.א gently fills the name only if it's still empty
+              row.owner = nm; oInp.value = nm;
+            }
           }
         }
       };

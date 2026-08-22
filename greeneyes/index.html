@@ -262,6 +262,22 @@
     max-width: 90vw; text-align: center;
   }
   .toast.show { opacity: 1; transform: translateX(50%) translateY(0); }
+
+  /* iOS add-to-home-screen guide (Safari has no install button) */
+  #iosGuide { position: fixed; left: 0; right: 0; bottom: 0; z-index: 200; display: none;
+    flex-direction: column; align-items: center; pointer-events: none;
+    padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
+  .iosg-card { pointer-events: auto; background: #fff; border: 2px solid #16a34a; border-radius: 16px;
+    box-shadow: 0 14px 34px -8px rgba(0,0,0,.45); padding: 14px 16px 12px; max-width: 340px; width: 92%;
+    position: relative; color: #14261c; }
+  .iosg-x { position: absolute; top: 5px; left: 8px; border: none; background: none; font-size: 17px; color: #6b7f72; cursor: pointer; line-height: 1; }
+  .iosg-ttl { font-weight: 900; color: #14532d; font-size: 15px; margin-bottom: 8px; }
+  .iosg-steps { margin: 0; padding-inline-start: 20px; font-size: 13.5px; line-height: 1.85; }
+  .iosg-steps b { color: #14532d; }
+  .iosg-ic { display: inline-block; width: 15px; height: 15px; vertical-align: -3px; }
+  .iosg-arrow { color: #16a34a; font-size: 34px; line-height: 1; margin-top: 3px; text-shadow: 0 2px 6px rgba(0,0,0,.35); animation: iosbounce 1.1s infinite; }
+  @keyframes iosbounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(9px); } }
+  @media (prefers-reduced-motion: reduce) { .iosg-arrow { animation: none; } }
 </style>
 
 <script type="module">
@@ -371,6 +387,21 @@
     <button data-tab="report" style="position:relative"><span class="ic">📊</span>דוחות<span id="gapBadge" class="tabbadge" style="display:none">0</span></button>
     <button data-tab="admin" id="tabAdmin" style="display:none"><span class="ic">⚙️</span>ניהול</button>
   </nav>
+</div>
+
+<div id="iosGuide">
+  <div class="iosg-card">
+    <button id="iosgX" class="iosg-x" aria-label="סגור">✕</button>
+    <div class="iosg-ttl">📲 להתקנת האפליקציה במסך הבית</div>
+    <ol class="iosg-steps">
+      <li>לחצו על כפתור <b>שיתוף</b>
+        <svg class="iosg-ic" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="M8 7l4-4 4 4"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/></svg>
+        בסרגל התחתון</li>
+      <li>גללו ובחרו <b>״הוספה למסך הבית״</b> ➕</li>
+      <li>לחצו <b>הוסף</b> — וזהו! 🟢</li>
+    </ol>
+  </div>
+  <div class="iosg-arrow">⬇︎</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -746,6 +777,7 @@
   function show(which) {
     $('login').style.display = which === 'login' ? 'flex' : 'none';
     $('app').style.display = which === 'app' ? 'block' : 'none';
+    try { refreshInstallUi(); } catch (e) {}
   }
 
   function teardownListeners() {
@@ -867,7 +899,19 @@
         if (!S.loggedLoad) { S.loggedLoad = true; logEntry('admin', { pn: p.pn, name: p.n, role: p.role }); }
         applyRole();
       } else {
-        showPicker();                                      // choose company → framework (all options)
+        // remembered framework for THIS soldier → straight in; else pick
+        var gu = null; try { gu = localStorage.getItem('yb_u_' + p.pn); } catch (e) {}
+        var u = gu && UNIT_BY_ID[gu];
+        if (u) {
+          pickedGroup = u.grp; pickedUnit = gu;
+          try { localStorage.setItem('yb_unit', gu); localStorage.setItem('yb_group', u.grp); } catch (e) {}
+          S.unit = gu; S.adminUnit = gu; S.bufKey = '';
+          S.picked = true; S.tab = 'count';
+          if (!S.loggedLoad) { S.loggedLoad = true; logEntry('unit', { unitId: gu, group: u.grp, pn: p.pn, name: p.n }); }
+          applyRole();
+        } else {
+          showPicker();                                    // first time: choose company → framework
+        }
       }
     }).catch(function (e) {
       if (btn) btn.disabled = false;
@@ -909,6 +953,7 @@
     $('btnConfirmPick').onclick = function () {
       localStorage.setItem('yb_unit', pickedUnit);
       localStorage.setItem('yb_group', pickedGroup);   // the chosen framework's group drives scope
+      try { localStorage.setItem('yb_u_' + S.person.pn, pickedUnit); } catch (e) {}  // remember per soldier → straight in next time
       S.unit = pickedUnit; S.adminUnit = pickedUnit; S.bufKey = '';
       S.picked = true; S.tab = 'count';
       logEntry('unit', { unitId: pickedUnit, group: pickedGroup, pn: S.person.pn, name: S.person.n });
@@ -2313,9 +2358,12 @@
     var can = !!deferredPrompt && !standalone;
     $('btnInstall').style.display = can ? '' : 'none';
     $('installBar').style.display = (can && localStorage.getItem('yb_instX') !== '1') ? '' : 'none';
-    // iOS never fires beforeinstallprompt — show the add-to-home-screen hint instead
-    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone && !deferredPrompt;
-    $('iosHint').style.display = ios ? '' : 'none';
+    // iOS never fires beforeinstallprompt — show the add-to-home-screen guide.
+    // Only while the login screen is up (before entering) and not dismissed.
+    var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone;
+    var onLogin = $('login') && $('login').style.display !== 'none';
+    $('iosHint').style.display = 'none';
+    $('iosGuide').style.display = (ios && onLogin && localStorage.getItem('yb_iosX') !== '1') ? 'flex' : 'none';
   }
   function doInstall() {
     if (!deferredPrompt) return;
@@ -2327,6 +2375,7 @@
   $('btnInstall').onclick = doInstall;
   $('btnInstall2').onclick = doInstall;
   $('btnInstallX').onclick = function () { localStorage.setItem('yb_instX', '1'); refreshInstallUi(); };
+  if ($('iosgX')) $('iosgX').onclick = function () { localStorage.setItem('yb_iosX', '1'); refreshInstallUi(); };
   refreshInstallUi();
 
   /* ═══════════ boot ═══════════ */

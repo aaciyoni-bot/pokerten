@@ -2,7 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Must be signed in with a Google account (the app's only sign-in method).
+    // Must be signed in. Two ways in: a Google account, or a guest (anonymous
+    // auth) who gave a name and a number on the login screen and waits for the
+    // club owner to approve them. Both land here as request.auth != null.
     function signedIn() { return request.auth != null; }
 
     // Game / agent logs — append-only for players: create + read allowed, no edits.
@@ -20,7 +22,10 @@ service cloud.firestore {
                             allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
 
     // Core data — every access (read/write/delete) requires a signed-in account.
-    // Fully blocks anonymous access from the internet without breaking any app action.
+    // Blocks unauthenticated access from the internet without breaking any app
+    // action. NOTE: a guest account is authenticated, so it clears this bar the
+    // same as a Google account does — approval by the club owner, not the rules,
+    // is what gates a guest out of a club.
     // NOTE (roadmap): this is the safe baseline for the current client-side engine.
     // Field-level hardening (deny direct writes to balance/stack/cards/deck/rank, and
     // keep hole cards out of the shared doc) lands with the server-authoritative rework.

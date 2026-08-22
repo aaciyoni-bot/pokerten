@@ -1044,7 +1044,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
@@ -1060,6 +1060,13 @@
         const app = initializeApp(firebaseConfig);
         const _auth = getAuth(app);
         window.fb = { auth: _auth, db: getFirestore(app), googleProvider: new GoogleAuthProvider(), signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction };
+        // A guest has no password to sign back in with: if the session is lost,
+        // the account — and the chips in it — are gone with it. So persistence
+        // is set BEFORE any sign-in, and every sign-in waits for it.
+        const _persist = setPersistence(_auth, indexedDBLocalPersistence)
+            .catch(() => setPersistence(_auth, browserLocalPersistence))
+            .catch(() => {});
+        window.fb.signInAnonymously = async (a) => { await _persist; return signInAnonymously(a || _auth); };
         const _fx = getFunctions(app);
         window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
         // Robust Google sign-in: popup FIRST on every device. signInWithRedirect
@@ -1068,6 +1075,7 @@
         // the returned auth state, so sign-in silently fails. Popup returns via
         // postMessage and works cross-origin. Redirect is only a last resort.
         window.fb.signIn = async () => {
+            await _persist;
             try {
                 return await signInWithPopup(_auth, window.fb.googleProvider);
             } catch (e) {
@@ -1227,6 +1235,7 @@ const newMembership = (uid, u, extra) => ({
   photo: u.photo || '',
   avatarSeed: u.avatarSeed || '',
   playerId: u.playerId || genPlayerId(),
+  isGuest: !!u.isGuest,
   isBot: !!u.isBot,
   role: ROLES.PLAYER,
   status: 'pending',
@@ -3963,16 +3972,26 @@ function App() {
       const email = (user.email || '').toLowerCase();
       const isSuper = email === SUPER_ADMIN_EMAIL;
       const isGod = GOD_EMAILS.includes(email);
+      // A guest signed in anonymously: no Google name, no email. The name and
+      // number typed on the login screen are the ONLY identity the club owner
+      // will have when the join request lands, so the name becomes the
+      // username and the number becomes the player ID — the number the owner
+      // approves by, and the one the guest can never change afterwards.
+      const isGuest = !!user.isAnonymous || !email;
+      const pid = genPlayerId();
+      const guestName = (window.__guestName || '').trim();
+      const guestNumber = (window.__guestNumber || '').trim();
       const newUser = {
-        username: user.displayName || 'Player',
+        username: isGuest ? guestName || 'אורח ' + pid.slice(0, 3) : user.displayName || 'Player',
         email: email,
         googleName: user.displayName || '',
         role: isSuper ? ROLES.SUPER_ADMIN : ROLES.PLAYER,
         status: isSuper || isGod ? 'approved' : 'pending',
-        playerId: genPlayerId(),
+        playerId: isGuest && guestNumber ? guestNumber : pid,
         balance: isSuper ? 10000000 : 0,
         clubProfits: 0,
         isBot: false,
+        isGuest: isGuest,
         managedGames: [],
         stats: {
           gamesPlayed: 0,
@@ -3980,6 +3999,8 @@ function App() {
           totalProfit: 0
         }
       };
+      window.__guestName = '';
+      window.__guestNumber = '';
       await window.fb.setDoc(ref, newUser);
       setDbUser({
         uid: user.uid,
@@ -4755,6 +4776,34 @@ function InstallBanner({
   }, "Close"))), document.body));
 }
 function AuthView() {
+  // Guest sign-in: a name and a number, nothing else. The pair rides to
+  // fetchOrInitUser on window, because an anonymous sign-in hands back a uid
+  // and nothing else — this is the only moment the account can be named.
+  const [guestOpen, setGuestOpen] = useState(false);
+  const [gName, setGName] = useState('');
+  const [gNum, setGNum] = useState('');
+  const [gErr, setGErr] = useState('');
+  const [gBusy, setGBusy] = useState(false);
+  const doGuestLogin = async () => {
+    const name = gName.trim();
+    const num = gNum.trim();
+    if (name.length < 2) return setGErr('צריך שם — לפחות 2 תווים');
+    if (num.length < 3) return setGErr('צריך מספר — לפחות 3 ספרות');
+    setGErr('');
+    setGBusy(true);
+    window.__guestName = name;
+    window.__guestNumber = num;
+    try {
+      await window.fb.signInAnonymously(window.fb.auth);
+      // success: onAuthStateChanged takes over and this screen unmounts
+    } catch (e) {
+      window.__guestName = '';
+      window.__guestNumber = '';
+      setGBusy(false);
+      setGErr((e && e.code) === 'auth/operation-not-allowed' ? 'כניסת אורח כבויה — יש להפעיל Anonymous ב-Firebase Console' : 'כניסת אורח נכשלה, נסה שוב');
+    }
+  };
+  const inputCls = "w-full bg-slate-950 border border-white/12 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-gold-400/60 text-[15px]";
   return React.createElement("div", {
     className: "h-full w-full flex flex-col items-center justify-center p-4 relative",
     style: {
@@ -4794,7 +4843,64 @@ function AuthView() {
     }
   }, React.createElement("i", {
     className: "fa-brands fa-google text-blue-500 text-xl"
-  }), " Sign in with Google"), React.createElement(InstallBanner, {
+  }), " Sign in with Google"), React.createElement("div", {
+    className: "flex items-center gap-3 my-5"
+  }, React.createElement("div", {
+    className: "flex-1 h-px bg-white/10"
+  }), React.createElement("span", {
+    className: "text-[11px] font-bold tracking-widest",
+    style: {
+      color: 'var(--pt-text-2)'
+    }
+  }, "או"), React.createElement("div", {
+    className: "flex-1 h-px bg-white/10"
+  })), !guestOpen ? React.createElement("button", {
+    onClick: () => setGuestOpen(true),
+    className: "w-full bg-slate-900/80 hover:bg-slate-800 border border-gold-400/30 text-gold-400 py-3.5 px-6 rounded-xl font-black text-[15px] transition-transform hover:scale-[1.02]"
+  }, "👤 כניסה כאורח") : React.createElement("div", {
+    dir: "rtl",
+    className: "text-right space-y-2.5"
+  }, React.createElement("input", {
+    value: gName,
+    onChange: e => {
+      setGName(e.target.value);
+      setGErr('');
+    },
+    maxLength: 20,
+    placeholder: "שם",
+    className: inputCls
+  }), React.createElement("input", {
+    value: gNum,
+    onChange: e => {
+      setGNum(e.target.value.replace(/[^0-9]/g, ''));
+      setGErr('');
+    },
+    inputMode: "numeric",
+    maxLength: 15,
+    placeholder: "מספר טלפון",
+    className: inputCls,
+    dir: "ltr"
+  }), React.createElement("p", {
+    className: "text-[11px] leading-relaxed font-bold",
+    style: {
+      color: 'var(--pt-text-2)'
+    }
+  }, "בעל הקלאב יאשר אותך לפי השם והמספר. את המספר לא ניתן לשנות אחר-כך."), gErr && React.createElement("p", {
+    className: "text-[12px] font-bold text-rose-400"
+  }, gErr), React.createElement("button", {
+    onClick: doGuestLogin,
+    disabled: gBusy,
+    className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-60 text-white py-3.5 rounded-xl font-black text-[15px] shadow-lg"
+  }, gBusy ? "רגע..." : "המשך כאורח"), React.createElement("button", {
+    onClick: () => {
+      setGuestOpen(false);
+      setGErr('');
+    },
+    className: "w-full text-[12px] font-bold underline",
+    style: {
+      color: 'var(--pt-text-2)'
+    }
+  }, "חזרה")), React.createElement(InstallBanner, {
     variant: "auth"
   })), React.createElement("div", {
     className: "absolute bottom-4 inset-x-0 z-20 flex flex-col items-center gap-2"
@@ -9673,10 +9779,16 @@ function BackofficeView({
     className: "min-w-0"
   }, React.createElement("div", {
     className: "font-bold text-white truncate"
-  }, u.username), React.createElement("div", {
+  }, u.username), u.email && React.createElement("div", {
     className: "text-xs text-slate-400 truncate",
     dir: "ltr"
-  }, u.email), u.agentUid && React.createElement("div", {
+  }, u.email), React.createElement("div", {
+    // A guest signs in with a name and a number and no email at all. The
+    // number is the only thing the owner can identify him by, so it belongs
+    // on the row he approves from — not two screens away.
+    className: `text-xs font-black truncate ${u.isGuest ? 'text-gold-400' : 'text-slate-500'}`,
+    dir: "ltr"
+  }, u.isGuest ? '👤 ' + (u.playerId || '—') : 'ID ' + (u.playerId || '—')), u.agentUid && React.createElement("div", {
     className: "text-[10px] text-purple-300 font-black truncate"
   }, "🤝 ", u.agentUid === user.uid ? 'Your referral' : 'Agent: ' + agentName(u.agentUid)))), React.createElement("div", {
     className: "flex gap-2 shrink-0"

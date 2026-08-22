@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>מדריך המדווח · ירוק בעיניים</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700;800;900&family=Heebo:wght@400;500;700;800&display=swap">
+<style>
+  :root{
+    --forest:#12362a; --green:#16a34a; --green-d:#0f7d3a; --green-l:#e7f7ec;
+    --ground:#f4f8f2; --surface:#ffffff; --surface-2:#eef4ec;
+    --ink:#132019; --muted:#5c6f63; --line:#dde7dd;
+    --danger:#dc2626; --danger-l:#fef2f2; --amber:#b45309;
+    --ring:0 1px 2px rgba(19,32,25,.06),0 8px 24px -14px rgba(19,32,25,.28);
+    --ring-sm:0 1px 2px rgba(19,32,25,.08);
+  }
+  :root:not([data-theme="light"]){ }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --forest:#8ff0be; --green:#2fbf6b; --green-d:#25a259; --green-l:#16281f;
+      --ground:#0c130f; --surface:#141d17; --surface-2:#1b271f;
+      --ink:#e7f0e9; --muted:#9db0a3; --line:#26362c;
+      --danger:#f87171; --danger-l:#2a1616; --amber:#f0b24a;
+      --ring:0 1px 2px rgba(0,0,0,.4),0 10px 30px -16px rgba(0,0,0,.7);
+      --ring-sm:0 1px 2px rgba(0,0,0,.5);
+    }
+  }
+  :root[data-theme="dark"]{
+    --forest:#8ff0be; --green:#2fbf6b; --green-d:#25a259; --green-l:#16281f;
+    --ground:#0c130f; --surface:#141d17; --surface-2:#1b271f;
+    --ink:#e7f0e9; --muted:#9db0a3; --line:#26362c;
+    --danger:#f87171; --danger-l:#2a1616; --amber:#f0b24a;
+    --ring:0 1px 2px rgba(0,0,0,.4),0 10px 30px -16px rgba(0,0,0,.7);
+    --ring-sm:0 1px 2px rgba(0,0,0,.5);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:"Heebo",system-ui,"Segoe UI",Arial,sans-serif;
+    line-height:1.6; font-size:17px; text-rendering:optimizeLegibility;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:"Rubik","Heebo",system-ui,sans-serif; line-height:1.15; text-wrap:balance; margin:0}
+  .wrap{max-width:760px; margin:0 auto; padding:0 18px}
+
+  /* ── hero / top ── */
+  header.top{
+    background:
+      radial-gradient(120% 120% at 90% -10%, rgba(47,191,107,.28), transparent 60%),
+      linear-gradient(160deg, var(--forest), #0b241b);
+    color:#eafaf0; padding:38px 0 30px; position:relative; overflow:hidden;
+  }
+  :root[data-theme="dark"] header.top, :root:not([data-theme="light"]) header.top{ }
+  header.top .wrap{position:relative; z-index:1}
+  .brand{display:flex; align-items:center; gap:10px; font-family:"Rubik"; font-weight:800; letter-spacing:.2px; font-size:15px; color:#bff3d1}
+  .brand .dot{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#7bf0a8,#1f9a54);box-shadow:0 0 0 4px rgba(123,240,168,.15)}
+  h1{font-size:clamp(30px,7vw,46px); font-weight:900; margin:14px 0 8px; color:#fff}
+  .lede{font-size:clamp(16px,3.4vw,19px); color:#c8ecd5; max-width:52ch}
+  .meta-row{display:flex; flex-wrap:wrap; gap:8px; margin-top:18px}
+  .pill{font-size:13px; font-weight:700; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); color:#ddf6e6; padding:6px 12px; border-radius:999px; backdrop-filter:blur(4px)}
+
+  /* ── section intro ── */
+  main{padding:34px 0 60px}
+  .intro{background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:20px 20px; box-shadow:var(--ring-sm); margin-bottom:30px}
+  .intro h2{font-size:19px; color:var(--forest); margin-bottom:6px}
+  .intro p{margin:0; color:var(--muted); font-size:15.5px}
+  .legend{display:flex; flex-wrap:wrap; gap:14px 20px; margin-top:14px; padding-top:14px; border-top:1px dashed var(--line)}
+  .legend div{display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600}
+  .lg-v{width:30px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;background:linear-gradient(135deg,var(--green),var(--green-d));flex:none}
+  .lg-x{font-size:13px;font-weight:800;color:var(--danger);border:2px solid var(--danger);border-radius:8px;padding:3px 9px;flex:none}
+  .lg-m{font-size:13px;font-weight:800;color:var(--danger);background:var(--danger);color:#fff;border-radius:8px;padding:4px 10px;flex:none}
+
+  /* ── step ── */
+  .step{display:grid; grid-template-columns:1fr; gap:0; margin:0 0 14px; scroll-margin-top:20px}
+  .step-card{
+    background:var(--surface); border:1px solid var(--line); border-radius:20px;
+    box-shadow:var(--ring); overflow:hidden;
+  }
+  .step-head{display:flex; gap:14px; align-items:flex-start; padding:20px 20px 4px}
+  .num{
+    flex:none; width:42px; height:42px; border-radius:13px; display:grid; place-items:center;
+    font-family:"Rubik"; font-weight:800; font-size:19px; color:#fff;
+    background:linear-gradient(150deg,var(--green),var(--green-d)); box-shadow:0 6px 16px -8px rgba(22,163,74,.7);
+  }
+  .step-head h2{font-size:21px; color:var(--forest); margin-top:3px}
+  .step-body{padding:6px 20px 22px}
+  .step-body p{margin:10px 0 0; font-size:16px}
+  .step-body p:first-child{margin-top:6px}
+  .step-body b{color:var(--forest)}
+  ul.tips{list-style:none; margin:14px 0 0; padding:0; display:flex; flex-direction:column; gap:8px}
+  ul.tips li{position:relative; padding-inline-start:26px; font-size:15px; color:var(--ink)}
+  ul.tips li::before{content:"✓"; position:absolute; inset-inline-start:0; top:1px; color:var(--green); font-weight:900}
+  .note{margin-top:14px; background:var(--green-l); border:1px solid color-mix(in oklab,var(--green) 30%,transparent); border-radius:12px; padding:11px 13px; font-size:14.5px; color:var(--forest)}
+  .note.warn{background:var(--danger-l); border-color:color-mix(in oklab,var(--danger) 35%,transparent); color:var(--danger)}
+  .note b{color:inherit}
+
+  /* ── phone mock ── */
+  .shot{margin:16px 0 2px; display:flex; justify-content:center}
+  .phone{
+    width:100%; max-width:320px; background:var(--surface-2); border:1px solid var(--line);
+    border-radius:26px; padding:9px; box-shadow:var(--ring);
+  }
+  .screen{background:var(--ground); border-radius:18px; overflow:hidden; border:1px solid var(--line)}
+  .appbar{background:linear-gradient(150deg,var(--forest),#0b241b); color:#eafaf0; padding:11px 13px; display:flex; align-items:center; justify-content:space-between}
+  .appbar .t{font-family:"Rubik"; font-weight:800; font-size:13.5px; display:flex; align-items:center; gap:6px}
+  .appbar .t .d{width:13px;height:13px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#7bf0a8,#1f9a54)}
+  .appbar .who{font-size:10.5px; color:#bfe8cd; text-align:left}
+  .scr-body{padding:12px}
+  .fld-lbl{font-size:11px; font-weight:700; color:var(--muted); margin:2px 0 5px}
+
+  .gbtn{display:block; width:100%; text-align:center; font-family:"Rubik"; font-weight:800; font-size:15px; border-radius:13px; padding:13px; margin:0 0 9px; cursor:default;
+    background:var(--surface); border:2px solid var(--green-d); color:var(--forest); box-shadow:var(--ring-sm)}
+  .gbtn.solid{background:linear-gradient(135deg,var(--green),var(--green-d)); color:#fff; border-color:transparent}
+
+  /* count row */
+  .mrow{display:flex; align-items:center; gap:9px; background:var(--surface); border:1.5px solid var(--line); border-radius:14px; padding:9px; margin-bottom:9px}
+  .mrow.ok{border-color:var(--green); background:linear-gradient(135deg,var(--green-l),transparent)}
+  .mrow.diff{border-color:var(--danger)}
+  .mrow.sens{box-shadow:0 0 0 2px var(--danger) inset}
+  .vbtn{flex:none; width:46px; height:44px; border-radius:12px; border:2.5px solid var(--green); background:var(--surface); color:var(--green); font-size:24px; font-weight:900; display:grid; place-items:center}
+  .mrow.ok .vbtn{background:linear-gradient(135deg,var(--green),var(--green-d)); color:#fff; border-color:transparent}
+  .mrow .info{flex:1; min-width:0}
+  .mrow .nm{font-weight:800; font-size:14.5px}
+  .mrow.sens .nm{color:var(--danger)}
+  .mrow .ex{font-size:11.5px; color:var(--muted)}
+  .mrow .ex b{color:var(--forest)}
+  .sens-tag{display:inline-block; font-size:9.5px; font-weight:900; color:#fff; background:var(--danger); border-radius:6px; padding:1px 6px; margin-inline-start:5px; vertical-align:middle}
+  .xbtn{flex:none; font-size:11.5px; font-weight:800; border-radius:10px; border:2px solid var(--danger); color:var(--danger); background:var(--surface); padding:8px 9px}
+  .mrow.diff .xbtn{background:var(--danger); color:#fff}
+  .missbtn{flex:none; font-size:11.5px; font-weight:800; border-radius:10px; border:2px solid var(--danger); color:var(--danger); background:var(--surface); padding:8px 9px}
+  .serial{font-family:"Heebo"; background:var(--surface-2); border-radius:5px; padding:0 4px; font-size:10.5px}
+  .kit{font-size:11.5px; font-weight:900; color:var(--forest); background:linear-gradient(90deg,var(--green-l),transparent); border-inline-start:4px solid var(--green); padding:4px 9px; border-radius:5px; margin:4px 0}
+  .sechead{display:flex; align-items:center; justify-content:space-between; margin:12px 2px 8px}
+  .sechead h4{margin:0; font-family:"Rubik"; font-size:14px; color:var(--forest)}
+  .mini{font-size:11px; font-weight:800; color:var(--forest); border:1.5px solid var(--green-d); border-radius:9px; padding:5px 9px; background:var(--surface)}
+  .send{display:block; width:100%; text-align:center; font-family:"Rubik"; font-weight:900; font-size:16px; color:#fff; border-radius:14px; padding:14px; margin-top:11px; background:linear-gradient(135deg,var(--green),var(--green-d)); box-shadow:0 8px 20px -10px rgba(22,163,74,.8)}
+  .banner{font-size:12px; border-radius:11px; padding:9px 11px; margin-bottom:9px}
+  .banner.warn{background:#fff7e6; border:1px solid #f2c879; color:#8a5a12}
+  :root[data-theme="dark"] .banner.warn,:root:not([data-theme="light"]) .banner.warn{background:#2a2110;border-color:#5c4a1e;color:#f0c877}
+  .banner.done{background:var(--green-l); border:1px solid color-mix(in oklab,var(--green) 30%,transparent); color:var(--forest)}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .inp{background:var(--surface); border:1.5px solid var(--line); border-radius:10px; padding:9px; font-size:12px; color:var(--muted)}
+
+  /* report table mock */
+  .rtab{width:100%; border-collapse:collapse; font-size:12px; background:var(--surface); border-radius:10px; overflow:hidden}
+  .rtab th{background:var(--surface-2); color:var(--forest); text-align:right; font-size:10.5px; padding:6px 8px}
+  .rtab td{padding:7px 8px; border-top:1px solid var(--line)}
+  .rtab tr.gap td{background:var(--danger-l)}
+  .neg{color:var(--danger); font-weight:900}
+  .ok-c{color:var(--green); font-weight:900}
+  .hbtn{font-size:10px; font-weight:800; color:#fff; background:var(--danger); border-radius:7px; padding:2px 7px; margin-inline-start:4px; display:inline-block}
+  .cardttl{font-family:"Rubik"; font-weight:800; font-size:13px; color:var(--forest); margin:2px 0 8px; display:flex; gap:6px; align-items:center}
+
+  /* faq */
+  .faq{margin-top:30px}
+  .faq h2{font-size:22px; color:var(--forest); margin-bottom:14px; font-family:"Rubik"}
+  details{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:2px 16px; margin-bottom:10px; box-shadow:var(--ring-sm)}
+  details[open]{border-color:color-mix(in oklab,var(--green) 40%,var(--line))}
+  summary{font-weight:700; font-size:16px; padding:13px 0; cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; gap:10px; color:var(--forest)}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+"; font-family:"Rubik"; font-weight:800; color:var(--green); font-size:22px; line-height:1; transition:transform .2s}
+  details[open] summary::after{transform:rotate(45deg)}
+  details p{margin:0 0 14px; font-size:15px; color:var(--ink)}
+
+  footer{margin-top:40px; padding:22px 0 30px; border-top:1px solid var(--line); color:var(--muted); font-size:13.5px; text-align:center}
+  footer b{color:var(--forest)}
+
+  @media (min-width:640px){
+    .step-head{padding:22px 24px 4px}
+    .step-body{padding:6px 24px 24px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span> ירוק בעיניים · גדוד 1895</div>
+    <h1>מדריך המדווח</h1>
+    <p class="lede">כל מה שצריך כדי לבצע ספירה יומית מהטלפון — מהכניסה ועד השליחה. בלי סיסמה, בלי סרבול, בעברית מלאה.</p>
+    <div class="meta-row">
+      <span class="pill">📱 מותאם לטלפון</span>
+      <span class="pill">⏱️ ספירה בדקה</span>
+      <span class="pill">🔒 בלי התחברות</span>
+      <span class="pill">🟢 greeneyes95.com</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="intro">
+    <h2>לפני שמתחילים — שלוש מילים</h2>
+    <p>בכל יום סופרים את התחמושת והאמצעים של המסגרת שלכם. לכל פריט לוחצים סימון אחד. אם משהו לא תואם — מקלידים את המספר האמיתי. בסוף שולחים. זהו.</p>
+    <div class="legend">
+      <div><span class="lg-v">✓</span> קיים ותואם לצפי</div>
+      <div><span class="lg-x">שונה</span> להקליד כמות בפועל (גם 0)</div>
+      <div><span class="lg-m">חסר</span> פריט חתום שלא נמצא</div>
+    </div>
+  </section>
+
+  <!-- STEP 1 -->
+  <section class="step" id="s1">
+    <div class="step-card">
+      <div class="step-head"><div class="num">1</div><h2>נכנסים לאתר (ומתקינים כאפליקציה)</h2></div>
+      <div class="step-body">
+        <p>פותחים בדפדפן של הטלפון את הכתובת <b>greeneyes95.com</b>. אפשר להשתמש ישר מהדפדפן, אבל עדיף להתקין את האתר כאפליקציה — אז יש אייקון במסך הבית וזה נפתח מהר.</p>
+        <ul class="tips">
+          <li><b>אייפון:</b> לוחצים על כפתור <b>שיתוף</b> ⬆️ ואז ״הוספה למסך הבית״.</li>
+          <li><b>אנדרואיד:</b> לוחצים על ״📲 התקנת האפליקציה״ שמופיע במסך, או על תפריט הדפדפן ← ״הוספה למסך הבית״.</li>
+          <li>יש גם <b>קוד QR</b> לכל מסגרת — סריקה פותחת אתכם ישר על המסגרת הנכונה.</li>
+        </ul>
+        <div class="note">אין צורך בשם משתמש או סיסמה. חיילים נכנסים ישירות — הסיסמה שמורה רק למנהלים.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section class="step" id="s2">
+    <div class="step-card">
+      <div class="step-head"><div class="num">2</div><h2>בוחרים את המסגרת שלכם</h2></div>
+      <div class="step-body">
+        <p>בכל כניסה מופיע מסך הבחירה. בוחרים לפי הסדר: <b>פלוגה → מסגרת → אישור שיוך</b>. אחרי האישור אתם בפנים, במסגרת שבחרתם בלבד.</p>
+        <div class="shot">
+          <div class="phone"><div class="screen">
+            <div class="appbar"><span class="t"><span class="d"></span> ירוק בעיניים</span><span class="who">בחירת מסגרת</span></div>
+            <div class="scr-body">
+              <div class="fld-lbl">שלב 1 · באיזו פלוגה?</div>
+              <div class="gbtn">פלוגה א׳</div>
+              <div class="gbtn solid">פלוגה ב׳</div>
+              <div class="gbtn">פלוגה ד׳</div>
+              <div class="gbtn">גדוד (חפ״קים)</div>
+            </div>
+          </div></div>
+        </div>
+        <ul class="tips">
+          <li>אין פלוגה? בוחרים <b>גדוד</b> ואז את החפ״ק (מג״ד / סמג״ד / מפ״ם / בונקר / ארמון גדוד וכו׳).</li>
+          <li>מאשרים את השיוך רק אם אתם באמת שייכים למסגרת הזו.</li>
+        </ul>
+        <div class="note">בכל פעם שנכנסים, בוחרים מסגרת מחדש — כדי שלא תדווחו בטעות על מסגרת אחרת.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 3 -->
+  <section class="step" id="s3">
+    <div class="step-card">
+      <div class="step-head"><div class="num">3</div><h2>מסך הספירה — בוחרים יום</h2></div>
+      <div class="step-body">
+        <p>נוחתים ישר בטאב <b>ספירה</b> ✅. למעלה יש רצועת תאריכים (23/8–17/9) — כברירת מחדל היום הנוכחי. ימים עם <b>+ אמצעים</b> (שלישי ושישי) — סופרים בהם גם את האמצעים, לא רק תחמושת.</p>
+        <div class="shot">
+          <div class="phone"><div class="screen">
+            <div class="appbar"><span class="t"><span class="d"></span> ירוק בעיניים</span><span class="who">פלוגה ב׳ · סיור 1</span></div>
+            <div class="scr-body">
+              <div class="banner warn">📦 יום ג׳ — היום סופרים גם <b>אמצעים</b>.</div>
+              <div class="sechead"><h4>תחמושת</h4><span class="mini">סמן הכל ✓</span></div>
+              <div class="mrow ok">
+                <div class="vbtn">✓</div>
+                <div class="info"><div class="nm">רימון הלם</div><div class="ex">צפי: <b>8</b></div></div>
+                <div class="xbtn">שונה</div>
+              </div>
+              <div class="mrow">
+                <div class="vbtn">✓</div>
+                <div class="info"><div class="nm">כדורי גומי</div><div class="ex">צפי: <b>40</b></div></div>
+                <div class="xbtn">שונה</div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 4 -->
+  <section class="step" id="s4">
+    <div class="step-card">
+      <div class="step-head"><div class="num">4</div><h2>סופרים כל פריט — לחיצה אחת</h2></div>
+      <div class="step-body">
+        <p>מול כל פריט מופיע הצפי (כמה אמור להיות). כל מה שצריך:</p>
+        <ul class="tips">
+          <li>הכל תקין? לוחצים על ה־<b>✓ הירוק</b> — הוא נצבע מלא וזהו.</li>
+          <li>יש כמות אחרת? לוחצים <b>״שונה״</b> ומקלידים את המספר האמיתי (אפשר גם <b>0</b>).</li>
+          <li>רוצים לסמן הכל בבת אחת? <b>״סמן הכל ✓״</b> למעלה, ואז מתקנים רק את מה שחריג.</li>
+        </ul>
+        <div class="shot">
+          <div class="phone"><div class="screen">
+            <div class="appbar"><span class="t"><span class="d"></span> ירוק בעיניים</span><span class="who">פלוגה ב׳ · סיור 1</span></div>
+            <div class="scr-body">
+              <div class="mrow ok">
+                <div class="vbtn">✓</div>
+                <div class="info"><div class="nm">רימון הלם</div><div class="ex">צפי: <b>8</b> · תואם</div></div>
+                <div class="xbtn">שונה</div>
+              </div>
+              <div class="mrow diff">
+                <div class="vbtn">✓</div>
+                <div class="info"><div class="nm">כדורי גומי</div><div class="ex">צפי: <b>40</b> · נספר 37</div></div>
+                <div style="flex:none;width:52px"><div class="inp" style="text-align:center;font-weight:800;color:var(--danger)">37</div></div>
+                <div class="xbtn">שונה</div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+        <div class="note">שורה ירוקה = נספר ותקין. שורה אדומה = הוקלדה כמות שונה מהצפי — זה בסדר, ככה מדווחים חוסר או עודף.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 5 -->
+  <section class="step" id="s5">
+    <div class="step-card">
+      <div class="step-head"><div class="num">5</div><h2>פריטים מיוחדים: סדרות, צ׳, וערכות מפקד</h2></div>
+      <div class="step-body">
+        <p>חלק מהפריטים מפורטים יותר, כדי לדעת בדיוק מה יש ואצל מי:</p>
+        <ul class="tips">
+          <li><b>סדרות</b> (רימון רסס, מטול נפיץ): שורה אחת = סדרה + כמות (למשל 84 מאותה סדרה). ✓ = הכל קיים, ״שונה״ = כמה יש בפועל.</li>
+          <li><b>פריטים עם צ׳ וחייל חתום</b> (מאג, קלע, מטול…): כל פריט שורה נפרדת עם ה־צ׳ ושם החייל. ✓ = קיים, <b>״חסר״</b> = לא נמצא.</li>
+          <li><b>ערכות מפקד</b> 🎖️: פריטים החתומים על אותו חייל מקובצים יחד — קל לספור את כל הערכה.</li>
+        </ul>
+        <div class="shot">
+          <div class="phone"><div class="screen">
+            <div class="appbar"><span class="t"><span class="d"></span> ירוק בעיניים</span><span class="who">פלוגה ב׳ · סיור 1</span></div>
+            <div class="scr-body">
+              <div class="sechead"><h4>אמצעים</h4><span class="mini">סמן הכל ✓</span></div>
+              <div class="kit">🎖️ סמל אורן כהן (מ.א 8…)</div>
+              <div class="mrow ok">
+                <div class="vbtn">✓</div>
+                <div class="info"><div class="nm">קלע M4 · <span class="serial">צ׳ 946814</span></div><div class="ex">בידי: <b>אורן כהן</b></div></div>
+                <div class="missbtn">חסר</div>
+              </div>
+              <div class="mrow">
+                <div class="vbtn">✓</div>
+                <div class="info"><div class="nm">מטול M16 · <span class="serial">צ׳ 10902</span></div><div class="ex">בידי: <b>אורן כהן</b></div></div>
+                <div class="missbtn">חסר</div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 6 -->
+  <section class="step" id="s6">
+    <div class="step-card">
+      <div class="step-head"><div class="num">6</div><h2>תחמושת רגישה — לב פתוח</h2></div>
+      <div class="step-body">
+        <p>שלושה פריטים מסומנים במיוחד: <b>רימון רסס</b>, <b>מטול נפיץ</b> ו<b>לאו</b>. הם מופיעים עם <b>מסגרת אדומה</b> ותגית <span class="sens-tag" style="position:static">רגיש</span> — כי הם תחמושת רגישה מאוד. תעצרו רגע, תוודאו פיזית, ורק אז תסמנו.</p>
+        <div class="shot">
+          <div class="phone"><div class="screen">
+            <div class="appbar"><span class="t"><span class="d"></span> ירוק בעיניים</span><span class="who">פלוגה ב׳ · סיור 1</span></div>
+            <div class="scr-body">
+              <div class="mrow sens ok">
+                <div class="vbtn">✓</div>
+                <div class="info"><div class="nm">רימון רסס<span class="sens-tag">רגיש</span></div><div class="ex"><span class="serial">סדרה 4471</span> · כמות <b>84</b></div></div>
+                <div class="xbtn">שונה</div>
+              </div>
+              <div class="mrow sens">
+                <div class="vbtn">✓</div>
+                <div class="info"><div class="nm">לאו<span class="sens-tag">רגיש</span></div><div class="ex">בידי: <b>—</b></div></div>
+                <div class="missbtn">חסר</div>
+              </div>
+            </div>
+          </div></div>
+        </div>
+        <div class="note warn"><b>שימו לב:</b> על פריט רגיש אל תסמנו ✓ מבלי לראות אותו בעיניים. אם חסר — סמנו ״חסר״ ודווחו למפקד מיד.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 7 -->
+  <section class="step" id="s7">
+    <div class="step-card">
+      <div class="step-head"><div class="num">7</div><h2>ממלאים פרטים ושולחים</h2></div>
+      <div class="step-body">
+        <p>בתחתית המסך ממלאים <b>שם מלא</b> ו<b>מספר אישי</b> (נשמרים לפעם הבאה), ולוחצים <b>״שליחת ספירה ✓״</b>. זהו — הספירה נקלטת אצל המפקדים בזמן אמת.</p>
+        <div class="shot">
+          <div class="phone"><div class="screen">
+            <div class="appbar"><span class="t"><span class="d"></span> ירוק בעיניים</span><span class="who">פלוגה ב׳ · סיור 1</span></div>
+            <div class="scr-body">
+              <div class="cardttl">פרטי הסופר</div>
+              <div class="grid2">
+                <div><div class="fld-lbl">שם מלא</div><div class="inp">דניאל לוי</div></div>
+                <div><div class="fld-lbl">מספר אישי</div><div class="inp">8 4 2 5 1 …</div></div>
+              </div>
+              <div class="send">שליחת ספירה ✓</div>
+              <div style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:7px">שליחה חוזרת תעדכן את הספירה של אותו יום</div>
+            </div>
+          </div></div>
+        </div>
+        <ul class="tips">
+          <li>טעיתם? פשוט תקנו ותשלחו שוב — השליחה החדשה דורסת את הקודמת לאותו יום.</li>
+          <li>אם חסר סימון על פריט כלשהו, המערכת תזכיר לכם לפני השליחה.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 8 -->
+  <section class="step" id="s8">
+    <div class="step-card">
+      <div class="step-head"><div class="num">8</div><h2>עדכון שצ״ל — כשמשתמשים בתחמושת</h2></div>
+      <div class="step-body">
+        <p>ניצלתם תחמושת (אימון / מבצעי)? בטאב <b>עדכון שצ״ל</b> 📉 בוחרים את הפריט, כמה נוצל, ממלאים שם ומספר אישי ושולחים. הצפי לספירה מתעדכן אוטומטית — ואין צורך לדווח שוב במקום אחר.</p>
+        <div class="note"><b>חשוב:</b> ברגע שדיווחתם שצ״ל, הכמות <b>יורדת מהמלאי</b> של המסגרת מיד, והדיווח נכנס אוטומטית לדוח שמגיע לחמ״ל הגדודי. לא צריך דיווח כפול.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 9 -->
+  <section class="step" id="s9">
+    <div class="step-card">
+      <div class="step-head"><div class="num">9</div><h2>דוחות — מצבת המסגרת והפערים</h2></div>
+      <div class="step-body">
+        <p>בטאב <b>דוחות</b> 📊 רואים את <b>מצבת המסגרת</b>: כל פריט, הצפי, כמה נספר, ואם יש פער. חוסר מופיע באדום. אם חסרה תחמושת — יש כפתור <b>״➕ דווח לחמ״ל״</b> ליד השורה: לחיצה מדווחת את ההפרש, הוא יורד מהמלאי ונכנס לדוח החמ״ל.</p>
+        <div class="shot">
+          <div class="phone"><div class="screen">
+            <div class="appbar"><span class="t"><span class="d"></span> ירוק בעיניים</span><span class="who">דוחות</span></div>
+            <div class="scr-body">
+              <div class="cardttl">📋 מצבת פלוגה ב׳ · סיור 1</div>
+              <table class="rtab">
+                <tr><th>פריט</th><th>צפי</th><th>נספר</th><th>פער</th></tr>
+                <tr><td>רימון הלם</td><td>8</td><td>8</td><td class="ok-c">✓</td></tr>
+                <tr class="gap"><td>כדורי גומי</td><td>40</td><td>37</td><td><span class="neg">−3</span><span class="hbtn">דווח לחמ״ל</span></td></tr>
+                <tr><td>תחמיש</td><td>900</td><td>900</td><td class="ok-c">✓</td></tr>
+              </table>
+            </div>
+          </div></div>
+        </div>
+        <ul class="tips">
+          <li>גוללים ברצועת התאריכים למעלה כדי לראות מצבת של יום אחר.</li>
+          <li>כל מסגרת רואה בדוחות רק את עצמה.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="faq">
+    <h2>שאלות נפוצות</h2>
+    <details><summary>שכחתי לספור פריט — מה עכשיו?</summary><p>פשוט חוזרים לטאב ספירה, מסמנים את מה שחסר, ולוחצים שוב ״שליחת ספירה״. השליחה החדשה מעדכנת את הספירה של אותו יום. אפשר לתקן בכל שלב.</p></details>
+    <details><summary>״שונה״ יכול להיות גם 0?</summary><p>כן. אם פריט לא קיים בכלל אצלכם — לוחצים ״שונה״ ומקלידים 0. ככה זה מדווח שאין, במקום לסמן ✓ בטעות.</p></details>
+    <details><summary>מה ההבדל בין ״שונה״ ל״חסר״?</summary><p>״שונה״ זה לכמויות — כמה יש בפועל (למשל 37 במקום 40). ״חסר״ זה לפריט מסוים עם צ׳/שם חתום שלא נמצא — הוא נרשם בדוח עם פרטי החייל שהיה חתום עליו.</p></details>
+    <details><summary>אני לא רואה אמצעים במסך הספירה.</summary><p>אמצעים סופרים רק בימי <b>שלישי ושישי</b>. בשאר הימים יופיעו רק פריטי תחמושת. אם גם בשלישי/שישי לא מופיע כלום — ייתכן שהמנהל עדיין לא הזין מלאי למסגרת.</p></details>
+    <details><summary>בטעות בחרתי מסגרת לא נכונה.</summary><p>לוחצים על <b>״🔄 החלפת מסגרת״</b> למעלה בכותרת, ובוחרים מחדש פלוגה ← מסגרת ← אישור.</p></details>
+    <details><summary>הכנסתי פריט בלי צ׳ או מספר אישי — זה נשמר?</summary><p>כן. גם כמות בלי צ׳ ובלי שם נשמרת ומופיעה. הפרטים הנוספים עוזרים למעקב, אבל אינם חובה.</p></details>
+  </section>
+
+  <footer>
+    <b>ירוק בעיניים</b> · גדוד 1895 · ספירה יומית 23/8–17/9<br>
+    הנתונים משותפים בזמן אמת עם המפקדים. לכל תקלה — פנו לארמון או למפקד הישיר.
+  </footer>
+
+</main>
+</body>
+</html>

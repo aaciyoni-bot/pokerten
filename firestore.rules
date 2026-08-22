@@ -68,6 +68,13 @@ service cloud.firestore {
         (request.auth.token.firebase.sign_in_provider == 'password' || superAdmin());
     }
 
+    // Inventory quantities and the חמ״ל-report reset are managed ONLY by the
+    // ARMON account (or the app owner). Other admins may view and report.
+    function ammoArmon() {
+      return signedIn() &&
+        (request.auth.token.email == 'armon@greeneyes95.com' || superAdmin());
+    }
+
     // App config (admin-added custom item lists) — read by all, admin writes.
     match /ammo_config/{doc} { allow read: if signedIn(); allow write: if ammoAdmin(); }
 
@@ -75,20 +82,21 @@ service cloud.firestore {
     // — read by all signed-in users, written only by admins.
     match /ammo_ref/{doc} { allow read: if signedIn(); allow write: if ammoAdmin(); }
 
-    // Baseline quantities per unit — ONLY admins may set/update quantities.
+    // Baseline quantities per unit — ONLY the ARMON account may set/update them.
     match /ammo_stock/{unit} {
       allow read: if signedIn();
-      allow write: if ammoAdmin() &&
+      allow write: if ammoArmon() &&
         request.resource.data.group == unit.split('_')[0];
     }
 
     // Usage reports — append-only for counters (auto-adjusts the expected
-    // count); corrections/deletions are admin-only.
+    // count); the חמ״ל-report reset (reconciled flag) and any deletion are
+    // ARMON-only, so no other admin can zero the report or restore stock.
     match /ammo_usage/{id} {
       allow read: if signedIn();
       allow create: if signedIn() &&
         request.resource.data.group == request.resource.data.unitId.split('_')[0];
-      allow update, delete: if ammoAdmin();
+      allow update, delete: if ammoArmon();
     }
 
     // Access log — every app entry is recorded (append-only); reading it is

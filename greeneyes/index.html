@@ -171,6 +171,8 @@
   table.rep .gap-neg { color: #b91c1c; font-weight: 900; }
   table.rep .gap-pos { color: #b45309; font-weight: 900; }
   table.rep tr.row-gap td { background: #fef2f2; }
+  .mini-hamal { display: inline-block; font-family: inherit; font-size: 11px; font-weight: 800; color: #fff; background: #b91c1c; border: none; border-radius: 8px; padding: 3px 8px; margin-inline-start: 4px; cursor: pointer; white-space: nowrap; }
+  .mini-hamal:active { transform: scale(.96); }
 
   .usage-row { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid #e5ebe6; font-size: 13px; align-items: center; }
   .usage-row .m { color: #6b7f72; font-size: 11px; }
@@ -600,6 +602,12 @@
   }
 
   function isAdminRole() { return S.role === 'admin'; }
+  // Only ARMON (or the app owner) manages inventory quantities and resets the
+  // חמ״ל report. Other admins may view and report, but never edit stock.
+  function isArmon() {
+    var e = (S.user && S.user.email || '').toLowerCase();
+    return e === 'armon@greeneyes95.com' || e === 'aaci.yoni@gmail.com';
+  }
   function myGroups() {
     if (S.role === 'admin') return ['a', 'b', 'd', 'bn'];
     return S.role ? [S.role] : [];
@@ -1308,7 +1316,7 @@
         ' <span class="m">· ' + esc(un ? un.full : u.unitId) + '</span>' +
         '<div class="m">' + esc(u.reporterName || '') + (u.reporterNum ? ' (מ.א ' + esc(u.reporterNum) + ')' : '') +
         ' · ' + esc(u.date || '') + ' ' + fmtTime(u.ts) + (u.note ? ' · ' + esc(u.note) : '') + '</div></div>' +
-        (isAdminRole() ? '<button class="btn-danger" data-del="' + u.id + '" style="padding:4px 8px;font-size:12px">מחק</button>' : '') +
+        (isArmon() ? '<button class="btn-danger" data-del="' + u.id + '" style="padding:4px 8px;font-size:12px">מחק</button>' : '') +
         '</div>';
     });
     h += '</div>';
@@ -1370,6 +1378,23 @@
       btn.disabled = false; $('auQty').value = ''; $('auNote').value = '';
       toast('✓ נרשם עדכון: ' + itemName('ammo', item) + ' −' + qty + ' · ' + UNIT_BY_ID[unit].name);
     }).catch(function (e) { btn.disabled = false; toast('שגיאה: ' + e.message); });
+  }
+
+  // ARMON reconciles the חמ״ל report: mark every open שצ״ל report as reported.
+  // The stock stays reduced (the deduction already happened) — this only clears
+  // the pending list once the physical חמ״ל report was compared and matched.
+  function resetHamalReport() {
+    if (!isArmon()) { toast('פעולה זו שמורה ל-ARMON'); return; }
+    var pend = S.usage.filter(function (u) { return !u.reconciled; });
+    if (!pend.length) { toast('אין דיווחים לאיפוס'); return; }
+    if (!confirm('לאפס את דוח החמ״ל? ' + pend.length + ' דיווחים יסומנו כ״דווחו לחמ״ל״.\nהמלאי לא ישתנה — הכמויות כבר ירדו.')) return;
+    var fb = window.fb, ts = Date.now(), by = (S.user.email || '').split('@')[0];
+    var btn = $('btnResetHamal'); if (btn) btn.disabled = true;
+    Promise.all(pend.map(function (u) {
+      return fb.setDoc(fb.doc(fb.db, 'ammo_usage', u.id), { reconciled: true, reconciledBy: by, reconciledTs: ts }, { merge: true });
+    })).then(function () {
+      toast('✓ הדוח אופס — ' + pend.length + ' דיווחים סומנו כדווחו');
+    }).catch(function (e) { if (btn) btn.disabled = false; toast('שגיאה: ' + e.message); });
   }
 
   /* ═══════════ REPORT screen ═══════════ */
@@ -1440,6 +1465,23 @@
     b.style.display = n > 0 ? '' : 'none';
   }
 
+  // file a counted shortfall as a שצ״ל report → drops from the framework's
+  // stock and joins the חמ״ל report. This is the "something is different →
+  // enter it into the report" option, offered right where the gap shows.
+  function reportGapToHamal(unit, iid, qty) {
+    if (!unit || !iid || !(qty > 0) || !UNIT_BY_ID[unit]) return;
+    var name = (localStorage.getItem('yb_name') || '').trim(), num = (localStorage.getItem('yb_num') || '').trim();
+    if (!name || !num) { toast('יש להזין שם ומספר אישי במסך הספירה תחילה'); return; }
+    if (!confirm('לדווח לחמ״ל ' + qty + ' × ' + itemName('ammo', iid) + '?\nהכמות תרד מהמלאי של ' + UNIT_BY_ID[unit].full + '.')) return;
+    var fb = window.fb;
+    fb.addDoc(fb.collection(fb.db, 'ammo_usage'), {
+      group: UNIT_BY_ID[unit].grp, unitId: unit, itemId: iid, qty: qty, date: todayIso(),
+      reporterName: name, reporterNum: num, note: 'פער בספירה — דווח לחמ״ל',
+      byEmail: S.user.email || '', byUid: S.user.uid, ts: Date.now()
+    }).then(function () { toast('✓ דווח לחמ״ל: ' + itemName('ammo', iid) + ' −' + qty); })
+      .catch(function (e) { toast('שגיאה: ' + e.message); });
+  }
+
   // per-item status of a framework's count on a given date
   function itemStatusFor(c, kind, iid, expected) {
     if (!c) return { counted: false };
@@ -1474,6 +1516,10 @@
         else if (st.gap != null) {
           actTxt = st.actual; gapCount++; cls = 'row-gap';
           gapTxt = st.gap < 0 ? '<span class="gap-neg">' + st.gap + '</span>' : '<span class="gap-pos">+' + st.gap + '</span>';
+          // a shortfall in ammunition can be filed to the חמ״ל report (drops from stock)
+          if (kind === 'ammo' && st.gap < 0) {
+            gapTxt += ' <button class="mini-hamal" data-hu="' + u.id + '" data-hi="' + it.id + '" data-hq="' + (-st.gap) + '">➕ דווח לחמ״ל</button>';
+          }
         } else { actTxt = (st.actual != null ? st.actual : '—'); }
         rows += '<tr class="' + cls + '"><td class="name">' + esc(it.name) + sensTag(it.id) + '</td><td>' +
           (exp != null ? exp : '—') + '</td><td>' + actTxt + '</td><td>' + gapTxt + '</td></tr>';
@@ -1562,6 +1608,9 @@
     $('expFull').onclick = exportFull;
     $('expUsage').onclick = exportUsage;
     if ($('expCentral')) $('expCentral').onclick = exportCentral;
+    document.querySelectorAll('.mini-hamal').forEach(function (b) {
+      b.onclick = function () { reportGapToHamal(b.getAttribute('data-hu'), b.getAttribute('data-hi'), +b.getAttribute('data-hq')); };
+    });
     document.querySelectorAll('[data-delc]').forEach(function (b) {
       b.onclick = function () {
         if (!confirm('למחוק את הספירה? היחידה תצטרך לספור מחדש.')) return;
@@ -1851,21 +1900,30 @@
     var h = '<datalist id="identlist">' + identOpts + '</datalist>' +
       '<datalist id="identlist_matol">' + dlOpts(S.rosterMatol) + '</datalist>' +
       '<datalist id="identlist_kela">' + dlOpts(S.rosterKela) + '</datalist>';
-    h += '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
-      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. צ׳ → שורה לכל פריט · סדרה → שורה = סדרה+כמות · מזהה חייל חוזר משלים שם אוטומטית.</div>' +
-      '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit);
-    if (adminOnly !== 'equip') {
-      h += '<div class="sec-head"><h2>תחמושת</h2></div><div class="stock-grid">';
-      ammoList().forEach(function (it) { h += stockRow('ammo', it); });
-      h += '</div>';
+    // unit picker — available to every admin (drives שצ״ל, central report, etc.)
+    h += '<div class="card"><h3>🗂️ יחידה נבחרת</h3><label class="fld">יחידה</label>' +
+      unitSelectHtml('aUnit', S.adminUnit) + '</div>';
+
+    // stock quantity editing — ARMON only
+    if (isArmon()) {
+      h += '<div class="card"><h3>⚙️ עדכון כמויות (ARMON בלבד)</h3>' +
+        '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. צ׳ → שורה לכל פריט · סדרה → שורה = סדרה+כמות · מזהה חייל חוזר משלים שם אוטומטית.</div>';
+      if (adminOnly !== 'equip') {
+        h += '<div class="sec-head"><h2>תחמושת</h2></div><div class="stock-grid">';
+        ammoList().forEach(function (it) { h += stockRow('ammo', it); });
+        h += '</div>';
+      }
+      if (adminOnly !== 'ammo') {
+        h += '<div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid">';
+        equipList().forEach(function (it) { h += stockRow('equip', it); });
+        h += '</div>';
+      }
+      h += '<button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">💾 שמירת כמויות ליחידה</button>' +
+        '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות מאפס את חישוב השימוש לפריט — הכמות שהוזנה היא הבסיס החדש</div></div>';
+    } else {
+      h += '<div class="card"><h3>⚙️ מלאי</h3><div style="font-size:13px;color:#4b5f52;line-height:1.7">' +
+        'עדכון כמויות המלאי מתבצע ע״י <b>ARMON</b> בלבד. כאדמין ניתן לצפות בדוחות, לדווח שצ״ל, ולנהל את הדיווחים לחמ״ל.</div></div>';
     }
-    if (adminOnly !== 'ammo') {
-      h += '<div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid">';
-      equipList().forEach(function (it) { h += stockRow('equip', it); });
-      h += '</div>';
-    }
-    h += '<button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">💾 שמירת כמויות ליחידה</button>' +
-      '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות מאפס את חישוב השימוש לפריט — הכמות שהוזנה היא הבסיס החדש</div></div>';
 
     // שצ״ל reporting straight from ניהול — for the unit selected above
     h += '<div class="card"><h3>📉 עדכון דיווח שצ״ל — ' + esc(UNIT_BY_ID[S.adminUnit] ? UNIT_BY_ID[S.adminUnit].name : '') + '</h3>' +
@@ -1890,6 +1948,38 @@
       '</div>' +
       '<label class="fld">הערה (לא חובה)</label><input type="text" id="auNote" placeholder="אימון / מבצעי...">' +
       '<button class="btn-primary" id="btnAuUsage">עדכון דיווח שצ״ל</button></div>';
+
+    // ── consolidated חמ״ל report (battalion) — every שצ״ל report already
+    // dropped from stock; this list gathers them for reconciliation with what
+    // was physically reported to the battalion חמ״ל. ARMON zeroes it when matched.
+    var pend = S.usage.filter(function (u) { return !u.reconciled; });
+    h += '<div class="card' + (pend.length ? ' gap-card' : '') + '"><h3>🎯 דיווחים לחמ״ל הגדודי</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">כל דיווחי השצ״ל שירדו מהמלאי וממתינים להשוואה מול הדיווח לחמ״ל. הכמויות תואמות לשצ״ל ולירידה מהתחמושת. ' +
+      (isArmon() ? 'ARMON משווה מול מה שנמסר לחמ״ל, ואז מאפס.' : 'איפוס הדוח מתבצע ע״י ARMON בלבד.') + '</div>';
+    if (!pend.length) {
+      h += '<div class="gap-ok">✓ אין דיווחים פתוחים</div>';
+    } else {
+      var byItem = {};
+      pend.forEach(function (u) { byItem[u.itemId] = (byItem[u.itemId] || 0) + (+u.qty || 0); });
+      h += '<table class="rep"><tr><th>פריט</th><th>סה״כ שדווח</th></tr>';
+      Object.keys(byItem).forEach(function (iid) {
+        h += '<tr><td class="name">' + esc(itemName('ammo', iid)) + sensTag(iid) + '</td><td><b>' + byItem[iid] + '</b></td></tr>';
+      });
+      h += '</table>';
+      h += '<div style="font-size:12px;font-weight:800;margin:10px 0 4px;color:#1b4332">פירוט הדיווחים (' + pend.length + ')</div>';
+      pend.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, 150).forEach(function (u) {
+        var un = UNIT_BY_ID[u.unitId];
+        h += '<div class="usage-row"><div><b>' + esc(itemName('ammo', u.itemId)) + '</b> − ' + (+u.qty || 0) +
+          ' <span class="m">· ' + esc(un ? un.full : u.unitId) + '</span>' +
+          '<div class="m">' + esc(u.reporterName || '') + (u.reporterNum ? ' (מ.א ' + esc(u.reporterNum) + ')' : '') +
+          ' · ' + esc(u.date || '') + ' ' + fmtTime(u.ts) + (u.note ? ' · ' + esc(u.note) : '') + '</div></div></div>';
+      });
+      if (isArmon()) {
+        h += '<button class="btn-primary" id="btnResetHamal" style="background:linear-gradient(135deg,#b91c1c,#7f1d1d);box-shadow:0 8px 22px -8px rgba(185,28,28,.55)">✔️ דווח לחמ״ל בוצע — איפוס הדוח</button>' +
+          '<div style="font-size:11px;color:#6b7f72;text-align:center">האיפוס מסמן שהדיווחים הושוו ונמסרו לחמ״ל · המלאי לא משתנה (כבר ירד)</div>';
+      }
+    }
+    h += '</div>';
 
     // custom items
     var cAmmo = (S.config && S.config.customAmmo) || [];
@@ -1946,8 +2036,9 @@
     $('scrAdmin').innerHTML = h;
     var sel = $('aUnit'); sel.value = S.adminUnit;
     sel.onchange = function () { S.adminUnit = sel.value; renderAdmin(); };
-    $('btnStock').onclick = saveStock;
+    if ($('btnStock')) $('btnStock').onclick = saveStock;
     if ($('btnAuUsage')) $('btnAuUsage').onclick = submitUsageAdmin;
+    if ($('btnResetHamal')) $('btnResetHamal').onclick = resetHamalReport;
     if ($('ctrUnit')) $('ctrUnit').onclick = function () { S.centralView = S.centralView === 'unit' ? null : 'unit'; renderAdmin(); };
     if ($('ctrAll')) $('ctrAll').onclick = function () { S.centralView = S.centralView === 'all' ? null : 'all'; renderAdmin(); };
     if ($('expCentral')) $('expCentral').onclick = exportCentral;

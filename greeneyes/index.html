@@ -815,9 +815,9 @@
     if (!UNIT_BY_ID[S.adminUnit] || myGroups().indexOf(UNIT_BY_ID[S.adminUnit].grp) < 0) S.adminUnit = S.unit;
     if (S.tab === 'admin' && role !== 'admin') S.tab = 'count';
     updateGapBadge();
-    if (!S.loggedLoad) { // remembered session — log this entry too
+    if (!S.loggedLoad) { // first load of this session (incl. a remembered login)
       S.loggedLoad = true;
-      if (role === 'admin') logEntry('admin', { user: (S.user.email || '').split('@')[0] });
+      if (role === 'admin') { logEntry('admin', { user: (S.user.email || '').split('@')[0] }); S.tab = 'report'; } // land admins on the main dashboard, not a leftover framework
       else logEntry('unit', { unitId: localStorage.getItem('yb_unit') || S.unit, group: role });
     }
     resubscribeData();

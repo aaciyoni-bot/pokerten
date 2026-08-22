@@ -162,6 +162,11 @@
   .st-miss { color: #b91c1c; font-weight: 700; }
   .st-diff { color: #b45309; font-weight: 700; }
   .mism { font-size: 11px; color: #b91c1c; }
+  table.rep tr.sec td { font-weight: 900; color: var(--forest); background: #eef7f1; font-size: 12px; }
+  table.rep td.name { font-weight: 700; }
+  table.rep .gap-neg { color: #b91c1c; font-weight: 900; }
+  table.rep .gap-pos { color: #b45309; font-weight: 900; }
+  table.rep tr.row-gap td { background: #fef2f2; }
 
   .usage-row { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid #e5ebe6; font-size: 13px; align-items: center; }
   .usage-row .m { color: #6b7f72; font-size: 11px; }
@@ -1426,6 +1431,54 @@
     b.style.display = n > 0 ? '' : 'none';
   }
 
+  // per-item status of a framework's count on a given date
+  function itemStatusFor(c, kind, iid, expected) {
+    if (!c) return { counted: false };
+    var src = kind === 'ammo' ? c.items : c.equip;
+    var v = src && src[iid];
+    if (!v) return { counted: false };
+    if (v.ok) return { counted: true, ok: true, actual: (v.expected != null ? v.expected : expected), gap: 0 };
+    if (typeof v.actual === 'number') {
+      var exp = v.expected != null ? v.expected : expected;
+      return { counted: true, ok: false, actual: v.actual, gap: (exp != null ? v.actual - exp : null) };
+    }
+    return { counted: true };
+  }
+  // a single framework's full inventory list for S.repDate, with gaps flagged
+  function frameworkInventoryHtml(u) {
+    var c = S.counts[countId(u.id, S.repDate)];
+    var rows = '', gapCount = 0;
+    [['ammo', 'תחמושת'], ['equip', 'אמצעים']].forEach(function (pair) {
+      var kind = pair[0];
+      var list = (kind === 'ammo' ? ammoList() : equipList()).filter(function (it) {
+        return expectedFor(u.id, kind, it.id) != null || stockQty(u.id, kind, it.id) > 0;
+      });
+      if (!list.length) return;
+      rows += '<tr class="sec"><td colspan="4">' + esc(pair[1]) + '</td></tr>';
+      list.forEach(function (it) {
+        var exp = expectedFor(u.id, kind, it.id);
+        if (exp == null) exp = stockQty(u.id, kind, it.id);
+        var st = itemStatusFor(c, kind, it.id, exp);
+        var actTxt, gapTxt = '', cls = '';
+        if (!st.counted) { actTxt = '<span class="m" style="color:#6b7f72">טרם נספר</span>'; }
+        else if (st.gap === 0) { actTxt = (st.actual != null ? st.actual : exp); gapTxt = '<span class="st-ok">✓</span>'; }
+        else if (st.gap != null) {
+          actTxt = st.actual; gapCount++; cls = 'row-gap';
+          gapTxt = st.gap < 0 ? '<span class="gap-neg">' + st.gap + '</span>' : '<span class="gap-pos">+' + st.gap + '</span>';
+        } else { actTxt = (st.actual != null ? st.actual : '—'); }
+        rows += '<tr class="' + cls + '"><td class="name">' + esc(it.name) + '</td><td>' +
+          (exp != null ? exp : '—') + '</td><td>' + actTxt + '</td><td>' + gapTxt + '</td></tr>';
+      });
+    });
+    if (!rows) return '';
+    return '<div class="card"><h3>📋 מצבת ' + esc(u.full) + ' — ' + fmtDM(S.repDate) + '</h3>' +
+      (gapCount
+        ? '<div style="font-size:13px;color:#b91c1c;font-weight:800;margin-bottom:6px">⚠️ ' + gapCount + ' פערים ביום זה</div>'
+        : (c ? '<div style="font-size:13px;color:#166534;font-weight:800;margin-bottom:6px">✓ אין פערים — הכל תואם</div>'
+             : '<div style="font-size:13px;color:#6b7f72;font-weight:700;margin-bottom:6px">טרם בוצעה ספירה ליום זה</div>')) +
+      '<table class="rep inv"><tr><th>פריט</th><th>צפי</th><th>נספר</th><th>פער</th></tr>' + rows + '</table></div>';
+  }
+
   function renderReport() {
     var units = myUnits();
     var h = '';
@@ -1477,6 +1530,11 @@
       }
     });
     h += '</table></div>';
+
+    // full inventory of each framework in scope (soldiers: their one framework),
+    // showing every item, the expected count, what was counted, and any gap.
+    // Admins have the central report in ניהול, so this stays out of their (all-unit) view.
+    if (!isAdminRole()) units.forEach(function (u) { h += frameworkInventoryHtml(u); });
 
     h += '<div class="card"><h3>📤 יצוא דוח מרכז</h3>' +
       '<button class="btn-ghost" id="expSummary">דוח סיכום יומי (כל הימים) — CSV</button>' +

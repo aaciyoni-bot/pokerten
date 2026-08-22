@@ -267,7 +267,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, doc, getDoc, setDoc, onSnapshot, addDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyC1MuCmX0bUAW6XakFzkqS8LHVxkDRTrfo",
@@ -283,7 +283,7 @@
   // Soldiers enter with an invisible anonymous session (no account, no password,
   // works on any domain). Admins upgrade with email+password — that difference
   // is what the Firestore rules use to gate quantity edits server-side.
-  window.fb = { auth: _auth, db: getFirestore(app), signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, collection, doc, setDoc, onSnapshot, addDoc, deleteDoc, query, where };
+  window.fb = { auth: _auth, db: getFirestore(app), signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, collection, doc, getDoc, setDoc, onSnapshot, addDoc, deleteDoc, query, where };
   // Keep the session on THIS device: an admin who logged in stays logged in
   // across reloads and app relaunches until they explicitly tap התנתקות.
   setPersistence(_auth, browserLocalPersistence)
@@ -298,32 +298,29 @@
   <h1>ירוק <span class="g">בעיניים</span></h1>
   <p>גדוד 1895 · ספירת תחמושת ואמצעים יומית</p>
 
-  <!-- gate: battalion access code — soldiers must enter it before any data
-       loads. Enforced server-side (Firestore rules); admins bypass via login. -->
-  <div id="gateBox" class="pickbox" style="display:none">
-    <div class="pick-title">🔒 קוד כניסה</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">האתר סגור. הזינו את קוד הגישה של הגדוד כדי להיכנס.</div>
-    <input type="password" id="gateCode" inputmode="numeric" autocomplete="off" placeholder="קוד גישה" style="direction:ltr;text-align:center">
-    <button class="gbtn confirm" id="btnGate">כניסה</button>
+  <!-- login by personal number. The number must exist in the שלישות roster
+       (blocks anyone off the street); privileged people (armon / viewer-admin)
+       add a personal PIN. Enforced server-side by the Firestore rules. -->
+  <div id="loginBox" class="pickbox">
+    <div class="pick-title">כניסה למערכת</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px">הזינו את המספר האישי שלכם</div>
+    <input type="text" id="pnInput" inputmode="numeric" autocomplete="off" placeholder="מספר אישי" style="direction:ltr;text-align:center">
+    <div id="pinWrap" style="display:none;margin-top:2px">
+      <div style="font-size:13px;color:var(--muted);margin:6px 0">חשבון מנהל — הזינו קוד אישי</div>
+      <input type="password" id="pinInput" inputmode="numeric" autocomplete="off" placeholder="קוד אישי" style="direction:ltr;text-align:center">
+    </div>
+    <button class="gbtn confirm" id="btnLoginPn">כניסה</button>
+    <div id="loginMsg" style="font-size:13px;font-weight:700;color:var(--danger);margin-top:8px;min-height:18px"></div>
   </div>
 
-  <!-- step 1: company (or battalion-level frameworks that have no company) -->
-  <div id="pickStep1" class="pickbox">
-    <div class="pick-title">לאיזו מסגרת את/ה שייך/ת?</div>
-    <button class="gbtn" data-g="a">פלוגה א׳</button>
-    <button class="gbtn" data-g="b">פלוגה ב׳</button>
-    <button class="gbtn" data-g="d">פלוגה ד׳</button>
-    <button class="gbtn" data-g="bn">חפ״ק גדוד <span class="gsub">מג״ד · סמג״ד · מפ״ם</span></button>
-  </div>
-
-  <!-- step 2: framework inside the company -->
+  <!-- framework picker (soldiers, after login — scoped to their company) -->
   <div id="pickStep2" class="pickbox" style="display:none">
     <div class="pick-title" id="pick2Title"></div>
     <div id="pick2Btns"></div>
-    <button class="linkish" id="pickBack">→ חזרה לבחירת פלוגה</button>
+    <button class="linkish" id="pickBack">→ החלפת חייל / כניסה מחדש</button>
   </div>
 
-  <!-- step 3: confirmation -->
+  <!-- confirmation -->
   <div id="pickConfirm" class="pickbox" style="display:none">
     <div class="pick-title">וידוא שיוך</div>
     <div class="confirm-txt" id="confirmTxt"></div>
@@ -331,16 +328,6 @@
     <button class="linkish" id="confirmBack">→ חזרה</button>
   </div>
 
-  <!-- admin login: email (or short username) + password -->
-  <div id="admBox" class="pickbox" style="display:none">
-    <div class="pick-title">🔑 כניסת מנהל</div>
-    <input type="text" id="admUser" placeholder="שם משתמש" autocomplete="username" style="direction:ltr;text-align:center">
-    <input type="password" id="admPass" placeholder="סיסמה" autocomplete="current-password" style="direction:ltr;text-align:center">
-    <button class="gbtn confirm" id="btnAdmLogin">כניסה</button>
-    <button class="linkish" id="admBack">→ חזרה</button>
-  </div>
-
-  <button class="linkish" id="lnkAdmin">🔑 כניסת מנהל</button>
   <button id="btnInstall" style="display:none;margin-top:12px;background:#16a34a;color:#fff">📲 התקנת האפליקציה</button>
   <p id="iosHint" style="display:none;font-size:12px;margin-top:14px">להתקנה באייפון: לחצו על <b>שיתוף</b> ⬆️ ואז <b>״הוספה למסך הבית״</b></p>
 </div>
@@ -522,6 +509,8 @@
     entryLog: [],          // access log (admins only)
     instEdit: { unit: null, open: {}, data: {} }, // signed-holders editor buffer (admin)
     loggedLoad: false,     // entry already logged for this page load
+    person: null,          // logged-in identity {pn, n, c, role} (role: soldier|admin|armon)
+    gateOK: false,         // identity binding (ammo_gate) confirmed this session
     picked: false,         // soldier confirmed a framework this session (picker each entry)
     centralView: null,     // admin central-inventory view: null | 'unit' | 'all'
     unit: localStorage.getItem('yb_unit') || 'a_armon',
@@ -595,8 +584,8 @@
       var fb = window.fb;
       fb.addDoc(fb.collection(fb.db, 'ammo_log'), Object.assign({
         type: type, ts: Date.now(),
-        name: localStorage.getItem('yb_name') || '',
-        num: localStorage.getItem('yb_num') || ''
+        name: (S.person && S.person.n) || '',
+        num: (S.person && S.person.pn) || ''
       }, extra || {})).catch(function () {});
     } catch (e) {}
   }
@@ -610,13 +599,10 @@
     return id;
   }
 
-  function isAdminRole() { return S.role === 'admin'; }
-  // Only ARMON (or the app owner) manages inventory quantities and resets the
-  // חמ״ל report. Other admins may view and report, but never edit stock.
-  function isArmon() {
-    var e = (S.user && S.user.email || '').toLowerCase();
-    return e === 'armon@greeneyes95.com' || e === 'aaci.yoni@gmail.com';
-  }
+  function isAdminRole() { return !!S.person && (S.person.role === 'admin' || S.person.role === 'armon'); }
+  // Only ARMON manages inventory quantities, the חמ״ל-report reset, and the
+  // people/PIN table. Viewer-admins may see everything but never edit stock.
+  function isArmon() { return !!S.person && S.person.role === 'armon'; }
   function myGroups() {
     if (S.role === 'admin') return ['a', 'b', 'd', 'bn'];
     return S.role ? [S.role] : [];
@@ -719,10 +705,10 @@
   function start() {
     var fb = window.fb;
     $('btnLogout').onclick = function () {
-      if (S.role === 'admin') {
-        if (confirm('להתנתק מחשבון המנהל?')) { S.loggedLoad = true; fb.signOut(fb.auth); }
+      if (isAdminRole()) {
+        if (confirm('להתנתק מהמערכת?')) logout();
       } else {
-        showPicker();                                // regular user: change framework
+        showPicker();                                // soldier: change framework (identity kept)
       }
     };
     wirePicker();
@@ -730,34 +716,18 @@
       S.user = user;
       if (!user) {
         fb.signInAnonymously(fb.auth).catch(function (e) {
-          toast('שגיאת התחברות (' + (e.code || e.message) + ') — יש להפעיל כניסה אנונימית ב-Firebase');
+          toast('שגיאת התחברות (' + (e.code || e.message) + ')');
         });
         return;
       }
-      if (S.unsubCfg) { try { S.unsubCfg(); } catch (e) {} }
-      S.unsubCfg = fb.onSnapshot(fb.doc(fb.db, 'ammo_config', 'main'), function (snap) {
-        S.config = snap.exists() ? snap.data() : null;
-        applyRole();
-      }, function () { S.config = null; applyRole(); });
-      // background reference roster (soldiers / weapon serials / identifiers)
-      // powering autocomplete when entering data. Read-only, loaded once.
-      if (S.unsubRoster) { try { S.unsubRoster(); } catch (e) {} }
-      S.unsubRoster = fb.onSnapshot(fb.doc(fb.db, 'ammo_ref', 'roster'), function (snap) {
-        var d = snap.exists() ? snap.data() : null;
-        S.roster = {}; S.rosterLc = {}; S.rosterMatol = {}; S.rosterKela = {};
-        if (d && d.json) {
-          try {
-            S.roster = JSON.parse(d.json);
-            Object.keys(S.roster).forEach(function (k) { S.rosterLc[k.toLowerCase()] = S.roster[k]; });
-          } catch (e) {}
-        }
-        // per-sheet scoped registries: מטול fills only from the מטול sheet,
-        // קלעים/טריג׳יקון/אקילה only from the קלעים sheet
-        if (d && d.matol) { try { S.rosterMatol = JSON.parse(d.matol); } catch (e) {} }
-        if (d && d.kela)  { try { S.rosterKela  = JSON.parse(d.kela);  } catch (e) {} }
-        renderAll();
-      }, function () {});
-      applyRole();
+      if (user.email) {                       // break-glass owner / armon account
+        S.person = { pn: '', n: (user.email || '').split('@')[0], c: '', role: 'armon' };
+        S.gateOK = true; subscribeMeta(); applyRole();
+        return;
+      }
+      // anonymous: resume a remembered identity, else ask for the personal number
+      var pn = null; try { pn = localStorage.getItem('yb_pn'); } catch (e) {}
+      if (pn) autoLogin(pn); else showLogin();
     });
     document.querySelectorAll('nav.tabs button').forEach(function (b) {
       b.onclick = function () { setTab(b.getAttribute('data-tab')); };
@@ -769,52 +739,176 @@
     $('app').style.display = which === 'app' ? 'block' : 'none';
   }
 
-  function pickerPanes(visible) {
-    ['pickStep1', 'pickStep2', 'pickConfirm', 'admBox'].forEach(function (id) {
-      $(id).style.display = id === visible ? '' : 'none';
-    });
-    $('lnkAdmin').style.display = visible === 'admBox' ? 'none' : '';
+  function teardownListeners() {
+    try { if (S.unsubCfg) S.unsubCfg(); } catch (e) {}
+    try { if (S.unsubRoster) S.unsubRoster(); } catch (e) {}
+    S.unsubData.forEach(function (u) { try { u(); } catch (e) {} });
+    S.unsubData = []; S.dataScope = '';
   }
 
-  function showPicker() {
-    pickedGroup = null; pickedUnit = null;
-    S.picked = false;   // re-choosing: don't let a background snapshot yank us back in
-    pickerPanes('pickStep1');
+  function logout() {
+    var u = S.user;
+    try { localStorage.removeItem('yb_pn'); } catch (e) {}
+    S.person = null; S.gateOK = false; S.picked = false; S.loggedLoad = false;
+    teardownListeners();
+    if (u && !u.email) { try { window.fb.deleteDoc(window.fb.doc(window.fb.db, 'ammo_gate', u.uid)); } catch (e) {} }
+    if (u && u.email) window.fb.signOut(window.fb.auth);   // break-glass → back to anonymous
+    else showLogin();
+  }
+
+  // config + roster live listeners — opened only once the gate is passed
+  function subscribeMeta() {
+    var fb = window.fb;
+    if (S.unsubCfg) { try { S.unsubCfg(); } catch (e) {} }
+    S.unsubCfg = fb.onSnapshot(fb.doc(fb.db, 'ammo_config', 'main'), function (snap) {
+      S.config = snap.exists() ? snap.data() : null; applyRole();
+    }, function (e) { if (!handlePermErr(e)) { S.config = null; applyRole(); } });
+    if (S.unsubRoster) { try { S.unsubRoster(); } catch (e) {} }
+    S.unsubRoster = fb.onSnapshot(fb.doc(fb.db, 'ammo_ref', 'roster'), function (snap) {
+      var d = snap.exists() ? snap.data() : null;
+      S.roster = {}; S.rosterLc = {}; S.rosterMatol = {}; S.rosterKela = {};
+      if (d && d.json) {
+        try {
+          S.roster = JSON.parse(d.json);
+          Object.keys(S.roster).forEach(function (k) { S.rosterLc[k.toLowerCase()] = S.roster[k]; });
+        } catch (e) {}
+      }
+      if (d && d.matol) { try { S.rosterMatol = JSON.parse(d.matol); } catch (e) {} }
+      if (d && d.kela)  { try { S.rosterKela  = JSON.parse(d.kela);  } catch (e) {} }
+      renderAll();
+    }, function (e) { handlePermErr(e); });
+  }
+
+  // a permission error on a soldier's listeners means the identity is no longer
+  // valid (removed / role changed) → send them back to the login screen once.
+  var _reprompt = false;
+  function handlePermErr(e) {
+    if (!e || (e.code || '') !== 'permission-denied') return false;
+    if (S.user && S.user.email) return false;              // break-glass admin
+    if (_reprompt) return true;
+    _reprompt = true;
+    S.gateOK = false; S.person = null;
+    try { localStorage.removeItem('yb_pn'); } catch (x) {}
+    teardownListeners();
+    toast('נדרשת כניסה מחדש');
+    showLogin();
+    return true;
+  }
+
+  function loginMsg(m) { var el = $('loginMsg'); if (el) el.textContent = m || ''; }
+  function showLogin() {
+    _reprompt = false; S.picked = false;
+    $('pinWrap').style.display = 'none';
+    loginMsg('');
+    pickerPanes('loginBox');
     show('login');
-    if (QR_UNIT) {  // arrived by scanning a unit's QR sticker — confirm it directly
-      var u = QR_UNIT; QR_UNIT = null;
-      pickedGroup = UNIT_BY_ID[u].grp;
-      openConfirm(u);
-    }
+  }
+
+  // a soldier's company string → our group code
+  function companyGroup(c) {
+    c = (c || '').replace(/["'׳״]/g, '').trim();
+    if (c.indexOf('פלוגה א') >= 0 || c === 'א') return 'a';
+    if (c.indexOf('פלוגה ב') >= 0 || c === 'ב') return 'b';
+    if (c.indexOf('פלוגה ד') >= 0 || c === 'ד') return 'd';
+    return 'bn';                                            // פלס״ם / תצפיות / מפקדה...
+  }
+
+  // resume a remembered identity: soldiers silently, admins re-enter the PIN
+  function autoLogin(pn) {
+    var fb = window.fb;
+    fb.getDoc(fb.doc(fb.db, 'ammo_people', pn)).then(function (snap) {
+      if (!snap.exists()) { try { localStorage.removeItem('yb_pn'); } catch (e) {} showLogin(); return; }
+      var p = snap.data(); p.pn = pn;
+      if (p.role === 'admin' || p.role === 'armon') {
+        showLogin(); $('pnInput').value = pn; $('pinWrap').style.display = ''; $('pinInput').focus();
+        loginMsg('חשבון מנהל — הזינו קוד אישי');
+      } else {
+        gateAs(p, {});
+      }
+    }).catch(function () { showLogin(); });
+  }
+
+  function doLogin() {
+    var pn = ($('pnInput').value || '').replace(/[^0-9]/g, '');
+    if (pn.length < 4) { loginMsg('מספר אישי לא תקין'); return; }
+    var pin = ($('pinInput').value || '').trim();
+    var fb = window.fb, btn = $('btnLoginPn'); btn.disabled = true; loginMsg('בודק...');
+    fb.getDoc(fb.doc(fb.db, 'ammo_people', pn)).then(function (snap) {
+      btn.disabled = false;
+      if (!snap.exists()) { loginMsg('המספר האישי לא נמצא ברשימת הגדוד. פנו לארמון.'); return; }
+      var p = snap.data(); p.pn = pn;
+      var priv = p.role === 'admin' || p.role === 'armon';
+      if (priv && !pin) { $('pinWrap').style.display = ''; $('pinInput').focus(); loginMsg('חשבון מנהל — הזינו קוד אישי'); return; }
+      gateAs(p, priv ? { pin: pin } : {});
+    }).catch(function (e) { btn.disabled = false; loginMsg('שגיאה: ' + (e.code || e.message)); });
+  }
+
+  // write the identity binding (ammo_gate) and enter the app
+  function gateAs(p, extra) {
+    var fb = window.fb, btn = $('btnLoginPn'); if (btn) btn.disabled = true;
+    var payload = { pn: p.pn }; if (extra && extra.pin) payload.pin = extra.pin;
+    fb.setDoc(fb.doc(fb.db, 'ammo_gate', fb.auth.currentUser.uid), payload).then(function () {
+      if (btn) btn.disabled = false;
+      _reprompt = false;
+      S.person = { pn: p.pn, n: p.n || '', c: p.c || '', role: p.role || 'soldier' };
+      try { localStorage.setItem('yb_pn', p.pn); } catch (e) {}
+      S.gateOK = true; subscribeMeta();
+      if (S.person.role === 'admin' || S.person.role === 'armon') {
+        S.picked = true; S.tab = 'report';
+        if (!S.loggedLoad) { S.loggedLoad = true; logEntry('admin', { pn: p.pn, name: p.n, role: p.role }); }
+        applyRole();
+      } else {
+        try { localStorage.setItem('yb_group', companyGroup(S.person.c)); } catch (e) {}
+        showPicker();                                      // pick framework within the company
+      }
+    }).catch(function (e) {
+      if (btn) btn.disabled = false;
+      var priv = (extra && extra.pin) || ($('pinWrap').style.display !== 'none');
+      if ((e.code || '') === 'permission-denied') loginMsg(priv ? 'קוד אישי שגוי' : 'שגיאת הרשאה — פנו לארמון');
+      else loginMsg('שגיאה: ' + (e.code || e.message));
+    });
+  }
+
+  function pickerPanes(visible) {
+    ['loginBox', 'pickStep2', 'pickConfirm'].forEach(function (id) {
+      $(id).style.display = id === visible ? '' : 'none';
+    });
+  }
+
+  // soldier framework picker — identity already known, scoped to their company
+  function showPicker() {
+    if (!S.person) { showLogin(); return; }
+    if (S.person.role === 'admin' || S.person.role === 'armon') return;
+    S.picked = false; pickedUnit = null;
+    show('login');
+    var g = companyGroup(S.person.c); pickedGroup = g;
+    if (QR_UNIT && UNIT_BY_ID[QR_UNIT] && UNIT_BY_ID[QR_UNIT].grp === g) { var u = QR_UNIT; QR_UNIT = null; openConfirm(u); }
+    else openStep2(g);
   }
 
   function wirePicker() {
-    document.querySelectorAll('#pickStep1 .gbtn').forEach(function (b) {
-      b.onclick = function () { openStep2(b.getAttribute('data-g')); };
-    });
-    $('pickBack').onclick = showPicker;
+    $('btnLoginPn').onclick = doLogin;
+    $('pnInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    $('pinInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+    $('pickBack').onclick = function () { logout(); };
     $('confirmBack').onclick = function () { openStep2(pickedGroup); };
     $('btnConfirmPick').onclick = function () {
-      localStorage.setItem('yb_group', pickedGroup);
       localStorage.setItem('yb_unit', pickedUnit);
       S.unit = pickedUnit; S.adminUnit = pickedUnit; S.bufKey = '';
-      S.picked = true;
-      S.tab = 'count';
-      logEntry('unit', { unitId: pickedUnit, group: pickedGroup });
+      S.picked = true; S.tab = 'count';
+      logEntry('unit', { unitId: pickedUnit, group: pickedGroup, pn: S.person.pn, name: S.person.n });
       S.loggedLoad = true;
       applyRole();
     };
-    $('lnkAdmin').onclick = function () { pickerPanes('admBox'); };
-    $('admBack').onclick = showPicker;
-    $('btnAdmLogin').onclick = adminLogin;
-    $('admPass').addEventListener('keydown', function (e) { if (e.key === 'Enter') adminLogin(); });
   }
 
   function openStep2(g) {
     pickedGroup = g;
     var grp = null;
     UNIT_GROUPS.forEach(function (x) { if (x.g === g) grp = x; });
-    $('pick2Title').textContent = (g === 'bn' ? 'חפ״ק גדוד' : grp.name) + ' — באיזו מסגרת?';
+    if (!grp) { showLogin(); return; }
+    $('pick2Title').textContent = (S.person && S.person.n ? 'שלום ' + S.person.n + ' · ' : '') +
+      (g === 'bn' ? 'חפ״ק גדוד' : grp.name) + ' — באיזו מסגרת?';
     $('pick2Btns').innerHTML = grp.units.map(function (u) {
       return '<button class="gbtn" data-u="' + u.id + '" style="margin-bottom:8px">' + esc(u.name) + '</button>';
     }).join('');
@@ -826,37 +920,17 @@
 
   function openConfirm(unitId) {
     pickedUnit = unitId;
-    $('confirmTxt').innerHTML = 'אני מאשר/ת שאני משרת/ת ב<b>' + esc(UNIT_BY_ID[unitId].full) +
-      '</b> בגדוד 1895, ושהדיווחים שאמסור נכונים.';
+    $('confirmTxt').innerHTML = 'אני <b>' + esc(S.person ? S.person.n : '') + '</b>' +
+      (S.person && S.person.pn ? ' (מ.א ' + esc(S.person.pn) + ')' : '') +
+      ' מאשר/ת שאני משרת/ת ב<b>' + esc(UNIT_BY_ID[unitId].full) + '</b>, ושהדיווחים שאמסור נכונים.';
     pickerPanes('pickConfirm');
   }
 
-  function adminLogin() {
-    var fb = window.fb;
-    var u = ($('admUser').value || '').trim().toLowerCase();
-    var p = $('admPass').value || '';
-    if (!u || !p) { toast('יש למלא שם משתמש וסיסמה'); return; }
-    if (u.indexOf('@') < 0) u = u + '@greeneyes95.com';  // short usernames map to app emails
-    var btn = $('btnAdmLogin'); btn.disabled = true;
-    fb.signInWithEmailAndPassword(fb.auth, u, p)
-      .then(function () {
-        btn.disabled = false; $('admPass').value = ''; S.tab = 'report';
-        logEntry('admin', { user: u.split('@')[0] });
-        S.loggedLoad = true;
-      })
-      .catch(function (e) {
-        btn.disabled = false;
-        var c = e.code || '';
-        if (c === 'auth/too-many-requests') toast('יותר מדי ניסיונות — המתינו דקה ונסו שוב');
-        else toast('שם משתמש או סיסמה שגויים');
-      });
-  }
-
   function computeRole() {
-    if (!S.user) return null;
-    if (S.user.email) return 'admin';                    // password user ⇒ admin
-    if (!S.picked) return null;                          // soldiers pick their framework on every entry
-    var g = localStorage.getItem('yb_group');
+    if (!S.person) return null;
+    if (S.person.role === 'admin' || S.person.role === 'armon') return 'admin';
+    if (!S.picked) return null;                            // soldier still needs to pick a framework
+    var g = localStorage.getItem('yb_group') || companyGroup(S.person.c);
     return GROUP_NAMES[g] ? g : null;
   }
 
@@ -865,14 +939,12 @@
     S.role = role;
     if (!role) { showPicker(); return; }
     show('app');
-    var homeUnit = UNIT_BY_ID[localStorage.getItem('yb_unit')];
-    $('whoName').textContent = role === 'admin'
-      ? (S.user.email || '').split('@')[0]
-      : (homeUnit ? homeUnit.full : GROUP_NAMES[role]);
-    $('whoRole').textContent = role === 'admin' ? 'מנהל' : GROUP_NAMES[role];
-    $('logoutTxt').textContent = role === 'admin' ? 'התנתקות' : 'החלפת מסגרת';
-    $('logoutIc').textContent = role === 'admin' ? '🚪' : '🔄';
-    $('tabAdmin').style.display = role === 'admin' ? '' : 'none';
+    var admin = isAdminRole();
+    $('whoName').textContent = (S.person && S.person.n) ? S.person.n : (admin ? 'מנהל' : GROUP_NAMES[role]);
+    $('whoRole').textContent = isArmon() ? 'ארמון' : (admin ? 'מנהל' : (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : GROUP_NAMES[role]));
+    $('logoutTxt').textContent = admin ? 'התנתקות' : 'החלפת מסגרת';
+    $('logoutIc').textContent = admin ? '🚪' : '🔄';
+    $('tabAdmin').style.display = admin ? '' : 'none';
     $('tabUsage').style.display = ''; // everyone may report שצ״ל for their own scope
     // keep the selected unit inside the allowed scope
     if (!UNIT_BY_ID[S.unit] || myGroups().indexOf(UNIT_BY_ID[S.unit].grp) < 0) {
@@ -880,13 +952,8 @@
       S.bufKey = '';
     }
     if (!UNIT_BY_ID[S.adminUnit] || myGroups().indexOf(UNIT_BY_ID[S.adminUnit].grp) < 0) S.adminUnit = S.unit;
-    if (S.tab === 'admin' && role !== 'admin') S.tab = 'count';
+    if (S.tab === 'admin' && !admin) S.tab = 'count';
     updateGapBadge();
-    if (!S.loggedLoad) { // first load of this session (incl. a remembered login)
-      S.loggedLoad = true;
-      if (role === 'admin') { logEntry('admin', { user: (S.user.email || '').split('@')[0] }); S.tab = 'report'; } // land admins on the main dashboard, not a leftover framework
-      else logEntry('unit', { unitId: localStorage.getItem('yb_unit') || S.unit, group: role });
-    }
     resubscribeData();
     setTab(S.tab);
   }
@@ -1028,10 +1095,9 @@
         h += itemsHtml('equip', equipVis);
       }
 
-      h += '<div class="card"><h3>פרטי הסופר</h3><div class="grid2">' +
-        '<div><label class="fld">שם מלא</label><input type="text" id="cName" autocomplete="off" value="' + esc(localStorage.getItem('yb_name') || '') + '"></div>' +
-        '<div><label class="fld">מספר אישי</label><input type="text" id="cNum" inputmode="numeric" autocomplete="off" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
-        '</div></div>';
+      h += '<div class="card" style="display:flex;align-items:center;gap:10px"><div style="font-size:22px">🪖</div>' +
+        '<div style="font-size:14px">הסופר: <b>' + esc(S.person ? S.person.n : '') + '</b>' +
+        (S.person && S.person.pn ? ' <span style="color:#6b7f72">· מ.א ' + esc(S.person.pn) + '</span>' : '') + '</div></div>';
 
       h += '<button class="btn-primary" id="btnSubmit">שליחת ספירה ✓</button>';
       h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-bottom:8px">V ירוק = קיים ותואם · ״שונה״ = הקלדת הכמות בפועל (גם 0) · ״חסר״ = פריט חתום שלא נמצא</div>';
@@ -1214,9 +1280,8 @@
   }
 
   function submitCount() {
-    var name = ($('cName').value || '').trim();
-    var num = ($('cNum').value || '').trim();
-    if (!name || !num) { toast('יש למלא שם מלא ומספר אישי'); return; }
+    var name = (S.person && S.person.n) || '';
+    var num = (S.person && S.person.pn) || '';
     var equipDay = isEquipDay(S.date);
     var notMarked = [];
     function collect(kind, target) {
@@ -1263,14 +1328,12 @@
       toast('אין פריטים לספירה ביחידה זו');
       return;
     }
-    localStorage.setItem('yb_name', name);
-    localStorage.setItem('yb_num', num);
     var fb = window.fb;
     var docData = {
       group: UNIT_BY_ID[S.unit].grp,
       unitId: S.unit, date: S.date, items: items, equip: equip,
       counterName: name, counterNum: num,
-      byEmail: S.user.email || '', byUid: S.user.uid, ts: Date.now()
+      byPn: num, byUid: S.user.uid, ts: Date.now()
     };
     var btn = $('btnSubmit'); btn.disabled = true;
     fb.setDoc(fb.doc(fb.db, 'ammo_counts', countId(S.unit, S.date)), docData)
@@ -1302,10 +1365,7 @@
       '</select></div>' +
       '<div><label class="fld">כמות שנוצלה</label><input type="number" id="uQty" inputmode="numeric" min="1" placeholder="0"></div>' +
       '</div>' +
-      '<div class="grid2">' +
-      '<div><label class="fld">שם המדווח</label><input type="text" id="uName" value="' + esc(localStorage.getItem('yb_name') || '') + '"></div>' +
-      '<div><label class="fld">מספר אישי</label><input type="text" id="uNum" inputmode="numeric" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
-      '</div>' +
+      '<div style="font-size:12px;color:#6b7f72;margin:2px 0 6px">מדווח: <b>' + esc(S.person ? S.person.n : '') + '</b>' + (S.person && S.person.pn ? ' · מ.א ' + esc(S.person.pn) : '') + '</div>' +
       '<label class="fld">הערה (לא חובה)</label><input type="text" id="uNote" placeholder="אימון / מבצעי...">' +
       '<button class="btn-primary" id="btnUsage" style="font-size:16px;padding:12px">עדכון דיווח</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center">הצפי לספירה מתעדכן אוטומטית לפי הדיווח</div>' +
@@ -1348,18 +1408,15 @@
   function submitUsage() {
     var unit = $('uUnit').value, item = $('uItem').value;
     var qty = Math.floor(+$('uQty').value || 0);
-    var name = ($('uName').value || '').trim(), num = ($('uNum').value || '').trim();
+    var name = (S.person && S.person.n) || '', num = (S.person && S.person.pn) || '';
     if (qty <= 0) { toast('יש להזין כמות'); return; }
-    if (!name || !num) { toast('יש למלא שם ומספר אישי'); return; }
-    localStorage.setItem('yb_name', name);
-    localStorage.setItem('yb_num', num);
     var fb = window.fb;
     var btn = $('btnUsage'); btn.disabled = true;
     fb.addDoc(fb.collection(fb.db, 'ammo_usage'), {
       group: UNIT_BY_ID[unit].grp,
       unitId: unit, itemId: item, qty: qty, date: todayIso(),
       reporterName: name, reporterNum: num, note: ($('uNote').value || '').trim(),
-      byEmail: S.user.email || '', byUid: S.user.uid, ts: Date.now()
+      byPn: num, byUid: S.user.uid, ts: Date.now()
     }).then(function () {
       btn.disabled = false; $('uQty').value = ''; $('uNote').value = '';
       toast('✓ נרשם עדכון: ' + itemName('ammo', item) + ' −' + qty);
@@ -1370,23 +1427,43 @@
   function submitUsageAdmin() {
     var unit = S.adminUnit, item = $('auItem') ? $('auItem').value : '';
     var qty = Math.floor(+($('auQty').value) || 0);
-    var name = ($('auName').value || '').trim(), num = ($('auNum').value || '').trim();
+    var name = (S.person && S.person.n) || '', num = (S.person && S.person.pn) || '';
     if (!item) { toast('אין פריט לדיווח ביחידה זו'); return; }
     if (qty <= 0) { toast('יש להזין כמות'); return; }
-    if (!name || !num) { toast('יש למלא שם ומספר אישי'); return; }
-    localStorage.setItem('yb_name', name);
-    localStorage.setItem('yb_num', num);
     var fb = window.fb;
     var btn = $('btnAuUsage'); btn.disabled = true;
     fb.addDoc(fb.collection(fb.db, 'ammo_usage'), {
       group: UNIT_BY_ID[unit].grp,
       unitId: unit, itemId: item, qty: qty, date: todayIso(),
       reporterName: name, reporterNum: num, note: ($('auNote').value || '').trim(),
-      byEmail: S.user.email || '', byUid: S.user.uid, ts: Date.now()
+      byPn: num, byUid: S.user.uid, ts: Date.now()
     }).then(function () {
       btn.disabled = false; $('auQty').value = ''; $('auNote').value = '';
       toast('✓ נרשם עדכון: ' + itemName('ammo', item) + ' −' + qty + ' · ' + UNIT_BY_ID[unit].name);
     }).catch(function (e) { btn.disabled = false; toast('שגיאה: ' + e.message); });
+  }
+
+  // ARMON adds/updates a person (identity + role) and, for privileged roles,
+  // their personal PIN. Soldiers need only exist; admins need a PIN to log in.
+  function savePerson() {
+    if (!isArmon()) { toast('פעולה זו שמורה ל-ARMON'); return; }
+    var pn = ($('ppPn').value || '').replace(/[^0-9]/g, '');
+    var n = ($('ppName').value || '').trim();
+    var c = ($('ppCo').value || '').trim();
+    var role = $('ppRole').value;
+    var pin = ($('ppPin').value || '').trim();
+    if (pn.length < 4) { toast('מספר אישי לא תקין'); return; }
+    if (!n) { toast('יש להזין שם מלא'); return; }
+    var priv = role === 'admin' || role === 'armon';
+    if (priv && pin.replace(/[^0-9]/g, '').length < 4) { toast('קוד אישי למנהל — לפחות 4 ספרות'); return; }
+    var fb = window.fb, btn = $('btnSavePerson'); btn.disabled = true;
+    var writes = [fb.setDoc(fb.doc(fb.db, 'ammo_people', pn), { n: n, c: c, role: role })];
+    if (priv) writes.push(fb.setDoc(fb.doc(fb.db, 'ammo_pin', pn), { pin: pin }));
+    Promise.all(writes).then(function () {
+      btn.disabled = false;
+      toast('✓ נשמר: ' + n + (priv ? ' · ' + (role === 'armon' ? 'ארמון' : 'מנהל') : ''));
+      $('ppPn').value = ''; $('ppName').value = ''; $('ppCo').value = ''; $('ppPin').value = '';
+    }).catch(function (e) { btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
   }
 
   // ARMON reconciles the חמ״ל report: mark every open שצ״ל report as reported.
@@ -1397,7 +1474,7 @@
     var pend = S.usage.filter(function (u) { return !u.reconciled; });
     if (!pend.length) { toast('אין דיווחים לאיפוס'); return; }
     if (!confirm('לאפס את דוח החמ״ל? ' + pend.length + ' דיווחים יסומנו כ״דווחו לחמ״ל״.\nהמלאי לא ישתנה — הכמויות כבר ירדו.')) return;
-    var fb = window.fb, ts = Date.now(), by = (S.user.email || '').split('@')[0];
+    var fb = window.fb, ts = Date.now(), by = (S.person && S.person.n) || (S.person && S.person.pn) || '';
     var btn = $('btnResetHamal'); if (btn) btn.disabled = true;
     Promise.all(pend.map(function (u) {
       return fb.setDoc(fb.doc(fb.db, 'ammo_usage', u.id), { reconciled: true, reconciledBy: by, reconciledTs: ts }, { merge: true });
@@ -1479,14 +1556,13 @@
   // enter it into the report" option, offered right where the gap shows.
   function reportGapToHamal(unit, iid, qty) {
     if (!unit || !iid || !(qty > 0) || !UNIT_BY_ID[unit]) return;
-    var name = (localStorage.getItem('yb_name') || '').trim(), num = (localStorage.getItem('yb_num') || '').trim();
-    if (!name || !num) { toast('יש להזין שם ומספר אישי במסך הספירה תחילה'); return; }
+    var name = (S.person && S.person.n) || '', num = (S.person && S.person.pn) || '';
     if (!confirm('לדווח לחמ״ל ' + qty + ' × ' + itemName('ammo', iid) + '?\nהכמות תרד מהמלאי של ' + UNIT_BY_ID[unit].full + '.')) return;
     var fb = window.fb;
     fb.addDoc(fb.collection(fb.db, 'ammo_usage'), {
       group: UNIT_BY_ID[unit].grp, unitId: unit, itemId: iid, qty: qty, date: todayIso(),
       reporterName: name, reporterNum: num, note: 'פער בספירה — דווח לחמ״ל',
-      byEmail: S.user.email || '', byUid: S.user.uid, ts: Date.now()
+      byPn: num, byUid: S.user.uid, ts: Date.now()
     }).then(function () { toast('✓ דווח לחמ״ל: ' + itemName('ammo', iid) + ' −' + qty); })
       .catch(function (e) { toast('שגיאה: ' + e.message); });
   }
@@ -1951,10 +2027,7 @@
       '</select></div>' +
       '<div><label class="fld">כמות שנוצלה</label><input type="number" id="auQty" inputmode="numeric" min="1" placeholder="0"></div>' +
       '</div>' +
-      '<div class="grid2">' +
-      '<div><label class="fld">שם המדווח</label><input type="text" id="auName" value="' + esc(localStorage.getItem('yb_name') || '') + '"></div>' +
-      '<div><label class="fld">מספר אישי</label><input type="text" id="auNum" inputmode="numeric" value="' + esc(localStorage.getItem('yb_num') || '') + '"></div>' +
-      '</div>' +
+      '<div style="font-size:12px;color:#6b7f72;margin:2px 0 6px">מדווח: <b>' + esc(S.person ? S.person.n : '') + '</b>' + (S.person && S.person.pn ? ' · מ.א ' + esc(S.person.pn) : '') + '</div>' +
       '<label class="fld">הערה (לא חובה)</label><input type="text" id="auNote" placeholder="אימון / מבצעי...">' +
       '<button class="btn-primary" id="btnAuUsage">עדכון דיווח שצ״ל</button></div>';
 
@@ -2008,22 +2081,30 @@
     h += '<div class="addrow" style="margin-top:5px"><input type="text" id="newEquip" placeholder="שם אמצעי חדש"><button class="btn-mini" id="btnAddEquip">הוסף</button></div>';
     h += '<div style="font-size:11px;color:#6b7f72;margin-top:8px">פריט שנוסף מופיע מיד בכל מסכי הספירה של כל היחידות</div></div>';
 
-    // admins are Firebase email/password users — managed in the console, not here
-    h += '<div class="card"><h3>👤 מנהלים</h3>' +
-      '<div style="font-size:13px;color:#4b5f52;line-height:1.7">' +
-      'מנהל = משתמש עם שם משתמש וסיסמה (חיילים נכנסים בלי סיסמה ורואים רק את הפלוגה שבחרו).<br>' +
-      'הוספת מנהל חדש: קונסול Firebase ← Authentication ← Users ← <b>Add user</b> — ' +
-      'אימייל בתבנית <b style="direction:ltr;unicode-bidi:embed">name@greeneyes95.com</b> + סיסמה.<br>' +
-      'באפליקציה מתחברים עם השם בלבד (למשל ״name״) והסיסמה.</div></div>';
+    // people & permissions — ARMON adds/updates soldiers and admins by personal
+    // number, and sets the personal PIN for privileged roles.
+    if (isArmon()) {
+      h += '<div class="card"><h3>👥 ניהול אנשים והרשאות</h3>' +
+        '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">הוספה/עדכון לפי מספר אישי. תפקיד: <b>חייל</b> (רגיל) · <b>מנהל</b> (צפייה בלבד) · <b>ארמון</b> (ניהול מלא). למנהל/ארמון חובה קוד אישי סודי.</div>' +
+        '<div class="grid2">' +
+        '<div><label class="fld">מספר אישי</label><input type="text" id="ppPn" inputmode="numeric" style="direction:ltr;text-align:center"></div>' +
+        '<div><label class="fld">שם מלא</label><input type="text" id="ppName"></div></div>' +
+        '<div class="grid2">' +
+        '<div><label class="fld">פלוגה</label><input type="text" id="ppCo" placeholder="פלוגה א׳ / פלס״ם..."></div>' +
+        '<div><label class="fld">תפקיד</label><select id="ppRole"><option value="soldier">חייל</option><option value="admin">מנהל (צפייה)</option><option value="armon">ארמון (ניהול מלא)</option></select></div></div>' +
+        '<label class="fld">קוד אישי (למנהל / ארמון)</label><input type="text" id="ppPin" inputmode="numeric" placeholder="קוד אישי סודי" style="direction:ltr;text-align:center">' +
+        '<button class="btn-primary" id="btnSavePerson">💾 שמירת אדם</button>' +
+        '<div style="font-size:11px;color:#6b7f72;text-align:center">החלפת קוד למנהל קיים: אותו מספר אישי + קוד חדש</div></div>';
+    }
 
     // access log — who entered, when, as which framework / admin
     h += '<div class="card"><h3>🕘 יומן כניסות</h3><div style="max-height:280px;overflow-y:auto">';
     if (!S.entryLog.length) h += '<div style="padding:10px;color:#6b7f72;font-size:12px;text-align:center">אין כניסות עדיין</div>';
     S.entryLog.slice(0, 60).forEach(function (l) {
       var who = l.type === 'admin'
-        ? '🔑 מנהל: <b>' + esc(l.user || '') + '</b>'
+        ? (l.role === 'armon' ? '🔑 ארמון: ' : '🔑 מנהל: ') + '<b>' + esc(l.name || l.user || '') + '</b>'
         : '👤 ' + esc(UNIT_BY_ID[l.unitId] ? UNIT_BY_ID[l.unitId].full : (GROUP_NAMES[l.group] || '—'));
-      var nm = (l.type !== 'admin' && l.name) ? '<div class="m">' + esc(l.name) + (l.num ? ' · מ.א ' + esc(l.num) : '') + '</div>' : '';
+      var nm = l.name ? '<div class="m">' + esc(l.name) + (l.num ? ' · מ.א ' + esc(l.num) : '') + '</div>' : '';
       h += '<div class="usage-row"><div>' + who + nm + '</div><div class="m">' + fmtDT(l.ts) + '</div></div>';
     });
     h += '</div></div>';
@@ -2048,6 +2129,7 @@
     if ($('btnStock')) $('btnStock').onclick = saveStock;
     if ($('btnAuUsage')) $('btnAuUsage').onclick = submitUsageAdmin;
     if ($('btnResetHamal')) $('btnResetHamal').onclick = resetHamalReport;
+    if ($('btnSavePerson')) $('btnSavePerson').onclick = savePerson;
     if ($('ctrUnit')) $('ctrUnit').onclick = function () { S.centralView = S.centralView === 'unit' ? null : 'unit'; renderAdmin(); };
     if ($('ctrAll')) $('ctrAll').onclick = function () { S.centralView = S.centralView === 'all' ? null : 'all'; renderAdmin(); };
     if ($('expCentral')) $('expCentral').onclick = exportCentral;
@@ -2159,7 +2241,7 @@
   }
   function saveConfig(cfg) {
     var fb = window.fb;
-    cfg.updatedBy = S.user.email || '';
+    cfg.updatedBy = (S.person && S.person.n) || '';
     cfg.ts = Date.now();
     fb.setDoc(fb.doc(fb.db, 'ammo_config', 'main'), cfg)
       .then(function () { toast('✓ ההגדרות נשמרו'); })
@@ -2169,7 +2251,7 @@
   function saveStock() {
     var fb = window.fb;
     var prev = S.stock[S.adminUnit] || {};
-    var next = { group: UNIT_BY_ID[S.adminUnit].grp, ammo: {}, equip: {}, updatedBy: S.user.email || '', ts: Date.now() };
+    var next = { group: UNIT_BY_ID[S.adminUnit].grp, ammo: {}, equip: {}, updatedBy: (S.person && S.person.n) || '', ts: Date.now() };
     var changed = 0;
     document.querySelectorAll('#scrAdmin input[data-sk]').forEach(function (inp) {
       var kind = inp.getAttribute('data-sk'), iid = inp.getAttribute('data-si');

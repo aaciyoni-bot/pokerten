@@ -2,62 +2,201 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Must be signed in with a Google account (the app's only sign-in method).
-    function signedIn() { return request.auth != null; }
+    // ═══════════════════════════════════════════════════════════════════
+    //  POKERTEN — security rules
+    //
+    //  STAGE 1 (this change): locks IDENTITY & PRIVILEGE-ESCALATION, exactly
+    //  like the RUMMIKUBE model, WITHOUT touching the money flow — so every
+    //  live game keeps paying from the browser as it does today. A player can
+    //  no longer:
+    //    • promote themselves to admin / owner / manager / agent (role)
+    //    • self-approve their own membership (status pending → approved)
+    //    • re-assign themselves to an agent or change agent cuts after joining
+    //      (agentUid / agentPct / managedGames)
+    //    • forge a Google email to gain GOD (email is read from the auth
+    //      token, never from a document a user writes)
+    //    • edit email / role / isBot on their own users doc
+    //    • delete or edit a club they don't own, or broadcast club messages
+    //
+    //  Money fields (balance / clubProfits / agentProfits / bonusOpen / stats)
+    //  stay client-writable on purpose: poker is already settled server-side,
+    //  and durak / OFC / tournaments still pay from players' browsers. The
+    //  watchBalances Cloud Function backstops this — it auto-reverts unbacked
+    //  self-credits and alerts on large jumps. STAGE 2 (with per-game money
+    //  Cloud Functions) will lock the money fields the same way RUMMIKUBE did.
+    // ═══════════════════════════════════════════════════════════════════
 
-    // Game / agent logs — append-only for players: create + read allowed, no edits.
-    // Delete is reserved for the club's owner (GENERAL RESET) and the super admin;
-    // regular players can never touch history.
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+
+    // Identity comes from the Google auth token, never from a written field.
     function superAdmin() {
       return signedIn() && request.auth.token.email == 'aaci.yoni@gmail.com';
     }
-    function clubOwnerOf(cid) {
-      return signedIn() && request.auth.uid == get(/databases/$(database)/documents/clubs/$(cid)).data.ownerUid;
+    // GOD = the fixed staff whitelist (read from the token, un-forgeable).
+    function isGod() {
+      return signedIn() && request.auth.token.email in [
+        'aaci.yoni@gmail.com', 'info.bagso@gmail.com', 'avi057278@gmail.com',
+        'khnby749@gmail.com', 'bykhn3234@gmail.com', 'easymarcelos@gmail.com'
+      ];
     }
-    match /gameLog/{id}   { allow read, create: if signedIn(); allow update: if false;
-                            allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
-    match /agentLog/{id}  { allow read, create: if signedIn(); allow update: if false;
-                            allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
 
-    // Core data — every access (read/write/delete) requires a signed-in account.
-    // Fully blocks anonymous access from the internet without breaking any app action.
-    // NOTE (roadmap): this is the safe baseline for the current client-side engine.
-    // Field-level hardening (deny direct writes to balance/stack/cards/deck/rank, and
-    // keep hole cards out of the shared doc) lands with the server-authoritative rework.
-    match /users/{id}        { allow read, write: if signedIn(); }
+    function clubOwnerOf(cid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/clubs/$(cid))
+        && get(/databases/$(database)/documents/clubs/$(cid)).data.ownerUid == uid();
+    }
+    function memPath(clubId) {
+      return /databases/$(database)/documents/memberships/$(uid() + '_' + clubId);
+    }
+    function myRole(clubId) {
+      return exists(memPath(clubId)) ? get(memPath(clubId)).data.role : 'none';
+    }
+    // Management staff of a given club (or a global GOD / super admin).
+    function isStaffOf(clubId) {
+      return isGod()
+        || clubOwnerOf(clubId)
+        || myRole(clubId) in ['super_admin', 'club_owner', 'manager'];
+    }
+    // A field unchanged by this write (tolerant of the field missing on either side).
+    function same(field) {
+      return resource.data.get(field, null) == request.resource.data.get(field, null);
+    }
 
-    // Memberships hold player balances. The client engine needs open writes
-    // (wins are paid from players' browsers) — no blocking here by owner's
-    // choice: monitoring only, via the watchBalances Cloud Function, which
-    // records every 500+ balance jump in securityAlerts. Real write-lockdown
-    // arrives with the server-authoritative engine.
-    match /memberships/{id}  { allow read, write: if signedIn(); }
+    // ─────────── users ───────────
+    // The real authorization boundary is the auth-token email (GOD) and the
+    // per-club MEMBERSHIP role — the rules never trust a users-doc field for
+    // privilege. So here we only need to (a) stop self-inflation of the money
+    // fields (which the legacy main-club migration reads back), and (b) stop
+    // self-promotion of role/email/isBot on one's own doc. balance/clubProfits
+    // are frozen for everyone but GOD, because no legitimate flow ever writes
+    // them here after account creation (money lives on memberships).
+    match /users/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && (
+        isGod()
+        // own account, first login: normal players open at 0; only the real
+        // super-admin (verified by token email) may seed a privileged doc.
+        || ( id == uid()
+             && request.resource.data.get('isBot', false) == false
+             && ( superAdmin()
+                  || ( request.resource.data.get('role', 'player') == 'player'
+                       && request.resource.data.get('balance', 0) == 0
+                       && request.resource.data.get('clubProfits', 0) == 0 ) ) )
+        // bots are non-privileged player rows created by club staff.
+        || ( request.resource.data.get('isBot', false) == true
+             && request.resource.data.get('role', 'player') == 'player' )
+      );
+      allow update: if signedIn() && (
+        isGod()
+        || ( same('balance') && same('clubProfits') && (
+               // own doc: profile only — never email / role / isBot / status.
+               ( id == uid() && same('email') && same('role')
+                 && same('isBot') && same('status') )
+               // another doc (staff moderation: censor photo, rename bots) —
+               // money frozen above, and users-doc role isn't privilege here.
+               || id != uid()
+             ) )
+      );
+      allow delete: if isGod() || resource.data.get('isBot', false) == true;
+    }
 
-    // Security alerts — written ONLY by Cloud Functions (admin SDK bypasses
-    // these rules). The club owner / super admin can read and clear them;
-    // players can't see they exist.
+    // ─────────── memberships (hold balances) ───────────
+    // Money fields stay open (see header). Only identity / role / agent-assignment
+    // is locked so a player can never escalate privilege or self-approve.
+    match /memberships/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && (
+        isGod()
+        // normal join: own membership, always player / pending / 0 balance.
+        // agentUid/agentPct MAY be set here (from an agent code) but role,
+        // status and balance are pinned — no self-approval, no self-promotion.
+        || ( id == uid() + '_' + request.resource.data.clubId
+             && request.resource.data.uid == uid()
+             && request.resource.data.role == 'player'
+             && request.resource.data.status == 'pending'
+             && request.resource.data.get('balance', 0) == 0 )
+        // club creation: the owner seeds their own management membership,
+        // but only if they truly are the club's ownerUid.
+        || ( id == uid() + '_' + request.resource.data.clubId
+             && clubOwnerOf(request.resource.data.clubId) )
+        // legacy one-time migration to the main club: the player's own
+        // `${uid}_main` membership, marked migrated, with balance & role that
+        // EXACTLY match their (frozen) users doc — so it can never mint money
+        // or a role the account didn't already legitimately hold.
+        || ( id == uid() + '_main'
+             && request.resource.data.uid == uid()
+             && request.resource.data.get('migrated', false) == true
+             && exists(/databases/$(database)/documents/users/$(uid()))
+             && request.resource.data.get('balance', 0)
+                  == get(/databases/$(database)/documents/users/$(uid())).data.get('balance', 0)
+             && request.resource.data.get('role', 'player')
+                  == get(/databases/$(database)/documents/users/$(uid())).data.get('role', 'player') )
+      );
+      // Staff/GOD may change anything (approve, manage, move money, assign agents).
+      // A non-staff player may touch money/profile fields, but NEVER role, status,
+      // identity, or agent-assignment on any membership doc.
+      allow update: if signedIn() && (
+        isStaffOf(resource.data.clubId)
+        || ( same('role') && same('status') && same('uid') && same('clubId')
+             && same('agentUid') && same('agentPct') )
+        // re-submit after rejection: the owner of the membership only,
+        // rejected → pending, without touching role / agent.
+        || ( id == uid() + '_' + resource.data.clubId
+             && resource.data.status == 'rejected'
+             && request.resource.data.status == 'pending'
+             && same('role') && same('uid') && same('clubId')
+             && same('agentUid') && same('agentPct') )
+      );
+      allow delete: if isStaffOf(resource.data.clubId);
+    }
+
+    // ─────────── security alerts (Cloud-Function-written only) ───────────
     match /securityAlerts/{id} {
       allow read, delete: if superAdmin() || clubOwnerOf(resource.data.clubId);
       allow create, update: if false;
     }
 
-    match /tables/{id}       { allow read, write: if signedIn(); }
+    // ─────────── clubs ───────────
+    match /clubs/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.ownerUid == uid();
+      allow update: if isGod() || resource.data.ownerUid == uid() || isStaffOf(id);
+      allow delete: if isGod() || resource.data.ownerUid == uid();
+    }
 
-    // Server-engine private data: a player may read ONLY their own hole cards.
-    // The deck/engine doc (_engine) and everyone else's cards are server-only.
-    // No client ever writes here — only Cloud Functions (admin SDK bypasses rules).
-    match /tables/{id}/priv/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+    // ─────────── broadcasts (club messages) ───────────
+    match /broadcasts/{id} {
+      allow read: if signedIn();
+      allow write: if isStaffOf(id);
+    }
+
+    // ─────────── tables (live game) ───────────
+    // Game state is still written from the client; poker money is settled by
+    // Cloud Functions (admin SDK bypasses rules). STAGE 2 will fence the money.
+    match /tables/{id} {
+      allow read, write: if signedIn();
+    }
+    // Server-engine private data: a player reads ONLY their own hole cards;
+    // the deck / everyone else's cards are server-only (no client write).
+    match /tables/{id}/priv/{u} {
+      allow read: if signedIn() && uid() == u;
       allow write: if false;
     }
 
-    // Admin-only config (e.g. the GOD list) — no client access whatsoever.
-    match /admin/{doc=**} { allow read, write: if false; }
-    match /clubs/{id}        { allow read, write: if signedIn(); }
-    match /tournaments/{id}  { allow read, write: if signedIn(); }
-    match /broadcasts/{id}   { allow read, write: if signedIn(); }
+    // ─────────── tournaments ───────────
+    match /tournaments/{id} { allow read, write: if signedIn(); }
 
-    // Anything not explicitly matched above — denied.
-    match /{document=**}     { allow read, write: if false; }
+    // ─────────── logs: append-only (delete only for owner / super admin) ───────────
+    match /gameLog/{id}  { allow read, create: if signedIn(); allow update: if false;
+                           allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
+    match /agentLog/{id} { allow read, create: if signedIn(); allow update: if false;
+                           allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
+
+    // ─────────── admin config: no client access ───────────
+    match /admin/{doc=**} { allow read, write: if false; }
+
+    // Anything not matched above — denied.
+    match /{document=**} { allow read, write: if false; }
   }
 }

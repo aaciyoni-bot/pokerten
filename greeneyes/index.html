@@ -1808,16 +1808,19 @@
         var row = S.instEdit.data[inp.getAttribute('data-ik2')][+inp.getAttribute('data-ri')];
         var field = inp.getAttribute('data-if');
         row[field] = field === 'q' ? (inp.value === '' ? undefined : Math.max(0, Math.floor(+inp.value))) : inp.value;
-        // autocomplete: a known מזהה / מספר אישי / צ׳ fills the soldier's name
+        // autocomplete (gentle, non-locking): a known מזהה / מספר אישי / צ׳
+        // fills the name ONLY into an empty field, updating the input in place
+        // (no re-render) so you can freely type over it — data changes a lot.
         if (field === 'id' || field === 'num' || field === 's') {
           var v = (inp.value || '').trim();
           var hit = rosterGet(v) || reg2[v.toLowerCase()];
           if (hit) {
             var nm = hit.n || hit.owner, mi = hit.mi || hit.num;
-            var changed = false;
-            if (nm && !row.owner) { row.owner = nm; changed = true; }
-            if (mi && !row.num && field !== 'num') { row.num = mi; changed = true; }
-            if (changed) renderAdmin();
+            var irow = inp.closest('.irow');
+            var oInp = irow && irow.querySelector('input[data-if="owner"]');
+            var nInp = irow && irow.querySelector('input[data-if="num"]');
+            if (nm && oInp && !row.owner) { row.owner = nm; oInp.value = nm; }
+            if (mi && nInp && !row.num && field !== 'num') { row.num = mi; nInp.value = mi; }
           }
         }
       };

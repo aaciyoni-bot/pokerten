@@ -129,6 +129,7 @@
   .btn-danger { background: var(--danger); border: none; color: #fff; font-family: inherit; font-weight: 800; border-radius: 11px; padding: 9px 13px; cursor: pointer; font-size: 13px; }
   .btn-ghost { background: #fff; border: 2px solid #2d6a4f; color: var(--forest); font-family: inherit; font-weight: 800; border-radius: 14px; padding: 13px; cursor: pointer; font-size: 15px; width: 100%; margin: 6px 0; box-shadow: var(--shadow-sm); }
   .btn-ghost:active { background: #f0fdf4; }
+  .btn-ghost.on { background: var(--forest); color: #fff; }
 
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
@@ -496,6 +497,8 @@
     entryLog: [],          // access log (admins only)
     instEdit: { unit: null, open: {}, data: {} }, // signed-holders editor buffer (admin)
     loggedLoad: false,     // entry already logged for this page load
+    picked: false,         // soldier confirmed a framework this session (picker each entry)
+    centralView: null,     // admin central-inventory view: null | 'unit' | 'all'
     unit: localStorage.getItem('yb_unit') || 'a_armon',
     date: clampDate(todayIso()),
     repDate: clampDate(todayIso()),
@@ -567,9 +570,12 @@
     if (S.role === 'admin') return ['a', 'b', 'd', 'bn'];
     return S.role ? [S.role] : [];
   }
+  // A soldier works inside exactly ONE framework — the one picked on entry.
+  // They count it, report שצ״ל for it, and see only its summary. Admins see all.
   function myUnits() {
-    var gs = myGroups();
-    return UNITS.filter(function (u) { return gs.indexOf(u.grp) >= 0; });
+    if (S.role === 'admin') return UNITS.slice();
+    var u = UNIT_BY_ID[S.unit];
+    return u ? [u] : [];
   }
   function myUnitGroups() {
     var gs = myGroups();
@@ -639,10 +645,13 @@
   }
 
   function unitSelectHtml(id, selected) {
+    var units = myUnits();
     var h = '<select id="' + id + '">';
     myUnitGroups().forEach(function (g) {
+      var us = units.filter(function (u) { return u.grp === g.g; });
+      if (!us.length) return;
       h += '<optgroup label="' + esc(g.name) + '">';
-      g.units.forEach(function (u) {
+      us.forEach(function (u) {
         h += '<option value="' + u.id + '"' + (u.id === selected ? ' selected' : '') + '>' + esc(u.name) + '</option>';
       });
       h += '</optgroup>';
@@ -714,6 +723,7 @@
 
   function showPicker() {
     pickedGroup = null; pickedUnit = null;
+    S.picked = false;   // re-choosing: don't let a background snapshot yank us back in
     pickerPanes('pickStep1');
     show('login');
     if (QR_UNIT) {  // arrived by scanning a unit's QR sticker — confirm it directly
@@ -733,6 +743,7 @@
       localStorage.setItem('yb_group', pickedGroup);
       localStorage.setItem('yb_unit', pickedUnit);
       S.unit = pickedUnit; S.adminUnit = pickedUnit; S.bufKey = '';
+      S.picked = true;
       S.tab = 'count';
       logEntry('unit', { unitId: pickedUnit, group: pickedGroup });
       S.loggedLoad = true;
@@ -789,6 +800,7 @@
   function computeRole() {
     if (!S.user) return null;
     if (S.user.email) return 'admin';                    // password user ⇒ admin
+    if (!S.picked) return null;                          // soldiers pick their framework on every entry
     var g = localStorage.getItem('yb_group');
     return GROUP_NAMES[g] ? g : null;
   }
@@ -915,6 +927,9 @@
       ae.addEventListener('blur', function () { if (S.tab === 'count') renderCount(); }, { once: true });
       return;
     }
+    // marking an item re-renders the whole list — keep the page where it was
+    // so tapping ✓ far down the list doesn't snap back to the top
+    var _scrollY = window.scrollY;
     loadBufferFromDoc();
     var equipDay = isEquipDay(S.date);
     var existing = S.counts[countId(S.unit, S.date)];
@@ -984,6 +999,7 @@
     wireItemRows('ammo');
     if (equipDay) wireItemRows('equip');
     if ($('btnSubmit')) $('btnSubmit').onclick = submitCount;
+    if (_scrollY) window.scrollTo(0, _scrollY);
   }
 
   function itemsHtml(kind, items) {
@@ -1332,10 +1348,10 @@
   // actual≠expected, or counted with no baseline) — one entry per gap
   function allGaps() {
     var out = [];
-    var scope = myGroups();
+    var scope = myUnits().map(function (u) { return u.id; });
     Object.keys(S.counts).forEach(function (key) {
       var c = S.counts[key]; if (!c) return;
-      if (scope.indexOf(c.group) < 0) return;
+      if (scope.indexOf(c.unitId) < 0) return;
       [['items', 'ammo'], ['equip', 'equip']].forEach(function (t) {
         var src = c[t[0]]; if (!src) return;
         Object.keys(src).forEach(function (iid) {
@@ -1384,8 +1400,7 @@
     }
     h += '</div>';
 
-    // 📊 central inventory (admins) — the "how much should be where" report
-    h += centralInventoryHtml();
+    // (מצבת מרכז lives in the ניהול tab now — admin-only, on request.)
 
     h += '<div class="dates" id="rstrip">';
     DATES.forEach(function (d) {
@@ -1421,7 +1436,7 @@
       '<button class="btn-ghost" id="expFull">דוח ספירות מפורט (כל פריט) — CSV</button>' +
       '<button class="btn-ghost" id="expUsage">יומן עדכוני שצ״ל — CSV</button>' +
       '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-top:4px">קבצי CSV נפתחים ישירות באקסל (עברית מלאה)' +
-      (S.role !== 'admin' ? ' · הדוח כולל את הפלוגה שלך בלבד' : '') + '</div></div>';
+      (S.role !== 'admin' ? ' · הדוח כולל את המסגרת שלך בלבד' : '') + '</div></div>';
 
     $('scrReport').innerHTML = h;
     document.querySelectorAll('#rstrip .dchip').forEach(function (b) {
@@ -1522,8 +1537,8 @@
     return 0;
   }
   function shortLabel(u) { return u.grp === 'bn' ? u.name : GRP_LETTER[u.grp] + '·' + u.name; }
-  function unitsWithStock(kind) {
-    return UNITS.filter(function (u) {
+  function unitsWithStock(kind, base) {
+    return (base || UNITS).filter(function (u) {
       var list = kind === 'ammo' ? ammoList() : equipList();
       return list.some(function (it) { return stockQty(u.id, kind, it.id) > 0; });
     });
@@ -1533,8 +1548,8 @@
       return units.some(function (u) { return stockQty(u.id, kind, it.id) > 0; });
     });
   }
-  function pivotTableHtml(kind, title) {
-    var units = unitsWithStock(kind);
+  function pivotTableHtml(kind, title, base) {
+    var units = unitsWithStock(kind, base);
     var items = itemsInUse(kind, units);
     if (!items.length) return '<div style="font-size:12px;color:#6b7f72;padding:6px">אין ' + title + ' מוגדרים עדיין</div>';
     var h = '<div class="pivot-wrap"><table class="pivot"><thead><tr><th class="name">' + esc(title) + '</th>';
@@ -1553,32 +1568,36 @@
     h += '</tbody></table></div>';
     return h;
   }
-  function centralInventoryHtml() {
-    var au = unitsWithStock('ammo'), eu = unitsWithStock('equip');
+  function centralInventoryHtml(base, scopeTitle) {
+    base = base || UNITS;
+    var au = unitsWithStock('ammo', base), eu = unitsWithStock('equip', base);
     var allUnits = {};
     au.concat(eu).forEach(function (u) { allUnits[u.id] = 1; });
     var totA = 0, totE = 0;
-    UNITS.forEach(function (u) {
+    base.forEach(function (u) {
       ammoList().forEach(function (it) { totA += stockQty(u.id, 'ammo', it.id); });
       equipList().forEach(function (it) { totE += stockQty(u.id, 'equip', it.id); });
     });
-    var scopeTitle = isAdminRole() ? 'כל המסגרות' : (GROUP_NAMES[S.role] || 'הפלוגה שלי');
-    var h = '<div class="card"><h3>📊 מצבת מרכז — ' + esc(scopeTitle) + '</h3>' +
+    var h = '<div class="card"><h3>📊 מצבת מרכז — ' + esc(scopeTitle || 'כל המסגרות') + '</h3>' +
       '<div class="kpi">' +
       '<div class="box"><div class="n">' + Object.keys(allUnits).length + '</div><div class="l">מסגרות עם מלאי</div></div>' +
       '<div class="box"><div class="n">' + totA + '</div><div class="l">סה״כ תחמושת</div></div>' +
       '<div class="box"><div class="n">' + totE + '</div><div class="l">סה״כ אמצעים</div></div>' +
       '</div>';
-    h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:10px 0 4px">תחמושת</div>' + pivotTableHtml('ammo', 'תחמושת');
-    h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:12px 0 4px">אמצעים</div>' + pivotTableHtml('equip', 'אמצעים');
+    h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:10px 0 4px">תחמושת</div>' + pivotTableHtml('ammo', 'תחמושת', base);
+    h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:12px 0 4px">אמצעים</div>' + pivotTableHtml('equip', 'אמצעים', base);
     h += '<div style="font-size:11px;color:#6b7f72;margin-top:6px">גלילה לצדדים לכל המסגרות · שם הפריט תמיד מוצמד מימין. הכמויות הן מה שאמור להיות בכל מסגרת.</div>';
     h += '<button class="btn-ghost" id="expCentral" style="margin-top:8px">📤 יצוא מצבת מרכז — CSV</button></div>';
     return h;
   }
+  function centralBaseUnits() {
+    return S.centralView === 'unit' && UNIT_BY_ID[S.adminUnit] ? [UNIT_BY_ID[S.adminUnit]] : UNITS.slice();
+  }
   function exportCentral() {
+    var base = centralBaseUnits();
     var rows = [];
     ['ammo', 'equip'].forEach(function (kind) {
-      var units = unitsWithStock(kind);
+      var units = unitsWithStock(kind, base);
       var items = itemsInUse(kind, units);
       if (!items.length) return;
       rows.push([kind === 'ammo' ? 'תחמושת' : 'אמצעים']);
@@ -1754,6 +1773,16 @@
     });
     h += '</div></div>';
 
+    // central inventory (מצבת מרכז) — admin-only, on request, by-framework or all
+    h += '<div class="card"><h3>📊 דוח מרכז — מצבת מלאי</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">הכמויות שאמורות להיות בכל מסגרת. בחר תצוגה:</div>' +
+      '<div class="grid2">' +
+      '<button class="btn-ghost' + (S.centralView === 'unit' ? ' on' : '') + '" id="ctrUnit">מסגרת נוכחית — ' + esc(UNIT_BY_ID[S.adminUnit] ? UNIT_BY_ID[S.adminUnit].name : '') + '</button>' +
+      '<button class="btn-ghost' + (S.centralView === 'all' ? ' on' : '') + '" id="ctrAll">כל המסגרות</button>' +
+      '</div></div>';
+    if (S.centralView === 'unit' && UNIT_BY_ID[S.adminUnit]) h += centralInventoryHtml([UNIT_BY_ID[S.adminUnit]], UNIT_BY_ID[S.adminUnit].full);
+    else if (S.centralView === 'all') h += centralInventoryHtml(UNITS.slice(), 'כל המסגרות');
+
     h += '<div class="card"><h3>🔳 קודי QR</h3>' +
       '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">לכל מסגרת יש קוד משלה — סריקה פותחת את האפליקציה ישר על אותה מסגרת. אפשר להדפיס את כל הקודים או קוד בודד.</div>' +
       '<a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="/qr.html" target="_blank" rel="noopener">🖨️ פתיחת דף הקודים להדפסה</a></div>';
@@ -1762,6 +1791,9 @@
     var sel = $('aUnit'); sel.value = S.adminUnit;
     sel.onchange = function () { S.adminUnit = sel.value; renderAdmin(); };
     $('btnStock').onclick = saveStock;
+    if ($('ctrUnit')) $('ctrUnit').onclick = function () { S.centralView = S.centralView === 'unit' ? null : 'unit'; renderAdmin(); };
+    if ($('ctrAll')) $('ctrAll').onclick = function () { S.centralView = S.centralView === 'all' ? null : 'all'; renderAdmin(); };
+    if ($('expCentral')) $('expCentral').onclick = exportCentral;
 
     // per-piece editor wiring
     // For tracked items the quantity input drives the number of piece-rows —

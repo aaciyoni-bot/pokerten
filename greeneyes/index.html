@@ -173,6 +173,17 @@
   table.rep tr.row-gap td { background: #fef2f2; }
   .mini-hamal { display: inline-block; font-family: inherit; font-size: 11px; font-weight: 800; color: #fff; background: #b91c1c; border: none; border-radius: 8px; padding: 3px 8px; margin-inline-start: 4px; cursor: pointer; white-space: nowrap; }
   .mini-hamal:active { transform: scale(.96); }
+  details.fw-inv { border: 1px solid var(--line); border-radius: 11px; margin: 7px 0; overflow: hidden; background: var(--surface, #fff); }
+  details.fw-inv > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; font-weight: 800; color: var(--forest); }
+  details.fw-inv > summary::-webkit-details-marker { display: none; }
+  details.fw-inv > summary::after { content: '▾'; color: #8a9b90; transition: transform .18s; }
+  details.fw-inv[open] > summary::after { transform: rotate(180deg); }
+  details.fw-inv > summary .fw-nm { flex: 1; }
+  details.fw-inv > table { margin: 0 6px 8px; width: calc(100% - 12px); }
+  .fw-badge { font-size: 12px; font-weight: 900; border-radius: 8px; padding: 2px 8px; }
+  .fw-badge.fw-gap { color: #fff; background: #dc2626; }
+  .fw-badge.fw-ok { color: #166534; background: #dcfce7; }
+  .fw-badge.fw-none { color: #6b7f72; background: #eef2ef; font-weight: 700; }
 
   .usage-row { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid #e5ebe6; font-size: 13px; align-items: center; }
   .usage-row .m { color: #6b7f72; font-size: 11px; }
@@ -1640,8 +1651,9 @@
     }
     return { counted: true };
   }
-  // a single framework's full inventory list for S.repDate, with gaps flagged
-  function frameworkInventoryHtml(u) {
+  // a single framework's full inventory list for S.repDate, with gaps flagged.
+  // collapsible=true wraps it in a <details> (used in the admin's all-frameworks view).
+  function frameworkInventoryHtml(u, collapsible) {
     var c = S.counts[countId(u.id, S.repDate)];
     var rows = '', gapCount = 0;
     [['ammo', 'תחמושת'], ['equip', 'אמצעים']].forEach(function (pair) {
@@ -1671,12 +1683,19 @@
       });
     });
     if (!rows) return '';
+    var table = '<table class="rep inv"><tr><th>פריט</th><th>צפי</th><th>נספר</th><th>פער</th></tr>' + rows + '</table>';
+    var badge = gapCount
+      ? '<span class="fw-badge fw-gap">⚠️ ' + gapCount + '</span>'
+      : (c ? '<span class="fw-badge fw-ok">✓</span>' : '<span class="fw-badge fw-none">טרם</span>');
+    if (collapsible) {
+      return '<details class="fw-inv"' + (gapCount ? ' open' : '') + '><summary><span class="fw-nm">' + esc(u.full) + '</span>' + badge + '</summary>' + table + '</details>';
+    }
     return '<div class="card"><h3>📋 מצבת ' + esc(u.full) + ' — ' + fmtDM(S.repDate) + '</h3>' +
       (gapCount
         ? '<div style="font-size:13px;color:#b91c1c;font-weight:800;margin-bottom:6px">⚠️ ' + gapCount + ' פערים ביום זה</div>'
         : (c ? '<div style="font-size:13px;color:#166534;font-weight:800;margin-bottom:6px">✓ אין פערים — הכל תואם</div>'
              : '<div style="font-size:13px;color:#6b7f72;font-weight:700;margin-bottom:6px">טרם בוצעה ספירה ליום זה</div>')) +
-      '<table class="rep inv"><tr><th>פריט</th><th>צפי</th><th>נספר</th><th>פער</th></tr>' + rows + '</table></div>';
+      table + '</div>';
   }
 
   function renderReport() {
@@ -1731,10 +1750,18 @@
     });
     h += '</table></div>';
 
-    // full inventory of each framework in scope (soldiers: their one framework),
-    // showing every item, the expected count, what was counted, and any gap.
-    // Admins have the central report in ניהול, so this stays out of their (all-unit) view.
-    if (!isAdminRole()) units.forEach(function (u) { h += frameworkInventoryHtml(u); });
+    // full inventory per framework for S.repDate — item, expected, counted, gap.
+    // Soldiers: their one framework (open card). Admins: every framework with
+    // stock, each collapsible (frameworks with gaps open automatically).
+    if (isAdminRole()) {
+      h += '<div class="card"><h3>📋 מצבת מסגרות — ' + DAY_HE[isoDow(S.repDate)] + ' ' + fmtDM(S.repDate) + '</h3>';
+      var anyInv = '';
+      units.forEach(function (u) { anyInv += frameworkInventoryHtml(u, true); });
+      h += anyInv || '<div class="m" style="padding:6px;color:#6b7f72">אין מסגרות עם מלאי מוגדר</div>';
+      h += '</div>';
+    } else {
+      units.forEach(function (u) { h += frameworkInventoryHtml(u); });
+    }
 
     h += '<div class="card"><h3>📤 יצוא דוח מרכז</h3>' +
       '<button class="btn-ghost" id="expSummary">דוח סיכום יומי (כל הימים) — CSV</button>' +

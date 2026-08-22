@@ -107,6 +107,10 @@
   .item.ok .vbtn { background: linear-gradient(135deg,var(--green),var(--green-d)); color: #fff; box-shadow: 0 6px 14px -5px rgba(22,163,74,.7); }
   .iname { flex: 1 1 auto; min-width: 0; }
   .iname .nm { font-weight: 800; font-size: 16px; }
+  /* very sensitive ammunition — always flagged with a red ring + tag */
+  .item.sens { box-shadow: 0 0 0 2px #dc2626 inset, var(--shadow-sm); }
+  .item.sens .nm { color: #b91c1c; }
+  .sens-tag { display: inline-block; font-size: 10px; font-weight: 900; color: #fff; background: #dc2626; border-radius: 6px; padding: 1px 6px; margin-inline-start: 5px; vertical-align: middle; letter-spacing: .3px; }
   .iname .exp { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
   .iname .exp b { color: var(--forest); }
   .iname .exp.none { color: #b45309; }
@@ -422,6 +426,11 @@
   };
   function trackOf(id) { return TRACK[id] || 'qty'; }
   function firstFieldLabel(id) { var t = trackOf(id); return t === 'series' ? 'סדרה' : 'צ׳'; }
+  // very sensitive ammunition — highlighted wherever it appears
+  var SENSITIVE = { rimon: 1, matol_nefitz: 1, lau: 1 };
+  function isSensitive(id) { return !!SENSITIVE[id]; }
+  function sensTag(id) { return isSensitive(id) ? ' <span class="sens-tag">רגיש</span>' : ''; }
+  function sensCls(id) { return isSensitive(id) ? ' sens' : ''; }
   var GROUP_NAMES = { a: 'פלוגה א׳', b: 'פלוגה ב׳', d: 'פלוגה ד׳', bn: 'גדוד' };
   var UNIT_GROUPS = [
     { g: 'a', name: 'פלוגה א׳', units: [
@@ -1045,9 +1054,9 @@
             // series-batch row — counted in bulk (✓ all / שונה = actual number)
             var mk = marks[i];
             var isOk = mk === 'ok', hasActual = typeof mk === 'number';
-            h += '<div class="item' + (isOk ? ' ok' : hasActual ? ' diff' : '') + '">' +
+            h += '<div class="item' + (isOk ? ' ok' : hasActual ? ' diff' : '') + sensCls(it.id) + '">' +
               '<button class="vbtn" data-bk="' + kind + '" data-bi="' + it.id + '" data-bx="' + i + '">✓</button>' +
-              '<div class="iname"><div class="nm">' + esc(it.name) + '</div>' +
+              '<div class="iname"><div class="nm">' + esc(it.name) + sensTag(it.id) + '</div>' +
               '<div class="exp">' + (ins.s ? '<span class="serial">' + slbl + ' ' + esc(ins.s) + '</span> · ' : '') + 'כמות <b>' + rowQty(ins) + '</b>' + (ins.owner ? ' · בידי ' + esc(ins.owner) : '') + '</div></div>' +
               (hasActual ? '<div class="ainp"><input type="number" inputmode="numeric" min="0" data-bak="' + kind + '" data-bai="' + it.id + '" data-bax="' + i + '" value="' + mk + '" placeholder="כמות"></div>' : '') +
               '<button class="xbtn" data-bxk="' + kind + '" data-bxi="' + it.id + '" data-bxx="' + i + '">שונה</button>' +
@@ -1068,9 +1077,9 @@
           if (g.label && g.items.length > 1) h += '<div class="kit-head">🎖️ ' + esc(g.label) + '</div>';
           g.items.forEach(function (p) {
             var ins = p.ins, i = p.i, stt = marks[i];
-            h += '<div class="item' + (stt === 'ok' ? ' ok' : stt === 'miss' ? ' diff' : '') + '">' +
+            h += '<div class="item' + (stt === 'ok' ? ' ok' : stt === 'miss' ? ' diff' : '') + sensCls(it.id) + '">' +
               '<button class="vbtn" data-ik="' + kind + '" data-ii="' + it.id + '" data-ix="' + i + '" aria-label="קיים">✓</button>' +
-              '<div class="iname"><div class="nm">' + esc(it.name) + (ins.s ? ' · <span class="serial">' + slbl + ' ' + esc(ins.s) + '</span>' : '') + '</div>' +
+              '<div class="iname"><div class="nm">' + esc(it.name) + sensTag(it.id) + (ins.s ? ' · <span class="serial">' + slbl + ' ' + esc(ins.s) + '</span>' : '') + '</div>' +
               ((ins.owner || ins.id) ? '<div class="exp">בידי: <b>' + esc(ins.owner || '—') + '</b>' + (ins.id ? ' · ' + esc(ins.id) : '') + (ins.num ? ' · מ.א ' + esc(ins.num) : '') + '</div>' : '') + '</div>' +
               '<button class="missbtn" data-mk="' + kind + '" data-mi="' + it.id + '" data-mx="' + i + '">חסר</button>' +
               '</div>';
@@ -1084,9 +1093,9 @@
       var serTxt = ser ? ' · <span class="serial">צ׳ ' + esc(ser) + '</span>' : '';
       var m = S.buf[kind][it.id];
       var cls = m ? (m.ok ? ' ok' : ' diff') : '';
-      h += '<div class="item' + cls + '" id="row_' + kind + '_' + it.id + '">' +
+      h += '<div class="item' + cls + sensCls(it.id) + '" id="row_' + kind + '_' + it.id + '">' +
         '<button class="vbtn" data-k="' + kind + '" data-i="' + it.id + '" aria-label="אישור">✓</button>' +
-        '<div class="iname"><div class="nm">' + esc(it.name) + '</div>' +
+        '<div class="iname"><div class="nm">' + esc(it.name) + sensTag(it.id) + '</div>' +
         (exp == null
           ? '<div class="exp none">אין צפי — יש להקליד כמות' + serTxt + '</div>'
           : '<div class="exp">צפי: <b>' + exp + '</b>' + serTxt + '</div>') +
@@ -1466,7 +1475,7 @@
           actTxt = st.actual; gapCount++; cls = 'row-gap';
           gapTxt = st.gap < 0 ? '<span class="gap-neg">' + st.gap + '</span>' : '<span class="gap-pos">+' + st.gap + '</span>';
         } else { actTxt = (st.actual != null ? st.actual : '—'); }
-        rows += '<tr class="' + cls + '"><td class="name">' + esc(it.name) + '</td><td>' +
+        rows += '<tr class="' + cls + '"><td class="name">' + esc(it.name) + sensTag(it.id) + '</td><td>' +
           (exp != null ? exp : '—') + '</td><td>' + actTxt + '</td><td>' + gapTxt + '</td></tr>';
       });
     });

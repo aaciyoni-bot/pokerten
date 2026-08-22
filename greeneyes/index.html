@@ -510,6 +510,7 @@
     unsubCfg: null,
     unsubRoster: null,
     roster: {}, rosterLc: {},   // background reference registry (import)
+    rosterMatol: {}, rosterKela: {}, // per-sheet scoped registries (מטול / קלעים)
     unsubData: [],
     dataScope: ''          // which role/group the data listeners were opened for
   };
@@ -517,6 +518,25 @@
     key = String(key == null ? '' : key).trim();
     if (!key) return null;
     return S.roster[key] || S.rosterLc[key.toLowerCase()] || null;
+  }
+  // Some items resolve from ONE sheet only: מטול → מספור מטולים,
+  // קלע M4 / אקילה / טריג׳יקון → מספור קלעים. Everything else → general roster.
+  function scopedRoster(iid) {
+    if (iid === 'matol') return S.rosterMatol;
+    if (iid === 'kela' || iid === 'kela_akila' || iid === 'kela_trijicon') return S.rosterKela;
+    return null;
+  }
+  function scopedDatalistId(iid) {
+    if (iid === 'matol') return 'identlist_matol';
+    if (iid === 'kela' || iid === 'kela_akila' || iid === 'kela_trijicon') return 'identlist_kela';
+    return 'identlist';
+  }
+  function rosterGetScoped(iid, key, reg2) {
+    key = String(key == null ? '' : key).trim();
+    if (!key) return null;
+    var sc = scopedRoster(iid);
+    if (sc) return sc[key] || sc[key.toLowerCase()] || null;  // scoped: that sheet only
+    return rosterGet(key) || (reg2 && reg2[key.toLowerCase()]) || null;
   }
   // QR stickers open the app preset to a unit: https://greeneyes95.com/?unit=<id>
   // First-time scanners jump straight to the belonging-confirmation for it.
@@ -693,13 +713,17 @@
       if (S.unsubRoster) { try { S.unsubRoster(); } catch (e) {} }
       S.unsubRoster = fb.onSnapshot(fb.doc(fb.db, 'ammo_ref', 'roster'), function (snap) {
         var d = snap.exists() ? snap.data() : null;
-        S.roster = {}; S.rosterLc = {};
+        S.roster = {}; S.rosterLc = {}; S.rosterMatol = {}; S.rosterKela = {};
         if (d && d.json) {
           try {
             S.roster = JSON.parse(d.json);
             Object.keys(S.roster).forEach(function (k) { S.rosterLc[k.toLowerCase()] = S.roster[k]; });
           } catch (e) {}
         }
+        // per-sheet scoped registries: מטול fills only from the מטול sheet,
+        // קלעים/טריג׳יקון/אקילה only from the קלעים sheet
+        if (d && d.matol) { try { S.rosterMatol = JSON.parse(d.matol); } catch (e) {} }
+        if (d && d.kela)  { try { S.rosterKela  = JSON.parse(d.kela);  } catch (e) {} }
         renderAll();
       }, function () {});
       applyRole();
@@ -1686,10 +1710,11 @@
       var track = trackOf(iid);
       if (track === 'qty') return '';
       var key = kind + ':' + iid;
+      var dl = scopedDatalistId(iid);
       var pcs = S.instEdit.data[key] || [];
       if (!pcs.length) return '';
       var rows = pcs.map(function (r, ri) {
-        var idInp = '<input class="nid" data-if="id" data-ik2="' + key + '" data-ri="' + ri + '" list="identlist" value="' + esc(r.id || '') + '" placeholder="מזהה">';
+        var idInp = '<input class="nid" data-if="id" data-ik2="' + key + '" data-ri="' + ri + '" list="' + dl + '" value="' + esc(r.id || '') + '" placeholder="מזהה">';
         if (track === 'series') {
           // series batch: [סדרה] [כמות] [חתום? name] [מזהה?]
           return '<div class="irow">' +
@@ -1702,7 +1727,7 @@
         var f1 = track === 'holder' ? '' : 'צ׳';
         return '<div class="irow">' +
           '<span class="rn">' + (ri + 1) + '.</span>' +
-          (f1 ? '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" list="identlist" value="' + esc(r.s) + '" placeholder="' + f1 + '">' : '') +
+          (f1 ? '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" list="' + dl + '" value="' + esc(r.s) + '" placeholder="' + f1 + '">' : '') +
           '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="שם החייל">' +
           '<input class="n3" data-if="num" data-ik2="' + key + '" data-ri="' + ri + '" inputmode="numeric" value="' + esc(r.num) + '" placeholder="מ.א">' +
           idInp +
@@ -1749,7 +1774,16 @@
       var lbl = (r.n || '') + (r.mi ? ' · מ.א ' + r.mi : '') + (r.c ? ' · ' + r.c : '');
       identOpts += '<option value="' + esc(k) + '">' + esc(lbl.trim() || r.k || '') + '</option>';
     });
-    var h = '<datalist id="identlist">' + identOpts + '</datalist>';
+    function dlOpts(map) {
+      return Object.keys(map).map(function (k) {
+        var r = map[k];
+        var lbl = (r.n || '') + (r.mi ? ' · מ.א ' + r.mi : '') + (r.c ? ' · ' + r.c : '');
+        return '<option value="' + esc(k) + '">' + esc(lbl.trim() || k) + '</option>';
+      }).join('');
+    }
+    var h = '<datalist id="identlist">' + identOpts + '</datalist>' +
+      '<datalist id="identlist_matol">' + dlOpts(S.rosterMatol) + '</datalist>' +
+      '<datalist id="identlist_kela">' + dlOpts(S.rosterKela) + '</datalist>';
     h += '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
       '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. צ׳ → שורה לכל פריט · סדרה → שורה = סדרה+כמות · מזהה חייל חוזר משלים שם אוטומטית.</div>' +
       '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit);
@@ -1900,10 +1934,11 @@
         // autocomplete: the מזהה / צ׳ / מ.א is a LOOKUP KEY into the roster.
         // For a series row the first field is a סדרה (batch number), not a
         // soldier key — never resolve it as one.
-        var track2 = trackOf(key2.split(':')[1]);
+        var iid2 = key2.split(':')[1];
+        var track2 = trackOf(iid2);
         if (track2 !== 'series' && (field === 'id' || field === 's' || field === 'num')) {
           var v = (inp.value || '').trim();
-          var hit = v ? (rosterGet(v) || reg2[v.toLowerCase()]) : null;
+          var hit = v ? rosterGetScoped(iid2, v, reg2) : null;
           var irow = inp.closest('.irow');
           var oInp = irow && irow.querySelector('input[data-if="owner"]');
           var nInp = irow && irow.querySelector('input[data-if="num"]');

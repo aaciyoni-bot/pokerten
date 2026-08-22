@@ -505,9 +505,16 @@
     usageFilter: 'all',
     adminUnit: localStorage.getItem('yb_unit') || 'a_armon',
     unsubCfg: null,
+    unsubRoster: null,
+    roster: {}, rosterLc: {},   // background reference registry (import)
     unsubData: [],
     dataScope: ''          // which role/group the data listeners were opened for
   };
+  function rosterGet(key) {
+    key = String(key == null ? '' : key).trim();
+    if (!key) return null;
+    return S.roster[key] || S.rosterLc[key.toLowerCase()] || null;
+  }
   // QR stickers open the app preset to a unit: https://greeneyes95.com/?unit=<id>
   // First-time scanners jump straight to the belonging-confirmation for it.
   var QR_UNIT = null;
@@ -672,6 +679,20 @@
         S.config = snap.exists() ? snap.data() : null;
         applyRole();
       }, function () { S.config = null; applyRole(); });
+      // background reference roster (soldiers / weapon serials / identifiers)
+      // powering autocomplete when entering data. Read-only, loaded once.
+      if (S.unsubRoster) { try { S.unsubRoster(); } catch (e) {} }
+      S.unsubRoster = fb.onSnapshot(fb.doc(fb.db, 'ammo_ref', 'roster'), function (snap) {
+        var d = snap.exists() ? snap.data() : null;
+        S.roster = {}; S.rosterLc = {};
+        if (d && d.json) {
+          try {
+            S.roster = JSON.parse(d.json);
+            Object.keys(S.roster).forEach(function (k) { S.rosterLc[k.toLowerCase()] = S.roster[k]; });
+          } catch (e) {}
+        }
+        renderAll();
+      }, function () {});
       applyRole();
     });
     document.querySelectorAll('nav.tabs button').forEach(function (b) {
@@ -1671,9 +1692,13 @@
         '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—">' +
         instEditorHtml(kind, it.id);
     }
-    // datalist of known identifiers for autocomplete
+    // datalist of known identifiers for autocomplete (stock + imported roster)
     var reg = identRegistry();
     var identOpts = Object.keys(reg).map(function (k) { return '<option value="' + esc(reg[k].id) + '">' + esc(reg[k].owner) + '</option>'; }).join('');
+    Object.keys(S.roster).forEach(function (k) {
+      var r = S.roster[k];
+      if (r.k === 'מזהה נשק' && r.n) identOpts += '<option value="' + esc(k) + '">' + esc(r.n) + (r.c ? ' · ' + esc(r.c) : '') + '</option>';
+    });
     var h = '<datalist id="identlist">' + identOpts + '</datalist>';
     h += '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
       '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. צ׳ → שורה לכל פריט · סדרה → שורה = סדרה+כמות · מזהה חייל חוזר משלים שם אוטומטית.</div>' +
@@ -1783,10 +1808,17 @@
         var row = S.instEdit.data[inp.getAttribute('data-ik2')][+inp.getAttribute('data-ri')];
         var field = inp.getAttribute('data-if');
         row[field] = field === 'q' ? (inp.value === '' ? undefined : Math.max(0, Math.floor(+inp.value))) : inp.value;
-        // identifier autocomplete: fill the name for a known מזהה
-        if (field === 'id') {
-          var hit = reg2[(inp.value || '').trim().toLowerCase()];
-          if (hit && !row.owner) { row.owner = hit.owner; if (!row.num) row.num = hit.num; renderAdmin(); }
+        // autocomplete: a known מזהה / מספר אישי / צ׳ fills the soldier's name
+        if (field === 'id' || field === 'num' || field === 's') {
+          var v = (inp.value || '').trim();
+          var hit = rosterGet(v) || reg2[v.toLowerCase()];
+          if (hit) {
+            var nm = hit.n || hit.owner, mi = hit.mi || hit.num;
+            var changed = false;
+            if (nm && !row.owner) { row.owner = nm; changed = true; }
+            if (mi && !row.num && field !== 'num') { row.num = mi; changed = true; }
+            if (changed) renderAdmin();
+          }
         }
       };
     });

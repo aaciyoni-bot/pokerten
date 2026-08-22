@@ -313,7 +313,16 @@
     <div id="loginMsg" style="font-size:13px;font-weight:700;color:var(--danger);margin-top:8px;min-height:18px"></div>
   </div>
 
-  <!-- framework picker (soldiers, after login — scoped to their company) -->
+  <!-- framework picker (soldiers, after login) — choose company, then framework -->
+  <div id="pickStep1" class="pickbox" style="display:none">
+    <div class="pick-title" id="pick1Title">באיזו מסגרת את/ה?</div>
+    <button class="gbtn" data-g="a">פלוגה א׳</button>
+    <button class="gbtn" data-g="b">פלוגה ב׳</button>
+    <button class="gbtn" data-g="d">פלוגה ד׳</button>
+    <button class="gbtn" data-g="bn">חפ״ק גדוד <span class="gsub">מג״ד · סמג״ד · מפ״ם · בונקר · ארמון גדוד</span></button>
+    <button class="linkish" id="pnBack">→ כניסה כחייל אחר</button>
+  </div>
+
   <div id="pickStep2" class="pickbox" style="display:none">
     <div class="pick-title" id="pick2Title"></div>
     <div id="pick2Btns"></div>
@@ -858,8 +867,7 @@
         if (!S.loggedLoad) { S.loggedLoad = true; logEntry('admin', { pn: p.pn, name: p.n, role: p.role }); }
         applyRole();
       } else {
-        try { localStorage.setItem('yb_group', companyGroup(S.person.c)); } catch (e) {}
-        showPicker();                                      // pick framework within the company
+        showPicker();                                      // choose company → framework (all options)
       }
     }).catch(function (e) {
       if (btn) btn.disabled = false;
@@ -870,30 +878,37 @@
   }
 
   function pickerPanes(visible) {
-    ['loginBox', 'pickStep2', 'pickConfirm'].forEach(function (id) {
+    ['loginBox', 'pickStep1', 'pickStep2', 'pickConfirm'].forEach(function (id) {
       $(id).style.display = id === visible ? '' : 'none';
     });
   }
 
-  // soldier framework picker — identity already known, scoped to their company
+  // soldier framework picker — pick company, then framework (all options open).
+  // The picked framework's GROUP drives scoping, so a wrong roster company can
+  // never strand a soldier on an empty framework — they always choose their own.
   function showPicker() {
     if (!S.person) { showLogin(); return; }
     if (S.person.role === 'admin' || S.person.role === 'armon') return;
     S.picked = false; pickedUnit = null;
     show('login');
-    var g = companyGroup(S.person.c); pickedGroup = g;
-    if (QR_UNIT && UNIT_BY_ID[QR_UNIT] && UNIT_BY_ID[QR_UNIT].grp === g) { var u = QR_UNIT; QR_UNIT = null; openConfirm(u); }
-    else openStep2(g);
+    if (QR_UNIT && UNIT_BY_ID[QR_UNIT]) { var u = QR_UNIT; QR_UNIT = null; pickedGroup = UNIT_BY_ID[u].grp; openConfirm(u); return; }
+    $('pick1Title').textContent = (S.person && S.person.n ? 'שלום ' + S.person.n + ' · ' : '') + 'באיזו מסגרת את/ה?';
+    pickerPanes('pickStep1');
   }
 
   function wirePicker() {
     $('btnLoginPn').onclick = doLogin;
     $('pnInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
     $('pinInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
-    $('pickBack').onclick = function () { logout(); };
+    document.querySelectorAll('#pickStep1 .gbtn').forEach(function (b) {
+      b.onclick = function () { openStep2(b.getAttribute('data-g')); };
+    });
+    $('pnBack').onclick = function () { logout(); };
+    $('pickBack').onclick = function () { showPicker(); };
     $('confirmBack').onclick = function () { openStep2(pickedGroup); };
     $('btnConfirmPick').onclick = function () {
       localStorage.setItem('yb_unit', pickedUnit);
+      localStorage.setItem('yb_group', pickedGroup);   // the chosen framework's group drives scope
       S.unit = pickedUnit; S.adminUnit = pickedUnit; S.bufKey = '';
       S.picked = true; S.tab = 'count';
       logEntry('unit', { unitId: pickedUnit, group: pickedGroup, pn: S.person.pn, name: S.person.n });
@@ -906,9 +921,8 @@
     pickedGroup = g;
     var grp = null;
     UNIT_GROUPS.forEach(function (x) { if (x.g === g) grp = x; });
-    if (!grp) { showLogin(); return; }
-    $('pick2Title').textContent = (S.person && S.person.n ? 'שלום ' + S.person.n + ' · ' : '') +
-      (g === 'bn' ? 'חפ״ק גדוד' : grp.name) + ' — באיזו מסגרת?';
+    if (!grp) { showPicker(); return; }
+    $('pick2Title').textContent = (g === 'bn' ? 'חפ״ק גדוד' : grp.name) + ' — באיזו מסגרת?';
     $('pick2Btns').innerHTML = grp.units.map(function (u) {
       return '<button class="gbtn" data-u="' + u.id + '" style="margin-bottom:8px">' + esc(u.name) + '</button>';
     }).join('');
@@ -930,7 +944,7 @@
     if (!S.person) return null;
     if (S.person.role === 'admin' || S.person.role === 'armon') return 'admin';
     if (!S.picked) return null;                            // soldier still needs to pick a framework
-    var g = localStorage.getItem('yb_group') || companyGroup(S.person.c);
+    var g = localStorage.getItem('yb_group');              // set to the picked framework's group
     return GROUP_NAMES[g] ? g : null;
   }
 

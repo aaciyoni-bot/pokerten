@@ -110,6 +110,7 @@
   .iname .exp { font-size: 12.5px; color: var(--muted); margin-top: 1px; }
   .iname .exp b { color: var(--forest); }
   .iname .exp.none { color: #b45309; }
+  .kit-head { margin: 12px 2px 2px; font-size: 13px; font-weight: 900; color: var(--forest); background: linear-gradient(90deg,#e3f7ea,transparent); border-right: 4px solid var(--green); padding: 5px 10px; border-radius: 4px; }
   .xbtn, .missbtn {
     flex: 0 0 auto; font-family: inherit; font-size: 12px; font-weight: 800; border-radius: 11px;
     border: 2px solid var(--danger); color: var(--danger); background: #fff; padding: 9px 11px; cursor: pointer;
@@ -207,9 +208,12 @@
   .instbox .irow { display: flex; gap: 5px; margin-bottom: 6px; align-items: center; }
   .instbox .irow input { padding: 7px 6px; font-size: 13px; font-weight: 400; text-align: right; min-width: 0; }
   .instbox .irow { flex-wrap: wrap; }
-  .instbox .irow input.n1 { flex: 0 0 58px; text-align: center; }
-  .instbox .irow input.n2 { flex: 1 1 120px; }
-  .instbox .irow input.n3 { flex: 0 0 66px; text-align: center; }
+  .instbox .irow .rn { flex: 0 0 18px; font-size: 12px; color: var(--muted); font-weight: 800; align-self: center; }
+  .instbox .irow input.n1 { flex: 0 0 62px; text-align: center; }
+  .instbox .irow input.nq { flex: 0 0 56px; text-align: center; font-weight: 800; }
+  .instbox .irow input.n2 { flex: 1 1 110px; }
+  .instbox .irow input.n3 { flex: 0 0 60px; text-align: center; }
+  .instbox .irow input.nid { flex: 0 0 62px; text-align: center; }
   .instbox .irow button { border: none; background: none; color: #b91c1c; font-size: 15px; cursor: pointer; flex: 0 0 auto; padding: 2px; }
   .instbox .note { font-size: 10.5px; color: #6b7f72; margin-top: 2px; }
   .missbtn { flex: 0 0 auto; font-family: inherit; font-size: 12px; font-weight: 700; border-radius: 9px; border: 1.5px solid #dc2626; color: #dc2626; background: #fff; padding: 7px 9px; cursor: pointer; }
@@ -565,20 +569,49 @@
     return UNIT_GROUPS.filter(function (g) { return gs.indexOf(g.g) >= 0; });
   }
 
-  // signed-holder list for an item, when the admin tracks it piece-by-piece
+  // a tracked row is either one physical piece (q=1, has צ׳/holder) or a
+  // series-batch (q>1 items sharing one סדרה). This gives the row's count.
+  function rowQty(r) { return (r && typeof r.q === 'number' && r.q > 0) ? r.q : 1; }
+  function instTotal(inst) { var n = 0; for (var i = 0; i < inst.length; i++) n += rowQty(inst[i]); return n; }
+  function soldierLabel(ins) {
+    var nm = (ins.owner || '').trim(), id = (ins.id || '').trim();
+    if (nm && id) return nm + ' (' + id + ')';
+    return nm || id || '';
+  }
+
+  // signed / batch list for an item, when the admin tracks it row-by-row
   function instOf(unitId, kind, itemId) {
     var st = S.stock[unitId];
     var e = st && st[kind] && st[kind][itemId];
     return (e && e.inst && e.inst.length) ? e.inst : null;
   }
 
+  // registry of known soldier identifiers → name, gathered across ALL stock,
+  // so typing a known מזהה auto-fills the name.
+  function identRegistry() {
+    var reg = {};
+    Object.keys(S.stock).forEach(function (uid) {
+      ['ammo', 'equip'].forEach(function (kind) {
+        var m = S.stock[uid] && S.stock[uid][kind]; if (!m) return;
+        Object.keys(m).forEach(function (iid) {
+          var inst = m[iid] && m[iid].inst; if (!inst) return;
+          inst.forEach(function (r) {
+            var id = (r.id || '').trim();
+            if (id && r.owner && !reg[id.toLowerCase()]) reg[id.toLowerCase()] = { id: id, owner: r.owner, num: r.num || '' };
+          });
+        });
+      });
+    });
+    return reg;
+  }
+
   // expected quantity = admin baseline − usage reported after the baseline was
-  // set; for piece-tracked items the signed-holder list is the source of truth
+  // set; for row-tracked items the row list (sum of quantities) is the truth
   function expectedFor(unitId, kind, itemId) {
     var st = S.stock[unitId]; if (!st) return null;
     var e = st[kind] && st[kind][itemId];
     if (!e) return null;
-    if (e.inst && e.inst.length) return e.inst.length;
+    if (e.inst && e.inst.length) return instTotal(e.inst);
     if (typeof e.q !== 'number') return null;
     if (kind === 'equip') return e.q;
     var used = 0;
@@ -937,18 +970,45 @@
     items.forEach(function (it) {
       var inst = instOf(S.unit, kind, it.id);
       if (inst) {
-        // piece-tracked item: one row per signed holder, ✓ or "חסר" each
-        var marks = (S.buf[kind][it.id] && S.buf[kind][it.id].inst) || {};
+        var buf = S.buf[kind][it.id] = S.buf[kind][it.id] || {};
+        var marks = buf.inst = buf.inst || {};
         var slbl = firstFieldLabel(it.id); // 'צ׳' or 'סדרה'
+        var pieces = [];
         inst.forEach(function (ins, i) {
-          var stt = marks[i]; // 'ok' | 'miss' | undefined
-          h += '<div class="item' + (stt === 'ok' ? ' ok' : stt === 'miss' ? ' diff' : '') + '">' +
-            '<button class="vbtn" data-ik="' + kind + '" data-ii="' + it.id + '" data-ix="' + i + '" aria-label="קיים">✓</button>' +
-            '<div class="iname"><div class="nm">' + esc(it.name) + (inst.length > 1 ? ' <span style="color:#6b7f72;font-size:12px">(' + (i + 1) + '/' + inst.length + ')</span>' : '') +
-            (ins.s ? ' · <span class="serial">' + slbl + ' ' + esc(ins.s) + '</span>' : '') + '</div>' +
-            (ins.owner ? '<div class="exp">בידי: <b>' + esc(ins.owner) + '</b>' + (ins.num ? ' · מ.א ' + esc(ins.num) : '') + '</div>' : '<div class="exp">פריט ' + (i + 1) + '</div>') + '</div>' +
-            '<button class="missbtn" data-mk="' + kind + '" data-mi="' + it.id + '" data-mx="' + i + '">חסר</button>' +
-            '</div>';
+          if (rowQty(ins) > 1) {
+            // series-batch row — counted in bulk (✓ all / שונה = actual number)
+            var mk = marks[i];
+            var isOk = mk === 'ok', hasActual = typeof mk === 'number';
+            h += '<div class="item' + (isOk ? ' ok' : hasActual ? ' diff' : '') + '">' +
+              '<button class="vbtn" data-bk="' + kind + '" data-bi="' + it.id + '" data-bx="' + i + '">✓</button>' +
+              '<div class="iname"><div class="nm">' + esc(it.name) + '</div>' +
+              '<div class="exp">' + (ins.s ? '<span class="serial">' + slbl + ' ' + esc(ins.s) + '</span> · ' : '') + 'כמות <b>' + rowQty(ins) + '</b>' + (ins.owner ? ' · בידי ' + esc(ins.owner) : '') + '</div></div>' +
+              (hasActual ? '<div class="ainp"><input type="number" inputmode="numeric" min="0" data-bak="' + kind + '" data-bai="' + it.id + '" data-bax="' + i + '" value="' + mk + '" placeholder="כמות"></div>' : '') +
+              '<button class="xbtn" data-bxk="' + kind + '" data-bxi="' + it.id + '" data-bxx="' + i + '">שונה</button>' +
+              '</div>';
+          } else {
+            pieces.push({ ins: ins, i: i });
+          }
+        });
+        // group individual pieces by the soldier who holds them (commander kits)
+        var groups = {}, order = [];
+        pieces.forEach(function (p) {
+          var key = (p.ins.id || '').trim().toLowerCase() || (p.ins.owner || '').trim() || ('__' + p.i);
+          if (!groups[key]) { groups[key] = { label: soldierLabel(p.ins), items: [] }; order.push(key); }
+          groups[key].items.push(p);
+        });
+        order.forEach(function (key) {
+          var g = groups[key];
+          if (g.label && g.items.length > 1) h += '<div class="kit-head">🎖️ ' + esc(g.label) + '</div>';
+          g.items.forEach(function (p) {
+            var ins = p.ins, i = p.i, stt = marks[i];
+            h += '<div class="item' + (stt === 'ok' ? ' ok' : stt === 'miss' ? ' diff' : '') + '">' +
+              '<button class="vbtn" data-ik="' + kind + '" data-ii="' + it.id + '" data-ix="' + i + '" aria-label="קיים">✓</button>' +
+              '<div class="iname"><div class="nm">' + esc(it.name) + (ins.s ? ' · <span class="serial">' + slbl + ' ' + esc(ins.s) + '</span>' : '') + '</div>' +
+              ((ins.owner || ins.id) ? '<div class="exp">בידי: <b>' + esc(ins.owner || '—') + '</b>' + (ins.id ? ' · ' + esc(ins.id) : '') + (ins.num ? ' · מ.א ' + esc(ins.num) : '') + '</div>' : '') + '</div>' +
+              '<button class="missbtn" data-mk="' + kind + '" data-mi="' + it.id + '" data-mx="' + i + '">חסר</button>' +
+              '</div>';
+          });
         });
         return;
       }
@@ -1034,6 +1094,31 @@
         renderCount();
       };
     });
+    // series-batch rows: ✓ = all present, "שונה" = enter actual, input updates
+    function batchBuf(iid) { return (S.buf[kind][iid] = S.buf[kind][iid] && S.buf[kind][iid].inst ? S.buf[kind][iid] : { inst: {} }); }
+    document.querySelectorAll('.vbtn[data-bk="' + kind + '"]').forEach(function (b) {
+      b.onclick = function () {
+        var iid = b.getAttribute('data-bi'), ix = b.getAttribute('data-bx');
+        var e = batchBuf(iid);
+        if (e.inst[ix] === 'ok') delete e.inst[ix]; else e.inst[ix] = 'ok';
+        renderCount();
+      };
+    });
+    document.querySelectorAll('.xbtn[data-bxk="' + kind + '"]').forEach(function (b) {
+      b.onclick = function () {
+        var iid = b.getAttribute('data-bxi'), ix = b.getAttribute('data-bxx');
+        var e = batchBuf(iid);
+        if (typeof e.inst[ix] === 'number') { delete e.inst[ix]; renderCount(); return; }
+        e.inst[ix] = 0; renderCount();
+      };
+    });
+    document.querySelectorAll('.ainp input[data-bak="' + kind + '"]').forEach(function (inp) {
+      inp.oninput = function () {
+        var iid = inp.getAttribute('data-bai'), ix = inp.getAttribute('data-bax');
+        var e = batchBuf(iid);
+        e.inst[ix] = inp.value === '' ? 0 : Math.max(0, Math.floor(+inp.value));
+      };
+    });
   }
 
   function submitCount() {
@@ -1046,20 +1131,25 @@
       visibleItems(kind).forEach(function (it) {
         var inst = instOf(S.unit, kind, it.id);
         if (inst) {
-          // piece-tracked: every signed holder must be marked קיים/חסר
+          // row-tracked: each row (piece or series-batch) must be marked
           var mm = (S.buf[kind][it.id] && S.buf[kind][it.id].inst) || {};
+          var expected = instTotal(inst);
           var present = 0, marked = 0, missIdx = [], missingArr = [];
           inst.forEach(function (ins, i) {
-            if (mm[i] === 'ok') { marked++; present++; }
-            else if (mm[i] === 'miss') {
-              marked++; missIdx.push(i);
-              missingArr.push({ s: ins.s || '', owner: ins.owner || '', num: ins.num || '' });
+            var q = rowQty(ins), mk = mm[i];
+            if (q > 1) {
+              // series-batch
+              if (mk === 'ok') { marked++; present += q; }
+              else if (typeof mk === 'number') { marked++; present += Math.max(0, mk); if (mk !== q) missingArr.push({ s: ins.s || '', owner: ins.owner || '', num: ins.num || '', short: q - mk }); }
+            } else {
+              if (mk === 'ok') { marked++; present++; }
+              else if (mk === 'miss') { marked++; missIdx.push(i); missingArr.push({ s: ins.s || '', owner: ins.owner || '', num: ins.num || '', id: ins.id || '' }); }
             }
           });
           if (marked < inst.length) { notMarked.push(it.name); return; }
-          target[it.id] = present === inst.length
-            ? { ok: true, expected: inst.length }
-            : { actual: present, expected: inst.length, missIdx: missIdx, missing: missingArr };
+          target[it.id] = present === expected
+            ? { ok: true, expected: expected }
+            : { actual: present, expected: expected, missIdx: missIdx, missing: missingArr };
           return;
         }
         var m = S.buf[kind][it.id];
@@ -1382,9 +1472,10 @@
               // one row per physical piece with its serial/series + holder + status
               var missIdx = v.missIdx || [];
               inst.forEach(function (ins, i) {
+                var q = rowQty(ins);
                 var present = missIdx.indexOf(i) < 0;
                 rows.push([d, DAY_HE[isoDow(d)], u.group, u.name, t[1], itemName(t[2], iid),
-                  ins.s || '', ins.owner || '', ins.num || '', 1, present ? 1 : 0, present ? 'V' : 'חסר',
+                  ins.s || '', ins.owner || (ins.id || ''), ins.num || '', q, present ? q : 0, present ? 'V' : 'חסר',
                   c.counterName, c.counterNum, fmtTime(c.ts)]);
               });
               return;
@@ -1512,11 +1603,16 @@
           if (!e || trackOf(iid) === 'qty') return;
           if (e.inst && e.inst.length) {
             S.instEdit.data[kind + ':' + iid] = e.inst.map(function (r) {
-              return { s: r.s || '', owner: r.owner || '', num: r.num || '' };
+              return { s: r.s || '', owner: r.owner || '', num: r.num || '', id: r.id || '', q: (typeof r.q === 'number' && r.q > 0 ? r.q : undefined) };
             });
           } else if (typeof e.q === 'number' && e.q > 0) {
-            var arr = []; for (var i = 0; i < Math.min(999, e.q); i++) arr.push({ s: '', owner: '', num: '' });
-            S.instEdit.data[kind + ':' + iid] = arr;
+            if (trackOf(iid) === 'series') {
+              // legacy series saved as a plain quantity → one batch row
+              S.instEdit.data[kind + ':' + iid] = [{ s: '', owner: '', num: '', id: '', q: e.q }];
+            } else {
+              var arr = []; for (var i = 0; i < Math.min(999, e.q); i++) arr.push({ s: '', owner: '', num: '', id: '' });
+              S.instEdit.data[kind + ':' + iid] = arr;
+            }
           }
         });
       });
@@ -1529,35 +1625,58 @@
       var key = kind + ':' + iid;
       var pcs = S.instEdit.data[key] || [];
       if (!pcs.length) return '';
-      var f1 = track === 'series' ? 'סדרה' : track === 'holder' ? '' : 'צ׳';
       var rows = pcs.map(function (r, ri) {
+        var idInp = '<input class="nid" data-if="id" data-ik2="' + key + '" data-ri="' + ri + '" list="identlist" value="' + esc(r.id || '') + '" placeholder="מזהה">';
+        if (track === 'series') {
+          // series batch: [סדרה] [כמות] [חתום? name] [מזהה?]
+          return '<div class="irow">' +
+            '<span class="rn">' + (ri + 1) + '.</span>' +
+            '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.s) + '" placeholder="סדרה">' +
+            '<input class="nq" data-if="q" data-ik2="' + key + '" data-ri="' + ri + '" inputmode="numeric" value="' + (r.q || '') + '" placeholder="כמות">' +
+            '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="חתום (לא חובה)">' +
+            '<button data-irm="' + key + '|' + ri + '">✕</button></div>';
+        }
+        var f1 = track === 'holder' ? '' : 'צ׳';
         return '<div class="irow">' +
-          '<span style="flex:0 0 20px;font-size:12px;color:#6b7f72;font-weight:700">' + (ri + 1) + '.</span>' +
+          '<span class="rn">' + (ri + 1) + '.</span>' +
           (f1 ? '<input class="n1" data-if="s" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.s) + '" placeholder="' + f1 + '">' : '') +
           '<input class="n2" data-if="owner" data-ik2="' + key + '" data-ri="' + ri + '" value="' + esc(r.owner) + '" placeholder="שם החייל">' +
           '<input class="n3" data-if="num" data-ik2="' + key + '" data-ri="' + ri + '" inputmode="numeric" value="' + esc(r.num) + '" placeholder="מ.א">' +
+          idInp +
           '<button data-irm="' + key + '|' + ri + '">✕</button></div>';
       }).join('');
-      var copyBtn = (track === 'series' && pcs.length > 1)
-        ? '<button class="btn-mini" data-icopy="' + key + '" style="background:#e0e7ff;color:#3730a3">📋 העתק סדרה לכולם</button> ' : '';
-      return '<div class="instbox">' + rows + copyBtn +
-        '<button class="btn-mini" data-iadd="' + key + '">＋ הוסף</button></div>';
+      var tot = instTotal(pcs);
+      return '<div class="instbox">' + rows +
+        '<button class="btn-mini" data-iadd="' + key + '">＋ הוסף ' + (track === 'series' ? 'סדרה' : 'פריט') + '</button>' +
+        '<div style="font-size:11px;color:var(--muted);margin-top:5px">סה״כ ' + tot + ' יח׳' + (track === 'series' ? ' · שורה = סדרה + כמות (למשל 84 מאותה סדרה)' : ' · מזהה חייל קיים → השם מתמלא לבד') + '</div></div>';
     }
     function stockRow(kind, it) {
       var e = st[kind] && st[kind][it.id];
       var key = kind + ':' + it.id;
       var track = trackOf(it.id);
       var pcs = S.instEdit.data[key] || [];
-      var qtyVal = track !== 'qty' ? (pcs.length || '') : (e && typeof e.q === 'number' ? e.q : '');
+      var tot = pcs.length ? instTotal(pcs) : 0;
+      if (track === 'series') {
+        // series items are defined entirely by their batch rows (no number field)
+        var curS = pcs.length ? '<div class="cur">' + tot + ' יח׳ · ' + pcs.length + ' סדרות</div>' : '<div class="cur">הוסף סדרה ⃨</div>';
+        return '<div style="grid-column:1/-1">' + esc(it.name) + curS +
+          (pcs.length ? '' : '<button class="btn-mini" data-iadd="' + key + '" style="margin-top:4px">＋ הוסף סדרה</button>') +
+          '</div>' + instEditorHtml(kind, it.id);
+      }
+      var qtyVal = track !== 'qty' ? (tot || '') : (e && typeof e.q === 'number' ? e.q : '');
       var cur = track !== 'qty'
-        ? (pcs.length ? '<div class="cur">' + pcs.length + ' פריטים · ' + (track === 'series' ? 'סדרה' : track === 'holder' ? 'חייל' : 'צ׳') + '</div>' : '<div class="cur">הזן כמות ⃪</div>')
+        ? (pcs.length ? '<div class="cur">' + tot + ' פריטים · ' + (track === 'holder' ? 'חייל' : 'צ׳') + '</div>' : '<div class="cur">הזן כמות ⃪</div>')
         : (e && typeof e.q === 'number' && e.q > 0) ? '<div class="cur">כמות ' + e.q + '</div>' : '<div class="cur">לא הוגדר</div>';
       return '<div>' + esc(it.name) + cur + '</div>' +
         '<input type="number" inputmode="numeric" min="0" data-sk="' + kind + '" data-si="' + it.id + '" value="' + qtyVal + '" placeholder="—">' +
         instEditorHtml(kind, it.id);
     }
-    var h = '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
-      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. פריטים עם צ׳/סדרה — מזינים כמות והשורות נפתחות למילוי.</div>' +
+    // datalist of known identifiers for autocomplete
+    var reg = identRegistry();
+    var identOpts = Object.keys(reg).map(function (k) { return '<option value="' + esc(reg[k].id) + '">' + esc(reg[k].owner) + '</option>'; }).join('');
+    var h = '<datalist id="identlist">' + identOpts + '</datalist>';
+    h += '<div class="card"><h3>⚙️ עדכון כמויות (ADMIN בלבד)</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:4px">כמות 0 או ריקה = הפריט לא מופיע אצל היחידה. צ׳ → שורה לכל פריט · סדרה → שורה = סדרה+כמות · מזהה חייל חוזר משלים שם אוטומטית.</div>' +
       '<label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit);
     if (adminOnly !== 'equip') {
       h += '<div class="sec-head"><h2>תחמושת</h2></div><div class="stock-grid">';
@@ -1622,15 +1741,16 @@
     // per-piece editor wiring
     // For tracked items the quantity input drives the number of piece-rows —
     // change the number and the rows appear/adjust (always visible, no toggle).
+    // serial/holder items: the quantity number drives the number of rows.
+    // (series items have no number field — rows are added one per batch.)
     document.querySelectorAll('#scrAdmin input[data-sk]').forEach(function (inp) {
       var iid = inp.getAttribute('data-si');
-      if (trackOf(iid) === 'qty') return;
+      if (trackOf(iid) === 'qty' || trackOf(iid) === 'series') return;
       var key = inp.getAttribute('data-sk') + ':' + iid;
       inp.onchange = function () {
         var n = Math.max(0, Math.min(999, Math.floor(+inp.value || 0)));
         var arr = (S.instEdit.data[key] || []).slice();
-        var last = arr.length ? arr[arr.length - 1] : null;
-        while (arr.length < n) arr.push({ s: (last && trackOf(iid) === 'series' ? last.s : ''), owner: '', num: '' });
+        while (arr.length < n) arr.push({ s: '', owner: '', num: '', id: '' });
         if (arr.length > n) arr = arr.slice(0, n);
         S.instEdit.data[key] = arr;
         renderAdmin();
@@ -1640,18 +1760,13 @@
       b.onclick = function () {
         var k = b.getAttribute('data-iadd');
         var arr = (S.instEdit.data[k] = S.instEdit.data[k] || []);
-        var last = arr.length ? arr[arr.length - 1] : null;
         var iid = k.split(':')[1];
-        arr.push({ s: (last && trackOf(iid) === 'series' ? last.s : ''), owner: '', num: '' });
-        renderAdmin();
-      };
-    });
-    document.querySelectorAll('[data-icopy]').forEach(function (b) {
-      b.onclick = function () {
-        var k = b.getAttribute('data-icopy');
-        var arr = S.instEdit.data[k] || [];
-        var s = arr[0] ? arr[0].s : '';
-        arr.forEach(function (r) { r.s = s; });
+        if (trackOf(iid) === 'series') {
+          var last = arr.length ? arr[arr.length - 1] : null;
+          arr.push({ s: (last ? last.s : ''), owner: '', num: '', id: '', q: 1 });
+        } else {
+          arr.push({ s: '', owner: '', num: '', id: '' });
+        }
         renderAdmin();
       };
     });
@@ -1662,9 +1777,17 @@
         renderAdmin();
       };
     });
+    var reg2 = identRegistry();
     document.querySelectorAll('.instbox input[data-ik2]').forEach(function (inp) {
       inp.oninput = function () {
-        S.instEdit.data[inp.getAttribute('data-ik2')][+inp.getAttribute('data-ri')][inp.getAttribute('data-if')] = inp.value;
+        var row = S.instEdit.data[inp.getAttribute('data-ik2')][+inp.getAttribute('data-ri')];
+        var field = inp.getAttribute('data-if');
+        row[field] = field === 'q' ? (inp.value === '' ? undefined : Math.max(0, Math.floor(+inp.value))) : inp.value;
+        // identifier autocomplete: fill the name for a known מזהה
+        if (field === 'id') {
+          var hit = reg2[(inp.value || '').trim().toLowerCase()];
+          if (hit && !row.owner) { row.owner = hit.owner; if (!row.num) row.num = hit.num; renderAdmin(); }
+        }
       };
     });
 
@@ -1727,15 +1850,17 @@
     if (S.instEdit.unit === S.adminUnit) {
       Object.keys(S.instEdit.data).forEach(function (key) {
         var p = key.split(':'), kind = p[0], iid = p[1];
-        // Every row is one physical piece — KEEP it even if its צ׳/holder is
-        // blank (a quantity without serials must still be saved). The number
-        // of rows is the quantity.
+        // Every row is a tracked unit — KEEP it even if its צ׳/holder is blank.
+        // A row's quantity is its q (series batches) or 1 (a single piece);
+        // the item total is the sum.
         var arr = (S.instEdit.data[key] || []).map(function (r) {
-          return { s: (r.s || '').trim(), owner: (r.owner || '').trim(), num: (r.num || '').trim() };
-        });
+          var row = { s: (r.s || '').trim(), owner: (r.owner || '').trim(), num: (r.num || '').trim(), id: (r.id || '').trim() };
+          if (typeof r.q === 'number' && r.q > 1) row.q = r.q;
+          return row;
+        }).filter(function (r) { return !(typeof r.q === 'number' && r.q === 0); });
         if (arr.length) {
           var old2 = prev[kind] && prev[kind][iid];
-          next[kind][iid] = { t: (old2 && old2.t) || Date.now(), inst: arr, q: arr.length };
+          next[kind][iid] = { t: (old2 && old2.t) || Date.now(), inst: arr, q: arr.reduce(function (a, r) { return a + (typeof r.q === 'number' && r.q > 0 ? r.q : 1); }, 0) };
         } else if (next[kind][iid]) {
           delete next[kind][iid].inst;
         }

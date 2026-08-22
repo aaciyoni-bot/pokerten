@@ -1284,6 +1284,59 @@ const botNameKey = nm => {
   const parts = String(nm || '').trim().split(' ');
   return parts.length > 1 && isNaN(Number(parts[parts.length - 1])) ? parts[parts.length - 1] : String(parts[0]).replace(/\d+$/, '');
 };
+/* ===== BOT TABLE TALK =====================================================
+   Silent bots read as software. Two bots ribbing each other read as a table.
+   Hebrew, light, no cursing — one line every 10-15 hands, and usually an
+   answer from a different bot a few seconds later. */
+const BOT_TALK = {
+  open: [
+    'מישהו פה מחלק לי רק 7-2, זה אישי?',
+    'שלוש ידיים ברצף שזרקתי. דילר, בוא נדבר.',
+    'אני רק צופה היום, אל תשימו לב.',
+    'קפה שלישי. עכשיו אני משחק טוב.',
+    'מי הביא את הבלוף הזה מהבית?',
+    'הבטחתי בבית יד אחרונה. לפני שעה.',
+    'יש פה מישהו שיודע לזרוק קלפים או רק אני?',
+    'הצ׳יפים שלי מתגעגעים לקופה.',
+    'אני משחק היום לפי תחושת בטן. הבטן רעבה.',
+    'שקט מדי פה. מישהו יעשה בלגן.',
+    'עוד יד כזו ואני עובר לשש-בש.',
+    'הבורד הזה נראה כמו תחזית מזג אוויר.',
+    'ישבתי פה שעה ועוד לא ראיתי אס.',
+    'מי שמעלה עכשיו עושה טעות. רק אומר.'
+  ],
+  reply: [
+    'אתה מדבר יפה, תראה גם קלפים.',
+    'ראיתי אותך זורק אס. עדיין לא התאוששתי.',
+    'בטח. ואני הדוד שלך מוונציה.',
+    'תמשיך לספר, אני מקשיב עם כל הצ׳יפים שלך.',
+    'איך שילמת עם יד כזו? באמת מעניין אותי.',
+    'למדתי ממך הרבה. בעיקר מה לא לעשות.',
+    'הבלוף שלך היה יפה. פעם.',
+    'אני לא כועס, אני רק מנתח.',
+    'שמעתי שיש קורס. תירשם, אני משלם.',
+    'תודה על הקופה, אשלח גלויה.',
+    'אתה מהמר כמו שאתה מקליד — לאט.',
+    'תשמור על הצ׳יפים האלה, יש להם ערך רגשי בשבילי.'
+  ],
+  bigpot: [
+    'איזו קופה. מישהו קרא את זה מראש?',
+    'הקופה הזו שווה חופשה.',
+    'אני עוד אראה את הקלפים האלה בלילה.',
+    'זה כאב אפילו לצופים.',
+    'הצ׳יפים עברו דירה.',
+    'נסיתי להיכנס לשם. הקלפים אמרו לא.'
+  ],
+  emo: ['😂', '🔥', '🤡', '😱', '👍', '🙏', '😭'],
+  bigreply: [
+    'תיהנה, זה זמני.',
+    'רושם לעצמי. יש לי זיכרון טוב.',
+    'קח, תקנה משהו יפה.',
+    'ניפגש ביד הבאה.',
+    'מזל זה גם כישרון, בטח.',
+    'הייתי בדיוק על זה. שנייה לפני.'
+  ]
+};
 const botDisplayName = (usedNames, usedKeys) => {
   for (let i = 0; i < 90; i++) {
     const r = Math.random();
@@ -2644,6 +2697,26 @@ const botRangeFacing = (toCall, potNow, bb) => {
   const ratio = toCall / Math.max(bb, potNow);
   return ratio >= 1.0 ? 4 : ratio >= 0.6 ? 3 : ratio >= 0.3 ? 2 : 1;
 };
+/* Does the hand have a body? A stack must never go in on a hand that is
+   neither made nor drawing — "all-in holding nothing, then catches runner
+   runner" is the single thing that makes a table look rigged.
+   made: 0 nothing / 1 a pair / 2 two pair or better.
+   outs: cards that complete a straight or a flush on the next street. */
+const botHandBody = (cards, board, gameType) => {
+  try {
+    if (!cards || !cards.length || !board || board.length < 3) return { made: 2, outs: 0 };
+    const sc = bestScoreFull(cards, board, gameType);
+    const made = sc >= 2000000 ? 2 : sc >= 1000000 ? 1 : 0;
+    if (board.length >= 5) return { made, outs: 0 };
+    let outs = 0;
+    deckWithout([...board, ...cards]).forEach(c => {
+      if (bestScoreFull(cards, [...board, c], gameType) >= 4000000) outs++;
+    });
+    return { made, outs };
+  } catch (e) {
+    return { made: 2, outs: 0 };
+  }
+};
 // ---- Bot poker brain ----
 // Decides with ONLY the bot's own cards + the board (Monte Carlo vs unknown
 // hands) — a bot can never act on information a human couldn't have, so it
@@ -2715,29 +2788,51 @@ const botPokerMove = (g, t, b) => {
     return r < 0.7 ? { type: 'raise', amt: raiseTo((g.highestBet || bb) * (2.7 + r * 0.8)) } : { type: 'call' };
   }
   // Read the opponents' strength from the bet we are facing, not from thin air.
-  const eqP = simMyEquity(b.cards || [], g.board || [], Math.min(3, oppN), g.currentGameType || 'NLH', botRangeFacing(toCall, potNow, bb));
+  const gt = g.currentGameType || 'NLH';
+  const eqP = simMyEquity(b.cards || [], g.board || [], Math.min(3, oppN), gt, botRangeFacing(toCall, potNow, bb));
   // An unknown hand used to default to 50%, which is what made a bot call off
   // its stack holding nothing. Unknown now means "do not gamble".
   const eq = (eqP == null ? 35 : eqP) / 100;
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
+  const body = botHandBody(b.cards || [], g.board || [], gt);
+  const hasSomething = body.made >= 1 || body.outs >= 8;
+  // Sizing is priced off the POT, never off the opponent's bet: betting 1 into
+  // a pot of 1000 because he bet 1 is not a bet, it is a free card with a fee.
+  const raisePot = frac => {
+    const potAfterCall = potNow + toCall;
+    const target = raiseTo((g.highestBet || 0) + Math.max(bb * 2, potAfterCall * frac));
+    const allIn = target >= stack + (b.bet || 0) - 0.01;
+    if (allIn && !hasSomething) return null;               // no shoving air
+    if (!allIn && target - (g.highestBet || 0) < potAfterCall * 0.25) return null;
+    return { type: 'raise', amt: target };
+  };
+  const betPot = frac => {
+    const target = raiseTo((b.bet || 0) + potNow * frac);
+    if (target >= stack + (b.bet || 0) - 0.01 && !hasSomething) return null;
+    return { type: 'raise', amt: target };
+  };
   if (toCall <= 0) {
     // Monsters BET. Trapping (check) is human on early streets, but checking a
     // near-nuts hand on the RIVER leaves money on the table — a dead giveaway.
     const river = g.phase === 'river';
-    if (eq > 0.9) return (river ? r < 0.05 : r < 0.15) ? { type: 'call' } : { type: 'raise', amt: raiseTo((b.bet || 0) + potNow * (0.65 + r * 0.35)) };
-    if (eq > 0.78) return (river ? r < 0.12 : r < 0.25) ? { type: 'call' } : { type: 'raise', amt: raiseTo((b.bet || 0) + potNow * (0.55 + r * 0.3)) };
-    if (eq > 0.55) return r < 0.5 ? { type: 'raise', amt: raiseTo((b.bet || 0) + potNow * (0.4 + r * 0.25)) } : { type: 'call' };
-    return r < 0.11 ? { type: 'raise', amt: raiseTo((b.bet || 0) + potNow * 0.55) } : { type: 'call' };
+    if (eq > 0.9) return ((river ? r < 0.05 : r < 0.15) ? null : betPot(0.65 + r * 0.35)) || { type: 'call' };
+    if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(0.55 + r * 0.3)) || { type: 'call' };
+    if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || { type: 'call' };
+    return (r < 0.11 ? betPot(0.55) : null) || { type: 'call' };
   }
-  if (toCall >= stack) return eq > Math.max(0.42, potOdds) ? { type: 'call' } : { type: 'fold' };
+  // Facing a shove, or a bet that costs most of the stack: a hand with neither
+  // a pair nor a real draw folds. No exceptions, no miracle river.
+  if (toCall >= stack) return hasSomething && eq > Math.max(0.45, potOdds) ? { type: 'call' } : { type: 'fold' };
+  if (toCall >= stack * 0.4 && !hasSomething) return { type: 'fold' };
   if (eq > potOdds + 0.18 && eq > 0.62) {
-    if (r < 0.3) return { type: 'raise', amt: raiseTo((g.highestBet || 0) + Math.min(potNow, (g.highestBet || bb) * 1.6)) };
+    if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
     return { type: 'call' };
   }
   if (eq > potOdds + 0.02) return { type: 'call' };
   if (committed && eq > potOdds - 0.06) return { type: 'call' };
-  return r < 0.07 ? { type: 'raise', amt: raiseTo((g.highestBet || 0) + potNow * 0.7) } : { type: 'fold' };
+  if (r < 0.07) { const rr = raisePot(0.7); if (rr) return rr; }
+  return { type: 'fold' };
 };
 const simRealEquity = (hands, board, gameType) => {
   try {
@@ -12270,6 +12365,64 @@ function PokerTable({
       return () => clearTimeout(tm);
     }
   }, [gs.activeTurnUid, gs.phase, gs.turnStartedAt, isSuperAdmin]);
+  // Bot table talk: one line every 10-15 hands, and usually an answer from a
+  // different bot a few seconds later, so the table sounds like people.
+  const talkRef = useRef({
+    hands: 0,
+    due: 9 + Math.floor(Math.random() * 7),
+    saidPhase: ''
+  });
+  const botSay = async (bot, text, emoji) => {
+    const t = tableRef.current;
+    if (!t || !bot) return;
+    try {
+      await window.fb.updateDoc(tblRef(), {
+        chat: [...(t.chat || []), {
+          uid: bot.uid,
+          name: bot.name,
+          text: emoji ? '' : text,
+          emoji: emoji || '',
+          gift: '',
+          giftE: '',
+          to: '',
+          at: Date.now()
+        }].slice(-40)
+      });
+    } catch (e) {}
+  };
+  useEffect(() => {
+    if (!isSuperAdmin || !tableState || tableState.chatMuted) return;
+    const st = talkRef.current;
+    if (gs.phase !== 'showdown') {
+      st.saidPhase = '';
+      return;
+    }
+    if (st.saidPhase === 'showdown') return;
+    st.saidPhase = 'showdown';
+    st.hands++;
+    if (st.hands < st.due) return;
+    st.hands = 0;
+    st.due = 9 + Math.floor(Math.random() * 7);
+    const t = tableRef.current;
+    if (!t) return;
+    const bots = Object.values(t.players || {}).filter(p => p.isBot && p.status !== 'left');
+    if (!bots.length) return;
+    const pick = a => a[Math.floor(Math.random() * a.length)];
+    const bb = (Number((t.settings || {}).blinds) || 0.5) * 2;
+    const big = Number((t.gameState || {}).lastWinAmount || 0) > bb * 25;
+    const speaker = pick(bots);
+    const openTm = setTimeout(() => botSay(speaker, pick(big ? BOT_TALK.bigpot : BOT_TALK.open)), 1200 + Math.random() * 1800);
+    const others = bots.filter(p => p.uid !== speaker.uid);
+    let replyTm = null;
+    if (others.length && Math.random() < 0.65) {
+      const asEmoji = Math.random() < 0.25;
+      replyTm = setTimeout(() => botSay(pick(others), pick(big ? BOT_TALK.bigreply : BOT_TALK.reply), asEmoji ? pick(BOT_TALK.emo) : ''), 5200 + Math.random() * 4200);
+    }
+    return () => {
+      clearTimeout(openTm);
+      if (replyTm) clearTimeout(replyTm);
+    };
+  }, [gs.phase, isSuperAdmin]);
   const playersCount = Object.keys(players).length;
   useEffect(() => {
     if (!tableState || gs.phase !== 'waiting') return;

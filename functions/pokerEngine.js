@@ -739,6 +739,25 @@ function rangeFacing(toCall, potNow, bb) {
   return 1;
 }
 
+/* Does the hand have a body? A stack must never go in on a hand that is
+   neither made nor drawing — client parity (index.html botHandBody). */
+function handBody(cards, board, gameType) {
+  try {
+    if (!cards || !cards.length || !board || board.length < 3) return {made: 2, outs: 0};
+    const sc = C.bestScoreFull(cards, board, gameType);
+    const made = sc >= 2000000 ? 2 : sc >= 1000000 ? 1 : 0;
+    if (board.length >= 5) return {made, outs: 0};
+    const known = new Set([...board, ...cards].map((c) => c.id));
+    let outs = 0;
+    C.pokerDeck().filter((c) => !known.has(c.id)).forEach((c) => {
+      if (C.bestScoreFull(cards, [...board, c], gameType) >= 4000000) outs++;
+    });
+    return {made, outs};
+  } catch (e) {
+    return {made: 2, outs: 0};
+  }
+}
+
 function botAction(S, uid) {
   const g = S.gameState;
   const b = S.players[uid];
@@ -780,30 +799,48 @@ function botAction(S, uid) {
   }
 
   // Read the opponents' strength from the bet we are facing, not from thin air.
+  const gt = g.currentGameType || "NLH";
   const rng = rangeFacing(toCall, potNow, bb);
-  const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), g.currentGameType || "NLH", rng);
+  const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), gt, rng);
   const eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
+  const body = handBody(cards, g.board || [], gt);
+  const hasSomething = body.made >= 1 || body.outs >= 8;
+  // Sizing is priced off the POT, never off the opponent's bet.
+  const raisePot = (frac) => {
+    const potAfterCall = potNow + toCall;
+    const target = raiseTo(g.highestBet + Math.max(bb * 2, potAfterCall * frac));
+    const allIn = target >= round2(stack + (b.bet || 0)) - 0.01;
+    if (allIn && !hasSomething) return null;
+    if (!allIn && target - g.highestBet < potAfterCall * 0.25) return null;
+    return {action: "raise", amount: target};
+  };
+  const betPot = (frac) => {
+    const target = raiseTo((b.bet || 0) + potNow * frac);
+    if (target >= round2(stack + (b.bet || 0)) - 0.01 && !hasSomething) return null;
+    return {action: "raise", amount: target};
+  };
 
   if (toCall <= 0) {
     const river = g.phase === "river";
-    if (eq > 0.9) return (river ? r < 0.05 : r < 0.15) ? {action: "call"} :
-      {action: "raise", amount: raiseTo((b.bet || 0) + potNow * (0.65 + r * 0.35))};
-    if (eq > 0.78) return (river ? r < 0.12 : r < 0.25) ? {action: "call"} :
-      {action: "raise", amount: raiseTo((b.bet || 0) + potNow * (0.55 + r * 0.3))};
-    if (eq > 0.55) return r < 0.5 ? {action: "raise", amount: raiseTo((b.bet || 0) + potNow * (0.4 + r * 0.25))} : {action: "call"};
-    return r < 0.11 ? {action: "raise", amount: raiseTo((b.bet || 0) + potNow * 0.55)} : {action: "call"};
+    if (eq > 0.9) return ((river ? r < 0.05 : r < 0.15) ? null : betPot(0.65 + r * 0.35)) || {action: "call"};
+    if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(0.55 + r * 0.3)) || {action: "call"};
+    if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || {action: "call"};
+    return (r < 0.11 ? betPot(0.55) : null) || {action: "call"};
   }
-  // facing an ALL-IN: this is the one that was a coin flip before
-  if (toCall >= stack) return eq > Math.max(0.42, potOdds) ? {action: "call"} : {action: "fold"};
+  // Facing a shove, or a bet that costs most of the stack: a hand with neither
+  // a pair nor a real draw folds. No exceptions, no miracle river.
+  if (toCall >= stack) return hasSomething && eq > Math.max(0.45, potOdds) ? {action: "call"} : {action: "fold"};
+  if (toCall >= stack * 0.4 && !hasSomething) return {action: "fold"};
   if (eq > potOdds + 0.18 && eq > 0.62) {
-    if (r < 0.3) return {action: "raise", amount: raiseTo(g.highestBet + Math.min(potNow, (g.highestBet || bb) * 1.6))};
+    if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
     return {action: "call"};
   }
   if (eq > potOdds + 0.02) return {action: "call"};
   if (committed && eq > potOdds - 0.06) return {action: "call"};
-  return r < 0.07 ? {action: "raise", amount: raiseTo(g.highestBet + potNow * 0.7)} : {action: "fold"};
+  if (r < 0.07) { const rr = raisePot(0.7); if (rr) return rr; }
+  return {action: "fold"};
 }
 
 /* ============================ Firestore plumbing ============================ */

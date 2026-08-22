@@ -132,6 +132,20 @@
             background-size: 170% 170%;
             animation: auroraDrift 26s ease-in-out infinite alternate;
         }
+        /* The club-entry screen sits on a lighter ground than the rest of the
+           app (owner's call). Only the page behind changes — the club cards,
+           the code boxes and the banner keep exactly their own styling. */
+        .cl-page.aurora-bg {
+            background:
+                radial-gradient(1000px 620px at 78% -10%, rgba(213,179,107,0.20), transparent 62%),
+                radial-gradient(760px 560px at 6% 110%, rgba(139,92,246,0.16), transparent 58%),
+                linear-gradient(178deg, #1e283c 0%, #16202f 48%, #111925 100%);
+        }
+        .cl-page.aurora-bg::before {
+            content: ''; position: absolute; inset: 0; pointer-events: none;
+            background: radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,0.06), transparent 60%);
+        }
+
         @keyframes auroraDrift {
             from { background-position: 0% 0%, 100% 100%; }
             to { background-position: 34% 22%, 66% 62%; }
@@ -908,6 +922,7 @@
            is left over, so nothing ever pushes the page into a scroll */
         @media (max-width: 639px) {
             .cl-page { display: flex; flex-direction: column; overflow: hidden !important; }
+            /* owner: lighter ground on the club-entry screen, cards untouched */
             .cl-page > div { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
             .cl-deck { flex: 1 1 auto; min-height: 0; align-items: stretch; }
             .cl-card { height: auto; align-self: stretch; }
@@ -4014,11 +4029,13 @@ function App() {
       const mSnap = await window.fb.getDoc(mRef);
       if (!mSnap.exists()) {
         if (god) {
-          await window.fb.setDoc(mRef, newMembership(dbUser.uid, dbUser, {
-            clubId: club.id,
-            role: ROLES.SUPER_ADMIN,
-            status: 'approved'
-          }));
+          // Oversight is from OUTSIDE the club. We used to write a real
+          // membership here, so the moment a super-admin looked at someone
+          // else's club the owner saw strangers appear in his member list —
+          // one owner abandoned his club over exactly that. Nothing is
+          // written now: effUser already grants a god account SUPER_ADMIN and
+          // 'approved' with no membership doc, so they can see everything
+          // while remaining invisible to the owner and needing no approval.
         } else {
           showToast("Send a join request first", "error");
           return;
@@ -8966,8 +8983,13 @@ function BackofficeView({
       showToast(txt, "info");
     }
   };
-  const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot);
-  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid).filter(u => (isOwner || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true);
+  // Ghost oversight memberships: rows written by the old enterClub for a
+  // super-admin looking in from outside. They are not members of this club and
+  // the owner must never see them. The club's own owner is never hidden.
+  const clubOwnerUid = (window.__club || {}).ownerUid;
+  const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
+  const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
+  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && !isGhostOversight(u)).filter(u => (isOwner || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true);
   const statTiles = [{
     label: 'Your balance',
     value: formatMoney(user.balance),
@@ -10468,9 +10490,16 @@ function PokerTable({
     try {
       const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId)))]);
       const torPl = tSnap.exists() ? tSnap.data().players || {} : {};
+      // Read the stack by the players-map KEY, not by a uid field inside the
+      // seat: a seat written without `uid` used to be skipped entirely, and
+      // the player then showed 0 chips while still alive in the standings.
+      // A player we cannot find a seat for at all gets undefined — NOT zero —
+      // so "still in, seat in flight" never reads as "busted with nothing".
       const stacks = {};
-      tbls.docs.forEach(d => Object.values(d.data().players || {}).forEach(p => {
-        if (p && p.uid) stacks[p.uid] = p.stack || 0;
+      tbls.docs.forEach(d => Object.entries(d.data().players || {}).forEach(([key, p]) => {
+        if (!p) return;
+        const id = p.uid || key;
+        stacks[id] = Math.max(Number(stacks[id]) || 0, Number(p.stack) || 0);
       }));
       const alivePl = [],
         outPl = [];
@@ -10483,11 +10512,13 @@ function PokerTable({
         });else alivePl.push({
           uid,
           name: p.name,
-          stack: stacks[uid] || 0,
+          stack: stacks[uid],          // undefined = no seat found right now
           out: false
         });
       });
-      alivePl.sort((a, b) => b.stack - a.stack);
+      // known stacks first (biggest first), then anyone whose seat we could
+      // not locate this instant — they are alive, just not countable yet
+      alivePl.sort((a, b) => (b.stack === undefined ? -1 : b.stack) - (a.stack === undefined ? -1 : a.stack));
       outPl.sort((a, b) => (a.rank || 999) - (b.rank || 999));
       const list = [...alivePl.map((p, i) => ({
         ...p,
@@ -14057,7 +14088,7 @@ function PokerTable({
   }, "OUT") : React.createElement("span", {
     className: "font-black text-emerald-300",
     dir: "ltr"
-  }, formatShort(p.stack)))), !tourRanks && React.createElement("div", {
+  }, p.stack === undefined ? '\u2014' : formatShort(p.stack)))), !tourRanks && React.createElement("div", {
     className: "text-center text-slate-500 py-6"
   }, React.createElement("i", {
     className: "fa-solid fa-spinner fa-spin"
@@ -19163,9 +19194,16 @@ function TournamentsTab({
         });
         return;
       }
+      // Read the stack by the players-map KEY, not by a uid field inside the
+      // seat: a seat written without `uid` used to be skipped entirely, and
+      // the player then showed 0 chips while still alive in the standings.
+      // A player we cannot find a seat for at all gets undefined — NOT zero —
+      // so "still in, seat in flight" never reads as "busted with nothing".
       const stacks = {};
-      tbls.docs.forEach(d => Object.values(d.data().players || {}).forEach(p => {
-        if (p && p.uid) stacks[p.uid] = p.stack || 0;
+      tbls.docs.forEach(d => Object.entries(d.data().players || {}).forEach(([key, p]) => {
+        if (!p) return;
+        const id = p.uid || key;
+        stacks[id] = Math.max(Number(stacks[id]) || 0, Number(p.stack) || 0);
       }));
       const alivePl = [],
         outPl = [];
@@ -19178,11 +19216,13 @@ function TournamentsTab({
         });else alivePl.push({
           uid,
           name: p.name,
-          stack: stacks[uid] || 0,
+          stack: stacks[uid],          // undefined = no seat found right now
           out: false
         });
       });
-      alivePl.sort((a, b) => b.stack - a.stack);
+      // known stacks first (biggest first), then anyone whose seat we could
+      // not locate this instant — they are alive, just not countable yet
+      alivePl.sort((a, b) => (b.stack === undefined ? -1 : b.stack) - (a.stack === undefined ? -1 : a.stack));
       outPl.sort((a, b) => (a.rank || 999) - (b.rank || 999));
       const list = [...alivePl.map((p, i) => ({
         ...p,
@@ -20512,7 +20552,7 @@ function TournamentsTab({
   }, "OUT") : React.createElement("span", {
     className: "font-black text-emerald-300",
     dir: "ltr"
-  }, formatShort(p.stack))))))), document.body));
+  }, p.stack === undefined ? '\u2014' : formatShort(p.stack))))))), document.body));
 }
 // HIDDEN DRIVERS — mounted at App level so they run CONSTANTLY while the
 // tournament manager's app is open on ANY screen (lobby, a table, the back

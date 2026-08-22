@@ -1455,6 +1455,7 @@
     if (pn.length < 4) { toast('מספר אישי לא תקין'); return; }
     if (!n) { toast('יש להזין שם מלא'); return; }
     var priv = role === 'admin' || role === 'armon';
+    if (priv && !pin) pin = pn.slice(-4);   // default: last 4 digits of the personal number
     if (priv && pin.replace(/[^0-9]/g, '').length < 4) { toast('קוד אישי למנהל — לפחות 4 ספרות'); return; }
     var fb = window.fb, btn = $('btnSavePerson'); btn.disabled = true;
     var writes = [fb.setDoc(fb.doc(fb.db, 'ammo_people', pn), { n: n, c: c, role: role })];
@@ -2092,9 +2093,9 @@
         '<div class="grid2">' +
         '<div><label class="fld">פלוגה</label><input type="text" id="ppCo" placeholder="פלוגה א׳ / פלס״ם..."></div>' +
         '<div><label class="fld">תפקיד</label><select id="ppRole"><option value="soldier">חייל</option><option value="admin">מנהל (צפייה)</option><option value="armon">ארמון (ניהול מלא)</option></select></div></div>' +
-        '<label class="fld">קוד אישי (למנהל / ארמון)</label><input type="text" id="ppPin" inputmode="numeric" placeholder="קוד אישי סודי" style="direction:ltr;text-align:center">' +
+        '<label class="fld">קוד אישי (למנהל / ארמון)</label><input type="text" id="ppPin" inputmode="numeric" placeholder="ריק = 4 ספרות אחרונות של המספר האישי" style="direction:ltr;text-align:center">' +
         '<button class="btn-primary" id="btnSavePerson">💾 שמירת אדם</button>' +
-        '<div style="font-size:11px;color:#6b7f72;text-align:center">החלפת קוד למנהל קיים: אותו מספר אישי + קוד חדש</div></div>';
+        '<div style="font-size:11px;color:#6b7f72;text-align:center">אם משאירים ריק — הקוד נקבע ל-4 הספרות האחרונות של המספר האישי. החלפה: אותו מספר + קוד חדש.</div></div>';
     }
 
     // access log — who entered, when, as which framework / admin

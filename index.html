@@ -3749,15 +3749,22 @@ function App() {
   // Runs only on the club owner's client (no thundering herd) and only for a
   // config that ALREADY has a table but zero joinable ones (bounded — it can
   // never invent tables from nothing, so it cannot run away). This is what
-  // recovers Spin & Cash tables: when a spin resolves server-side no client
-  // spawns a replacement, so the owner's lobby does it.
+  // Safety net for Spin & Cash: when the last joinable table of a config FILLS
+  // UP, a twin should already have been spawned by whoever took the seat; if
+  // that write failed, this catches it.
+  //
+  // It used to be written as a STATE test — "no joinable table of this config
+  // exists, so make one" — which made a table impossible to close: the owner
+  // deleted one and his own lobby immediately recreated it. So it is an EVENT
+  // test now: it fires only on the transition from "somewhere to sit" to
+  // "nowhere to sit", and never when the table count went DOWN, because a
+  // table that went away was closed on purpose. Closing stays closed.
   const ensureRef = useRef({});
   useEffect(() => {
     const ownerUid = (window.__club || {}).ownerUid;
     if (!dbUser?.uid || !ownerUid || ownerUid !== dbUser.uid) return;
     const cid = CLUB_ID;
     const mine = (tablesDB || []).filter(x => (x.clubId || 'main') === cid && !x.tournamentId && x.type === 'poker');
-    if (!mine.length) return;
     const keyOf = x => { const s = x.settings || {}; return JSON.stringify([!!s.spinMode, Number(s.spinBuyIn) || 0, Number(s.buyIn) || 0, Number(s.blinds) || 0, s.baseGameType || '', Number(s.maxPlayers) || 0, s.variant || '']); };
     const isJoinable = x => {
       const s = x.settings || {};
@@ -3768,13 +3775,22 @@ function App() {
     const groups = {};
     mine.forEach(x => { const k = keyOf(x); (groups[k] = groups[k] || []).push(x); });
     const now = Date.now();
+    const seen = ensureRef.current;
     Object.keys(groups).forEach(k => {
       const arr = groups[k];
-      if (arr.some(isJoinable)) return;            // already have an open table for this config
-      if (now - (ensureRef.current[k] || 0) < 8000) return; // debounce repeated snapshots
-      ensureRef.current[k] = now;
-      spawnTwinTable(arr[0], true);                // force: we already verified 0 joinable exist
+      const joinable = arr.filter(isJoinable).length;
+      const prev = seen[k];
+      seen[k] = { joinable, total: arr.length, spawnedAt: (prev && prev.spawnedAt) || 0 };
+      if (joinable > 0) return;                    // there is still somewhere to sit
+      if (!prev) return;                           // first sighting (page load) — never spawn
+      if (prev.joinable === 0) return;             // this transition was already handled
+      if (arr.length < prev.total) return;         // a table was CLOSED, not filled — leave it closed
+      if (now - (prev.spawnedAt || 0) < 8000) return; // never twice in a breath
+      seen[k].spawnedAt = now;
+      spawnTwinTable(arr[0], true);
     });
+    // configs whose last table was deleted must not keep stale state around
+    Object.keys(seen).forEach(k => { if (!groups[k]) delete seen[k]; });
   }, [tablesDB, dbUser?.uid]);
   const [activeTable, setActiveTable] = useState(null);
   const [toasts, setToasts] = useState([]);

@@ -2589,28 +2589,46 @@ const deckWithout = known => {
   const ids = new Set(known.filter(c => c).map(c => c.id));
   return pokerDeck().filter(c => !ids.has(c.id));
 };
-const simMyEquity = (myCards, board, oppCount, gameType) => {
+/* `range` is what makes the bot notice its opponent. At range=1 each opponent
+   holds one random hand — the assumption the bot used to make on every street,
+   i.e. that a player who just shoved the river is as likely to hold 7-2 as
+   aces. Measured in the arena, that lost 17 bb/100 to an opponent who only
+   played premiums: it kept paying him off. At range=k each opponent is dealt k
+   candidate hands and plays the best of them — a cheap, honest model of "this
+   player's range is about the top 1/k of hands". The caller raises k with the
+   size of the bet being faced. */
+const simMyEquity = (myCards, board, oppCount, gameType, range) => {
   try {
     const omaha = (gameType || '').startsWith('Omaha');
     const iters = omaha ? 100 : 220;
     const holeN = myCards.length;
+    const k = Math.max(1, Math.min(6, Math.round(range || 1)));
     let score = 0;
     for (let i = 0; i < iters; i++) {
       const deck = deckWithout([...myCards, ...board]);
+      if (deck.length < holeN * oppCount * k + 5) return null;
       const opps = [];
-      for (let o = 0; o < oppCount; o++) opps.push(deck.splice(0, holeN));
+      for (let o = 0; o < oppCount; o++) {
+        const cands = [];
+        for (let c = 0; c < k; c++) cands.push(deck.splice(0, holeN));
+        opps.push(cands);
+      }
       const fb = [...board];
       while (fb.length < 5) fb.push(deck.pop());
       const my = bestScoreFull(myCards, fb, gameType);
       let lose = false,
         tie = false;
-      for (const oc of opps) {
-        const s = bestScoreFull(oc, fb, gameType);
-        if (s > my) {
+      for (const cands of opps) {
+        let best = 0;
+        for (const oc of cands) {
+          const sc = bestScoreFull(oc, fb, gameType);
+          if (sc > best) best = sc;
+        }
+        if (best > my) {
           lose = true;
           break;
         }
-        if (s === my) tie = true;
+        if (best === my) tie = true;
       }
       if (!lose) score += tie ? 0.5 : 1;
     }
@@ -2618,6 +2636,13 @@ const simMyEquity = (myCards, board, oppCount, gameType) => {
   } catch (e) {
     return null;
   }
+};
+/* How strong to assume the opponents' range is, from what they just did. A
+   check is no information; a pot-sized bet or a shove is a lot. */
+const botRangeFacing = (toCall, potNow, bb) => {
+  if (toCall <= 0) return 1;
+  const ratio = toCall / Math.max(bb, potNow);
+  return ratio >= 1.0 ? 4 : ratio >= 0.6 ? 3 : ratio >= 0.3 ? 2 : 1;
 };
 // ---- Bot poker brain ----
 // Decides with ONLY the bot's own cards + the board (Monte Carlo vs unknown
@@ -2689,8 +2714,11 @@ const botPokerMove = (g, t, b) => {
     if (toCall <= 0) return r < 0.8 ? { type: 'raise', amt: raiseTo(bb * (2.8 + r)) } : { type: 'call' };
     return r < 0.7 ? { type: 'raise', amt: raiseTo((g.highestBet || bb) * (2.7 + r * 0.8)) } : { type: 'call' };
   }
-  const eqP = simMyEquity(b.cards || [], g.board || [], Math.min(3, oppN), g.currentGameType || 'NLH');
-  const eq = (eqP == null ? 50 : eqP) / 100;
+  // Read the opponents' strength from the bet we are facing, not from thin air.
+  const eqP = simMyEquity(b.cards || [], g.board || [], Math.min(3, oppN), g.currentGameType || 'NLH', botRangeFacing(toCall, potNow, bb));
+  // An unknown hand used to default to 50%, which is what made a bot call off
+  // its stack holding nothing. Unknown now means "do not gamble".
+  const eq = (eqP == null ? 35 : eqP) / 100;
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
   if (toCall <= 0) {

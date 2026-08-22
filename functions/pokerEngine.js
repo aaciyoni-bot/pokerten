@@ -668,33 +668,56 @@ function preflopTier(cards) {
   return 0;
 }
 
-// Monte-Carlo equity against `oppCount` random hands. Returns 0..1, or null
-// when the hand is unknown — callers must treat null as "do not gamble".
-function equityOf(myCards, board, oppCount, gameType) {
+/* Monte-Carlo equity. Returns 0..1, or null when the hand is unknown —
+ * callers must treat null as "do not gamble".
+ *
+ * `range` is what makes the bot notice its opponent. At range=1 each opponent
+ * is dealt one random hand, which is the assumption the bot used to make on
+ * every street: that a player who just shoved the river is as likely to hold
+ * seven-deuce as aces. It measured -17 bb/100 against an opponent who only
+ * ever played premiums — it kept paying him off.
+ *
+ * At range=k each opponent is dealt k candidate hands and plays the best of
+ * them, which is a cheap, honest model of "this player's range is roughly the
+ * top 1/k of hands". Callers raise k with the size of the bet being faced, so
+ * a pot-sized river bet is answered as the strong range it usually is.
+ */
+function equityOf(myCards, board, oppCount, gameType, range) {
   try {
     if (!myCards || !myCards.length) return null;
     const omaha = (gameType || "").startsWith("Omaha");
     const iters = omaha ? 90 : 200;
+    const k = Math.max(1, Math.min(6, Math.round(range || 1)));
     const known = new Set([...myCards, ...(board || [])].map((c) => c.id));
     const rest = C.pokerDeck().filter((c) => !known.has(c.id));
+    const need = myCards.length * oppCount * k + 5;
+    if (rest.length < need) return null;
     let score = 0;
     for (let i = 0; i < iters; i++) {
       // cheap partial shuffle of the remaining deck
       const d = rest.slice();
-      for (let k = d.length - 1; k > 0; k--) {
-        const j = Math.floor(rnd() * (k + 1));
-        [d[k], d[j]] = [d[j], d[k]];
+      for (let x = d.length - 1; x > 0; x--) {
+        const j = Math.floor(rnd() * (x + 1));
+        [d[x], d[j]] = [d[j], d[x]];
       }
-      const opps = [];
-      for (let o = 0; o < oppCount; o++) opps.push(d.splice(0, myCards.length));
       const fb = [...(board || [])];
+      const oppHands = [];
+      for (let o = 0; o < oppCount; o++) {
+        const cands = [];
+        for (let c = 0; c < k; c++) cands.push(d.splice(0, myCards.length));
+        oppHands.push(cands);
+      }
       while (fb.length < 5) fb.push(d.pop());
       const my = C.bestScoreFull(myCards, fb, gameType);
       let lose = false; let tie = false;
-      for (const oc of opps) {
-        const sc = C.bestScoreFull(oc, fb, gameType);
-        if (sc > my) { lose = true; break; }
-        if (sc === my) tie = true;
+      for (const cands of oppHands) {
+        let best = 0;
+        for (const oc of cands) {
+          const sc = C.bestScoreFull(oc, fb, gameType);
+          if (sc > best) best = sc;
+        }
+        if (best > my) { lose = true; break; }
+        if (best === my) tie = true;
       }
       if (!lose) score += tie ? 0.5 : 1;
     }
@@ -702,6 +725,18 @@ function equityOf(myCards, board, oppCount, gameType) {
   } catch (e) {
     return null;
   }
+}
+
+/* How strong to assume the opponents' range is, from what they just did.
+ * A check is no information; a small bet is barely any; a pot-sized bet or a
+ * shove is a lot. This is the whole of "the bot pays attention". */
+function rangeFacing(toCall, potNow, bb) {
+  if (toCall <= 0) return 1;
+  const ratio = toCall / Math.max(bb, potNow);
+  if (ratio >= 1.0) return 4;   // pot-sized or bigger
+  if (ratio >= 0.6) return 3;
+  if (ratio >= 0.3) return 2;
+  return 1;
 }
 
 function botAction(S, uid) {
@@ -744,7 +779,9 @@ function botAction(S, uid) {
     return r < 0.7 ? {action: "raise", amount: raiseTo((g.highestBet || bb) * (2.7 + r * 0.8))} : {action: "call"};
   }
 
-  const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), g.currentGameType || "NLH");
+  // Read the opponents' strength from the bet we are facing, not from thin air.
+  const rng = rangeFacing(toCall, potNow, bb);
+  const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), g.currentGameType || "NLH", rng);
   const eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;

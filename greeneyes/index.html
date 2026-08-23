@@ -1721,12 +1721,24 @@
       table + '</div>';
   }
 
-  // does a framework have ANY inventory defined (ammo or equip)? Frameworks with
-  // nothing are not "not counted" — they simply have no stock, shown neutrally.
+  // does a framework have ANY inventory defined (ammo or equip)?
   function unitHasStock(u) {
     var uid = (u && u.id) || u;
     return ammoList().some(function (it) { return stockQty(uid, 'ammo', it.id) > 0; }) ||
       equipList().some(function (it) { return stockQty(uid, 'equip', it.id) > 0; });
+  }
+  // is there anything to count in this framework ON THIS DATE? Ammo counts every
+  // day; equipment only Tue/Fri. So an equipment-only framework is "countable"
+  // (and red when missed) only on equipment days — grey/neutral the rest.
+  function unitHasAmmo(u) { var uid = (u && u.id) || u; return ammoList().some(function (it) { return stockQty(uid, 'ammo', it.id) > 0; }); }
+  function unitHasEquip(u) { var uid = (u && u.id) || u; return equipList().some(function (it) { return stockQty(uid, 'equip', it.id) > 0; }); }
+  function unitCountableOn(u, date) {
+    var only = u.only;
+    if (only === 'ammo') return unitHasAmmo(u);
+    if (only === 'equip') return unitHasEquip(u) && isEquipDay(date);
+    if (unitHasAmmo(u)) return true;                 // has ammo → every day
+    if (unitHasEquip(u)) return isEquipDay(date);    // equipment only → Tue/Fri
+    return false;
   }
 
   // sensitive-ammo shortfalls across the viewer's scope for a given date
@@ -1749,7 +1761,7 @@
   // built to read cleanly on a phone for a WhatsApp screenshot.
   function adminDashboardHtml() {
     var date = S.repDate, units = myUnits();
-    var withStock = units.filter(unitHasStock);        // only frameworks that actually hold something
+    var withStock = units.filter(function (u) { return unitCountableOn(u, date); });  // frameworks with something to count today
     var counted = 0, todayGaps = 0;
     withStock.forEach(function (u) { var c = S.counts[countId(u.id, date)]; if (c) { counted++; todayGaps += countMismatches(c); } });
     var sens = sensitiveShortfalls(date);
@@ -1771,12 +1783,13 @@
     myUnitGroups().forEach(function (g) {
       var us = units.filter(function (u) { return u.grp === g.g; });
       if (!us.length) return;
-      var ws = us.filter(unitHasStock);
+      var ws = us.filter(function (u) { return unitCountableOn(u, date); });
       var cc = ws.filter(function (u) { return S.counts[countId(u.id, date)]; }).length;
       h += '<div class="dash-co"><span>' + esc(g.name) + '</span><span class="cc">' + cc + '/' + ws.length + '</span></div>';
       us.forEach(function (u) {
-        if (!unitHasStock(u)) {
-          h += '<div class="dash-row none">◦ ' + esc(u.name) + '<span class="m">אין מלאי מוגדר</span></div>';
+        if (!unitCountableOn(u, date)) {
+          var lbl = unitHasStock(u) ? 'אמצעים · ג׳/ו׳' : 'אין מלאי מוגדר';
+          h += '<div class="dash-row none">◦ ' + esc(u.name) + '<span class="m">' + lbl + '</span></div>';
           return;
         }
         var c = S.counts[countId(u.id, date)];
@@ -1787,7 +1800,7 @@
     return h + '</div>';
   }
   function dashShareText() {
-    var date = S.repDate, units = myUnits().filter(unitHasStock);
+    var date = S.repDate, units = myUnits().filter(function (u) { return unitCountableOn(u, date); });
     var counted = units.filter(function (u) { return S.counts[countId(u.id, date)]; });
     var missing = units.filter(function (u) { return !S.counts[countId(u.id, date)]; });
     var sens = sensitiveShortfalls(date);
@@ -1852,7 +1865,7 @@
     });
     h += '</div>';
 
-    var stockUnits = units.filter(unitHasStock);
+    var stockUnits = units.filter(function (u) { return unitCountableOn(u, S.repDate); });
     var done = 0;
     stockUnits.forEach(function (u) { if (S.counts[countId(u.id, S.repDate)]) done++; });
     h += '<div class="card"><h3>סטטוס ליום ' + DAY_HE[isoDow(S.repDate)] + ' ' + fmtDM(S.repDate) + '</h3>' +
@@ -1860,8 +1873,8 @@
       '<table class="rep"><tr><th>יחידה</th><th>סטטוס</th><th>סופר</th><th></th></tr>';
     units.forEach(function (u) {
       var c = S.counts[countId(u.id, S.repDate)];
-      if (!unitHasStock(u)) {
-        h += '<tr><td>' + esc(u.full) + '</td><td style="color:#8a9b90">אין מלאי</td><td></td><td></td></tr>';
+      if (!unitCountableOn(u, S.repDate)) {
+        h += '<tr><td>' + esc(u.full) + '</td><td style="color:#8a9b90">' + (unitHasStock(u) ? 'אמצעים · ג׳/ו׳' : 'אין מלאי') + '</td><td></td><td></td></tr>';
       } else if (!c) {
         h += '<tr><td>' + esc(u.full) + '</td><td class="st-miss">לא נספר</td><td></td><td></td></tr>';
       } else {

@@ -95,6 +95,13 @@ service cloud.firestore {
     }
     function ammoAdmin() { return breakGlass() || ammoRole() == 'admin' || ammoRole() == 'armon'; }
     function ammoArmon() { return breakGlass() || ammoRole() == 'armon'; }
+    // A מפקד פלוגה (company commander) carries a `cmd` group on their people doc,
+    // and may move stock BETWEEN the frameworks of THAT company only.
+    function ammoCmdGroup() {
+      return gateValid()
+        ? get(/databases/$(database)/documents/ammo_people/$(gatePn())).data.get('cmd', '')
+        : '';
+    }
 
     // People roster (identity + role), keyed by personal number. A single doc is
     // fetchable by anyone signed in — that IS the login lookup (you must know the
@@ -133,10 +140,13 @@ service cloud.firestore {
     // Reference roster (autocomplete registries) — armon writes.
     match /ammo_ref/{doc} { allow read: if gateOK(); allow write: if ammoArmon(); }
 
-    // Baseline quantities per unit — ONLY armon may set/update them.
+    // Baseline quantities per unit — armon sets them; a company commander may
+    // also write stock docs for units in HIS OWN company (this powers inter-
+    // framework transfers within the company). The group field must match the
+    // unit's company prefix, so no cross-company write is possible.
     match /ammo_stock/{unit} {
       allow read: if gateOK();
-      allow write: if ammoArmon() &&
+      allow write: if (ammoArmon() || ammoCmdGroup() == unit.split('_')[0]) &&
         request.resource.data.group == unit.split('_')[0];
     }
 
@@ -146,6 +156,25 @@ service cloud.firestore {
       allow create: if gateOK() &&
         request.resource.data.group == request.resource.data.unitId.split('_')[0];
       allow update, delete: if ammoArmon();
+    }
+
+    // Audit reports (ביקורת) — filed by any admin/armon inspector; group must
+    // match the audited unit's company. Readable by any gated user; edits/deletes
+    // are admin-only.
+    match /ammo_audit/{id} {
+      allow read: if gateOK();
+      allow create: if ammoAdmin() &&
+        request.resource.data.group == request.resource.data.unitId.split('_')[0];
+      allow update, delete: if ammoAdmin();
+    }
+
+    // Inter-framework transfer log — written by armon or the company commander of
+    // that group. Append-only; only armon may delete.
+    match /ammo_transfer/{id} {
+      allow read: if gateOK();
+      allow create: if ammoArmon() || ammoCmdGroup() == request.resource.data.group;
+      allow update: if false;
+      allow delete: if ammoArmon();
     }
 
     // Access log — append-only; reading it is admin-only.

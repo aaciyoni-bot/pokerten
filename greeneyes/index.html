@@ -783,9 +783,19 @@
         });
         return;
       }
-      if (user.email) {                       // break-glass owner / armon account
-        S.person = { pn: '', n: (user.email || '').split('@')[0], c: '', role: 'armon' };
-        S.gateOK = true; subscribeMeta(); applyRole();
+      if (user.email) {
+        var em = (user.email || '').toLowerCase();
+        if (em === 'armon@greeneyes95.com' || em === 'aaci.yoni@gmail.com') {
+          // break-glass owner / armon account
+          S.person = { pn: '', n: em.split('@')[0], c: '', role: 'armon' };
+          S.gateOK = true; subscribeMeta(); applyRole();
+        } else {
+          // leftover OLD admin email session (samgad/mapam/magad...) — the new
+          // system is by personal number; sign it out and go to number login
+          try { localStorage.removeItem('yb_pn'); } catch (e) {}
+          S.person = null; S.gateOK = false;
+          fb.signOut(fb.auth);
+        }
         return;
       }
       // anonymous: resume a remembered identity, else ask for the personal number

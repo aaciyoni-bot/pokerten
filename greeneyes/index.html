@@ -215,6 +215,7 @@
   .dash-co .cc { font-weight: 800; color: var(--muted); }
   .dash-row { font-size: 13px; padding: 5px 8px; border-radius: 8px; margin: 3px 0; background: #f4f8f4; display: flex; gap: 6px; align-items: center; }
   .dash-row.miss { background: #fef2f2; color: #b91c1c; font-weight: 700; }
+  .dash-row.none { background: #f1f3f2; color: #8a9b90; font-weight: 400; }
   .dash-row .m { color: var(--muted); font-weight: 400; margin-inline-start: auto; font-size: 11.5px; }
   .gap-card { border: 2px solid #dc2626 !important; }
   .gap-row { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid #fee2e2; font-size: 13px; }
@@ -1720,6 +1721,14 @@
       table + '</div>';
   }
 
+  // does a framework have ANY inventory defined (ammo or equip)? Frameworks with
+  // nothing are not "not counted" — they simply have no stock, shown neutrally.
+  function unitHasStock(u) {
+    var uid = (u && u.id) || u;
+    return ammoList().some(function (it) { return stockQty(uid, 'ammo', it.id) > 0; }) ||
+      equipList().some(function (it) { return stockQty(uid, 'equip', it.id) > 0; });
+  }
+
   // sensitive-ammo shortfalls across the viewer's scope for a given date
   function sensitiveShortfalls(date) {
     var out = [];
@@ -1740,13 +1749,14 @@
   // built to read cleanly on a phone for a WhatsApp screenshot.
   function adminDashboardHtml() {
     var date = S.repDate, units = myUnits();
+    var withStock = units.filter(unitHasStock);        // only frameworks that actually hold something
     var counted = 0, todayGaps = 0;
-    units.forEach(function (u) { var c = S.counts[countId(u.id, date)]; if (c) { counted++; todayGaps += countMismatches(c); } });
+    withStock.forEach(function (u) { var c = S.counts[countId(u.id, date)]; if (c) { counted++; todayGaps += countMismatches(c); } });
     var sens = sensitiveShortfalls(date);
     var h = '<div class="card"><div class="dash-head"><h3>🧭 מרכז בקרה — ' + DAY_HE[isoDow(date)] + ' ' + fmtDM(date) + '</h3>' +
       '<button class="btn-mini" id="dashShare">📤 שיתוף</button></div>' +
       '<div class="kpi">' +
-      '<div class="box"><div class="n">' + counted + '/' + units.length + '</div><div class="l">מסגרות שנספרו</div></div>' +
+      '<div class="box"><div class="n">' + counted + '/' + withStock.length + '</div><div class="l">מסגרות שנספרו</div></div>' +
       '<div class="box"><div class="n">' + todayGaps + '</div><div class="l">חריגים היום</div></div>' +
       '<div class="box"' + (sens.length ? ' style="background:linear-gradient(135deg,#fef2f2,#fee2e2);border-color:#dc2626"' : '') + '><div class="n"' + (sens.length ? ' style="color:#b91c1c"' : '') + '>' + sens.length + '</div><div class="l">חוסר רגיש</div></div>' +
       '</div>';
@@ -1761,9 +1771,14 @@
     myUnitGroups().forEach(function (g) {
       var us = units.filter(function (u) { return u.grp === g.g; });
       if (!us.length) return;
-      var cc = us.filter(function (u) { return S.counts[countId(u.id, date)]; }).length;
-      h += '<div class="dash-co"><span>' + esc(g.name) + '</span><span class="cc">' + cc + '/' + us.length + '</span></div>';
+      var ws = us.filter(unitHasStock);
+      var cc = ws.filter(function (u) { return S.counts[countId(u.id, date)]; }).length;
+      h += '<div class="dash-co"><span>' + esc(g.name) + '</span><span class="cc">' + cc + '/' + ws.length + '</span></div>';
       us.forEach(function (u) {
+        if (!unitHasStock(u)) {
+          h += '<div class="dash-row none">◦ ' + esc(u.name) + '<span class="m">אין מלאי מוגדר</span></div>';
+          return;
+        }
         var c = S.counts[countId(u.id, date)];
         h += '<div class="dash-row' + (c ? '' : ' miss') + '">' + (c ? '✓' : '✗') + ' ' + esc(u.name) +
           (c ? '<span class="m">' + esc(c.counterName || '') + '</span>' : '<span class="m">טרם נספר</span>') + '</div>';
@@ -1772,7 +1787,7 @@
     return h + '</div>';
   }
   function dashShareText() {
-    var date = S.repDate, units = myUnits();
+    var date = S.repDate, units = myUnits().filter(unitHasStock);
     var counted = units.filter(function (u) { return S.counts[countId(u.id, date)]; });
     var missing = units.filter(function (u) { return !S.counts[countId(u.id, date)]; });
     var sens = sensitiveShortfalls(date);
@@ -1837,14 +1852,17 @@
     });
     h += '</div>';
 
+    var stockUnits = units.filter(unitHasStock);
     var done = 0;
-    units.forEach(function (u) { if (S.counts[countId(u.id, S.repDate)]) done++; });
+    stockUnits.forEach(function (u) { if (S.counts[countId(u.id, S.repDate)]) done++; });
     h += '<div class="card"><h3>סטטוס ליום ' + DAY_HE[isoDow(S.repDate)] + ' ' + fmtDM(S.repDate) + '</h3>' +
-      '<div style="font-size:14px;margin-bottom:8px">נספרו <b>' + done + '</b> מתוך <b>' + units.length + '</b> יחידות</div>' +
+      '<div style="font-size:14px;margin-bottom:8px">נספרו <b>' + done + '</b> מתוך <b>' + stockUnits.length + '</b> יחידות</div>' +
       '<table class="rep"><tr><th>יחידה</th><th>סטטוס</th><th>סופר</th><th></th></tr>';
     units.forEach(function (u) {
       var c = S.counts[countId(u.id, S.repDate)];
-      if (!c) {
+      if (!unitHasStock(u)) {
+        h += '<tr><td>' + esc(u.full) + '</td><td style="color:#8a9b90">אין מלאי</td><td></td><td></td></tr>';
+      } else if (!c) {
         h += '<tr><td>' + esc(u.full) + '</td><td class="st-miss">לא נספר</td><td></td><td></td></tr>';
       } else {
         var mm = countMismatches(c);

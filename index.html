@@ -19439,6 +19439,7 @@ function BingoTable({
   const [showHist, setShowHist] = useState(false);
   const tableRef = useRef(null);
   const sweptRef = useRef(0);
+  const scrollRef = useRef(null);
   const chatterRef = useRef({
     ball: 0,
     at: 0
@@ -19465,6 +19466,15 @@ function BingoTable({
     setResHide(false);
     setShowVerify(false);
   }, [T.showdownAt]);
+  // a new phase = a new scene — the cage and current ball must be in view
+  useEffect(() => {
+    try {
+      scrollRef.current && scrollRef.current.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    } catch (e) {}
+  }, [phase]);
   useEffect(() => {
     if (!tableDocId) return;
     const unsub = window.fb.onSnapshot(tblRef(), d => {
@@ -20030,6 +20040,7 @@ function BingoTable({
     key: i,
     className: "bng-bulb"
   }))), React.createElement("div", {
+    ref: scrollRef,
     className: "flex-1 min-h-0 overflow-y-auto scrollable-content px-3 pb-3"
   }, phase === 'waiting' && React.createElement("div", {
     className: "max-w-md mx-auto pt-4 space-y-3 animate-fade-in"

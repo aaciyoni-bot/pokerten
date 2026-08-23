@@ -275,7 +275,20 @@ async function endRound(tx, id, t, eng, called, wonPatterns, upd) {
   const wp = wonPatterns || t.wonPatterns || {};
   const st = B.computeSettlement(s, Number(t.bank) || 0, Number(t.feeAcc) || 0, wp, leftUids);
   const now = Date.now();
+  // Rolling results board — the hall's last rounds stay on the wall (capped).
+  const histRow = {
+    roundN: Number(t.roundN) || 1,
+    at: now,
+    pot: round2(Number(t.bank) || 0),
+    calledCount: (called || t.called || []).length,
+    patterns: Object.fromEntries(Object.entries(st.perPattern).map(([pat, x]) => [pat, {
+      share: x.share,
+      names: ((wp[pat] || {}).winners || []).map((w) => w.name),
+      ball: (wp[pat] || {}).ball || null,
+    }])),
+  };
   tx.update(tRef(id), {
+    history: [...(t.history || []).slice(-11), histRow],
     ...(upd || {}),
     wonPatterns: wp,
     phase: "showdown",

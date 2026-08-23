@@ -1028,6 +1028,87 @@
             to { transform: translate(-50%,-50%) rotate(var(--ca)) translateY(-195px) rotate(calc(var(--ca) + 140deg)); opacity: 0; }
         }
 
+        /* ═══ BINGO CARNIVAL ═══════════════════════════════════════════════
+           Timing tokens: micro 120ms · motion 300ms · flourish 700ms.
+           Easing: arrive cubic-bezier(0.16,1,0.3,1) · pop cubic-bezier(0.34,1.56,0.64,1). */
+        .bng-room {
+            background:
+                radial-gradient(900px 500px at 50% -10%, rgba(245,200,96,0.10), transparent 55%),
+                radial-gradient(700px 480px at 12% 108%, rgba(217,70,239,0.13), transparent 55%),
+                radial-gradient(700px 480px at 88% 108%, rgba(14,165,233,0.11), transparent 55%),
+                radial-gradient(ellipse at 50% 0%, #241a3e 0%, #0a0716 62%) !important;
+        }
+        /* string lights across the header — a full hall has bulbs */
+        .bng-bulbs { display: flex; justify-content: space-around; height: 7px; margin-top: -2px; pointer-events: none; }
+        .bng-bulb { width: 7px; height: 7px; border-radius: 50%; animation: bngTwinkle 2.4s ease-in-out infinite; }
+        .bng-bulb:nth-child(4n+1) { background: #fbbf24; animation-delay: 0s; }
+        .bng-bulb:nth-child(4n+2) { background: #f472b6; animation-delay: 0.6s; }
+        .bng-bulb:nth-child(4n+3) { background: #34d399; animation-delay: 1.2s; }
+        .bng-bulb:nth-child(4n+4) { background: #38bdf8; animation-delay: 1.8s; }
+        @keyframes bngTwinkle { 0%,100% { opacity: 1; box-shadow: 0 0 8px currentColor, 0 0 8px currentColor; } 50% { opacity: 0.35; box-shadow: none; } }
+        /* the cage — idle lazy spin, frantic before a draw */
+        .bng-cage { animation: bngCageSpin var(--bngSpin, 7s) linear infinite; transform-origin: 50% 50%; }
+        @keyframes bngCageSpin { to { transform: rotate(360deg); } }
+        .bng-cage-fast .bng-cage-ballgroup { animation: bngRattle 0.14s linear infinite; }
+        @keyframes bngRattle { 0% { transform: translate(0,0); } 25% { transform: translate(1.6px,-1.2px); } 50% { transform: translate(-1.4px,1.5px); } 75% { transform: translate(1.2px,1.3px); } 100% { transform: translate(0,0); } }
+        /* the new ball pops out of the cage and lands with weight */
+        .bng-ball-pop { animation: bngBallPop 0.62s cubic-bezier(0.34,1.56,0.64,1); }
+        @keyframes bngBallPop {
+            0% { transform: translateY(-42px) scale(0.25) rotate(-160deg); opacity: 0; filter: brightness(2.2); }
+            55% { transform: translateY(2px) scale(1.14) rotate(8deg); opacity: 1; filter: brightness(1.35); }
+            78% { transform: translateY(-3px) scale(0.96); }
+            100% { transform: none; filter: none; }
+        }
+        .bng-ball-glow { animation: bngBallGlow 1.1s ease-out; border-radius: 50%; }
+        @keyframes bngBallGlow { 0% { box-shadow: 0 0 0 0 rgba(245,200,96,0.85); } 100% { box-shadow: 0 0 0 26px rgba(245,200,96,0); } }
+        /* thick felt-marker daub — stamps on with a squash, ink stays translucent */
+        .bng-daub { animation: bngStamp 0.17s cubic-bezier(0.34,1.56,0.64,1); }
+        @keyframes bngStamp {
+            0% { transform: scale(1.9) rotate(-16deg); opacity: 0; }
+            60% { transform: scale(0.88) rotate(3deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0); opacity: 1; }
+        }
+        /* real bingo-hall paper card */
+        .bng-paper-cell { background: linear-gradient(180deg, #fbf6e3 0%, #f1e8cd 100%); color: #1e2a52; text-shadow: none; }
+        .bng-paper-blank { background: repeating-linear-gradient(45deg, #e7dcbb 0 4px, #efe6c9 4px 8px); }
+        .bng-board-pop { animation: bngBoardPop 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+        @keyframes bngBoardPop { 0% { transform: scale(0.4); } 60% { transform: scale(1.35); } 100% { transform: scale(1); } }
+        /* full-screen confetti burst (win moments only) */
+        .bng-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 130; }
+        .bng-confetti span {
+            position: absolute; top: -4%; left: var(--cx); width: var(--sz, 8px); height: calc(var(--sz, 8px) * 1.6);
+            background: var(--clr); border-radius: 2px; opacity: 0;
+            animation: bngConfettiFall var(--dur, 1.6s) cubic-bezier(0.3,0.6,0.6,1) var(--dly, 0s) forwards;
+        }
+        @keyframes bngConfettiFall {
+            0% { transform: translateY(0) rotate(0) translateX(0); opacity: 1; }
+            100% { transform: translateY(110vh) rotate(var(--rot, 640deg)) translateX(var(--dx, 0px)); opacity: 0.9; }
+        }
+        /* winner interstitial — slides in with overshoot, holds, leaves */
+        .bng-banner { animation: bngBanner 3.4s cubic-bezier(0.16,1,0.3,1) forwards; }
+        @keyframes bngBanner {
+            0% { transform: translateY(-46px) scale(0.8); opacity: 0; }
+            9% { transform: translateY(0) scale(1.05); opacity: 1; }
+            13% { transform: scale(1); }
+            88% { transform: scale(1); opacity: 1; }
+            100% { transform: translateY(-24px) scale(0.92); opacity: 0; }
+        }
+        .bng-shake { animation: bngShakeK 0.32s ease-out; }
+        @keyframes bngShakeK { 0% { transform: translate(0,0); } 20% { transform: translate(-4px,2px); } 40% { transform: translate(4px,-2px); } 60% { transform: translate(-3px,-2px); } 80% { transform: translate(2px,2px); } 100% { transform: none; } }
+        /* one-to-go: the whole room leans in */
+        .bng-vignette { position: absolute; inset: 0; pointer-events: none; z-index: 55; animation: bngVig 1.4s ease-in-out infinite; }
+        @keyframes bngVig { 0%,100% { box-shadow: inset 0 0 60px 6px rgba(245,200,96,0.12); } 50% { box-shadow: inset 0 0 90px 18px rgba(245,200,96,0.32); } }
+        .bng-gold { background: linear-gradient(110deg, #a87e22 0%, #f5c860 30%, #fff3c9 50%, #f5c860 70%, #a87e22 100%); background-size: 220% 100%; animation: bngShimmer 3.2s linear infinite; -webkit-background-clip: text; background-clip: text; color: transparent; }
+        @keyframes bngShimmer { to { background-position: -220% 0; } }
+        /* crowd reactions float up from the grandstand */
+        .bng-react { position: absolute; bottom: 0; animation: bngFloatUp 1.7s ease-out forwards; pointer-events: none; }
+        @keyframes bngFloatUp { 0% { transform: translateY(6px) scale(0.6); opacity: 0; } 15% { opacity: 1; transform: scale(1.15); } 100% { transform: translateY(-64px) scale(1); opacity: 0; } }
+        /* carnival ticket chips for the prize patterns */
+        .bng-ticket { position: relative; background: linear-gradient(180deg, rgba(43,26,74,0.92), rgba(24,14,44,0.92)); border: 1px dashed rgba(245,200,96,0.5); }
+        .bng-ticket-won { background: linear-gradient(180deg, rgba(6,78,59,0.9), rgba(2,44,30,0.92)); border-color: rgba(52,211,153,0.7); }
+        .bng-heat { animation: bngHeat 0.9s ease-in-out infinite; }
+        @keyframes bngHeat { 0%,100% { box-shadow: 0 0 10px rgba(245,200,96,0.35); } 50% { box-shadow: 0 0 26px rgba(245,200,96,0.85); } }
+
         /* טקסטורת פרימיום עדינה */
         body::after {
             content: '';
@@ -18691,6 +18772,15 @@ const BINGO_PAT_META = {
     glyph: '■'
   }
 };
+// what the caller shouts (Hebrew) per pattern
+const BINGO_PAT_HE = {
+  line1: 'שורה',
+  line2: 'שתי שורות',
+  full: 'לוח מלא',
+  line: 'קו',
+  corners: 'ארבע פינות',
+  blackout: 'בלאק-אאוט'
+};
 const BINGO_75_LETTERS = ['B', 'I', 'N', 'G', 'O'];
 const BINGO_BALL_COLORS = ['#38bdf8', '#f87171', '#fbbf24', '#34d399', '#a78bfa', '#fb923c', '#22d3ee', '#f472b6', '#a3e635'];
 const bingoBallGroup = (variant, n) => String(variant) === '75' ? Math.floor((n - 1) / 15) : Math.floor((n - 1) / 10);
@@ -18776,6 +18866,378 @@ const bingoTableDoc = (hostUid, settings) => ({
   showdownAt: null,
   startedAt: null
 });
+/* ── Carnival layer: the caller, the crowd, the cage, the confetti ─────────
+   All synthesized (WebAudio on the shared SFX context + speechSynthesis) —
+   zero purchased assets. Everything respects the global mute (__pkMuted)
+   and its own remembered toggles. */
+const BINGO_INKS = ['#d946ef', '#059669', '#ea580c', '#2563eb']; // real dauber colors
+const bingoPrefGet = (k, def) => {
+  try {
+    const v = localStorage.getItem(k);
+    return v === null ? def : v;
+  } catch (e) {
+    return def;
+  }
+};
+const bingoPrefSet = (k, v) => {
+  try {
+    localStorage.setItem(k, v);
+  } catch (e) {}
+};
+const BINGO_75_CALL = ['בִּי', 'אַיי', 'אֶן', 'גִ׳י', 'אוֹ'];
+const bingoCallText = (variant, n) => String(variant) === '75' ? `${BINGO_75_CALL[bingoBallGroup(variant, n)]}, ${n}` : String(n);
+// 🎙 the caller — Hebrew TTS, queue-managed so calls never pile up
+const bingoSpeak = (text, opts) => {
+  const o = opts || {};
+  if (window.__pkMuted || bingoPrefGet('bingoVoice', '1') !== '1') return;
+  try {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    if (o.flush) synth.cancel();
+    if (!o.flush && synth.pending) synth.cancel(); // a late call beats a stale backlog
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'he-IL';
+    const v = (synth.getVoices() || []).find(x => (x.lang || '').toLowerCase().startsWith('he'));
+    if (v) u.voice = v;
+    u.rate = o.rate || 1.05;
+    u.pitch = o.pitch || 1.08;
+    u.volume = o.vol != null ? o.vol : 0.95;
+    synth.speak(u);
+  } catch (e) {}
+};
+// shared noise buffer for all crowd/pop synthesis
+const bngNoiseBuf = ctx => {
+  if (bngNoiseBuf._b && bngNoiseBuf._ctx === ctx) return bngNoiseBuf._b;
+  const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+  const d = b.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < d.length; i++) {
+    // brown-ish noise — softer than white, reads as room rumble
+    last = (last + (Math.random() * 2 - 1) * 0.02) / 1.02;
+    d[i] = last * 3.5;
+  }
+  bngNoiseBuf._b = b;
+  bngNoiseBuf._ctx = ctx;
+  return b;
+};
+const bngBurst = (ctx, dest, {at = 0, dur = 0.05, freq = 1500, q = 1.2, gain = 0.1, pan = 0}) => {
+  try {
+    const src = ctx.createBufferSource();
+    src.buffer = bngNoiseBuf(ctx);
+    src.loop = true;
+    src.loopStart = Math.random() * 1.4;
+    src.loopEnd = src.loopStart + 0.5;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = freq;
+    bp.Q.value = q;
+    const g = ctx.createGain();
+    const t0 = ctx.currentTime + at;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(gain, t0 + Math.min(0.012, dur * 0.3));
+    g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+    src.connect(bp);
+    bp.connect(g);
+    let tail = g;
+    if (ctx.createStereoPanner) {
+      const p = ctx.createStereoPanner();
+      p.pan.value = pan;
+      g.connect(p);
+      tail = p;
+    }
+    tail.connect(dest);
+    src.start(t0);
+    src.stop(t0 + dur + 0.05);
+  } catch (e) {}
+};
+// 🏟 the full hall: a low murmur bed + scattered voice blips, always breathing
+const BNG_CROWD = {
+  on: false,
+  iv: null,
+  gain: null,
+  src: null
+};
+const bngCrowdStop = () => {
+  BNG_CROWD.on = false;
+  try {
+    if (BNG_CROWD.iv) clearInterval(BNG_CROWD.iv);
+    BNG_CROWD.iv = null;
+    if (BNG_CROWD.gain) BNG_CROWD.gain.gain.linearRampToValueAtTime(0.0001, sfxCtx().currentTime + 0.6);
+    const s = BNG_CROWD.src;
+    if (s) setTimeout(() => {
+      try {
+        s.stop();
+      } catch (e2) {}
+    }, 800);
+    BNG_CROWD.src = null;
+    BNG_CROWD.gain = null;
+  } catch (e) {}
+};
+const bngCrowdStart = () => {
+  if (BNG_CROWD.on || window.__pkMuted || bingoPrefGet('bingoCrowd', '1') !== '1') return;
+  const ctx = sfxCtx();
+  if (!ctx) return;
+  try {
+    BNG_CROWD.on = true;
+    const src = ctx.createBufferSource();
+    src.buffer = bngNoiseBuf(ctx);
+    src.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 480;
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    g.gain.linearRampToValueAtTime(0.045, ctx.currentTime + 1.6);
+    // slow breathing of the room so the bed never sounds like a fridge
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 0.11;
+    const lfoG = ctx.createGain();
+    lfoG.gain.value = 0.014;
+    lfo.connect(lfoG);
+    lfoG.connect(g.gain);
+    lfo.start();
+    src.connect(lp);
+    lp.connect(g);
+    g.connect(ctx.destination);
+    src.start();
+    BNG_CROWD.src = src;
+    BNG_CROWD.gain = g;
+    // scattered "voices" — short speech-band blips across the stereo field
+    BNG_CROWD.iv = setInterval(() => {
+      const hushed = window.__pkMuted || bingoPrefGet('bingoCrowd', '1') !== '1';
+      try {
+        if (BNG_CROWD.gain) BNG_CROWD.gain.gain.value = hushed ? 0 : 0.045;
+      } catch (e) {}
+      if (hushed) return;
+      if (Math.random() < 0.75) bngBurst(ctx, ctx.destination, {
+        dur: 0.09 + Math.random() * 0.22,
+        freq: 260 + Math.random() * 900,
+        q: 2.6,
+        gain: 0.016 + Math.random() * 0.02,
+        pan: (Math.random() - 0.5) * 1.4
+      });
+    }, 380);
+  } catch (e) {
+    BNG_CROWD.on = false;
+  }
+};
+// 👏 applause + roar: dozens of synthetic claps under a rising whoosh
+const bngApplause = big => {
+  if (window.__pkMuted) return;
+  const ctx = sfxCtx();
+  if (!ctx) return;
+  const claps = big ? 90 : 42;
+  const span = big ? 2.3 : 1.4;
+  for (let i = 0; i < claps; i++) {
+    // density: fast rise, long decay — the shape of a real ovation
+    const x = i / claps;
+    const at = Math.pow(x, 0.65) * span + Math.random() * 0.05;
+    bngBurst(ctx, ctx.destination, {
+      at,
+      dur: 0.035,
+      freq: 1500 + Math.random() * 1300,
+      q: 0.9,
+      gain: (big ? 0.09 : 0.065) * (1 - x * 0.6) * (0.7 + Math.random() * 0.6),
+      pan: (Math.random() - 0.5) * 1.6
+    });
+  }
+  // the roar underneath
+  bngBurst(ctx, ctx.destination, {
+    at: 0,
+    dur: big ? 1.9 : 1.1,
+    freq: 700,
+    q: 0.4,
+    gain: big ? 0.16 : 0.09,
+    pan: 0
+  });
+  if (bingoPrefGet('bingoCrowd', '1') !== '1') return;
+};
+// 😮 collective gasp — the hall leans in on one-to-go
+const bngGasp = () => {
+  if (window.__pkMuted || bingoPrefGet('bingoCrowd', '1') !== '1') return;
+  const ctx = sfxCtx();
+  if (!ctx) return;
+  bngBurst(ctx, ctx.destination, {
+    dur: 0.5,
+    freq: 1900,
+    q: 0.7,
+    gain: 0.05,
+    pan: 0
+  });
+};
+// 🎱 ball pop out of the cage: sample tock + cartoon pitch-drop
+const bngPopSnd = () => {
+  if (window.__pkMuted) return;
+  sfxPlay('chip_single_2', 0, 1.0, 1.4);
+  const ctx = sfxCtx();
+  if (!ctx) return;
+  try {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    o.frequency.setValueAtTime(540, t);
+    o.frequency.exponentialRampToValueAtTime(170, t + 0.1);
+    g.gain.setValueAtTime(0.16, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start(t);
+    o.stop(t + 0.15);
+  } catch (e) {}
+};
+// balls rattling in the spinning cage
+const bngRattleSnd = dur => {
+  if (window.__pkMuted) return;
+  const n = Math.min(22, Math.floor((dur || 1) / 0.06));
+  for (let i = 0; i < n; i++) sfxPlay(Math.random() < 0.5 ? 'chip_single_1' : 'chip_single_2', i * 0.055 + Math.random() * 0.03, 0.10 + Math.random() * 0.07, 1.5 + Math.random() * 0.9);
+};
+// 🖍 the thick marker hitting the paper
+const bngStampSnd = () => {
+  if (window.__pkMuted) return;
+  if (!sfxPlay('fold_toss_1', 0, 0.5, 1.55, 0.16)) sfxPlay('chip_single_1', 0, 0.4, 0.8);
+};
+const bngReduced = () => {
+  try {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch (e) {
+    return false;
+  }
+};
+// 🎡 the bingo cage — a wire sphere of jostling balls, spun by CSS
+const BingoCage = ({
+  fast,
+  size
+}) => {
+  const px = size || 86;
+  const balls = [[38, 62, 0], [52, 68, 1], [64, 58, 2], [44, 52, 3], [57, 47, 4], [35, 47, 5], [50, 58, 6]];
+  return React.createElement("div", {
+    className: `relative shrink-0 ${fast ? 'bng-cage-fast' : ''}`,
+    style: {
+      width: px,
+      height: px
+    }
+  }, React.createElement("svg", {
+    viewBox: "0 0 100 100",
+    className: "bng-cage absolute inset-0 w-full h-full",
+    style: {
+      '--bngSpin': fast ? '0.5s' : '8s'
+    }
+  }, React.createElement("circle", {
+    cx: 50,
+    cy: 50,
+    r: 46,
+    fill: "rgba(12,8,26,0.55)",
+    stroke: "#b9c2d4",
+    strokeWidth: 2.5
+  }), [30, 14].map((ry, i) => React.createElement("ellipse", {
+    key: 'h' + i,
+    cx: 50,
+    cy: 50,
+    rx: 46,
+    ry: ry,
+    fill: "none",
+    stroke: "rgba(185,194,212,0.55)",
+    strokeWidth: 1.4
+  })), [30, 14].map((rx, i) => React.createElement("ellipse", {
+    key: 'v' + i,
+    cx: 50,
+    cy: 50,
+    rx: rx,
+    ry: 46,
+    fill: "none",
+    stroke: "rgba(185,194,212,0.55)",
+    strokeWidth: 1.4
+  })), React.createElement("g", {
+    className: "bng-cage-ballgroup"
+  }, balls.map(([x, y, c], i) => React.createElement("circle", {
+    key: i,
+    cx: x,
+    cy: y,
+    r: 7,
+    fill: BINGO_BALL_COLORS[c % BINGO_BALL_COLORS.length],
+    stroke: "rgba(255,255,255,0.75)",
+    strokeWidth: 1.2
+  })))), React.createElement("div", {
+    className: "absolute left-1/2 -translate-x-1/2 -bottom-1 w-10 h-1.5 rounded-full bg-slate-700/80"
+  }), React.createElement("div", {
+    className: "absolute -right-0.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-slate-500 border border-slate-300/50"
+  }));
+};
+// 🎊 win confetti — regenerated per burst key, skipped for reduced motion
+const BingoConfetti = ({
+  burst
+}) => {
+  const pieces = useMemo(() => {
+    if (!burst || bngReduced()) return [];
+    const cols = ['#f5c860', '#f472b6', '#34d399', '#38bdf8', '#a78bfa', '#fb923c', '#f87171'];
+    const n = burst.big ? 90 : 44;
+    const arr = [];
+    for (let i = 0; i < n; i++) arr.push({
+      '--cx': Math.random() * 100 + '%',
+      '--clr': cols[i % cols.length],
+      '--dur': 1.15 + Math.random() * 1.3 + 's',
+      '--dly': Math.random() * (burst.big ? 0.7 : 0.35) + 's',
+      '--rot': 360 + Math.random() * 720 + 'deg',
+      '--dx': (Math.random() - 0.5) * 120 + 'px',
+      '--sz': 5 + Math.random() * 6 + 'px'
+    });
+    return arr;
+  }, [burst && burst.key]);
+  if (!pieces.length) return null;
+  return React.createElement("div", {
+    key: burst.key,
+    className: "bng-confetti"
+  }, pieces.map((p, i) => React.createElement("span", {
+    key: i,
+    style: p
+  })));
+};
+// 🖍 the daub itself: three overlapping ink circles = one fat imperfect blob
+const BingoDaub = ({
+  ink,
+  seed,
+  small
+}) => {
+  const rot = seed * 47 % 360;
+  return React.createElement("svg", {
+    viewBox: "0 0 40 40",
+    className: `bng-daub absolute inset-0 w-full h-full pointer-events-none`,
+    style: {
+      transform: `rotate(${rot}deg)`,
+      mixBlendMode: 'multiply'
+    }
+  }, React.createElement("g", {
+    fill: ink,
+    opacity: 0.62
+  }, React.createElement("circle", {
+    cx: 20 + seed % 3 - 1,
+    cy: 20 + seed % 2,
+    r: small ? 11 : 13
+  }), React.createElement("circle", {
+    cx: 16,
+    cy: 22,
+    r: small ? 8 : 10
+  }), React.createElement("circle", {
+    cx: 25,
+    cy: 17,
+    r: small ? 7 : 9
+  }), React.createElement("circle", {
+    cx: 32,
+    cy: 30,
+    r: 1.7
+  }), React.createElement("circle", {
+    cx: 7,
+    cy: 9,
+    r: 1.2
+  })));
+};
+// hall chatter — the bots keep the room alive (Hebrew, light, no cursing)
+const BINGO_TALK = {
+  idle: ['נו כבר, את המספר שלי תוציא!', 'חסר לי אחד לשורה, אף אחד לא נושם', 'הכרטיס הזה קר כמו קרח 🧊', 'הבאתי טוש חדש במיוחד להיום', 'שלושה כרטיסים במקביל, אל תפריעו לי', 'הערב זה הערב, אני מרגיש את זה', 'עוד לא סימנתי כלום, מה קורה פה', 'מי בחר את הכדורים האלה?!'],
+  win: ['איזה מזל יש לך!!', 'וואי, לא מאמין 😱', 'היה חסר לי אחד!! אחד!!', 'סחתיין, מגיע לך 👏', 'הכרטיס שלי לפח, יאללה סבב חדש'],
+  onetogo: ['שקט!! חסר לו אחד!!', 'אצבעות משוכלבות 🤞', 'רק שלא ייצא המספר שלו']
+};
 // 🔵 a bingo ball: colored ring per column group, letter on 75-ball
 const BingoBall = ({
   variant,
@@ -18839,38 +19301,52 @@ const BingoPatternIcon = ({
     }
   })));
 };
-// 🎟️ one bingo card. marked = Set of daubed numbers; onCell taps in manual mode
+// 🎟️ one bingo card — real hall paper, thick-marker daubs in this card's ink.
+// marked = Set of daubed numbers; onCell taps in manual mode.
 const BingoCardView = ({
   variant,
   nums,
   marked,
   lastBall,
   onCell,
-  small
+  small,
+  ink
 }) => {
   const is75 = String(variant) === '75';
   const cols = is75 ? 5 : 9;
+  const inkCol = ink || BINGO_INKS[0];
   const cellCls = small ? 'text-[9px]' : is75 ? 'text-base' : 'text-sm';
   const pad = small ? 'py-0.5' : is75 ? 'py-2.5' : 'py-1.5';
   return React.createElement("div", {
-    className: "rounded-xl overflow-hidden border border-white/10 bg-slate-950/70 shadow-lg",
+    className: "rounded-xl overflow-hidden shadow-lg",
+    style: {
+      border: `2px solid ${inkCol}`,
+      boxShadow: `0 4px 14px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.06)`
+    },
     dir: "ltr"
-  }, is75 && React.createElement("div", {
+  }, is75 ? React.createElement("div", {
     className: "grid",
     style: {
       gridTemplateColumns: `repeat(5, 1fr)`
     }
   }, BINGO_75_LETTERS.map((L, i) => React.createElement("div", {
     key: L,
-    className: `text-center font-black ${small ? 'text-[9px] py-0.5' : 'text-sm py-1'}`,
+    className: `text-center font-black text-white ${small ? 'text-[9px] py-0.5' : 'text-sm py-1'}`,
     style: {
-      color: BINGO_BALL_COLORS[i],
-      background: 'rgba(2,6,15,0.6)'
+      background: BINGO_BALL_COLORS[i],
+      textShadow: '0 1px 2px rgba(0,0,0,0.4)'
     }
-  }, L))), React.createElement("div", {
-    className: "grid gap-px bg-white/5 p-px",
+  }, L))) : React.createElement("div", {
+    className: `text-center font-black tracking-[0.35em] text-white ${small ? 'text-[8px] py-0.5' : 'text-[11px] py-1'}`,
     style: {
-      gridTemplateColumns: `repeat(${cols}, 1fr)`
+      background: `linear-gradient(90deg, ${inkCol}, ${inkCol}cc)`,
+      textShadow: '0 1px 2px rgba(0,0,0,0.35)'
+    }
+  }, "★ BINGO ★"), React.createElement("div", {
+    className: "grid gap-px p-px",
+    style: {
+      gridTemplateColumns: `repeat(${cols}, 1fr)`,
+      background: '#d9cda8'
     }
   }, nums.map((v, i) => {
     const isFree = is75 && i === 12;
@@ -18879,23 +19355,17 @@ const BingoCardView = ({
     return React.createElement("div", {
       key: i,
       onClick: v > 0 && onCell ? () => onCell(v) : undefined,
-      className: `relative text-center font-black ${cellCls} ${pad} ${v === 0 && !isFree ? 'bg-slate-900/70' : 'bg-slate-800/80'} ${v > 0 && onCell ? 'cursor-pointer active:scale-95' : ''} transition-transform`,
-      style: isLast && !daub ? {
-        boxShadow: 'inset 0 0 0 1.5px #f5c860'
+      className: `relative text-center font-black ${cellCls} ${pad} ${v === 0 && !isFree ? 'bng-paper-blank' : 'bng-paper-cell'} ${v > 0 && onCell ? 'cursor-pointer active:scale-95' : ''} transition-transform`,
+      style: isLast ? {
+        boxShadow: 'inset 0 0 0 2px #f5c860'
       } : undefined
     }, isFree ? React.createElement("span", {
-      className: "text-amber-400"
-    }, "★") : v > 0 ? React.createElement(React.Fragment, null, React.createElement("span", {
-      className: daub ? 'text-white' : 'text-slate-200'
-    }, v), daub && React.createElement("span", {
-      className: "absolute inset-0 flex items-center justify-center pointer-events-none"
-    }, React.createElement("span", {
-      className: `rounded-full ${small ? 'w-4 h-4' : 'w-7 h-7'} animate-pop-in`,
-      style: {
-        background: 'radial-gradient(circle, rgba(52,211,153,0.36) 0%, rgba(52,211,153,0.22) 60%, transparent 75%)',
-        boxShadow: 'inset 0 0 0 1.5px rgba(52,211,153,0.8)'
-      }
-    }))) : null);
+      className: "text-rose-500"
+    }, "★") : v > 0 ? React.createElement(React.Fragment, null, React.createElement("span", null, v), daub && React.createElement(BingoDaub, {
+      ink: inkCol,
+      seed: v,
+      small: small
+    })) : null);
   })));
 };
 // 📋 the called-numbers board (1..90 / 1..75), last ball highlighted
@@ -18915,8 +19385,8 @@ const BingoBoard = ({
     },
     dir: "ltr"
   }, cells.map(n => React.createElement("div", {
-    key: n,
-    className: `text-center rounded-md text-[10px] font-black py-1 transition-all ${n === lastBall ? 'animate-pulse' : ''}`,
+    key: n === lastBall ? n + ':' + (called ? called.length : 0) : n,
+    className: `text-center rounded-md text-[10px] font-black py-1 transition-all ${n === lastBall ? 'bng-board-pop' : ''}`,
     style: cs.has(n) ? {
       background: n === lastBall ? '#f5c860' : `${bingoBallColor(variant, n)}2e`,
       color: n === lastBall ? '#0b1120' : bingoBallColor(variant, n),
@@ -18953,8 +19423,26 @@ function BingoTable({
   });
   const [nowMs, setNowMs] = useState(Date.now());
   const [busy, setBusy] = useState(false);
+  const [banner, setBanner] = useState(null); // winner interstitial {key,names,pattern,mine,share}
+  const [confetti, setConfetti] = useState(null); // {key, big}
+  const [reacts, setReacts] = useState([]); // floating crowd emojis {id,left,e}
+  const [shakeKey, setShakeKey] = useState(0);
+  const [shaking, setShaking] = useState(false);
+  useEffect(() => {
+    if (!shakeKey) return;
+    setShaking(true);
+    const t = setTimeout(() => setShaking(false), 380);
+    return () => clearTimeout(t);
+  }, [shakeKey]);
+  const [voiceOn, setVoiceOn] = useState(() => bingoPrefGet('bingoVoice', '1') === '1');
+  const [crowdOn, setCrowdOn] = useState(() => bingoPrefGet('bingoCrowd', '1') === '1');
+  const [showHist, setShowHist] = useState(false);
   const tableRef = useRef(null);
   const sweptRef = useRef(0);
+  const chatterRef = useRef({
+    ball: 0,
+    at: 0
+  });
   const isGod = isGodUser(user);
   const canManage = canManageGame(user, 'bingo');
   const tblRef = () => window.fb.doc(window.fb.db, "tables", tableDocId);
@@ -19048,25 +19536,109 @@ function BingoTable({
     }
     return null;
   }, [called.length, myCards.length, phase, roundN, Object.keys(wonPatterns).length]);
+  // crowd reactions float up from the grandstand
+  const spawnReacts = (emojis, n) => {
+    if (bngReduced()) return;
+    const add = [];
+    for (let i = 0; i < n; i++) add.push({
+      id: Date.now() + '_' + i + '_' + Math.random(),
+      left: 6 + Math.random() * 86,
+      e: emojis[Math.floor(Math.random() * emojis.length)]
+    });
+    setReacts(r => [...r.slice(-10), ...add]);
+    setTimeout(() => setReacts(r => r.filter(x => !add.includes(x))), 1900);
+  };
+  // the drive client keeps the hall talking (Hebrew bot chatter)
+  const postBotChat = pool => {
+    const t = tableRef.current;
+    if (!t) return;
+    const bots = Object.values(t.players || {}).filter(p => p.isBot && !p.left);
+    if (!bots.length) return;
+    const b = bots[Math.floor(Math.random() * bots.length)];
+    const msg = {
+      uid: b.uid,
+      name: b.name,
+      text: pick(pool),
+      emoji: '',
+      gift: '',
+      giftE: '',
+      to: '',
+      at: Date.now()
+    };
+    window.fb.updateDoc(tblRef(), {
+      chat: [...(t.chat || []), msg].slice(-40)
+    }).catch(() => {});
+  };
+  // ═══ Draw choreography: pop → call → daub → (maybe) roar ═══
   useEffect(() => {
     if (!tableState) return;
     const ps = prevSnd.current;
-    if (called.length > ps.calledN && phase === 'drawing') playSnd('tile');
-    if (phase === 'showdown' && ps.phase !== 'showdown') playSnd('win');
-    if (phase === 'drawing' && ps.phase !== 'drawing') playSnd('deal');
+    if (called.length > ps.calledN && phase === 'drawing') {
+      bngPopSnd();
+      if (T.lastBall) bingoSpeak(bingoCallText(variant, T.lastBall));
+      if (autoDaub && myCards.some(c => c.nums.includes(T.lastBall))) setTimeout(bngStampSnd, 420);
+      if (Math.random() < 0.18) spawnReacts(['🤞', '😅', '👀'], 1);
+      if (canDrive && called.length - chatterRef.current.ball > 9 && Math.random() < 0.5 && Date.now() - chatterRef.current.at > 15000) {
+        chatterRef.current = {
+          ball: called.length,
+          at: Date.now()
+        };
+        postBotChat(oneToGo ? BINGO_TALK.onetogo : BINGO_TALK.idle);
+      }
+    }
+    if (phase === 'drawing' && ps.phase !== 'drawing') {
+      playSnd('shuffle');
+      bingoSpeak('מתחילים! בהצלחה לכולם', {
+        flush: true
+      });
+    }
+    if (phase === 'showdown' && ps.phase && ps.phase !== 'showdown') {
+      setConfetti({
+        key: Date.now(),
+        big: true
+      });
+      bngApplause(true);
+      playSnd('bigwin');
+    }
     const wonN = Object.keys(wonPatterns).length;
     if (wonN > ps.wonN) {
       const newPat = Object.keys(wonPatterns).find(p => ((wonPatterns[p] || {}).winners || []).length && !ps['pat_' + p]);
-      const mine = newPat && iWon(newPat);
-      playSnd(mine ? 'win' : 'chip');
-      if (mine) try {
-        navigator.vibrate && navigator.vibrate([110, 60, 110]);
-      } catch (e) {}
+      if (newPat) {
+        const mine = iWon(newPat);
+        const isFinal = newPat === (BINGO_FINAL[variant] || 'full');
+        const names = ((wonPatterns[newPat] || {}).winners || []).map(x => x.name).join(', ');
+        setBanner({
+          key: Date.now(),
+          names,
+          pattern: newPat,
+          mine
+        });
+        setConfetti({
+          key: Date.now() + 1,
+          big: isFinal || mine
+        });
+        setShakeKey(k => k + 1);
+        bngApplause(isFinal || mine);
+        playSnd(mine ? 'bigwin' : 'win');
+        bingoSpeak('בינגו! ' + (BINGO_PAT_HE[newPat] || newPat) + ' — ' + names + '!', {
+          flush: true
+        });
+        spawnReacts(['🎉', '🔥', '👏', '😱'], 5);
+        setTimeout(() => setBanner(b => b && b.pattern === newPat ? null : b), 3500);
+        if (canDrive && !isFinal) setTimeout(() => postBotChat(BINGO_TALK.win), 2200);
+        if (mine) try {
+          navigator.vibrate && navigator.vibrate([110, 60, 110, 60, 160]);
+        } catch (e) {}
+      }
     }
     const otg = !!oneToGo;
-    if (otg && !ps.oneToGo) try {
-      navigator.vibrate && navigator.vibrate([60, 40, 60]);
-    } catch (e) {}
+    if (otg && !ps.oneToGo) {
+      bngGasp();
+      spawnReacts(['😮', '🤫'], 2);
+      try {
+        navigator.vibrate && navigator.vibrate([60, 40, 60]);
+      } catch (e) {}
+    }
     const cl = (T.chat || []).length;
     if (ps.chatLen && cl > ps.chatLen) playSnd('msg');
     const nx = {
@@ -19079,6 +19651,27 @@ function BingoTable({
     Object.keys(wonPatterns).forEach(p => nx['pat_' + p] = true);
     prevSnd.current = nx;
   }, [tableState]);
+  // the cage goes frantic just before each draw — rattle with it
+  const cageFast = phase === 'drawing' && Number(setts.drawRate) > 0 && T.nextDrawAt && nowMs >= T.nextDrawAt - 1100 && !(T.pauseUntil && nowMs < T.pauseUntil);
+  useEffect(() => {
+    if (cageFast) bngRattleSnd(1.1);
+  }, [cageFast]);
+  // 🏟 the hall breathes while the balls roll
+  useEffect(() => {
+    if (phase === 'drawing' && crowdOn) bngCrowdStart();else bngCrowdStop();
+    return () => bngCrowdStop();
+  }, [phase, crowdOn]);
+  const toggleVoice = () => setVoiceOn(v => {
+    bingoPrefSet('bingoVoice', v ? '0' : '1');
+    if (v) try {
+      window.speechSynthesis && window.speechSynthesis.cancel();
+    } catch (e) {}
+    return !v;
+  });
+  const toggleCrowd = () => setCrowdOn(v => {
+    bingoPrefSet('bingoCrowd', v ? '0' : '1');
+    return !v;
+  });
   // Wake Lock — the screen must not dim mid-round (same as poker/durak)
   useEffect(() => {
     let lock = null,
@@ -19365,16 +19958,14 @@ function BingoTable({
   const marksFor = c => autoDaub ? calledSet : new Set((manualMarks[c.id] || []).filter(n => calledSet.has(n)));
   const canClaim = claimable.length > 0 && phase === 'drawing';
   const fmtPat = p => (BINGO_PAT_META[p] || {}).label || p;
+  const inkOf = i => BINGO_INKS[i % BINGO_INKS.length];
   return React.createElement("div", {
-    className: "h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none",
-    dir: "ltr",
-    style: {
-      background: 'radial-gradient(ellipse at 50% 0%, #1c2136 0%, #05070f 62%)'
-    }
+    className: `h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none bng-room ${shaking ? 'bng-shake' : ''}`,
+    dir: "ltr"
   }, React.createElement("div", {
     className: "h-14 bg-slate-900/80 backdrop-blur-md border-b border-white/5 flex justify-between items-center px-3 shrink-0 z-40"
   }, React.createElement("div", {
-    className: "flex items-center gap-2"
+    className: "flex items-center gap-1.5"
   }, React.createElement("button", {
     onClick: handleLeave,
     className: "px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-rose-700 hover:text-white text-xs font-bold border border-white/10"
@@ -19391,11 +19982,21 @@ function BingoTable({
     title: "Add bot"
   }, React.createElement("i", {
     className: "fa-solid fa-robot"
-  }))), React.createElement("div", {
+  })), React.createElement("button", {
+    onClick: toggleVoice,
+    title: "Caller voice",
+    className: `w-8 h-8 rounded-lg text-sm border ${voiceOn ? 'bg-amber-600/25 border-amber-500/50' : 'bg-slate-800 border-white/10 opacity-45'}`
+  }, "🎙"), React.createElement("button", {
+    onClick: toggleCrowd,
+    title: "Crowd sound",
+    className: `w-8 h-8 rounded-lg text-sm border ${crowdOn ? 'bg-amber-600/25 border-amber-500/50' : 'bg-slate-800 border-white/10 opacity-45'}`
+  }, "🏟")), React.createElement("div", {
     className: "flex-1 min-w-0 flex flex-col items-center px-1"
   }, React.createElement("span", {
-    className: "text-amber-300 font-black text-sm tracking-wider"
-  }, "🎱 ", setts.tableName || 'Bingo', " · ", variant === '75' ? '75' : '90'), React.createElement("span", {
+    className: "font-black text-sm tracking-wider whitespace-nowrap"
+  }, "🎪 ", React.createElement("span", {
+    className: "bng-gold"
+  }, setts.tableName || 'BINGO', " · ", variant === '75' ? '75' : '90')), React.createElement("span", {
     className: "text-slate-400 text-[10px] font-bold",
     dir: "ltr"
   }, tableCode(tableDocId), phase === 'drawing' ? ` · ball ${called.length}/${BINGO_BALLS[variant]}` : '')), React.createElement("div", {
@@ -19422,6 +20023,13 @@ function BingoTable({
     className: "text-purple-300 font-black text-sm leading-none",
     dir: "ltr"
   }, (setts.rakeMode || 'pct') === 'flat' ? formatShort(T.feeAcc || 0) : formatShort(round2(bank * (Number(setts.rakePct) || 0) / 100)))))), React.createElement("div", {
+    className: "bng-bulbs shrink-0 z-30"
+  }, Array.from({
+    length: 18
+  }).map((_, i) => React.createElement("span", {
+    key: i,
+    className: "bng-bulb"
+  }))), React.createElement("div", {
     className: "flex-1 min-h-0 overflow-y-auto scrollable-content px-3 pb-3"
   }, phase === 'waiting' && React.createElement("div", {
     className: "max-w-md mx-auto pt-4 space-y-3 animate-fade-in"
@@ -19480,12 +20088,13 @@ function BingoTable({
     className: "space-y-2"
   }, React.createElement("h4", {
     className: "text-[11px] font-black text-slate-400 uppercase tracking-widest"
-  }, "My cards (", myCards.length, ")"), myCards.map(c => React.createElement(BingoCardView, {
+  }, "My cards (", myCards.length, ")"), myCards.map((c, ci) => React.createElement(BingoCardView, {
     key: c.id,
     variant: variant,
     nums: c.nums,
     marked: new Set(),
-    lastBall: null
+    lastBall: null,
+    ink: inkOf(ci)
   }))), React.createElement("div", {
     className: "glass-panel rounded-2xl p-4 border border-white/10"
   }, React.createElement("h4", {
@@ -19513,20 +20122,54 @@ function BingoTable({
     className: "w-full mt-3 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 py-3.5 rounded-2xl font-black shadow-lg disabled:opacity-40"
   }, "🎱 Start the draw"), canDrive && seatedList.filter(p => (p.cardCount || 0) > 0).length < 2 && React.createElement("div", {
     className: "text-center text-[10px] text-slate-500 font-bold mt-1"
-  }, "Need at least 2 players with cards"))), phase === 'drawing' && React.createElement("div", {
+  }, "Need at least 2 players with cards")), (T.history || []).length > 0 && React.createElement("div", {
+    className: "glass-panel rounded-2xl p-4 border border-amber-500/20"
+  }, React.createElement("h4", {
+    className: "text-[11px] font-black text-amber-300/90 uppercase tracking-widest mb-2"
+  }, "🏁 Results board · last rounds"), [...(T.history || [])].reverse().slice(0, 6).map(h => React.createElement("div", {
+    key: (h.roundN || 0) + '_' + (h.at || 0),
+    className: "py-2 border-b border-white/5 last:border-0"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-0.5"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-slate-300"
+  }, "Round #", h.roundN, " · ", h.calledCount, " balls"), React.createElement("span", {
+    className: "text-[11px] font-black text-amber-300",
+    dir: "ltr"
+  }, "🏦 ", formatMoney(h.pot))), Object.entries(h.patterns || {}).filter(([, x]) => (x.names || []).length > 0).map(([pat, x]) => React.createElement("div", {
+    key: pat,
+    className: "flex items-center justify-between text-[10px] font-bold text-slate-400"
+  }, React.createElement("span", null, fmtPat(pat), " — ", React.createElement("span", {
+    className: "text-emerald-300"
+  }, (x.names || []).join(', '))), React.createElement("span", {
+    className: "text-emerald-400",
+    dir: "ltr"
+  }, "+", formatMoney(x.share)))))))), phase === 'drawing' && React.createElement("div", {
     className: "max-w-md mx-auto pt-3 space-y-3 animate-fade-in"
   }, React.createElement("div", {
-    className: "flex items-center justify-center gap-3"
+    className: "flex items-center justify-center gap-3.5"
   }, React.createElement("div", {
     className: "flex flex-col items-center"
-  }, T.lastBall ? React.createElement(BingoBall, {
+  }, React.createElement(BingoCage, {
+    fast: !!cageFast,
+    size: 82
+  }), React.createElement("span", {
+    className: "text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1.5"
+  }, cageFast ? '🎲 Rolling…' : 'The cage')), React.createElement("div", {
+    className: "flex flex-col items-center"
+  }, T.lastBall ? React.createElement("div", {
+    key: 'pop' + called.length,
+    className: "bng-ball-pop"
+  }, React.createElement("div", {
+    className: "bng-ball-glow"
+  }, React.createElement(BingoBall, {
     variant: variant,
     n: T.lastBall,
     size: "xl"
-  }) : React.createElement("div", {
+  }))) : React.createElement("div", {
     className: "w-[78px] h-[78px] rounded-full border-2 border-dashed border-white/15 flex items-center justify-center text-slate-600 font-black"
   }, "🎱"), React.createElement("span", {
-    className: "text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1"
+    className: "text-[9px] font-black text-amber-300/80 uppercase tracking-widest mt-1"
   }, T.pauseUntil && nowMs < T.pauseUntil ? '🔔 Winner!' : 'Current ball')), React.createElement("div", {
     className: "flex flex-col gap-1.5"
   }, React.createElement("div", {
@@ -19559,12 +20202,31 @@ function BingoTable({
     const won = wonPatterns[pat];
     return React.createElement("span", {
       key: pat,
-      className: `inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black border ${won ? 'bg-emerald-900/40 border-emerald-500/40 text-emerald-300' : 'bg-slate-950/60 border-white/10 text-slate-300'}`
+      className: `inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-black ${won ? 'bng-ticket bng-ticket-won text-emerald-300' : 'bng-ticket text-amber-100'}`
     }, React.createElement(BingoPatternIcon, {
       variant: variant,
       pattern: pat
     }), fmtPat(pat), won ? ` ✓ ${(won.winners || []).map(w => w.name).join(', ')}` : ` · ${formatMoney(prizeOf(pat))}`);
   })), React.createElement("div", {
+    className: "relative flex items-center justify-center py-0.5 min-h-[36px]"
+  }, React.createElement("span", {
+    className: "text-[10px] font-black text-slate-400 mr-2 shrink-0"
+  }, "🏟 ", seatedList.length, " in the hall"), React.createElement("div", {
+    className: "flex items-center"
+  }, seatedList.slice(0, 12).map((p, i) => React.createElement("img", {
+    key: p.uid,
+    src: avatarUrl(p),
+    title: p.name,
+    className: `w-7 h-7 rounded-full border-2 ${p.isBot ? 'border-purple-500/70' : 'border-amber-400/70'} bg-slate-700 ${i > 0 ? '-ml-1.5' : ''}`
+  })), seatedList.length > 12 && React.createElement("span", {
+    className: "text-[10px] font-black text-slate-400 ml-1"
+  }, "+", seatedList.length - 12)), reacts.map(r => React.createElement("span", {
+    key: r.id,
+    className: "bng-react text-xl",
+    style: {
+      left: r.left + '%'
+    }
+  }, r.e))), React.createElement("div", {
     className: "glass-panel rounded-2xl border border-white/10 overflow-hidden"
   }, React.createElement("button", {
     onClick: () => setShowBoard(!showBoard),
@@ -19586,21 +20248,22 @@ function BingoTable({
   }, "🎟️ My cards (", myCards.length, ")"), React.createElement("button", {
     onClick: toggleAutoDaub,
     className: `text-[10px] font-black px-2.5 py-1 rounded-full border ${autoDaub ? 'bg-emerald-900/40 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-white/10 text-slate-400'}`
-  }, autoDaub ? '✅ Auto-daub' : '👆 Manual daub')), myCards.map(c => {
+  }, autoDaub ? '✅ Auto-daub' : '🖍 Manual daub')), myCards.map((c, ci) => {
     const mk = marksFor(c);
     const nearest = activePats.filter(p => !wonPatterns[p]).map(p => bingoMissingFor(variant, c.nums, calledSet, p));
     const near = nearest.length ? Math.min(...nearest) : 99;
     return React.createElement("div", {
       key: c.id,
-      className: near === 1 ? 'relative rounded-xl ring-2 ring-amber-400/70 shadow-[0_0_16px_rgba(245,200,96,0.25)]' : 'relative'
+      className: near === 1 ? 'relative rounded-xl bng-heat' : 'relative'
     }, React.createElement(BingoCardView, {
       variant: variant,
       nums: c.nums,
       marked: mk,
       lastBall: T.lastBall,
+      ink: inkOf(ci),
       onCell: autoDaub ? null : n => tapCell(c.id, n)
     }), near === 1 && React.createElement("span", {
-      className: "absolute -top-2 left-2 bg-amber-400 text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full shadow"
+      className: "absolute -top-2 left-2 bg-amber-400 text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full shadow animate-pulse z-10"
     }, "🔥 ONE TO GO"));
   })) : React.createElement("div", {
     className: "text-center text-slate-500 text-xs font-bold py-6"
@@ -19633,10 +20296,25 @@ function BingoTable({
   }, React.createElement("button", {
     onClick: handleClaim,
     disabled: busy,
-    className: `w-full py-4 rounded-2xl font-black text-lg transition-all ${canClaim ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 shadow-[0_0_25px_rgba(245,200,96,0.5)] animate-pulse' : 'bg-slate-800 text-slate-500 border border-white/10'}`
+    className: `w-full py-4 rounded-2xl font-black text-lg transition-all ${canClaim ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 bng-heat animate-pulse' : 'bg-slate-800 text-slate-500 border border-white/10'}`
   }, "🔔 BINGO!", canClaim ? ' · ' + claimable.map(fmtPat).join(' + ') : ''), oneToGo && !canClaim && React.createElement("div", {
     className: "text-center text-amber-300 text-[10px] font-black mt-1"
-  }, "🔥 One number to go — ", fmtPat(oneToGo.pattern), "!")), phase === 'showdown' && res && !resHide && React.createElement("div", {
+  }, "🔥 One number to go — ", fmtPat(oneToGo.pattern), "!")), oneToGo && phase === 'drawing' && React.createElement("div", {
+    className: "bng-vignette"
+  }), banner && React.createElement("div", {
+    key: banner.key,
+    className: "absolute top-20 left-1/2 -translate-x-1/2 z-[120] pointer-events-none w-[92%] max-w-sm"
+  }, React.createElement("div", {
+    className: "bng-banner glass-panel rounded-2xl border-2 border-amber-400/70 px-4 py-3 text-center shadow-[0_0_40px_rgba(245,200,96,0.35)]"
+  }, React.createElement("div", {
+    className: "text-3xl mb-0.5"
+  }, "🔔"), React.createElement("div", {
+    className: "text-lg font-black bng-gold"
+  }, "BINGO! ", fmtPat(banner.pattern)), React.createElement("div", {
+    className: `text-sm font-black ${banner.mine ? 'text-emerald-300' : 'text-white'}`
+  }, "🏆 ", banner.names, banner.mine ? ' — YOU! 🎉' : ''))), confetti && React.createElement(BingoConfetti, {
+    burst: confetti
+  }), phase === 'showdown' && res && !resHide && React.createElement("div", {
     className: "absolute inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
     className: "glass-panel rounded-3xl p-5 w-full max-w-sm text-center animate-pop-in border border-amber-500/40 max-h-[85%] overflow-y-auto scrollable-content"

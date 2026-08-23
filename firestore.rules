@@ -62,6 +62,108 @@ service cloud.firestore {
     match /tournaments/{id}  { allow read, write: if signedIn(); }
     match /broadcasts/{id}   { allow read, write: if signedIn(); }
 
+    // ═══ Gadud 1895 — "ירוק בעיניים" daily ammo counter (greeneyes app) ═══
+    // Identity by personal number. Every user signs in with an invisible
+    // anonymous session, then proves an identity by writing ammo_gate/<uid>
+    // naming their personal number (pn). That pn must exist in ammo_people (the
+    // שלישות roster) — which blocks anyone off the street. Privileged people
+    // (role admin/armon) must ALSO supply the correct PIN from ammo_pin (never
+    // client-readable) — so nobody can impersonate an admin with a known number.
+    // Every ammo collection is gated: only a valid gate doc grants access.
+    // Roles come from ammo_people, resolved through the gate.
+
+    // Break-glass: the owner and the standing armon@greeneyes95.com password
+    // account always hold armon power, so a broken people table can never lock
+    // everyone out (and the people/pin tables are seeded through this path).
+    function breakGlass() {
+      return signedIn() &&
+        (superAdmin() || request.auth.token.email == 'armon@greeneyes95.com');
+    }
+    function gatePn() {
+      return get(/databases/$(database)/documents/ammo_gate/$(request.auth.uid)).data.pn;
+    }
+    function gateValid() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/ammo_gate/$(request.auth.uid))
+        && exists(/databases/$(database)/documents/ammo_people/$(gatePn()));
+    }
+    function gateOK() { return breakGlass() || gateValid(); }
+    function ammoRole() {
+      return gateValid()
+        ? get(/databases/$(database)/documents/ammo_people/$(gatePn())).data.role
+        : '';
+    }
+    function ammoAdmin() { return breakGlass() || ammoRole() == 'admin' || ammoRole() == 'armon'; }
+    function ammoArmon() { return breakGlass() || ammoRole() == 'armon'; }
+
+    // People roster (identity + role), keyed by personal number. A single doc is
+    // fetchable by anyone signed in — that IS the login lookup (you must know the
+    // exact number); listing everyone is admin-only. Only armon edits it.
+    match /ammo_people/{pn} {
+      allow get: if signedIn();
+      allow list: if ammoAdmin();
+      allow write: if ammoArmon();
+    }
+    // PINs for privileged people — never readable by any client (rules use them
+    // via get() only). Only armon sets them.
+    match /ammo_pin/{pn} {
+      allow read: if false;
+      allow write: if ammoArmon();
+    }
+    // Session identity binding: a user may write ONLY their own gate doc, and
+    // only if the claimed pn exists AND (that person is a plain soldier OR the
+    // supplied PIN matches). This is what stops impersonating an admin.
+    match /ammo_gate/{uid} {
+      allow read: if request.auth.uid == uid;
+      allow delete: if request.auth.uid == uid;
+      allow write: if request.auth.uid == uid
+        && exists(/databases/$(database)/documents/ammo_people/$(request.resource.data.pn))
+        && (
+          get(/databases/$(database)/documents/ammo_people/$(request.resource.data.pn)).data.role == 'soldier'
+          || (
+            exists(/databases/$(database)/documents/ammo_pin/$(request.resource.data.pn))
+            && request.resource.data.pin == get(/databases/$(database)/documents/ammo_pin/$(request.resource.data.pn)).data.pin
+          )
+        );
+    }
+
+    // App config (admin-added custom item lists).
+    match /ammo_config/{doc} { allow read: if gateOK(); allow write: if ammoAdmin(); }
+
+    // Reference roster (autocomplete registries) — armon writes.
+    match /ammo_ref/{doc} { allow read: if gateOK(); allow write: if ammoArmon(); }
+
+    // Baseline quantities per unit — ONLY armon may set/update them.
+    match /ammo_stock/{unit} {
+      allow read: if gateOK();
+      allow write: if ammoArmon() &&
+        request.resource.data.group == unit.split('_')[0];
+    }
+
+    // Usage reports — any gated user files; חמ״ל-report reset / deletion is armon-only.
+    match /ammo_usage/{id} {
+      allow read: if gateOK();
+      allow create: if gateOK() &&
+        request.resource.data.group == request.resource.data.unitId.split('_')[0];
+      allow update, delete: if ammoArmon();
+    }
+
+    // Access log — append-only; reading it is admin-only.
+    match /ammo_log/{id} {
+      allow create: if gateOK();
+      allow read, delete: if ammoAdmin();
+      allow update: if false;
+    }
+
+    // Daily counts — any gated user submits/resubmits; doc id is pinned; admin deletes.
+    match /ammo_counts/{id} {
+      allow read: if gateOK();
+      allow create, update: if gateOK() &&
+        request.resource.data.group == request.resource.data.unitId.split('_')[0] &&
+        id == request.resource.data.unitId + '_' + request.resource.data.date;
+      allow delete: if ammoAdmin();
+    }
+
     // Anything not explicitly matched above — denied.
     match /{document=**}     { allow read, write: if false; }
   }

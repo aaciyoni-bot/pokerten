@@ -1279,6 +1279,10 @@ const GAMES = [{
   id: 'ofc',
   label: 'Chinese Poker (OFC)',
   live: true
+}, {
+  id: 'bingo',
+  label: 'בינגו',
+  live: true
 }];
 const GOD_EMAILS = ['aaci.yoni@gmail.com', 'info.bagso@gmail.com', 'avi057278@gmail.com', 'khnby749@gmail.com', 'bykhn3234@gmail.com', 'easymarcelos@gmail.com'];
 const SUPER_ADMIN_EMAIL = 'aaci.yoni@gmail.com';
@@ -2021,14 +2025,14 @@ const spawnTwinTable = async (t, force) => {
     if (!force) try {
       const q = window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("type", "==", t.type));
       const snap = await window.fb.getDocs(q);
-      const keyOf = x => JSON.stringify([Number((x.settings || {}).buyIn) || 0, Number((x.settings || {}).blinds) || 0, (x.settings || {}).baseGameType || '', Number((x.settings || {}).maxPlayers) || 0, Number((x.settings || {}).deckSize) || 0, (x.settings || {}).variant || '', Number((x.settings || {}).target) || 0]);
+      const keyOf = x => JSON.stringify([Number((x.settings || {}).buyIn) || 0, Number((x.settings || {}).blinds) || 0, (x.settings || {}).baseGameType || '', Number((x.settings || {}).maxPlayers) || 0, Number((x.settings || {}).deckSize) || 0, (x.settings || {}).variant || '', Number((x.settings || {}).target) || 0, Number((x.settings || {}).cardPrice) || 0]);
       const maxOf = x => Number((x.settings || {}).maxPlayers) || 9;
       const myId = t.docId || t.id || '';
       const twinExists = snap.docs.some(d => {
         if (d.id === myId) return false;
         const x = d.data();
         if ((x.clubId || 'main') !== cid || x.tournamentId) return false;
-        const joinable = x.type === 'poker' ? true : x.status === 'setup';
+        const joinable = x.type === 'poker' ? true : x.type === 'bingo' ? x.phase === 'waiting' : x.status === 'setup';
         if (!joinable) return false;
         if (Object.keys(x.players || {}).length >= maxOf(x)) return false;
         return keyOf(x) === keyOf(t);
@@ -2091,6 +2095,10 @@ const spawnTwinTable = async (t, force) => {
       });
     } else if (t.type === 'ofc') {
       await window.fb.addDoc(col, ofcTableDoc(t.hostUid, {
+        ...t.settings
+      }));
+    } else if (t.type === 'bingo') {
+      await window.fb.addDoc(col, bingoTableDoc(t.hostUid, {
         ...t.settings
       }));
     }
@@ -3920,7 +3928,7 @@ function App() {
   }, [dbUser]);
   useEffect(() => {
     const handlePopState = event => {
-      if (event.state && event.state.view && !['poker-table', 'durak-table', 'ofc-table'].includes(event.state.view)) {
+      if (event.state && event.state.view && !['poker-table', 'durak-table', 'ofc-table', 'bingo-table'].includes(event.state.view)) {
         setCurrentView(event.state.view);
         setActiveTable(null);
       } else if (dbUser && dbUser.status === 'approved') {
@@ -4345,7 +4353,7 @@ function App() {
   }, React.createElement("i", {
     className: "fa-solid fa-circle-notch fa-spin text-4xl"
   }));
-  const inTable = ['poker-table', 'durak-table', 'ofc-table'].includes(currentView);
+  const inTable = ['poker-table', 'durak-table', 'ofc-table', 'bingo-table'].includes(currentView);
   return React.createElement("div", {
     className: "h-full w-full flex flex-col relative overflow-hidden"
   }, effUser && activeClub && effUser.status === 'approved' && !inTable && currentView !== 'clubs' && React.createElement("nav", {
@@ -4426,6 +4434,7 @@ function App() {
     onJoinPoker: t => changeView('poker-table', t),
     onJoinDurak: t => changeView('durak-table', t),
     onJoinOfc: t => changeView('ofc-table', t),
+    onJoinBingo: t => changeView('bingo-table', t),
     onCreatePoker: () => changeView('poker-create'),
     showToast: showToast
   }), currentView === 'profile' && activeClub && React.createElement(ProfileView, {
@@ -4456,7 +4465,7 @@ function App() {
     tournaments: toursDB,
     tables: tablesDB,
     clubSettings: clubSettings,
-    excludeDocId: ['poker-table', 'durak-table', 'ofc-table'].includes(currentView) ? activeTable?.docId : null
+    excludeDocId: ['poker-table', 'durak-table', 'ofc-table', 'bingo-table'].includes(currentView) ? activeTable?.docId : null
   }), currentView === 'poker-table' && React.createElement(PokerTable, {
     tableDocId: activeTable?.docId,
     user: effUser,
@@ -4485,6 +4494,15 @@ function App() {
     clubSettings: clubSettings,
     onLeave: () => {
       setLobbyTab('ofc');
+      changeView('lobby');
+    },
+    showToast: showToast
+  }), currentView === 'bingo-table' && React.createElement(BingoTable, {
+    tableDocId: activeTable?.docId,
+    user: effUser,
+    clubSettings: clubSettings,
+    onLeave: () => {
+      setLobbyTab('bingo');
       changeView('lobby');
     },
     showToast: showToast
@@ -6531,6 +6549,7 @@ function LobbyView({
   onJoinPoker,
   onJoinDurak,
   onJoinOfc,
+  onJoinBingo,
   onCreatePoker,
   showToast
 }) {
@@ -6618,6 +6637,115 @@ function LobbyView({
     showToast('Loaded template: ' + tp.name, 'info');
   };
   const delDurakTpl = nm => persistDTpls(dTpls.filter(x => x.name !== nm));
+  // ── Bingo create form: EVERY amount and pace is typed by hand (no fixed
+  //    value dropdowns) — price, card cap, seats, call pace, rake, prize split.
+  const [showCreateBingo, setShowCreateBingo] = useState(false);
+  const [bingoOpts, setBingoOpts] = useState({
+    variant: '90',
+    tableName: '',
+    cardPrice: 10,
+    maxCardsPerPlayer: 6,
+    maxPlayers: 20,
+    drawRate: 4,
+    manualCall: false,
+    rakeMode: 'pct',
+    rakePct: DEFAULT_RAKE_PCT,
+    rakeFee: 10,
+    split90: {
+      line1: 20,
+      line2: 30,
+      full: 50
+    },
+    split75: {
+      line: 25,
+      corners: 0,
+      blackout: 75
+    }
+  });
+  // Bingo templates — same mechanism as poker/durak (local, per club)
+  const BTPL_KEY = 'bingoTpl_' + CLUB_ID;
+  const [bTpls, setBTpls] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(BTPL_KEY) || '[]');
+    } catch (e) {
+      return [];
+    }
+  });
+  const [bTplName, setBTplName] = useState('');
+  const persistBTpls = arr => {
+    setBTpls(arr);
+    try {
+      localStorage.setItem(BTPL_KEY, JSON.stringify(arr));
+    } catch (e) {}
+  };
+  const saveBingoTpl = () => {
+    const nm = bTplName.trim() || `Bingo ${bingoOpts.variant} · ${formatShort(Number(bingoOpts.cardPrice) || 0)} · ${bingoOpts.maxPlayers}p`;
+    persistBTpls([...bTpls.filter(x => x.name !== nm), {
+      name: nm,
+      opts: {
+        ...bingoOpts
+      }
+    }]);
+    setBTplName('');
+    showToast('Template saved: ' + nm, 'success');
+  };
+  const loadBingoTpl = tp => {
+    setBingoOpts(prev => ({
+      ...prev,
+      ...tp.opts,
+      split90: {
+        ...prev.split90,
+        ...(tp.opts.split90 || {})
+      },
+      split75: {
+        ...prev.split75,
+        ...(tp.opts.split75 || {})
+      }
+    }));
+    showToast('Loaded template: ' + tp.name, 'info');
+  };
+  const delBingoTpl = nm => persistBTpls(bTpls.filter(x => x.name !== nm));
+  const bingoSplit = bingoOpts.variant === '75' ? bingoOpts.split75 : bingoOpts.split90;
+  const bingoSplitSum = round2(Object.values(bingoSplit).reduce((a, b) => a + (Number(b) || 0), 0));
+  const setBingoSplit = (pat, v) => setBingoOpts(o => o.variant === '75' ? {
+    ...o,
+    split75: {
+      ...o.split75,
+      [pat]: v
+    }
+  } : {
+    ...o,
+    split90: {
+      ...o.split90,
+      [pat]: v
+    }
+  });
+  const handleCreateBingo = async () => {
+    const o = bingoOpts;
+    const price = round2(Number(o.cardPrice) || 0);
+    if (price <= 0) return showToast('Type a card price', 'error');
+    if (bingoSplitSum !== 100) return showToast(`Prize split must total 100% (now ${bingoSplitSum}%)`, 'error');
+    const split = {};
+    Object.entries(bingoSplit).forEach(([k, v]) => split[k] = Math.max(0, Number(v) || 0));
+    try {
+      await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), bingoTableDoc(user.uid, {
+        variant: o.variant === '75' ? '75' : '90',
+        tableName: String(o.tableName || '').trim().slice(0, 30),
+        cardPrice: price,
+        maxCardsPerPlayer: Math.max(1, Math.floor(Number(o.maxCardsPerPlayer) || 1)),
+        maxPlayers: Math.max(2, Math.floor(Number(o.maxPlayers) || 2)),
+        drawRate: o.manualCall ? 0 : Math.max(1, Number(o.drawRate) || 4),
+        rakeMode: o.rakeMode === 'flat' ? 'flat' : 'pct',
+        rakePct: o.rakeMode === 'flat' ? 0 : Math.min(100, Math.max(0, Number(o.rakePct) || 0)),
+        rakeFee: o.rakeMode === 'flat' ? round2(Math.max(0, Number(o.rakeFee) || 0)) : 0,
+        prizeSplit: split
+      }));
+      setShowCreateBingo(false);
+      showToast("Bingo table opened! 🎱", "success");
+    } catch (e) {
+      showToast("Could not open table", "error");
+    }
+  };
   const GAME_ORDER = ['NLH', 'Pineapple', 'Omaha 4', 'Omaha 5', 'Omaha 6'];
   const gtRank = t => {
     const idx = GAME_ORDER.indexOf((t.settings || {}).baseGameType || 'NLH');
@@ -6683,6 +6811,8 @@ function LobbyView({
   const showPokerTours = pokFilter === 'all' || pokFilter === 'tours';
   const durakTables = tables.filter(t => t.type === 'durak' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const ofcTables = tables.filter(t => t.type === 'ofc' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  // Bingo lobby list, sorted by table size (price) so the color-coded rows group
+  const bingoTables = tables.filter(t => t.type === 'bingo' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (Number(a.settings?.cardPrice) || 0) - (Number(b.settings?.cardPrice) || 0) || (a.createdAt || 0) - (b.createdAt || 0));
   const [showCreateOfc, setShowCreateOfc] = useState(false);
   const [ofcOpts, setOfcOpts] = useState({
     buyIn: 100,
@@ -6959,6 +7089,9 @@ function LobbyView({
           let add;
           if (isTour) add = 0;
           else if (isSpin) add = spinArmed ? 0 : round2(players[uid].spinPaid || 0);
+          // Bingo: cards are prepaid — deleting the table before the round is
+          // settled refunds exactly what each player put in (price + flat fee).
+          else if (snap.data().type === 'bingo') add = snap.data().phase === 'showdown' ? 0 : round2(players[uid].spent || 0);
           else add = round2((players[uid].stack || 0) + (players[uid].bet || 0) + (players[uid].pendingTopUp || 0) + potShare);
           refunds.push([uSnap.ref, round2((uSnap.data().balance || 0) + add)]);
         }
@@ -7135,6 +7268,11 @@ function LobbyView({
     label: 'Chinese Poker',
     icon: 'fa-table-cells',
     n: ofcTables.length
+  }, {
+    id: 'bingo',
+    label: 'בינגו',
+    emoji: '🎱',
+    n: bingoTables.length
   }].map(g => React.createElement("button", {
     key: g.id,
     onClick: () => setTab(g.id),
@@ -7147,7 +7285,7 @@ function LobbyView({
     s: g.suit,
     color: "currentColor",
     size: "1em"
-  }) : React.createElement("i", {
+  }) : g.emoji ? React.createElement("span", null, g.emoji) : React.createElement("i", {
     className: `fa-solid ${g.icon}`
   })), React.createElement("span", {
     className: "gs-label"
@@ -7771,7 +7909,305 @@ function LobbyView({
     clubSettings: clubSettings,
     showToast: showToast,
     onJoinTable: onJoinPoker
-  })), tab === 'durak' && React.createElement("div", {
+  })), tab === 'bingo' && React.createElement("div", {
+    className: "animate-fade-in"
+  }, React.createElement("div", {
+    className: "flex justify-between items-center mb-5"
+  }, React.createElement("h2", {
+    className: "text-xl font-black text-white"
+  }, "🎱 בינגו"), canManageGame(user, 'bingo') && React.createElement("button", {
+    onClick: () => setShowCreateBingo(!showCreateBingo),
+    className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(245,158,11,0.3)] text-sm"
+  }, React.createElement("i", {
+    className: "fa-solid fa-plus ml-2"
+  }), "New table")), showCreateBingo && React.createElement("div", {
+    className: "glass-panel p-6 rounded-2xl mb-6 border border-amber-500/30 animate-pop-in"
+  }, bTpls.length > 0 && React.createElement("div", {
+    className: "flex flex-wrap gap-2 items-center pb-4 mb-4 border-b border-white/8"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark ml-1"
+  }), "Templates"), bTpls.map(tp => React.createElement("span", {
+    key: tp.name,
+    className: "inline-flex items-center gap-1 bg-slate-800 border border-amber-500/30 rounded-full pr-1 pl-3 py-1"
+  }, React.createElement("button", {
+    onClick: () => loadBingoTpl(tp),
+    className: "text-xs font-black text-amber-200 hover:text-white"
+  }, tp.name), React.createElement("button", {
+    onClick: () => delBingoTpl(tp.name),
+    className: "w-5 h-5 rounded-full text-slate-500 hover:text-rose-400 text-[10px] flex items-center justify-center"
+  }, React.createElement("i", {
+    className: "fa-solid fa-xmark"
+  }))))), React.createElement("div", {
+    className: "grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4"
+  }, React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Variant"), React.createElement("select", {
+    value: bingoOpts.variant,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      variant: e.target.value
+    }),
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-amber-500 font-bold"
+  }, React.createElement("option", {
+    value: "90"
+  }, "90-Ball (lines + full house)"), React.createElement("option", {
+    value: "75"
+  }, "75-Ball (B-I-N-G-O)"))), React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Card price (any amount)"), React.createElement("input", {
+    type: "number",
+    inputMode: "decimal",
+    min: "0",
+    step: "any",
+    value: bingoOpts.cardPrice,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      cardPrice: e.target.value
+    }),
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-amber-500 font-bold",
+    dir: "ltr"
+  })), React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Max cards / player"), React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    min: "1",
+    step: "1",
+    value: bingoOpts.maxCardsPerPlayer,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      maxCardsPerPlayer: e.target.value
+    }),
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-amber-500 font-bold",
+    dir: "ltr"
+  })), React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Max players"), React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    min: "2",
+    step: "1",
+    value: bingoOpts.maxPlayers,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      maxPlayers: e.target.value
+    }),
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-amber-500 font-bold",
+    dir: "ltr"
+  }))), React.createElement("div", {
+    className: "grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4"
+  }, React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "⏱ Seconds between balls"), React.createElement("input", {
+    type: "number",
+    inputMode: "decimal",
+    min: "1",
+    step: "any",
+    value: bingoOpts.drawRate,
+    disabled: bingoOpts.manualCall,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      drawRate: e.target.value
+    }),
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-amber-500 font-bold disabled:opacity-40",
+    dir: "ltr"
+  }), React.createElement("label", {
+    className: "flex items-center gap-2 cursor-pointer mt-2"
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: !!bingoOpts.manualCall,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      manualCall: e.target.checked
+    }),
+    className: "accent-amber-500 w-4 h-4"
+  }), React.createElement("span", {
+    className: "text-amber-300 text-[11px] font-black"
+  }, "Manual calling (host draws)"))), React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Rake mode"), React.createElement("div", {
+    className: "flex gap-1.5"
+  }, React.createElement("button", {
+    onClick: () => setBingoOpts({
+      ...bingoOpts,
+      rakeMode: 'pct'
+    }),
+    className: `flex-1 py-3 rounded-xl font-black text-xs border ${bingoOpts.rakeMode !== 'flat' ? 'bg-amber-600/30 border-amber-500 text-amber-200' : 'bg-slate-900 border-slate-700 text-slate-400'}`
+  }, "% of pot"), React.createElement("button", {
+    onClick: () => setBingoOpts({
+      ...bingoOpts,
+      rakeMode: 'flat'
+    }),
+    className: `flex-1 py-3 rounded-xl font-black text-xs border ${bingoOpts.rakeMode === 'flat' ? 'bg-amber-600/30 border-amber-500 text-amber-200' : 'bg-slate-900 border-slate-700 text-slate-400'}`
+  }, "Fee per card"))), bingoOpts.rakeMode !== 'flat' ? React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Rake % (of the pot)"), React.createElement("input", {
+    type: "number",
+    inputMode: "decimal",
+    min: "0",
+    max: "100",
+    step: "any",
+    value: bingoOpts.rakePct,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      rakePct: e.target.value
+    }),
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-amber-500 font-bold",
+    dir: "ltr"
+  })) : React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Fee per card (e.g. 50+10)"), React.createElement("input", {
+    type: "number",
+    inputMode: "decimal",
+    min: "0",
+    step: "any",
+    value: bingoOpts.rakeFee,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      rakeFee: e.target.value
+    }),
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-amber-500 font-bold",
+    dir: "ltr"
+  })), React.createElement("div", null, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "Table name (optional)"), React.createElement("input", {
+    value: bingoOpts.tableName,
+    onChange: e => setBingoOpts({
+      ...bingoOpts,
+      tableName: e.target.value
+    }),
+    placeholder: "Bingo night…",
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-amber-500 font-bold"
+  }))), React.createElement("div", {
+    className: "mb-4"
+  }, React.createElement("label", {
+    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
+  }, "🧩 Prize split (% of the pot per pattern)"), React.createElement("div", {
+    className: "flex flex-wrap gap-3 items-end"
+  }, Object.keys(bingoSplit).map(pat => React.createElement("div", {
+    key: pat,
+    className: "w-28"
+  }, React.createElement("span", {
+    className: "inline-flex items-center gap-1.5 text-[10px] font-black text-slate-300 mb-1"
+  }, React.createElement(BingoPatternIcon, {
+    variant: bingoOpts.variant,
+    pattern: pat
+  }), (BINGO_PAT_META[pat] || {}).label || pat), React.createElement("input", {
+    type: "number",
+    inputMode: "decimal",
+    min: "0",
+    max: "100",
+    step: "any",
+    value: bingoSplit[pat],
+    onChange: e => setBingoSplit(pat, e.target.value),
+    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-2.5 outline-none focus:border-amber-500 font-bold text-center",
+    dir: "ltr"
+  }))), React.createElement("span", {
+    className: `text-xs font-black px-3 py-2 rounded-xl border ${bingoSplitSum === 100 ? 'text-emerald-300 border-emerald-500/40 bg-emerald-900/20' : 'text-rose-300 border-rose-500/40 bg-rose-900/20'}`
+  }, "Σ ", bingoSplitSum, "%", bingoSplitSum === 100 ? ' ✓' : ' — must be 100'))), React.createElement("div", {
+    className: "flex justify-between items-center pt-3 border-t border-white/5 gap-3 flex-wrap"
+  }, React.createElement("span", {
+    className: "text-xs text-slate-500 font-bold"
+  }, "🔒 Cards, draws and payouts run on the server — provably fair"), React.createElement("div", {
+    className: "flex gap-3 items-center flex-wrap"
+  }, React.createElement("input", {
+    value: bTplName,
+    onChange: e => setBTplName(e.target.value),
+    placeholder: "Template name (optional)",
+    className: "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-amber-500/60 w-40"
+  }), React.createElement("button", {
+    onClick: saveBingoTpl,
+    className: "bg-slate-800 hover:bg-slate-700 border border-amber-500/40 text-amber-200 px-4 py-2 rounded-xl font-black text-xs"
+  }, React.createElement("i", {
+    className: "fa-solid fa-bookmark ml-1"
+  }), " Save as template"), React.createElement("button", {
+    onClick: () => setShowCreateBingo(false),
+    className: "px-6 py-2 text-slate-400 hover:text-white font-bold"
+  }, "Cancel"), React.createElement("button", {
+    onClick: handleCreateBingo,
+    className: "bg-amber-600 hover:bg-amber-500 text-slate-900 px-8 py-2 rounded-xl font-bold shadow-lg"
+  }, "Confirm & open")))), React.createElement("div", {
+    className: "flex flex-col gap-2.5"
+  }, bingoTables.map(t => {
+    const s = t.settings || {};
+    const seated = Object.values(t.players || {}).filter(p => !p.left).length;
+    const cap = s.maxPlayers || 20;
+    const drawing = t.phase === 'drawing';
+    return React.createElement("div", {
+      key: t.docId,
+      className: "tbl-row",
+      onClick: () => onJoinBingo(t)
+    }, React.createElement("div", {
+      className: "tbl-spine",
+      style: {
+        '--spineC': '#f5c860'
+      }
+    }, React.createElement("span", null, "🎱")), React.createElement("div", {
+      className: "tbl-seats"
+    }, React.createElement("svg", {
+      viewBox: "0 0 44 44",
+      className: "tbl-ring"
+    }, React.createElement("circle", {
+      cx: "22",
+      cy: "22",
+      r: "19",
+      fill: "none",
+      stroke: "rgba(148,163,184,0.18)",
+      strokeWidth: "3.5"
+    }), React.createElement("circle", {
+      cx: "22",
+      cy: "22",
+      r: "19",
+      fill: "none",
+      stroke: seated > 0 ? '#f5c860' : 'rgba(148,163,184,0.28)',
+      strokeWidth: "3.5",
+      strokeDasharray: `${119 * Math.min(1, seated / cap)} 119`,
+      strokeLinecap: "round",
+      transform: "rotate(-90 22 22)"
+    })), React.createElement("span", {
+      dir: "ltr"
+    }, seated, React.createElement("span", {
+      className: "seat-cap"
+    }, "/", cap))), React.createElement("div", {
+      className: "tbl-main"
+    }, React.createElement("div", {
+      className: "tbl-name"
+    }, s.tableName || 'Bingo', " · ", s.variant === '75' ? '75-Ball' : '90-Ball', t.players && t.players[user.uid] && !t.players[user.uid].left && React.createElement("span", {
+      className: "tbl-me"
+    }, "You're in")), React.createElement("div", {
+      className: "tbl-stakes",
+      dir: "ltr"
+    }, "Pot ", formatShort(t.bank || 0)), React.createElement("div", {
+      className: "tbl-sub"
+    }, drawing ? React.createElement("span", {
+      className: "tbl-live"
+    }, React.createElement("span", {
+      className: "tbl-live-dot"
+    }), "Drawing · ball ", (t.called || []).length, "/", s.variant === '75' ? 75 : 90) : t.phase === 'showdown' ? 'Results' : `Selling cards · up to ${s.maxCardsPerPlayer || 1} each · ${Number(s.drawRate) > 0 ? `ball every ${s.drawRate}s` : 'manual calling'}`)), React.createElement("div", {
+      className: "tbl-buyin",
+      dir: "ltr"
+    }, React.createElement("span", {
+      className: "tbl-buyin-label"
+    }, "🎟️ Card"), React.createElement("span", {
+      className: "tbl-buyin-val"
+    }, formatMoney(s.cardPrice), (s.rakeMode === 'flat' && Number(s.rakeFee) > 0 ? `+${formatMoney(s.rakeFee)}` : ''))), canManageGame(user, 'bingo') && React.createElement("button", {
+      onClick: e => handleDelete(e, t),
+      className: "tbl-del"
+    }, React.createElement("i", {
+      className: "fa-solid fa-trash"
+    })));
+  }), bingoTables.length === 0 && !tablesLoaded && React.createElement("div", {
+    className: "space-y-2"
+  }, [0, 1].map(i2 => React.createElement("div", {
+    key: i2,
+    className: "h-[72px] rounded-2xl bg-slate-900/60 border border-white/5 animate-pulse"
+  }))), bingoTables.length === 0 && tablesLoaded && React.createElement(EmptyState, {
+    suit: "🎱",
+    title: "No open bingo tables right now",
+    sub: "New tables appear here live the moment they open — no refresh needed."
+  }))), tab === 'durak' && React.createElement("div", {
     className: "animate-fade-in"
   }, React.createElement("div", {
     className: "flex justify-between items-center mb-5"
@@ -16486,6 +16922,10 @@ const GAME_HELP = {
     title: 'How to play Durak 🃏',
     lines: ['The attacker plays a card - the defender must cover it with a higher card of the same suit, or with a Trump card (the suit set at the start of the game).', 'You can add to the Attack cards of ranks already on the table.', 'Defended everything? The cards are burned and the turn passes. Failed? You take everything on the table.', 'After each round, refill your hand to 6 cards from the deck.', 'Last one left with cards = the Durak, and loses the buy-in.']
   },
+  bingo: {
+    title: 'How to play Bingo 🎱',
+    lines: ['Buy cards (the host sets the price and the per-player limit), then the server draws balls one by one at the set pace — every draw is committed to a hash you can verify after the round.', '90-ball card: 3 rows × 9 columns, 15 numbers. Prizes: one line → two lines → full house. 75-ball: 5×5 with a FREE center — line / 4 corners / blackout.', 'Auto-daub marks your cards for you (you can switch to manual tapping). The moment a card completes a pattern the win is verified by the server — hit the BINGO! button to celebrate; a false bingo is rejected.', 'Several winners on the same ball split that prize equally. The round ends on the full house / blackout.', 'Leaving before the draw starts refunds your cards in full; leaving mid-round forfeits them.']
+  },
   ofc: {
     title: 'How to play Chinese Poker (OFC) 🀄',
     lines: ['Build 3 rows: top (3 cards), middle (5), bottom (5). The bottom must be the strongest and the top the weakest - otherwise foul (-6 + all Royalties to your opponent)!', 'First round: get 5 and place them all. Then: get 3, place 2, the third is discarded.', 'The labels next to the rows show your strength live - blinking red = foul warning.', 'Royalties: bonuses for strong hands (Flush in the bottom 4, in the middle 8, trips up top 10-22...).', "Joker 🃏 = any card you want - the system picks the best for you.", 'Queens+ up top with no foul = Fantasyland! Next hand you get 14-16 cards at once.', 'Like poker: buy a stack on entry, each hand played for a fixed value (point = a tenth of it), and your stack grows and shrinks. Stand up whenever - chips return to your wallet']
@@ -18206,6 +18646,1102 @@ function OFCTable({
     cls: "bottom-4 right-3"
   }));
 }
+/* ═══ BINGO ════════════════════════════════════════════════════════════════
+   Server-authoritative bingo (functions/bingoEngine.js): the server sells the
+   cards, draws the balls and pays the winners — the client only renders and
+   sends requests (bingoBuy/bingoStart/bingoTick/bingoDraw/bingoClaim/
+   bingoLeave/bingoNewRound). The pattern maths below is a FAITHFUL copy of
+   functions/bingoCore.js — client and server must always agree on what a
+   completed card looks like. */
+const BINGO_BALLS = {
+  '90': 90,
+  '75': 75
+};
+const BINGO_PATTERNS = {
+  '90': ['line1', 'line2', 'full'],
+  '75': ['line', 'corners', 'blackout']
+};
+const BINGO_FINAL = {
+  '90': 'full',
+  '75': 'blackout'
+};
+const BINGO_PAT_META = {
+  line1: {
+    label: 'One line',
+    glyph: '—'
+  },
+  line2: {
+    label: 'Two lines',
+    glyph: '='
+  },
+  full: {
+    label: 'Full house',
+    glyph: '▦'
+  },
+  line: {
+    label: 'Line',
+    glyph: '⁄'
+  },
+  corners: {
+    label: '4 corners',
+    glyph: '▢'
+  },
+  blackout: {
+    label: 'Blackout',
+    glyph: '■'
+  }
+};
+const BINGO_75_LETTERS = ['B', 'I', 'N', 'G', 'O'];
+const BINGO_BALL_COLORS = ['#38bdf8', '#f87171', '#fbbf24', '#34d399', '#a78bfa', '#fb923c', '#22d3ee', '#f472b6', '#a3e635'];
+const bingoBallGroup = (variant, n) => String(variant) === '75' ? Math.floor((n - 1) / 15) : Math.floor((n - 1) / 10);
+const bingoBallColor = (variant, n) => BINGO_BALL_COLORS[bingoBallGroup(variant, n) % BINGO_BALL_COLORS.length];
+const BINGO_LINES_75 = (() => {
+  const L = [];
+  for (let r = 0; r < 5; r++) L.push([0, 1, 2, 3, 4].map(c => r * 5 + c));
+  for (let c = 0; c < 5; c++) L.push([0, 1, 2, 3, 4].map(r => r * 5 + c));
+  L.push([0, 6, 12, 18, 24]);
+  L.push([4, 8, 12, 16, 20]);
+  return L;
+})();
+const bingoMark75 = (nums, calledSet, i) => nums[i] === 0 || calledSet.has(nums[i]);
+const bingoRows90Done = (nums, calledSet) => {
+  let done = 0;
+  for (let r = 0; r < 3; r++) {
+    let full = true;
+    for (let c = 0; c < 9; c++) {
+      const v = nums[r * 9 + c];
+      if (v && !calledSet.has(v)) {
+        full = false;
+        break;
+      }
+    }
+    if (full) done++;
+  }
+  return done;
+};
+// identical to functions/bingoCore.hasPattern — the server is the judge, this
+// only lights the button
+const bingoHasPattern = (variant, nums, calledSet, pattern) => {
+  if (String(variant) === '75') {
+    if (pattern === 'line') return BINGO_LINES_75.some(L => L.every(i => bingoMark75(nums, calledSet, i)));
+    if (pattern === 'corners') return [0, 4, 20, 24].every(i => bingoMark75(nums, calledSet, i));
+    if (pattern === 'blackout') return nums.every((v, i) => bingoMark75(nums, calledSet, i));
+    return false;
+  }
+  const done = bingoRows90Done(nums, calledSet);
+  if (pattern === 'line1') return done >= 1;
+  if (pattern === 'line2') return done >= 2;
+  if (pattern === 'full') return done >= 3;
+  return false;
+};
+const bingoMissingFor = (variant, nums, calledSet, pattern) => {
+  const miss = idxs => idxs.reduce((s, i) => s + (nums[i] !== 0 && !calledSet.has(nums[i]) ? 1 : 0), 0);
+  if (String(variant) === '75') {
+    if (pattern === 'line') return Math.min(...BINGO_LINES_75.map(miss));
+    if (pattern === 'corners') return miss([0, 4, 20, 24]);
+    return miss([...Array(25).keys()]);
+  }
+  const rowMiss = [0, 1, 2].map(r => miss([...Array(9).keys()].map(c => r * 9 + c)));
+  const sorted = [...rowMiss].sort((a, b) => a - b);
+  if (pattern === 'line1') return sorted[0];
+  if (pattern === 'line2') return sorted[0] + sorted[1];
+  return sorted[0] + sorted[1] + sorted[2];
+};
+const bingoActivePatterns = (variant, prizeSplit) => {
+  const fin = BINGO_FINAL[String(variant)] || 'full';
+  return BINGO_PATTERNS[String(variant) === '75' ? '75' : '90'].filter(p => p === fin || (Number((prizeSplit || {})[p]) || 0) > 0);
+};
+const bingoTableDoc = (hostUid, settings) => ({
+  type: 'bingo',
+  clubId: CLUB_ID,
+  createdAt: Date.now(),
+  hostUid,
+  phase: 'waiting',
+  roundN: 1,
+  settings: {
+    ...settings
+  },
+  players: {},
+  bank: 0,
+  feeAcc: 0,
+  called: [],
+  lastBall: null,
+  calledAt: null,
+  nextDrawAt: null,
+  pauseUntil: null,
+  fairHash: null,
+  wonPatterns: {},
+  lastResults: null,
+  chat: [],
+  showdownAt: null,
+  startedAt: null
+});
+// 🔵 a bingo ball: colored ring per column group, letter on 75-ball
+const BingoBall = ({
+  variant,
+  n,
+  size,
+  dim
+}) => {
+  const col = bingoBallColor(variant, n);
+  const px = size === 'xl' ? 78 : size === 'lg' ? 46 : 30;
+  return React.createElement("div", {
+    className: `rounded-full flex flex-col items-center justify-center font-black shrink-0 ${dim ? 'opacity-45' : ''}`,
+    style: {
+      width: px,
+      height: px,
+      background: `radial-gradient(circle at 35% 30%, #ffffff 0%, #e8edf5 ${size === 'xl' ? 44 : 40}%, ${col} 100%)`,
+      boxShadow: `0 3px 10px rgba(0,0,0,0.5), 0 0 ${size === 'xl' ? 18 : 6}px ${col}55`,
+      color: '#0b1120'
+    }
+  }, String(variant) === '75' && size !== 'sm' && React.createElement("span", {
+    className: "leading-none font-black",
+    style: {
+      fontSize: px * 0.2,
+      color: col,
+      filter: 'brightness(0.65)'
+    }
+  }, BINGO_75_LETTERS[bingoBallGroup(variant, n)]), React.createElement("span", {
+    className: "leading-none",
+    style: {
+      fontSize: px * (String(variant) === '75' && size !== 'sm' ? 0.38 : 0.44)
+    }
+  }, n));
+};
+// 🧩 tiny pattern diagram — a 3×9 / 5×5 grid of dots with the pattern lit
+const BingoPatternIcon = ({
+  variant,
+  pattern
+}) => {
+  const is75 = String(variant) === '75';
+  const rows = is75 ? 5 : 3;
+  const cols = is75 ? 5 : 9;
+  const lit = (r, c) => {
+    if (pattern === 'line1' || pattern === 'line') return r === 1;
+    if (pattern === 'line2') return r === 0 || r === 2;
+    if (pattern === 'corners') return (r === 0 || r === rows - 1) && (c === 0 || c === cols - 1);
+    return true; // full / blackout
+  };
+  const cells = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) cells.push(lit(r, c));
+  return React.createElement("span", {
+    className: "inline-grid gap-[1.5px] align-middle",
+    style: {
+      gridTemplateColumns: `repeat(${cols}, 3.5px)`
+    }
+  }, cells.map((on, i) => React.createElement("span", {
+    key: i,
+    className: "rounded-[1px]",
+    style: {
+      width: 3.5,
+      height: 3.5,
+      background: on ? '#f5c860' : 'rgba(148,163,184,0.25)'
+    }
+  })));
+};
+// 🎟️ one bingo card. marked = Set of daubed numbers; onCell taps in manual mode
+const BingoCardView = ({
+  variant,
+  nums,
+  marked,
+  lastBall,
+  onCell,
+  small
+}) => {
+  const is75 = String(variant) === '75';
+  const cols = is75 ? 5 : 9;
+  const cellCls = small ? 'text-[9px]' : is75 ? 'text-base' : 'text-sm';
+  const pad = small ? 'py-0.5' : is75 ? 'py-2.5' : 'py-1.5';
+  return React.createElement("div", {
+    className: "rounded-xl overflow-hidden border border-white/10 bg-slate-950/70 shadow-lg",
+    dir: "ltr"
+  }, is75 && React.createElement("div", {
+    className: "grid",
+    style: {
+      gridTemplateColumns: `repeat(5, 1fr)`
+    }
+  }, BINGO_75_LETTERS.map((L, i) => React.createElement("div", {
+    key: L,
+    className: `text-center font-black ${small ? 'text-[9px] py-0.5' : 'text-sm py-1'}`,
+    style: {
+      color: BINGO_BALL_COLORS[i],
+      background: 'rgba(2,6,15,0.6)'
+    }
+  }, L))), React.createElement("div", {
+    className: "grid gap-px bg-white/5 p-px",
+    style: {
+      gridTemplateColumns: `repeat(${cols}, 1fr)`
+    }
+  }, nums.map((v, i) => {
+    const isFree = is75 && i === 12;
+    const daub = v > 0 && marked && marked.has(v);
+    const isLast = v > 0 && v === lastBall;
+    return React.createElement("div", {
+      key: i,
+      onClick: v > 0 && onCell ? () => onCell(v) : undefined,
+      className: `relative text-center font-black ${cellCls} ${pad} ${v === 0 && !isFree ? 'bg-slate-900/70' : 'bg-slate-800/80'} ${v > 0 && onCell ? 'cursor-pointer active:scale-95' : ''} transition-transform`,
+      style: isLast && !daub ? {
+        boxShadow: 'inset 0 0 0 1.5px #f5c860'
+      } : undefined
+    }, isFree ? React.createElement("span", {
+      className: "text-amber-400"
+    }, "★") : v > 0 ? React.createElement(React.Fragment, null, React.createElement("span", {
+      className: daub ? 'text-white' : 'text-slate-200'
+    }, v), daub && React.createElement("span", {
+      className: "absolute inset-0 flex items-center justify-center pointer-events-none"
+    }, React.createElement("span", {
+      className: `rounded-full ${small ? 'w-4 h-4' : 'w-7 h-7'} animate-pop-in`,
+      style: {
+        background: 'radial-gradient(circle, rgba(52,211,153,0.36) 0%, rgba(52,211,153,0.22) 60%, transparent 75%)',
+        boxShadow: 'inset 0 0 0 1.5px rgba(52,211,153,0.8)'
+      }
+    }))) : null);
+  })));
+};
+// 📋 the called-numbers board (1..90 / 1..75), last ball highlighted
+const BingoBoard = ({
+  variant,
+  called,
+  lastBall
+}) => {
+  const total = BINGO_BALLS[String(variant)] || 90;
+  const cs = new Set(called || []);
+  const cells = [];
+  for (let n = 1; n <= total; n++) cells.push(n);
+  return React.createElement("div", {
+    className: "grid gap-[3px]",
+    style: {
+      gridTemplateColumns: 'repeat(10, 1fr)'
+    },
+    dir: "ltr"
+  }, cells.map(n => React.createElement("div", {
+    key: n,
+    className: `text-center rounded-md text-[10px] font-black py-1 transition-all ${n === lastBall ? 'animate-pulse' : ''}`,
+    style: cs.has(n) ? {
+      background: n === lastBall ? '#f5c860' : `${bingoBallColor(variant, n)}2e`,
+      color: n === lastBall ? '#0b1120' : bingoBallColor(variant, n),
+      boxShadow: n === lastBall ? '0 0 10px rgba(245,200,96,0.6)' : `inset 0 0 0 1px ${bingoBallColor(variant, n)}55`
+    } : {
+      background: 'rgba(15,23,42,0.7)',
+      color: '#475569'
+    }
+  }, n)));
+};
+function BingoTable({
+  tableDocId,
+  user,
+  clubSettings,
+  onLeave,
+  showToast
+}) {
+  const [tableState, setTableState] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [godView, setGodView] = useState(false);
+  const [godData, setGodData] = useState(null);
+  const [resHide, setResHide] = useState(false);
+  const [showBoard, setShowBoard] = useState(true);
+  const [showVerify, setShowVerify] = useState(false);
+  const [buyCount, setBuyCount] = useState(1);
+  const [myCardsRaw, setMyCardsRaw] = useState([]);
+  const [manualMarks, setManualMarks] = useState({});
+  const [autoDaub, setAutoDaub] = useState(() => {
+    try {
+      return localStorage.getItem('bingoAutoDaub') !== '0';
+    } catch (e) {
+      return true;
+    }
+  });
+  const [nowMs, setNowMs] = useState(Date.now());
+  const [busy, setBusy] = useState(false);
+  const tableRef = useRef(null);
+  const sweptRef = useRef(0);
+  const isGod = isGodUser(user);
+  const canManage = canManageGame(user, 'bingo');
+  const tblRef = () => window.fb.doc(window.fb.db, "tables", tableDocId);
+  const T = tableState || {};
+  const setts = T.settings || {};
+  const variant = String(setts.variant || '90');
+  const players = T.players || {};
+  const me = players[user.uid];
+  const isSeated = !!me && !me.left;
+  const isHost = T.hostUid === user.uid;
+  const canDrive = isHost || canManage || isGod;
+  const phase = T.phase || 'waiting';
+  const roundN = Number(T.roundN) || 1;
+  const called = T.called || [];
+  const calledSet = useMemo(() => new Set(called), [called.length, roundN]);
+  const myCards = useMemo(() => (myCardsRaw || []).filter(c => (c.round || 1) === roundN), [myCardsRaw, roundN]);
+  const toastErr = m => showToast(m, 'error');
+  const fxErr = e => toastErr(e && e.message ? e.message : typeof e === 'string' ? e : 'Error');
+  useEffect(() => {
+    setResHide(false);
+    setShowVerify(false);
+  }, [T.showdownAt]);
+  useEffect(() => {
+    if (!tableDocId) return;
+    const unsub = window.fb.onSnapshot(tblRef(), d => {
+      if (d.exists()) {
+        const t = {
+          id: d.id,
+          docId: d.id,
+          ...d.data()
+        };
+        tableRef.current = t;
+        setTableState(t);
+        setLoading(false);
+      } else {
+        showToast("The table closed", "error");
+        onLeave();
+      }
+    });
+    return () => unsub();
+  }, [tableDocId]);
+  // my cards are server-dealt — readable only by me (tables/{id}/priv/{uid})
+  useEffect(() => {
+    if (!tableDocId) return;
+    const unsub = window.fb.onSnapshot(window.fb.doc(window.fb.db, "tables", tableDocId, "priv", user.uid), d => {
+      setMyCardsRaw(d.exists() ? d.data().cards || [] : []);
+    });
+    return () => unsub();
+  }, [tableDocId]);
+  const ch = useTableChat(tableState, tableDocId, user, 'bingo', showToast);
+  // the server draws — every viewer just keeps the clock honest (pkTick parity)
+  useEffect(() => {
+    if (phase !== 'drawing' || !(Number(setts.drawRate) > 0)) return;
+    const iv = setInterval(() => {
+      window.fb.fx('bingoTick', {
+        tableId: tableDocId
+      }).catch(() => {});
+    }, 2000);
+    return () => clearInterval(iv);
+  }, [phase, tableDocId, setts.drawRate]);
+  // ⏱ countdown repaint
+  useEffect(() => {
+    if (phase !== 'drawing') return;
+    const iv = setInterval(() => setNowMs(Date.now()), 500);
+    return () => clearInterval(iv);
+  }, [phase]);
+  // sounds + vibration: new ball / my win / one-to-go
+  const prevSnd = useRef({
+    calledN: 0,
+    phase: '',
+    wonN: 0,
+    oneToGo: false,
+    chatLen: 0
+  });
+  const activePats = bingoActivePatterns(variant, setts.prizeSplit);
+  const wonPatterns = T.wonPatterns || {};
+  const iWon = pat => ((wonPatterns[pat] || {}).winners || []).some(w => w.uid === user.uid);
+  const claimable = useMemo(() => {
+    if (phase !== 'drawing' || !myCards.length) return [];
+    return activePats.filter(pat => myCards.some(c => bingoHasPattern(variant, c.nums, calledSet, pat)) && (!wonPatterns[pat] || iWon(pat)));
+  }, [called.length, myCards.length, phase, roundN]);
+  const oneToGo = useMemo(() => {
+    if (phase !== 'drawing' || !myCards.length) return null;
+    for (const pat of activePats) {
+      if (wonPatterns[pat]) continue;
+      for (const c of myCards) {
+        if (bingoMissingFor(variant, c.nums, calledSet, pat) === 1) return {
+          pattern: pat
+        };
+      }
+    }
+    return null;
+  }, [called.length, myCards.length, phase, roundN, Object.keys(wonPatterns).length]);
+  useEffect(() => {
+    if (!tableState) return;
+    const ps = prevSnd.current;
+    if (called.length > ps.calledN && phase === 'drawing') playSnd('tile');
+    if (phase === 'showdown' && ps.phase !== 'showdown') playSnd('win');
+    if (phase === 'drawing' && ps.phase !== 'drawing') playSnd('deal');
+    const wonN = Object.keys(wonPatterns).length;
+    if (wonN > ps.wonN) {
+      const newPat = Object.keys(wonPatterns).find(p => ((wonPatterns[p] || {}).winners || []).length && !ps['pat_' + p]);
+      const mine = newPat && iWon(newPat);
+      playSnd(mine ? 'win' : 'chip');
+      if (mine) try {
+        navigator.vibrate && navigator.vibrate([110, 60, 110]);
+      } catch (e) {}
+    }
+    const otg = !!oneToGo;
+    if (otg && !ps.oneToGo) try {
+      navigator.vibrate && navigator.vibrate([60, 40, 60]);
+    } catch (e) {}
+    const cl = (T.chat || []).length;
+    if (ps.chatLen && cl > ps.chatLen) playSnd('msg');
+    const nx = {
+      calledN: called.length,
+      phase,
+      wonN,
+      oneToGo: otg,
+      chatLen: cl
+    };
+    Object.keys(wonPatterns).forEach(p => nx['pat_' + p] = true);
+    prevSnd.current = nx;
+  }, [tableState]);
+  // Wake Lock — the screen must not dim mid-round (same as poker/durak)
+  useEffect(() => {
+    let lock = null,
+      released = false;
+    const acquire = async () => {
+      try {
+        if (!released && document.visibilityState === 'visible' && navigator.wakeLock) {
+          lock = await navigator.wakeLock.request('screen');
+        }
+      } catch (e) {}
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') acquire();
+    };
+    acquire();
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      released = true;
+      document.removeEventListener('visibilitychange', onVis);
+      try {
+        lock && lock.release();
+      } catch (e) {}
+      lock = null;
+    };
+  }, []);
+  // presence heartbeat (parity with the other games)
+  useEffect(() => {
+    if (!isSeated) return;
+    const beat = () => window.fb.updateDoc(tblRef(), {
+      [`players.${user.uid}.lastSeen`]: Date.now()
+    }).catch(() => {});
+    beat();
+    const iv = setInterval(beat, 25000);
+    return () => clearInterval(iv);
+  }, [isSeated, tableDocId]);
+  // showdown: whoever is watching stays automatically (durak parity)
+  useEffect(() => {
+    if (!isSeated || phase !== 'showdown' || !T.showdownAt) return;
+    const autoStay = () => {
+      if (document.visibilityState !== 'visible') return;
+      const cur = tableRef.current?.players?.[user.uid];
+      if (!cur || (cur.stayAt || 0) >= T.showdownAt) return;
+      window.fb.updateDoc(tblRef(), {
+        [`players.${user.uid}.stayAt`]: Date.now()
+      }).catch(() => {});
+    };
+    autoStay();
+    document.addEventListener('visibilitychange', autoStay);
+    return () => document.removeEventListener('visibilitychange', autoStay);
+  }, [isSeated, phase, T.showdownAt]);
+  // showdown sweep: after the grace period clear absent players and open the
+  // next round (client-side reset is money-free; identical to bingoNewRound)
+  const [stayLeft, setStayLeft] = useState(SHOWDOWN_GRACE);
+  useEffect(() => {
+    if (phase !== 'showdown' || !T.showdownAt) return;
+    const iv = setInterval(async () => {
+      const rem = Math.max(0, SHOWDOWN_GRACE - Math.floor((Date.now() - T.showdownAt) / 1000));
+      setStayLeft(rem);
+      if (rem > 0 || sweptRef.current === T.showdownAt) return;
+      sweptRef.current = T.showdownAt;
+      let deletedT = null;
+      try {
+        await window.fb.runTransaction(window.fb.db, async tr => {
+          const ref = tblRef();
+          const snap = await tr.get(ref);
+          if (!snap.exists()) return;
+          const t = snap.data();
+          if (t.phase !== 'showdown' || t.showdownAt !== T.showdownAt) return;
+          const pl = {};
+          Object.entries(t.players || {}).forEach(([k, p]) => {
+            if (!p.left && (p.isBot || (p.stayAt || 0) >= t.showdownAt)) pl[k] = {
+              ...p,
+              cardCount: 0,
+              spent: 0
+            };
+          });
+          const humans = Object.values(pl).filter(p => !p.isBot).length;
+          if (humans === 0) {
+            tr.delete(ref);
+            deletedT = {
+              ...t,
+              docId: ref.id
+            };
+            return;
+          }
+          tr.update(ref, {
+            players: pl,
+            phase: 'waiting',
+            roundN: (Number(t.roundN) || 1) + 1,
+            bank: 0,
+            feeAcc: 0,
+            called: [],
+            lastBall: null,
+            calledAt: null,
+            wonPatterns: {},
+            fairHash: null,
+            nextDrawAt: null,
+            pauseUntil: null,
+            showdownAt: null,
+            startedAt: null
+          });
+        });
+      } catch (e) {}
+      if (deletedT) spawnTwinTable(deletedT);
+    }, 500);
+    return () => clearInterval(iv);
+  }, [phase, T.showdownAt]);
+  // GOD sees everything — all cards + the rest of the bag (server-gated)
+  useEffect(() => {
+    if (!godView || !isGod) {
+      setGodData(null);
+      return;
+    }
+    window.fb.fx('bingoPeek', {
+      tableId: tableDocId
+    }).then(setGodData).catch(() => {});
+  }, [godView, phase, roundN, tableDocId]);
+  const handleBuy = async n => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await window.fb.fx('bingoBuy', {
+        tableId: tableDocId,
+        count: n,
+        name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
+        photo: user.photo || '',
+        avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid)
+      });
+      playSnd('chip');
+      showToast(`🎟️ Bought ${n} card${n > 1 ? 's' : ''}`, 'success');
+      if (r && r.becameFull) spawnTwinTable(tableRef.current, true);
+    } catch (e) {
+      fxErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const handleAddBot = async () => {
+    try {
+      const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));
+      const botSnaps = await window.fb.getDocs(botQ);
+      const bots = botSnaps.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      })).filter(b => !players[b.id]);
+      if (!bots.length) return toastErr("No bots available - create bots in the dashboard");
+      const bot = bots[Math.floor(Math.random() * bots.length)];
+      const maxC = Math.max(1, Number(setts.maxCardsPerPlayer) || 1);
+      await window.fb.fx('bingoBuy', {
+        tableId: tableDocId,
+        count: 1 + Math.floor(Math.random() * Math.min(3, maxC)),
+        bot: {
+          uid: bot.id,
+          name: bot.username,
+          photo: bot.photo || '',
+          avatarSeed: bot.avatarSeed || ''
+        }
+      });
+    } catch (e) {
+      fxErr(e);
+    }
+  };
+  const handleStart = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await window.fb.fx('bingoStart', {
+        tableId: tableDocId
+      });
+    } catch (e) {
+      fxErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const handleDrawNow = async () => {
+    try {
+      await window.fb.fx('bingoDraw', {
+        tableId: tableDocId
+      });
+    } catch (e) {
+      fxErr(e);
+    }
+  };
+  const handleClaim = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const r = await window.fb.fx('bingoClaim', {
+        tableId: tableDocId
+      });
+      playSnd('win');
+      try {
+        navigator.vibrate && navigator.vibrate([110, 60, 110, 60, 160]);
+      } catch (e) {}
+      showToast('🔔 BINGO! Verified: ' + (r.patterns || []).map(p => (BINGO_PAT_META[p] || {}).label || p).join(', '), 'success');
+    } catch (e) {
+      try {
+        navigator.vibrate && navigator.vibrate([200]);
+      } catch (e2) {}
+      fxErr(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const handleNewRound = async () => {
+    try {
+      await window.fb.fx('bingoNewRound', {
+        tableId: tableDocId
+      });
+    } catch (e) {
+      fxErr(e);
+    }
+  };
+  const handleLeave = async () => {
+    const t = tableRef.current;
+    if (!t || !t.players || !t.players[user.uid]) {
+      onLeave();
+      return;
+    }
+    if (phase === 'drawing' && isSeated && (me?.cardCount || 0) > 0) {
+      if (!window.confirm("⚠️ Leaving mid-round forfeits your cards (no refund). Sure?")) return;
+    }
+    try {
+      const r = await window.fb.fx('bingoLeave', {
+        tableId: tableDocId
+      });
+      if (r && r.deleted) spawnTwinTable(t);
+    } catch (e) {}
+    onLeave();
+  };
+  const handleKick = async uid => {
+    if (!window.confirm(`Remove ${players[uid]?.name || 'player'} from the table? Their purchase is refunded.`)) return;
+    try {
+      await window.fb.fx('bingoLeave', {
+        tableId: tableDocId,
+        targetUid: uid
+      });
+    } catch (e) {
+      fxErr(e);
+    }
+  };
+  const toggleAutoDaub = () => {
+    setAutoDaub(v => {
+      try {
+        localStorage.setItem('bingoAutoDaub', v ? '0' : '1');
+      } catch (e) {}
+      return !v;
+    });
+  };
+  const tapCell = (cardId, num) => {
+    if (autoDaub) return;
+    if (!calledSet.has(num)) {
+      toastErr(`${num} wasn't called yet`);
+      return;
+    }
+    setManualMarks(mm => {
+      const cur = new Set(mm[cardId] || []);
+      if (cur.has(num)) cur.delete(num);else cur.add(num);
+      return {
+        ...mm,
+        [cardId]: [...cur]
+      };
+    });
+  };
+  if (loading || !tableState) return React.createElement("div", {
+    className: "h-full flex items-center justify-center text-amber-400"
+  }, React.createElement("i", {
+    className: "fa-solid fa-spinner fa-spin text-3xl"
+  }));
+  const price = round2(Number(setts.cardPrice) || 0);
+  const flatFee = (setts.rakeMode || 'pct') === 'flat' ? round2(Number(setts.rakeFee) || 0) : 0;
+  const perCard = round2(price + flatFee);
+  const maxCards = Math.max(1, Number(setts.maxCardsPerPlayer) || 1);
+  const myCount = me ? Number(me.cardCount) || 0 : 0;
+  const drawRate = Number(setts.drawRate) || 0;
+  const bank = round2(Number(T.bank) || 0);
+  const pool = round2(bank - ((setts.rakeMode || 'pct') !== 'flat' ? round2(bank * (Number(setts.rakePct) || 0) / 100) : 0));
+  const prizeOf = pat => Math.floor(pool * (Number((setts.prizeSplit || {})[pat]) || 0)) / 100;
+  const nextIn = T.pauseUntil && nowMs < T.pauseUntil ? null : T.nextDrawAt ? Math.max(0, Math.ceil((T.nextDrawAt - nowMs) / 1000)) : null;
+  const res = T.lastResults;
+  const seatedList = Object.values(players).filter(p => !p.left).sort((a, b) => a.seatIndex - b.seatIndex);
+  const totalCards = seatedList.reduce((s, p) => s + (Number(p.cardCount) || 0), 0);
+  const marksFor = c => autoDaub ? calledSet : new Set((manualMarks[c.id] || []).filter(n => calledSet.has(n)));
+  const canClaim = claimable.length > 0 && phase === 'drawing';
+  const fmtPat = p => (BINGO_PAT_META[p] || {}).label || p;
+  return React.createElement("div", {
+    className: "h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none",
+    dir: "ltr",
+    style: {
+      background: 'radial-gradient(ellipse at 50% 0%, #1c2136 0%, #05070f 62%)'
+    }
+  }, React.createElement("div", {
+    className: "h-14 bg-slate-900/80 backdrop-blur-md border-b border-white/5 flex justify-between items-center px-3 shrink-0 z-40"
+  }, React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, React.createElement("button", {
+    onClick: handleLeave,
+    className: "px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-rose-700 hover:text-white text-xs font-bold border border-white/10"
+  }, React.createElement("i", {
+    className: "fa-solid fa-door-open ml-1"
+  }), isSeated ? 'Leave' : 'Back'), isGod && React.createElement("button", {
+    onClick: () => setGodView(!godView),
+    className: `px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${godView ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_12px_purple]' : 'bg-slate-800 text-purple-400 border-white/10'}`
+  }, React.createElement("i", {
+    className: "fa-solid fa-eye ml-1"
+  }), "GOD"), canDrive && phase === 'waiting' && React.createElement("button", {
+    onClick: handleAddBot,
+    className: "px-2.5 py-1.5 rounded-lg bg-slate-800 text-purple-300 text-[10px] font-black border border-white/10",
+    title: "Add bot"
+  }, React.createElement("i", {
+    className: "fa-solid fa-robot"
+  }))), React.createElement("div", {
+    className: "flex-1 min-w-0 flex flex-col items-center px-1"
+  }, React.createElement("span", {
+    className: "text-amber-300 font-black text-sm tracking-wider"
+  }, "🎱 ", setts.tableName || 'Bingo', " · ", variant === '75' ? '75' : '90'), React.createElement("span", {
+    className: "text-slate-400 text-[10px] font-bold",
+    dir: "ltr"
+  }, tableCode(tableDocId), phase === 'drawing' ? ` · ball ${called.length}/${BINGO_BALLS[variant]}` : '')), React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, phase === 'drawing' && drawRate > 0 && React.createElement("div", {
+    className: "bg-slate-950/80 border border-white/10 rounded-xl px-2.5 py-1 text-center"
+  }, React.createElement("span", {
+    className: "text-[9px] text-slate-400 font-bold block leading-none mb-0.5"
+  }, "⏱ Next"), React.createElement("span", {
+    className: "text-sky-300 font-black text-sm leading-none"
+  }, nextIn === null ? '…' : nextIn + 's')), React.createElement("div", {
+    className: "bg-slate-950/80 border border-amber-500/30 rounded-xl px-3 py-1 text-center"
+  }, React.createElement("span", {
+    className: "text-[9px] text-amber-300 font-bold block leading-none mb-0.5"
+  }, "🏦 POT"), React.createElement("span", {
+    className: "text-amber-400 font-black text-sm leading-none",
+    dir: "ltr"
+  }, formatShort(phase === 'showdown' ? res?.pot || 0 : bank))), (isGod && godView || user.role === ROLES.CLUB_OWNER) && React.createElement("div", {
+    className: "bg-slate-950/80 border border-purple-500/30 rounded-xl px-2.5 py-1 text-center",
+    title: "Rake (owner/GOD only)"
+  }, React.createElement("span", {
+    className: "text-[9px] text-purple-300 font-bold block leading-none mb-0.5"
+  }, "RAKE"), React.createElement("span", {
+    className: "text-purple-300 font-black text-sm leading-none",
+    dir: "ltr"
+  }, (setts.rakeMode || 'pct') === 'flat' ? formatShort(T.feeAcc || 0) : formatShort(round2(bank * (Number(setts.rakePct) || 0) / 100)))))), React.createElement("div", {
+    className: "flex-1 min-h-0 overflow-y-auto scrollable-content px-3 pb-3"
+  }, phase === 'waiting' && React.createElement("div", {
+    className: "max-w-md mx-auto pt-4 space-y-3 animate-fade-in"
+  }, React.createElement("div", {
+    className: "glass-panel rounded-2xl p-4 border border-amber-500/20"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, React.createElement("h3", {
+    className: "font-black text-white"
+  }, "🎱 ", variant === '75' ? '75-Ball Bingo' : '90-Ball Bingo'), React.createElement("span", {
+    className: "text-[10px] font-black text-slate-400"
+  }, drawRate > 0 ? `⏱ ball every ${drawRate}s` : '⏱ manual calling')), React.createElement("div", {
+    className: "flex flex-wrap gap-1.5"
+  }, activePats.map(pat => React.createElement("span", {
+    key: pat,
+    className: "inline-flex items-center gap-1.5 bg-slate-950/60 border border-white/10 rounded-full px-2.5 py-1 text-[10px] font-black text-slate-300"
+  }, React.createElement(BingoPatternIcon, {
+    variant: variant,
+    pattern: pat
+  }), fmtPat(pat), " · ", Number((setts.prizeSplit || {})[pat]) || 0, "%")), React.createElement("span", {
+    className: "inline-flex items-center gap-1 bg-slate-950/60 border border-white/10 rounded-full px-2.5 py-1 text-[10px] font-black text-slate-300"
+  }, "🎟️ ", formatMoney(price), flatFee > 0 ? ` +${formatMoney(flatFee)} fee` : '', " · up to ", maxCards))), React.createElement("div", {
+    className: "glass-panel rounded-2xl p-4 border border-emerald-500/25"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-3"
+  }, React.createElement("h3", {
+    className: "font-black text-white text-sm"
+  }, "🎟️ Buy cards"), React.createElement("span", {
+    className: "text-[11px] font-bold text-slate-400"
+  }, "You have ", myCount, "/", maxCards)), myCount >= maxCards ? React.createElement("div", {
+    className: "text-center text-emerald-300 text-xs font-black py-1"
+  }, "✓ You're holding the max for this table") : React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, React.createElement("button", {
+    onClick: () => setBuyCount(c => Math.max(1, c - 1)),
+    className: "w-11 h-11 rounded-xl bg-slate-800 border border-white/10 text-white font-black text-lg"
+  }, "−"), React.createElement("input", {
+    type: "number",
+    inputMode: "numeric",
+    min: "1",
+    max: String(maxCards - myCount),
+    value: buyCount,
+    onChange: e => setBuyCount(Math.max(1, Math.min(maxCards - myCount, Math.floor(Number(e.target.value) || 1)))),
+    className: "w-16 bg-slate-950 border border-white/10 rounded-xl px-2 py-2.5 text-white font-black text-center outline-none focus:border-emerald-500/60",
+    dir: "ltr"
+  }), React.createElement("button", {
+    onClick: () => setBuyCount(c => Math.min(maxCards - myCount, c + 1)),
+    className: "w-11 h-11 rounded-xl bg-slate-800 border border-white/10 text-white font-black text-lg"
+  }, "+"), React.createElement("button", {
+    onClick: () => handleBuy(Math.max(1, Math.min(maxCards - myCount, buyCount))),
+    disabled: busy,
+    className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3 rounded-xl font-black shadow-lg disabled:opacity-50"
+  }, "Buy · ", formatMoney(round2(perCard * Math.max(1, Math.min(maxCards - myCount, buyCount)))))), (user.balance || 0) < perCard && myCount === 0 && React.createElement("div", {
+    className: "text-rose-300 text-[11px] font-bold mt-2"
+  }, "Not enough balance for a card")), myCards.length > 0 && React.createElement("div", {
+    className: "space-y-2"
+  }, React.createElement("h4", {
+    className: "text-[11px] font-black text-slate-400 uppercase tracking-widest"
+  }, "My cards (", myCards.length, ")"), myCards.map(c => React.createElement(BingoCardView, {
+    key: c.id,
+    variant: variant,
+    nums: c.nums,
+    marked: new Set(),
+    lastBall: null
+  }))), React.createElement("div", {
+    className: "glass-panel rounded-2xl p-4 border border-white/10"
+  }, React.createElement("h4", {
+    className: "text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2"
+  }, "Players (", seatedList.length, "/", Number(setts.maxPlayers) || 0, ") · ", totalCards, " cards"), seatedList.length === 0 && React.createElement("div", {
+    className: "text-slate-500 text-xs font-bold"
+  }, "Nobody bought a card yet — be the first 🎟️"), seatedList.map(p => React.createElement("div", {
+    key: p.uid,
+    className: "flex items-center gap-2 py-1.5 border-b border-white/5 last:border-0"
+  }, React.createElement("img", {
+    src: avatarUrl(p),
+    className: `w-7 h-7 rounded-full border ${p.isBot ? 'border-purple-500' : 'border-slate-600'} bg-slate-700`
+  }), React.createElement("span", {
+    className: "flex-1 text-xs font-bold text-slate-200 truncate"
+  }, p.name, p.uid === T.hostUid ? ' 👑' : ''), React.createElement("span", {
+    className: "text-[11px] font-black text-amber-300"
+  }, "🎟️ ", p.cardCount || 0), canManage && p.uid !== user.uid && React.createElement("button", {
+    onClick: () => handleKick(p.uid),
+    className: "w-6 h-6 rounded-lg text-slate-500 hover:text-rose-400 text-[10px]"
+  }, React.createElement("i", {
+    className: "fa-solid fa-xmark"
+  })))), canDrive && React.createElement("button", {
+    onClick: handleStart,
+    disabled: busy || seatedList.filter(p => (p.cardCount || 0) > 0).length < 2,
+    className: "w-full mt-3 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 py-3.5 rounded-2xl font-black shadow-lg disabled:opacity-40"
+  }, "🎱 Start the draw"), canDrive && seatedList.filter(p => (p.cardCount || 0) > 0).length < 2 && React.createElement("div", {
+    className: "text-center text-[10px] text-slate-500 font-bold mt-1"
+  }, "Need at least 2 players with cards"))), phase === 'drawing' && React.createElement("div", {
+    className: "max-w-md mx-auto pt-3 space-y-3 animate-fade-in"
+  }, React.createElement("div", {
+    className: "flex items-center justify-center gap-3"
+  }, React.createElement("div", {
+    className: "flex flex-col items-center"
+  }, T.lastBall ? React.createElement(BingoBall, {
+    variant: variant,
+    n: T.lastBall,
+    size: "xl"
+  }) : React.createElement("div", {
+    className: "w-[78px] h-[78px] rounded-full border-2 border-dashed border-white/15 flex items-center justify-center text-slate-600 font-black"
+  }, "🎱"), React.createElement("span", {
+    className: "text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1"
+  }, T.pauseUntil && nowMs < T.pauseUntil ? '🔔 Winner!' : 'Current ball')), React.createElement("div", {
+    className: "flex flex-col gap-1.5"
+  }, React.createElement("div", {
+    className: "flex gap-1.5 items-center"
+  }, called.slice(-5, -1).reverse().map(n => React.createElement(BingoBall, {
+    key: n,
+    variant: variant,
+    n: n,
+    size: "sm",
+    dim: true
+  })), called.length < 2 && React.createElement("span", {
+    className: "text-[10px] text-slate-600 font-bold"
+  }, "previous balls…")), drawRate > 0 ? React.createElement("div", {
+    className: "bg-slate-950/70 border border-white/10 rounded-xl px-3 py-1.5 text-center"
+  }, React.createElement("span", {
+    className: "text-[9px] text-slate-400 font-bold block"
+  }, "⏱ next ball in"), React.createElement("span", {
+    className: "text-sky-300 font-black text-lg leading-none"
+  }, nextIn === null ? '—' : nextIn + 's')) : canDrive ? React.createElement("button", {
+    onClick: handleDrawNow,
+    className: "bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white px-4 py-2 rounded-xl font-black text-xs shadow-lg"
+  }, "🎱 Call next ball") : React.createElement("span", {
+    className: "text-[10px] text-slate-500 font-bold"
+  }, "The caller draws manually"), canDrive && drawRate > 0 && React.createElement("button", {
+    onClick: handleDrawNow,
+    className: "text-[10px] text-sky-400 font-black"
+  }, "⏩ draw now"))), React.createElement("div", {
+    className: "flex flex-wrap gap-1.5 justify-center"
+  }, activePats.map(pat => {
+    const won = wonPatterns[pat];
+    return React.createElement("span", {
+      key: pat,
+      className: `inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black border ${won ? 'bg-emerald-900/40 border-emerald-500/40 text-emerald-300' : 'bg-slate-950/60 border-white/10 text-slate-300'}`
+    }, React.createElement(BingoPatternIcon, {
+      variant: variant,
+      pattern: pat
+    }), fmtPat(pat), won ? ` ✓ ${(won.winners || []).map(w => w.name).join(', ')}` : ` · ${formatMoney(prizeOf(pat))}`);
+  })), React.createElement("div", {
+    className: "glass-panel rounded-2xl border border-white/10 overflow-hidden"
+  }, React.createElement("button", {
+    onClick: () => setShowBoard(!showBoard),
+    className: "w-full flex items-center justify-between px-4 py-2.5 text-[11px] font-black text-slate-300"
+  }, React.createElement("span", null, "📋 Called board · ", called.length, "/", BINGO_BALLS[variant]), React.createElement("i", {
+    className: `fa-solid fa-chevron-${showBoard ? 'up' : 'down'} text-slate-500`
+  })), showBoard && React.createElement("div", {
+    className: "px-3 pb-3"
+  }, React.createElement(BingoBoard, {
+    variant: variant,
+    called: called,
+    lastBall: T.lastBall
+  }))), myCards.length > 0 ? React.createElement("div", {
+    className: "space-y-2.5 pb-28"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, React.createElement("h4", {
+    className: "text-[11px] font-black text-slate-400 uppercase tracking-widest"
+  }, "🎟️ My cards (", myCards.length, ")"), React.createElement("button", {
+    onClick: toggleAutoDaub,
+    className: `text-[10px] font-black px-2.5 py-1 rounded-full border ${autoDaub ? 'bg-emerald-900/40 border-emerald-500/40 text-emerald-300' : 'bg-slate-800 border-white/10 text-slate-400'}`
+  }, autoDaub ? '✅ Auto-daub' : '👆 Manual daub')), myCards.map(c => {
+    const mk = marksFor(c);
+    const nearest = activePats.filter(p => !wonPatterns[p]).map(p => bingoMissingFor(variant, c.nums, calledSet, p));
+    const near = nearest.length ? Math.min(...nearest) : 99;
+    return React.createElement("div", {
+      key: c.id,
+      className: near === 1 ? 'relative rounded-xl ring-2 ring-amber-400/70 shadow-[0_0_16px_rgba(245,200,96,0.25)]' : 'relative'
+    }, React.createElement(BingoCardView, {
+      variant: variant,
+      nums: c.nums,
+      marked: mk,
+      lastBall: T.lastBall,
+      onCell: autoDaub ? null : n => tapCell(c.id, n)
+    }), near === 1 && React.createElement("span", {
+      className: "absolute -top-2 left-2 bg-amber-400 text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full shadow"
+    }, "🔥 ONE TO GO"));
+  })) : React.createElement("div", {
+    className: "text-center text-slate-500 text-xs font-bold py-6"
+  }, "👁 Watching · you have no cards this round")), phase === 'showdown' && !res && React.createElement("div", {
+    className: "text-center text-slate-400 text-sm font-bold py-10"
+  }, "Settling the round…"), godView && godData && React.createElement("div", {
+    className: "max-w-md mx-auto mt-3 glass-panel rounded-2xl p-4 border border-purple-500/40 space-y-3"
+  }, React.createElement("h4", {
+    className: "text-[11px] font-black text-purple-300 uppercase tracking-widest"
+  }, "👁 GOD · all cards"), Object.entries(godData.cards || {}).map(([uid, cards]) => React.createElement("div", {
+    key: uid
+  }, React.createElement("div", {
+    className: "text-[10px] font-black text-slate-400 mb-1"
+  }, players[uid]?.name || uid, " · ", cards.length, " cards"), React.createElement("div", {
+    className: "grid grid-cols-2 gap-1.5"
+  }, cards.map(c => React.createElement(BingoCardView, {
+    key: c.id,
+    variant: variant,
+    nums: c.nums,
+    marked: calledSet,
+    lastBall: T.lastBall,
+    small: true
+  }))))), (godData.order || []).length > 0 && React.createElement("div", null, React.createElement("div", {
+    className: "text-[10px] font-black text-slate-400 mb-1"
+  }, "🎱 Next balls in the bag"), React.createElement("div", {
+    className: "text-[10px] font-bold text-purple-200 break-all",
+    dir: "ltr"
+  }, (godData.order || []).slice(called.length, called.length + 15).join(' · '), " …")))), phase === 'drawing' && isSeated && myCards.length > 0 && React.createElement("div", {
+    className: "shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 px-4 pt-2.5 pb-3.5 z-40"
+  }, React.createElement("button", {
+    onClick: handleClaim,
+    disabled: busy,
+    className: `w-full py-4 rounded-2xl font-black text-lg transition-all ${canClaim ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 shadow-[0_0_25px_rgba(245,200,96,0.5)] animate-pulse' : 'bg-slate-800 text-slate-500 border border-white/10'}`
+  }, "🔔 BINGO!", canClaim ? ' · ' + claimable.map(fmtPat).join(' + ') : ''), oneToGo && !canClaim && React.createElement("div", {
+    className: "text-center text-amber-300 text-[10px] font-black mt-1"
+  }, "🔥 One number to go — ", fmtPat(oneToGo.pattern), "!")), phase === 'showdown' && res && !resHide && React.createElement("div", {
+    className: "absolute inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+  }, React.createElement("div", {
+    className: "glass-panel rounded-3xl p-5 w-full max-w-sm text-center animate-pop-in border border-amber-500/40 max-h-[85%] overflow-y-auto scrollable-content"
+  }, res.cancelled ? React.createElement(React.Fragment, null, React.createElement("div", {
+    className: "text-5xl mb-2"
+  }, "↩️"), React.createElement("h3", {
+    className: "text-xl font-black text-white mb-1"
+  }, "Round cancelled"), React.createElement("p", {
+    className: "text-slate-400 text-xs font-bold mb-3"
+  }, "Everyone left — all purchases were refunded")) : React.createElement(React.Fragment, null, React.createElement("i", {
+    className: "fa-solid fa-trophy text-4xl text-amber-400 mb-2"
+  }), React.createElement("h3", {
+    className: "text-xl font-black text-white mb-1"
+  }, "🏆 Round results"), React.createElement("div", {
+    className: "text-[11px] font-bold text-slate-400 mb-3"
+  }, "Pot ", formatMoney(res.pot || 0), " · ", res.calledCount || 0, " balls called")), !res.cancelled && React.createElement("div", {
+    className: "space-y-2.5 text-left mb-4"
+  }, Object.entries(res.patterns || {}).map(([pat, x]) => React.createElement("div", {
+    key: pat,
+    className: "bg-slate-950/60 rounded-2xl border border-white/5 p-3"
+  }, React.createElement("div", {
+    className: "flex items-center justify-between mb-1.5"
+  }, React.createElement("span", {
+    className: "inline-flex items-center gap-1.5 text-xs font-black text-slate-200"
+  }, React.createElement(BingoPatternIcon, {
+    variant: variant,
+    pattern: pat
+  }), fmtPat(pat), x.ball ? React.createElement("span", {
+    className: "text-slate-500"
+  }, " · ball #", x.idx) : null), React.createElement("span", {
+    className: "text-emerald-400 font-black text-xs",
+    dir: "ltr"
+  }, x.winners && x.winners.length ? "+" + formatMoney(x.share) : '—')), (x.winners || []).map((w, i) => React.createElement("div", {
+    key: i,
+    className: "mt-1.5"
+  }, React.createElement("div", {
+    className: "text-[11px] font-black text-emerald-300 mb-1"
+  }, "🏆 ", w.name, w.uid === user.uid ? ' (you!)' : ''), (w.nums || []).length > 0 && React.createElement(BingoCardView, {
+    variant: variant,
+    nums: w.nums,
+    marked: new Set(res.order ? res.order.slice(0, res.calledCount || 0) : []),
+    lastBall: x.ball,
+    small: true
+  })))))), !res.cancelled && res.fairHash && React.createElement("div", {
+    className: "text-left mb-3"
+  }, React.createElement("button", {
+    onClick: () => setShowVerify(!showVerify),
+    className: "text-[10px] font-black text-sky-400"
+  }, "🔍 ", showVerify ? 'Hide' : 'Verify fairness'), showVerify && React.createElement("div", {
+    className: "mt-1.5 bg-slate-950/70 rounded-xl border border-white/10 p-2.5 text-[9px] font-bold text-slate-400 break-all",
+    dir: "ltr"
+  }, React.createElement("div", {
+    className: "mb-1"
+  }, React.createElement("b", {
+    className: "text-slate-300"
+  }, "Committed hash (before ball 1): "), res.fairHash), React.createElement("div", {
+    className: "mb-1"
+  }, React.createElement("b", {
+    className: "text-slate-300"
+  }, "Seed: "), res.seed), React.createElement("div", null, React.createElement("b", {
+    className: "text-slate-300"
+  }, "Full draw order: "), (res.order || []).join(',')), React.createElement("div", {
+    className: "mt-1 text-slate-500"
+  }, "sha256(order + \"|\" + seed) must equal the committed hash."))), React.createElement("div", {
+    className: "flex gap-2"
+  }, canDrive && React.createElement("button", {
+    onClick: handleNewRound,
+    className: "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black text-sm"
+  }, "New round"), isSeated && React.createElement("button", {
+    onClick: () => {
+      window.fb.updateDoc(tblRef(), {
+        [`players.${user.uid}.stayAt`]: Date.now()
+      }).catch(() => {});
+      setResHide(true);
+    },
+    className: "flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-black text-sm border border-slate-500"
+  }, "Stay 🔄 (", stayLeft, ")"), React.createElement("button", {
+    onClick: handleLeave,
+    className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3 rounded-xl font-black text-sm border border-white/10"
+  }, "Leave 🚪")))), React.createElement("button", {
+    onClick: () => ch.setChatOpen(!ch.chatOpen),
+    className: "absolute bottom-24 left-3 z-[60] w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl"
+  }, React.createElement("i", {
+    className: "fa-solid fa-comment-dots"
+  })), ch.chatOpen && React.createElement(ChatPanel, {
+    chat: ch.chatArr,
+    meUid: user.uid,
+    onSend: ch.sendChat,
+    onClose: () => ch.setChatOpen(false),
+    className: "bottom-24 left-3",
+    targets: Object.values(players).filter(p => p.uid !== user.uid).map(p => ({
+      uid: p.uid,
+      name: p.name
+    })),
+    mutedUids: ch.mutedUids,
+    onToggleMuteUid: ch.toggleMuteUid,
+    canModerate: ch.canModerate,
+    chatMuted: ch.chatMuted,
+    onToggleTableMute: ch.toggleTableMute
+  }), React.createElement(HelpButton, {
+    game: "bingo",
+    cls: "bottom-24 right-3"
+  }));
+}
+/* ═══ /BINGO ═══ */
 const TOUR_SIZE = 6;
 const TOUR_SIZES = {
   poker: 6,

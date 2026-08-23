@@ -19,6 +19,10 @@ const db = getFirestore();
 // Requires the app to be initialized first, hence the require after initializeApp.
 Object.assign(exports, require("./pokerEngine"));
 
+// Server-authoritative bingo engine (bingoBuy/bingoStart/bingoTick/bingoDraw/
+// bingoClaim/bingoLeave/bingoNewRound/bingoPeek) — see bingoEngine.js.
+Object.assign(exports, require("./bingoEngine"));
+
 const BONUS_COOLDOWN_MS = 22 * 3600 * 1000;          // כמו בלקוח
 const BONUS_WEIGHTS = [800, 100, 35, 25, 18, 12, 5, 5];
 const DEFAULT_PRIZES = [5, 10, 20, 30, 50, 75, 100, 200];

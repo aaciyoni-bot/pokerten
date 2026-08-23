@@ -48,8 +48,13 @@ service cloud.firestore {
 
     match /tables/{id}       { allow read, write: if signedIn(); }
 
-    // Server-engine private data: a player may read ONLY their own hole cards.
-    // The deck/engine doc (_engine) and everyone else's cards are server-only.
+    // Server-engine private data: a player may read ONLY their own hole cards
+    // (poker) / own bingo cards. The deck/engine doc (_engine — poker deck, or
+    // the bingo draw order + seed) and everyone else's cards are server-only.
+    // This is what makes bingo provably fair: the future ball order is
+    // unreadable by ANY client, GOD included (GOD reads via the bingoPeek
+    // Cloud Function). Money for bingo (bank/balance) moves only in
+    // bingoBuy/bingoTick/bingoLeave — the same server-authoritative model.
     // No client ever writes here — only Cloud Functions (admin SDK bypasses rules).
     match /tables/{id}/priv/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;

@@ -589,6 +589,8 @@
     unsubRoster: null,
     roster: {}, rosterLc: {},   // background reference registry (import)
     rosterMatol: {}, rosterKela: {}, // per-sheet scoped registries (מטול / קלעים)
+    people: {},            // pn -> {n, c, role} from ammo_people (admins only)
+    unsubPeople: null,
     unsubData: [],
     dataScope: ''          // which role/group the data listeners were opened for
   };
@@ -1080,6 +1082,12 @@
         var a = []; qs.forEach(function (d) { a.push(d.data()); });
         a.sort(function (x, y) { return (y.ts || 0) - (x.ts || 0); });
         S.entryLog = a;
+        if (S.tab === 'admin') renderAdmin();
+      }, function () {}));
+      // people roster — powers the admin search (name / personal number)
+      S.unsubData.push(fb.onSnapshot(fb.collection(db, 'ammo_people'), function (qs) {
+        var m = {}; qs.forEach(function (d) { m[d.id] = d.data(); });
+        S.people = m;
         if (S.tab === 'admin') renderAdmin();
       }, function () {}));
     }
@@ -2097,6 +2105,85 @@
   }
 
   /* ═══════════ ADMIN screen ═══════════ */
+  // Merged directory for the admin search: everyone in the system (ammo_people,
+  // with a role) plus the imported שלישות roster (reference only). Keyed by
+  // personal number so a person listed in both appears once, marked "in system".
+  function peopleIndex() {
+    var idx = {};
+    Object.keys(S.people || {}).forEach(function (pn) {
+      var p = S.people[pn] || {};
+      idx[pn] = { pn: pn, n: p.n || '', c: p.c || '', role: p.role || 'soldier', inSystem: true };
+    });
+    Object.keys(S.roster || {}).forEach(function (k) {
+      var r = S.roster[k] || {};
+      var pn = String(r.mi == null ? '' : r.mi).trim();
+      if (!pn) return;
+      if (idx[pn]) { // fill gaps from roster without overriding system data
+        if (!idx[pn].n) idx[pn].n = r.n || '';
+        if (!idx[pn].c) idx[pn].c = r.c || '';
+        return;
+      }
+      idx[pn] = { pn: pn, n: r.n || '', c: r.c || '', role: null, inSystem: false };
+    });
+    return idx;
+  }
+  var ROLE_HE = { armon: 'ארמון', admin: 'מנהל', soldier: 'חייל' };
+  function renderAdmSearch() {
+    var box = $('admSearchRes'); if (!box) return;
+    var inp = $('admSearch');
+    var q = (inp && inp.value || '').trim();
+    if (!q) { box.innerHTML = '<div style="font-size:12px;color:#6b7f72">הקלד שם או מספר אישי כדי לחפש. תוצאות מתוך המערכת והשלישות.</div>'; return; }
+    var qlc = q.toLowerCase();
+    var digits = q.replace(/\D/g, '');
+    var idx = peopleIndex();
+    var out = Object.keys(idx).map(function (pn) { return idx[pn]; }).filter(function (p) {
+      var byNum = digits && p.pn.indexOf(digits) >= 0;
+      var byName = p.n && p.n.toLowerCase().indexOf(qlc) >= 0;
+      return byNum || byName;
+    });
+    // in-system first, then by name
+    out.sort(function (a, b) {
+      if (a.inSystem !== b.inSystem) return a.inSystem ? -1 : 1;
+      return (a.n || '').localeCompare(b.n || '', 'he');
+    });
+    var total = out.length;
+    if (!total) { box.innerHTML = '<div style="font-size:13px;color:#6b7f72">לא נמצאו תוצאות עבור "' + esc(q) + '"</div>'; return; }
+    var armon = isArmon();
+    var h = out.slice(0, 40).map(function (p) {
+      var badge = p.role
+        ? '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;' +
+          (p.role === 'armon' ? 'background:#fde68a;color:#7c2d12' : p.role === 'admin' ? 'background:#dbeafe;color:#1e3a8a' : 'background:#dcfce7;color:#166534') +
+          '">' + ROLE_HE[p.role] + '</span>'
+        : '<span style="font-size:11px;color:#94a3b8;padding:2px 8px;border-radius:999px;background:#f1f5f9">שלישות</span>';
+      var loadBtn = armon
+        ? '<button class="btn-mini" data-loadp="' + esc(p.pn) + '" style="margin-top:0">✏️ טען לעריכה</button>'
+        : '';
+      return '<div class="usage-row" style="align-items:center">' +
+        '<div><b>' + esc(p.n || '—') + '</b> ' + badge +
+        '<div class="m" style="direction:ltr;text-align:right">מ.א ' + esc(p.pn) + (p.c ? ' · ' + esc(p.c) : '') + '</div></div>' +
+        '<div>' + loadBtn + '</div></div>';
+    }).join('');
+    if (total > 40) h += '<div style="font-size:12px;color:#6b7f72;text-align:center;margin-top:6px">מוצגות 40 מתוך ' + total + ' — צמצם את החיפוש</div>';
+    box.innerHTML = h;
+    if (armon) {
+      box.querySelectorAll('[data-loadp]').forEach(function (b) {
+        b.onclick = function () {
+          var pn = b.getAttribute('data-loadp');
+          var p = peopleIndex()[pn]; if (!p) return;
+          var e;
+          if ((e = $('ppPn'))) e.value = pn;
+          if ((e = $('ppName'))) e.value = p.n || '';
+          if ((e = $('ppCo'))) e.value = p.c || '';
+          if ((e = $('ppRole'))) e.value = p.role || 'soldier';
+          if ((e = $('ppPin'))) e.value = '';
+          var form = $('ppPn');
+          if (form) { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+          toast('נטען לעריכה: ' + (p.n || pn));
+        };
+      });
+    }
+  }
+
   function renderAdmin() {
     var ae = document.activeElement;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT') && $('scrAdmin').contains(ae)) {
@@ -2212,6 +2299,12 @@
     var h = '<datalist id="identlist">' + identOpts + '</datalist>' +
       '<datalist id="identlist_matol">' + dlOpts(S.rosterMatol) + '</datalist>' +
       '<datalist id="identlist_kela">' + dlOpts(S.rosterKela) + '</datalist>';
+    // search — find a person fast by name or personal number (top of ניהול).
+    // ARMON gets a "load to edit" action that prefills the people form below.
+    h += '<div class="card"><h3>🔎 חיפוש</h3>' +
+      '<input type="search" id="admSearch" placeholder="שם או מספר אישי..." autocomplete="off" ' +
+      'style="width:100%;font-size:16px;padding:11px 12px;border:1.5px solid var(--line);border-radius:12px;box-sizing:border-box">' +
+      '<div id="admSearchRes" style="margin-top:8px"></div></div>';
     // unit picker — available to every admin (drives שצ״ל, central report, etc.)
     h += '<div class="card"><h3>🗂️ יחידה נבחרת</h3><label class="fld">יחידה</label>' +
       unitSelectHtml('aUnit', S.adminUnit) + '</div>';
@@ -2351,6 +2444,7 @@
       '<a class="btn-ghost" style="display:block;text-align:center;text-decoration:none" href="/qr.html" target="_blank" rel="noopener">🖨️ פתיחת דף הקודים להדפסה</a></div>';
 
     $('scrAdmin').innerHTML = h;
+    if ($('admSearch')) { $('admSearch').oninput = renderAdmSearch; renderAdmSearch(); }
     var sel = $('aUnit'); sel.value = S.adminUnit;
     sel.onchange = function () { S.adminUnit = sel.value; renderAdmin(); };
     if ($('btnStock')) $('btnStock').onclick = saveStock;

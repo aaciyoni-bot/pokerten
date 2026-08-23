@@ -307,7 +307,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getAuth, signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, collection, doc, getDoc, setDoc, onSnapshot, addDoc, deleteDoc, query, where } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFirestore, collection, doc, getDoc, setDoc, onSnapshot, addDoc, deleteDoc, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyC1MuCmX0bUAW6XakFzkqS8LHVxkDRTrfo",
@@ -323,7 +323,7 @@
   // Soldiers enter with an invisible anonymous session (no account, no password,
   // works on any domain). Admins upgrade with email+password — that difference
   // is what the Firestore rules use to gate quantity edits server-side.
-  window.fb = { auth: _auth, db: getFirestore(app), signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, collection, doc, getDoc, setDoc, onSnapshot, addDoc, deleteDoc, query, where };
+  window.fb = { auth: _auth, db: getFirestore(app), signInAnonymously, signInWithEmailAndPassword, onAuthStateChanged, signOut, collection, doc, getDoc, setDoc, onSnapshot, addDoc, deleteDoc, query, where, writeBatch };
   // Keep the session on THIS device: an admin who logged in stays logged in
   // across reloads and app relaunches until they explicitly tap התנתקות.
   setPersistence(_auth, browserLocalPersistence)
@@ -591,6 +591,8 @@
     rosterMatol: {}, rosterKela: {}, // per-sheet scoped registries (מטול / קלעים)
     people: {},            // pn -> {n, c, role} from ammo_people (admins only)
     unsubPeople: null,
+    audits: [],            // audit reports (ammo_audit) — admins
+    xferSrc: '', xferItem: '', // transfer picker state (company commander / armon)
     unsubData: [],
     dataScope: ''          // which role/group the data listeners were opened for
   };
@@ -669,6 +671,11 @@
   // Only ARMON manages inventory quantities, the חמ״ל-report reset, and the
   // people/PIN table. Viewer-admins may see everything but never edit stock.
   function isArmon() { return !!S.person && S.person.role === 'armon'; }
+  // A מפקד פלוגה (company commander) carries a `cmd` group and may move stock
+  // BETWEEN frameworks of that company. ARMON may transfer within any company.
+  function myCmdGroup() { return (S.person && S.person.cmd) || ''; }
+  function canTransfer() { return isArmon() || !!myCmdGroup(); }
+  function companyUnits(g) { return UNITS.filter(function (u) { return u.grp === g; }); }
   function myGroups() {
     if (S.role === 'admin') return ['a', 'b', 'd', 'bn'];
     return S.role ? [S.role] : [];
@@ -927,7 +934,7 @@
     fb.setDoc(fb.doc(fb.db, 'ammo_gate', fb.auth.currentUser.uid), payload).then(function () {
       if (btn) btn.disabled = false;
       _reprompt = false;
-      S.person = { pn: p.pn, n: p.n || '', c: p.c || '', role: p.role || 'soldier' };
+      S.person = { pn: p.pn, n: p.n || '', c: p.c || '', role: p.role || 'soldier', cmd: p.cmd || '' };
       try { localStorage.setItem('yb_pn', p.pn); } catch (e) {}
       S.gateOK = true; subscribeMeta();
       if (S.person.role === 'admin' || S.person.role === 'armon') {
@@ -1088,6 +1095,13 @@
       S.unsubData.push(fb.onSnapshot(fb.collection(db, 'ammo_people'), function (qs) {
         var m = {}; qs.forEach(function (d) { m[d.id] = d.data(); });
         S.people = m;
+        if (S.tab === 'admin') renderAdmin();
+      }, function () {}));
+      // audit reports (ביקורת)
+      S.unsubData.push(fb.onSnapshot(fb.collection(db, 'ammo_audit'), function (qs) {
+        var a = []; qs.forEach(function (d) { var x = d.data(); x.id = d.id; a.push(x); });
+        a.sort(function (x, y) { return (y.ts || 0) - (x.ts || 0); });
+        S.audits = a;
         if (S.tab === 'admin') renderAdmin();
       }, function () {}));
     }
@@ -1558,8 +1572,13 @@
     var priv = role === 'admin' || role === 'armon';
     if (priv && !pin) pin = pn.slice(-4);   // default: last 4 digits of the personal number
     if (priv && pin.replace(/[^0-9]/g, '').length < 4) { toast('קוד אישי למנהל — לפחות 4 ספרות'); return; }
+    // company-commander flag → the company group he may transfer within
+    var wantCmd = $('ppCmd') && $('ppCmd').checked;
+    var cmd = wantCmd ? companyGroup(c) : '';
+    if (wantCmd && role === 'soldier') { toast('מפקד פלוגה חייב תפקיד מנהל או ארמון'); return; }
+    var doc = { n: n, c: c, role: role }; if (cmd) doc.cmd = cmd;
     var fb = window.fb, btn = $('btnSavePerson'); btn.disabled = true;
-    var writes = [fb.setDoc(fb.doc(fb.db, 'ammo_people', pn), { n: n, c: c, role: role })];
+    var writes = [fb.setDoc(fb.doc(fb.db, 'ammo_people', pn), doc)];
     if (priv) writes.push(fb.setDoc(fb.doc(fb.db, 'ammo_pin', pn), { pin: pin }));
     Promise.all(writes).then(function () {
       btn.disabled = false;
@@ -2248,12 +2267,193 @@
           if ((e = $('ppCo'))) e.value = p.c || '';
           if ((e = $('ppRole'))) e.value = p.role || 'soldier';
           if ((e = $('ppPin'))) e.value = '';
+          if ((e = $('ppCmd'))) e.checked = !!(S.people[pn] && S.people[pn].cmd);
           var form = $('ppPn');
           if (form) { form.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
           toast('נטען לעריכה: ' + (p.n || pn));
         };
       });
     }
+  }
+
+  // items a framework actually holds (for audit checklist / transfer picker)
+  function itemsHeld(uid) {
+    var out = [];
+    ammoList().forEach(function (it) { var q = qtyIn(uid, 'ammo', it.id); if (q > 0) out.push({ kind: 'ammo', id: it.id, name: it.name, q: q }); });
+    equipList().forEach(function (it) { var q = qtyIn(uid, 'equip', it.id); if (q > 0) out.push({ kind: 'equip', id: it.id, name: it.name, q: q }); });
+    return out;
+  }
+  var AUD_BOX = 'max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:4px 6px';
+  var AUD_ROW = 'display:flex;align-items:center;gap:9px;padding:8px 4px;border-bottom:1px solid #f0f4f1;font-size:14px;cursor:pointer';
+
+  /* ─── audit (ביקורת) ─── */
+  function auditCardHtml() {
+    var uid = S.adminUnit, u = UNIT_BY_ID[uid];
+    var held = itemsHeld(uid);
+    var h = '<div class="card"><h3>✅ ביקורת — ' + esc(u ? u.name : '') + '</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">ביקורת של מבקר (מנהל / ארמון) מול גורם במסגרת. סמן שהכל קיים, ציין מול מי ומתי — ונשמר דוח ביקורת.</div>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">מבקר: <b>' + esc(S.person ? S.person.n : '') + '</b>' + (S.person && S.person.pn ? ' · מ.א ' + esc(S.person.pn) : '') + '</div>' +
+      '<div class="grid2">' +
+      '<div><label class="fld">מול מי במסגרת</label><input type="text" id="audWith" placeholder="שם / תפקיד (מ״פ, אחראי נשק...)"></div>' +
+      '<div><label class="fld">תאריך</label><input type="date" id="audDate" value="' + todayIso() + '" min="' + START + '" max="' + END + '"></div>' +
+      '</div>';
+    if (!held.length) {
+      h += '<div style="font-size:13px;color:#6b7f72;padding:6px 0">אין מלאי מוגדר למסגרת זו — אפשר לשמור ביקורת עם הערה בלבד.</div>';
+    } else {
+      h += '<label class="fld">סימון פריטים <span style="font-weight:400;color:#6b7f72">(מסומן = קיים תקין)</span></label>' +
+        '<div style="display:flex;gap:6px;margin-bottom:5px"><button class="btn-mini" id="audAll" type="button" style="margin:0">✓ הכל תקין</button><button class="btn-mini" id="audNone" type="button" style="margin:0">נקה</button></div>' +
+        '<div style="' + AUD_BOX + '">';
+      held.forEach(function (it) {
+        h += '<label style="' + AUD_ROW + '"><input type="checkbox" data-audk="' + it.kind + '" data-audi="' + it.id + '" checked style="width:18px;height:18px;flex:none">' +
+          '<span>' + esc(it.name) + sensTag(it.id) + ' <span class="m">· ' + it.q + ' יח׳</span></span></label>';
+      });
+      h += '</div>';
+    }
+    h += '<label class="fld" style="margin-top:8px">הערות (לא חובה)</label><input type="text" id="audNote" placeholder="ממצאים / חוסרים / הערות">' +
+      '<button class="btn-primary" id="btnAudit">💾 שמירת דוח ביקורת</button>';
+    var hist = S.audits.filter(function (a) { return a.unitId === uid; }).slice(0, 20);
+    h += '<div style="font-size:12px;font-weight:800;margin:12px 0 4px;color:#1b4332">דוחות ביקורת אחרונים (' + hist.length + ')</div>';
+    if (!hist.length) h += '<div style="font-size:12px;color:#6b7f72">אין ביקורות למסגרת זו</div>';
+    hist.forEach(function (a) {
+      var ok = a.allPresent;
+      var res = ok ? '<span style="color:#166534;font-weight:800">✓ הכל תקין</span>'
+        : '<span style="color:#b91c1c;font-weight:800">' + ((a.missing && a.missing.length) || 0) + ' חוסרים</span>';
+      var delBtn = '<button class="btn-mini" data-auddel="' + esc(a.id) + '" style="margin:0">✕</button>';
+      h += '<div class="usage-row" style="align-items:center"><div><b>' + esc(a.date || '') + '</b> — ' + res +
+        '<div class="m">מבקר: ' + esc(a.auditorName || '') + (a.with ? ' · מול ' + esc(a.with) : '') + ' · ' + fmtTime(a.ts) + (a.note ? ' · ' + esc(a.note) : '') + '</div>' +
+        (!ok && a.missing && a.missing.length ? '<div class="m" style="color:#b91c1c">חוסר: ' + a.missing.map(function (m) { return esc(m); }).join(', ') + '</div>' : '') +
+        '</div><div>' + delBtn + '</div></div>';
+    });
+    h += '</div>';
+    return h;
+  }
+  function submitAudit() {
+    var fb = window.fb, uid = S.adminUnit, u = UNIT_BY_ID[uid]; if (!u) return;
+    var withWho = ($('audWith').value || '').trim();
+    var date = ($('audDate').value || todayIso());
+    var note = ($('audNote').value || '').trim();
+    var missing = [], total = 0, checked = 0;
+    document.querySelectorAll('#scrAdmin input[data-audi]').forEach(function (cb) {
+      total++;
+      if (cb.checked) checked++;
+      else missing.push(itemName(cb.getAttribute('data-audk'), cb.getAttribute('data-audi')));
+    });
+    var btn = $('btnAudit'); btn.disabled = true;
+    fb.addDoc(fb.collection(fb.db, 'ammo_audit'), {
+      group: u.grp, unitId: uid, date: date, ts: Date.now(),
+      auditorPn: (S.person && S.person.pn) || '', auditorName: (S.person && S.person.n) || '',
+      with: withWho, allPresent: missing.length === 0, missing: missing, checked: checked, total: total, note: note
+    }).then(function () { btn.disabled = false; toast('✓ דוח ביקורת נשמר — ' + u.full); })
+      .catch(function (e) { btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
+  }
+
+  /* ─── transfer between frameworks (company commander / armon) ─── */
+  function cloneUnit(uid) {
+    var s = S.stock[uid] || {};
+    var out = { group: UNIT_BY_ID[uid].grp, ammo: {}, equip: {}, updatedBy: (S.person && S.person.n) || '', ts: Date.now() };
+    ['ammo', 'equip'].forEach(function (k) {
+      var m = s[k] || {};
+      Object.keys(m).forEach(function (iid) { out[k][iid] = JSON.parse(JSON.stringify(m[iid])); });
+    });
+    return out;
+  }
+  function transferCardHtml() {
+    var armon = isArmon(), cmdG = myCmdGroup();
+    var srcUnits = armon ? UNITS.slice() : companyUnits(cmdG);
+    if (!srcUnits.length) return '';
+    var src = (S.xferSrc && UNIT_BY_ID[S.xferSrc] && srcUnits.some(function (u) { return u.id === S.xferSrc; })) ? S.xferSrc : srcUnits[0].id;
+    var srcGrp = UNIT_BY_ID[src].grp;
+    var held = itemsHeld(src);
+    var itemKey = (S.xferItem && held.some(function (it) { return it.kind + ':' + it.id === S.xferItem; })) ? S.xferItem : (held[0] ? held[0].kind + ':' + held[0].id : '');
+    var dstUnits = companyUnits(srcGrp).filter(function (u) { return u.id !== src; });
+    var h = '<div class="card"><h3>🔁 העברה בין מסגרות</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">העברת מלאי בין מסגרות באותה פלוגה (למשל סיור → ארמון). ' +
+      (armon ? 'ARMON — בכל פלוגה.' : 'מפקד פלוגה — ' + (GROUP_NAMES[cmdG] || '') + ' בלבד.') + '</div>' +
+      '<label class="fld">מ־ (מקור)</label><select id="xfSrc">' +
+      srcUnits.map(function (u) { return '<option value="' + u.id + '"' + (u.id === src ? ' selected' : '') + '>' + esc(u.full) + '</option>'; }).join('') + '</select>';
+    if (!held.length) { h += '<div style="font-size:13px;color:#6b7f72;padding:6px 0">אין מלאי במסגרת המקור.</div></div>'; return h; }
+    h += '<label class="fld">פריט</label><select id="xfItem">' +
+      held.map(function (it) { var k = it.kind + ':' + it.id; return '<option value="' + k + '"' + (k === itemKey ? ' selected' : '') + '>' + esc(it.name) + ' · ' + it.q + ' יח׳</option>'; }).join('') + '</select>';
+    var parts = itemKey.split(':'), kind = parts[0], iid = parts[1];
+    var e = S.stock[src] && S.stock[src][kind] && S.stock[src][kind][iid];
+    var tracked = e && e.inst && e.inst.length;
+    if (tracked) {
+      h += '<label class="fld">פריטים להעברה</label><div style="' + AUD_BOX + '">';
+      e.inst.forEach(function (r, ri) {
+        var lbl = [];
+        if (r.s) lbl.push((trackOf(iid) === 'series' ? 'סדרה ' : 'צ׳ ') + r.s);
+        if (r.owner) lbl.push(r.owner);
+        if (r.id) lbl.push('מזהה ' + r.id);
+        if (r.num) lbl.push('מ.א ' + r.num);
+        var ql = (typeof r.q === 'number' && r.q > 1) ? (' · ' + r.q + ' יח׳') : '';
+        h += '<label style="' + AUD_ROW + '"><input type="checkbox" data-xfri="' + ri + '" style="width:18px;height:18px;flex:none">' +
+          '<span>' + (esc(lbl.join(' · ')) || 'פריט ' + (ri + 1)) + ql + '</span></label>';
+      });
+      h += '</div>';
+    } else {
+      var avail = qtyIn(src, kind, iid);
+      h += '<label class="fld">כמות להעברה <span style="font-weight:400;color:#6b7f72">(מתוך ' + avail + ')</span></label>' +
+        '<input type="number" id="xfQty" inputmode="numeric" min="1" max="' + avail + '" placeholder="0">';
+    }
+    h += '<label class="fld">אל (יעד)</label><select id="xfDst">' +
+      dstUnits.map(function (u) { return '<option value="' + u.id + '">' + esc(u.full) + '</option>'; }).join('') + '</select>' +
+      '<button class="btn-primary" id="btnXfer">🔁 בצע העברה</button>' +
+      '<div style="font-size:11px;color:#6b7f72;text-align:center">ההעברה מעדכנת את המלאי בשתי המסגרות מיידית.</div></div>';
+    return h;
+  }
+  function submitTransfer() {
+    var fb = window.fb;
+    var src = $('xfSrc').value, dst = $('xfDst') ? $('xfDst').value : '';
+    var itemKey = $('xfItem') ? $('xfItem').value : '';
+    if (!src || !dst || src === dst) { toast('בחר מסגרת מקור ויעד שונות'); return; }
+    if (!UNIT_BY_ID[src] || !UNIT_BY_ID[dst] || UNIT_BY_ID[src].grp !== UNIT_BY_ID[dst].grp) { toast('העברה מותרת רק בתוך אותה פלוגה'); return; }
+    if (!isArmon() && myCmdGroup() !== UNIT_BY_ID[src].grp) { toast('אין הרשאה לפלוגה זו'); return; }
+    var p = itemKey.split(':'), kind = p[0], iid = p[1];
+    var srcDoc = cloneUnit(src), dstDoc = cloneUnit(dst);
+    var se = srcDoc[kind] && srcDoc[kind][iid];
+    if (!se) { toast('הפריט לא נמצא במקור'); return; }
+    var tracked = se.inst && se.inst.length;
+    var movedQty = 0;
+    if (tracked) {
+      var sel = [];
+      document.querySelectorAll('#scrAdmin input[data-xfri]').forEach(function (cb) { if (cb.checked) sel.push(+cb.getAttribute('data-xfri')); });
+      if (!sel.length) { toast('בחר לפחות פריט אחד להעברה'); return; }
+      var keep = [], take = [];
+      se.inst.forEach(function (r, ri) { if (sel.indexOf(ri) >= 0) take.push(r); else keep.push(r); });
+      movedQty = instTotal(take);
+      if (keep.length) { se.inst = keep; se.q = instTotal(keep); } else { delete srcDoc[kind][iid]; }
+      var de = dstDoc[kind][iid] || { t: Date.now(), inst: [] };
+      if (!de.inst) de.inst = [];
+      de.inst = de.inst.concat(take); de.q = instTotal(de.inst); if (!de.t) de.t = Date.now();
+      dstDoc[kind][iid] = de;
+    } else {
+      var n = Math.floor(+($('xfQty') ? $('xfQty').value : 0) || 0);
+      var avail = (typeof se.q === 'number') ? se.q : 0;
+      if (!(n > 0)) { toast('הזן כמות חוקית'); return; }
+      if (n > avail) { toast('הכמות עולה על הזמין (' + avail + ')'); return; }
+      movedQty = n;
+      var left = avail - n;
+      if (left > 0) { se.q = left; se.t = Date.now(); } else { delete srcDoc[kind][iid]; }
+      var de2 = dstDoc[kind][iid] || { q: 0, t: Date.now() };
+      de2.q = (typeof de2.q === 'number' ? de2.q : 0) + n; de2.t = Date.now();
+      if (de2.inst) delete de2.inst;
+      dstDoc[kind][iid] = de2;
+    }
+    var btn = $('btnXfer'); btn.disabled = true;
+    var batch = fb.writeBatch(fb.db);
+    batch.set(fb.doc(fb.db, 'ammo_stock', src), srcDoc);
+    batch.set(fb.doc(fb.db, 'ammo_stock', dst), dstDoc);
+    batch.commit().then(function () {
+      try {
+        fb.addDoc(fb.collection(fb.db, 'ammo_transfer'), {
+          group: UNIT_BY_ID[src].grp, from: src, to: dst, kind: kind, itemId: iid, itemName: itemName(kind, iid),
+          qty: movedQty, ts: Date.now(), byPn: (S.person && S.person.pn) || '', byName: (S.person && S.person.n) || ''
+        });
+      } catch (e) {}
+      btn.disabled = false; S.xferItem = '';
+      toast('✓ הועבר: ' + itemName(kind, iid) + ' × ' + movedQty + ' → ' + UNIT_BY_ID[dst].name);
+      renderAdmin();
+    }).catch(function (e) { btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
   }
 
   function renderAdmin() {
@@ -2381,6 +2581,11 @@
     h += '<div class="card"><h3>🗂️ יחידה נבחרת</h3><label class="fld">יחידה</label>' +
       unitSelectHtml('aUnit', S.adminUnit) + '</div>';
 
+    // audit (ביקורת) — every admin / armon is an inspector
+    h += auditCardHtml();
+    // transfer between frameworks — company commander (cmd) or armon only
+    if (canTransfer()) h += transferCardHtml();
+
     // stock quantity editing — ARMON only
     if (isArmon()) {
       h += '<div class="card"><h3>⚙️ עדכון כמויות (ARMON בלבד)</h3>' +
@@ -2484,6 +2689,7 @@
         '<div class="grid2">' +
         '<div><label class="fld">פלוגה</label><input type="text" id="ppCo" placeholder="פלוגה א׳ / פלס״ם..."></div>' +
         '<div><label class="fld">תפקיד</label><select id="ppRole"><option value="soldier">חייל</option><option value="admin">מנהל (צפייה)</option><option value="armon">ארמון (ניהול מלא)</option></select></div></div>' +
+        '<label style="display:flex;align-items:center;gap:8px;margin:8px 0;font-size:14px;cursor:pointer"><input type="checkbox" id="ppCmd" style="width:18px;height:18px;flex:none"><span>מפקד פלוגה — רשאי להעביר מלאי בין מסגרות בפלוגה שלו</span></label>' +
         '<label class="fld">קוד אישי (למנהל / ארמון)</label><input type="text" id="ppPin" inputmode="numeric" placeholder="ריק = 4 ספרות אחרונות של המספר האישי" style="direction:ltr;text-align:center">' +
         '<button class="btn-primary" id="btnSavePerson">💾 שמירת אדם</button>' +
         '<div style="font-size:11px;color:#6b7f72;text-align:center">אם משאירים ריק — הקוד נקבע ל-4 הספרות האחרונות של המספר האישי. החלפה: אותו מספר + קוד חדש.</div></div>';
@@ -2526,6 +2732,21 @@
     if ($('ctrUnit')) $('ctrUnit').onclick = function () { S.centralView = S.centralView === 'unit' ? null : 'unit'; renderAdmin(); };
     if ($('ctrAll')) $('ctrAll').onclick = function () { S.centralView = S.centralView === 'all' ? null : 'all'; renderAdmin(); };
     if ($('expCentral')) $('expCentral').onclick = exportCentral;
+    // audit wiring
+    if ($('btnAudit')) $('btnAudit').onclick = submitAudit;
+    if ($('audAll')) $('audAll').onclick = function () { document.querySelectorAll('#scrAdmin input[data-audi]').forEach(function (cb) { cb.checked = true; }); };
+    if ($('audNone')) $('audNone').onclick = function () { document.querySelectorAll('#scrAdmin input[data-audi]').forEach(function (cb) { cb.checked = false; }); };
+    document.querySelectorAll('[data-auddel]').forEach(function (b) {
+      b.onclick = function () {
+        if (!confirm('למחוק את דוח הביקורת?')) return;
+        window.fb.deleteDoc(window.fb.doc(window.fb.db, 'ammo_audit', b.getAttribute('data-auddel')))
+          .then(function () { toast('דוח ביקורת נמחק'); }).catch(function (e) { toast('שגיאה: ' + (e.code || e.message)); });
+      };
+    });
+    // transfer wiring
+    if ($('xfSrc')) $('xfSrc').onchange = function () { S.xferSrc = $('xfSrc').value; S.xferItem = ''; renderAdmin(); };
+    if ($('xfItem')) $('xfItem').onchange = function () { S.xferItem = $('xfItem').value; renderAdmin(); };
+    if ($('btnXfer')) $('btnXfer').onclick = submitTransfer;
 
     // per-piece editor wiring
     // For tracked items the quantity input drives the number of piece-rows —

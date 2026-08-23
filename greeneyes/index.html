@@ -204,6 +204,18 @@
   .kpi .box .n { font-size: 24px; font-weight: 900; color: #14532d; line-height: 1; }
   .kpi .box .l { font-size: 11px; color: var(--muted); margin-top: 3px; }
   .tabbadge { position: absolute; top: 3px; left: 50%; margin-left: 6px; background: #dc2626; color: #fff; font-size: 10px; font-weight: 900; min-width: 16px; height: 16px; line-height: 16px; border-radius: 9px; padding: 0 4px; }
+  /* admin command dashboard */
+  .dash-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .dash-sens { background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 12px; padding: 10px 12px; margin: 8px 0; }
+  .dash-sens h4 { margin: 0 0 6px; font-size: 14px; color: #b91c1c; font-family: "Rubik", inherit; }
+  .sens-row { font-size: 13px; padding: 5px 0; border-top: 1px solid #fee2e2; }
+  .sens-row:first-of-type { border-top: none; }
+  .sens-row b { color: #b91c1c; }
+  .dash-co { display: flex; justify-content: space-between; align-items: center; margin: 10px 2px 3px; font-size: 13px; font-weight: 900; color: var(--forest); }
+  .dash-co .cc { font-weight: 800; color: var(--muted); }
+  .dash-row { font-size: 13px; padding: 5px 8px; border-radius: 8px; margin: 3px 0; background: #f4f8f4; display: flex; gap: 6px; align-items: center; }
+  .dash-row.miss { background: #fef2f2; color: #b91c1c; font-weight: 700; }
+  .dash-row .m { color: var(--muted); font-weight: 400; margin-inline-start: auto; font-size: 11.5px; }
   .gap-card { border: 2px solid #dc2626 !important; }
   .gap-row { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid #fee2e2; font-size: 13px; }
   .gap-row .u { font-weight: 700; color: #b91c1c; }
@@ -1698,9 +1710,95 @@
       table + '</div>';
   }
 
+  // sensitive-ammo shortfalls across the viewer's scope for a given date
+  function sensitiveShortfalls(date) {
+    var out = [];
+    myUnits().forEach(function (u) {
+      var c = S.counts[countId(u.id, date)]; if (!c) return;
+      ['rimon', 'matol_nefitz', 'lau'].forEach(function (iid) {
+        var exp = expectedFor(u.id, 'ammo', iid); if (exp == null) exp = stockQty(u.id, 'ammo', iid);
+        var st = itemStatusFor(c, 'ammo', iid, exp);
+        if (st.counted && st.gap != null && st.gap < 0) {
+          out.push({ u: u, iid: iid, gap: st.gap, actual: st.actual, exp: (st.actual - st.gap), counter: c.counterName });
+        }
+      });
+    });
+    return out;
+  }
+
+  // admin command dashboard — who counted, who's missing, sensitive shortages;
+  // built to read cleanly on a phone for a WhatsApp screenshot.
+  function adminDashboardHtml() {
+    var date = S.repDate, units = myUnits();
+    var counted = 0, todayGaps = 0;
+    units.forEach(function (u) { var c = S.counts[countId(u.id, date)]; if (c) { counted++; todayGaps += countMismatches(c); } });
+    var sens = sensitiveShortfalls(date);
+    var h = '<div class="card"><div class="dash-head"><h3>🧭 מרכז בקרה — ' + DAY_HE[isoDow(date)] + ' ' + fmtDM(date) + '</h3>' +
+      '<button class="btn-mini" id="dashShare">📤 שיתוף</button></div>' +
+      '<div class="kpi">' +
+      '<div class="box"><div class="n">' + counted + '/' + units.length + '</div><div class="l">מסגרות שנספרו</div></div>' +
+      '<div class="box"><div class="n">' + todayGaps + '</div><div class="l">חריגים היום</div></div>' +
+      '<div class="box"' + (sens.length ? ' style="background:linear-gradient(135deg,#fef2f2,#fee2e2);border-color:#dc2626"' : '') + '><div class="n"' + (sens.length ? ' style="color:#b91c1c"' : '') + '>' + sens.length + '</div><div class="l">חוסר רגיש</div></div>' +
+      '</div>';
+    if (sens.length) {
+      h += '<div class="dash-sens"><h4>🔴 חוסר בתחמושת רגישה — טיפול מיידי</h4>';
+      sens.forEach(function (s) {
+        h += '<div class="sens-row"><b>' + esc(itemName('ammo', s.iid)) + '</b> · ' + esc(UNIT_BY_ID[s.u.id].full) +
+          ' · חסר <b>' + (-s.gap) + '</b> (נספר ' + s.actual + ' מתוך ' + s.exp + ') · ' + esc(s.counter || '') + '</div>';
+      });
+      h += '</div>';
+    }
+    myUnitGroups().forEach(function (g) {
+      var us = units.filter(function (u) { return u.grp === g.g; });
+      if (!us.length) return;
+      var cc = us.filter(function (u) { return S.counts[countId(u.id, date)]; }).length;
+      h += '<div class="dash-co"><span>' + esc(g.name) + '</span><span class="cc">' + cc + '/' + us.length + '</span></div>';
+      us.forEach(function (u) {
+        var c = S.counts[countId(u.id, date)];
+        h += '<div class="dash-row' + (c ? '' : ' miss') + '">' + (c ? '✓' : '✗') + ' ' + esc(u.name) +
+          (c ? '<span class="m">' + esc(c.counterName || '') + '</span>' : '<span class="m">טרם נספר</span>') + '</div>';
+      });
+    });
+    return h + '</div>';
+  }
+  function dashShareText() {
+    var date = S.repDate, units = myUnits();
+    var counted = units.filter(function (u) { return S.counts[countId(u.id, date)]; });
+    var missing = units.filter(function (u) { return !S.counts[countId(u.id, date)]; });
+    var sens = sensitiveShortfalls(date);
+    var L = ['🟢 ירוק בעיניים — סיכום ' + fmtDM(date),
+      'נספרו ' + counted.length + '/' + units.length + ' מסגרות'];
+    if (sens.length) {
+      L.push('', '🔴 חוסר בתחמושת רגישה:');
+      sens.forEach(function (s) { L.push('• ' + itemName('ammo', s.iid) + ' — ' + UNIT_BY_ID[s.u.id].full + ' — חסר ' + (-s.gap)); });
+    }
+    if (missing.length) {
+      L.push('', 'טרם נספרו:');
+      missing.forEach(function (u) { L.push('• ' + u.full); });
+    } else { L.push('', '✓ כל המסגרות נספרו'); }
+    L.push('', 'greeneyes95.com');
+    return L.join('\n');
+  }
+  function dashShare() {
+    var text = dashShareText();
+    if (navigator.share) { navigator.share({ text: text }).catch(function () {}); }
+    else { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank'); }
+  }
+
   function renderReport() {
     var units = myUnits();
     var h = '';
+    if (isAdminRole()) h += adminDashboardHtml();
+    else {
+      var ss = sensitiveShortfalls(S.repDate);
+      if (ss.length) {
+        h += '<div class="card gap-card"><h3>🔴 חוסר בתחמושת רגישה</h3>';
+        ss.forEach(function (s) {
+          h += '<div class="sens-row"><b>' + esc(itemName('ammo', s.iid)) + '</b> · חסר <b>' + (-s.gap) + '</b> (נספר ' + s.actual + ' מתוך ' + s.exp + ')</div>';
+        });
+        h += '</div>';
+      }
+    }
 
     // ⚠️ discrepancy alerts — every admin sees the same live list
     var gaps = allGaps();
@@ -1776,6 +1874,7 @@
     });
     var chip = document.querySelector('#rstrip .dchip.sel');
     if (chip) chip.scrollIntoView({ inline: 'center', block: 'nearest' });
+    if ($('dashShare')) $('dashShare').onclick = dashShare;
     $('expSummary').onclick = exportSummary;
     $('expFull').onclick = exportFull;
     $('expUsage').onclick = exportUsage;

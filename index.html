@@ -9013,27 +9013,52 @@ function BackofficeView({
           const s = await tr.get(r);
           if (!s.exists()) return;
           reclaimed = round2(reclaimed + (Number(s.data().balance) || 0));
-          tr.update(r, { balance: 0, clubProfits: 0, agentProfits: 0, bonusTotal: 0, bonusOpen: 0, promoBalance: 0, stats: ZERO_STATS });
+          tr.update(r, { balance: 0, clubProfits: 0, agentProfits: 0, bonusTotal: 0, bonusOpen: 0, promoBalance: 0,
+            lastBonusAt: 0, lastScratchAt: 0, lastRefundAt: 0, spinPaid: 0, stats: ZERO_STATS });
         });
       }
       await window.fb.runTransaction(window.fb.db, async tr => {
         const oRef = memDoc(user.uid);
         const s = await tr.get(oRef);
-        tr.update(oRef, { balance: 10000000, clubProfits: 0, agentProfits: 0, bonusTotal: 0, bonusOpen: 0, promoBalance: 0, stats: ZERO_STATS });
+        tr.update(oRef, { balance: 10000000, clubProfits: 0, agentProfits: 0, bonusTotal: 0, bonusOpen: 0, promoBalance: 0,
+          lastBonusAt: 0, lastScratchAt: 0, lastRefundAt: 0, spinPaid: 0, stats: ZERO_STATS });
       });
+      // A reset that leaves yesterday's tables standing is not a reset: the
+      // chips on them, the hand history inside them and the tournaments around
+      // them all survive into tonight. Wipe every collection this club owns.
       let histFailed = 0;
+      const wiped = { hands: 0, tables: 0, tournaments: 0, alerts: 0 };
+      const delAll = async (docs, tally) => {
+        for (let i = 0; i < docs.length; i += 200) {
+          await Promise.all(docs.slice(i, i + 200).map(d => window.fb.deleteDoc(d.ref)
+            .then(() => { wiped[tally]++; }).catch(() => { histFailed++; })));
+        }
+      };
       for (const logCol of ["gameLog", "agentLog"]) {
         try {
           const q = window.fb.query(window.fb.collection(window.fb.db, logCol), window.fb.where("clubId", "==", CLUB_ID));
-          const snap = await window.fb.getDocs(q);
-          for (let i = 0; i < snap.docs.length; i += 300) {
-            await Promise.all(snap.docs.slice(i, i + 300).map(d => window.fb.deleteDoc(d.ref).catch(() => { histFailed++; })));
-          }
+          await delAll((await window.fb.getDocs(q)).docs, 'hands');
         } catch (e) { histFailed++; }
       }
-      if (histFailed > 0) showToast(`Balances reset, but ${histFailed} history records could not be deleted — press GENERAL RESET again (or the rules deploy hasn't landed yet).`, "error");
+      // Tables and tournaments are read in full and filtered here, not queried:
+      // documents written before clubId existed have no field to match on, and
+      // the app reads those as belonging to 'main' (t.clubId || 'main').
+      for (const [col, tally] of [["tables", 'tables'], ["tournaments", 'tournaments']]) {
+        try {
+          const snap = await window.fb.getDocs(window.fb.collection(window.fb.db, col));
+          await delAll(snap.docs.filter(d => ((d.data() || {}).clubId || 'main') === CLUB_ID), tally);
+        } catch (e) { histFailed++; }
+      }
+      try {
+        const snap = await window.fb.getDocs(window.fb.collection(window.fb.db, "securityAlerts"));
+        await delAll(snap.docs.filter(d => ((d.data() || {}).clubId || 'main') === CLUB_ID), 'alerts');
+      } catch (e) { /* only the owner may read these; a manager running the reset cannot */ }
+      try {
+        await window.fb.setDoc(window.fb.doc(window.fb.db, "broadcasts", CLUB_ID), { text: '', at: 0 });
+      } catch (e) { histFailed++; }
+      if (histFailed > 0) showToast(`Reset ran, but ${histFailed} record(s) could not be deleted — press GENERAL RESET again (or the rules deploy hasn't landed yet).`, "error");
       else {
-        showToast(`General reset done — your balance is ${formatMoney(10000000)}. Players' balances, rake, stats, ALL-TIME results & money history at 0; bots untouched. Refreshing…`, "success");
+        showToast(`General reset done — balance ${formatMoney(10000000)}. Wiped: ${wiped.tables} table(s), ${wiped.tournaments} tournament(s), ${wiped.hands} history record(s), ${wiped.alerts} alert(s). Every player at 0; bot accounts kept. Refreshing…`, "success");
         // The settlement report loads its history once on mount, so without a
         // refresh the Result / Rake / All-time columns keep showing the wiped
         // numbers until the owner reloads by hand.
@@ -9376,7 +9401,7 @@ function BackofficeView({
       className: "text-lg font-black text-rose-300 mb-2"
     }, "⚠️ Danger Zone — General reset"), React.createElement("p", {
       className: "text-[12px] text-slate-300 font-bold leading-relaxed mb-3"
-    }, "Every player's balance → 0. Your balance → ", formatMoney(10000000), ". Rake, stats, ALL-TIME results and money history are wiped. Bots keep their chips. Identity (roles / agents / IDs) is kept. ", React.createElement("b", {
+    }, "Every player's balance → 0. Your balance → ", formatMoney(10000000), ". Wiped: rake, stats, ALL-TIME results, money history, EVERY TABLE in this club (and the hands inside them), every tournament, security alerts and the club message. Bot accounts are kept — re-open the tables you want. Identity (roles / agents / IDs) is kept. ", React.createElement("b", {
       className: "text-rose-300"
     }, "This cannot be undone.")), React.createElement("p", {
       className: "text-[11px] text-slate-400 font-bold mb-1"

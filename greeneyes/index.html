@@ -2128,43 +2128,115 @@
     return idx;
   }
   var ROLE_HE = { armon: 'ארמון', admin: 'מנהל', soldier: 'חייל' };
+  function roleBadge(role) {
+    if (!role) return '<span style="font-size:11px;color:#94a3b8;padding:2px 8px;border-radius:999px;background:#f1f5f9">שלישות</span>';
+    var st = role === 'armon' ? 'background:#fde68a;color:#7c2d12' : role === 'admin' ? 'background:#dbeafe;color:#1e3a8a' : 'background:#dcfce7;color:#166534';
+    return '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;' + st + '">' + ROLE_HE[role] + '</span>';
+  }
+  // flat list of every tracked piece across all stock — powers the מזהה/צ׳ search
+  function stockRows() {
+    var rows = [];
+    Object.keys(S.stock).forEach(function (uid) {
+      var un = UNIT_BY_ID[uid];
+      ['ammo', 'equip'].forEach(function (kind) {
+        var m = S.stock[uid] && S.stock[uid][kind]; if (!m) return;
+        Object.keys(m).forEach(function (iid) {
+          var inst = m[iid] && m[iid].inst; if (!inst || !inst.length) return;
+          inst.forEach(function (r) {
+            rows.push({ uid: uid, un: un, kind: kind, iid: iid, iname: itemName(kind, iid),
+              s: String(r.s || ''), id: String(r.id || ''), num: String(r.num || ''), owner: String(r.owner || ''), q: rowQty(r) });
+          });
+        });
+      });
+    });
+    return rows;
+  }
+  // baseline quantity of an item in a unit (row-tracked → sum, else the number)
+  function qtyIn(uid, kind, iid) {
+    var e = S.stock[uid] && S.stock[uid][kind] && S.stock[uid][kind][iid];
+    if (!e) return 0;
+    if (e.inst && e.inst.length) return instTotal(e.inst);
+    return (typeof e.q === 'number' && e.q > 0) ? e.q : 0;
+  }
   function renderAdmSearch() {
     var box = $('admSearchRes'); if (!box) return;
     var inp = $('admSearch');
     var q = (inp && inp.value || '').trim();
-    if (!q) { box.innerHTML = '<div style="font-size:12px;color:#6b7f72">הקלד שם או מספר אישי כדי לחפש. תוצאות מתוך המערכת והשלישות.</div>'; return; }
+    if (!q) { box.innerHTML = '<div style="font-size:12px;color:#6b7f72">חיפוש חופשי: שם או מספר אישי (אנשים) · מזהה/צ׳ או מ.א (מי מחזיק) · שם אמצעי כמו "קרמונים" (איפה יש ובכמה).</div>'; return; }
     var qlc = q.toLowerCase();
     var digits = q.replace(/\D/g, '');
+    var armon = isArmon();
+    var sections = '';
+
+    // ── 1) people ──────────────────────────────────────────────
     var idx = peopleIndex();
-    var out = Object.keys(idx).map(function (pn) { return idx[pn]; }).filter(function (p) {
-      var byNum = digits && p.pn.indexOf(digits) >= 0;
-      var byName = p.n && p.n.toLowerCase().indexOf(qlc) >= 0;
-      return byNum || byName;
-    });
-    // in-system first, then by name
-    out.sort(function (a, b) {
+    var ppl = Object.keys(idx).map(function (pn) { return idx[pn]; }).filter(function (p) {
+      return (digits && p.pn.indexOf(digits) >= 0) || (p.n && p.n.toLowerCase().indexOf(qlc) >= 0);
+    }).sort(function (a, b) {
       if (a.inSystem !== b.inSystem) return a.inSystem ? -1 : 1;
       return (a.n || '').localeCompare(b.n || '', 'he');
     });
-    var total = out.length;
-    if (!total) { box.innerHTML = '<div style="font-size:13px;color:#6b7f72">לא נמצאו תוצאות עבור "' + esc(q) + '"</div>'; return; }
-    var armon = isArmon();
-    var h = out.slice(0, 40).map(function (p) {
-      var badge = p.role
-        ? '<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;' +
-          (p.role === 'armon' ? 'background:#fde68a;color:#7c2d12' : p.role === 'admin' ? 'background:#dbeafe;color:#1e3a8a' : 'background:#dcfce7;color:#166534') +
-          '">' + ROLE_HE[p.role] + '</span>'
-        : '<span style="font-size:11px;color:#94a3b8;padding:2px 8px;border-radius:999px;background:#f1f5f9">שלישות</span>';
-      var loadBtn = armon
-        ? '<button class="btn-mini" data-loadp="' + esc(p.pn) + '" style="margin-top:0">✏️ טען לעריכה</button>'
-        : '';
-      return '<div class="usage-row" style="align-items:center">' +
-        '<div><b>' + esc(p.n || '—') + '</b> ' + badge +
-        '<div class="m" style="direction:ltr;text-align:right">מ.א ' + esc(p.pn) + (p.c ? ' · ' + esc(p.c) : '') + '</div></div>' +
-        '<div>' + loadBtn + '</div></div>';
-    }).join('');
-    if (total > 40) h += '<div style="font-size:12px;color:#6b7f72;text-align:center;margin-top:6px">מוצגות 40 מתוך ' + total + ' — צמצם את החיפוש</div>';
-    box.innerHTML = h;
+    if (ppl.length) {
+      var ph = ppl.slice(0, 25).map(function (p) {
+        var loadBtn = armon ? '<button class="btn-mini" data-loadp="' + esc(p.pn) + '" style="margin-top:0">✏️ טען לעריכה</button>' : '';
+        return '<div class="usage-row" style="align-items:center"><div><b>' + esc(p.n || '—') + '</b> ' + roleBadge(p.role) +
+          '<div class="m" style="direction:ltr;text-align:right">מ.א ' + esc(p.pn) + (p.c ? ' · ' + esc(p.c) : '') + '</div></div><div>' + loadBtn + '</div></div>';
+      }).join('');
+      if (ppl.length > 25) ph += '<div style="font-size:12px;color:#6b7f72;text-align:center;margin-top:4px">מוצגים 25 מתוך ' + ppl.length + '</div>';
+      sections += '<div style="font-size:12px;font-weight:800;color:#1b4332;margin:6px 0 3px">👤 אנשים (' + ppl.length + ')</div>' + ph;
+    }
+
+    // ── 2) identifiers / צ׳ — who holds a given מזהה/צ׳/מ.א ──────
+    var rows = stockRows().filter(function (r) {
+      if (r.owner && r.owner.toLowerCase().indexOf(qlc) >= 0) return true;
+      if (r.s && r.s.toLowerCase().indexOf(qlc) >= 0) return true;
+      if (r.id && r.id.toLowerCase().indexOf(qlc) >= 0) return true;
+      if (digits) {
+        if (r.num && r.num.replace(/\D/g, '').indexOf(digits) >= 0) return true;
+        if (r.id && r.id.replace(/\D/g, '').indexOf(digits) >= 0) return true;
+        if (r.s && r.s.replace(/\D/g, '').indexOf(digits) >= 0) return true;
+      }
+      return false;
+    });
+    if (rows.length) {
+      var rh = rows.slice(0, 30).map(function (r) {
+        var ident = [];
+        if (r.id) ident.push('מזהה ' + esc(r.id));
+        if (r.s) ident.push((trackOf(r.iid) === 'series' ? 'סדרה ' : 'צ׳ ') + esc(r.s));
+        var holder = [];
+        if (r.owner) holder.push(esc(r.owner));
+        if (r.num) holder.push('מ.א ' + esc(r.num));
+        return '<div class="usage-row"><div><b>' + esc(r.iname) + sensTag(r.iid) + '</b>' +
+          (holder.length ? ' — ' + holder.join(' ') : '') +
+          '<div class="m">' + (r.un ? esc(r.un.full) : esc(r.uid)) + (ident.length ? ' · ' + ident.join(' · ') : '') + (r.q > 1 ? ' · ' + r.q + ' יח׳' : '') + '</div></div></div>';
+      }).join('');
+      if (rows.length > 30) rh += '<div style="font-size:12px;color:#6b7f72;text-align:center;margin-top:4px">מוצגים 30 מתוך ' + rows.length + '</div>';
+      sections += '<div style="font-size:12px;font-weight:800;color:#1b4332;margin:12px 0 3px">🔖 מזהים / צ׳ (' + rows.length + ')</div>' + rh;
+    }
+
+    // ── 3) item types — where an אמצעי/תחמושת exists & how much ──
+    var catalog = ammoList().map(function (i) { return { kind: 'ammo', it: i }; })
+      .concat(equipList().map(function (i) { return { kind: 'equip', it: i }; }));
+    var items = catalog.filter(function (c) {
+      return (c.it.name && c.it.name.toLowerCase().indexOf(qlc) >= 0) || (c.it.id && c.it.id.toLowerCase().indexOf(qlc) >= 0);
+    });
+    if (items.length) {
+      var ih = items.slice(0, 12).map(function (c) {
+        var perUnit = UNITS.map(function (u) { return { u: u, q: qtyIn(u.id, c.kind, c.it.id) }; }).filter(function (x) { return x.q > 0; });
+        var total = perUnit.reduce(function (s, x) { return s + x.q; }, 0);
+        var body = perUnit.length
+          ? perUnit.sort(function (a, b) { return b.q - a.q; }).map(function (x) {
+              return '<div class="m">' + esc(x.u.full) + ' — <b>' + x.q + '</b></div>';
+            }).join('')
+          : '<div class="m">לא מוגדר באף מסגרת</div>';
+        return '<div class="usage-row"><div><b>' + esc(c.it.name) + sensTag(c.it.id) + '</b>' +
+          (total ? ' <span class="m">· סה״כ ' + total + '</span>' : '') + body + '</div></div>';
+      }).join('');
+      sections += '<div style="font-size:12px;font-weight:800;color:#1b4332;margin:12px 0 3px">📦 אמצעים / תחמושת (' + items.length + ')</div>' + ih;
+    }
+
+    if (!sections) { box.innerHTML = '<div style="font-size:13px;color:#6b7f72">לא נמצאו תוצאות עבור "' + esc(q) + '"</div>'; return; }
+    box.innerHTML = sections;
     if (armon) {
       box.querySelectorAll('[data-loadp]').forEach(function (b) {
         b.onclick = function () {
@@ -2302,7 +2374,7 @@
     // search — find a person fast by name or personal number (top of ניהול).
     // ARMON gets a "load to edit" action that prefills the people form below.
     h += '<div class="card"><h3>🔎 חיפוש</h3>' +
-      '<input type="search" id="admSearch" placeholder="שם או מספר אישי..." autocomplete="off" ' +
+      '<input type="search" id="admSearch" placeholder="שם · מספר אישי · מזהה/צ׳ · סוג אמצעי (למשל קרמונים)" autocomplete="off" ' +
       'style="width:100%;font-size:16px;padding:11px 12px;border:1.5px solid var(--line);border-radius:12px;box-sizing:border-box">' +
       '<div id="admSearchRes" style="margin-top:8px"></div></div>';
     // unit picker — available to every admin (drives שצ״ל, central report, etc.)

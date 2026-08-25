@@ -587,6 +587,7 @@
     repDate: clampDate(todayIso()),
     buf: { ammo: {}, equip: {} },  // itemId -> {ok:true} | {actual:n}
     bufKey: '',            // unit_date the buffer belongs to
+    qtyEdit: '',           // count screen: kind:iid whose מצבת ARMON is editing inline
     tab: 'count',
     usageFilter: 'all',
     adminUnit: localStorage.getItem('yb_unit') || 'a_armon',
@@ -1238,7 +1239,21 @@
     if ($('allAmmo')) $('allAmmo').onclick = function () { markAll('ammo', ammoVis); };
     if ($('allEquip')) $('allEquip').onclick = function () { markAll('equip', equipVis); };
     wireItemRows('ammo');
-    if (equipDay) wireItemRows('equip');
+    if (equipDay || showEquip) wireItemRows('equip');
+    // ARMON inline מצבת editor (one open at a time)
+    if ($('qeditCancel')) $('qeditCancel').onclick = function () { S.qtyEdit = ''; renderCount(); };
+    if ($('qeditOk')) $('qeditOk').onclick = function () {
+      var p = S.qtyEdit.split(':'), kind = p[0], iid = p[1];
+      if (!kind || !iid) { S.qtyEdit = ''; renderCount(); return; }
+      var raw = ($('qeditInp') && $('qeditInp').value) || '';
+      if (raw === '') { toast('הזן כמות'); return; }
+      var n = Math.max(0, Math.floor(+raw || 0));
+      var cur = expectedFor(S.unit, kind, iid);
+      var nm = itemName(kind, iid);
+      if (!confirm('לעדכן מצבת ' + nm + ' של ' + (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : '') +
+          '\nמ־' + (cur == null ? '—' : cur) + ' ל־' + n + ' ?')) return;
+      updateBaselineQty(S.unit, kind, iid, n);
+    };
     if ($('btnSubmit')) $('btnSubmit').onclick = submitCount;
     if (_scrollY) window.scrollTo(0, _scrollY);
   }
@@ -1296,6 +1311,9 @@
       var serTxt = ser ? ' · <span class="serial">צ׳ ' + esc(ser) + '</span>' : '';
       var m = S.buf[kind][it.id];
       var cls = m ? (m.ok ? ' ok' : ' diff') : '';
+      // ARMON may edit the baseline מצבת quantity in-place — only qty items
+      var armonQty = isArmon() && trackOf(it.id) === 'qty';
+      var editing = armonQty && S.qtyEdit === kind + ':' + it.id;
       h += '<div class="item' + cls + sensCls(it.id) + '" id="row_' + kind + '_' + it.id + '">' +
         '<button class="vbtn" data-k="' + kind + '" data-i="' + it.id + '" aria-label="אישור">✓</button>' +
         '<div class="iname"><div class="nm">' + esc(it.name) + sensTag(it.id) + '</div>' +
@@ -1306,8 +1324,17 @@
         (m && !m.ok
           ? '<div class="ainp"><input type="number" inputmode="numeric" min="0" data-k="' + kind + '" data-i="' + it.id + '" value="' + (typeof m.actual === 'number' ? m.actual : '') + '" placeholder="כמות"></div>'
           : '') +
+        (armonQty ? '<button class="xbtn qedit" data-qk="' + kind + '" data-qi="' + it.id + '" title="עדכון מצבת (ARMON)">✏️ מצבת</button>' : '') +
         '<button class="xbtn" data-k="' + kind + '" data-i="' + it.id + '">שונה</button>' +
         '</div>';
+      if (editing) {
+        h += '<div class="qedit-box" style="grid-column:1/-1;display:flex;gap:8px;align-items:center;background:#fff7ed;border:1.5px solid #fdba74;border-radius:12px;padding:10px;margin-top:-4px">' +
+          '<span style="font-size:13px;font-weight:800;color:#9a3412">מצבת ' + esc(it.name) + ':</span>' +
+          '<input type="number" inputmode="numeric" min="0" id="qeditInp" value="' + (exp == null ? '' : exp) + '" placeholder="כמות" style="width:90px;font-size:16px;padding:8px;text-align:center;border:1.5px solid #fdba74;border-radius:10px">' +
+          '<button class="btn-primary" id="qeditOk" style="flex:1;padding:9px;font-size:14px">✔️ וידוא עדכון</button>' +
+          '<button class="btn-ghost" id="qeditCancel" style="padding:9px 12px;font-size:14px">ביטול</button>' +
+          '</div>';
+      }
     });
     return h;
   }
@@ -1324,6 +1351,21 @@
       }
     });
     renderCount();
+  }
+
+  // ARMON updates a qty item's baseline מצבת straight from the count screen.
+  // Writes ammo_stock (setting the item's q and resetting its usage anchor);
+  // gated to armon in the rules too.
+  function updateBaselineQty(unit, kind, iid, n) {
+    if (!isArmon()) { toast('עדכון מצבת שמור ל-ARMON'); return; }
+    var fb = window.fb;
+    var next = cloneUnit(unit);
+    if (n > 0) next[kind][iid] = { q: n, t: Date.now() };
+    else if (next[kind][iid]) delete next[kind][iid];
+    var btn = $('qeditOk'); if (btn) btn.disabled = true;
+    fb.setDoc(fb.doc(fb.db, 'ammo_stock', unit), next)
+      .then(function () { S.qtyEdit = ''; toast('✓ מצבת עודכנה: ' + itemName(kind, iid) + ' → ' + n); renderCount(); })
+      .catch(function (e) { if (btn) btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
   }
 
   function wireItemRows(kind) {
@@ -1353,6 +1395,16 @@
         var iid = inp.getAttribute('data-i');
         var v = inp.value === '' ? undefined : Math.max(0, Math.floor(+inp.value));
         S.buf[kind][iid] = { actual: v };
+      };
+    });
+    // ARMON: open the inline מצבת (baseline) editor for a qty item
+    document.querySelectorAll('.qedit[data-qk="' + kind + '"]').forEach(function (b) {
+      b.onclick = function () {
+        var iid = b.getAttribute('data-qi');
+        var key = kind + ':' + iid;
+        S.qtyEdit = (S.qtyEdit === key) ? '' : key;
+        renderCount();
+        var inp = $('qeditInp'); if (inp) { inp.focus(); inp.select(); }
       };
     });
     // piece-tracked rows: ✓ = present, "חסר" = missing (each toggles off on re-tap)

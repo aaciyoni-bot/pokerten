@@ -157,6 +157,11 @@
   nav.tabs button:active .ic { transform: scale(.88); }
   .btn-primary:active, .gbtn:active, .btn-ghost:active, .btn-mini:active, .vbtn:active, .xbtn:active, .missbtn:active { transform: scale(.97); }
   .btn-primary, .gbtn, .btn-ghost, .btn-mini, .vbtn, .xbtn, .missbtn { transition: transform .08s; }
+  /* floating save — stays reachable while scrolling a long stock list */
+  .btn-float-save {
+    position: sticky; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 40;
+    box-shadow: 0 12px 30px -6px rgba(16,40,28,.55); border: 2px solid #fff;
+  }
 
   /* ── report table ── */
   table.rep { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -2600,7 +2605,7 @@
         equipList().forEach(function (it) { h += stockRow('equip', it); });
         h += '</div>';
       }
-      h += '<button class="btn-primary" id="btnStock" style="font-size:16px;padding:12px">💾 שמירת כמויות ליחידה</button>' +
+      h += '<button class="btn-primary btn-float-save" id="btnStock" style="font-size:16px;padding:14px">💾 שמירת כמויות ליחידה</button>' +
         '<div style="font-size:11px;color:#6b7f72;text-align:center">עדכון כמות מאפס את חישוב השימוש לפריט — הכמות שהוזנה היא הבסיס החדש</div></div>';
     } else {
       h += '<div class="card"><h3>⚙️ מלאי</h3><div style="font-size:13px;color:#4b5f52;line-height:1.7">' +

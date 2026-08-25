@@ -1713,7 +1713,7 @@
         var src = c[t[0]]; if (!src) return;
         Object.keys(src).forEach(function (iid) {
           var v = src[iid]; if (!v || v.ok) return;
-          var base = { date: c.date, unitId: c.unitId, kind: t[1], item: itemName(t[1], iid), counter: c.counterName, num: c.counterNum, ts: c.ts };
+          var base = { date: c.date, unitId: c.unitId, kind: t[1], iid: iid, item: itemName(t[1], iid), counter: c.counterName, num: c.counterNum, ts: c.ts };
           if (v.missing && v.missing.length) {
             v.missing.forEach(function (mi) {
               out.push(Object.assign({}, base, { text: 'חסר — ' + (mi.owner || '—') + (mi.num ? ' (מ.א ' + mi.num + ')' : '') + (mi.s ? ' · ' + firstFieldLabel(iid) + ' ' + mi.s : '') }));
@@ -1935,14 +1935,19 @@
     if (!gaps.length) {
       h += '<div class="gap-ok">✓ אין פערים — כל הספירות שבוצעו תקינות</div>';
     } else {
-      h += '<div style="font-size:13px;color:#b91c1c;font-weight:700;margin-bottom:6px">' + gaps.length + ' פערים דורשים בדיקה:</div>';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:8px">' +
+        '<div style="font-size:13px;color:#b91c1c;font-weight:700">' + gaps.length + ' פערים דורשים בדיקה:</div>' +
+        (isArmon() ? '<button class="btn-mini" id="gapClearAll" style="background:#b91c1c;color:#fff;border-color:#b91c1c;margin:0">🗑️ נקה הכל</button>' : '') + '</div>';
       gaps.slice(0, 80).forEach(function (g) {
         var un = UNIT_BY_ID[g.unitId];
         h += '<div class="gap-row"><div><span class="u">' + esc(un ? un.full : g.unitId) + '</span> · ' + esc(g.item) +
           '<div class="m">' + esc(g.text) + '</div>' +
-          '<div class="m">' + esc(g.date || '') + ' · ' + esc(g.counter || '') + (g.num ? ' (מ.א ' + esc(g.num) + ')' : '') + '</div></div></div>';
+          '<div class="m">' + esc(g.date || '') + ' · ' + esc(g.counter || '') + (g.num ? ' (מ.א ' + esc(g.num) + ')' : '') + '</div></div>' +
+          (isArmon() ? '<button class="btn-mini gapdel" data-gapdel="' + g.unitId + '|' + g.date + '|' + g.kind + '|' + esc(g.iid) + '" title="נקה פער זה" style="margin:0;align-self:center">🗑️</button>' : '') +
+          '</div>';
       });
       if (gaps.length > 80) h += '<div class="m" style="text-align:center;padding:6px">…ועוד ' + (gaps.length - 80) + '. יצוא CSV לרשימה המלאה.</div>';
+      if (isArmon()) h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-top:6px">ניקוי פער מסמן את הפריט כתקין בספירה (הפער נעלם מהדוח). פעולה של ARMON בלבד.</div>';
     }
     h += '</div>';
 
@@ -2022,6 +2027,60 @@
           .catch(function (e) { toast('שגיאה: ' + e.message); });
       };
     });
+    // ARMON: clear a single gap (mark the item as OK in that count)
+    document.querySelectorAll('.gapdel').forEach(function (b) {
+      b.onclick = function () {
+        var p = (b.getAttribute('data-gapdel') || '').split('|');
+        if (p.length < 4) return;
+        if (!confirm('לנקות את הפער? הפריט יסומן כתקין בספירה של ' +
+          (UNIT_BY_ID[p[0]] ? UNIT_BY_ID[p[0]].full : p[0]) + ' (' + p[1] + ').')) return;
+        clearGap(p[0], p[1], p[2], p[3]);
+      };
+    });
+    if ($('gapClearAll')) $('gapClearAll').onclick = function () {
+      var gaps = allGaps();
+      if (!gaps.length) return;
+      if (!confirm('לנקות את כל ' + gaps.length + ' הפערים? כל הפריטים המדווחים יסומנו כתקינים בספירות.')) return;
+      clearAllGaps(gaps);
+    };
+  }
+
+  // ARMON resolves a gap: set the item to {ok:true} in its count doc, so it no
+  // longer shows a discrepancy. Works per-item (clears all rows of that item).
+  function clearGap(unitId, date, kind, iid) {
+    if (!isArmon()) { toast('ניקוי פערים שמור ל-ARMON'); return; }
+    var fb = window.fb, id = countId(unitId, date), c = S.counts[id];
+    if (!c) { toast('הספירה לא נמצאה'); return; }
+    var next = JSON.parse(JSON.stringify(c));
+    var slot = kind === 'ammo' ? 'items' : 'equip';
+    if (!next[slot]) next[slot] = {};
+    next[slot][iid] = { ok: true };
+    fb.setDoc(fb.doc(fb.db, 'ammo_counts', id), next)
+      .then(function () { toast('✓ הפער נוקה: ' + itemName(kind, iid)); })
+      .catch(function (e) { toast('שגיאה: ' + (e.code || e.message)); });
+  }
+  function clearAllGaps(gaps) {
+    if (!isArmon()) { toast('ניקוי פערים שמור ל-ARMON'); return; }
+    var fb = window.fb, byDoc = {};
+    // group unique (unit,date,kind,iid) per count doc
+    gaps.forEach(function (g) {
+      var id = countId(g.unitId, g.date);
+      (byDoc[id] = byDoc[id] || { unitId: g.unitId, date: g.date, items: {} }).items[g.kind + ':' + g.iid] = 1;
+    });
+    var batch = fb.writeBatch(fb.db), n = 0;
+    Object.keys(byDoc).forEach(function (id) {
+      var c = S.counts[id]; if (!c) return;
+      var next = JSON.parse(JSON.stringify(c));
+      Object.keys(byDoc[id].items).forEach(function (ki) {
+        var p = ki.split(':'), slot = p[0] === 'ammo' ? 'items' : 'equip';
+        if (!next[slot]) next[slot] = {};
+        next[slot][p[1]] = { ok: true };
+        n++;
+      });
+      batch.set(fb.doc(fb.db, 'ammo_counts', id), next);
+    });
+    batch.commit().then(function () { toast('✓ נוקו ' + n + ' פערים'); })
+      .catch(function (e) { toast('שגיאה: ' + (e.code || e.message)); });
   }
 
   /* ═══════════ CSV export ═══════════ */

@@ -600,6 +600,7 @@
     unsubPeople: null,
     audits: [],            // audit reports (ammo_audit) — admins
     xferSrc: '', xferItem: '', // transfer picker state (company commander / armon)
+    msvQ: '',              // "move soldier + gear" search query (armon)
     unsubData: [],
     dataScope: ''          // which role/group the data listeners were opened for
   };
@@ -2579,6 +2580,97 @@
     }).catch(function (e) { btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
   }
 
+  /* ─── move a whole soldier + all his signed gear to another framework (ARMON) ─── */
+  function soldierPieces(q) {
+    q = (q || '').trim(); if (!q) return [];
+    var qlc = q.toLowerCase(), digits = q.replace(/\D/g, '');
+    return stockRows().filter(function (r) {
+      if (r.owner && r.owner.toLowerCase().indexOf(qlc) >= 0) return true;
+      if (digits && r.num && r.num.replace(/\D/g, '') === digits) return true;
+      if (digits && r.id && r.id.replace(/\D/g, '') === digits) return true;
+      if (r.id && r.id.toLowerCase() === qlc) return true;
+      return false;
+    });
+  }
+  function moveSoldierCardHtml() {
+    var q = S.msvQ || '';
+    var pcs = q ? soldierPieces(q) : [];
+    var h = '<div class="card"><h3>🎖️ העברת חייל עם ציודו</h3>' +
+      '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">מעביר את כל הפריטים החתומים על חייל (לפי שם / מ.א / מזהה) למסגרת יעד — גם בין פלוגות. ARMON בלבד.</div>' +
+      '<div class="addrow"><input type="text" id="msvQ" value="' + esc(q) + '" placeholder="שם / מ.א / מזהה של החייל"><button class="btn-mini" id="msvFind">🔍 מצא</button></div>';
+    if (q) {
+      if (!pcs.length) {
+        h += '<div style="font-size:13px;color:#6b7f72;padding:8px 0">לא נמצאו פריטים חתומים עבור "' + esc(q) + '"</div>';
+      } else {
+        h += '<div style="font-size:12px;font-weight:800;margin:10px 0 4px;color:#1b4332">נמצאו ' + pcs.length + ' פריטים חתומים:</div>' +
+          '<div style="' + AUD_BOX + '">';
+        pcs.forEach(function (r) {
+          var lbl = [];
+          if (r.s) lbl.push((trackOf(r.iid) === 'series' ? 'סדרה ' : 'צ׳ ') + r.s);
+          if (r.id) lbl.push('מזהה ' + r.id);
+          h += '<div class="usage-row"><div><b>' + esc(r.iname) + '</b> <span class="m">· ' + (r.un ? esc(r.un.full) : esc(r.uid)) + '</span>' +
+            '<div class="m">' + (r.owner ? esc(r.owner) : '') + (r.num ? ' · מ.א ' + esc(r.num) : '') + (lbl.length ? ' · ' + lbl.join(' · ') : '') + '</div></div></div>';
+        });
+        h += '</div>';
+        h += '<label class="fld">מסגרת יעד</label><select id="msvDst">' +
+          UNIT_GROUPS.map(function (g) {
+            return '<optgroup label="' + esc(g.name) + '">' +
+              g.units.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('') + '</optgroup>';
+          }).join('') + '</select>' +
+          '<button class="btn-primary" id="msvGo">🎖️ העבר את החייל וציודו</button>' +
+          '<div style="font-size:11px;color:#6b7f72;text-align:center">כל הפריטים למעלה יעברו למסגרת שנבחרה. פריט שכבר ביעד יישאר.</div>';
+      }
+    }
+    h += '</div>';
+    return h;
+  }
+  function submitMoveSoldier() {
+    if (!isArmon()) { toast('פעולה זו שמורה ל-ARMON'); return; }
+    var q = ($('msvQ') && $('msvQ').value) || S.msvQ || '';
+    var dst = $('msvDst') ? $('msvDst').value : '';
+    var pcs = soldierPieces(q);
+    if (!pcs.length) { toast('אין פריטים להעברה'); return; }
+    if (!dst || !UNIT_BY_ID[dst]) { toast('בחר מסגרת יעד'); return; }
+    if (!confirm('להעביר את כל ' + pcs.length + ' הפריטים החתומים למסגרת ' + UNIT_BY_ID[dst].full + '?')) return;
+    var docs = {};
+    function getDoc(uid) { return docs[uid] || (docs[uid] = cloneUnit(uid)); }
+    var destDoc = getDoc(dst), moved = 0;
+    var bySrc = {};
+    pcs.forEach(function (r) { if (r.uid !== dst) (bySrc[r.uid] = bySrc[r.uid] || []).push(r); });
+    Object.keys(bySrc).forEach(function (uid) {
+      var srcDoc = getDoc(uid);
+      bySrc[uid].forEach(function (r) {
+        var e = srcDoc[r.kind] && srcDoc[r.kind][r.iid];
+        if (!e || !e.inst || !e.inst.length) return;
+        var idx = -1;
+        for (var i = 0; i < e.inst.length; i++) {
+          var x = e.inst[i];
+          if ((x.s || '') === r.s && (x.id || '') === r.id && (x.num || '') === r.num && (x.owner || '') === r.owner) { idx = i; break; }
+        }
+        if (idx < 0) return;
+        var row = e.inst.splice(idx, 1)[0];
+        if (e.inst.length) e.q = instTotal(e.inst); else delete srcDoc[r.kind][r.iid];
+        var de = destDoc[r.kind][r.iid] || { t: Date.now(), inst: [] };
+        if (!de.inst) de.inst = [];
+        de.inst.push(row); de.q = instTotal(de.inst); destDoc[r.kind][r.iid] = de;
+        moved++;
+      });
+    });
+    if (!moved) { toast('אין מה להעביר (ייתכן שהכל כבר ביעד)'); return; }
+    var fb = window.fb, batch = fb.writeBatch(fb.db);
+    Object.keys(docs).forEach(function (uid) { batch.set(fb.doc(fb.db, 'ammo_stock', uid), docs[uid]); });
+    var btn = $('msvGo'); if (btn) btn.disabled = true;
+    batch.commit().then(function () {
+      try {
+        fb.addDoc(fb.collection(fb.db, 'ammo_transfer'), {
+          group: UNIT_BY_ID[dst].grp, to: dst, kind: 'soldier', soldier: q, qty: moved,
+          ts: Date.now(), byPn: (S.person && S.person.pn) || '', byName: (S.person && S.person.n) || ''
+        });
+      } catch (e) {}
+      S.msvQ = ''; toast('✓ הועברו ' + moved + ' פריטים → ' + UNIT_BY_ID[dst].name); renderAdmin();
+    }).catch(function (e) { if (btn) btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
+  }
+
   function renderAdmin() {
     var ae = document.activeElement;
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'SELECT') && $('scrAdmin').contains(ae)) {
@@ -2719,6 +2811,8 @@
     h += auditCardHtml();
     // transfer between frameworks — company commander (cmd) or armon only
     if (canTransfer()) h += transferCardHtml();
+    // move a whole soldier + his signed gear across frameworks — ARMON only
+    if (isArmon()) h += moveSoldierCardHtml();
 
     // stock quantity editing — ARMON only
     if (isArmon()) {
@@ -2881,6 +2975,9 @@
     if ($('xfSrc')) $('xfSrc').onchange = function () { S.xferSrc = $('xfSrc').value; S.xferItem = ''; renderAdmin(); };
     if ($('xfItem')) $('xfItem').onchange = function () { S.xferItem = $('xfItem').value; renderAdmin(); };
     if ($('btnXfer')) $('btnXfer').onclick = submitTransfer;
+    // move-soldier wiring
+    if ($('msvFind')) $('msvFind').onclick = function () { S.msvQ = ($('msvQ') && $('msvQ').value || '').trim(); renderAdmin(); };
+    if ($('msvGo')) $('msvGo').onclick = submitMoveSoldier;
 
     // per-piece editor wiring
     // For tracked items the quantity input drives the number of piece-rows —

@@ -683,14 +683,19 @@
   function myCmdGroup() { return (S.person && S.person.cmd) || ''; }
   function canTransfer() { return isArmon() || !!myCmdGroup(); }
   function companyUnits(g) { return UNITS.filter(function (u) { return u.grp === g; }); }
+  // A company commander (role admin + cmd group) is scoped to his OWN company:
+  // he sees only that company's frameworks/reports, and in ניהול only transfers.
+  // Plain viewer-admins (no cmd) and armon see everything.
+  function isCommander() { return !!S.person && S.person.role === 'admin' && !!S.person.cmd; }
   function myGroups() {
-    if (S.role === 'admin') return ['a', 'b', 'd', 'bn'];
+    if (S.role === 'admin') return isCommander() ? [S.person.cmd] : ['a', 'b', 'd', 'bn'];
     return S.role ? [S.role] : [];
   }
   // A soldier works inside exactly ONE framework — the one picked on entry.
-  // They count it, report שצ״ל for it, and see only its summary. Admins see all.
+  // They count it, report שצ״ל for it, and see only its summary. Admins see all
+  // (a company commander sees only his company).
   function myUnits() {
-    if (S.role === 'admin') return UNITS.slice();
+    if (S.role === 'admin') return isCommander() ? UNITS.filter(function (u) { return u.grp === S.person.cmd; }) : UNITS.slice();
     var u = UNIT_BY_ID[S.unit];
     return u ? [u] : [];
   }
@@ -1050,7 +1055,7 @@
     show('app');
     var admin = isAdminRole();
     $('whoName').textContent = (S.person && S.person.n) ? S.person.n : (admin ? 'מנהל' : GROUP_NAMES[role]);
-    $('whoRole').textContent = isArmon() ? 'ארמון' : (admin ? 'מנהל' : (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : GROUP_NAMES[role]));
+    $('whoRole').textContent = isArmon() ? 'ארמון' : isCommander() ? ('מפקד ' + (GROUP_NAMES[S.person.cmd] || '')) : (admin ? 'מנהל' : (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : GROUP_NAMES[role]));
     $('logoutTxt').textContent = admin ? 'התנתקות' : 'החלפת מסגרת';
     $('logoutIc').textContent = admin ? '🚪' : '🔄';
     $('tabAdmin').style.display = admin ? '' : 'none';
@@ -1068,7 +1073,8 @@
   }
 
   function resubscribeData() {
-    var scope = S.role === 'admin' ? 'all' : S.role;
+    // a company commander only receives his own company's data
+    var scope = S.role === 'admin' ? (isCommander() ? S.person.cmd : 'all') : S.role;
     if (scope === S.dataScope) { renderAll(); return; }
     S.dataScope = scope;
     var fb = window.fb, db = fb.db;
@@ -2521,6 +2527,17 @@
       return;
     }
     if (!isAdminRole()) { $('scrAdmin').innerHTML = '<div class="spin">אין הרשאת ניהול</div>'; return; }
+    // company commander: ניהול holds ONLY inter-framework transfer (his company)
+    if (isCommander()) {
+      $('scrAdmin').innerHTML =
+        '<div class="card" style="text-align:center"><h3 style="margin:0">🎖️ מפקד ' + esc(GROUP_NAMES[S.person.cmd] || '') + '</h3>' +
+        '<div style="font-size:12px;color:#6b7f72;margin-top:4px">העברת מלאי בין המסגרות של הפלוגה שלך.</div></div>' +
+        transferCardHtml();
+      if ($('xfSrc')) $('xfSrc').onchange = function () { S.xferSrc = $('xfSrc').value; S.xferItem = ''; renderAdmin(); };
+      if ($('xfItem')) $('xfItem').onchange = function () { S.xferItem = $('xfItem').value; renderAdmin(); };
+      if ($('btnXfer')) $('btnXfer').onclick = submitTransfer;
+      return;
+    }
     var st = S.stock[S.adminUnit] || {};
     // (re)load the per-piece buffer when switching unit. For tracked items,
     // rebuild the rows from the saved pieces — or, when the item was saved as

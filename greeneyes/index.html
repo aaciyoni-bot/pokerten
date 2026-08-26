@@ -675,7 +675,10 @@
     return id;
   }
 
-  function isAdminRole() { return !!S.person && (S.person.role === 'admin' || S.person.role === 'armon'); }
+  function isAdminRole() { return !!S.person && (S.person.role === 'admin' || S.person.role === 'armon' || S.person.role === 'audit'); }
+  // Auditor (מבקר): full visibility of everything, but the ניהול tab is a
+  // dedicated audit console — no inventory editing. Kept visually separate.
+  function isAuditor() { return !!S.person && S.person.role === 'audit'; }
   // Only ARMON manages inventory quantities, the חמ״ל-report reset, and the
   // people/PIN table. Viewer-admins may see everything but never edit stock.
   function isArmon() { return !!S.person && S.person.role === 'armon'; }
@@ -916,7 +919,7 @@
     fb.getDoc(fb.doc(fb.db, 'ammo_people', pn)).then(function (snap) {
       if (!snap.exists()) { try { localStorage.removeItem('yb_pn'); } catch (e) {} showLogin(); return; }
       var p = snap.data(); p.pn = pn;
-      if (p.role === 'admin' || p.role === 'armon') {
+      if (p.role === 'admin' || p.role === 'armon' || p.role === 'audit') {
         showLogin(); $('pnInput').value = pn; $('pinWrap').style.display = ''; $('pinInput').focus();
         loginMsg('חשבון מנהל — הזינו קוד אישי');
       } else {
@@ -934,7 +937,7 @@
       btn.disabled = false;
       if (!snap.exists()) { loginMsg('המספר האישי לא נמצא ברשימת הגדוד. פנו לארמון.'); return; }
       var p = snap.data(); p.pn = pn;
-      var priv = p.role === 'admin' || p.role === 'armon';
+      var priv = p.role === 'admin' || p.role === 'armon' || p.role === 'audit';
       if (priv && !pin) { $('pinWrap').style.display = ''; $('pinInput').focus(); loginMsg('חשבון מנהל — הזינו קוד אישי'); return; }
       gateAs(p, priv ? { pin: pin } : {});
     }).catch(function (e) { btn.disabled = false; loginMsg('שגיאה: ' + (e.code || e.message)); });
@@ -950,7 +953,7 @@
       S.person = { pn: p.pn, n: p.n || '', c: p.c || '', role: p.role || 'soldier', cmd: p.cmd || '' };
       try { localStorage.setItem('yb_pn', p.pn); } catch (e) {}
       S.gateOK = true; subscribeMeta();
-      if (S.person.role === 'admin' || S.person.role === 'armon') {
+      if (S.person.role === 'admin' || S.person.role === 'armon' || S.person.role === 'audit'){
         S.picked = true; S.tab = 'report';
         if (!S.loggedLoad) { S.loggedLoad = true; logEntry('admin', { pn: p.pn, name: p.n, role: p.role }); }
         applyRole();
@@ -988,7 +991,7 @@
   // never strand a soldier on an empty framework — they always choose their own.
   function showPicker() {
     if (!S.person) { showLogin(); return; }
-    if (S.person.role === 'admin' || S.person.role === 'armon') return;
+    if (S.person.role === 'admin' || S.person.role === 'armon' || S.person.role === 'audit')return;
     S.picked = false; pickedUnit = null;
     show('login');
     if (QR_UNIT && UNIT_BY_ID[QR_UNIT]) { var u = QR_UNIT; QR_UNIT = null; pickedGroup = UNIT_BY_ID[u].grp; openConfirm(u); return; }
@@ -1043,7 +1046,7 @@
 
   function computeRole() {
     if (!S.person) return null;
-    if (S.person.role === 'admin' || S.person.role === 'armon') return 'admin';
+    if (S.person.role === 'admin' || S.person.role === 'armon' || S.person.role === 'audit') return 'admin';
     if (!S.picked) return null;                            // soldier still needs to pick a framework
     var g = localStorage.getItem('yb_group');              // set to the picked framework's group
     return GROUP_NAMES[g] ? g : null;
@@ -1056,7 +1059,7 @@
     show('app');
     var admin = isAdminRole();
     $('whoName').textContent = (S.person && S.person.n) ? S.person.n : (admin ? 'מנהל' : GROUP_NAMES[role]);
-    $('whoRole').textContent = isArmon() ? 'ארמון' : isCommander() ? ('מפקד ' + (GROUP_NAMES[S.person.cmd] || '')) : (admin ? 'מנהל' : (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : GROUP_NAMES[role]));
+    $('whoRole').textContent = isArmon() ? 'ארמון' : isAuditor() ? '🔎 מבקר' : isCommander() ? ('מפקד ' + (GROUP_NAMES[S.person.cmd] || '')) : (admin ? 'מנהל' : (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : GROUP_NAMES[role]));
     $('logoutTxt').textContent = admin ? 'התנתקות' : 'החלפת מסגרת';
     $('logoutIc').textContent = admin ? '🚪' : '🔄';
     $('tabAdmin').style.display = admin ? '' : 'none';
@@ -1634,7 +1637,7 @@
     var pin = ($('ppPin').value || '').trim();
     if (pn.length < 4) { toast('מספר אישי לא תקין'); return; }
     if (!n) { toast('יש להזין שם מלא'); return; }
-    var priv = role === 'admin' || role === 'armon';
+    var priv = role === 'admin' || role === 'armon' || role === 'audit';
     if (priv && !pin) pin = pn.slice(-4);   // default: last 4 digits of the personal number
     if (priv && pin.replace(/[^0-9]/g, '').length < 4) { toast('קוד אישי למנהל — לפחות 4 ספרות'); return; }
     // company-commander flag → the company group he may transfer within
@@ -2704,6 +2707,40 @@
       if ($('btnXfer')) $('btnXfer').onclick = submitTransfer;
       return;
     }
+    // auditor: a dedicated audit console — full visibility, no inventory editing
+    if (isAuditor()) {
+      var auU = UNIT_BY_ID[S.adminUnit];
+      var ah = '<div class="card" style="text-align:center;background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:2px solid #6366f1">' +
+        '<h3 style="justify-content:center;color:#3730a3;margin:0">🔎 מסך ביקורת</h3>' +
+        '<div style="font-size:12.5px;color:#4338ca;margin-top:4px">מבקר גדודי · צפייה מלאה בכל המסגרות · דוחות ביקורת. ללא שינוי מלאי.</div></div>';
+      ah += '<div class="card"><h3>🔎 חיפוש</h3>' +
+        '<input type="search" id="admSearch" placeholder="שם · מספר אישי · מזהה/צ׳ · סוג אמצעי" autocomplete="off" style="width:100%;font-size:16px;padding:11px 12px;border:1.5px solid var(--line);border-radius:12px;box-sizing:border-box">' +
+        '<div id="admSearchRes" style="margin-top:8px"></div></div>';
+      ah += '<div class="card"><h3>🗂️ מסגרת לביקורת</h3><label class="fld">יחידה</label>' + unitSelectHtml('aUnit', S.adminUnit) + '</div>';
+      ah += auditCardHtml();
+      ah += '<div class="card"><h3>📊 דוח מרכז — מצבת מלאי</h3>' +
+        '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">הכמויות שאמורות להיות בכל מסגרת. בחר תצוגה:</div><div class="grid2">' +
+        '<button class="btn-ghost' + (S.centralView === 'unit' ? ' on' : '') + '" id="ctrUnit">מסגרת נוכחית — ' + esc(auU ? auU.name : '') + '</button>' +
+        '<button class="btn-ghost' + (S.centralView === 'all' ? ' on' : '') + '" id="ctrAll">כל המסגרות</button></div></div>';
+      if (S.centralView === 'unit' && auU) ah += centralInventoryHtml([auU], auU.full);
+      else if (S.centralView === 'all') ah += centralInventoryHtml(UNITS.slice(), 'כל המסגרות');
+      $('scrAdmin').innerHTML = ah;
+      if ($('admSearch')) { $('admSearch').oninput = renderAdmSearch; renderAdmSearch(); }
+      var aselA = $('aUnit'); if (aselA) { aselA.value = S.adminUnit; aselA.onchange = function () { S.adminUnit = aselA.value; renderAdmin(); }; }
+      if ($('btnAudit')) $('btnAudit').onclick = submitAudit;
+      if ($('audAll')) $('audAll').onclick = function () { document.querySelectorAll('#scrAdmin input[data-audi]').forEach(function (cb) { cb.checked = true; }); };
+      if ($('audNone')) $('audNone').onclick = function () { document.querySelectorAll('#scrAdmin input[data-audi]').forEach(function (cb) { cb.checked = false; }); };
+      document.querySelectorAll('[data-auddel]').forEach(function (b) {
+        b.onclick = function () {
+          if (!confirm('למחוק את דוח הביקורת?')) return;
+          window.fb.deleteDoc(window.fb.doc(window.fb.db, 'ammo_audit', b.getAttribute('data-auddel')))
+            .then(function () { toast('דוח ביקורת נמחק'); }).catch(function (e) { toast('שגיאה: ' + (e.code || e.message)); });
+        };
+      });
+      if ($('ctrUnit')) $('ctrUnit').onclick = function () { S.centralView = S.centralView === 'unit' ? null : 'unit'; renderAdmin(); };
+      if ($('ctrAll')) $('ctrAll').onclick = function () { S.centralView = S.centralView === 'all' ? null : 'all'; renderAdmin(); };
+      return;
+    }
     var st = S.stock[S.adminUnit] || {};
     // (re)load the per-piece buffer when switching unit. For tracked items,
     // rebuild the rows from the saved pieces — or, when the item was saved as
@@ -2931,7 +2968,7 @@
         '<div><label class="fld">שם מלא</label><input type="text" id="ppName"></div></div>' +
         '<div class="grid2">' +
         '<div><label class="fld">פלוגה</label><input type="text" id="ppCo" placeholder="פלוגה א׳ / פלס״ם..."></div>' +
-        '<div><label class="fld">תפקיד</label><select id="ppRole"><option value="soldier">חייל</option><option value="admin">מנהל (צפייה)</option><option value="armon">ארמון (ניהול מלא)</option></select></div></div>' +
+        '<div><label class="fld">תפקיד</label><select id="ppRole"><option value="soldier">חייל</option><option value="admin">מנהל (צפייה)</option><option value="audit">מבקר (ביקורת)</option><option value="armon">ארמון (ניהול מלא)</option></select></div></div>' +
         '<label style="display:flex;align-items:center;gap:8px;margin:8px 0;font-size:14px;cursor:pointer"><input type="checkbox" id="ppCmd" style="width:18px;height:18px;flex:none"><span>מפקד פלוגה — רשאי להעביר מלאי בין מסגרות בפלוגה שלו</span></label>' +
         '<label class="fld">קוד אישי (למנהל / ארמון)</label><input type="text" id="ppPin" inputmode="numeric" placeholder="ריק = 4 ספרות אחרונות של המספר האישי" style="direction:ltr;text-align:center">' +
         '<button class="btn-primary" id="btnSavePerson">💾 שמירת אדם</button>' +

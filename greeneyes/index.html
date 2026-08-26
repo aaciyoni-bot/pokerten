@@ -184,6 +184,8 @@
   details.fw-inv > summary::after { content: '▾'; color: #8a9b90; transition: transform .18s; }
   details.fw-inv[open] > summary::after { transform: rotate(180deg); }
   details.fw-inv > summary .fw-nm { flex: 1; }
+  details.hist > summary { list-style: none; cursor: pointer; }
+  details.hist > summary::-webkit-details-marker { display: none; }
   details.fw-inv > table { margin: 0 6px 8px; width: calc(100% - 12px); }
   .fw-badge { font-size: 12px; font-weight: 900; border-radius: 8px; padding: 2px 8px; }
   .fw-badge.fw-gap { color: #fff; background: #dc2626; }
@@ -1962,6 +1964,31 @@
     else { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank'); }
   }
 
+  // browsable archive of every submitted count report (in the viewer's scope),
+  // newest first — tap a row to jump to that day's report.
+  function reportHistoryHtml() {
+    var scope = myUnits().map(function (u) { return u.id; });
+    var list = Object.keys(S.counts).map(function (k) { return S.counts[k]; })
+      .filter(function (c) { return c && scope.indexOf(c.unitId) >= 0; })
+      .sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+    var h = '<details class="card hist"><summary style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:16px;font-weight:800">' +
+      '<span>📚 היסטוריית דיווחים</span><span class="m" style="font-weight:400">' + list.length + ' דיווחים ▾</span></summary>' +
+      '<div style="margin-top:8px">';
+    if (!list.length) h += '<div class="m" style="padding:8px;color:#6b7f72">אין דיווחים עדיין</div>';
+    var day = '';
+    list.slice(0, 200).forEach(function (c) {
+      if (c.date !== day) { day = c.date; h += '<div style="font-size:12px;font-weight:800;color:#1b4332;margin:8px 0 2px">יום ' + DAY_HE[isoDow(c.date)] + ' · ' + fmtDM(c.date) + '</div>'; }
+      var un = UNIT_BY_ID[c.unitId], mm = countMismatches(c);
+      h += '<div class="usage-row" style="cursor:pointer" data-histdate="' + esc(c.date) + '"><div>' +
+        '<b>' + esc(un ? un.full : c.unitId) + '</b>' +
+        '<div class="m">' + esc(c.counterName || '') + (c.counterNum ? ' (מ.א ' + esc(c.counterNum) + ')' : '') + ' · ' + fmtTime(c.ts) + '</div></div>' +
+        '<div>' + (mm ? '<span style="font-weight:800;color:#b45309">' + mm + ' חריגים</span>' : '<span style="font-weight:800;color:#166534">✓ תקין</span>') + '</div></div>';
+    });
+    if (list.length > 200) h += '<div class="m" style="text-align:center;padding:6px">מוצגים 200 מתוך ' + list.length + ' — יצוא CSV לרשימה המלאה</div>';
+    h += '</div></details>';
+    return h;
+  }
+
   function renderReport() {
     var units = myUnits();
     var h = '';
@@ -1998,6 +2025,9 @@
       if (isArmon()) h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-top:6px">ניקוי פער מסמן את הפריט כתקין בספירה (הפער נעלם מהדוח). פעולה של ARMON בלבד.</div>';
     }
     h += '</div>';
+
+    // browsable history of all submitted reports
+    h += reportHistoryHtml();
 
     // (מצבת מרכז lives in the ניהול tab now — admin-only, on request.)
 
@@ -2059,6 +2089,9 @@
     });
     var chip = document.querySelector('#rstrip .dchip.sel');
     if (chip) chip.scrollIntoView({ inline: 'center', block: 'nearest' });
+    document.querySelectorAll('[data-histdate]').forEach(function (b) {
+      b.onclick = function () { S.repDate = b.getAttribute('data-histdate'); renderReport(); window.scrollTo(0, 0); };
+    });
     if ($('dashShare')) $('dashShare').onclick = dashShare;
     $('expSummary').onclick = exportSummary;
     $('expFull').onclick = exportFull;

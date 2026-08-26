@@ -1443,8 +1443,10 @@
       var serTxt = ser ? ' · <span class="serial">צ׳ ' + esc(ser) + '</span>' : '';
       var m = S.buf[kind][it.id];
       var cls = m ? (m.ok ? ' ok' : ' diff') : '';
-      // ARMON may edit the baseline מצבת quantity in-place — only qty items
-      var armonQty = isArmon() && trackOf(it.id) === 'qty';
+      // baseline מצבת inline editor — ARMON on any qty item; a company commander
+      // on his own company's NON-sensitive qty items (sensitive items are always
+      // tracked, so they're excluded automatically too)
+      var armonQty = canEditBaseline(S.unit, it.id);
       var editing = armonQty && S.qtyEdit === kind + ':' + it.id;
       h += '<div class="item' + cls + sensCls(it.id) + '" id="row_' + kind + '_' + it.id + '">' +
         '<button class="vbtn" data-k="' + kind + '" data-i="' + it.id + '" aria-label="אישור">✓</button>' +
@@ -1456,7 +1458,7 @@
         (m && !m.ok
           ? '<div class="ainp"><input type="number" inputmode="numeric" min="0" data-k="' + kind + '" data-i="' + it.id + '" value="' + (typeof m.actual === 'number' ? m.actual : '') + '" placeholder="כמות"></div>'
           : '') +
-        (armonQty ? '<button class="xbtn qedit" data-qk="' + kind + '" data-qi="' + it.id + '" title="עדכון מצבת (ARMON)">✏️ מצבת</button>' : '') +
+        (armonQty ? '<button class="xbtn qedit" data-qk="' + kind + '" data-qi="' + it.id + '" title="עדכון מצבת">✏️ מצבת</button>' : '') +
         '<button class="xbtn" data-k="' + kind + '" data-i="' + it.id + '">שונה</button>' +
         '</div>';
       if (editing) {
@@ -1494,11 +1496,21 @@
     renderCount();
   }
 
-  // ARMON updates a qty item's baseline מצבת straight from the count screen.
+  // who may edit a framework's baseline מצבת for a given item, inline:
+  //  • ARMON — any qty item, any framework
+  //  • company commander — qty, NON-sensitive items, in his own company only
+  // (sensitive ammo is always tracked, so it's never a qty item to begin with)
+  function canEditBaseline(unit, iid) {
+    if (trackOf(iid) !== 'qty') return false;
+    if (isArmon()) return true;
+    if (isSensitive(iid)) return false;
+    return isCommander() && !!UNIT_BY_ID[unit] && myCmdGroup() === UNIT_BY_ID[unit].grp;
+  }
+  // Updates a qty item's baseline מצבת straight from the count screen.
   // Writes ammo_stock (setting the item's q and resetting its usage anchor);
-  // gated to armon in the rules too.
+  // gated in the rules too (armon or the unit's company commander).
   function updateBaselineQty(unit, kind, iid, n) {
-    if (!isArmon()) { toast('עדכון מצבת שמור ל-ARMON'); return; }
+    if (!canEditBaseline(unit, iid)) { toast('אין הרשאה לעדכון מצבת לפריט זה'); return; }
     var fb = window.fb;
     var next = cloneUnit(unit);
     if (n > 0) next[kind][iid] = { q: n, t: Date.now() };

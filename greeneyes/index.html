@@ -1284,16 +1284,31 @@
     if (_scrollY) window.scrollTo(0, _scrollY);
   }
 
+  // current marked shortage for an ammo item (works for qty, series & holder)
+  function itemShortfall(unit, iid) {
+    var inst = instOf(unit, 'ammo', iid);
+    var buf = S.buf.ammo[iid];
+    if (inst) {
+      var sf = 0;
+      inst.forEach(function (ins, i) {
+        var q = rowQty(ins);
+        var mk = buf && buf.inst ? buf.inst[i] : undefined;
+        if (mk === 'miss') sf += q;                          // missing signed piece
+        else if (typeof mk === 'number') sf += Math.max(0, q - mk); // series counted short
+      });
+      return sf;
+    }
+    var exp = expectedFor(unit, 'ammo', iid);
+    var actual = buf && typeof buf.actual === 'number' ? buf.actual : null;
+    if (exp == null || actual == null) return null;
+    return Math.max(0, exp - actual);
+  }
   // classify a counted ammo shortage as שצ״ל (usage) or אובדן (loss) and file a
   // report; either way the quantity drops from the framework's stock.
   function reportShortfall(unit, iid, type) {
     if (!unit || !iid || !UNIT_BY_ID[unit]) return;
-    var b = S.buf.ammo[iid];
-    var actual = b && typeof b.actual === 'number' ? b.actual : null;
-    var exp = expectedFor(unit, 'ammo', iid);
-    if (actual == null) { toast('הקלד קודם את הכמות שנספרה'); return; }
-    if (exp == null) { toast('אין צפי לפריט'); return; }
-    var qty = exp - actual;
+    var qty = itemShortfall(unit, iid);
+    if (qty == null) { toast('סמן קודם את החוסר (״שונה״ / ״חסר״)'); return; }
     if (!(qty > 0)) { toast('אין חוסר לדווח (הכמות תואמת/עודפת)'); return; }
     var typeName = type === 'loss' ? 'אובדן' : 'שצ״ל';
     if (!confirm('לדווח ' + qty + ' × ' + itemName('ammo', iid) + ' כ' + typeName + '?\nהכמות תרד מהמלאי של ' + UNIT_BY_ID[unit].full + '.')) return;
@@ -1351,6 +1366,15 @@
               '</div>';
           });
         });
+        // ammo (tracked series/holder): let the counter classify a shortage
+        // (marked ״חסר״ / ״שונה״) as שצ״ל or אובדן — same as qty items
+        if (kind === 'ammo') {
+          h += '<div style="grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-2px 0 4px">' +
+            '<span style="font-size:12px;color:#6b7f72;font-weight:700">אם יש חוסר:</span>' +
+            '<button class="btn-mini shatzal" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#ea580c;color:#fff;border-color:#ea580c">🔥 דווח שצ״ל</button>' +
+            '<button class="btn-mini loss" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#b91c1c;color:#fff;border-color:#b91c1c">❗ דווח אובדן</button>' +
+            '</div>';
+        }
         return;
       }
       var exp = expectedFor(S.unit, kind, it.id);
@@ -1383,9 +1407,9 @@
           '<button class="btn-ghost" id="qeditCancel" style="padding:9px 12px;font-size:14px">ביטול</button>' +
           '</div>';
       }
-      // marked "שונה" on ammo with a defined baseline → offer to classify a
-      // shortage as שצ״ל (usage) or אובדן (loss), filing a report accordingly
-      if (kind === 'ammo' && m && !m.ok && exp != null) {
+      // ammo with a defined baseline → offer to classify a shortage as
+      // שצ״ל (usage) or אובדן (loss), filing a report accordingly
+      if (kind === 'ammo' && exp != null) {
         h += '<div style="grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:-2px;margin-bottom:2px">' +
           '<span style="font-size:12px;color:#6b7f72;font-weight:700">אם יש חוסר:</span>' +
           '<button class="btn-mini shatzal" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#ea580c;color:#fff;border-color:#ea580c">🔥 דווח שצ״ל</button>' +

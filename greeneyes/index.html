@@ -513,6 +513,7 @@
       { id: 'a_armon',  name: 'ארמון' },
       { id: 'a_siyur',  name: 'סיור' },
       { id: 'a_carmel', name: 'כרמל' },
+      { id: 'a_hasam',  name: 'חסם בקה' },
       { id: 'a_hapak',  name: 'חפ״ק מ״פ' }
     ]},
     { g: 'b', name: 'פלוגה ב׳', units: [
@@ -598,6 +599,7 @@
     buf: { ammo: {}, equip: {} },  // itemId -> {ok:true} | {actual:n}
     bufKey: '',            // unit_date the buffer belongs to
     qtyEdit: '',           // count screen: kind:iid whose מצבת ARMON is editing inline
+    ciPick: '',            // count screen add-item picker: 'kind:id' | '__new__' | ''
     tab: 'count',
     usageFilter: 'all',
     adminUnit: localStorage.getItem('yb_unit') || 'a_armon',
@@ -1251,16 +1253,28 @@
       h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-bottom:8px">V ירוק = קיים ותואם · ״שונה״ = הקלדת הכמות בפועל (גם 0) · ״חסר״ = פריט חתום שלא נמצא</div>';
     }
 
-    // ARMON: add an item to this framework straight from the count screen
+    // ARMON: add an item to this framework straight from the count screen —
+    // pick any item from the full catalog, or create a brand-new one
     if (isArmon()) {
+      var pick = S.ciPick || '';
+      var isNew = pick === '__new__';
+      var catOpts = '<option value="">— בחר פריט מהקטלוג —</option>' +
+        '<optgroup label="תחמושת">' + ammoList().map(function (it) { return '<option value="ammo:' + it.id + '"' + (pick === 'ammo:' + it.id ? ' selected' : '') + '>' + esc(it.name) + '</option>'; }).join('') + '</optgroup>' +
+        '<optgroup label="אמצעים">' + equipList().map(function (it) { return '<option value="equip:' + it.id + '"' + (pick === 'equip:' + it.id ? ' selected' : '') + '>' + esc(it.name) + '</option>'; }).join('') + '</optgroup>' +
+        '<optgroup label="חדש"><option value="__new__"' + (isNew ? ' selected' : '') + '>➕ פריט חדש...</option></optgroup>';
       h += '<div class="card"><h3>➕ הוספת פריט למסגרת (ARMON)</h3>' +
-        '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">מוסיף פריט ל־' + esc(UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : '') + ' עם כמות — ומופיע מיד בספירה.</div>' +
-        '<div class="grid2">' +
-        '<div><label class="fld">שם פריט</label><input type="text" id="ciName" placeholder="שם הפריט"></div>' +
-        '<div><label class="fld">סוג</label><select id="ciKind"><option value="ammo">תחמושת</option><option value="equip">אמצעי</option></select></div></div>' +
-        '<label class="fld">כמות</label><input type="number" id="ciQty" inputmode="numeric" min="1" placeholder="0">' +
-        '<button class="btn-primary" id="btnCiAdd">➕ הוסף לספירה</button>' +
-        '<div style="font-size:11px;color:#6b7f72;text-align:center">שם שכבר קיים בקטלוג — הכמות תוגדר למסגרת. שם חדש — נוצר פריט חדש.</div></div>';
+        '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">בחר פריט מהקטלוג (או צור חדש) והגדר כמות — ומופיע מיד בספירה של ' + esc(UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : '') + '.</div>' +
+        '<label class="fld">פריט</label><select id="ciPick">' + catOpts + '</select>';
+      if (isNew) {
+        h += '<div class="grid2" style="margin-top:8px">' +
+          '<div><label class="fld">שם חדש</label><input type="text" id="ciName" placeholder="שם הפריט"></div>' +
+          '<div><label class="fld">סוג</label><select id="ciKind"><option value="ammo">תחמושת</option><option value="equip">אמצעי</option></select></div></div>';
+      }
+      if (pick) {
+        h += '<label class="fld">כמות</label><input type="number" id="ciQty" inputmode="numeric" min="1" placeholder="0">' +
+          '<button class="btn-primary" id="btnCiAdd">➕ הוסף לספירה</button>';
+      }
+      h += '</div>';
     }
 
     $('scrCount').innerHTML = h;
@@ -1294,6 +1308,7 @@
       updateBaselineQty(S.unit, kind, iid, n);
     };
     if ($('btnSubmit')) $('btnSubmit').onclick = submitCount;
+    if ($('ciPick')) $('ciPick').onchange = function () { S.ciPick = $('ciPick').value; renderCount(); };
     if ($('btnCiAdd')) $('btnCiAdd').onclick = addItemToCount;
     document.querySelectorAll('.shatzal').forEach(function (b) {
       b.onclick = function () { reportShortfall(b.getAttribute('data-su'), b.getAttribute('data-si'), 'shatzal'); };
@@ -3277,22 +3292,28 @@
   // quantity in this unit so it appears in the count immediately.
   function addItemToCount() {
     if (!isArmon()) { toast('הוספת פריט שמורה ל-ARMON'); return; }
-    var name = ($('ciName') && $('ciName').value || '').trim();
-    var kind = $('ciKind') ? $('ciKind').value : 'ammo';
+    var pick = ($('ciPick') && $('ciPick').value) || S.ciPick || '';
     var qty = Math.max(0, Math.floor(+($('ciQty') && $('ciQty').value || 0)));
-    if (!name) { toast('הזן שם פריט'); return; }
+    if (!pick) { toast('בחר פריט מהקטלוג'); return; }
     if (!(qty > 0)) { toast('הזן כמות'); return; }
-    var list = kind === 'ammo' ? ammoList() : equipList();
-    var found = null;
-    for (var i = 0; i < list.length; i++) { if ((list[i].name || '').trim() === name) { found = list[i]; break; } }
-    var id = found ? found.id : 'c_' + Date.now().toString(36);
-    var fb = window.fb, writes = [];
-    if (!found) {
-      var field = kind === 'ammo' ? 'customAmmo' : 'customEquip';
-      var clist = ((S.config && S.config[field]) || []).slice();
-      clist.push({ id: id, name: name });
-      var cfg = cfgPatch(field, clist); cfg.updatedBy = (S.person && S.person.n) || ''; cfg.ts = Date.now();
-      writes.push(fb.setDoc(fb.doc(fb.db, 'ammo_config', 'main'), cfg));
+    var fb = window.fb, writes = [], kind, id, name;
+    if (pick === '__new__') {
+      name = ($('ciName') && $('ciName').value || '').trim();
+      kind = $('ciKind') ? $('ciKind').value : 'ammo';
+      if (!name) { toast('הזן שם פריט חדש'); return; }
+      var list = kind === 'ammo' ? ammoList() : equipList();
+      var found = null;
+      for (var i = 0; i < list.length; i++) { if ((list[i].name || '').trim() === name) { found = list[i]; break; } }
+      id = found ? found.id : 'c_' + Date.now().toString(36);
+      if (!found) {
+        var field = kind === 'ammo' ? 'customAmmo' : 'customEquip';
+        var clist = ((S.config && S.config[field]) || []).slice();
+        clist.push({ id: id, name: name });
+        var cfg = cfgPatch(field, clist); cfg.updatedBy = (S.person && S.person.n) || ''; cfg.ts = Date.now();
+        writes.push(fb.setDoc(fb.doc(fb.db, 'ammo_config', 'main'), cfg));
+      }
+    } else {
+      var pp = pick.split(':'); kind = pp[0]; id = pp[1]; name = itemName(kind, id);
     }
     var next = cloneUnit(S.unit);
     next[kind][id] = { q: qty, t: Date.now() };
@@ -3300,7 +3321,7 @@
     var btn = $('btnCiAdd'); if (btn) btn.disabled = true;
     Promise.all(writes).then(function () {
       toast('✓ נוסף: ' + name + ' (' + qty + ') ל' + (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : ''));
-      if ($('ciName')) $('ciName').value = ''; if ($('ciQty')) $('ciQty').value = '';
+      S.ciPick = '';
       renderCount();
     }).catch(function (e) { if (btn) btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
   }

@@ -1225,7 +1225,14 @@
     var equipVis = showEquip ? visibleItems('equip') : [];
     var nothing = !ammoVis.length && !equipVis.length;
     if (nothing) {
-      h += '<div class="banner-warn" style="margin-top:14px">📋 עדיין לא הוגדר מלאי ליחידה זו.<br>המנהל מזין כמויות בטאב ניהול — ומיד יופיעו כאן הפריטים לספירה.</div>';
+      if (unitHasEquip(S.unit) && !showEquip) {
+        // equipment-only content on a non-equipment day — show it read-only so
+        // the signed gear is visible (it's counted on Tue/Fri, not today)
+        h += '<div class="banner-warn" style="margin-top:14px">📦 במסגרת זו יש <b>אמצעים בלבד</b> — נספרים בימי <b>שלישי ושישי</b>.<br>היום (יום ' + DAY_HE[isoDow(S.date)] + ') אין כאן ספירה. הפריטים החתומים מוצגים למטה לצפייה.</div>';
+        h += equipPreviewHtml(S.unit);
+      } else {
+        h += '<div class="banner-warn" style="margin-top:14px">📋 עדיין לא הוגדר מלאי ליחידה זו.<br>המנהל מזין כמויות בטאב ניהול — ומיד יופיעו כאן הפריטים לספירה.</div>';
+      }
     } else {
       if (ammoVis.length) {
         h += '<div class="sec-head"><h2>תחמושת</h2><button class="btn-mini" id="allAmmo">סמן הכל ✓</button></div>';
@@ -1319,6 +1326,31 @@
       byPn: num, byUid: S.user.uid, ts: Date.now()
     }).then(function () { toast('✓ דווח ' + typeName + ': ' + itemName('ammo', iid) + ' −' + qty); })
       .catch(function (e) { toast('שגיאה: ' + (e.code || e.message)); });
+  }
+
+  // read-only list of a framework's equipment + who's signed for each piece —
+  // shown on non-equipment days so signed gear is always visible
+  function equipPreviewHtml(unit) {
+    var items = equipList().filter(function (it) { return stockQty(unit, 'equip', it.id) > 0; });
+    if (!items.length) return '';
+    var h = '<div class="card"><h3>📦 אמצעים במסגרת (לצפייה)</h3>';
+    items.forEach(function (it) {
+      var inst = instOf(unit, 'equip', it.id);
+      h += '<div style="font-weight:800;margin:10px 0 3px;color:#1b4332">' + esc(it.name) + sensTag(it.id) +
+        ' <span class="m" style="font-weight:400">· ' + stockQty(unit, 'equip', it.id) + ' יח׳</span></div>';
+      if (inst) {
+        inst.forEach(function (r) {
+          var lbl = [];
+          if (r.s) lbl.push(firstFieldLabel(it.id) + ' ' + r.s);
+          if (r.owner) lbl.push(r.owner);
+          if (r.num) lbl.push('מ.א ' + r.num);
+          if (r.id) lbl.push('מזהה ' + r.id);
+          h += '<div class="usage-row" style="cursor:default"><div class="m">' + (esc(lbl.join(' · ')) || '—') + '</div></div>';
+        });
+      }
+    });
+    h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-top:6px">הספירה בפועל מתבצעת בימי שלישי / שישי.</div></div>';
+    return h;
   }
 
   function itemsHtml(kind, items) {

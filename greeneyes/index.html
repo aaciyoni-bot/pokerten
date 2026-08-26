@@ -497,6 +497,13 @@
   var SENSITIVE = { rimon: 1, matol_nefitz: 1, lau: 1 };
   function isSensitive(id) { return !!SENSITIVE[id]; }
   function sensTag(id) { return isSensitive(id) ? ' <span class="sens-tag">רגיש</span>' : ''; }
+  // usage report kind badge: שצ״ל (usage) vs אובדן (loss)
+  function usageTypeTag(u) {
+    var t = u && u.type;
+    if (t === 'loss') return ' <span style="font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;background:#fee2e2;color:#b91c1c">אובדן</span>';
+    if (t === 'shatzal') return ' <span style="font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;background:#ffedd5;color:#9a3412">שצ״ל</span>';
+    return '';
+  }
   function sensCls(id) { return isSensitive(id) ? ' sens' : ''; }
   var GROUP_NAMES = { a: 'פלוגה א׳', b: 'פלוגה ב׳', d: 'פלוגה ד׳', bn: 'גדוד' };
   var UNIT_GROUPS = [
@@ -1266,7 +1273,35 @@
       updateBaselineQty(S.unit, kind, iid, n);
     };
     if ($('btnSubmit')) $('btnSubmit').onclick = submitCount;
+    document.querySelectorAll('.shatzal').forEach(function (b) {
+      b.onclick = function () { reportShortfall(b.getAttribute('data-su'), b.getAttribute('data-si'), 'shatzal'); };
+    });
+    document.querySelectorAll('.loss').forEach(function (b) {
+      b.onclick = function () { reportShortfall(b.getAttribute('data-su'), b.getAttribute('data-si'), 'loss'); };
+    });
     if (_scrollY) window.scrollTo(0, _scrollY);
+  }
+
+  // classify a counted ammo shortage as שצ״ל (usage) or אובדן (loss) and file a
+  // report; either way the quantity drops from the framework's stock.
+  function reportShortfall(unit, iid, type) {
+    if (!unit || !iid || !UNIT_BY_ID[unit]) return;
+    var b = S.buf.ammo[iid];
+    var actual = b && typeof b.actual === 'number' ? b.actual : null;
+    var exp = expectedFor(unit, 'ammo', iid);
+    if (actual == null) { toast('הקלד קודם את הכמות שנספרה'); return; }
+    if (exp == null) { toast('אין צפי לפריט'); return; }
+    var qty = exp - actual;
+    if (!(qty > 0)) { toast('אין חוסר לדווח (הכמות תואמת/עודפת)'); return; }
+    var typeName = type === 'loss' ? 'אובדן' : 'שצ״ל';
+    if (!confirm('לדווח ' + qty + ' × ' + itemName('ammo', iid) + ' כ' + typeName + '?\nהכמות תרד מהמלאי של ' + UNIT_BY_ID[unit].full + '.')) return;
+    var fb = window.fb, name = (S.person && S.person.n) || '', num = (S.person && S.person.pn) || '';
+    fb.addDoc(fb.collection(fb.db, 'ammo_usage'), {
+      group: UNIT_BY_ID[unit].grp, unitId: unit, itemId: iid, qty: qty, date: S.date,
+      reporterName: name, reporterNum: num, note: typeName + ' — מהספירה', type: (type === 'loss' ? 'loss' : 'shatzal'),
+      byPn: num, byUid: S.user.uid, ts: Date.now()
+    }).then(function () { toast('✓ דווח ' + typeName + ': ' + itemName('ammo', iid) + ' −' + qty); })
+      .catch(function (e) { toast('שגיאה: ' + (e.code || e.message)); });
   }
 
   function itemsHtml(kind, items) {
@@ -1344,6 +1379,15 @@
           '<input type="number" inputmode="numeric" min="0" id="qeditInp" value="' + (exp == null ? '' : exp) + '" placeholder="כמות" style="width:90px;font-size:16px;padding:8px;text-align:center;border:1.5px solid #fdba74;border-radius:10px">' +
           '<button class="btn-primary" id="qeditOk" style="flex:1;padding:9px;font-size:14px">✔️ וידוא עדכון</button>' +
           '<button class="btn-ghost" id="qeditCancel" style="padding:9px 12px;font-size:14px">ביטול</button>' +
+          '</div>';
+      }
+      // marked "שונה" on ammo with a defined baseline → offer to classify a
+      // shortage as שצ״ל (usage) or אובדן (loss), filing a report accordingly
+      if (kind === 'ammo' && m && !m.ok && exp != null) {
+        h += '<div style="grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:-2px;margin-bottom:2px">' +
+          '<span style="font-size:12px;color:#6b7f72;font-weight:700">אם יש חוסר:</span>' +
+          '<button class="btn-mini shatzal" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#ea580c;color:#fff;border-color:#ea580c">🔥 דווח שצ״ל</button>' +
+          '<button class="btn-mini loss" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#b91c1c;color:#fff;border-color:#b91c1c">❗ דווח אובדן</button>' +
           '</div>';
       }
     });
@@ -1564,7 +1608,7 @@
     list.forEach(function (u) {
       var un = UNIT_BY_ID[u.unitId];
       h += '<div class="usage-row"><div>' +
-        '<b>' + esc(itemName('ammo', u.itemId)) + '</b> − ' + (+u.qty || 0) +
+        '<b>' + esc(itemName('ammo', u.itemId)) + '</b>' + usageTypeTag(u) + ' − ' + (+u.qty || 0) +
         ' <span class="m">· ' + esc(un ? un.full : u.unitId) + '</span>' +
         '<div class="m">' + esc(u.reporterName || '') + (u.reporterNum ? ' (מ.א ' + esc(u.reporterNum) + ')' : '') +
         ' · ' + esc(u.date || '') + ' ' + fmtTime(u.ts) + (u.note ? ' · ' + esc(u.note) : '') + '</div></div>' +
@@ -2928,7 +2972,7 @@
       h += '<div style="font-size:12px;font-weight:800;margin:10px 0 4px;color:#1b4332">פירוט הדיווחים (' + pend.length + ')</div>';
       pend.slice().sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, 150).forEach(function (u) {
         var un = UNIT_BY_ID[u.unitId];
-        h += '<div class="usage-row"><div><b>' + esc(itemName('ammo', u.itemId)) + '</b> − ' + (+u.qty || 0) +
+        h += '<div class="usage-row"><div><b>' + esc(itemName('ammo', u.itemId)) + '</b>' + usageTypeTag(u) + ' − ' + (+u.qty || 0) +
           ' <span class="m">· ' + esc(un ? un.full : u.unitId) + '</span>' +
           '<div class="m">' + esc(u.reporterName || '') + (u.reporterNum ? ' (מ.א ' + esc(u.reporterNum) + ')' : '') +
           ' · ' + esc(u.date || '') + ' ' + fmtTime(u.ts) + (u.note ? ' · ' + esc(u.note) : '') + '</div></div></div>';

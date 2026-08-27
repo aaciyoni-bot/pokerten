@@ -1981,6 +1981,8 @@ const logGameResult = async (entries, tableId) => {
   try {
     for (const e of entries || []) {
       if (!e.uid) continue;
+      // The settlement reader sums profit and rake across rows, so a row that
+      // omits either field turns its total into NaN. Every row carries both.
       await window.fb.addDoc(window.fb.collection(window.fb.db, "gameLog"), {
         uid: e.uid,
         username: e.username || '',
@@ -1988,7 +1990,7 @@ const logGameResult = async (entries, tableId) => {
         clubId: CLUB_ID,
         profit: round2(e.profit || 0),
         rake: round2(e.rake || 0),
-        tableId: tableId || '',
+        tableId: e.tableId || tableId || '',
         at: Date.now()
       });
     }
@@ -7088,6 +7090,19 @@ function LobbyView({
     className: "w-full bg-slate-900 border border-gold-400/30 text-gold-400 py-3 rounded-2xl font-black text-lg tracking-widest mb-3",
     dir: "ltr"
   }, user.playerId || '—', " 📋"), React.createElement("button", {
+    // The settlement itself lives outside this app (CLUBCULATION reads this
+    // club's Firestore directly). One button for everyone: it works out the
+    // role from the signed-in account — owner sees everything, an agent sees
+    // his own players, a player sees only his own results and no rake.
+    onClick: () => {
+      try {
+        window.open('https://clubculation.com/pokerten', '_blank', 'noopener');
+      } catch (e) {}
+    },
+    className: "w-full bg-slate-900 border border-emerald-500/40 text-emerald-300 py-3 rounded-2xl font-black mb-3 flex items-center justify-center gap-2"
+  }, "📊 פירוט חשבון / התחשבנות", React.createElement("i", {
+    className: "fa-solid fa-arrow-up-right-from-square text-[11px] opacity-70"
+  })), React.createElement("button", {
     onClick: () => setCashierOpen(false),
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Close"))), document.body), React.createElement("div", {
@@ -8102,6 +8117,8 @@ function SettlementSection({
           clubId: CLUB_ID,
           game: 'adjust',
           profit: delta,
+          rake: 0,          // a correction earns no rake — but the field must exist
+          tableId: '',
           at: Date.now(),
           by: user.username,
           note: eb.note.trim().slice(0, 120)
@@ -11248,12 +11265,16 @@ function PokerTable({
       ...tourExtra
     });
     distributeRake(rake, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
-    // Record rake per human player for the reports (split equally among the
-    // players dealt into the hand). Bots don't generate reportable rake.
-    const rkUids = Object.values(pl).filter(q => (q.cards || []).length && !q.isBot).map(q => q.uid);
+    // Rake per player, for the reports. The share is over EVERY player dealt
+    // into the hand, not just the humans: the rake came out of a pot that bot
+    // chips helped build, and charging a lone human the whole hand's rake
+    // inflates both his figure and the club's central rake. Bot shares are
+    // simply not written.
+    const dealtAll = Object.values(pl).filter(q => (q.cards || []).length);
+    const rkUids = dealtAll.filter(q => !q.isBot).map(q => q.uid);
     if (rake > 0 && rkUids.length) {
-      const share = round2(rake / rkUids.length);
-      logGameResult(rkUids.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share })), tableDocId);
+      const share = round2(rake / dealtAll.length);
+      logGameResult(rkUids.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share, tableId: tableDocId })), tableDocId);
     }
     clearTimeout(nextHandRef.current);
     // cash keeps a snappy rhythm; tournaments keep a bit of slack for
@@ -11377,9 +11398,10 @@ function PokerTable({
     });
     distributeRake(rakeTotal, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
     // Record rake per human player for the reports (split among players dealt in).
-    const rkUids2 = Object.values(pl).filter(q => (q.cards || []).length && !q.isBot).map(q => q.uid);
+    const dealtAll2 = Object.values(pl).filter(q => (q.cards || []).length);
+    const rkUids2 = dealtAll2.filter(q => !q.isBot).map(q => q.uid);
     if (rakeTotal > 0 && rkUids2.length) {
-      const share2 = round2(rakeTotal / rkUids2.length);
+      const share2 = round2(rakeTotal / dealtAll2.length);
       logGameResult(rkUids2.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share2 })), tableDocId);
     }
     clearTimeout(nextHandRef.current);

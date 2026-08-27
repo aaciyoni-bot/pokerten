@@ -625,9 +625,10 @@ function settleAfterHand(S, rake, winnerUids) {
   if (rake > 0) {
     const dealtUids = dealt.map((p) => p.uid);
     S.effects.push({type: "rake", rake, uids: dealtUids});
+    // share over EVERY player dealt in, not just the humans — client parity
     const rkPlayers = dealt.filter((p) => !p.isBot);
     if (rkPlayers.length) {
-      const share = round2(rake / rkPlayers.length);
+      const share = round2(rake / dealt.length);
       S.effects.push({type: "gameLog", entries: rkPlayers.map((p) => ({uid: p.uid, username: p.name, profit: 0, rake: share}))});
     }
   }

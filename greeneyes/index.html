@@ -601,6 +601,7 @@
     bufKey: '',            // unit_date the buffer belongs to
     qtyEdit: '',           // count screen: kind:iid whose מצבת ARMON is editing inline
     ciPick: '',            // count screen add-item picker: 'kind:id' | '__new__' | ''
+    xferCount: '',         // count screen: kind:iid whose inline in-company transfer is open
     tab: 'count',
     usageFilter: 'all',
     adminUnit: localStorage.getItem('yb_unit') || 'a_armon',
@@ -1317,6 +1318,18 @@
     document.querySelectorAll('.loss').forEach(function (b) {
       b.onclick = function () { reportShortfall(b.getAttribute('data-su'), b.getAttribute('data-si'), 'loss'); };
     });
+    document.querySelectorAll('.xfercount').forEach(function (b) {
+      b.onclick = function () {
+        var key = 'ammo:' + b.getAttribute('data-si');
+        S.xferCount = (S.xferCount === key) ? '' : key;
+        renderCount();
+      };
+    });
+    if ($('xcCancel')) $('xcCancel').onclick = function () { S.xferCount = ''; renderCount(); };
+    if ($('xcGo')) $('xcGo').onclick = function () {
+      var iid = S.xferCount.split(':')[1];
+      transferFromCount(S.unit, 'ammo', iid);
+    };
     if (_scrollY) window.scrollTo(0, _scrollY);
   }
 
@@ -1471,13 +1484,28 @@
           '</div>';
       }
       // ammo with a defined baseline → offer to classify a shortage as
-      // שצ״ל (usage) or אובדן (loss), filing a report accordingly
+      // שצ״ל (usage) or אובדן (loss); a transfer button (in-company) is added
+      // when the viewer may move this unit's stock (armon / company commander)
       if (kind === 'ammo' && exp != null) {
+        var canXfer = canEditBaseline(S.unit, it.id); // qty + non-sensitive + armon/commander of this company
         h += '<div style="grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:-2px;margin-bottom:2px">' +
           '<span style="font-size:12px;color:#6b7f72;font-weight:700">אם יש חוסר:</span>' +
           '<button class="btn-mini shatzal" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#ea580c;color:#fff;border-color:#ea580c">🔥 דווח שצ״ל</button>' +
           '<button class="btn-mini loss" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#b91c1c;color:#fff;border-color:#b91c1c">❗ דווח אובדן</button>' +
+          (canXfer ? '<button class="btn-mini xfercount" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#0369a1;color:#fff;border-color:#0369a1">🔁 העברה</button>' : '') +
           '</div>';
+        if (canXfer && S.xferCount === kind + ':' + it.id) {
+          var sf = itemShortfall(S.unit, it.id);
+          var dsts = companyUnits(UNIT_BY_ID[S.unit].grp).filter(function (u) { return u.id !== S.unit; });
+          h += '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#eff6ff;border:1.5px solid #7dd3fc;border-radius:12px;padding:10px;margin-top:-2px">' +
+            '<span style="font-size:13px;font-weight:800;color:#075985">העברת ' + esc(it.name) + ' בתוך הפלוגה:</span>' +
+            '<input type="number" inputmode="numeric" min="1" id="xcQty" value="' + (sf > 0 ? sf : '') + '" placeholder="כמות" style="width:80px;font-size:16px;padding:8px;text-align:center;border:1.5px solid #7dd3fc;border-radius:10px">' +
+            '<span style="font-size:13px;color:#075985">אל</span>' +
+            '<select id="xcDst" style="flex:1;min-width:120px">' + dsts.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('') + '</select>' +
+            '<button class="btn-primary" id="xcGo" style="padding:9px 14px;font-size:14px">🔁 העבר</button>' +
+            '<button class="btn-ghost" id="xcCancel" style="padding:9px 12px;font-size:14px">ביטול</button>' +
+            '</div>';
+        }
       }
     });
     return h;
@@ -1897,6 +1925,42 @@
       byPn: num, byUid: S.user.uid, ts: Date.now()
     }).then(function () { toast('✓ דווח לחמ״ל: ' + itemName('ammo', iid) + ' −' + qty); })
       .catch(function (e) { toast('שגיאה: ' + e.message); });
+  }
+
+  // move a quantity of a (non-sensitive, qty) ammo item to another framework in
+  // the SAME company — straight from the count screen (armon / company commander)
+  function transferFromCount(unit, kind, iid) {
+    if (!canEditBaseline(unit, iid)) { toast('אין הרשאה להעברה לפריט זה'); return; }
+    var dst = $('xcDst') ? $('xcDst').value : '';
+    var qty = Math.max(0, Math.floor(+($('xcQty') && $('xcQty').value || 0)));
+    if (!dst || !UNIT_BY_ID[dst]) { toast('בחר מסגרת יעד'); return; }
+    if (UNIT_BY_ID[dst].grp !== UNIT_BY_ID[unit].grp) { toast('העברה מותרת רק בתוך אותה פלוגה'); return; }
+    if (!(qty > 0)) { toast('הזן כמות'); return; }
+    var avail = qtyIn(unit, kind, iid);
+    if (qty > avail) { toast('הכמות עולה על הזמין (' + avail + ')'); return; }
+    var srcDoc = cloneUnit(unit), dstDoc = cloneUnit(dst);
+    var se = srcDoc[kind] && srcDoc[kind][iid];
+    if (!se || typeof se.q !== 'number') { toast('הפריט אינו כמותי'); return; }
+    var left = se.q - qty;
+    if (left > 0) { se.q = left; se.t = Date.now(); } else { delete srcDoc[kind][iid]; }
+    var de = dstDoc[kind][iid] || { q: 0, t: Date.now() };
+    de.q = (typeof de.q === 'number' ? de.q : 0) + qty; de.t = Date.now(); if (de.inst) delete de.inst;
+    dstDoc[kind][iid] = de;
+    var fb = window.fb, batch = fb.writeBatch(fb.db);
+    batch.set(fb.doc(fb.db, 'ammo_stock', unit), srcDoc);
+    batch.set(fb.doc(fb.db, 'ammo_stock', dst), dstDoc);
+    var btn = $('xcGo'); if (btn) btn.disabled = true;
+    batch.commit().then(function () {
+      try {
+        fb.addDoc(fb.collection(fb.db, 'ammo_transfer'), {
+          group: UNIT_BY_ID[unit].grp, from: unit, to: dst, kind: kind, itemId: iid, itemName: itemName(kind, iid),
+          qty: qty, ts: Date.now(), byPn: (S.person && S.person.pn) || '', byName: (S.person && S.person.n) || ''
+        });
+      } catch (e) {}
+      S.xferCount = '';
+      toast('✓ הועבר: ' + itemName(kind, iid) + ' × ' + qty + ' → ' + UNIT_BY_ID[dst].name);
+      renderCount();
+    }).catch(function (e) { if (btn) btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
   }
 
   // per-item status of a framework's count on a given date

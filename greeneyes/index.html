@@ -963,7 +963,7 @@
     fb.setDoc(fb.doc(fb.db, 'ammo_gate', fb.auth.currentUser.uid), payload).then(function () {
       if (btn) btn.disabled = false;
       _reprompt = false;
-      S.person = { pn: p.pn, n: p.n || '', c: p.c || '', role: p.role || 'soldier', cmd: p.cmd || '' };
+      S.person = { pn: p.pn, n: p.n || '', c: p.c || '', role: p.role || 'soldier', cmd: p.cmd || '', unit: p.unit || '' };
       try { localStorage.setItem('yb_pn', p.pn); } catch (e) {}
       S.gateOK = true; subscribeMeta();
       if (S.person.role === 'admin' || S.person.role === 'armon' || S.person.role === 'audit'){
@@ -971,8 +971,10 @@
         if (!S.loggedLoad) { S.loggedLoad = true; logEntry('admin', { pn: p.pn, name: p.n, role: p.role }); }
         applyRole();
       } else {
-        // remembered framework for THIS soldier → straight in; else pick
-        var gu = null; try { gu = localStorage.getItem('yb_u_' + p.pn); } catch (e) {}
+        // a person locked to ONE framework (server-assigned `unit`) goes straight
+        // in and stays there; otherwise use the remembered framework, else pick
+        var gu = (p.unit && UNIT_BY_ID[p.unit]) ? p.unit : null;
+        if (!gu) { try { gu = localStorage.getItem('yb_u_' + p.pn); } catch (e) {} }
         var u = gu && UNIT_BY_ID[gu];
         if (u) {
           pickedGroup = u.grp; pickedUnit = gu;
@@ -1073,8 +1075,9 @@
     var admin = isAdminRole();
     $('whoName').textContent = (S.person && S.person.n) ? S.person.n : (admin ? 'מנהל' : GROUP_NAMES[role]);
     $('whoRole').textContent = isArmon() ? 'ארמון' : isAuditor() ? '🔎 מבקר' : isCommander() ? ('מפקד ' + (GROUP_NAMES[S.person.cmd] || '')) : (admin ? 'מנהל' : (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : GROUP_NAMES[role]));
-    $('logoutTxt').textContent = admin ? 'התנתקות' : 'החלפת מסגרת';
-    $('logoutIc').textContent = admin ? '🚪' : '🔄';
+    var lockedUnit = !!(S.person && S.person.unit); // person tied to one framework
+    $('logoutTxt').textContent = (admin || lockedUnit) ? 'התנתקות' : 'החלפת מסגרת';
+    $('logoutIc').textContent = (admin || lockedUnit) ? '🚪' : '🔄';
     $('tabAdmin').style.display = admin ? '' : 'none';
     $('tabUsage').style.display = ''; // everyone may report שצ״ל for their own scope
     // keep the selected unit inside the allowed scope

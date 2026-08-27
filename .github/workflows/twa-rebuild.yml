@@ -58,44 +58,46 @@ jobs:
           set -eux
           mkdir -p "$HOME/.bubblewrap"
           printf '{ "jdkPath": "%s", "androidSdkPath": "%s" }\n' "$JAVA_HOME" "$HOME/android-sdk" > "$HOME/.bubblewrap/config.json"
-          cat "$HOME/.bubblewrap/config.json"
 
       - name: Build unsigned AAB
         working-directory: twa-build/${{ matrix.app }}
         run: |
           set -eux
           export ANDROID_HOME="$HOME/android-sdk"
-          # dummy keystore so bubblewrap does not prompt to generate one (final AAB is signed later, offline)
           keytool -genkeypair -keystore ./android.keystore -alias android \
             -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 3650 \
             -dname "CN=ORIZIS, O=ORIZIS, C=ZM"
-          # feed valid, bounded answers: versionName, versionCode, then y for any confirmations
           printf '1.0.1\n2\ny\ny\ny\ny\ny\ny\ny\ny\n' | timeout 240 bubblewrap update --skipPwaValidation
           test -f app/build.gradle
           sed -i -E 's/compileSdk(Version)?[[:space:]]+[0-9]+/compileSdkVersion 36/' app/build.gradle
           sed -i -E 's/targetSdk(Version)?[[:space:]]+[0-9]+/targetSdkVersion 36/' app/build.gradle
           sed -i -E '/signingConfig[[:space:]]+signingConfigs\.release/d' app/build.gradle
-          grep -E 'compileSdk|targetSdk|versionCode|versionName' app/build.gradle || true
           chmod +x gradlew
           timeout 1200 ./gradlew :app:bundleRelease --stacktrace --no-daemon
-          mkdir -p "$GITHUB_WORKSPACE/twa-build/out"
-          find app/build/outputs -name '*.aab' -exec cp {} "$GITHUB_WORKSPACE/twa-build/out/${{ matrix.app }}.aab" \;
-          ls -la "$GITHUB_WORKSPACE/twa-build/out"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          find app/build/outputs -name '*.aab' -exec cp {} "$GITHUB_WORKSPACE/out/${{ matrix.app }}.aab" \;
+          ls -la "$GITHUB_WORKSPACE/out"
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
         with:
           name: aab-${{ matrix.app }}
-          path: twa-build/out/${{ matrix.app }}.aab
+          path: out/${{ matrix.app }}.aab
           if-no-files-found: error
 
       - name: Commit AAB back
         run: |
           set -eux
+          cp "out/${{ matrix.app }}.aab" "$RUNNER_TEMP/${{ matrix.app }}.aab"
+          # discard all working-tree changes bubblewrap made (tracked + untracked)
+          git checkout -- . 2>/dev/null || true
+          git clean -fdx twa-build out 2>/dev/null || true
+          mkdir -p twa-build/out
+          cp "$RUNNER_TEMP/${{ matrix.app }}.aab" "twa-build/out/${{ matrix.app }}.aab"
           git config user.name  "twa-bot"
           git config user.email "twa-bot@users.noreply.github.com"
-          git add -f twa-build/out/${{ matrix.app }}.aab
-          git commit -m "build(${{ matrix.app }}): unsigned AAB targeting API 36" || echo "nothing to commit"
-          for i in 1 2 3 4 5 6; do
-            git pull --rebase origin twa-rebuild && git push origin twa-rebuild && break || sleep $((RANDOM % 8 + 3))
+          git add -f "twa-build/out/${{ matrix.app }}.aab"
+          git commit -m "build(${{ matrix.app }}): AAB targeting API 36" || echo "nothing to commit"
+          for i in $(seq 1 8); do
+            git pull --rebase --autostash origin twa-rebuild && git push origin twa-rebuild && break || sleep $((RANDOM % 8 + 3))
           done

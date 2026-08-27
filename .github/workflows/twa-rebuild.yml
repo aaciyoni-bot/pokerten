@@ -11,12 +11,12 @@ permissions:
 
 concurrency:
   group: twa-rebuild
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       max-parallel: 6
@@ -65,15 +65,19 @@ jobs:
         run: |
           set -eux
           export ANDROID_HOME="$HOME/android-sdk"
-          yes '' | bubblewrap update --skipPwaValidation || true
-          ls -la
+          # dummy keystore so bubblewrap does not prompt to generate one (final AAB is signed later, offline)
+          keytool -genkeypair -keystore ./android.keystore -alias android \
+            -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 3650 \
+            -dname "CN=ORIZIS, O=ORIZIS, C=ZM"
+          # feed valid, bounded answers: versionName, versionCode, then y for any confirmations
+          printf '1.0.1\n2\ny\ny\ny\ny\ny\ny\ny\ny\n' | timeout 240 bubblewrap update --skipPwaValidation
           test -f app/build.gradle
           sed -i -E 's/compileSdk(Version)?[[:space:]]+[0-9]+/compileSdkVersion 36/' app/build.gradle
           sed -i -E 's/targetSdk(Version)?[[:space:]]+[0-9]+/targetSdkVersion 36/' app/build.gradle
           sed -i -E '/signingConfig[[:space:]]+signingConfigs\.release/d' app/build.gradle
-          echo '----- build.gradle (after) -----'; cat app/build.gradle
+          grep -E 'compileSdk|targetSdk|versionCode|versionName' app/build.gradle || true
           chmod +x gradlew
-          ./gradlew :app:bundleRelease --stacktrace --no-daemon
+          timeout 1200 ./gradlew :app:bundleRelease --stacktrace --no-daemon
           mkdir -p "$GITHUB_WORKSPACE/twa-build/out"
           find app/build/outputs -name '*.aab' -exec cp {} "$GITHUB_WORKSPACE/twa-build/out/${{ matrix.app }}.aab" \;
           ls -la "$GITHUB_WORKSPACE/twa-build/out"
@@ -92,6 +96,6 @@ jobs:
           git config user.email "twa-bot@users.noreply.github.com"
           git add -f twa-build/out/${{ matrix.app }}.aab
           git commit -m "build(${{ matrix.app }}): unsigned AAB targeting API 36" || echo "nothing to commit"
-          for i in 1 2 3 4 5; do
-            git pull --rebase origin twa-rebuild && git push origin twa-rebuild && break || sleep $((RANDOM % 8 + 2))
+          for i in 1 2 3 4 5 6; do
+            git pull --rebase origin twa-rebuild && git push origin twa-rebuild && break || sleep $((RANDOM % 8 + 3))
           done

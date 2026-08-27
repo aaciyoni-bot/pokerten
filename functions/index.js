@@ -54,7 +54,7 @@ exports.spinDailyBonus = onCall(async (request) => {
     const clubSnap = await tx.get(clubRef);
     const club = clubSnap.exists ? clubSnap.data() : {};
     const bw = club.bonusWheel || {};
-    if (bw.enabled === false) throw new HttpsError("failed-precondition", "גלגל הבונוס כבוי");
+    if (bw.enabled !== true) throw new HttpsError("failed-precondition", "גלגל הבונוס כבוי");
 
     const now = Date.now();
     const last = Number(mem.lastBonusAt) || 0;
@@ -127,7 +127,7 @@ exports.claimWeeklyScratch = onCall(async (request) => {
     const clubSnap = await tx.get(clubRef);
     const club = clubSnap.exists ? clubSnap.data() : {};
     const bw = club.bonusWheel || {};
-    if (bw.enabled === false) throw new HttpsError("failed-precondition", "התכונה כבויה");
+    if (bw.enabled !== true) throw new HttpsError("failed-precondition", "התכונה כבויה");
 
     const now = Date.now();
     const lastS = Number(mem.lastScratchAt) || 0;

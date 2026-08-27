@@ -2731,6 +2731,47 @@ const botHandBody = (cards, board, gameType) => {
     return { made: 2, outs: 0 };
   }
 };
+/* Position: how many live players still have to speak after me on this
+   street. 0 means I am last, which is the single most valuable thing in
+   poker — it decides what I open, what I call, and whether a bluff can work.
+   Postflop the order runs from the seat left of the dealer round to the
+   dealer, so the button really is last. */
+const botSeatsAfter = (g, t, b) => {
+  try {
+    const act = Object.values(t.players || {}).filter(p => p.status === 'active');
+    if (act.length <= 1) return 0;
+    const seats = act.map(p => Number(p.seatIndex)).filter(n => Number.isFinite(n)).sort((x, y) => x - y);
+    const dealer = (t.players || {})[g.dealerUid];
+    const dSeat = dealer ? Number(dealer.seatIndex) : seats[seats.length - 1];
+    const order = [...seats.filter(x => x > dSeat), ...seats.filter(x => x <= dSeat)];
+    const me = order.indexOf(Number(b.seatIndex));
+    return me < 0 ? 0 : order.length - 1 - me;
+  } catch (e) {
+    return 0;
+  }
+};
+
+/* How dangerous the board is, 0 (dry) to 1 (wet). A rainbow, disconnected
+   board misses almost every hand, so a bet takes it down and a made hand is
+   rarely beaten. Three to a suit or three to a straight and somebody out
+   there has something — bluff less, size bigger, believe raises. */
+const botBoardWet = board => {
+  const bd = board || [];
+  if (bd.length < 3) return 0;
+  const RV = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, J: 11, Q: 12, K: 13, A: 14 };
+  const suits = {};
+  bd.forEach(c => { suits[c.suit] = (suits[c.suit] || 0) + 1; });
+  const maxSuit = Math.max.apply(null, Object.values(suits));
+  const vs = [...new Set(bd.map(c => RV[c.val] || 0))].sort((a, b2) => a - b2);
+  let conn = 0;
+  for (let i = 1; i < vs.length; i++) if (vs[i] - vs[i - 1] <= 2) conn++;
+  const paired = new Set(bd.map(c => c.val)).size < bd.length;
+  let w = maxSuit >= 3 ? 0.5 : maxSuit === 2 ? 0.2 : 0;
+  w += conn >= 2 ? 0.4 : conn === 1 ? 0.15 : 0;
+  if (paired) w += 0.15;
+  return Math.min(1, w);
+};
+
 // ---- Bot poker brain ----
 // Decides with ONLY the bot's own cards + the board (Monte Carlo vs unknown
 // hands) — a bot can never act on information a human couldn't have, so it
@@ -2771,6 +2812,10 @@ const botPokerMove = (g, t, b) => {
   };
   const oppN = Math.max(1, Object.values(t.players || {}).filter(p => p.status === 'active' && p.uid !== b.uid).length);
   const r = Math.random();
+  const after = botSeatsAfter(g, t, b);   // players still to speak after me
+  const inPos = after === 0;              // last to act: the seat that prints
+  const late = after <= 1;
+  const early = after >= 3;
   if (g.phase === 'preflop') {
     // Crumbs rule: with ~a blind or less behind, folding is never right —
     // any two cards go in (folding 0.8BB preflop is a dead giveaway).
@@ -2782,24 +2827,39 @@ const botPokerMove = (g, t, b) => {
     // (folding 66/TT preflop to 3bb is a dead giveaway nobody plays like).
     const isPair = (b.cards || []).length === 2 && b.cards[0].val === b.cards[1].val;
     if (isPair && toCall > 0 && toCall <= Math.min(stack * 0.15, bb * 8) && tier < 3) return { type: 'call' };
-    if (tier === 0) return toCall <= 0 ? { type: 'call' } : { type: 'fold' };
+    // Open to 2.5bb, plus a blind for every limper already in — the standard
+    // raise, and the one that stops a table of limpers seeing a cheap flop.
+    const limpers = Object.values(t.players || {}).filter(p =>
+      p.status === 'active' && p.uid !== b.uid && (p.bet || 0) > 0 && (p.bet || 0) <= bb).length;
+    const openTo = () => raiseTo(bb * (2.5 + r * 0.4) + bb * limpers);
+    // Facing a raise: 3-bet to 3x it in position, 4x out of position (out of
+    // position you have to charge more, because you act first all the way).
+    const threeBet = () => raiseTo((g.highestBet || bb) * (inPos ? 3 : 4));
+    if (tier === 0) {
+      // trash: only from the button, only unopened, only sometimes
+      if (toCall <= 0) return late && r < 0.14 ? { type: 'raise', amt: openTo() } : { type: 'call' };
+      return { type: 'fold' };
+    }
     if (tier === 1) {
-      if (toCall <= 0) return r < 0.12 ? { type: 'raise', amt: raiseTo(bb * 2.5) } : { type: 'call' };
-      if (toCall > stack * 0.3) return { type: 'fold' }; // never gamble a third of the stack on a marginal hand
-      if (toCall <= bb * 2.5) return r < 0.75 ? { type: 'call' } : { type: 'fold' };
-      return r < 0.12 ? { type: 'call' } : { type: 'fold' };
+      if (toCall <= 0) return (late ? r < 0.55 : early ? r < 0.08 : r < 0.22)
+        ? { type: 'raise', amt: openTo() } : { type: 'call' };
+      if (toCall > stack * 0.3) return { type: 'fold' };
+      // a weak hand out of position against a raise is a losing hand
+      if (toCall <= bb * 2.5) return (inPos ? r < 0.8 : r < 0.4) ? { type: 'call' } : { type: 'fold' };
+      return inPos && r < 0.2 ? { type: 'call' } : { type: 'fold' };
     }
     if (tier === 2) {
       if (shortStack && toCall >= stack * 0.35) return r < 0.55 ? { type: 'call' } : { type: 'fold' };
-      // a deep stack facing a HUGE shove folds medium hands almost always
       if (toCall > stack * 0.35) return r < 0.1 ? { type: 'call' } : { type: 'fold' };
-      if (toCall <= 0) return r < 0.45 ? { type: 'raise', amt: raiseTo(bb * (2.5 + r)) } : { type: 'call' };
-      if (bigRaise) return r < 0.55 ? { type: 'call' } : { type: 'fold' };
-      return r < 0.3 ? { type: 'raise', amt: raiseTo((g.highestBet || bb) * 3) } : { type: 'call' };
+      if (toCall <= 0) return r < (late ? 0.8 : 0.55) ? { type: 'raise', amt: openTo() } : { type: 'call' };
+      if (bigRaise) return r < (inPos ? 0.6 : 0.35) ? { type: 'call' } : { type: 'fold' };
+      return r < (late ? 0.42 : 0.24) ? { type: 'raise', amt: threeBet() } : { type: 'call' };
     }
     if (shortStack) return { type: 'raise', amt: round2(stack + (b.bet || 0)) };
-    if (toCall <= 0) return r < 0.8 ? { type: 'raise', amt: raiseTo(bb * (2.8 + r)) } : { type: 'call' };
-    return r < 0.7 ? { type: 'raise', amt: raiseTo((g.highestBet || bb) * (2.7 + r * 0.8)) } : { type: 'call' };
+    if (toCall <= 0) return r < 0.86 ? { type: 'raise', amt: openTo() } : { type: 'call' };
+    // premium against a raise: 3-bet most of the time, flat some of it so the
+    // range that just calls is not always weak
+    return r < 0.72 ? { type: 'raise', amt: threeBet() } : { type: 'call' };
   }
   // Read the opponents' strength from the bet we are facing, not from thin air.
   const gt = g.currentGameType || 'NLH';
@@ -2826,26 +2886,51 @@ const botPokerMove = (g, t, b) => {
     if (target >= stack + (b.bet || 0) - 0.01 && !hasSomething) return null;
     return { type: 'raise', amt: target };
   };
+  const wet = botBoardWet(g.board);
+  const heads = oppN === 1;
   if (toCall <= 0) {
     // Monsters BET. Trapping (check) is human on early streets, but checking a
     // near-nuts hand on the RIVER leaves money on the table — a dead giveaway.
+    // Sizing follows the board: a dry board needs a third of the pot to do the
+    // job, a wet one has to charge the draws properly.
     const river = g.phase === 'river';
-    if (eq > 0.9) return ((river ? r < 0.05 : r < 0.15) ? null : betPot(0.65 + r * 0.35)) || { type: 'call' };
-    if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(0.55 + r * 0.3)) || { type: 'call' };
-    if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || { type: 'call' };
-    return (r < 0.11 ? betPot(0.55) : null) || { type: 'call' };
+    const size = base => base + wet * 0.3;
+    if (eq > 0.9) return ((river ? r < 0.05 : r < 0.15) ? null : betPot(size(0.6) + r * 0.25)) || { type: 'call' };
+    if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(size(0.5) + r * 0.2)) || { type: 'call' };
+    // thin value: worth betting in position or heads-up, not into a crowd
+    if (eq > 0.55) return ((inPos || heads) && r < 0.62 ? betPot(size(0.4) + r * 0.2) : r < 0.25 ? betPot(size(0.4)) : null) || { type: 'call' };
+    // Nothing. A bet only wins here when it can actually fold somebody out:
+    // last to act, one opponent, and a board that missed him too. Into three
+    // players on a wet board it is money set on fire.
+    const canSteal = inPos && heads && wet < 0.5 && hasSomething !== false;
+    return ((canSteal ? r < 0.42 : oppN >= 3 ? r < 0.03 : r < 0.12) ? betPot(0.4 + wet * 0.2) : null) || { type: 'call' };
   }
   // Facing a shove, or a bet that costs most of the stack: a hand with neither
   // a pair nor a real draw folds. No exceptions, no miracle river.
   if (toCall >= stack) return hasSomething && eq > Math.max(0.45, potOdds) ? { type: 'call' } : { type: 'fold' };
-  if (toCall >= stack * 0.4 && !hasSomething) return { type: 'fold' };
-  if (eq > potOdds + 0.18 && eq > 0.62) {
-    if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
+  // No pair, no draw, facing a bet: FOLD, whatever the price. The hand cannot
+  // win a showdown and no card is coming that would change that, so pot odds
+  // are meaningless — Monte-Carlo equity against a random range says 30% and
+  // says it wrongly. Measured, this was the biggest leak in the brain: 52bb
+  // per 100 hands paid off with air, 85% of it on the flop.
+  // The one exception is a gutshot getting a genuinely free look.
+  if (!hasSomething) {
+    const peek = body.outs >= 4 && (g.board || []).length < 5 && toCall <= potNow * 0.1;
+    if (!peek) return { type: 'fold' };
+  }
+  // Every extra player in the pot is another hand that beats mine, so the
+  // price has to be better before I put money in against a crowd.
+  const need = potOdds + (oppN >= 3 ? 0.10 : oppN === 2 ? 0.05 : 0.02);
+  if (eq > need + 0.16 && eq > 0.62) {
+    // raise for value; charge more on a board that gives him draws to pay with
+    if (r < (inPos ? 0.38 : 0.26)) { const rr = raisePot(0.55 + wet * 0.35 + r * 0.2); if (rr) return rr; }
     return { type: 'call' };
   }
-  if (eq > potOdds + 0.02) return { type: 'call' };
+  if (eq > need) return { type: 'call' };
   if (committed && eq > potOdds - 0.06) return { type: 'call' };
-  if (r < 0.07) { const rr = raisePot(0.7); if (rr) return rr; }
+  // a bluff-raise is only a bluff if it can work: heads-up, in position, on a
+  // board that missed him
+  if (heads && inPos && wet < 0.45 && r < 0.1) { const rr = raisePot(0.7); if (rr) return rr; }
   return { type: 'fold' };
 };
 const simRealEquity = (hands, board, gameType) => {
@@ -6708,7 +6793,10 @@ function LobbyView({
     }
   };
   const bwConf = clubSettings?.bonusWheel || {};
-  const bonusEnabled = bwConf.enabled !== false;
+  // Bonus games (wheel + scratch card) are OFF unless the club turns them on.
+  // The switch lives in club settings — flipping it there brings them back
+  // with their prizes intact; nothing here is deleted.
+  const bonusEnabled = bwConf.enabled === true;
   const BONUS_SEGS = Array.isArray(bwConf.prizes) && bwConf.prizes.length === 8 ? bwConf.prizes.map(x => Number(x) || 0) : [5, 10, 20, 30, 50, 75, 100, 200];
   const BONUS_W = [800, 100, 35, 25, 18, 12, 5, 5];
   const [bonusOpen, setBonusOpen] = useState(false);
@@ -8695,7 +8783,7 @@ function BackofficeView({
   const [bcText, setBcText] = useState('');
   const [bwDraft, setBwDraft] = useState(null);
   const bwCur = bwDraft || {
-    enabled: clubSettings?.bonusWheel?.enabled !== false,
+    enabled: clubSettings?.bonusWheel?.enabled === true,
     prizes: Array.isArray(clubSettings?.bonusWheel?.prizes) && clubSettings.bonusWheel.prizes.length === 8 ? [...clubSettings.bonusWheel.prizes] : [5, 10, 20, 30, 50, 75, 100, 200]
   };
   const BW_PROB = ['80%', '10%', '3.5%', '2.5%', '1.8%', '1.2%', '0.5%', '1:200'];

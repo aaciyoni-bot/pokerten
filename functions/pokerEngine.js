@@ -895,7 +895,11 @@ function botAction(S, uid) {
   // Facing a shove, or a bet that costs most of the stack: a hand with neither
   // a pair nor a real draw folds. No exceptions, no miracle river.
   if (toCall >= stack) return hasSomething() && eq > Math.max(0.45, potOdds) ? {action: "call"} : {action: "fold"};
-  if (toCall >= stack * 0.4 && !hasSomething()) return {action: "fold"};
+  // No pair, no draw, facing a bet: fold at any price — client parity.
+  if (!hasSomething()) {
+    const peek = body.outs >= 4 && (g.board || []).length < 5 && toCall <= potNow * 0.1;
+    if (!peek) return {action: "fold"};
+  }
   if (eq > potOdds + 0.18 && eq > 0.62) {
     if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
     return {action: "call"};

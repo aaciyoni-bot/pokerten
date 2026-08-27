@@ -163,6 +163,32 @@
     box-shadow: 0 12px 30px -6px rgba(16,40,28,.55); border: 2px solid #fff;
   }
 
+  /* ── living eye logo (login) — glances around, blinks, gently floats ── */
+  #eyeLogo { display: block; margin: 0 auto 6px; border-radius: 26px;
+    animation: eyeFloat 4.5s ease-in-out infinite, eyeGlow 4.5s ease-in-out infinite; }
+  @keyframes eyeGlow {
+    0%,100% { filter: drop-shadow(0 14px 30px rgba(0,0,0,.5)) drop-shadow(0 0 6px rgba(34,197,94,.25)); }
+    50%     { filter: drop-shadow(0 20px 40px rgba(0,0,0,.55)) drop-shadow(0 0 18px rgba(34,197,94,.55)); }
+  }
+  #eyeLogo .eye-look  { transform-box: fill-box; transform-origin: center; animation: eyeLook 5s ease-in-out infinite; }
+  #eyeLogo .eye-blink { transform-box: fill-box; transform-origin: center; animation: eyeBlink 5.4s ease-in-out infinite; }
+  #eyeLogo .eye-spark { transform-box: fill-box; transform-origin: center; animation: eyeSpark 5s ease-in-out infinite; }
+  @keyframes eyeFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+  @keyframes eyeLook {
+    0%,16%   { transform: translateX(0); }
+    28%,42%  { transform: translateX(-8px); }
+    54%,68%  { transform: translateX(8px); }
+    80%,100% { transform: translateX(0); }
+  }
+  @keyframes eyeBlink {
+    0%,40%,47%,88%,96%,100% { transform: scaleY(1); }
+    43.5%, 92% { transform: scaleY(.06); }
+  }
+  @keyframes eyeSpark { 0%,100% { opacity: .9; } 43.5% { opacity: 0; } 92% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    #eyeLogo, #eyeLogo * { animation: none !important; }
+  }
+
   /* ── report table ── */
   table.rep { width: 100%; border-collapse: collapse; font-size: 13px; }
   table.rep th { text-align: right; font-size: 11px; color: #4b5f52; padding: 4px 6px; border-bottom: 1.5px solid #d6ded8; }
@@ -341,7 +367,27 @@
 <body>
 
 <div id="login" style="display:none">
-  <img src="/icon-192.png" alt="" style="width:92px;height:92px;border-radius:24px;box-shadow:0 14px 34px -10px rgba(0,0,0,.6);margin-bottom:6px">
+  <svg id="eyeLogo" width="98" height="98" viewBox="0 0 120 120" role="img" aria-label="ירוק בעיניים — גדוד 1895">
+    <defs>
+      <linearGradient id="egBg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#12432c"/><stop offset="1" stop-color="#0a2718"/>
+      </linearGradient>
+      <radialGradient id="egIris" cx="50%" cy="42%" r="62%">
+        <stop offset="0" stop-color="#63e58a"/><stop offset="65%" stop-color="#16a34a"/><stop offset="100%" stop-color="#0e6f33"/>
+      </radialGradient>
+    </defs>
+    <rect x="0" y="0" width="120" height="120" rx="28" fill="url(#egBg)"/>
+    <g class="eye-blink">
+      <ellipse cx="60" cy="50" rx="35" ry="23" fill="#eafff3"/>
+      <g class="eye-look">
+        <circle cx="60" cy="50" r="15.5" fill="url(#egIris)"/>
+        <circle cx="60" cy="50" r="7.2" fill="#06210f"/>
+        <circle class="eye-spark" cx="54.5" cy="44.5" r="3.1" fill="#eafff3"/>
+      </g>
+      <path d="M22 50 Q60 22 98 50" fill="none" stroke="#eafff3" stroke-width="3.4" stroke-linecap="round" opacity=".55"/>
+    </g>
+    <text x="60" y="99" text-anchor="middle" font-family="Rubik, Arial, sans-serif" font-weight="800" font-size="21" fill="#eafff3" letter-spacing="1.5">1895</text>
+  </svg>
   <h1>ירוק <span class="g">בעיניים</span></h1>
   <p>גדוד 1895 · ספירת תחמושת ואמצעים יומית</p>
 

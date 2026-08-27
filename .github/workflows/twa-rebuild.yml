@@ -3,7 +3,7 @@ name: TWA Rebuild (API 36)
 on:
   push:
     branches: [twa-rebuild]
-    paths: ['twa-build/**']
+    paths: ['twa-build/**', '.github/workflows/twa-rebuild.yml']
   workflow_dispatch:
 
 permissions:
@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -40,28 +41,36 @@ jobs:
           unzip -q clt.zip
           mv cmdline-tools latest
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0" >/dev/null
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36" "build-tools;36.0.0" "build-tools;34.0.0" >/dev/null
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
       - name: Install Bubblewrap
         run: npm i -g @bubblewrap/cli@latest
 
+      - name: Point Bubblewrap at system JDK + SDK
+        run: |
+          set -eux
+          mkdir -p "$HOME/.bubblewrap"
+          printf '{ "jdkPath": "%s", "androidSdkPath": "%s" }\n' "$JAVA_HOME" "$HOME/android-sdk" > "$HOME/.bubblewrap/config.json"
+          cat "$HOME/.bubblewrap/config.json"
+
       - name: Build unsigned AAB
         working-directory: twa-build/${{ matrix.app }}
         run: |
           set -eux
           export ANDROID_HOME="$HOME/android-sdk"
-          yes '' | bubblewrap update --skipPwaValidation || bubblewrap update || true
+          # regenerate the android project from the manifest (non-interactive; config points at system SDK/JDK)
+          bubblewrap update --skipPwaValidation < /dev/null
           ls -la
-          if [ -f app/build.gradle ]; then
-            sed -i -E 's/compileSd(k|kVersion)[[:space:]]+[0-9]+/compileSdkVersion 36/' app/build.gradle
-            sed -i -E 's/targetSdk(Version)?[[:space:]]+[0-9]+/targetSdkVersion 36/' app/build.gradle
-            sed -i -E '/signingConfig[[:space:]]+signingConfigs\.release/d' app/build.gradle
-            echo '----- build.gradle -----'; cat app/build.gradle
-          fi
-          chmod +x gradlew || true
-          ./gradlew :app:bundleRelease --stacktrace
+          test -f app/build.gradle
+          echo '----- build.gradle (before) -----'; cat app/build.gradle
+          sed -i -E 's/compileSdk(Version)?[[:space:]]+[0-9]+/compileSdkVersion 36/' app/build.gradle
+          sed -i -E 's/targetSdk(Version)?[[:space:]]+[0-9]+/targetSdkVersion 36/' app/build.gradle
+          sed -i -E '/signingConfig[[:space:]]+signingConfigs\.release/d' app/build.gradle
+          echo '----- build.gradle (after) -----'; cat app/build.gradle
+          chmod +x gradlew
+          ./gradlew :app:bundleRelease --stacktrace --no-daemon
           mkdir -p "$GITHUB_WORKSPACE/twa-build/out"
           find app/build/outputs -name '*.aab' -exec cp {} "$GITHUB_WORKSPACE/twa-build/out/${{ matrix.app }}.aab" \;
           ls -la "$GITHUB_WORKSPACE/twa-build/out"

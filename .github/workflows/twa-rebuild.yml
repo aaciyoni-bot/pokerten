@@ -9,14 +9,19 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: twa-rebuild
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      max-parallel: 6
       matrix:
-        app: [zedmall]
+        app: [agromall, chibwenzi, chipazi, kayachi, lernoto, mwanako, reljob, vochira, zedglow, zedmall, zuwango]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,11 +65,9 @@ jobs:
         run: |
           set -eux
           export ANDROID_HOME="$HOME/android-sdk"
-          # regenerate the android project; feed newlines to accept all default prompts
           yes '' | bubblewrap update --skipPwaValidation || true
           ls -la
           test -f app/build.gradle
-          echo '----- build.gradle (before) -----'; cat app/build.gradle
           sed -i -E 's/compileSdk(Version)?[[:space:]]+[0-9]+/compileSdkVersion 36/' app/build.gradle
           sed -i -E 's/targetSdk(Version)?[[:space:]]+[0-9]+/targetSdkVersion 36/' app/build.gradle
           sed -i -E '/signingConfig[[:space:]]+signingConfigs\.release/d' app/build.gradle
@@ -75,6 +78,13 @@ jobs:
           find app/build/outputs -name '*.aab' -exec cp {} "$GITHUB_WORKSPACE/twa-build/out/${{ matrix.app }}.aab" \;
           ls -la "$GITHUB_WORKSPACE/twa-build/out"
 
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aab-${{ matrix.app }}
+          path: twa-build/out/${{ matrix.app }}.aab
+          if-no-files-found: error
+
       - name: Commit AAB back
         run: |
           set -eux
@@ -82,5 +92,6 @@ jobs:
           git config user.email "twa-bot@users.noreply.github.com"
           git add -f twa-build/out/${{ matrix.app }}.aab
           git commit -m "build(${{ matrix.app }}): unsigned AAB targeting API 36" || echo "nothing to commit"
-          git pull --rebase origin twa-rebuild || true
-          git push origin twa-rebuild
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin twa-rebuild && git push origin twa-rebuild && break || sleep $((RANDOM % 8 + 2))
+          done

@@ -2706,10 +2706,15 @@ const simMyEquity = (myCards, board, oppCount, gameType, range) => {
 };
 /* How strong to assume the opponents' range is, from what they just did. A
    check is no information; a pot-sized bet or a shove is a lot. */
-const botRangeFacing = (toCall, potNow, bb) => {
+const botRangeFacing = (toCall, potNow, bb, street) => {
   if (toCall <= 0) return 1;
   const ratio = toCall / Math.max(bb, potNow);
-  return ratio >= 1.0 ? 4 : ratio >= 0.6 ? 3 : ratio >= 0.3 ? 2 : 1;
+  const size = ratio >= 1.0 ? 4 : ratio >= 0.6 ? 3 : ratio >= 0.3 ? 2 : 1;
+  // Street matters as much as size. A player who bet the flop, bet the turn
+  // and is now betting the river has told a story that a single flop bet of
+  // the same size has not. Reading only the size is what made the bot pay off
+  // one pair on the river: -41bb per 100 hands on that line alone.
+  return Math.min(6, size + (street === 'river' ? 2 : street === 'turn' ? 1 : 0));
 };
 /* Does the hand have a body? A stack must never go in on a hand that is
    neither made nor drawing — "all-in holding nothing, then catches runner
@@ -2803,7 +2808,7 @@ const botPokerMove = (g, t, b) => {
   }
   // Read the opponents' strength from the bet we are facing, not from thin air.
   const gt = g.currentGameType || 'NLH';
-  const eqP = simMyEquity(b.cards || [], g.board || [], Math.min(3, oppN), gt, botRangeFacing(toCall, potNow, bb));
+  const eqP = simMyEquity(b.cards || [], g.board || [], Math.min(3, oppN), gt, botRangeFacing(toCall, potNow, bb, g.phase));
   // An unknown hand used to default to 50%, which is what made a bot call off
   // its stack holding nothing. Unknown now means "do not gamble".
   const eq = (eqP == null ? 35 : eqP) / 100;

@@ -735,13 +735,15 @@ function equityOf(myCards, board, oppCount, gameType, range) {
    bots-only table. A live flush draw is ~35%; hopeless is under 15%. */
 const GOD_FLOOR = 0.20;
 
-function rangeFacing(toCall, potNow, bb, street) {
+function rangeFacing(toCall, potNow, bb) {
   if (toCall <= 0) return 1;
   const ratio = toCall / Math.max(bb, potNow);
-  const size = ratio >= 1.0 ? 4 : ratio >= 0.6 ? 3 : ratio >= 0.3 ? 2 : 1;
-  // street is a read too — client parity (index.html botRangeFacing)
-  return Math.min(6, size + (street === "river" ? 2 : street === "turn" ? 1 : 0));
+  if (ratio >= 1.0) return 4;   // pot-sized or bigger
+  if (ratio >= 0.6) return 3;
+  if (ratio >= 0.3) return 2;
+  return 1;
 }
+
 
 /* GOD GUARD — equity against the cards the opponents are ACTUALLY holding.
    Used on bots-only tables and nowhere else: a bot must never see a human's
@@ -844,7 +846,7 @@ function botAction(S, uid) {
 
   // Read the opponents' strength from the bet we are facing, not from thin air.
   const gt = g.currentGameType || "NLH";
-  const rng = rangeFacing(toCall, potNow, bb, g.phase);
+  const rng = rangeFacing(toCall, potNow, bb);
   const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), gt, rng);
   const eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;

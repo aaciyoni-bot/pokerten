@@ -1625,6 +1625,15 @@
           '</div>';
         if (canXfer && S.xferCount === kind + ':' + it.id) h += xferBoxHtml('ammo', it.id);
       }
+      // tracked equipment kept as a plain baseline (מטולון / רינגו without
+      // individually-signed pieces): still allow an in-company transfer
+      if (kind === 'equip' && XFER_EQUIP[it.id] && exp != null && canMoveHere(S.unit)) {
+        h += '<div style="grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:-2px;margin-bottom:2px">' +
+          '<span style="font-size:12px;color:#6b7f72;font-weight:700">העברה:</span>' +
+          '<button class="btn-mini xfercount" data-suk="equip" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#0369a1;color:#fff;border-color:#0369a1">🔁 העברה בין מסגרות</button>' +
+          '</div>';
+        if (S.xferCount === 'equip:' + it.id) h += xferBoxHtml('equip', it.id);
+      }
     });
     return h;
   }
@@ -2137,8 +2146,11 @@
       }).catch(function (e) { if (btnT) btnT.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
       return;
     }
-    // qty item (ammo) — move an amount
-    if (!canEditBaseline(unit, iid)) { toast('אין הרשאה להעברה לפריט זה'); return; }
+    // qty item — move an amount. ammo goes through canEditBaseline (qty +
+    // non-sensitive); a tracked-equip item kept as a plain baseline (מטולון /
+    // רינגו) is allowed for whoever may move this framework's stock.
+    var mayQty = (kind === 'equip' && XFER_EQUIP[iid]) ? canMoveHere(unit) : canEditBaseline(unit, iid);
+    if (!mayQty) { toast('אין הרשאה להעברה לפריט זה'); return; }
     var qty = Math.max(0, Math.floor(+($('xcQty') && $('xcQty').value || 0)));
     if (!(qty > 0)) { toast('הזן כמות'); return; }
     var avail = qtyIn(unit, kind, iid);

@@ -556,6 +556,9 @@
     { id: 'ringo',         name: 'רינגו' },
     { id: 'maarechet_zarkor', name: 'מערכת זרקור' }
   ];
+  // tracked equipment that may be moved between frameworks of the same company
+  // straight from the count screen (armon / company commander)
+  var XFER_EQUIP = { matolon: 1, ringo: 1 };
   // Per-item tracking mode:
   //   'serial' → each piece has a צ׳ + optional holder (equipment)
   //   'series' → each piece has a סדרה (often shared) + holder name/מ.א
@@ -1437,15 +1440,15 @@
     });
     document.querySelectorAll('.xfercount').forEach(function (b) {
       b.onclick = function () {
-        var key = 'ammo:' + b.getAttribute('data-si');
+        var key = (b.getAttribute('data-suk') || 'ammo') + ':' + b.getAttribute('data-si');
         S.xferCount = (S.xferCount === key) ? '' : key;
         renderCount();
       };
     });
     if ($('xcCancel')) $('xcCancel').onclick = function () { S.xferCount = ''; renderCount(); };
     if ($('xcGo')) $('xcGo').onclick = function () {
-      var iid = S.xferCount.split(':')[1];
-      transferFromCount(S.unit, 'ammo', iid);
+      var parts = S.xferCount.split(':');
+      transferFromCount(S.unit, parts[0], parts[1]);
     };
     if (_scrollY) window.scrollTo(0, _scrollY);
   }
@@ -1566,6 +1569,15 @@
             '<button class="btn-mini loss" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#b91c1c;color:#fff;border-color:#b91c1c">❗ דווח אובדן</button>' +
             '</div>';
         }
+        // tracked equipment (מטולון / רינגו): move signed pieces to another
+        // framework in the same company — armon / company commander only
+        if (kind === 'equip' && XFER_EQUIP[it.id] && canMoveHere(S.unit)) {
+          h += '<div style="grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-2px 0 4px">' +
+            '<span style="font-size:12px;color:#6b7f72;font-weight:700">העברה:</span>' +
+            '<button class="btn-mini xfercount" data-suk="equip" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#0369a1;color:#fff;border-color:#0369a1">🔁 העברה בין מסגרות</button>' +
+            '</div>';
+          if (S.xferCount === 'equip:' + it.id) h += xferBoxHtml('equip', it.id);
+        }
         return;
       }
       var exp = expectedFor(S.unit, kind, it.id);
@@ -1609,24 +1621,9 @@
           '<span style="font-size:12px;color:#6b7f72;font-weight:700">אם יש חוסר:</span>' +
           '<button class="btn-mini shatzal" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#ea580c;color:#fff;border-color:#ea580c">🔥 דווח שצ״ל</button>' +
           '<button class="btn-mini loss" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#b91c1c;color:#fff;border-color:#b91c1c">❗ דווח אובדן</button>' +
-          (canXfer ? '<button class="btn-mini xfercount" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#0369a1;color:#fff;border-color:#0369a1">🔁 העברה</button>' : '') +
+          (canXfer ? '<button class="btn-mini xfercount" data-suk="ammo" data-su="' + S.unit + '" data-si="' + it.id + '" style="margin:0;background:#0369a1;color:#fff;border-color:#0369a1">🔁 העברה</button>' : '') +
           '</div>';
-        if (canXfer && S.xferCount === kind + ':' + it.id) {
-          var xAvail = qtyIn(S.unit, kind, it.id);
-          var sf = itemShortfall(S.unit, it.id);
-          var xPre = (sf > 0 && sf <= xAvail) ? sf : '';
-          var dsts = companyUnits(UNIT_BY_ID[S.unit].grp).filter(function (u) { return u.id !== S.unit; });
-          h += '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#eff6ff;border:1.5px solid #7dd3fc;border-radius:12px;padding:10px;margin-top:-2px">' +
-            '<span style="font-size:13px;font-weight:800;color:#075985">העברת ' + esc(it.name) + ' בתוך הפלוגה:</span>' +
-            '<div style="display:flex;flex-direction:column;align-items:center">' +
-            '<input type="number" inputmode="numeric" min="1" max="' + xAvail + '" id="xcQty" value="' + xPre + '" placeholder="כמות" style="width:82px;font-size:16px;padding:8px;text-align:center;border:1.5px solid #7dd3fc;border-radius:10px">' +
-            '<span style="font-size:11px;color:#075985;margin-top:2px">יש ' + xAvail + ' · מקס׳</span></div>' +
-            '<span style="font-size:13px;color:#075985">אל</span>' +
-            '<select id="xcDst" style="flex:1;min-width:120px">' + dsts.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('') + '</select>' +
-            '<button class="btn-primary" id="xcGo" style="padding:9px 14px;font-size:14px">🔁 העבר</button>' +
-            '<button class="btn-ghost" id="xcCancel" style="padding:9px 12px;font-size:14px">ביטול</button>' +
-            '</div>';
-        }
+        if (canXfer && S.xferCount === kind + ':' + it.id) h += xferBoxHtml('ammo', it.id);
       }
     });
     return h;
@@ -1655,6 +1652,51 @@
     if (isArmon()) return true;
     if (isSensitive(iid)) return false;
     return isCommander() && !!UNIT_BY_ID[unit] && myCmdGroup() === UNIT_BY_ID[unit].grp;
+  }
+  // who may move a framework's stock to another framework in the SAME company:
+  // ARMON (any company) or the company commander of that company.
+  function canMoveHere(unit) {
+    if (!UNIT_BY_ID[unit]) return false;
+    if (isArmon()) return true;
+    return isCommander() && myCmdGroup() === UNIT_BY_ID[unit].grp;
+  }
+  // inline "transfer within the company" box on the count screen — a quantity
+  // field for a qty item, or a per-piece checklist for a tracked item.
+  function xferBoxHtml(kind, iid) {
+    var dsts = companyUnits(UNIT_BY_ID[S.unit].grp).filter(function (u) { return u.id !== S.unit; });
+    var dstSel = '<select id="xcDst" style="flex:1;min-width:120px">' +
+      dsts.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('') + '</select>';
+    var inst = instOf(S.unit, kind, iid);
+    var body;
+    if (inst) {
+      body = '<div style="grid-column:1/-1;width:100%;display:flex;flex-direction:column;gap:4px;max-height:220px;overflow:auto;margin:2px 0">';
+      inst.forEach(function (r, ri) {
+        var lbl = [];
+        if (r.s) lbl.push((trackOf(iid) === 'series' ? 'סדרה ' : 'צ׳ ') + r.s);
+        if (r.owner) lbl.push(r.owner);
+        if (r.id) lbl.push('מזהה ' + r.id);
+        if (r.num) lbl.push('מ.א ' + r.num);
+        var ql = (typeof r.q === 'number' && r.q > 1) ? (' · ' + r.q + ' יח׳') : '';
+        body += '<label style="display:flex;gap:8px;align-items:center;font-size:13px;background:#fff;border:1px solid #bae6fd;border-radius:9px;padding:7px 9px">' +
+          '<input type="checkbox" data-xcpc="' + ri + '" style="width:18px;height:18px;flex:none">' +
+          '<span>' + (esc(lbl.join(' · ')) || ('פריט ' + (ri + 1))) + ql + '</span></label>';
+      });
+      body += '</div>';
+    } else {
+      var xAvail = qtyIn(S.unit, kind, iid);
+      var sf = kind === 'ammo' ? itemShortfall(S.unit, iid) : null;
+      var xPre = (sf > 0 && sf <= xAvail) ? sf : '';
+      body = '<div style="display:flex;flex-direction:column;align-items:center">' +
+        '<input type="number" inputmode="numeric" min="1" max="' + xAvail + '" id="xcQty" value="' + xPre + '" placeholder="כמות" style="width:82px;font-size:16px;padding:8px;text-align:center;border:1.5px solid #7dd3fc;border-radius:10px">' +
+        '<span style="font-size:11px;color:#075985;margin-top:2px">יש ' + xAvail + ' · מקס׳</span></div>';
+    }
+    return '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#eff6ff;border:1.5px solid #7dd3fc;border-radius:12px;padding:10px;margin-top:-2px">' +
+      '<span style="font-size:13px;font-weight:800;color:#075985;width:100%">העברת ' + esc(itemName(kind, iid)) + ' בתוך הפלוגה:</span>' +
+      body +
+      '<span style="font-size:13px;color:#075985">אל</span>' + dstSel +
+      '<button class="btn-primary" id="xcGo" style="padding:9px 14px;font-size:14px">🔁 העבר</button>' +
+      '<button class="btn-ghost" id="xcCancel" style="padding:9px 12px;font-size:14px">ביטול</button>' +
+      '</div>';
   }
   // Updates a qty item's baseline מצבת straight from the count screen.
   // Writes ammo_stock (setting the item's q and resetting its usage anchor);
@@ -2058,11 +2100,46 @@
   // move a quantity of a (non-sensitive, qty) ammo item to another framework in
   // the SAME company — straight from the count screen (armon / company commander)
   function transferFromCount(unit, kind, iid) {
-    if (!canEditBaseline(unit, iid)) { toast('אין הרשאה להעברה לפריט זה'); return; }
     var dst = $('xcDst') ? $('xcDst').value : '';
-    var qty = Math.max(0, Math.floor(+($('xcQty') && $('xcQty').value || 0)));
     if (!dst || !UNIT_BY_ID[dst]) { toast('בחר מסגרת יעד'); return; }
     if (UNIT_BY_ID[dst].grp !== UNIT_BY_ID[unit].grp) { toast('העברה מותרת רק בתוך אותה פלוגה'); return; }
+    // tracked item (מטולון / רינגו) — move the checked signed pieces
+    if (instOf(unit, kind, iid)) {
+      if (!canMoveHere(unit)) { toast('אין הרשאה להעברה'); return; }
+      var sel = [];
+      document.querySelectorAll('input[data-xcpc]').forEach(function (cb) { if (cb.checked) sel.push(+cb.getAttribute('data-xcpc')); });
+      if (!sel.length) { toast('בחר לפחות פריט אחד להעברה'); return; }
+      var sD = cloneUnit(unit), dD = cloneUnit(dst);
+      var seT = sD[kind] && sD[kind][iid];
+      if (!seT || !seT.inst || !seT.inst.length) { toast('הפריט אינו מסומן'); return; }
+      var keep = [], take = [];
+      seT.inst.forEach(function (r, ri) { if (sel.indexOf(ri) >= 0) take.push(r); else keep.push(r); });
+      var movedQty = instTotal(take);
+      if (keep.length) { seT.inst = keep; seT.q = instTotal(keep); } else { delete sD[kind][iid]; }
+      var deT = dD[kind][iid] || { t: Date.now(), inst: [] };
+      if (!deT.inst) deT.inst = [];
+      deT.inst = deT.inst.concat(take); deT.q = instTotal(deT.inst); if (!deT.t) deT.t = Date.now();
+      dD[kind][iid] = deT;
+      var fbT = window.fb, batchT = fbT.writeBatch(fbT.db);
+      batchT.set(fbT.doc(fbT.db, 'ammo_stock', unit), sD);
+      batchT.set(fbT.doc(fbT.db, 'ammo_stock', dst), dD);
+      var btnT = $('xcGo'); if (btnT) btnT.disabled = true;
+      batchT.commit().then(function () {
+        try {
+          fbT.addDoc(fbT.collection(fbT.db, 'ammo_transfer'), {
+            group: UNIT_BY_ID[unit].grp, from: unit, to: dst, kind: kind, itemId: iid, itemName: itemName(kind, iid),
+            qty: movedQty, ts: Date.now(), byPn: (S.person && S.person.pn) || '', byName: (S.person && S.person.n) || ''
+          });
+        } catch (e) {}
+        S.xferCount = '';
+        toast('✓ הועבר: ' + itemName(kind, iid) + ' × ' + movedQty + ' → ' + UNIT_BY_ID[dst].name);
+        renderCount();
+      }).catch(function (e) { if (btnT) btnT.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });
+      return;
+    }
+    // qty item (ammo) — move an amount
+    if (!canEditBaseline(unit, iid)) { toast('אין הרשאה להעברה לפריט זה'); return; }
+    var qty = Math.max(0, Math.floor(+($('xcQty') && $('xcQty').value || 0)));
     if (!(qty > 0)) { toast('הזן כמות'); return; }
     var avail = qtyIn(unit, kind, iid);
     if (qty > avail) { toast('הכמות עולה על הזמין (' + avail + ')'); return; }

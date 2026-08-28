@@ -271,8 +271,13 @@
   .dash-co .cc { font-weight: 800; color: var(--muted); }
   .dash-row { font-size: 13px; padding: 5px 8px; border-radius: 8px; margin: 3px 0; background: #f4f8f4; display: flex; gap: 6px; align-items: center; }
   .dash-row.miss { background: #fef2f2; color: #b91c1c; font-weight: 700; }
+  .dash-row.part { background: #fffbeb; color: #b45309; font-weight: 700; }
   .dash-row.none { background: #f1f3f2; color: #8a9b90; font-weight: 400; }
-  .dash-row .m { color: var(--muted); font-weight: 400; margin-inline-start: auto; font-size: 11.5px; }
+  .dash-row .m { color: var(--muted); font-weight: 400; font-size: 11.5px; }
+  .dash-row .deptbs { margin-inline-start: auto; display: flex; gap: 4px; flex: none; }
+  .deptb { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+  .deptb.ok { background: #dcfce7; color: #15803d; }
+  .deptb.miss { background: #fee2e2; color: #b91c1c; }
   .gap-card { border: 2px solid #dc2626 !important; }
   .gap-row { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid #fee2e2; font-size: 13px; }
   .gap-row .u { font-weight: 700; color: #b91c1c; }
@@ -412,7 +417,7 @@
     <text x="60" y="99" text-anchor="middle" font-family="Rubik, Arial, sans-serif" font-weight="800" font-size="21" fill="#eafff3" letter-spacing="1.5">1895</text>
   </svg>
   <h1>ירוק <span class="g">בעיניים</span></h1>
-  <p>גדוד 1895 · ספירת תחמושת ואמצעים יומית</p>
+  <p>גדוד 1895 · ספירת תחמושת וצל״ם יומית</p>
 
   <!-- login by personal number. The number must exist in the שלישות roster
        (blocks anyone off the street); privileged people (armon / viewer-admin)
@@ -1325,24 +1330,34 @@
     // date strip
     h += '<div class="dates" id="dstrip">';
     DATES.forEach(function (d) {
-      var done = !!S.counts[countId(S.unit, d)];
+      var done = unitFullyCounted(S.unit, d);
       h += '<button class="dchip' + (d === S.date ? ' sel' : '') + (done ? ' done' : '') + '" data-date="' + d + '">' +
         '<div class="dw">יום ' + DAY_HE[isoDow(d)] + '</div><div class="dd">' + fmtDM(d) + '</div>' +
-        (isEquipDay(d) ? '<div class="eq">+ אמצעים</div>' : '') + '</button>';
+        (isEquipDay(d) ? '<div class="eq">+ צל״ם</div>' : '') + '</button>';
     });
     h += '</div>';
 
     h += '<label class="fld">מסגרת לספירה' + (myUnits().length > 1 ? ' <span style="font-weight:400;color:#6b7f72">— אפשר להחליף כאן</span>' : '') + '</label>' + unitSelectHtml('selUnit', S.unit);
 
-    if (existing) {
-      h += '<div class="banner-done">✓ נספר ב־' + fmtTime(existing.ts) + ' ע״י <b>' + esc(existing.counterName) +
-           '</b> (מ.א ' + esc(existing.counterNum) + ')' + ' — שליחה חוזרת תעדכן את הספירה.</div>';
+    // per-department status line (תחמושת / צל״ם), each with its own ✓ / ⏳
+    var dueDepts = deptDue(S.unit, S.date);
+    if (existing && dueDepts.length) {
+      var parts = dueDepts.map(function (d) {
+        var done = deptDone(existing, d);
+        var who = d === 'ammo' ? (existing.ammoByName || existing.counterName || '') : (existing.equipByName || existing.counterName || '');
+        return '<span style="display:inline-flex;align-items:center;gap:4px;font-weight:800">' +
+          (done ? '✓' : '⏳') + ' ' + DEPT_HE[d] +
+          (done ? (who ? ' <span style="font-weight:400;color:#6b7f72">· ' + esc(who) + '</span>' : '')
+                : ' <span style="font-weight:400;color:#b45309">טרם</span>') + '</span>';
+      }).join(' &nbsp;·&nbsp; ');
+      h += '<div class="banner-done" style="display:flex;flex-wrap:wrap;gap:6px 14px">' + parts +
+        '<span style="width:100%;font-weight:400;color:#6b7f72;font-size:12px">שליחה חוזרת תעדכן.</span></div>';
     }
     var only = UNIT_BY_ID[S.unit] && UNIT_BY_ID[S.unit].only; // 'ammo' | 'equip' | null
     var showAmmo = only !== 'equip';
     var showEquip = only === 'equip' || (!only && equipDay);
     if (!only && equipDay) {
-      h += '<div class="banner-warn">📦 יום ' + DAY_HE[isoDow(S.date)] + ' — היום סופרים גם <b>אמצעים</b>.</div>';
+      h += '<div class="banner-warn">📦 יום ' + DAY_HE[isoDow(S.date)] + ' — היום סופרים גם <b>צל״ם</b>.</div>';
     }
 
     var ammoVis = showAmmo ? visibleItems('ammo') : [];
@@ -1352,26 +1367,34 @@
       if (unitHasEquip(S.unit) && !showEquip) {
         // equipment-only content on a non-equipment day — show it read-only so
         // the signed gear is visible (it's counted on Tue/Fri, not today)
-        h += '<div class="banner-warn" style="margin-top:14px">📦 במסגרת זו יש <b>אמצעים בלבד</b> — נספרים בימי <b>שלישי ושישי</b>.<br>היום (יום ' + DAY_HE[isoDow(S.date)] + ') אין כאן ספירה. הפריטים החתומים מוצגים למטה לצפייה.</div>';
+        h += '<div class="banner-warn" style="margin-top:14px">📦 במסגרת זו יש <b>צל״ם בלבד</b> — נספרים בימי <b>שלישי ושישי</b>.<br>היום (יום ' + DAY_HE[isoDow(S.date)] + ') אין כאן ספירה. הפריטים החתומים מוצגים למטה לצפייה.</div>';
         h += equipPreviewHtml(S.unit);
       } else {
         h += '<div class="banner-warn" style="margin-top:14px">📋 עדיין לא הוגדר מלאי ליחידה זו.<br>המנהל מזין כמויות בטאב ניהול — ומיד יופיעו כאן הפריטים לספירה.</div>';
       }
     } else {
+      // when both departments are due, each gets its OWN submit button so
+      // תחמושת and צל״ם can be reported separately (one done, the other not yet)
+      var bothDepts = ammoVis.length && equipVis.length;
       if (ammoVis.length) {
         h += '<div class="sec-head"><h2>תחמושת</h2><button class="btn-mini" id="allAmmo">סמן הכל ✓</button></div>';
         h += itemsHtml('ammo', ammoVis);
+        if (bothDepts) h += '<button class="btn-primary" id="btnSubmit_ammo" data-dept="ammo" style="margin-bottom:14px">שליחת תחמושת ✓</button>';
       }
       if (equipVis.length) {
-        h += '<div class="sec-head"><h2>אמצעים' + (only === 'equip' ? '' : ' (שלישי + שישי)') + '</h2><button class="btn-mini" id="allEquip">סמן הכל ✓</button></div>';
+        h += '<div class="sec-head"><h2>צל״ם' + (only === 'equip' ? '' : ' (שלישי + שישי)') + '</h2><button class="btn-mini" id="allEquip">סמן הכל ✓</button></div>';
         h += itemsHtml('equip', equipVis);
+        if (bothDepts) h += '<button class="btn-primary" id="btnSubmit_equip" data-dept="equip" style="margin-bottom:14px">שליחת צל״ם ✓</button>';
       }
 
       h += '<div class="card" style="display:flex;align-items:center;gap:10px"><div style="font-size:22px">🪖</div>' +
         '<div style="font-size:14px">הסופר: <b>' + esc(S.person ? S.person.n : '') + '</b>' +
         (S.person && S.person.pn ? ' <span style="color:#6b7f72">· מ.א ' + esc(S.person.pn) + '</span>' : '') + '</div></div>';
 
-      h += '<button class="btn-primary" id="btnSubmit">שליחת ספירה ✓</button>';
+      if (!bothDepts) {
+        var soloDept = ammoVis.length ? 'ammo' : 'equip';
+        h += '<button class="btn-primary" id="btnSubmit" data-dept="' + soloDept + '">שליחת ספירה ✓</button>';
+      }
       h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-bottom:8px">V ירוק = קיים ותואם · ״שונה״ = הקלדת הכמות בפועל (גם 0) · ״חסר״ = פריט חתום שלא נמצא</div>';
     }
 
@@ -1382,7 +1405,7 @@
       var isNew = pick === '__new__';
       var catOpts = '<option value="">— בחר פריט מהקטלוג —</option>' +
         '<optgroup label="תחמושת">' + ammoList().map(function (it) { return '<option value="ammo:' + it.id + '"' + (pick === 'ammo:' + it.id ? ' selected' : '') + '>' + esc(it.name) + '</option>'; }).join('') + '</optgroup>' +
-        '<optgroup label="אמצעים">' + equipList().map(function (it) { return '<option value="equip:' + it.id + '"' + (pick === 'equip:' + it.id ? ' selected' : '') + '>' + esc(it.name) + '</option>'; }).join('') + '</optgroup>' +
+        '<optgroup label="צל״ם">' + equipList().map(function (it) { return '<option value="equip:' + it.id + '"' + (pick === 'equip:' + it.id ? ' selected' : '') + '>' + esc(it.name) + '</option>'; }).join('') + '</optgroup>' +
         '<optgroup label="חדש"><option value="__new__"' + (isNew ? ' selected' : '') + '>➕ פריט חדש...</option></optgroup>';
       h += '<div class="card"><h3>➕ הוספת פריט למסגרת (ARMON)</h3>' +
         '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">בחר פריט מהקטלוג (או צור חדש) והגדר כמות — ומופיע מיד בספירה של ' + esc(UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : '') + '.</div>' +
@@ -1390,7 +1413,7 @@
       if (isNew) {
         h += '<div class="grid2" style="margin-top:8px">' +
           '<div><label class="fld">שם חדש</label><input type="text" id="ciName" placeholder="שם הפריט"></div>' +
-          '<div><label class="fld">סוג</label><select id="ciKind"><option value="ammo">תחמושת</option><option value="equip">אמצעי</option></select></div></div>';
+          '<div><label class="fld">סוג</label><select id="ciKind"><option value="ammo">תחמושת</option><option value="equip">צל״ם</option></select></div></div>';
       }
       if (pick) {
         h += '<label class="fld">כמות</label><input type="number" id="ciQty" inputmode="numeric" min="1" placeholder="0">' +
@@ -1429,7 +1452,9 @@
           '\nמ־' + (cur == null ? '—' : cur) + ' ל־' + n + ' ?')) return;
       updateBaselineQty(S.unit, kind, iid, n);
     };
-    if ($('btnSubmit')) $('btnSubmit').onclick = submitCount;
+    document.querySelectorAll('[id^="btnSubmit"]').forEach(function (b) {
+      b.onclick = function () { submitCount(b.getAttribute('data-dept') || ''); };
+    });
     if ($('ciPick')) $('ciPick').onchange = function () { S.ciPick = $('ciPick').value; renderCount(); };
     if ($('btnCiAdd')) $('btnCiAdd').onclick = addItemToCount;
     document.querySelectorAll('.shatzal').forEach(function (b) {
@@ -1495,7 +1520,7 @@
   function equipPreviewHtml(unit) {
     var items = equipList().filter(function (it) { return stockQty(unit, 'equip', it.id) > 0; });
     if (!items.length) return '';
-    var h = '<div class="card"><h3>📦 אמצעים במסגרת (לצפייה)</h3>';
+    var h = '<div class="card"><h3>📦 צל״ם במסגרת (לצפייה)</h3>';
     items.forEach(function (it) {
       var inst = instOf(unit, 'equip', it.id);
       h += '<div style="font-weight:800;margin:10px 0 3px;color:#1b4332">' + esc(it.name) + sensTag(it.id) +
@@ -1805,10 +1830,20 @@
     });
   }
 
-  function submitCount() {
+  // submit a count. `dept` ('ammo' | 'equip') submits just that department and
+  // preserves the other one; '' (or omitted) submits every department due today
+  // (used only when a single department is due, so one button covers it).
+  function submitCount(dept) {
     var name = (S.person && S.person.n) || '';
     var num = (S.person && S.person.pn) || '';
-    var equipDay = isEquipDay(S.date);
+    var only = UNIT_BY_ID[S.unit] && UNIT_BY_ID[S.unit].only;
+    var depts;
+    if (dept) depts = [dept];
+    else {
+      depts = [];
+      if (only !== 'equip') depts.push('ammo');
+      if (only === 'equip' || (!only && isEquipDay(S.date))) depts.push('equip');
+    }
     var notMarked = [];
     function collect(kind, target) {
       visibleItems(kind).forEach(function (it) {
@@ -1842,36 +1877,42 @@
         else notMarked.push(it.name);
       });
     }
-    var only = UNIT_BY_ID[S.unit] && UNIT_BY_ID[S.unit].only;
-    var items = {}; if (only !== 'equip') collect('ammo', items);
-    var equip = null;
-    if (only === 'equip' || (!only && equipDay)) { equip = {}; collect('equip', equip); }
+    // start from the day's existing doc so the other department is preserved
+    var prev = S.counts[countId(S.unit, S.date)] || {};
+    var now = Date.now();
+    var docData = {
+      group: UNIT_BY_ID[S.unit].grp, unitId: S.unit, date: S.date,
+      counterName: name, counterNum: num, byPn: num, byUid: S.user.uid, ts: now,
+      items: prev.items || null, equip: prev.equip || null,
+      ammoTs: prev.ammoTs || null, ammoByName: prev.ammoByName || '', ammoByPn: prev.ammoByPn || '',
+      equipTs: prev.equipTs || null, equipByName: prev.equipByName || '', equipByPn: prev.equipByPn || ''
+    };
+    var collected = {};
+    depts.forEach(function (kind) {
+      var target = {}; collect(kind, target); collected[kind] = target;
+      if (kind === 'ammo') { docData.items = target; docData.ammoTs = now; docData.ammoByName = name; docData.ammoByPn = num; }
+      else { docData.equip = target; docData.equipTs = now; docData.equipByName = name; docData.equipByPn = num; }
+    });
     if (notMarked.length) {
       toast('חסר סימון: ' + notMarked.slice(0, 3).join(', ') + (notMarked.length > 3 ? ' ועוד ' + (notMarked.length - 3) : ''));
       return;
     }
-    if (!Object.keys(items).length && (!equip || !Object.keys(equip).length)) {
-      toast('אין פריטים לספירה ביחידה זו');
-      return;
-    }
-    var fb = window.fb;
-    var docData = {
-      group: UNIT_BY_ID[S.unit].grp,
-      unitId: S.unit, date: S.date, items: items, equip: equip,
-      counterName: name, counterNum: num,
-      byPn: num, byUid: S.user.uid, ts: Date.now()
-    };
-    // "clean" = every counted item matched its baseline (no gaps)
+    var anyItems = depts.some(function (k) { return Object.keys(collected[k]).length; });
+    if (!anyItems) { toast('אין פריטים לספירה ביחידה זו'); return; }
+    // "clean" = every item just submitted matched its baseline (no gaps)
     var hasGap = false;
-    [items, equip].forEach(function (m) { if (m) Object.keys(m).forEach(function (k) { if (!m[k].ok) hasGap = true; }); });
-    var btn = $('btnSubmit'); btn.disabled = true;
+    depts.forEach(function (k) { Object.keys(collected[k]).forEach(function (key) { if (!collected[k][key].ok) hasGap = true; }); });
+    var deptTxt = depts.length > 1 ? 'הספירה' : DEPT_HE[depts[0]];
+    var fb = window.fb;
+    var btn = $(dept ? ('btnSubmit_' + dept) : 'btnSubmit') || $('btnSubmit'); if (btn) btn.disabled = true;
     fb.setDoc(fb.doc(fb.db, 'ammo_counts', countId(S.unit, S.date)), docData)
       .then(function () {
-        btn.disabled = false;
-        toast('✓ הספירה נשלחה — ' + UNIT_BY_ID[S.unit].full);
-        celebrate(hasGap ? 'הספירה נשלחה' : 'נספר ודווח — הכל תקין!', !hasGap);
+        if (btn) btn.disabled = false;
+        toast('✓ ' + deptTxt + ' נשלח — ' + UNIT_BY_ID[S.unit].full);
+        celebrate(hasGap ? 'נשלח' : 'נספר ודווח — הכל תקין!', !hasGap);
+        renderCount();
       })
-      .catch(function (e) { toast('שגיאה בשמירה: ' + e.message); btn.disabled = false; });
+      .catch(function (e) { toast('שגיאה בשמירה: ' + e.message); if (btn) btn.disabled = false; });
   }
 
   /* ═══════════ USAGE screen ═══════════ */
@@ -2198,7 +2239,7 @@
   function frameworkInventoryHtml(u, collapsible) {
     var c = S.counts[countId(u.id, S.repDate)];
     var rows = '', gapCount = 0;
-    [['ammo', 'תחמושת'], ['equip', 'אמצעים']].forEach(function (pair) {
+    [['ammo', 'תחמושת'], ['equip', 'צל״ם']].forEach(function (pair) {
       var kind = pair[0];
       var list = (kind === 'ammo' ? ammoList() : equipList()).filter(function (it) {
         return expectedFor(u.id, kind, it.id) != null || stockQty(u.id, kind, it.id) > 0;
@@ -2252,12 +2293,31 @@
   function unitHasAmmo(u) { var uid = (u && u.id) || u; return ammoList().some(function (it) { return stockQty(uid, 'ammo', it.id) > 0; }); }
   function unitHasEquip(u) { var uid = (u && u.id) || u; return equipList().some(function (it) { return stockQty(uid, 'equip', it.id) > 0; }); }
   function unitCountableOn(u, date) {
-    var only = u.only;
-    if (only === 'ammo') return unitHasAmmo(u);
-    if (only === 'equip') return unitHasEquip(u) && isEquipDay(date);
-    if (unitHasAmmo(u)) return true;                 // has ammo → every day
-    if (unitHasEquip(u)) return isEquipDay(date);    // equipment only → Tue/Fri
-    return false;
+    return deptDue(u, date).length > 0;
+  }
+  // ── two counting departments: תחמושת (ammo, every day) and צל״ם (equipment,
+  // Tue/Fri). Which are DUE for a framework on a given date, whether each was
+  // submitted, and whether the whole framework is finished. ──
+  function deptDue(u, date) {
+    u = UNIT_BY_ID[(u && u.id) || u] || u;
+    var only = u.only, out = [];
+    if (only !== 'equip' && unitHasAmmo(u)) out.push('ammo');
+    if (only !== 'ammo' && unitHasEquip(u) && isEquipDay(date)) out.push('equip');
+    return out;
+  }
+  var DEPT_HE = { ammo: 'תחמושת', equip: 'צל״ם' };
+  // a department is "done" for a count doc if it was submitted. New docs carry
+  // ammoTs / equipTs; older docs (single combined submit) are recognised by a
+  // populated items / equip section.
+  function deptDone(c, dept) {
+    if (!c) return false;
+    if (dept === 'ammo') return !!c.ammoTs || !!(c.items && Object.keys(c.items).length);
+    return !!c.equipTs || !!(c.equip && Object.keys(c.equip).length);
+  }
+  function unitFullyCounted(u, date) {
+    var due = deptDue(u, date); if (!due.length) return false;
+    var c = S.counts[countId((u && u.id) || u, date)];
+    return due.every(function (d) { return deptDone(c, d); });
   }
 
   // sensitive-ammo shortfalls across the viewer's scope for a given date
@@ -2282,7 +2342,7 @@
     var date = S.repDate, units = myUnits();
     var withStock = units.filter(function (u) { return unitCountableOn(u, date); });  // frameworks with something to count today
     var counted = 0, todayGaps = 0;
-    withStock.forEach(function (u) { var c = S.counts[countId(u.id, date)]; if (c) { counted++; todayGaps += countMismatches(c); } });
+    withStock.forEach(function (u) { var c = S.counts[countId(u.id, date)]; if (c) todayGaps += countMismatches(c); if (unitFullyCounted(u, date)) counted++; });
     var sens = sensitiveShortfalls(date);
     // ✅ "all done" indicator — every countable framework in scope was reported.
     // Especially for a company commander: shows he finished all his frameworks.
@@ -2315,36 +2375,51 @@
       var us = units.filter(function (u) { return u.grp === g.g; });
       if (!us.length) return;
       var ws = us.filter(function (u) { return unitCountableOn(u, date); });
-      var cc = ws.filter(function (u) { return S.counts[countId(u.id, date)]; }).length;
+      var cc = ws.filter(function (u) { return unitFullyCounted(u, date); }).length;
       h += '<div class="dash-co"><span>' + esc(g.name) + '</span><span class="cc">' + cc + '/' + ws.length + '</span></div>';
       us.forEach(function (u) {
-        if (!unitCountableOn(u, date)) {
-          var lbl = unitHasStock(u) ? 'אמצעים · ג׳/ו׳' : 'אין מלאי מוגדר';
+        var due = deptDue(u, date);
+        if (!due.length) {
+          var lbl = unitHasStock(u) ? 'צל״ם · ג׳/ו׳' : 'אין מלאי מוגדר';
           h += '<div class="dash-row none">◦ ' + esc(u.name) + '<span class="m">' + lbl + '</span></div>';
           return;
         }
         var c = S.counts[countId(u.id, date)];
-        h += '<div class="dash-row' + (c ? '' : ' miss') + '">' + (c ? '✓' : '✗') + ' ' + esc(u.name) +
-          (c ? '<span class="m">' + esc(c.counterName || '') + '</span>' : '<span class="m">טרם נספר</span>') + '</div>';
+        var doneCount = due.filter(function (d) { return deptDone(c, d); }).length;
+        var full = doneCount === due.length, none = doneCount === 0;
+        // per-department V / ✗ badges (תחמושת · צל״ם) so a framework can read
+        // "תחמושת ✓ · צל״ם ✗" — ammo done, equipment still pending
+        var badges = due.map(function (d) {
+          var done = deptDone(c, d);
+          return '<span class="deptb ' + (done ? 'ok' : 'miss') + '">' + (done ? '✓' : '✗') + ' ' + DEPT_HE[d] + '</span>';
+        }).join('');
+        var who = c ? (c.counterName || '') : '';
+        h += '<div class="dash-row' + (full ? '' : none ? ' miss' : ' part') + '"><span>' + (full ? '✓' : none ? '✗' : '◔') + ' ' + esc(u.name) +
+          (who ? ' <span class="m">· ' + esc(who) + '</span>' : '') + '</span>' +
+          '<span class="deptbs">' + badges + '</span></div>';
       });
     });
     return h + '</div>';
   }
   function dashShareText() {
     var date = S.repDate, units = myUnits().filter(function (u) { return unitCountableOn(u, date); });
-    var counted = units.filter(function (u) { return S.counts[countId(u.id, date)]; });
-    var missing = units.filter(function (u) { return !S.counts[countId(u.id, date)]; });
+    var counted = units.filter(function (u) { return unitFullyCounted(u, date); });
+    var pending = units.filter(function (u) { return !unitFullyCounted(u, date); });
     var sens = sensitiveShortfalls(date);
     var L = ['🟢 ירוק בעיניים — סיכום ' + fmtDM(date),
-      'נספרו ' + counted.length + '/' + units.length + ' מסגרות'];
+      'הושלמו ' + counted.length + '/' + units.length + ' מסגרות'];
     if (sens.length) {
       L.push('', '🔴 חוסר בתחמושת רגישה:');
       sens.forEach(function (s) { L.push('• ' + itemName('ammo', s.iid) + ' — ' + UNIT_BY_ID[s.u.id].full + ' — חסר ' + (-s.gap)); });
     }
-    if (missing.length) {
-      L.push('', 'טרם נספרו:');
-      missing.forEach(function (u) { L.push('• ' + u.full); });
-    } else { L.push('', '✓ כל המסגרות נספרו'); }
+    if (pending.length) {
+      L.push('', 'טרם הושלמו:');
+      pending.forEach(function (u) {
+        var c = S.counts[countId(u.id, date)];
+        var miss = deptDue(u, date).filter(function (d) { return !deptDone(c, d); }).map(function (d) { return DEPT_HE[d]; });
+        L.push('• ' + u.full + (miss.length ? ' — חסר: ' + miss.join(' + ') : ''));
+      });
+    } else { L.push('', '✓ כל המסגרות הושלמו'); }
     L.push('', 'greeneyes95.com');
     return L.join('\n');
   }
@@ -2425,26 +2500,38 @@
     DATES.forEach(function (d) {
       h += '<button class="dchip' + (d === S.repDate ? ' sel' : '') + '" data-date="' + d + '">' +
         '<div class="dw">יום ' + DAY_HE[isoDow(d)] + '</div><div class="dd">' + fmtDM(d) + '</div>' +
-        (isEquipDay(d) ? '<div class="eq">+ אמצעים</div>' : '') + '</button>';
+        (isEquipDay(d) ? '<div class="eq">+ צל״ם</div>' : '') + '</button>';
     });
     h += '</div>';
 
     var stockUnits = units.filter(function (u) { return unitCountableOn(u, S.repDate); });
     var done = 0;
-    stockUnits.forEach(function (u) { if (S.counts[countId(u.id, S.repDate)]) done++; });
+    stockUnits.forEach(function (u) { if (unitFullyCounted(u, S.repDate)) done++; });
     h += '<div class="card"><h3>סטטוס ליום ' + DAY_HE[isoDow(S.repDate)] + ' ' + fmtDM(S.repDate) + '</h3>' +
-      '<div style="font-size:14px;margin-bottom:8px">נספרו <b>' + done + '</b> מתוך <b>' + stockUnits.length + '</b> יחידות</div>' +
+      '<div style="font-size:14px;margin-bottom:8px">הושלמו <b>' + done + '</b> מתוך <b>' + stockUnits.length + '</b> יחידות</div>' +
       '<table class="rep"><tr><th>יחידה</th><th>סטטוס</th><th>סופר</th><th></th></tr>';
     units.forEach(function (u) {
       var c = S.counts[countId(u.id, S.repDate)];
-      if (!unitCountableOn(u, S.repDate)) {
-        h += '<tr><td>' + esc(u.full) + '</td><td style="color:#8a9b90">' + (unitHasStock(u) ? 'אמצעים · ג׳/ו׳' : 'אין מלאי') + '</td><td></td><td></td></tr>';
+      var due = deptDue(u, S.repDate);
+      if (!due.length) {
+        h += '<tr><td>' + esc(u.full) + '</td><td style="color:#8a9b90">' + (unitHasStock(u) ? 'צל״ם · ג׳/ו׳' : 'אין מלאי') + '</td><td></td><td></td></tr>';
       } else if (!c) {
         h += '<tr><td>' + esc(u.full) + '</td><td class="st-miss">לא נספר</td><td></td><td></td></tr>';
       } else {
         var mm = countMismatches(c);
+        // per-department status (תחמושת / צל״ם) — some done, some pending
+        var stat;
+        if (due.length > 1) {
+          stat = due.map(function (d) {
+            var ok = deptDone(c, d);
+            return '<span class="' + (ok ? 'st-ok' : 'st-miss') + '">' + (ok ? '✓' : '✗') + ' ' + DEPT_HE[d] + '</span>';
+          }).join(' · ');
+          if (mm) stat += ' <span class="st-diff">· ' + mm + ' חריגים</span>';
+        } else {
+          stat = mm ? '<span class="st-diff">✓ ' + mm + ' חריגים</span>' : '<span class="st-ok">✓ תקין</span>';
+        }
         h += '<tr><td>' + esc(u.full) + '</td>' +
-          '<td>' + (mm ? '<span class="st-diff">✓ ' + mm + ' חריגים</span>' : '<span class="st-ok">✓ תקין</span>') + '</td>' +
+          '<td>' + stat + '</td>' +
           '<td style="font-size:12px">' + esc(c.counterName) + '<br><span style="color:#6b7f72">מ.א ' + esc(c.counterNum) + ' · ' + fmtTime(c.ts) + '</span></td>' +
           '<td>' + (isAdminRole() ? '<button class="btn-danger" data-delc="' + countId(u.id, S.repDate) + '" style="padding:3px 7px;font-size:11px">מחק</button>' : '') + '</td></tr>';
         var mt = mismatchText(c);
@@ -2593,7 +2680,7 @@
       units.forEach(function (u) {
         var c = S.counts[countId(u.id, d)];
         if (!c) return;
-        [['items', 'תחמושת', 'ammo'], ['equip', 'אמצעים', 'equip']].forEach(function (t) {
+        [['items', 'תחמושת', 'ammo'], ['equip', 'צל״ם', 'equip']].forEach(function (t) {
           var src = c[t[0]]; if (!src) return;
           var st = S.stock[u.id];
           Object.keys(src).forEach(function (iid) {
@@ -2678,10 +2765,10 @@
       '<div class="kpi">' +
       '<div class="box"><div class="n">' + Object.keys(allUnits).length + '</div><div class="l">מסגרות עם מלאי</div></div>' +
       '<div class="box"><div class="n">' + totA + '</div><div class="l">סה״כ תחמושת</div></div>' +
-      '<div class="box"><div class="n">' + totE + '</div><div class="l">סה״כ אמצעים</div></div>' +
+      '<div class="box"><div class="n">' + totE + '</div><div class="l">סה״כ צל״ם</div></div>' +
       '</div>';
     h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:10px 0 4px">תחמושת</div>' + pivotTableHtml('ammo', 'תחמושת', base);
-    h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:12px 0 4px">אמצעים</div>' + pivotTableHtml('equip', 'אמצעים', base);
+    h += '<div style="font-size:13px;font-weight:900;color:#1b4332;margin:12px 0 4px">צל״ם</div>' + pivotTableHtml('equip', 'צל״ם', base);
     h += '<div style="font-size:11px;color:#6b7f72;margin-top:6px">גלילה לצדדים לכל המסגרות · שם הפריט תמיד מוצמד מימין. הכמויות הן מה שאמור להיות בכל מסגרת.</div>';
     h += '<button class="btn-ghost" id="expCentral" style="margin-top:8px">📤 יצוא מצבת מרכז — CSV</button></div>';
     return h;
@@ -2696,7 +2783,7 @@
       var units = unitsWithStock(kind, base);
       var items = itemsInUse(kind, units);
       if (!items.length) return;
-      rows.push([kind === 'ammo' ? 'תחמושת' : 'אמצעים']);
+      rows.push([kind === 'ammo' ? 'תחמושת' : 'צל״ם']);
       rows.push(['פריט'].concat(units.map(function (u) { return u.full; })).concat(['בגדוד']));
       items.forEach(function (it) {
         var rt = 0;
@@ -2845,7 +2932,7 @@
         return '<div class="usage-row"><div><b>' + esc(c.it.name) + sensTag(c.it.id) + '</b>' +
           (total ? ' <span class="m">· סה״כ ' + total + '</span>' : '') + body + '</div></div>';
       }).join('');
-      sections += '<div style="font-size:12px;font-weight:800;color:#1b4332;margin:12px 0 3px">📦 אמצעים / תחמושת (' + items.length + ')</div>' + ih;
+      sections += '<div style="font-size:12px;font-weight:800;color:#1b4332;margin:12px 0 3px">📦 צל״ם / תחמושת (' + items.length + ')</div>' + ih;
     }
 
     if (!sections) { box.innerHTML = '<div style="font-size:13px;color:#6b7f72">לא נמצאו תוצאות עבור "' + esc(q) + '"</div>'; return; }
@@ -3343,7 +3430,7 @@
         h += '</div>';
       }
       if (adminOnly !== 'ammo') {
-        h += '<div class="sec-head"><h2>אמצעים</h2></div><div class="stock-grid">';
+        h += '<div class="sec-head"><h2>צל״ם</h2></div><div class="stock-grid">';
         equipList().forEach(function (it) { h += stockRow('equip', it); });
         h += '</div>';
       }
@@ -3410,14 +3497,14 @@
     // custom items
     var cAmmo = (S.config && S.config.customAmmo) || [];
     var cEquip = (S.config && S.config.customEquip) || [];
-    h += '<div class="card"><h3>➕ הוספת תחמושת / אמצעים</h3>';
+    h += '<div class="card"><h3>➕ הוספת תחמושת / צל״ם</h3>';
     h += '<label class="fld">תחמושת שנוספה</label>';
     if (!cAmmo.length) h += '<div style="font-size:12px;color:#6b7f72">אין פריטים מותאמים</div>';
     cAmmo.forEach(function (it, i) {
       h += '<div class="chip-admin"><span>' + esc(it.name) + '</span><button data-rmci="ammo:' + i + '">✕</button></div>';
     });
     h += '<div class="addrow" style="margin-top:5px"><input type="text" id="newAmmo" placeholder="שם פריט תחמושת חדש"><button class="btn-mini" id="btnAddAmmo">הוסף</button></div>';
-    h += '<label class="fld" style="margin-top:12px">אמצעים שנוספו</label>';
+    h += '<label class="fld" style="margin-top:12px">צל״ם שנוספו</label>';
     if (!cEquip.length) h += '<div style="font-size:12px;color:#6b7f72">אין פריטים מותאמים</div>';
     cEquip.forEach(function (it, i) {
       h += '<div class="chip-admin"><span>' + esc(it.name) + '</span><button data-rmci="equip:' + i + '">✕</button></div>';

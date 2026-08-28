@@ -2500,7 +2500,18 @@
     // browsable history of all submitted reports
     h += reportHistoryHtml();
 
-    // (מצבת מרכז lives in the ניהול tab now — admin-only, on request.)
+    // central inventory (מצבת מרכז) — the cross-tab master sheet, here in דוחות.
+    // Scoped naturally by the viewer's data (a commander sees only his company).
+    if (isAdminRole()) {
+      h += '<div class="card"><h3>📊 דוח מרכז — מצבת מלאי</h3>' +
+        '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">הכמויות שאמורות להיות בכל מסגרת. בחר תצוגה:</div>' +
+        '<div class="grid2">' +
+        '<button class="btn-ghost' + (S.centralView === 'unit' ? ' on' : '') + '" id="ctrUnit">מסגרת נוכחית — ' + esc(UNIT_BY_ID[S.adminUnit] ? UNIT_BY_ID[S.adminUnit].name : '') + '</button>' +
+        '<button class="btn-ghost' + (S.centralView === 'all' ? ' on' : '') + '" id="ctrAll">כל המסגרות</button>' +
+        '</div></div>';
+      if (S.centralView === 'unit' && UNIT_BY_ID[S.adminUnit]) h += centralInventoryHtml([UNIT_BY_ID[S.adminUnit]], UNIT_BY_ID[S.adminUnit].full);
+      else if (S.centralView === 'all') h += centralInventoryHtml(UNITS.slice(), 'כל המסגרות');
+    }
 
     h += '<div class="dates" id="rstrip">';
     DATES.forEach(function (d) {
@@ -2580,6 +2591,8 @@
     $('expFull').onclick = exportFull;
     $('expUsage').onclick = exportUsage;
     if ($('expCentral')) $('expCentral').onclick = exportCentral;
+    if ($('ctrUnit')) $('ctrUnit').onclick = function () { S.centralView = S.centralView === 'unit' ? null : 'unit'; renderReport(); };
+    if ($('ctrAll')) $('ctrAll').onclick = function () { S.centralView = S.centralView === 'all' ? null : 'all'; renderReport(); };
     document.querySelectorAll('.mini-hamal').forEach(function (b) {
       b.onclick = function () { reportGapToHamal(b.getAttribute('data-hu'), b.getAttribute('data-hi'), +b.getAttribute('data-hq')); };
     });
@@ -3595,15 +3608,7 @@
     });
     h += '</div></div>';
 
-    // central inventory (מצבת מרכז) — admin-only, on request, by-framework or all
-    h += '<div class="card"><h3>📊 דוח מרכז — מצבת מלאי</h3>' +
-      '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">הכמויות שאמורות להיות בכל מסגרת. בחר תצוגה:</div>' +
-      '<div class="grid2">' +
-      '<button class="btn-ghost' + (S.centralView === 'unit' ? ' on' : '') + '" id="ctrUnit">מסגרת נוכחית — ' + esc(UNIT_BY_ID[S.adminUnit] ? UNIT_BY_ID[S.adminUnit].name : '') + '</button>' +
-      '<button class="btn-ghost' + (S.centralView === 'all' ? ' on' : '') + '" id="ctrAll">כל המסגרות</button>' +
-      '</div></div>';
-    if (S.centralView === 'unit' && UNIT_BY_ID[S.adminUnit]) h += centralInventoryHtml([UNIT_BY_ID[S.adminUnit]], UNIT_BY_ID[S.adminUnit].full);
-    else if (S.centralView === 'all') h += centralInventoryHtml(UNITS.slice(), 'כל המסגרות');
+    // (מצבת מרכז — דוח מרכז lives in the דוחות tab now, per request.)
 
     h += '<div class="card"><h3>🔳 קודי QR</h3>' +
       '<div style="font-size:12px;color:#6b7f72;margin-bottom:8px">לכל מסגרת יש קוד משלה — סריקה פותחת את האפליקציה ישר על אותה מסגרת. אפשר להדפיס את כל הקודים או קוד בודד.</div>' +
@@ -3617,9 +3622,6 @@
     if ($('btnAuUsage')) $('btnAuUsage').onclick = submitUsageAdmin;
     if ($('btnResetHamal')) $('btnResetHamal').onclick = resetHamalReport;
     if ($('btnSavePerson')) $('btnSavePerson').onclick = savePerson;
-    if ($('ctrUnit')) $('ctrUnit').onclick = function () { S.centralView = S.centralView === 'unit' ? null : 'unit'; renderAdmin(); };
-    if ($('ctrAll')) $('ctrAll').onclick = function () { S.centralView = S.centralView === 'all' ? null : 'all'; renderAdmin(); };
-    if ($('expCentral')) $('expCentral').onclick = exportCentral;
     // audit wiring
     if ($('btnAudit')) $('btnAudit').onclick = submitAudit;
     if ($('audAll')) $('audAll').onclick = function () { document.querySelectorAll('#scrAdmin input[data-audi]').forEach(function (cb) { cb.checked = true; }); };

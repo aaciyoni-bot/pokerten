@@ -1,7 +1,7 @@
 /* ירוק בעיניים — Service Worker
    רשת-קודם: תמיד מנסים להביא גרסה טרייה מהשרת, והמטמון משמש רק
    כגיבוי לחוסר-חיבור — כך עדכונים חדשים מגיעים מיידית. */
-const CACHE = 'greeneyes-shell-v1';
+const CACHE = 'greeneyes-shell-v2';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {

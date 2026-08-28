@@ -255,6 +255,12 @@
   table.pivot td.tot, table.pivot th.tot { background: #dcfce7; font-weight: 900; color: #14532d; }
   table.pivot tr.totrow td { background: #eef4f0; font-weight: 900; border-top: 2px solid #1b4332; }
   table.pivot tr.totrow td.name { background: #eef4f0; }
+  table.pivot thead th.grp { background: #14532d; color: #fff; font-weight: 800; border-inline: 1px solid #2f6b4f; font-size: 11.5px; }
+  table.pivot th.bunker, table.pivot td.bunker { background: #fef9c3; color: #713f12; font-weight: 800; }
+  table.pivot thead th.bunker { background: #a16207; color: #fff; }
+  table.pivot td.ser { font-size: 10px; color: #475569; max-width: 150px; white-space: normal; word-break: break-word; line-height: 1.35; }
+  table.pivot thead th.ser { background: #334155; color: #fff; }
+  table.pivot thead th.tot { background: #166534; color: #fff; }
   .kpi { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
   .kpi .box { flex: 1 1 90px; background: linear-gradient(135deg,#f0fdf4,#e3f7ea); border: 1.5px solid var(--green); border-radius: 14px; padding: 11px 10px; text-align: center; box-shadow: var(--shadow-sm); }
   .kpi .box .n { font-size: 24px; font-weight: 900; color: #14532d; line-height: 1; }
@@ -2731,21 +2737,52 @@
       return units.some(function (u) { return stockQty(u.id, kind, it.id) > 0; });
     });
   }
+  // central "דוח מרכז" cross-tab: item rows × framework columns, the frameworks
+  // grouped under a company header (פלוגה א׳/ב׳/ד׳ · גדוד). ארמון גדוד is pulled
+  // out into a dedicated "בונקר" column; a "סדרה" column gathers the serial /
+  // batch numbers of tracked items; "סה״כ" totals the whole battalion per item.
   function pivotTableHtml(kind, title, base) {
-    var units = unitsWithStock(kind, base);
-    var items = itemsInUse(kind, units);
+    base = base || UNITS;
+    var withStock = unitsWithStock(kind, base);
+    var items = itemsInUse(kind, withStock);
     if (!items.length) return '<div style="font-size:12px;color:#6b7f72;padding:6px">אין ' + title + ' מוגדרים עדיין</div>';
-    var h = '<div class="pivot-wrap"><table class="pivot"><thead><tr><th class="name">' + esc(title) + '</th>';
-    units.forEach(function (u) { h += '<th>' + esc(shortLabel(u)) + '</th>'; });
-    h += '<th class="tot">בגדוד</th></tr></thead><tbody>';
+    var showBunker = base.some(function (u) { return u.id === 'bn_armon'; });
+    // framework columns = stocked units except ארמון גדוד (shown as בונקר)
+    var cols = withStock.filter(function (u) { return u.id !== 'bn_armon'; });
+    var groups = [];
+    UNIT_GROUPS.forEach(function (g) {
+      var us = cols.filter(function (u) { return u.grp === g.g; });
+      if (us.length) groups.push({ name: g.name, units: us });
+    });
+    // series / serial numbers per item, across the shown units (+ בונקר)
+    var serUnits = cols.concat(showBunker ? [UNIT_BY_ID['bn_armon']] : []);
+    function seriesFor(iid) {
+      var out = [];
+      serUnits.forEach(function (u) {
+        var e = S.stock[u.id] && S.stock[u.id][kind] && S.stock[u.id][kind][iid];
+        if (e && e.inst) e.inst.forEach(function (r) { if (r.s != null && r.s !== '') out.push(String(r.s)); });
+      });
+      return out;
+    }
+    var h = '<div class="pivot-wrap"><table class="pivot"><thead>';
+    h += '<tr><th class="name" rowspan="2">' + esc(title) + '</th>';
+    groups.forEach(function (g) { h += '<th class="grp" colspan="' + g.units.length + '">' + esc(g.name) + '</th>'; });
+    if (showBunker) h += '<th class="bunker" rowspan="2">בונקר</th>';
+    h += '<th class="ser" rowspan="2">סדרה</th><th class="tot" rowspan="2">סה״כ</th></tr><tr>';
+    groups.forEach(function (g) { g.units.forEach(function (u) { h += '<th>' + esc(u.name) + '</th>'; }); });
+    h += '</tr></thead><tbody>';
     items.forEach(function (it) {
       var rowTot = 0;
       h += '<tr><td class="name">' + esc(it.name) + '</td>';
-      units.forEach(function (u) {
-        var q = stockQty(u.id, kind, it.id);
-        rowTot += q;
-        h += q > 0 ? '<td>' + q + '</td>' : '<td class="z">·</td>';
+      groups.forEach(function (g) {
+        g.units.forEach(function (u) {
+          var q = stockQty(u.id, kind, it.id); rowTot += q;
+          h += q > 0 ? '<td>' + q + '</td>' : '<td class="z">·</td>';
+        });
       });
+      if (showBunker) { var bq = stockQty('bn_armon', kind, it.id); rowTot += bq; h += '<td class="bunker' + (bq > 0 ? '' : ' z') + '">' + (bq > 0 ? bq : '·') + '</td>'; }
+      var ser = seriesFor(it.id);
+      h += '<td class="ser">' + (ser.length ? esc(ser.join(', ')) : '<span class="z">·</span>') + '</td>';
       h += '<td class="tot">' + rowTot + '</td></tr>';
     });
     h += '</tbody></table></div>';
@@ -2780,15 +2817,32 @@
     var base = centralBaseUnits();
     var rows = [];
     ['ammo', 'equip'].forEach(function (kind) {
-      var units = unitsWithStock(kind, base);
-      var items = itemsInUse(kind, units);
+      var withStock = unitsWithStock(kind, base);
+      var items = itemsInUse(kind, withStock);
       if (!items.length) return;
+      var showBunker = base.some(function (u) { return u.id === 'bn_armon'; });
+      var cols = withStock.filter(function (u) { return u.id !== 'bn_armon'; });
+      var serUnits = cols.concat(showBunker ? [UNIT_BY_ID['bn_armon']] : []);
+      function seriesFor(iid) {
+        var out = [];
+        serUnits.forEach(function (u) {
+          var e = S.stock[u.id] && S.stock[u.id][kind] && S.stock[u.id][kind][iid];
+          if (e && e.inst) e.inst.forEach(function (r) { if (r.s != null && r.s !== '') out.push(String(r.s)); });
+        });
+        return out;
+      }
       rows.push([kind === 'ammo' ? 'תחמושת' : 'צל״ם']);
-      rows.push(['פריט'].concat(units.map(function (u) { return u.full; })).concat(['בגדוד']));
+      var header = ['פריט'].concat(cols.map(function (u) { return u.full; }));
+      if (showBunker) header.push('בונקר');
+      header.push('סדרה', 'סה״כ');
+      rows.push(header);
       items.forEach(function (it) {
         var rt = 0;
-        var line = [it.name].concat(units.map(function (u) { var q = stockQty(u.id, kind, it.id); rt += q; return q || ''; }));
-        line.push(rt); rows.push(line);
+        var line = [it.name].concat(cols.map(function (u) { var q = stockQty(u.id, kind, it.id); rt += q; return q || ''; }));
+        if (showBunker) { var bq = stockQty('bn_armon', kind, it.id); rt += bq; line.push(bq || ''); }
+        line.push(seriesFor(it.id).join(' '));
+        line.push(rt);
+        rows.push(line);
       });
       rows.push([]);
     });

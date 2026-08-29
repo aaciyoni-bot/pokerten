@@ -46,6 +46,13 @@ service cloud.firestore {
       allow create, update: if false;
     }
 
+    // Hand records — one document per hand, written once and never edited.
+    // This is what a session review reads: the board, everyone's cards, and
+    // every action. Append-only for players; the club owner can clear them
+    // with the general reset.
+    match /hands/{id}     { allow read, create: if signedIn(); allow update: if false;
+                            allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
+
     match /tables/{id}       { allow read, write: if signedIn(); }
 
     // Server-engine private data: a player may read ONLY their own hole cards.

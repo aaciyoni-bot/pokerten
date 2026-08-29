@@ -1977,6 +1977,24 @@ const payAgentCutsFromHouse = async (rake, uids) => {
     }
   } catch (e) {}
 };
+/* Every hand gets a short code the player can read out and search for.
+   Base32 without the letters that get misread aloud (I, O, U, 0, 1). */
+const HAND_ALPHA = '23456789ABCDEFGHJKLMNPQRSTVWXYZ';
+const handCode = () => {
+  let out = '';
+  for (let i = 0; i < 6; i++) out += HAND_ALPHA[Math.floor(Math.random() * HAND_ALPHA.length)];
+  return out;
+};
+
+/* One document per hand, written once when the hand ends. It does NOT live in
+   the table doc: that document is re-sent to every seated player on every
+   change, and a hundred hands of action log inside it would be paid for on
+   every single write. */
+const saveHandRecord = async rec => {
+  try {
+    await window.fb.setDoc(window.fb.doc(window.fb.db, "hands", rec.code), rec);
+  } catch (e) {}
+};
 const logGameResult = async (entries, tableId) => {
   try {
     for (const e of entries || []) {
@@ -9072,6 +9090,10 @@ function BackofficeView({
       // Tables and tournaments are read in full and filtered here, not queried:
       // documents written before clubId existed have no field to match on, and
       // the app reads those as belonging to 'main' (t.clubId || 'main').
+      try {
+        const q = window.fb.query(window.fb.collection(window.fb.db, "hands"), window.fb.where("clubId", "==", CLUB_ID));
+        await delAll((await window.fb.getDocs(q)).docs, 'hands');
+      } catch (e) { histFailed++; }
       for (const [col, tally] of [["tables", 'tables'], ["tournaments", 'tournaments']]) {
         try {
           const snap = await window.fb.getDocs(window.fb.collection(window.fb.db, col));
@@ -11257,8 +11279,10 @@ function PokerTable({
     });
     const tourExtra = applyTourFlow(pl, [winnerUid]);
     const histT = tableRef.current;
+    const hCode = handCode();
     const histEntry = {
       at: Date.now(),
+      code: hCode,
       game: g.currentGameType,
       board: g.board || [],
       rake,
@@ -11272,6 +11296,30 @@ function PokerTable({
         f: q.status === 'folded'
       }))
     };
+    // the full record, for review later — cards included, because a review
+    // that cannot see what everybody held is not a review
+    saveHandRecord({
+      code: hCode,
+      clubId: CLUB_ID,
+      tableId: tableDocId,
+      at: Date.now(),
+      game: g.currentGameType,
+      blinds: Number(setts.blinds) || 0,
+      board: g.board || [],
+      pot: round2(pot),
+      rake,
+      acts: g.acts || [],
+      ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({
+        uid: q.uid,
+        n: q.name,
+        bot: !!q.isBot,
+        seat: q.seatIndex,
+        c: q.cards || [],
+        start: round2((q.stack || 0) + (q.bet || 0)),
+        w: q.uid === winnerUid,
+        f: q.status === 'folded'
+      }))
+    });
     await saveGame(g, pl, {
       history: [...(histT && histT.history || []), histEntry].slice(-100),
       ...tourExtra
@@ -11389,8 +11437,10 @@ function PokerTable({
     const winnersUids = Object.values(pl).filter(q => winnerNames.has(q.name)).map(q => q.uid);
     const tourExtra = applyTourFlow(pl, winnersUids);
     const histT = tableRef.current;
+    const hCode2 = handCode();
     const histEntry = {
       at: Date.now(),
+      code: hCode2,
       game: g.currentGameType,
       board: g.board || [],
       rake: rakeTotal,
@@ -11404,6 +11454,23 @@ function PokerTable({
         f: q.status === 'folded'
       }))
     };
+    saveHandRecord({
+      code: hCode2,
+      clubId: CLUB_ID,
+      tableId: tableDocId,
+      at: Date.now(),
+      game: g.currentGameType,
+      blinds: Number(setts.blinds) || 0,
+      board: g.board || [],
+      pot: round2(pot),
+      rake: rakeTotal,
+      acts: g.acts || [],
+      ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({
+        uid: q.uid, n: q.name, bot: !!q.isBot, seat: q.seatIndex, c: q.cards || [],
+        start: round2((q.stack || 0) + (q.bet || 0)),
+        w: winnerNames.has(q.name), f: q.status === 'folded'
+      }))
+    });
     await saveGame(g, pl, {
       history: [...(histT && histT.history || []), histEntry].slice(-100),
       ...tourExtra
@@ -11543,6 +11610,18 @@ function PokerTable({
       p.actionText = p.stack === 0 ? 'All-in' : 'Raise';
       p.hasActed = true;
     }
+    // The hand's action log. Without this a session cannot be reviewed at all:
+    // the board and the winner say nothing about how the pot was played.
+    g.acts = [...(g.acts || []).slice(-79), {
+      u: actorUid,
+      n: p.name || '',
+      s: g.phase,
+      a: type === 'fold' ? 'fold' : p.actionText === 'Check' ? 'check' :
+        p.stack === 0 ? 'allin' : type === 'raise' ? 'raise' : 'call',
+      m: round2(p.bet || 0),
+      p: round2((g.pots || []).reduce((s2, x) => s2 + (x.amount || 0), 0) +
+        Object.values(pl).reduce((s2, q) => s2 + (q.bet || 0), 0))
+    }];
     const actives = Object.values(pl).filter(q => q.status === 'active');
     if (actives.length === 1) {
       await finishEarlyWin(g, pl, actives[0].uid);
@@ -11683,6 +11762,7 @@ function PokerTable({
       handBB: bbAmt, // this hand's big blind — post-flop min-raise uses it (tournament levels!)
       handN: (Number(gBase.handN) || 0) + 1, // hand counter — drives the per-hand deal animation
       phase: 'preflop',
+      acts: [],          // this hand's action log, written to hands/ at the end
       currentGameType: gameType,
       activeTurnUid: firstUid,
       turnStartedAt: Date.now(),
@@ -14715,7 +14795,10 @@ function PokerTable({
     className: "w-full flex items-center justify-between px-3 py-2.5 text-right"
   }, React.createElement("span", {
     className: "text-[11px] font-bold text-slate-300"
-  }, React.createElement("span", {
+  }, h.code && React.createElement("span", {
+    className: "text-gold-400 font-black ml-2 tracking-widest",
+    title: "Hand code — search for it in your settlement area"
+  }, h.code), React.createElement("span", {
     className: "text-slate-500 ml-2"
   }, new Date(h.at).toLocaleTimeString('he-IL', {
     hour: '2-digit',

@@ -37,19 +37,20 @@ input{font-family:inherit;color:inherit}
 
 /* ---------- App shell ---------- */
 #app{
-  height:100dvh; display:grid; grid-template-rows:auto auto 1fr auto;
+  height:100dvh; display:grid; grid-template-rows:auto auto 1fr auto auto;
   max-width:1180px; margin:0 auto; padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom);
   gap:10px;
 }
 @media (min-width:900px){
   #app{
     grid-template-columns:minmax(0,2.1fr) minmax(280px,1fr);
-    grid-template-rows:auto auto 1fr auto;
-    grid-template-areas:"top top" "hist hist" "stage side" "bet side";
+    grid-template-rows:auto auto 1fr auto auto;
+    grid-template-areas:"top top" "hist hist" "stage side" "bet side" "tick tick";
     column-gap:14px;
   }
   #topbar{grid-area:top} #history{grid-area:hist}
   #stageWrap{grid-area:stage} #betPanel{grid-area:bet} #sidePanel{grid-area:side}
+  #ticker{grid-area:tick}
 }
 
 /* ---------- Top bar ---------- */
@@ -327,9 +328,29 @@ input{font-family:inherit;color:inherit}
 /* mobile: side panel is a fixed-height strip so the layout (and the
    bet button) never shifts as players join the round */
 @media (max-width:899px){
-  #app{grid-template-rows:auto auto minmax(200px,1.2fr) auto auto}
-  #sidePanel{height:24dvh; flex:0 0 auto}
+  #app{grid-template-rows:auto auto minmax(200px,1.2fr) auto auto auto}
+  #sidePanel{height:21dvh; flex:0 0 auto}
 }
+
+/* ---------- bottom ticker (stock-style marquee) ---------- */
+#ticker{
+  height:30px; overflow:hidden; border-radius:999px;
+  background:var(--pt-card); border:1px solid var(--pt-line);
+  display:flex; align-items:center; min-width:0;
+}
+#tickerTrack{
+  display:inline-flex; align-items:center; gap:26px;
+  padding-left:100%; white-space:nowrap; will-change:transform;
+  font-size:12.5px; font-weight:600; font-variant-numeric:tabular-nums;
+  animation:tickmove 40s linear infinite;
+}
+@keyframes tickmove{to{transform:translateX(-100%)}}
+#tickerTrack b{font-weight:800}
+.tk-name{color:var(--pt-gold)}
+.tk-win{color:var(--pt-green)}
+.tk-msg{color:var(--pt-dim)}
+.tk-sep{color:var(--pt-gold-deep); font-size:9px}
+@media (prefers-reduced-motion:reduce){ #tickerTrack{animation:none; padding-left:12px} }
 
 /* flying win badge */
 .flyWin{
@@ -431,6 +452,8 @@ input{font-family:inherit;color:inherit}
     </div>
     <div id="players"></div>
   </aside>
+
+  <div id="ticker"><div id="tickerTrack"></div></div>
 
 </div>
 
@@ -645,11 +668,11 @@ function radioCall(){
 const AV = "assets/avatars/";
 const BOT_AVATARS = ["av-astronaut","av-tiger","av-shark","av-owl","av-fox" ,"av-gamer","av-thief","av-professor","av-wolfface","av-dragon","av-gorilla","av-lionface","av-nerd-woman","av-black-woman","av-western-man","av-bussinesman","av-designer","av-doctor","av-cat","av-pandaface","av-trex","av-firefighter","av-muslim-woman","av-college-student","av-rabbit","av-monkey","av-whale","av-unicornface"]
   .map(n => n === "av-fox" ? "av-foxface" : n);
-const BOT_NAMES = ["Maverick","LuckyLina","ChipZilla","Rocket_Ron","GoldRush","NoFearNir","Turbo_T","MissMoon","BigStack","Foxy","CaptainX","SlowRoll","AceHigh","Vega$","NightOwl","Blitz","RiverKing","Dana_W","TiltProof","Momo","HighFlyer","ZenBet"];
+const BOT_NAMES = ["Maverick","LuckyLina","ChipZilla","Rocket_Ron","GoldRush","NoFearNir","Turbo_T","MissMoon","BigStack","Foxy","CaptainX","SlowRoll","AceHigh","Vega$","NightOwl","Blitz","RiverKing","Dana_W","TiltProof","Momo","HighFlyer","ZenBet","SkyDiver","JetLag","Mach_1","Cloud9","Radar","Tailwind","Gonzo","LuckyStrike","Miri_K","BetMan","Cashout_Kid","Eagle_Eye","Storm","Nimbus","Apollo11","Omer_B","Shani_L","Rocketman","DiamondHands","Yalla_Bet","TLV_Flyer","Mazal","Chik_Chak","Sababa77","FullSend","Turbulence"];
 
 let bots = [];
 function makeBots(){
-  const n = Math.floor(rand(8, 13));
+  const n = Math.floor(rand(24, 41));
   const names = [...BOT_NAMES].sort(() => Math.random() - 0.5).slice(0, n);
   const avs   = [...BOT_AVATARS].sort(() => Math.random() - 0.5);
   bots = names.map((name, i) => ({
@@ -660,6 +683,35 @@ function makeBots(){
     joinAt: rand(300, WAIT_MS * 0.72),
     joined: false, cashed: false, bust: false
   }));
+}
+
+/* =====================================================================
+   SESSION LEDGER + BOTTOM TICKER (stock-style marquee)
+   ===================================================================== */
+const sessionNet = {};   // name -> net chips won/lost this session
+function addNet(name, d){ sessionNet[name] = (sessionNet[name] || 0) + d; }
+const CHAT_POOL = [
+  "to the moon 🚀","who's still holding?","I knew it 😤","gg","one more round",
+  "cashed just in time 😅","full send!","5x or nothing","that was close...","rip",
+  "ez money 💰","don't be greedy","hold... hold...","I'm out lol","let's gooo",
+  "never at 1.01 again","this one feels big","auto cashout saved me","😱😱😱","brb refilling"
+];
+function buildTicker(){
+  const items = [];
+  const top = Object.entries(sessionNet).filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]).slice(0, 3);
+  for (const [n, v] of top)
+    items.push(`<span>🏆 <b class="tk-name">${n}</b> <b class="tk-win">+${fmt(v)}</b></span>`);
+  if (history.length)
+    items.push(`<span class="tk-msg">last round <b>${history[0].toFixed(2)}x</b></span>`);
+  const chatters = [...bots].sort(() => Math.random() - 0.5).slice(0, 5);
+  for (const b of chatters)
+    items.push(`<span><b class="tk-name">${b.name}:</b> <span class="tk-msg">${pick(CHAT_POOL)}</span></span>`);
+  const track = $("#tickerTrack");
+  track.innerHTML = items.join('<span class="tk-sep">◆</span>');
+  track.style.animation = "none"; void track.offsetWidth;
+  track.style.animation = "";
+  track.style.animationDuration = Math.max(22, items.length * 5) + "s";
 }
 
 /* =====================================================================
@@ -693,6 +745,7 @@ function startWaiting(){
   S.lastWholeMult = 1;
   S.radioDone = false;
   makeBots();
+  buildTicker();
   beltChime();
   particles.length = 0;
   view.yMax = 2; view.xMax = 8;
@@ -724,7 +777,7 @@ function doCrash(){
   toneStop(0.05);
   play("crash", 0.75, 0.03);
   haptic([30, 40, 60]);
-  bots.forEach(b => { if (b.joined && !b.cashed) b.bust = true; });
+  bots.forEach(b => { if (b.joined && !b.cashed){ b.bust = true; addNet(b.name, -b.bet); } });
   const m = $("#mult");
   m.textContent = S.crashPoint.toFixed(2) + "x";
   m.className = "dead";
@@ -737,7 +790,7 @@ function doCrash(){
   }
   explode();
   pushHistory(S.crashPoint);
-  if (S.bet && !S.bet.cashed){ S.bet.lost = true; }
+  if (S.bet && !S.bet.cashed){ S.bet.lost = true; addNet("You", -S.bet.amount); }
   renderPlayers(); updateAction();
   if (balance < MIN_BET && !S.queued) setTimeout(() => $("#brokeModal").classList.add("on"), 900);
 }
@@ -790,6 +843,7 @@ function cashOut(){
   const m = S.mult;
   const win = Math.floor(S.bet.amount * m);
   S.bet.cashed = true; S.bet.cashMult = m; S.bet.win = win;
+  addNet("You", win - S.bet.amount);
   balance += win;
   setBalance(balance);
   play(m >= 5 ? "bigwin" : "win", m >= 5 ? 0.8 : 0.65, 0.02);
@@ -1176,6 +1230,7 @@ function frame(now){
       for (const b of bots){
         if (b.joined && !b.cashed && !b.bust && b.target < S.crashPoint && S.mult >= b.target){
           b.cashed = true; b.cashMult = b.target; changed = true;
+          addNet(b.name, Math.floor(b.bet * (b.cashMult - 1)));
         }
       }
       if (changed) renderPlayers();

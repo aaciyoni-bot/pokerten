@@ -4901,8 +4901,11 @@ function AuthView() {
     }
     setGBusy(false);
   };
-  const doVerify = async () => {
-    const code = gCode.trim();
+  // `typed` lets the field submit the moment the sixth digit lands — whether
+  // the player typed it or the keyboard filled it in from the SMS — without
+  // waiting for the state round-trip.
+  const doVerify = async typed => {
+    const code = String(typed === undefined ? gCode : typed).trim();
     if (code.length < 6) return setGErr('צריך את 6 הספרות מה-SMS');
     setGErr('');
     setGBusy(true);
@@ -5031,9 +5034,16 @@ function AuthView() {
     className: "text-gold-400"
   }, toE164(gNum))), React.createElement("input", {
     value: gCode,
+    autoFocus: true,
     onChange: e => {
-      setGCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6));
+      const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+      setGCode(v);
       setGErr('');
+      // Six digits is the whole code — there is nothing left to decide, so
+      // don't make him hunt for a button. This is also what fires when the
+      // keyboard fills the code in from the SMS: one tap on the suggestion
+      // and he is in.
+      if (v.length === 6 && !gBusy) doVerify(v);
     },
     inputMode: "numeric",
     autoComplete: "one-time-code",
@@ -5044,7 +5054,7 @@ function AuthView() {
   }), gErr && React.createElement("p", {
     className: "text-[12px] font-bold text-rose-400"
   }, gErr), React.createElement("button", {
-    onClick: doVerify,
+    onClick: () => doVerify(),
     disabled: gBusy || gCode.length < 6,
     className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-60 text-white py-3.5 rounded-xl font-black text-[15px] shadow-lg"
   }, gBusy ? "מאמת..." : "אימות וכניסה"), React.createElement("button", {

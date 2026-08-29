@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#07090F">
 <title>AVIATORIZIS</title>
-<link rel="icon" href="icon-192.png">
+<link rel="icon" href="aviator-icon-192.png">
+<link rel="manifest" href="aviator-manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AVIATORIZIS">
+<link rel="apple-touch-icon" href="aviator-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@700;900&family=Heebo:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -205,6 +211,52 @@ input{font-family:inherit;color:inherit}
   transition:opacity var(--t-slow) var(--ease-std);
 }
 #audioHint.off{opacity:0; pointer-events:none}
+
+/* thrust lever: idle during betting, pushed to full at takeoff,
+   chopped back on crash */
+#throttle{
+  position:absolute; right:14px; bottom:12px; z-index:4;
+  display:grid; justify-items:center; gap:5px; pointer-events:none;
+}
+#throttle .track{
+  width:14px; height:86px; border-radius:999px; background:rgba(255,255,255,0.05);
+  border:1px solid var(--pt-line); position:relative;
+  box-shadow:inset 0 2px 6px rgba(0,0,0,0.6);
+}
+#throttle .lever{
+  position:absolute; left:50%; transform:translateX(-50%);
+  bottom:4px; width:26px; height:20px; border-radius:7px;
+  background:linear-gradient(180deg,#E8CB8B,var(--pt-gold) 50%,var(--pt-gold-deep));
+  box-shadow:0 3px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.45);
+  transition:bottom 1.6s cubic-bezier(0.3,0,0.3,1);
+  display:grid; align-content:center; justify-items:center; gap:2px;
+}
+#throttle .lever i{width:14px; height:1.5px; background:rgba(22,16,6,0.55); border-radius:1px}
+#throttle.full .lever{bottom:62px}
+#throttle.cut .lever{transition:bottom 250ms var(--ease-std); bottom:4px}
+#throttle .tl{font-size:8px; letter-spacing:2px; color:var(--pt-dim); font-weight:800}
+
+/* app install */
+#spInstall{
+  margin-top:6px; padding:10px 26px; border-radius:999px; font-size:12.5px; font-weight:800;
+  letter-spacing:2px; text-transform:uppercase; color:var(--pt-gold);
+  border:1px solid rgba(213,179,107,0.45); background:rgba(213,179,107,0.07);
+}
+#iosModal{
+  position:fixed; inset:0; z-index:110; display:none; place-items:center;
+  background:rgba(7,9,15,0.75); backdrop-filter:blur(6px);
+}
+#iosModal.on{display:grid}
+#iosCard{
+  background:var(--pt-raised); border:1px solid var(--pt-line); border-radius:var(--radius-l);
+  box-shadow:var(--pt-shadow); padding:24px 26px; text-align:center; max-width:320px;
+}
+#iosCard h2{font-family:'Frank Ruhl Libre',serif; font-size:20px; margin-bottom:8px; color:var(--pt-gold)}
+#iosCard p{font-size:13.5px; color:var(--pt-dim); margin-bottom:16px; line-height:1.6}
+#iosClose{
+  width:100%; height:44px; border-radius:var(--radius-m); font-size:15px; font-weight:900;
+  background:var(--pt-card); border:1px solid var(--pt-line); color:var(--pt-text);
+}
 
 /* god mode (local cheat, solo game only) */
 #godPill{
@@ -500,6 +552,7 @@ input{font-family:inherit;color:inherit}
       <div id="spLine"></div>
       <div id="spTag">Fly high · Cash out in time</div>
       <button id="spPlay">Take off</button>
+      <button id="spInstall" hidden>⤓ Install app</button>
     </div>
   </div>
 </div>
@@ -509,6 +562,7 @@ input{font-family:inherit;color:inherit}
     <button class="icon-btn" id="backBtn" aria-label="Back to lobby">←</button>
     <div id="brand"><span class="word">AVIATORIZIS</span></div>
     <div id="balance"><span class="coin"></span><span id="balanceNum">0</span></div>
+    <button class="icon-btn" id="installBtn" hidden aria-label="Install app">⤓</button>
     <button class="icon-btn" id="soundBtn" aria-label="Toggle sound">🔊</button>
   </header>
 
@@ -538,6 +592,10 @@ input{font-family:inherit;color:inherit}
       <div id="winToast"></div>
       <div id="godPill" hidden>⚡ crash @ <b id="godVal">—</b></div>
       <div id="audioHint">🔇 tap to enable sound</div>
+      <div id="throttle">
+        <div class="track"><div class="lever" id="throttleLever"><i></i><i></i><i></i></div></div>
+        <span class="tl">THRUST</span>
+      </div>
     </section>
   </div>
 
@@ -576,6 +634,14 @@ input{font-family:inherit;color:inherit}
 
   <div id="ticker"><div id="tickerTrack"></div></div>
 
+</div>
+
+<div id="iosModal">
+  <div id="iosCard">
+    <h2>Install AVIATORIZIS</h2>
+    <p>Tap the <b>Share</b> button in Safari,<br>then choose <b>"Add to Home Screen"</b>.</p>
+    <button id="iosClose">Got it</button>
+  </div>
 </div>
 
 <div id="brokeModal">
@@ -890,6 +956,7 @@ function startWaiting(){
   view.yMax = 2; view.xMax = 8;
   $("#flightNums").hidden = true;
   $("#countdown").hidden = false;
+  $("#throttle").classList.remove("full", "cut");
   $("#crashTag").classList.remove("on");
   $("#mult").className = "";
   if (S.queued > 0){
@@ -904,6 +971,8 @@ function startFlight(){
   S.phaseAt = performance.now();
   $("#countdown").hidden = true;
   $("#flightNums").hidden = false;
+  $("#throttle").classList.remove("cut");
+  $("#throttle").classList.add("full");
   toneStart();
   play("slide", 0.35);
   updateAction();
@@ -912,6 +981,8 @@ function doCrash(){
   S.phase = "crashed";
   S.phaseAt = performance.now();
   S.mult = S.crashPoint;
+  $("#throttle").classList.remove("full");
+  $("#throttle").classList.add("cut");
   toneStop(0.05);
   play("crash", 0.75, 0.03);
   haptic([30, 40, 60]);
@@ -1501,6 +1572,39 @@ $("#spPlay").addEventListener("click", () => {
   if (S.phase === "waiting") beltChime();
   setTimeout(() => { const s = $("#splash"); if (s) s.remove(); }, 750);
 });
+
+/* =====================================================================
+   APP INSTALL (PWA) — Android/desktop get the native prompt, iOS gets
+   Add-to-Home-Screen instructions
+   ===================================================================== */
+let installEvt = null;
+const IS_STANDALONE = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+function showInstallUI(v){
+  $("#installBtn").hidden = !v;
+  const sp = $("#spInstall");
+  if (sp) sp.hidden = !v;
+}
+addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  installEvt = e;
+  if (!IS_STANDALONE) showInstallUI(true);
+});
+if (IS_IOS && !IS_STANDALONE) showInstallUI(true);
+function doInstall(){
+  if (installEvt){
+    installEvt.prompt();
+    installEvt.userChoice.finally(() => { installEvt = null; });
+  } else if (IS_IOS){
+    $("#iosModal").classList.add("on");
+  }
+}
+$("#installBtn").addEventListener("click", doInstall);
+$("#spInstall").addEventListener("click", e => { e.stopPropagation(); doInstall(); });
+$("#iosClose").addEventListener("click", () => $("#iosModal").classList.remove("on"));
+addEventListener("appinstalled", () => showInstallUI(false));
+if ("serviceWorker" in navigator && /aviatorizis|vercel\.app/.test(location.hostname))
+  navigator.serviceWorker.register("aviator-sw.js").catch(() => {});
 
 /* persist chips */
 setInterval(() => store.set("pt_av_chips", balance), 2500);

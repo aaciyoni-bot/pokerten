@@ -57,7 +57,7 @@ input{font-family:inherit;color:inherit}
 #topbar{
   display:flex; align-items:center; gap:10px; padding:10px 2px 0; min-width:0;
 }
-@media (max-width:430px){ #brand .sub{display:none} }
+@media (max-width:430px){ #brand .sub{letter-spacing:1.5px; font-size:10px} }
 .icon-btn{
   width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
   background:var(--pt-card); border:1px solid var(--pt-line);
@@ -334,11 +334,30 @@ input{font-family:inherit;color:inherit}
 .prow.bust .st{color:var(--pt-red)}
 .prow.bust img,.prow.bust .nm,.prow.bust .bt{opacity:0.45}
 
-/* mobile: side panel is a fixed-height strip so the layout (and the
-   bet button) never shifts as players join the round */
+/* mobile: fixed-track layout so nothing ever pushes the bet button or
+   ticker off-screen — the players strip is a capped grid track and the
+   stage flexes to absorb whatever height is left */
 @media (max-width:899px){
-  #app{grid-template-rows:auto auto minmax(200px,1.2fr) auto auto auto}
-  #sidePanel{height:21dvh; flex:0 0 auto}
+  #app{
+    grid-template-rows:auto auto minmax(140px,1.2fr) auto minmax(70px,21dvh) auto;
+    gap:8px; overflow-y:auto;
+  }
+  #sidePanel{height:auto; min-height:0}
+  /* the stage must never outgrow its grid track and bleed over the
+     bet panel — the track minimum is the floor, not the element's */
+  #stage{min-height:0}
+}
+/* short phones: shave the chrome so the whole game fits the viewport */
+@media (max-width:899px) and (max-height:760px){
+  #topbar{padding-top:4px}
+  .icon-btn{width:36px;height:36px}
+  #betPanel{padding:8px 10px 10px; gap:7px}
+  .step{height:36px}
+  #betInput{font-size:19px}
+  .chip{height:32px; min-width:48px}
+  #actionBtn{height:52px; font-size:17px}
+  #ticker{height:26px}
+  #app{grid-template-rows:auto auto minmax(130px,1.2fr) auto minmax(60px,17dvh) auto}
 }
 
 /* ---------- bottom ticker (stock-style marquee) ---------- */
@@ -475,6 +494,22 @@ input{font-family:inherit;color:inherit}
   </div>
 </div>
 
+<script type="module">
+  /* same Firebase project as the main POKERTEN app — used here only to
+     verify the admin's Google account for god mode */
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  const app = initializeApp({
+    apiKey: "AIzaSyC1MuCmX0bUAW6XakFzkqS8LHVxkDRTrfo",
+    authDomain: "pokerten.firebaseapp.com",
+    projectId: "pokerten",
+    storageBucket: "pokerten.firebasestorage.app",
+    messagingSenderId: "861274065626",
+    appId: "1:861274065626:web:512b8383ea1fae7a8c73e3"
+  });
+  window.avAuth = { auth: getAuth(app), GoogleAuthProvider, signInWithPopup, onAuthStateChanged };
+  window.dispatchEvent(new Event("fb-ready"));
+</script>
 <script>
 "use strict";
 /* =====================================================================
@@ -1155,7 +1190,7 @@ function draw(now){
     ctx.restore();
 
     /* --- god mode: dashed line where this round will crash --- */
-    if (godMode && !crashed){
+    if (godMode && adminUser && !crashed){
       const gy = Y(S.crashPoint);
       if (gy > PAD.t){
         ctx.save();
@@ -1268,28 +1303,44 @@ function frame(now){
 }
 
 /* =====================================================================
-   GOD MODE — local cheat for the solo game: shows the round's crash
-   point in advance. Toggle with 5 quick taps on the AVIATOR logo or
-   ?god=1 in the URL. Everyone else in the round is a bot, so nobody
-   real is being played against.
+   GOD MODE — admin supervision: shows the round's crash point in
+   advance. Reserved for the club owner's Google account; 5 quick taps
+   on the AVIATOR logo sign in (or toggle it once signed in). Everyone
+   else in the round is a bot, so nobody real is being played against.
    ===================================================================== */
+const ADMIN_EMAIL = "aaci.yoni@gmail.com";
+let adminUser = false;
 let godMode = store.get("pt_av_god", false) || new URLSearchParams(location.search).has("god");
 function updateGod(){
-  $("#godPill").hidden = !godMode;
-  if (godMode) $("#godVal").textContent = S.crashPoint.toFixed(2) + "x";
+  const on = godMode && adminUser;
+  $("#godPill").hidden = !on;
+  if (on) $("#godVal").textContent = S.crashPoint.toFixed(2) + "x";
 }
+addEventListener("fb-ready", () => {
+  const { auth, onAuthStateChanged } = window.avAuth;
+  onAuthStateChanged(auth, u => {
+    adminUser = !!u && (u.email || "").toLowerCase() === ADMIN_EMAIL;
+    updateGod();
+  });
+});
 let brandTaps = [];
 $("#brand").addEventListener("click", () => {
   const now = performance.now();
   brandTaps = brandTaps.filter(t => now - t < 1600);
   brandTaps.push(now);
-  if (brandTaps.length >= 5){
-    brandTaps = [];
-    godMode = !godMode;
-    store.set("pt_av_god", godMode);
-    play("ui", 0.3);
-    updateGod();
+  if (brandTaps.length < 5) return;
+  brandTaps = [];
+  if (!adminUser){
+    if (window.avAuth){
+      const { auth, GoogleAuthProvider, signInWithPopup } = window.avAuth;
+      signInWithPopup(auth, new GoogleAuthProvider()).catch(() => {});
+    }
+    return;
   }
+  godMode = !godMode;
+  store.set("pt_av_god", godMode);
+  play("ui", 0.3);
+  updateGod();
 });
 
 /* =====================================================================

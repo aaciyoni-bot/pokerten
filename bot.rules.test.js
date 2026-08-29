@@ -113,13 +113,61 @@ const BRAINS = [["client (index.html)", askClient], ["server (pokerEngine)", ask
   });
 }
 
+/* --- rule 3: which pair, not whether ------------------------------------- */
+{
+  // The hand the owner watched: the bot holds 10-3, the board is A K 3. That
+  // is a pair, and it is worth nothing — the three is the bottom card and the
+  // ten is dead. It may pay a cheap bet; it may not play a big pot, and it may
+  // never call off a stack.
+  const board = [card("A", "\u2663"), card("K", "\u2665"), card("3", "\u2660")];
+  const mine = [card("10", "\u2660"), card("3", "\u2666")];
+  BRAINS.forEach(([name, ask]) => {
+    let big = 0;
+    for (let i = 0; i < 300; i++) {
+      if (ask(board, mine, 30, 30, 300).kind !== "fold") big++;   // pot-sized bet
+    }
+    check(`${name}: bottom pair folds to a pot-sized bet`, big === 0, `continued ${big}/300`);
+    let shove = 0;
+    for (let i = 0; i < 300; i++) {
+      if (ask(board, mine, 210, 200, 200).kind !== "fold") shove++;  // river shove
+    }
+    check(`${name}: bottom pair never calls off the stack`, shove === 0, `called ${shove}/300`);
+    let cheap = 0;
+    for (let i = 0; i < 300; i++) {
+      if (ask(board, mine, 30, 4, 300).kind !== "fold") cheap++;   // small stab
+    }
+    check(`${name}: bottom pair may still pay a cheap bet`, cheap > 0, "folded all 300 — too tight");
+  });
+  // ...and the pair that IS worth something must not be thrown away with it.
+  const topPair = [card("A", "\u2666"), card("Q", "\u2665")];
+  BRAINS.forEach(([name, ask]) => {
+    let played = 0;
+    for (let i = 0; i < 300; i++) {
+      if (ask(board, topPair, 30, 30, 300).kind !== "fold") played++;
+    }
+    check(`${name}: TOP pair still plays a pot-sized bet`, played > 0, "folded all 300");
+  });
+  // A pair sitting entirely on the board is not the bot's pair at all.
+  const pairedBoard = [card("A", "\u2663"), card("9", "\u2665"), card("9", "\u2660")];
+  const airHand = [card("7", "\u2660"), card("2", "\u2666")];
+  BRAINS.forEach(([name, ask]) => {
+    let commits = 0;
+    for (let i = 0; i < 300; i++) {
+      if (ask(pairedBoard, airHand, 60, 60, 200).kind !== "fold") commits++;
+    }
+    check(`${name}: a pair on the BOARD is not a hand`, commits === 0, `continued ${commits}/300`);
+  });
+}
+
 /* --- rule 3: the god guard, and the line it must never cross ------------- */
 {
-  // Turn: A K 9 4 rainbow. The bot holds KQ — a real pair, so the "no pair no
-  // draw" rule alone would let it play. The opponent holds AA: the bot is
-  // drawing dead. On a bots-only table the guard must see that and fold.
+  // Turn: A K 9 4 rainbow. The bot holds AQ — TOP pair, which every ordinary
+  // rule in the brain is happy to play, so a fold here can only have come from
+  // the guard. (It used to be KQ, but second pair now folds to a big bet on
+  // its own merits, which made this spot unable to tell the two apart.)
+  // The opponent holds AA: with one card to come the bot is drawing dead.
   const board = [card("A", "\u2660"), card("K", "\u2666"), card("9", "\u2663"), card("4", "\u2665")];
-  const mine = [card("K", "\u2663"), card("Q", "\u2660")];
+  const mine = [card("A", "\u2663"), card("Q", "\u2660")];
   const nuts = [card("A", "\u2665"), card("A", "\u2666")];
   const table = (humanSeated, guard) => {
     const S = {id: "t", settings: {blinds: 0.5, baseGameType: "NLH", maxPlayers: 6,

@@ -2766,9 +2766,22 @@ const botRangeFacing = (toCall, potNow, bb) => {
    outs: cards that complete a straight or a flush on the next street. */
 const botHandBody = (cards, board, gameType) => {
   try {
-    if (!cards || !cards.length || !board || board.length < 3) return { made: 2, outs: 0 };
+    if (!cards || !cards.length || !board || board.length < 3) return { made: 3, outs: 0 };
+    const RV = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, J: 11, Q: 12, K: 13, A: 14 };
     const sc = bestScoreFull(cards, board, gameType);
-    const made = sc >= 2000000 ? 2 : sc >= 1000000 ? 1 : 0;
+    // "Do I have a pair" is not a question worth asking. A three on A-K-3 is a
+    // pair and it is worth nothing; the owner watched a bot pay a hand off to
+    // the river holding exactly that. So: which pair, and is it even mine?
+    //   3 = two pair or better    2 = top pair / overpair
+    //   1 = second pair or worse  0 = nothing, or a pair sitting on the board
+    let made;
+    if (sc >= 2000000) made = 3;
+    else if (sc >= 1000000) {
+      const pairRank = Math.floor((sc - 1000000) / 10000);
+      const mine = cards.map(c => RV[c.val] || 0);
+      const topBoard = Math.max.apply(null, (board || []).map(c => RV[c.val] || 0));
+      made = !mine.includes(pairRank) ? 0 : pairRank >= topBoard ? 2 : 1;
+    } else made = 0;
     if (board.length >= 5) return { made, outs: 0 };
     let outs = 0;
     deckWithout([...board, ...cards]).forEach(c => {
@@ -2776,7 +2789,7 @@ const botHandBody = (cards, board, gameType) => {
     });
     return { made, outs };
   } catch (e) {
-    return { made: 2, outs: 0 };
+    return { made: 3, outs: 0 };
   }
 };
 // ---- Bot poker brain ----
@@ -2858,7 +2871,8 @@ const botPokerMove = (g, t, b) => {
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
   const body = botHandBody(b.cards || [], g.board || [], gt);
-  const hasSomething = body.made >= 1 || body.outs >= 8;
+  const hasSomething = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
+  const hasAnything = body.made >= 1 || body.outs >= 4;    // may call a small one
   // Sizing is priced off the POT, never off the opponent's bet: betting 1 into
   // a pot of 1000 because he bet 1 is not a bet, it is a free card with a fee.
   const raisePot = frac => {
@@ -2892,10 +2906,13 @@ const botPokerMove = (g, t, b) => {
   // says it wrongly. Measured, this was the biggest leak in the brain: 52bb
   // per 100 hands paid off with air, 85% of it on the flop.
   // The one exception is a gutshot getting a genuinely free look.
-  if (!hasSomething) {
+  if (!hasAnything) {
     const peek = body.outs >= 4 && (g.board || []).length < 5 && toCall <= potNow * 0.1;
     if (!peek) return { type: 'fold' };
   }
+  // Second pair or worse can pay off a small bet. It cannot play a big pot,
+  // and it never, ever calls off a stack — that is the 10-3 on A-K-3.
+  if (!hasSomething && toCall > potNow * 0.4) return { type: 'fold' };
   if (eq > potOdds + 0.18 && eq > 0.62) {
     if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
     return { type: 'call' };

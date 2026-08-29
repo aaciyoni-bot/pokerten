@@ -1611,10 +1611,7 @@ function renderPlayers(){
     ((b.uid === uid) - (a.uid === uid)) ||
     ((!!b.cashedAt) - (!!a.cashedAt)) ||
     (a.lost - b.lost) || (b.amount - a.amount));
-  const total = rows.reduce((s, r) => s + r.amount, 0);
-  $("#roundTotals").textContent = rows.length
-    ? `${rows.length} players · ${fmt(total)}`
-    : "—";
+  $("#roundTotals").textContent = "";
   $("#players").innerHTML = rows.map(r => {
     const me = r.uid === uid;
     /* an auto cash-out is settled on the server only at crash time, but the

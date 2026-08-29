@@ -56,8 +56,9 @@ function seedBots(tx, roundId){
   const picked = new Set();
   while (picked.size < n) picked.add(crypto.randomInt(BOT_COUNT));
   for (const i of picked){
-    const amount = Math.max(MIN_BET,
-      Math.round((25 * Math.pow(10, Math.random() * 3)) / 25) * 25);
+    /* realistic table stakes: 100–2,000, log-spread, in round steps */
+    const amount = Math.max(100,
+      Math.round(Math.pow(10, 2 + Math.random() * 1.301) / 25) * 25);
     const autoAt = Math.random() < 0.8
       ? Math.min(30, round2(1.02 - Math.log(1 - Math.random()) / 1.1))
       : null;                                        // ~20% ride it to the crash

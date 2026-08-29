@@ -200,6 +200,27 @@ service cloud.firestore {
       allow delete: if ammoAdmin();
     }
 
+    // ═══ SHIMONCRAFT — the kids' voxel sandbox (shimoncraft.html) ═══
+    // Kids join with an invisible anonymous session and a shared world code.
+    // Everything requires a signed-in session, same bar as the rest of the app;
+    // the world code (known only to the family) is what keeps strangers out of
+    // a world. Position docs are keyed by uid so a player can only move their
+    // own avatar; block edits and chat are open to any signed-in player.
+    match /shimon_worlds/{wid} {
+      allow read, create: if signedIn();
+      allow update, delete: if superAdmin();
+      match /players/{uid} {
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == uid;
+      }
+      match /blocks/{cid} { allow read, write: if signedIn(); }
+      match /chat/{id} {
+        allow read: if signedIn();
+        allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
     // Anything not explicitly matched above — denied.
     match /{document=**}     { allow read, write: if false; }
   }

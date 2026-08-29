@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#07090F">
-<title>ORIZIS · Aviator</title>
+<title>AVIATORIZIS</title>
 <link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -57,7 +57,7 @@ input{font-family:inherit;color:inherit}
 #topbar{
   display:flex; align-items:center; gap:10px; padding:10px 2px 0; min-width:0;
 }
-@media (max-width:430px){ #brand .sub{letter-spacing:1.5px; font-size:10px} }
+@media (max-width:430px){ #brand .word{font-size:17px} }
 .icon-btn{
   width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
   background:var(--pt-card); border:1px solid var(--pt-line);
@@ -404,6 +404,86 @@ input{font-family:inherit;color:inherit}
   background:linear-gradient(180deg,#E8CB8B,var(--pt-gold) 45%,var(--pt-gold-deep)); color:#161006;
 }
 
+/* ---------- intro splash: ORIZIS → AVIATORIZIS → take off ---------- */
+#splash{
+  position:fixed; inset:0; z-index:100; display:grid; place-items:center;
+  overflow:hidden;
+  background:
+    radial-gradient(90% 70% at 50% 30%, rgba(213,179,107,0.09), transparent 60%),
+    var(--pt-bg);
+  transition:opacity 650ms var(--ease-std);
+}
+#splash.off{opacity:0; pointer-events:none}
+.spStage{position:relative; display:grid; place-items:center; text-align:center; padding:0 24px}
+#spOrizis{
+  position:absolute; display:grid; place-items:center; gap:10px;
+  opacity:0; animation:spOr 2.2s var(--ease-out) forwards;
+}
+#spOrizis .w{
+  font-family:'Frank Ruhl Libre',serif; font-weight:900; font-size:clamp(40px,10vw,68px);
+  letter-spacing:12px; padding-left:12px; line-height:1;
+  background:linear-gradient(180deg,#F2DCA8,var(--pt-gold) 50%,var(--pt-gold-deep));
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+#spOrizis .t{font-size:11px; letter-spacing:8px; padding-left:8px; color:var(--pt-dim); font-weight:700}
+@keyframes spOr{
+  0%{opacity:0; transform:scale(0.9); filter:blur(8px)}
+  20%{opacity:1; transform:scale(1); filter:blur(0)}
+  74%{opacity:1; transform:scale(1)}
+  100%{opacity:0; transform:scale(1.08); filter:blur(5px)}
+}
+#spMain{
+  position:relative; display:grid; place-items:center; gap:14px;
+  opacity:0; animation:spIn 900ms var(--ease-out) 2.15s forwards;
+}
+@keyframes spIn{from{opacity:0; transform:translateY(16px)}to{opacity:1; transform:none}}
+#spMain .w{
+  font-family:'Frank Ruhl Libre',serif; font-weight:900; font-size:clamp(32px,8.6vw,74px);
+  letter-spacing:2px; line-height:1.05;
+  background:linear-gradient(100deg,#A98544 0%,#F2DCA8 32%,var(--pt-gold) 46%,#F8ECC4 50%,var(--pt-gold) 54%,#A98544 100%);
+  background-size:230% 100%;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation:spShine 2.8s linear 2.6s infinite;
+}
+@keyframes spShine{from{background-position:190% 0}to{background-position:-90% 0}}
+#spLine{
+  height:2px; width:min(68vw,420px); border-radius:2px; transform-origin:center;
+  background:linear-gradient(90deg,transparent,var(--pt-gold),transparent);
+  transform:scaleX(0); animation:spLine 800ms var(--ease-out) 2.6s forwards;
+}
+@keyframes spLine{to{transform:scaleX(1)}}
+#spComet{
+  position:absolute; top:-22px; left:-16vw; width:10px; height:10px; border-radius:50%;
+  background:radial-gradient(circle at 40% 35%, #FFF6DE, var(--pt-gold) 60%, transparent);
+  box-shadow:0 0 16px 5px rgba(213,179,107,0.6);
+  opacity:0; animation:spFly 1.5s cubic-bezier(0.3,0,0.5,1) 2.5s forwards;
+}
+#spComet::after{
+  content:""; position:absolute; right:7px; top:3.5px; width:90px; height:3px; border-radius:3px;
+  background:linear-gradient(270deg, rgba(213,179,107,0.8), transparent);
+}
+@keyframes spFly{
+  0%{opacity:0; transform:translate(0,30px)}
+  12%{opacity:1}
+  100%{opacity:0; transform:translate(120vw,-44px)}
+}
+#spTag{font-size:12px; letter-spacing:4px; color:var(--pt-dim); font-weight:700; text-transform:uppercase}
+#spPlay{
+  margin-top:14px; padding:15px 48px; border-radius:999px; font-size:16px; font-weight:900;
+  letter-spacing:3px; text-transform:uppercase; color:#161006;
+  background:linear-gradient(180deg,#E8CB8B,var(--pt-gold) 45%,var(--pt-gold-deep));
+  box-shadow:0 6px 30px rgba(213,179,107,0.35), inset 0 1px 0 rgba(255,255,255,0.4);
+  opacity:0; animation:spIn 700ms var(--ease-out) 3.1s forwards;
+  transition:transform var(--t-fast) var(--ease-std);
+}
+#spPlay:active{transform:scale(0.95)}
+@media (prefers-reduced-motion:reduce){
+  #spOrizis{animation:none; opacity:0}
+  #spMain,#spPlay{animation:none; opacity:1}
+  #spLine{animation:none; transform:scaleX(1)}
+  #spComet{display:none}
+}
+
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:0.01ms !important; transition-duration:0.01ms !important}
   #stage.shake{animation:none}
@@ -411,11 +491,23 @@ input{font-family:inherit;color:inherit}
 </style>
 </head>
 <body>
+<div id="splash">
+  <div class="spStage">
+    <div id="spOrizis"><div class="w">ORIZIS</div><div class="t">TECHNOLOGY</div></div>
+    <div id="spMain">
+      <div id="spComet"></div>
+      <div class="w">AVIATORIZIS</div>
+      <div id="spLine"></div>
+      <div id="spTag">Fly high · Cash out in time</div>
+      <button id="spPlay">Take off</button>
+    </div>
+  </div>
+</div>
 <div id="app">
 
   <header id="topbar">
     <button class="icon-btn" id="backBtn" aria-label="Back to lobby">←</button>
-    <div id="brand"><span class="word">AVIATOR</span><span class="sub">Orizis</span></div>
+    <div id="brand"><span class="word">AVIATORIZIS</span></div>
     <div id="balance"><span class="coin"></span><span id="balanceNum">0</span></div>
     <button class="icon-btn" id="soundBtn" aria-label="Toggle sound">🔊</button>
   </header>
@@ -1401,6 +1493,14 @@ $("#refillBtn").addEventListener("click", () => {
 });
 ["pointerdown", "keydown", "touchstart"].forEach(ev =>
   addEventListener(ev, unlockAudio, { once: false, passive: true }));
+
+/* intro splash: TAKE OFF unlocks audio and reveals the game */
+$("#spPlay").addEventListener("click", () => {
+  unlockAudio();
+  $("#splash").classList.add("off");
+  if (S.phase === "waiting") beltChime();
+  setTimeout(() => { const s = $("#splash"); if (s) s.remove(); }, 750);
+});
 
 /* persist chips */
 setInterval(() => store.set("pt_av_chips", balance), 2500);

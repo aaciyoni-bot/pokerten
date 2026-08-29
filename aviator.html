@@ -1401,7 +1401,7 @@ function draw(now){
     ctx.restore();
 
     /* --- god mode: dashed line where this round will crash --- */
-    if (godMode && adminUser && !crashed){
+    if (godMode && !crashed){
       const gy = Y(S.crashPoint);
       if (gy > PAD.t){
         ctx.save();
@@ -1547,26 +1547,16 @@ function frame(now){
 }
 
 /* =====================================================================
-   GOD MODE — admin supervision: shows the round's crash point in
-   advance. Reserved for the club owner's Google account; 5 quick taps
-   on the AVIATOR logo sign in (or toggle it once signed in). Everyone
-   else in the round is a bot, so nobody real is being played against.
+   GOD MODE — shows the round's crash point in advance. Solo game only:
+   everyone else in the round is a bot, so nobody real is being played
+   against. Toggle with 5 quick taps on the AVIATOR logo (or ?god).
+   The live multiplayer club has no god mode by design — real players.
    ===================================================================== */
-const ADMIN_EMAIL = "aaci.yoni@gmail.com";
-let adminUser = false;
 let godMode = store.get("pt_av_god", false) || new URLSearchParams(location.search).has("god");
 function updateGod(){
-  const on = godMode && adminUser;
-  $("#godPill").hidden = !on;
-  if (on) $("#godVal").textContent = S.crashPoint.toFixed(2) + "x";
+  $("#godPill").hidden = !godMode;
+  if (godMode) $("#godVal").textContent = S.crashPoint.toFixed(2) + "x";
 }
-addEventListener("fb-ready", () => {
-  const { auth, onAuthStateChanged } = window.avAuth;
-  onAuthStateChanged(auth, u => {
-    adminUser = !!u && (u.email || "").toLowerCase() === ADMIN_EMAIL;
-    updateGod();
-  });
-});
 let brandTaps = [];
 $("#brand").addEventListener("click", () => {
   const now = performance.now();
@@ -1574,13 +1564,6 @@ $("#brand").addEventListener("click", () => {
   brandTaps.push(now);
   if (brandTaps.length < 5) return;
   brandTaps = [];
-  if (!adminUser){
-    if (window.avAuth){
-      const { auth, GoogleAuthProvider, signInWithPopup } = window.avAuth;
-      signInWithPopup(auth, new GoogleAuthProvider()).catch(() => {});
-    }
-    return;
-  }
   godMode = !godMode;
   store.set("pt_av_god", godMode);
   play("ui", 0.3);

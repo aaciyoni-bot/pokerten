@@ -575,10 +575,6 @@ input{font-family:inherit;color:inherit}
   height:48px; border-radius:var(--radius-m); font-size:15px; font-weight:800;
   display:flex; align-items:center; justify-content:center; gap:10px;
 }
-#googleBtn{background:#fff; color:#1a1a1a}
-#googleBtn img{width:20px;height:20px}
-.lgDivider{display:flex; align-items:center; gap:10px; color:var(--pt-dim); font-size:11px}
-.lgDivider::before,.lgDivider::after{content:""; flex:1; height:1px; background:var(--pt-line)}
 .lgField{
   height:46px; border-radius:var(--radius-m); background:var(--pt-card);
   border:1px solid var(--pt-line); padding:0 14px; font-size:16px; text-align:center;
@@ -586,15 +582,11 @@ input{font-family:inherit;color:inherit}
   font-variant-numeric:tabular-nums;
 }
 .lgField:focus{border-color:rgba(213,179,107,0.5)}
-#phoneSend,#codeOk{
+#guestBtn{
   background:linear-gradient(180deg,#E8CB8B,var(--pt-gold) 45%,var(--pt-gold-deep));
   color:#161006;
 }
 #loginErr{font-size:12.5px; color:var(--pt-red); min-height:16px}
-#codeRow{display:none; gap:8px}
-#codeRow.on{display:grid}
-#phoneRow{display:grid; gap:8px}
-#phoneRow.off{display:none}
 
 /* ---------- chat overlay ---------- */
 #chatModal{
@@ -793,21 +785,9 @@ input{font-family:inherit;color:inherit}
   <div id="loginCard" dir="rtl">
     <h2>ברוכים הבאים למועדון</h2>
     <div class="note">AVIATORIZIS · משחק באסימונים בלבד — ללא כסף אמיתי.<br>סיבוב אחד משותף לכל השחקנים, בזמן אמת.</div>
-    <button class="lgBtn" id="googleBtn">
-      <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C41 35.4 44 30.2 44 24c0-1.3-.1-2.6-.4-3.9z"/></svg>
-      התחברות עם Google
-    </button>
-    <div class="lgDivider">או עם טלפון מאומת</div>
-    <div id="phoneRow">
-      <input class="lgField" id="phoneInput" type="tel" inputmode="tel" placeholder="05X-XXXXXXX" dir="ltr">
-      <button class="lgBtn" id="phoneSend">שלח קוד אימות</button>
-    </div>
-    <div id="codeRow">
-      <input class="lgField" id="codeInput" type="text" inputmode="numeric" maxlength="6" placeholder="קוד בן 6 ספרות" dir="ltr">
-      <button class="lgBtn" id="codeOk">אישור</button>
-    </div>
+    <input class="lgField" id="nickInput" type="text" maxlength="24" placeholder="הכינוי שלך במועדון" autocomplete="nickname">
+    <button class="lgBtn" id="guestBtn">כניסה למשחק ✈</button>
     <div id="loginErr"></div>
-    <div id="pt-recaptcha"></div>
   </div>
 </div>
 
@@ -852,9 +832,7 @@ input{font-family:inherit;color:inherit}
 <script type="module">
   /* Firebase — same pokerten project as the POKERTEN club app */
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
-           getRedirectResult, onAuthStateChanged,
-           RecaptchaVerifier, signInWithPhoneNumber, signOut }
+  import { getAuth, signInAnonymously, onAuthStateChanged, signOut }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getFirestore, doc, onSnapshot, collection, query, where, orderBy,
            limit, addDoc, getDocs }
@@ -873,9 +851,7 @@ input{font-family:inherit;color:inherit}
   const db = getFirestore(app);
   const fxs = getFunctions(app, "us-central1");
   window.avFB = {
-    auth, db, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
-    getRedirectResult, onAuthStateChanged,
-    RecaptchaVerifier, signInWithPhoneNumber, signOut,
+    auth, db, signInAnonymously, onAuthStateChanged, signOut,
     doc, onSnapshot, collection, query, where, orderBy, limit, addDoc, getDocs,
     fx: (name, data) => httpsCallable(fxs, name)(data).then(r => r.data)
   };
@@ -1389,7 +1365,8 @@ let autoOn = false;
 const FX = (name, data) => window.avFB.fx(name, data || {});
 
 function myName(){
-  return (user && (user.displayName || user.phoneNumber)) || "Pilot";
+  return String(store.get("avNick", "") ||
+    (user && (user.displayName || user.phoneNumber)) || "Pilot").slice(0, 24);
 }
 const FALLBACK_AVS = ["av-astronaut","av-tiger","av-shark","av-owl","av-gamer",
   "av-dragon","av-cat","av-whale","av-monkey","av-rabbit"];
@@ -1770,10 +1747,13 @@ async function loadHistory(){
 }
 
 /* =====================================================================
-   AUTH — Google or verified phone (the club entrance)
+   AUTH — guest entry with a nickname (Google/phone paused until the
+   OAuth console setup is done; the server keeps every uid's balance)
    ===================================================================== */
 function showLogin(err){
   $("#loginModal").classList.add("on");
+  const nick = $("#nickInput");
+  if (nick && !nick.value) nick.value = store.get("avNick", "");
   if (err) $("#loginErr").textContent = err;
 }
 function hideLogin(){ $("#loginModal").classList.remove("on"); }
@@ -1804,48 +1784,17 @@ addEventListener("fb-ready", () => {
     else { joined = false; updateAction(); if (entered) showLogin(); }
   });
 
-  /* mobile browsers (Samsung Internet especially) often block the popup —
-     fall back to a full-page redirect, and surface the real error code */
-  F.getRedirectResult(F.auth).catch(e => {
-    $("#loginErr").textContent = "שגיאת התחברות: " + ((e && e.code) || "");
-  });
-  $("#googleBtn").addEventListener("click", () => {
+  const enterAsGuest = () => {
     $("#loginErr").textContent = "";
-    F.signInWithPopup(F.auth, new F.GoogleAuthProvider()).catch(e => {
-      const c = (e && e.code) || "";
-      if (/popup-blocked|popup-closed|cancelled-popup|operation-not-supported|internal-error/.test(c)){
-        F.signInWithRedirect(F.auth, new F.GoogleAuthProvider()).catch(e2 => {
-          $("#loginErr").textContent = "שגיאת התחברות: " + ((e2 && e2.code) || "");
-        });
-      } else {
-        $("#loginErr").textContent = "שגיאת התחברות: " + (c || "נכשלה");
-      }
+    const nick = $("#nickInput").value.trim().slice(0, 24);
+    if (nick) store.set("avNick", nick);
+    F.signInAnonymously(F.auth).catch(e => {
+      $("#loginErr").textContent = "שגיאת כניסה: " + ((e && e.code) || "נסה שוב");
     });
-  });
-
-  let confirmRes = null;
-  $("#phoneSend").addEventListener("click", async () => {
-    $("#loginErr").textContent = "";
-    let p = $("#phoneInput").value.replace(/[^\d+]/g, "");
-    if (/^0\d{8,9}$/.test(p)) p = "+972" + p.slice(1);
-    if (!/^\+\d{9,15}$/.test(p)){ $("#loginErr").textContent = "מספר לא תקין"; return; }
-    try{
-      if (!window.__avRecap) window.__avRecap = new F.RecaptchaVerifier(F.auth, "pt-recaptcha", {size: "invisible"});
-      confirmRes = await F.signInWithPhoneNumber(F.auth, p, window.__avRecap);
-      $("#phoneRow").classList.add("off");
-      $("#codeRow").classList.add("on");
-      $("#codeInput").focus();
-    }catch(e){
-      $("#loginErr").textContent = "שליחת הקוד נכשלה: " + ((e && e.code) || "נסה שוב");
-      try{ window.__avRecap.clear(); }catch(_){}
-      window.__avRecap = null;
-    }
-  });
-  $("#codeOk").addEventListener("click", async () => {
-    const code = $("#codeInput").value.replace(/\D/g, "");
-    if (!confirmRes || code.length !== 6){ $("#loginErr").textContent = "קוד לא תקין"; return; }
-    try{ await confirmRes.confirm(code); }
-    catch(e){ $("#loginErr").textContent = "קוד שגוי"; }
+  };
+  $("#guestBtn").addEventListener("click", enterAsGuest);
+  $("#nickInput").addEventListener("keydown", e => {
+    if (e.key === "Enter"){ e.preventDefault(); enterAsGuest(); }
   });
 });
 

@@ -917,7 +917,12 @@ function noteServerNow(sn, rtt){
   if (rtt == null) rtt = 800;
   if (coAt && rtt > coBestRtt * 1.4) return;      // noisier than what we have
   coBestRtt = Math.min(coBestRtt, rtt);
-  clockOffset = sn - now + rtt / 2;
+  /* sn is stamped just before the reply leaves the server, so sn - now is
+     off by only the downlink leg. NOT rtt/2: server processing (cold
+     starts, transactions) inflates rtt asymmetrically and would push the
+     clock AHEAD of the server — the one direction that lies to the
+     player. This way the shown multiplier can only lag, never lead. */
+  clockOffset = sn - now;
   coAt = now;
 }
 const eNow = () => Date.now() + clockOffset;
@@ -1546,7 +1551,7 @@ function maybeTick(force){
   if (!joined || document.visibilityState !== "visible") return;
   /* tick faster mid-flight: the crash only becomes real when someone
      ticks it, and a slow tick is what made the plane fly past its crash */
-  if (!force && now - lastTickAt < (S.phase === "flying" ? 850 : 1400)) return;
+  if (!force && now - lastTickAt < (S.phase === "flying" ? 650 : 1400)) return;
   lastTickAt = now;
   FX("avTick", {}).then(r => {
     /* clock already noted by FX with rtt */

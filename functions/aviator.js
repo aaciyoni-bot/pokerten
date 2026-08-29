@@ -319,8 +319,10 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
 /* While Google sign-in is paused there is no admin email on any account,
    so the owner authenticates with a secret code instead (hash-checked,
    never stored in the client). The same code unlocks avPeek. */
+/* High-entropy on purpose: this repo is public, so the hash is public,
+   and a short numeric code could be brute-forced offline from it. */
 const OWNER_CODE_HASH =
-  "c97ff791ceded486acc101a8ffc404ded6a4e2cb6bea81e18abeab3c23377bcf";
+  "c6006217569d5fabbd7e4d9264ee23f8d10e651d554c57a992a350f5def72d23";
 function codeOk(request) {
   const code = String((request.data && request.data.code) || "").trim();
   return !!code &&

@@ -852,7 +852,8 @@ input{font-family:inherit;color:inherit}
 <script type="module">
   /* Firebase — same pokerten project as the POKERTEN club app */
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged,
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+           getRedirectResult, onAuthStateChanged,
            RecaptchaVerifier, signInWithPhoneNumber, signOut }
     from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import { getFirestore, doc, onSnapshot, collection, query, where, orderBy,
@@ -872,7 +873,8 @@ input{font-family:inherit;color:inherit}
   const db = getFirestore(app);
   const fxs = getFunctions(app, "us-central1");
   window.avFB = {
-    auth, db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged,
+    auth, db, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+    getRedirectResult, onAuthStateChanged,
     RecaptchaVerifier, signInWithPhoneNumber, signOut,
     doc, onSnapshot, collection, query, where, orderBy, limit, addDoc, getDocs,
     fx: (name, data) => httpsCallable(fxs, name)(data).then(r => r.data)
@@ -1802,10 +1804,22 @@ addEventListener("fb-ready", () => {
     else { joined = false; updateAction(); if (entered) showLogin(); }
   });
 
+  /* mobile browsers (Samsung Internet especially) often block the popup —
+     fall back to a full-page redirect, and surface the real error code */
+  F.getRedirectResult(F.auth).catch(e => {
+    $("#loginErr").textContent = "שגיאת התחברות: " + ((e && e.code) || "");
+  });
   $("#googleBtn").addEventListener("click", () => {
     $("#loginErr").textContent = "";
     F.signInWithPopup(F.auth, new F.GoogleAuthProvider()).catch(e => {
-      $("#loginErr").textContent = "ההתחברות בוטלה או נכשלה";
+      const c = (e && e.code) || "";
+      if (/popup-blocked|popup-closed|cancelled-popup|operation-not-supported|internal-error/.test(c)){
+        F.signInWithRedirect(F.auth, new F.GoogleAuthProvider()).catch(e2 => {
+          $("#loginErr").textContent = "שגיאת התחברות: " + ((e2 && e2.code) || "");
+        });
+      } else {
+        $("#loginErr").textContent = "שגיאת התחברות: " + (c || "נכשלה");
+      }
     });
   });
 
@@ -1822,7 +1836,7 @@ addEventListener("fb-ready", () => {
       $("#codeRow").classList.add("on");
       $("#codeInput").focus();
     }catch(e){
-      $("#loginErr").textContent = "שליחת הקוד נכשלה — נסה שוב";
+      $("#loginErr").textContent = "שליחת הקוד נכשלה: " + ((e && e.code) || "נסה שוב");
       try{ window.__avRecap.clear(); }catch(_){}
       window.__avRecap = null;
     }

@@ -690,6 +690,12 @@ input{font-family:inherit;color:inherit}
   color:#C9A2FF; background:rgba(30,20,50,0.82); border:1px solid rgba(201,162,255,0.45);
 }
 
+/* build tag — tiny, for remote debugging */
+#buildTag{
+  position:fixed; left:6px; bottom:3px; z-index:4; pointer-events:none;
+  font-size:9px; color:rgba(255,255,255,0.22); font-variant-numeric:tabular-nums;
+}
+
 #backBtn{display:none}
 </style>
 </head>
@@ -909,6 +915,9 @@ let history = [];
    about half a round-trip before we read it, so offset = sn - now + rtt/2,
    and we keep the measurement with the lowest rtt (least network noise)
    rather than smoothing good samples together with bad ones. */
+/* stamped with the deploy commit by the build step */
+const AV_BUILD = "dev";
+
 let clockOffset = 0, coBestRtt = Infinity, coAt = 0;
 function noteServerNow(sn, rtt){
   if (!sn) return;
@@ -1409,6 +1418,26 @@ function myName(){
 /* live-only badge under the multiplier: "cashed out in time" */
 $("#flightNums").insertAdjacentHTML("beforeend", '<div id="safeTag" dir="rtl"></div>');
 
+/* =====================================================================
+   SELF-UPDATE — the installed app quietly reloads itself between rounds
+   when a newer build is live, so nobody plays on a stale client again.
+   ===================================================================== */
+document.body.insertAdjacentHTML("beforeend", `<div id="buildTag">${AV_BUILD}</div>`);
+let newBuildLive = false;
+async function checkBuild(){
+  if (AV_BUILD === "dev") return;
+  try{
+    const r = await fetch("/version.json", {cache: "no-store"});
+    const j = await r.json();
+    newBuildLive = !!j.v && j.v !== AV_BUILD;
+  }catch(e){}
+}
+setInterval(checkBuild, 60000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") checkBuild();
+});
+checkBuild();
+
 const FALLBACK_AVS = ["av-astronaut","av-tiger","av-shark","av-owl","av-gamer",
   "av-dragon","av-cat","av-whale","av-monkey","av-rabbit"];
 function avatarFor(uid, photo){
@@ -1520,8 +1549,9 @@ async function doCancelBet(){
 async function doCashout(){
   if (cashing || !joined || !myBet || myBet.cashedAt || myBet.lost) return;
   cashing = true;
+  const seen = S.mult;      // the number on screen at the moment of the press
   try{
-    const r = await FX("avCashout", {});
+    const r = await FX("avCashout", {seen});
     /* clock already noted by FX with rtt */
     play(r.mult >= 5 ? "bigwin" : "win", r.mult >= 5 ? 0.8 : 0.65, 0.02);
     haptic([15, 30, 15]);
@@ -1750,6 +1780,8 @@ function updateFair(){
 }
 function onWaiting(){
   S.mult = 1;
+  /* safe moment for a self-update: round is fresh, no bet is down yet */
+  if (newBuildLive && !myBet && !S.queued){ location.reload(); return; }
   S.lastTickSec = -1; S.lastWholeMult = 1; S.radioDone = false;
   cashing = false;
   beltChime();

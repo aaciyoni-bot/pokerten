@@ -65,6 +65,33 @@ service cloud.firestore {
 
     // Admin-only config (e.g. the GOD list) — no client access whatsoever.
     match /admin/{doc=**} { allow read, write: if false; }
+
+    // ═══ AVIATORIZIS — server-authoritative crash game ═══
+    // All chip movement goes through Cloud Functions (admin SDK bypasses
+    // rules); clients only read. aviator/_engine holds the secret crash
+    // point and is never client-readable — the public state carries only
+    // its hash until the round ends.
+    match /aviator/{docId} {
+      allow read: if signedIn() && docId != "_engine";
+      allow write: if false;
+    }
+    match /aviatorPlayers/{id} { allow read: if signedIn(); allow write: if false; }
+    match /aviatorBets/{id}    { allow read: if signedIn(); allow write: if false; }
+    match /aviatorRounds/{id}  { allow read: if signedIn(); allow write: if false; }
+    match /aviatorLedger/{id}  {
+      allow read: if superAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow write: if false;
+    }
+    // Live chat — players write their own short lines, nothing else.
+    match /aviatorChat/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 140;
+      allow update, delete: if false;
+    }
     match /clubs/{id}        { allow read, write: if signedIn(); }
     match /tournaments/{id}  { allow read, write: if signedIn(); }
     match /broadcasts/{id}   { allow read, write: if signedIn(); }

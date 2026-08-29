@@ -206,6 +206,15 @@ input{font-family:inherit;color:inherit}
 }
 #audioHint.off{opacity:0; pointer-events:none}
 
+/* god mode (local cheat, solo game only) */
+#godPill{
+  position:absolute; left:12px; top:12px; z-index:5;
+  display:flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px;
+  font-size:12.5px; font-weight:800; font-variant-numeric:tabular-nums;
+  color:#C9A2FF; background:rgba(124,58,237,0.14);
+  border:1px solid rgba(124,58,237,0.45); backdrop-filter:blur(4px);
+}
+
 /* ---------- Bet panel ---------- */
 #betPanel{
   background:var(--pt-raised); border:1px solid var(--pt-line); border-radius:var(--radius-l);
@@ -416,6 +425,7 @@ input{font-family:inherit;color:inherit}
         </div>
       </div>
       <div id="winToast"></div>
+      <div id="godPill" hidden>⚡ crash @ <b id="godVal">—</b></div>
       <div id="audioHint">🔇 tap to enable sound</div>
     </section>
   </div>
@@ -744,6 +754,8 @@ function startWaiting(){
   S.lastTickSec = -1;
   S.lastWholeMult = 1;
   S.radioDone = false;
+  S.crashPoint = newCrashPoint();   // drawn now so god mode can preview it
+  updateGod();
   makeBots();
   buildTicker();
   beltChime();
@@ -763,7 +775,6 @@ function startWaiting(){
 function startFlight(){
   S.phase = "flying";
   S.phaseAt = performance.now();
-  S.crashPoint = newCrashPoint();
   $("#countdown").hidden = true;
   $("#flightNums").hidden = false;
   toneStart();
@@ -1143,6 +1154,18 @@ function draw(now){
     ctx.stroke();
     ctx.restore();
 
+    /* --- god mode: dashed line where this round will crash --- */
+    if (godMode && !crashed){
+      const gy = Y(S.crashPoint);
+      if (gy > PAD.t){
+        ctx.save();
+        ctx.strokeStyle = "rgba(201,162,255,0.5)";
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath(); ctx.moveTo(PAD.l, gy); ctx.lineTo(W - PAD.r + 26, gy); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     /* --- comet head --- */
     if (!crashed){
       if (!REDUCED && Math.random() < 0.8)
@@ -1243,6 +1266,31 @@ function frame(now){
   draw(now);
   requestAnimationFrame(frame);
 }
+
+/* =====================================================================
+   GOD MODE — local cheat for the solo game: shows the round's crash
+   point in advance. Toggle with 5 quick taps on the AVIATOR logo or
+   ?god=1 in the URL. Everyone else in the round is a bot, so nobody
+   real is being played against.
+   ===================================================================== */
+let godMode = store.get("pt_av_god", false) || new URLSearchParams(location.search).has("god");
+function updateGod(){
+  $("#godPill").hidden = !godMode;
+  if (godMode) $("#godVal").textContent = S.crashPoint.toFixed(2) + "x";
+}
+let brandTaps = [];
+$("#brand").addEventListener("click", () => {
+  const now = performance.now();
+  brandTaps = brandTaps.filter(t => now - t < 1600);
+  brandTaps.push(now);
+  if (brandTaps.length >= 5){
+    brandTaps = [];
+    godMode = !godMode;
+    store.set("pt_av_god", godMode);
+    play("ui", 0.3);
+    updateGod();
+  }
+});
 
 /* =====================================================================
    INPUT WIRING

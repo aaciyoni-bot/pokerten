@@ -672,6 +672,22 @@ input{font-family:inherit;color:inherit}
 }
 #topbar .icon-btn.badge.on::after{opacity:1}
 
+/* ---------- "cashed out in time" badge ---------- */
+#mult.safe{color:var(--pt-green); text-shadow:0 0 44px rgba(61,214,140,0.5); transition:none}
+#safeTag{
+  margin-top:8px; display:none; align-items:center; justify-content:center; gap:8px;
+  font-size:14.5px; font-weight:900; letter-spacing:0.2px; color:#0E2417;
+  background:linear-gradient(180deg,#7BE6AE,var(--pt-green));
+  border-radius:999px; padding:8px 18px; white-space:nowrap;
+  box-shadow:0 6px 24px rgba(61,214,140,0.35);
+}
+#safeTag.on{display:inline-flex; animation:safePop 480ms var(--ease-out)}
+@keyframes safePop{
+  0%{transform:scale(0.55); opacity:0}
+  55%{transform:scale(1.1)}
+  100%{transform:scale(1); opacity:1}
+}
+
 #backBtn{display:none}
 </style>
 </head>
@@ -1373,6 +1389,9 @@ function myName(){
   for (const c of String(user && user.uid || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return "Pilot " + (100 + h % 900);
 }
+/* live-only badge under the multiplier: "cashed out in time" */
+$("#flightNums").insertAdjacentHTML("beforeend", '<div id="safeTag" dir="rtl"></div>');
+
 const FALLBACK_AVS = ["av-astronaut","av-tiger","av-shark","av-owl","av-gamer",
   "av-dragon","av-cat","av-whale","av-monkey","av-rabbit"];
 function avatarFor(uid, photo){
@@ -1490,6 +1509,13 @@ async function doCashout(){
     play(r.mult >= 5 ? "bigwin" : "win", r.mult >= 5 ? 0.8 : 0.65, 0.02);
     haptic([15, 30, 15]);
     celebrate(r.win, r.mult);
+    /* unmistakable "I got out in time": green multiplier + a badge that
+       stays up for the rest of the flight, through the crash */
+    $("#mult").classList.add("safe");
+    const st = $("#safeTag");
+    st.textContent = `✔ עצרת בזמן · ${r.mult.toFixed(2)}x · +${fmt(r.win)}`;
+    st.classList.remove("on"); void st.offsetWidth;
+    st.classList.add("on");
   }catch(e){ /* usually: crashed a breath earlier — the crash UI is coming */ }
   cashing = false; updateAction();
 }
@@ -1640,6 +1666,7 @@ function onWaiting(){
   $("#flightNums").hidden = true;
   $("#countdown").hidden = false;
   $("#crashTag").classList.remove("on");
+  $("#safeTag").classList.remove("on");
   $("#mult").className = "";
   if (S.queued > 0){
     const q = S.queued; S.queued = 0;
@@ -1925,7 +1952,7 @@ function frame(){
     S.mult = clamp(multAt(el), 1, 5000);
     const mEl = $("#mult");
     mEl.textContent = S.mult.toFixed(2) + "x";
-    if (!mEl.classList.contains("dead"))
+    if (!mEl.classList.contains("dead") && !mEl.classList.contains("safe"))
       mEl.className = S.mult >= 5 ? "hot" : S.mult >= 2 ? "gold" : "";
     const whole = Math.floor(S.mult);
     if (whole > S.lastWholeMult && !REDUCED){

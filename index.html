@@ -8574,15 +8574,20 @@ function BackofficeView({
     if (!amount || isNaN(amount) || amount <= 0) return showToast("Enter a valid amount", "error");
     setBalBox(null);
     try {
+      // The club bank is the OWNER's membership balance. Deposits/withdrawals move
+      // chips between the player and the CLUB — never into the acting manager's own
+      // wallet. (A non-owner manager acts on behalf of the club, not for themselves.)
+      const bankUid = (window.__club || {}).ownerUid || user.uid;
+      if (memId(bankUid) === target.id) throw "Can't deposit/withdraw against the club bank itself.";
       await window.fb.runTransaction(window.fb.db, async tr => {
-        const ownerRef = memDoc(user.uid);
+        const ownerRef = memDoc(bankUid);
         const targetRef = window.fb.doc(window.fb.db, "memberships", target.id);
         const ownerSnap = await tr.get(ownerRef);
         const targetSnap = await tr.get(targetRef);
         let ownerBal = ownerSnap.data().balance || 0;
         let targetBal = targetSnap.data().balance || 0;
         if (isDeposit) {
-          if (ownerBal < amount) throw "You don't have enough balance for this deposit.";
+          if (ownerBal < amount) throw "The club bank doesn't have enough balance for this deposit.";
           ownerBal -= amount;
           targetBal += amount;
         } else {

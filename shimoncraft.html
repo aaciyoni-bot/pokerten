@@ -23,6 +23,10 @@
   #join input { width:100%; padding:12px; font-size:20px; font-weight:700; text-align:center;
     border:3px solid #555; border-radius:6px; background:#1d1d1d; color:#fff; outline:none; }
   #join input:focus { border-color:#7bb04a; }
+  #names { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; }
+  #names .n { padding:8px 12px; border-radius:6px; background:#1d1d1d; color:#ddd;
+    border:2px solid #555; cursor:pointer; font-size:15px; font-weight:700; }
+  #names .n.sel { border-color:#9fe870; color:#9fe870; background:#253321; }
   #colors { display:flex; gap:8px; justify-content:center; }
   #colors .c { width:34px; height:34px; border-radius:6px; border:3px solid transparent; cursor:pointer; }
   #colors .c.sel { border-color:#fff; transform:scale(1.15); }
@@ -75,6 +79,7 @@
   #btnMine { right:96px; bottom:86px; }
   #btnBuild { right:24px; bottom:86px; }
   #btnChat { right:8px; top:8px; width:40px; height:40px; font-size:18px; }
+  #btnMute { left:8px; top:8px; width:40px; height:40px; font-size:18px; }
   body.touch #btnChat { display:flex; }
   body.touch #playersBox { right:56px; }
 </style>
@@ -84,10 +89,11 @@
 
 <div id="join">
   <canvas id="logoCanvas"></canvas>
-  <div class="sub">שמעון-קראפט · עולם הקוביות של שמעון</div>
+  <div class="sub">שמעון-קראפט · עולם הקוביות של שמעון הזקן</div>
+  <div class="sub" style="font-size:14px">🎻 מוזיקת רקע: מקהלת נוגנים (יוסי בכינור)</div>
   <div class="card">
-    <label>איך קוראים לך?</label>
-    <input id="nameInput" maxlength="14" placeholder="השם שלך">
+    <label>בחר מי אתה בחבורה:</label>
+    <div id="names"></div>
     <label>קוד עולם (כל הילדים כותבים אותו קוד ומשחקים יחד)</label>
     <input id="worldInput" maxlength="12" value="SHIMON" style="direction:ltr">
     <label>צבע הדמות</label>
@@ -103,7 +109,7 @@
 <div id="hotbar" class="hud" style="display:none"></div>
 <div id="playersBox" class="hud"></div>
 <div id="toast" class="hud"></div>
-<div id="helpBox" class="hud">WASD תנועה · רווח קפיצה · 1-9 חפצים · T צ'אט · ESC יציאת עכבר</div>
+<div id="helpBox" class="hud">WASD או חיצים לתנועה · רווח קפיצה · 1-9 חפצים · T צ'אט</div>
 <div id="chatLog" class="hud"></div>
 <div id="chatInputWrap" class="hud"><input id="chatInput" maxlength="90" placeholder="כתוב הודעה... (Enter לשליחה)"></div>
 
@@ -112,6 +118,7 @@
 <button id="btnMine" class="hud mbtn">⛏</button>
 <button id="btnBuild" class="hud mbtn">🧱</button>
 <button id="btnChat" class="hud mbtn">💬</button>
+<button id="btnMute" class="hud mbtn" title="מקהלת נוגנים (יוסי בכינור)">🔊</button>
 
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
@@ -209,6 +216,18 @@ function genTerrain() {
 function surfaceY(x, z) {
   for (let y=WY-1; y>0; y--) if (SOLID(getB(x,y,z))) return y;
   return SEA;
+}
+// somewhere open to be born: walk outward from the center until we hit plain
+// grass or sand above sea level — never a treetop, never water
+function findSpawn(){
+  const cx=WX>>1, cz=WZ>>1;
+  for (let r=0; r<48; r++) for (let dx=-r; dx<=r; dx++) for (let dz=-r; dz<=r; dz++){
+    if (Math.max(Math.abs(dx),Math.abs(dz))!==r) continue;
+    const x=cx+dx, z=cz+dz, y=surfaceY(x,z), id=getB(x,y,z);
+    if ((id===GRASS||id===SAND) && y>SEA && !SOLID(getB(x,y+1,z)) && !SOLID(getB(x,y+2,z)))
+      return [x+0.5, y+1.02, z+0.5];
+  }
+  return [cx+0.5, surfaceY(cx,cz)+2, cz+0.5];
 }
 
 /* ════════════════════════ texture atlas (drawn by hand, no assets) ════════════════════════ */
@@ -362,17 +381,132 @@ function flushDirty(max=6){
   }
 }
 
-/* ════════════════════════ audio (tiny beeps, no files) ════════════════════════ */
-let AC=null;
-const ac = () => AC || (AC = new (window.AudioContext||window.webkitAudioContext)());
+/* ════════════════════════ audio (procedural, no files) ════════════════════════ */
+// one mixer: master (the mute) → destination; music has its own bus under master
+let AC=null, masterGain=null, musicGain=null;
+let muted = localStorage.getItem('shimon_mute')==='1';
+const ac = () => {
+  if (!AC){
+    AC = new (window.AudioContext||window.webkitAudioContext)();
+    masterGain = AC.createGain(); masterGain.gain.value = muted?0:1;
+    masterGain.connect(AC.destination);
+    musicGain = AC.createGain(); musicGain.gain.value = 1; musicGain.connect(masterGain);
+  }
+  if (AC.state==='suspended') AC.resume();
+  return AC;
+};
 function blip(freq, dur, type='square', vol=0.12) {
   try {
     const c=ac(), o=c.createOscillator(), g=c.createGain();
-    o.type=type; o.frequency.value=freq;
+    o.type=type; o.frequency.value=freq*(0.97+Math.random()*0.06);
     g.gain.setValueAtTime(vol,c.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+dur);
-    o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime+dur);
+    o.connect(g); g.connect(masterGain); o.start(); o.stop(c.currentTime+dur);
   } catch(e){}
+}
+
+/* background music — מקהלת נוגנים: יוסי בכינור (lead), פסי בתוף (drum),
+   משה בחצוצרה (answer). A lively klezmer march in A minor, synthesized live. */
+const BEAT=0.45;                                              // ~133bpm march
+const NT={E4:329.63,G4:392.00,GS4:415.30,A4:440.00,B4:493.88,
+          C5:523.25,D5:587.33,E5:659.25,
+          A2:110.00,C3:130.81,D3:146.83,E2:82.41,E3:164.81,A3:220.00,GS3:207.65,F3:174.61};
+// [note, beats] — four 8-beat phrases; the last one gets the trumpet answering
+const YOSSI_TUNE=[
+  ['E4',1],['A4',1],['B4',1],['C5',1.5],['B4',.5],['A4',1],['B4',2],
+  ['E4',1],['A4',1],['B4',1],['C5',1.5],['D5',.5],['C5',1],['B4',2],
+  ['E5',1],['D5',1],['C5',1],['B4',1.5],['A4',.5],['B4',1],['C5',2],
+  ['B4',1],['A4',1],['GS4',1],['A4',1.5],['B4',.5],['A4',3],
+];
+// per 8-beat phrase: [bass root, chord tones for the off-beat stab]
+const MARCH=[['A2',['A3','C5','E4']],['D3',['A3','D5','F3']],
+             ['C3',['C5','E4','G4']],['E2',['GS3','B4','E4']]];
+function violinNote(freq, t, beats, vol=0.05){
+  const c=ac(), dur=beats*BEAT;
+  const o=c.createOscillator();  o.type='sawtooth'; o.frequency.setValueAtTime(freq,t);
+  const o2=c.createOscillator(); o2.type='sawtooth'; o2.frequency.setValueAtTime(freq*1.004,t);
+  const lfo=c.createOscillator(); lfo.frequency.setValueAtTime(5.5,t);   // vibrato
+  const lfoG=c.createGain(); lfoG.gain.setValueAtTime(0,t);
+  lfoG.gain.linearRampToValueAtTime(freq*0.008, t+Math.min(0.3,dur*0.5));
+  lfo.connect(lfoG); lfoG.connect(o.frequency); lfoG.connect(o2.frequency);
+  const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=2100; f.Q.value=1;
+  const g=c.createGain();                                                // bow envelope
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.linearRampToValueAtTime(vol,t+0.06);
+  g.gain.setValueAtTime(vol,Math.max(t+0.07,t+dur-0.1));
+  g.gain.linearRampToValueAtTime(0.0001,t+dur-0.01);
+  o.connect(f); o2.connect(f); f.connect(g); g.connect(musicGain);
+  o.start(t); o2.start(t); lfo.start(t);
+  o.stop(t+dur); o2.stop(t+dur); lfo.stop(t+dur);
+}
+function trumpetNote(freq, t, beats, vol=0.024){              // משה בחצוצרה
+  const c=ac(), dur=beats*BEAT;
+  const o=c.createOscillator(); o.type='square'; o.frequency.setValueAtTime(freq,t);
+  const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=1500;
+  const g=c.createGain();
+  g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(vol,t+0.03);
+  g.gain.setValueAtTime(vol,Math.max(t+0.04,t+dur-0.08));
+  g.gain.linearRampToValueAtTime(0.0001,t+dur-0.01);
+  o.connect(f); f.connect(g); g.connect(musicGain); o.start(t); o.stop(t+dur);
+}
+function bassNote(freq, t){
+  const c=ac(), o=c.createOscillator(), g=c.createGain();
+  o.type='triangle'; o.frequency.setValueAtTime(freq,t);
+  g.gain.setValueAtTime(0.075,t); g.gain.exponentialRampToValueAtTime(0.001,t+BEAT*0.95);
+  o.connect(g); g.connect(musicGain); o.start(t); o.stop(t+BEAT);
+}
+function stab(notes, t){                                      // off-beat chord chick
+  for(const nm of notes){
+    const c=ac(), o=c.createOscillator(), g=c.createGain();
+    o.type='sine'; o.frequency.setValueAtTime(NT[nm],t);
+    g.gain.setValueAtTime(0.022,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.14);
+    o.connect(g); g.connect(musicGain); o.start(t); o.stop(t+0.16);
+  }
+}
+function drumHit(t, accent){                                  // פסי בתוף
+  const c=ac(), buf=c.createBuffer(1,c.sampleRate*0.07|0,c.sampleRate);
+  const d=buf.getChannelData(0);
+  for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*(1-i/d.length);
+  const s=c.createBufferSource(); s.buffer=buf;
+  const f=c.createBiquadFilter(); f.type='lowpass'; f.frequency.value=accent?300:520;
+  const g=c.createGain(); g.gain.setValueAtTime(accent?0.09:0.045,t);
+  s.connect(f); f.connect(g); g.connect(musicGain); s.start(t);
+}
+let musicOn=false, nextLoop=0;
+const TUNE_BEATS=YOSSI_TUNE.reduce((a,n)=>a+n[1],0);
+function startMusic(){
+  if (musicOn) return; musicOn=true;
+  try {
+    nextLoop=ac().currentTime+0.6;
+    const scheduleLoop=()=>{
+      const now=ac().currentTime;
+      while (nextLoop < now+3){
+        // פסי בתוף + באס + סטאבים: oom-pah through all four phrases
+        MARCH.forEach(([root,chord],ph)=>{
+          for(let b=0;b<8;b++){
+            const t=nextLoop+(ph*8+b)*BEAT;
+            if (b%2===0){ bassNote(NT[root]*(b%4===2?1.5:1), t); drumHit(t, b===0); }
+            else { stab(chord,t); drumHit(t,false); }
+          }
+        });
+        // יוסי בכינור: the tune; משה בחצוצרה echoes the closing phrase
+        let t=nextLoop, beatAcc=0;
+        for(const [nm,beats] of YOSSI_TUNE){
+          violinNote(NT[nm], t, beats);
+          if (beatAcc>=24) trumpetNote(NT[nm]/2, t, beats);   // last phrase, octave down
+          t+=beats*BEAT; beatAcc+=beats;
+        }
+        nextLoop+=TUNE_BEATS*BEAT;
+      }
+    };
+    scheduleLoop(); setInterval(scheduleLoop,1000);
+  } catch(e){}
+}
+function setMuted(m){
+  muted=m; localStorage.setItem('shimon_mute', m?'1':'0');
+  if (masterGain) masterGain.gain.value=m?0:1;
+  const b=document.getElementById('btnMute');
+  if (b) b.textContent=m?'🔇':'🔊';
 }
 const sndBreak=()=>blip(140+Math.random()*60,0.12);
 const sndPlace=()=>blip(420+Math.random()*80,0.08,'triangle');
@@ -425,7 +559,7 @@ function physics(dt){
   P.onGround=false;
   if (!collide(P.pos.x,ny,P.pos.z)) P.pos.y=ny;
   else { if (P.vel.y<0) P.onGround=true; P.vel.y=0; }
-  if (P.pos.y<-12){ P.pos.set(WX/2+0.5, surfaceY(WX/2,WZ/2)+2, WZ/2+0.5); P.vel.set(0,0,0); }
+  if (P.pos.y<-12){ P.pos.set(...findSpawn()); P.vel.set(0,0,0); }
   camera.position.set(P.pos.x, P.pos.y+P.eye, P.pos.z);
   camera.rotation.order='YXZ';
   camera.rotation.y=P.yaw; camera.rotation.x=P.pitch;
@@ -821,7 +955,17 @@ SKINS.forEach((c,i)=>{
     d.classList.add('sel'); myColor=c; };
   $('colors').appendChild(d);
 });
-$('nameInput').value = localStorage.getItem('shimon_name')||'';
+// the gang — the only names you can join with
+const GANG=['שמעון הזקן','דוד החצוף','משה הדפוק','זרובבל','שמוליק','חיים הדפוק','ישראל'];
+let myName = localStorage.getItem('shimon_name');
+if (!GANG.includes(myName)) myName = null;
+GANG.forEach(nm=>{
+  const d=document.createElement('div');
+  d.className='n'+(nm===myName?' sel':''); d.textContent=nm;
+  d.onclick=()=>{ document.querySelectorAll('#names .n').forEach(e=>e.classList.remove('sel'));
+    d.classList.add('sel'); myName=nm; };
+  $('names').appendChild(d);
+});
 
 function buildHotbar(){
   const hb=$('hotbar'); hb.innerHTML='';
@@ -872,25 +1016,57 @@ $('chatInput').addEventListener('keydown',e=>{
 $('btnChat').onclick=()=> chatOpen?closeChat():openChat();
 
 /* ─── desktop input ─── */
+// arrow keys move exactly like WASD
+const KEYMAP={ArrowUp:'KeyW',ArrowDown:'KeyS',ArrowLeft:'KeyA',ArrowRight:'KeyD'};
 addEventListener('keydown',e=>{
   if (chatOpen) return;
-  keys[e.code]=true;
+  if (playing && (e.code==='Space'||e.code.startsWith('Arrow'))) e.preventDefault();
+  keys[KEYMAP[e.code]||e.code]=true;
   if (e.code.startsWith('Digit')){ const n=+e.code.slice(5); if(n>=1&&n<=ITEMS.length) selectSlot(n); }
   if (e.code==='KeyT'){ e.preventDefault(); openChat(); }
 });
-addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('keyup',e=>keys[KEYMAP[e.code]||e.code]=false);
 let playing=false;
-canvas.addEventListener('click',()=>{ if (playing && !isTouch && !document.pointerLockElement)
-  canvas.requestPointerLock(); });
+
+// Pointer lock when the browser allows it; otherwise (e.g. inside an embedded
+// page, where lock is often blocked) fall back to click-to-act + drag-to-look.
+let lockBlocked=false, lockProbe=null;
+document.addEventListener('pointerlockerror',()=>{ lockBlocked=true; });
+function tryLock(){
+  if (isTouch || document.pointerLockElement || lockBlocked) return;
+  try { canvas.requestPointerLock(); } catch(e){ lockBlocked=true; return; }
+  clearTimeout(lockProbe);
+  lockProbe=setTimeout(()=>{ if(!document.pointerLockElement) lockBlocked=true; },400);
+}
+canvas.addEventListener('click',()=>{ if (playing) tryLock(); });
 addEventListener('mousemove',e=>{
-  if (!document.pointerLockElement) return;
-  P.yaw -= e.movementX*0.0025;
-  P.pitch = Math.max(-1.55,Math.min(1.55, P.pitch - e.movementY*0.0025));
+  if (document.pointerLockElement){
+    P.yaw -= e.movementX*0.0025;
+    P.pitch = Math.max(-1.55,Math.min(1.55, P.pitch - e.movementY*0.0025));
+  } else if (drag.on){
+    P.yaw -= (e.clientX-drag.x)*0.005;
+    P.pitch = Math.max(-1.55,Math.min(1.55, P.pitch - (e.clientY-drag.y)*0.005));
+    drag.moved += Math.abs(e.clientX-drag.x)+Math.abs(e.clientY-drag.y);
+    drag.x=e.clientX; drag.y=e.clientY;
+  }
 });
-addEventListener('mousedown',e=>{
-  if (!playing || !document.pointerLockElement) return;
-  if (e.button===0){ if (!bonkMobs()) doBreak(); }
-  if (e.button===2) doPlace();
+const drag={on:false,x:0,y:0,moved:0,btn:0};
+canvas.addEventListener('mousedown',e=>{
+  if (!playing || isTouch) return;
+  if (document.pointerLockElement){
+    if (e.button===0){ if (!bonkMobs()) doBreak(); }
+    if (e.button===2) doPlace();
+  } else if (lockBlocked){
+    drag.on=true; drag.moved=0; drag.x=e.clientX; drag.y=e.clientY; drag.btn=e.button;
+  }
+});
+addEventListener('mouseup',e=>{
+  if (!drag.on) return;
+  drag.on=false;
+  if (drag.moved < 8){                       // a click, not a look-around drag
+    if (e.button===0){ if (!bonkMobs()) doBreak(); }
+    if (e.button===2) doPlace();
+  }
 });
 addEventListener('contextmenu',e=>{ if(playing) e.preventDefault(); });
 addEventListener('wheel',e=>{ if(!playing) return;
@@ -950,7 +1126,8 @@ hold($('btnBuild'),()=>doPlace());
 
 /* ════════════════════════ start ════════════════════════ */
 async function start(){
-  const name = $('nameInput').value.trim() || 'שמעון';
+  if (!myName){ $('joinMsg').textContent='קודם בחר מי אתה בחבורה! 👆'; return; }
+  const name = myName;
   const world = ($('worldInput').value.trim() || 'SHIMON').toUpperCase().replace(/[^A-Z0-9א-ת]/g,'').slice(0,12) || 'SHIMON';
   localStorage.setItem('shimon_name', name);
   $('joinMsg').textContent = 'מתחבר לעולם...';
@@ -968,7 +1145,7 @@ async function start(){
   }
   genTerrain();
   buildAll();
-  P.pos.set(WX/2+0.5, surfaceY(Math.floor(WX/2),Math.floor(WZ/2))+2, WZ/2+0.5);
+  P.pos.set(...findSpawn());
   // ambient shimon-mobs
   for(let i=0;i<3;i++) makeMob('pig', 40+Math.floor(hash2(i,99)*48), 40+Math.floor(hash2(i,55)*48));
   for(let i=0;i<2;i++) makeMob('creeper', 30+Math.floor(hash2(i,77)*68), 30+Math.floor(hash2(i,33)*68));
@@ -977,13 +1154,18 @@ async function start(){
   $('hotbar').style.display='flex';
   if (isTouch){ joyEl.style.display='block';
     for(const id of ['btnJump','btnMine','btnBuild']) $(id).style.display='flex'; }
-  else { $('helpBox').style.display='block'; canvas.requestPointerLock?.(); }
+  else { $('helpBox').style.display='block'; tryLock(); }
+  $('btnMute').style.display='flex';
+  $('btnMute').onclick=()=>setMuted(!muted);
+  setMuted(muted);
   buildHotbar(); selectSlot(2); refreshPlayerList();
   playing=true;
+  startMusic();
   toast(net.online ? `ברוך הבא לעולם ${world}! ⛏️` : 'משחק במצב לא-מקוון', 3500);
 }
 $('playBtn').onclick=start;
-window.SHIM = { doBreak, doPlace, selectSlot, explode, P };
+window.SHIM = { doBreak, doPlace, selectSlot, explode, P, keys, joyState, getB, collide,
+  get playing(){ return playing; } };
 $('worldInput').addEventListener('keydown',e=>{ if(e.key==='Enter') start(); });
 
 /* ════════════════════════ main loop ════════════════════════ */

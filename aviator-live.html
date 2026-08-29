@@ -1365,8 +1365,13 @@ let autoOn = false;
 const FX = (name, data) => window.avFB.fx(name, data || {});
 
 function myName(){
-  return String(store.get("avNick", "") ||
-    (user && (user.displayName || user.phoneNumber)) || "Pilot").slice(0, 24);
+  const saved = store.get("avNick", "") ||
+    (user && (user.displayName || user.phoneNumber)) || "";
+  if (saved) return String(saved).slice(0, 24);
+  /* stable per-device guest name so the round list isn't all "Pilot" */
+  let h = 0;
+  for (const c of String(user && user.uid || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return "Pilot " + (100 + h % 900);
 }
 const FALLBACK_AVS = ["av-astronaut","av-tiger","av-shark","av-owl","av-gamer",
   "av-dragon","av-cat","av-whale","av-monkey","av-rabbit"];
@@ -1778,10 +1783,17 @@ async function join(){
 
 addEventListener("fb-ready", () => {
   const F = window.avFB;
+  /* straight into the game: sign in silently as a guest, no login screen.
+     The modal only appears if the silent sign-in itself fails. */
   F.onAuthStateChanged(F.auth, u => {
     user = u;
     if (u){ hideLogin(); join(); }
-    else { joined = false; updateAction(); if (entered) showLogin(); }
+    else {
+      joined = false; updateAction();
+      F.signInAnonymously(F.auth).catch(e => {
+        showLogin("שגיאת כניסה: " + ((e && e.code) || "נסה שוב"));
+      });
+    }
   });
 
   const enterAsGuest = () => {

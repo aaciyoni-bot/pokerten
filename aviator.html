@@ -1606,6 +1606,19 @@ addEventListener("appinstalled", () => showInstallUI(false));
 if ("serviceWorker" in navigator && /aviatorizis|vercel\.app/.test(location.hostname))
   navigator.serviceWorker.register("aviator-sw.js").catch(() => {});
 
+/* keep the screen awake while the game is open */
+let wakeLock = null;
+async function keepAwake(){
+  try{ wakeLock = await navigator.wakeLock.request("screen"); }catch(e){}
+}
+if ("wakeLock" in navigator){
+  keepAwake();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") keepAwake();
+  });
+  addEventListener("pointerdown", () => { if (!wakeLock || wakeLock.released) keepAwake(); }, { passive: true });
+}
+
 /* persist chips */
 setInterval(() => store.set("pt_av_chips", balance), 2500);
 addEventListener("pagehide", () => store.set("pt_av_chips", balance));

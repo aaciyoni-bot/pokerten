@@ -14,6 +14,12 @@ const {getFirestore} = require("firebase-admin/firestore");
 initializeApp();
 const db = getFirestore();
 
+// The bonus games (wheel + scratch card) are off in the product. The club
+// setting is not enough on its own: a club doc saved while they were live
+// still says enabled:true, and that would keep paying out. Flip this to false
+// to hand the decision back to the club setting.
+const BONUS_GAMES_OFF = true;
+
 // Server-authoritative poker engine (pkDeal/pkAct/pkTick/pkLeave/pkRit/
 // pkReveal/pkPickGame/pkDiscard/godPeek/admFixGameLog) — see pokerEngine.js.
 // Requires the app to be initialized first, hence the require after initializeApp.
@@ -54,7 +60,7 @@ exports.spinDailyBonus = onCall(async (request) => {
     const clubSnap = await tx.get(clubRef);
     const club = clubSnap.exists ? clubSnap.data() : {};
     const bw = club.bonusWheel || {};
-    if (bw.enabled !== true) throw new HttpsError("failed-precondition", "גלגל הבונוס כבוי");
+    if (BONUS_GAMES_OFF || bw.enabled !== true) throw new HttpsError("failed-precondition", "גלגל הבונוס כבוי");
 
     const now = Date.now();
     const last = Number(mem.lastBonusAt) || 0;
@@ -127,7 +133,7 @@ exports.claimWeeklyScratch = onCall(async (request) => {
     const clubSnap = await tx.get(clubRef);
     const club = clubSnap.exists ? clubSnap.data() : {};
     const bw = club.bonusWheel || {};
-    if (bw.enabled !== true) throw new HttpsError("failed-precondition", "התכונה כבויה");
+    if (BONUS_GAMES_OFF || bw.enabled !== true) throw new HttpsError("failed-precondition", "התכונה כבויה");
 
     const now = Date.now();
     const lastS = Number(mem.lastScratchAt) || 0;

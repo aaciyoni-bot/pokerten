@@ -36,6 +36,9 @@ const HOUSE_EDGE = 0.03;            // 3% instant bust
 const MIN_BET = 25;
 const WELCOME_CHIPS = 10000;
 const MAX_FLIGHT_MULT = 5000;       // hard ceiling, keeps flights finite
+const CASHOUT_GRACE_MS = 250;       // network forgiveness: price the press a
+                                    // beat earlier so latency can't eat a
+                                    // cash-out the player made in time
 
 const stateRef = () => adb.doc("aviator/state");
 const engineRef = () => adb.doc("aviator/_engine");
@@ -258,7 +261,8 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
     const s = sSnap.data();
     const e = eSnap.data() || {};
     if (s.phase !== "flying") throw new HttpsError("failed-precondition", "אין טיסה פעילה");
-    const mult = round2(Math.min(multAt(now - s.phaseAt), MAX_FLIGHT_MULT));
+    const mult = round2(Math.min(
+      multAt(Math.max(0, now - CASHOUT_GRACE_MS - s.phaseAt)), MAX_FLIGHT_MULT));
     if (mult >= e.crashPoint) throw new HttpsError("failed-precondition", "המטוס כבר התרסק");
     const bRef = adb.doc(`aviatorBets/${s.roundId}_${uid}`);
     const bSnap = await tx.get(bRef);

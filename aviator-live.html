@@ -904,14 +904,20 @@ let muted = store.get("pt_av_muted", false);
 let history = [];
 
 /* ---------------- Server clock ----------------
-   Every callable answers with serverNow; we keep a smoothed offset so
-   the curve animates on the server's clock, not the phone's. */
-let clockOffset = 0, offsetSeeded = false;
-function noteServerNow(sn){
+   Every callable answers with serverNow. NTP-style: serverNow was stamped
+   about half a round-trip before we read it, so offset = sn - now + rtt/2,
+   and we keep the measurement with the lowest rtt (least network noise)
+   rather than smoothing good samples together with bad ones. */
+let clockOffset = 0, coBestRtt = Infinity, coAt = 0;
+function noteServerNow(sn, rtt){
   if (!sn) return;
-  const o = sn - Date.now();
-  clockOffset = offsetSeeded ? clockOffset * 0.7 + o * 0.3 : o;
-  offsetSeeded = true;
+  const now = Date.now();
+  if (now - coAt > 90000) coBestRtt = Infinity;   // stale — let a fresh sample win
+  if (rtt == null) rtt = 800;
+  if (coAt && rtt > coBestRtt * 1.4) return;      // noisier than what we have
+  coBestRtt = Math.min(coBestRtt, rtt);
+  clockOffset = sn - now + rtt / 2;
+  coAt = now;
 }
 const eNow = () => Date.now() + clockOffset;
 
@@ -1291,7 +1297,7 @@ function draw(now){
     ctx.restore();
 
     /* --- god mode: dashed line where this round will crash --- */
-    if (godMode && adminUser && !crashed){
+    if (godMode && !crashed){
       const gy = Y(S.crashPoint);
       if (gy > PAD.t){
         ctx.save();
@@ -1378,7 +1384,13 @@ let balance = 0, shownBalance = 0;
 let myBet = null;           // my aviatorBets doc data for this round
 let placing = false, cashing = false;
 let autoOn = false;
-const FX = (name, data) => window.avFB.fx(name, data || {});
+const FX = (name, data) => {
+  const t0 = Date.now();
+  return window.avFB.fx(name, data || {}).then(r => {
+    if (r && r.serverNow) noteServerNow(r.serverNow, Date.now() - t0);
+    return r;
+  });
+};
 
 function myName(){
   const saved = store.get("avNick", "") ||
@@ -1484,7 +1496,7 @@ async function doPlaceBet(amount, silent){
   try{
     const autoAt = autoOn ? (parseFloat($("#autoInput").value) || 0) : 0;
     const r = await FX("avBet", {amount, autoAt});
-    noteServerNow(r.serverNow);
+    /* clock already noted by FX with rtt */
     setBalance(r.balance);
     if (!silent){ play("bet", 0.55); haptic(12); }
   }catch(e){ toastErr(e); }
@@ -1495,7 +1507,7 @@ async function doCancelBet(){
   placing = true; updateAction();
   try{
     const r = await FX("avCancelBet", {});
-    noteServerNow(r.serverNow);
+    /* clock already noted by FX with rtt */
     play("ui", 0.3);
   }catch(e){ toastErr(e); }
   placing = false; updateAction();
@@ -1505,7 +1517,7 @@ async function doCashout(){
   cashing = true;
   try{
     const r = await FX("avCashout", {});
-    noteServerNow(r.serverNow);
+    /* clock already noted by FX with rtt */
     play(r.mult >= 5 ? "bigwin" : "win", r.mult >= 5 ? 0.8 : 0.65, 0.02);
     haptic([15, 30, 15]);
     celebrate(r.win, r.mult);
@@ -1516,7 +1528,14 @@ async function doCashout(){
     st.textContent = `✔ עצרת בזמן · ${r.mult.toFixed(2)}x · +${fmt(r.win)}`;
     st.classList.remove("on"); void st.offsetWidth;
     st.classList.add("on");
-  }catch(e){ /* usually: crashed a breath earlier — the crash UI is coming */ }
+  }catch(e){
+    /* the press reached the server after the real crash — tick the round
+       forward NOW so the crash screen appears immediately, and say so */
+    maybeTick(true);
+    if (e && /התרסק/.test(String(e.message || ""))){
+      toastErr({message: "המטוס התרסק רגע לפני שהלחיצה הגיעה"});
+    }
+  }
   cashing = false; updateAction();
 }
 
@@ -1525,10 +1544,12 @@ let lastTickAt = 0;
 function maybeTick(force){
   const now = Date.now();
   if (!joined || document.visibilityState !== "visible") return;
-  if (!force && now - lastTickAt < 1400) return;
+  /* tick faster mid-flight: the crash only becomes real when someone
+     ticks it, and a slow tick is what made the plane fly past its crash */
+  if (!force && now - lastTickAt < (S.phase === "flying" ? 850 : 1400)) return;
   lastTickAt = now;
   FX("avTick", {}).then(r => {
-    noteServerNow(r.serverNow);
+    /* clock already noted by FX with rtt */
   }).catch(() => {});
 }
 
@@ -1793,7 +1814,7 @@ function hideLogin(){ $("#loginModal").classList.remove("on"); }
 async function join(){
   try{
     const r = await FX("avJoin", {name: myName()});
-    noteServerNow(r.serverNow);
+    /* clock already noted by FX with rtt */
     isAdminUser = !!r.admin;
     $("#adminBtn").hidden = !isAdminUser;
     setBalance(r.balance);
@@ -1919,7 +1940,7 @@ $("#admPlayers").addEventListener("click", async e => {
   if (!amount) return;
   try{
     const r = await FX("avCredit", {uid: row.dataset.uid, amount});
-    noteServerNow(r.serverNow);
+    /* clock already noted by FX with rtt */
     play("bigwin", 0.5);
   }catch(err){ toastErr(err); }
 });

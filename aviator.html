@@ -212,29 +212,31 @@ input{font-family:inherit;color:inherit}
 }
 #audioHint.off{opacity:0; pointer-events:none}
 
-/* thrust lever: idle during betting, pushed to full at takeoff,
-   chopped back on crash */
-#throttle{
-  position:absolute; right:14px; bottom:12px; z-index:4;
-  display:grid; justify-items:center; gap:5px; pointer-events:none;
+/* cockpit corner: an N1 engine gauge + climbing altimeter, pure
+   atmosphere — reads as an instrument, not a control */
+#cockpit{
+  position:absolute; right:12px; bottom:10px; z-index:4;
+  display:grid; justify-items:center; gap:3px; pointer-events:none;
+  opacity:0.85;
 }
-#throttle .track{
-  width:14px; height:86px; border-radius:999px; background:rgba(255,255,255,0.05);
-  border:1px solid var(--pt-line); position:relative;
-  box-shadow:inset 0 2px 6px rgba(0,0,0,0.6);
+#cockpit svg{display:block; filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5))}
+#cockpit .gFace{fill:rgba(10,13,20,0.82); stroke:rgba(255,255,255,0.1); stroke-width:1.5}
+#cockpit .gTick{stroke:rgba(213,179,107,0.55); stroke-width:1.6; stroke-linecap:round}
+#cockpit .gRed{stroke:rgba(240,85,109,0.75); stroke-width:2.6; fill:none; stroke-linecap:round}
+#cockpit .gNeedle{stroke:#F2DCA8; stroke-width:2.2; stroke-linecap:round;
+  filter:drop-shadow(0 0 3px rgba(242,220,168,0.7))}
+#cockpit .gHub{fill:var(--pt-gold-deep); stroke:#F2DCA8; stroke-width:1}
+#cockpit .gLbl{
+  position:absolute; left:50%; top:64%; transform:translateX(-50%);
+  font-size:7px; letter-spacing:1.5px; color:var(--pt-dim); font-weight:800;
 }
-#throttle .lever{
-  position:absolute; left:50%; transform:translateX(-50%);
-  bottom:4px; width:26px; height:20px; border-radius:7px;
-  background:linear-gradient(180deg,#E8CB8B,var(--pt-gold) 50%,var(--pt-gold-deep));
-  box-shadow:0 3px 8px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.45);
-  transition:bottom 1.6s cubic-bezier(0.3,0,0.3,1);
-  display:grid; align-content:center; justify-items:center; gap:2px;
+#cockpit .gauge{position:relative}
+#altBox{
+  font-size:9px; font-weight:800; letter-spacing:1px; color:var(--pt-dim);
+  font-variant-numeric:tabular-nums; background:rgba(10,13,20,0.7);
+  border:1px solid var(--pt-line); border-radius:6px; padding:2px 7px;
 }
-#throttle .lever i{width:14px; height:1.5px; background:rgba(22,16,6,0.55); border-radius:1px}
-#throttle.full .lever{bottom:62px}
-#throttle.cut .lever{transition:bottom 250ms var(--ease-std); bottom:4px}
-#throttle .tl{font-size:8px; letter-spacing:2px; color:var(--pt-dim); font-weight:800}
+#altBox b{color:var(--pt-gold)}
 
 /* app install */
 #spInstall{
@@ -342,7 +344,11 @@ input{font-family:inherit;color:inherit}
 @keyframes cashPulse{
   50%{box-shadow:0 6px 40px rgba(61,214,140,0.62), inset 0 1px 0 rgba(255,255,255,0.35)}
 }
-#actionBtn.cancel{background:var(--pt-card); border:1px solid var(--pt-line); color:var(--pt-dim)}
+#actionBtn.cancel{
+  background:linear-gradient(180deg,rgba(240,85,109,0.2),rgba(240,85,109,0.09));
+  border:1.5px solid rgba(240,85,109,0.6); color:var(--pt-red);
+  box-shadow:0 4px 18px rgba(240,85,109,0.18);
+}
 #actionBtn.wait{background:var(--pt-card); border:1px solid var(--pt-line); color:var(--pt-dim); pointer-events:none}
 #actionBtn:disabled{filter:saturate(0.4) brightness(0.75); pointer-events:none}
 
@@ -596,9 +602,19 @@ input{font-family:inherit;color:inherit}
       <div id="winToast"></div>
       <div id="godPill" hidden>⚡ crash @ <b id="godVal">—</b></div>
       <div id="audioHint">🔇 tap to enable sound</div>
-      <div id="throttle">
-        <div class="track"><div class="lever" id="throttleLever"><i></i><i></i><i></i></div></div>
-        <span class="tl">THRUST</span>
+      <div id="cockpit" aria-hidden="true">
+        <div class="gauge">
+          <svg viewBox="0 0 64 64" width="58" height="58">
+            <circle class="gFace" cx="32" cy="32" r="30"></circle>
+            <g id="gTicks"></g>
+            <path class="gRed" d="M 58.98 31.06 A 27 27 0 0 1 55.38 45.5"></path>
+            <line id="gNeedle" class="gNeedle" x1="32" y1="32" x2="32" y2="11"
+                  transform="rotate(-120 32 32)"></line>
+            <circle class="gHub" cx="32" cy="32" r="3.2"></circle>
+          </svg>
+          <span class="gLbl">N1 %</span>
+        </div>
+        <div id="altBox">ALT <b id="altVal">0</b> FT</div>
       </div>
     </section>
   </div>
@@ -717,6 +733,7 @@ const SND_FILES = {
   ui:     ["assets/sounds/card_flip_1.wav","assets/sounds/card_flip_2.wav"]
 };
 let audioUnlocked = false;
+let entered = false;   // no sound until the player taps TAKE OFF
 let AC = null, jetSrc = null, jetGain = null, jetFilter = null, jetBuf = null,
     rumbleOsc = null, rumbleGain = null, whineOsc = null, whineGain = null;
 const bufferCache = new Map();
@@ -740,7 +757,7 @@ function loadBuffer(url){
     .catch(() => {});
 }
 function play(name, vol = 0.5, rateVar = 0.08){
-  if (muted || !AC || !audioUnlocked) return;
+  if (!entered || muted || !AC || !audioUnlocked) return;
   const buf = bufferCache.get(pick(SND_FILES[name] || []));
   if (!buf) return;
   const src = AC.createBufferSource();
@@ -768,7 +785,7 @@ function jetBuffer(){
   return jetBuf;
 }
 function toneStart(){
-  if (muted || !AC || REDUCED) return;
+  if (!entered || muted || !AC || REDUCED) return;
   toneStop(0.01);
   jetSrc = AC.createBufferSource();
   jetSrc.buffer = jetBuffer();
@@ -836,7 +853,7 @@ function noiseBuffer(){
   return noiseBuf;
 }
 function beltChime(){
-  if (muted || !AC || !audioUnlocked) return;
+  if (!entered || muted || !AC || !audioUnlocked) return;
   const t = AC.currentTime;
   [[987, 0], [659, 0.3]].forEach(([f, d]) => {
     const o = AC.createOscillator(), g = AC.createGain();
@@ -849,7 +866,7 @@ function beltChime(){
   });
 }
 function radioCall(){
-  if (muted || !AC || !audioUnlocked) return;
+  if (!entered || muted || !AC || !audioUnlocked) return;
   const t = AC.currentTime;
   const src = AC.createBufferSource(); src.buffer = noiseBuffer();
   const bp = AC.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1600; bp.Q.value = 4.5;
@@ -960,7 +977,6 @@ function startWaiting(){
   view.yMax = 2; view.xMax = 8;
   $("#flightNums").hidden = true;
   $("#countdown").hidden = false;
-  $("#throttle").classList.remove("full", "cut");
   $("#crashTag").classList.remove("on");
   $("#mult").className = "";
   if (S.queued > 0){
@@ -975,8 +991,6 @@ function startFlight(){
   S.phaseAt = performance.now();
   $("#countdown").hidden = true;
   $("#flightNums").hidden = false;
-  $("#throttle").classList.remove("cut");
-  $("#throttle").classList.add("full");
   toneStart();
   play("slide", 0.35);
   updateAction();
@@ -985,8 +999,6 @@ function doCrash(){
   S.phase = "crashed";
   S.phaseAt = performance.now();
   S.mult = S.crashPoint;
-  $("#throttle").classList.remove("full");
-  $("#throttle").classList.add("cut");
   toneStop(0.05);
   play("crash", 0.75, 0.03);
   haptic([30, 40, 60]);
@@ -1093,6 +1105,7 @@ function setBalance(v){
   const el = $("#balanceNum");
   const from = shownBalance, to = v;
   shownBalance = v;
+  store.set("pt_av_chips", v);   // persist on every change, not just the timer
   if (REDUCED){ el.textContent = fmt(to); return; }
   const t0 = performance.now(), D = 550;
   (function tick(t){
@@ -1172,7 +1185,7 @@ function updateAction(){
   const btn = $("#actionBtn");
   btn.disabled = false;
   if (S.phase === "waiting"){
-    if (S.bet){ btn.className = "cancel"; btn.innerHTML = "Cancel bet"; }
+    if (S.bet){ btn.className = "cancel"; btn.innerHTML = `<span>Bet placed: ${fmt(S.bet.amount)}<br><span class="sub">tap to cancel</span></span>`; }
     else {
       btn.className = "bet"; btn.innerHTML = "Place bet";
       if (betValue() > balance || balance < MIN_BET) btn.disabled = true;
@@ -1283,8 +1296,8 @@ function draw(now){
     const mw = 720 * ms;
     const offX = mapShift % mw;
     ctx.save();
-    ctx.fillStyle = "rgba(213,179,107,0.05)";
-    ctx.strokeStyle = "rgba(213,179,107,0.09)";
+    ctx.fillStyle = "rgba(213,179,107,0.1)";
+    ctx.strokeStyle = "rgba(213,179,107,0.2)";
     ctx.translate(-offX, -H * 0.18);
     ctx.scale(ms, ms);
     ctx.lineWidth = 1 / ms;
@@ -1425,6 +1438,38 @@ function draw(now){
 }
 
 /* =====================================================================
+   COCKPIT INSTRUMENTS — N1 gauge + altimeter (atmosphere only)
+   ===================================================================== */
+(function buildTicks(){
+  let s = "";
+  for (let i = 0; i <= 10; i++){
+    const a = (-120 + 24 * i) * Math.PI / 180;
+    const r1 = i % 5 === 0 ? 23 : 25.5, r2 = 28;
+    s += `<line class="gTick" x1="${(32 + r1 * Math.sin(a)).toFixed(1)}" y1="${(32 - r1 * Math.cos(a)).toFixed(1)}" x2="${(32 + r2 * Math.sin(a)).toFixed(1)}" y2="${(32 - r2 * Math.cos(a)).toFixed(1)}"></line>`;
+  }
+  $("#gTicks").innerHTML = s;
+})();
+const cockpit = { rot: -114, alt: 0, lastT: 0 };
+function updateCockpit(now){
+  const dt = Math.min(0.1, (now - (cockpit.lastT || now)) / 1000);
+  cockpit.lastT = now;
+  let target;
+  if (S.phase === "flying"){
+    const spool = Math.min(1, (now - S.phaseAt) / 1600);
+    target = -114 + 210 * (0.72 * spool + Math.min(0.28, (S.mult - 1) * 0.03));
+    cockpit.alt += dt * (900 + (S.mult - 1) * 700);
+  } else if (S.phase === "crashed"){
+    target = -120;
+  } else {
+    cockpit.alt = 0;
+    target = -114 + Math.sin(now / 300) * 2;   // idle flutter
+  }
+  cockpit.rot += (target - cockpit.rot) * (S.phase === "crashed" ? 0.25 : 0.08);
+  $("#gNeedle").setAttribute("transform", `rotate(${cockpit.rot.toFixed(1)} 32 32)`);
+  $("#altVal").textContent = fmt(Math.round(cockpit.alt / 10) * 10);
+}
+
+/* =====================================================================
    MAIN LOOP
    ===================================================================== */
 function frame(now){
@@ -1471,7 +1516,7 @@ function frame(now){
       }
       // live cash-out amount on the button
       const ca = $("#cashAmt");
-      if (ca && S.bet && !S.bet.cashed) ca.textContent = fmt(S.bet.amount * S.mult) + " chips";
+      if (ca && S.bet && !S.bet.cashed) ca.textContent = fmt(S.bet.amount) + " → " + fmt(S.bet.amount * S.mult) + " chips";
       // bots cash out
       let changed = false;
       for (const b of bots){
@@ -1487,6 +1532,7 @@ function frame(now){
     if (el >= CRASH_HOLD) startWaiting();
   }
 
+  updateCockpit(now);
   draw(now);
   requestAnimationFrame(frame);
 }
@@ -1593,9 +1639,11 @@ $("#refillBtn").addEventListener("click", () => {
 
 /* intro splash: TAKE OFF unlocks audio and reveals the game */
 $("#spPlay").addEventListener("click", () => {
+  entered = true;
   unlockAudio();
   $("#splash").classList.add("off");
   if (S.phase === "waiting") beltChime();
+  else if (S.phase === "flying") toneStart();
   setTimeout(() => { const s = $("#splash"); if (s) s.remove(); }, 750);
 });
 

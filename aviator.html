@@ -1549,21 +1549,34 @@ function frame(now){
 /* =====================================================================
    GOD MODE — shows the round's crash point in advance. Solo game only:
    everyone else in the round is a bot, so nobody real is being played
-   against. Toggle with 5 quick taps on the AVIATOR logo (or ?god).
+   against. Owner-only: 5 quick taps on the AVIATOR logo, then a code
+   (asked once per device; Google sign-in is paused, so the code stands
+   in for the owner's email until it returns).
    The live multiplayer club has no god mode by design — real players.
    ===================================================================== */
-let godMode = store.get("pt_av_god", false) || new URLSearchParams(location.search).has("god");
+const GOD_HASH = "c97ff791ceded486acc101a8ffc404ded6a4e2cb6bea81e18abeab3c23377bcf";
+let godMode = store.get("pt_av_godok", false) && store.get("pt_av_god", false);
 function updateGod(){
   $("#godPill").hidden = !godMode;
   if (godMode) $("#godVal").textContent = S.crashPoint.toFixed(2) + "x";
 }
+async function godGate(){
+  if (store.get("pt_av_godok", false)) return true;
+  const c = prompt("קוד מנהל:") || "";
+  const h = [...new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(c.trim()))
+  )].map(b => b.toString(16).padStart(2, "0")).join("");
+  if (h === GOD_HASH){ store.set("pt_av_godok", true); return true; }
+  return false;
+}
 let brandTaps = [];
-$("#brand").addEventListener("click", () => {
+$("#brand").addEventListener("click", async () => {
   const now = performance.now();
   brandTaps = brandTaps.filter(t => now - t < 1600);
   brandTaps.push(now);
   if (brandTaps.length < 5) return;
   brandTaps = [];
+  if (!(await godGate())) return;
   godMode = !godMode;
   store.set("pt_av_god", godMode);
   play("ui", 0.3);

@@ -43,6 +43,32 @@ const CASHOUT_GRACE_MS = 250;       // network forgiveness: price the press a
 const stateRef = () => adb.doc("aviator/state");
 const engineRef = () => adb.doc("aviator/_engine");
 
+/* ---- house bots: liveliness only. They hold no wallet — their bets are
+   round-local props, settled visually and skipped by the money paths. ---- */
+const BOT_COUNT = 500;
+const BOT_FIRST = ["Dani","Maya","Yossi","Noa","Avi","Tamar","Ronen","Shira","Omer","Lior",
+  "Eden","Itay","Gal","Roni","Alex","Nikita","Marco","Leo","Sara","Adam",
+  "Max","Nina","Igor","Luca","Amir","Dana","Eli","Mika","Ben","Yael",
+  "Oren","Tal","Ariel","Ziv","Ivan","Sofia","Emma","Noam","Idan","Shay"];
+const botName = (i) => BOT_FIRST[i % BOT_FIRST.length] + (10 + (i * 7919) % 90);
+function seedBots(tx, roundId){
+  const n = 35 + crypto.randomInt(31);              // 35..65 bots join each round
+  const picked = new Set();
+  while (picked.size < n) picked.add(crypto.randomInt(BOT_COUNT));
+  for (const i of picked){
+    const amount = Math.max(MIN_BET,
+      Math.round((25 * Math.pow(10, Math.random() * 3)) / 25) * 25);
+    const autoAt = Math.random() < 0.8
+      ? Math.min(30, round2(1.02 - Math.log(1 - Math.random()) / 1.1))
+      : null;                                        // ~20% ride it to the crash
+    tx.create(adb.doc(`aviatorBets/${roundId}_bot_${i}`), {
+      uid: `bot_${i}`, roundId, amount, autoAt, bot: true,
+      name: botName(i), photo: "",
+      cashedAt: null, win: 0, lost: false, ts: Date.now(),
+    });
+  }
+}
+
 const multAt = (ms) => Math.exp(GROWTH_K * ms / 1000);
 const timeForMult = (m) => Math.log(m) / GROWTH_K * 1000;
 const round2 = (m) => Math.floor(m * 100) / 100;
@@ -80,6 +106,7 @@ function bootRound(tx, now) {
     crashHold: CRASH_HOLD_MS, growthK: GROWTH_K, hash,
     crashPoint: null, seed: null,
   });
+  seedBots(tx, roundId);
   return roundId;
 }
 
@@ -150,13 +177,14 @@ exports.avTick = onCall(AV_OPTS, async (request) => {
           const win = Math.floor(b.amount * b.autoAt);
           totalPaid += win;
           tx.update(d.ref, {cashedAt: b.autoAt, win, auto: true});
-          results.push({uid: b.uid, delta: win, betAmount: b.amount, mult: b.autoAt});
+          results.push({uid: b.uid, delta: win, betAmount: b.amount, mult: b.autoAt, bot: !!b.bot});
         } else {
           tx.update(d.ref, {lost: true});
-          results.push({uid: b.uid, delta: 0, betAmount: b.amount, mult: null});
+          results.push({uid: b.uid, delta: 0, betAmount: b.amount, mult: null, bot: !!b.bot});
         }
       }
       for (const r of results) {
+        if (r.bot) continue;                 // bots have no wallet or ledger
         const pRef = adb.doc(`aviatorPlayers/${r.uid}`);
         const net = r.delta - r.betAmount;
         if (r.delta > 0) {
@@ -207,6 +235,11 @@ exports.avBet = onCall(AV_OPTS, async (request) => {
       throw new HttpsError("failed-precondition", "חלון ההימורים סגור");
     }
     const p = pSnap.data();
+    const peekSnap = await tx.get(adb.doc(`aviatorPeeks/${s.roundId}_${uid}`));
+    if (peekSnap.exists) {
+      throw new HttpsError("failed-precondition",
+        "מצב בקרה פעיל — בסיבוב שנצפה אפשר רק לצפות");
+    }
     const bRef = adb.doc(`aviatorBets/${s.roundId}_${uid}`);
     const bSnap = await tx.get(bRef);
     const prior = bSnap.exists && !bSnap.data().cashedAt && !bSnap.data().lost
@@ -283,8 +316,48 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
  * avCredit — admin-only top-up (or clawback with a negative amount).
  * This is the ONLY way chips enter the room besides the welcome stack.
  * ---------------------------------------------------------------------- */
+/* While Google sign-in is paused there is no admin email on any account,
+   so the owner authenticates with a secret code instead (hash-checked,
+   never stored in the client). The same code unlocks avPeek. */
+const OWNER_CODE_HASH =
+  "c97ff791ceded486acc101a8ffc404ded6a4e2cb6bea81e18abeab3c23377bcf";
+function codeOk(request) {
+  const code = String((request.data && request.data.code) || "").trim();
+  return !!code &&
+    crypto.createHash("sha256").update(code).digest("hex") === OWNER_CODE_HASH;
+}
+
+/* -------------------------------------------------------------------------
+ * avPeek — owner supervision: reveals the current round's crash point.
+ * Structurally fair: a uid that peeks a round cannot bet in it, and cannot
+ * peek while holding a live bet — so the information can never steer play.
+ * ---------------------------------------------------------------------- */
+exports.avPeek = onCall(AV_OPTS, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
+  if (!codeOk(request)) throw new HttpsError("permission-denied", "קוד שגוי");
+  const out = await adb.runTransaction(async (tx) => {
+    const [sSnap, eSnap] = await Promise.all([tx.get(stateRef()), tx.get(engineRef())]);
+    if (!sSnap.exists || !eSnap.exists) {
+      throw new HttpsError("failed-precondition", "אין חדר פעיל");
+    }
+    const s = sSnap.data();
+    const bSnap = await tx.get(adb.doc(`aviatorBets/${s.roundId}_${uid}`));
+    if (bSnap.exists && !bSnap.data().cashedAt && !bSnap.data().lost && !bSnap.data().bot) {
+      throw new HttpsError("failed-precondition",
+        "יש לך הימור פעיל בסיבוב — בקרה תיפתח בסיבוב הבא");
+    }
+    tx.set(adb.doc(`aviatorPeeks/${s.roundId}_${uid}`),
+      {uid, roundId: s.roundId, ts: Date.now()});
+    return {roundId: s.roundId, phase: s.phase, crashPoint: eSnap.data().crashPoint};
+  });
+  return {...out, serverNow: Date.now()};
+});
+
 exports.avCredit = onCall(AV_OPTS, async (request) => {
-  if (!isAdmin(request)) throw new HttpsError("permission-denied", "מנהל בלבד");
+  if (!isAdmin(request) && !codeOk(request)) {
+    throw new HttpsError("permission-denied", "מנהל בלבד");
+  }
   const target = String(request.data && request.data.uid || "");
   const amount = Math.round(Number(request.data && request.data.amount) || 0);
   if (!target || !amount || Math.abs(amount) > 1e12) {

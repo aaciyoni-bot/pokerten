@@ -688,6 +688,14 @@ input{font-family:inherit;color:inherit}
   100%{transform:scale(1); opacity:1}
 }
 
+/* ---------- supervisor pill (owner control view) ---------- */
+#supPill{
+  position:absolute; left:12px; top:44px; z-index:5;
+  display:flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px;
+  font-size:12.5px; font-weight:800; font-variant-numeric:tabular-nums;
+  color:#C9A2FF; background:rgba(30,20,50,0.82); border:1px solid rgba(201,162,255,0.45);
+}
+
 #backBtn{display:none}
 </style>
 </head>
@@ -1569,6 +1577,7 @@ function pushHistory(m){
 }
 
 let roundBets = [];   // live aviatorBets docs for the current round
+let lastPlayersRender = 0;   // throttle for mid-flight auto-cash re-renders
 function renderPlayers(){
   const uid = user && user.uid;
   const rows = [...roundBets].sort((a, b) =>
@@ -1581,8 +1590,12 @@ function renderPlayers(){
     : "—";
   $("#players").innerHTML = rows.map(r => {
     const me = r.uid === uid;
-    const cls = r.cashedAt ? "cashed" : (r.lost ? "bust" : "");
-    const st = r.cashedAt ? r.cashedAt.toFixed(2) + "x" : (r.lost ? "BUST" : "…");
+    /* an auto cash-out is settled on the server only at crash time, but the
+       target is public — show it the moment the plane passes it */
+    const eff = r.cashedAt ||
+      ((S.phase === "flying" && r.autoAt && S.mult >= r.autoAt) ? r.autoAt : null);
+    const cls = eff ? "cashed" : (r.lost ? "bust" : "");
+    const st = eff ? eff.toFixed(2) + "x" : (r.lost ? "BUST" : "…");
     return `
     <div class="prow ${me ? "me" : ""} ${cls}">
       <img src="${esc(avatarFor(r.uid, r.photo))}" alt="" loading="lazy" referrerpolicy="no-referrer">
@@ -1601,6 +1614,11 @@ function updateAction(){
   }
   if (placing){
     btn.className = "wait"; btn.innerHTML = "רגע…"; btn.disabled = true; return;
+  }
+  if (supRound && supRound === S.roundId){
+    btn.className = "wait";
+    btn.innerHTML = `<span>🔍 מצב בקרה<br><span class="sub">סיבוב זה לצפייה בלבד</span></span>`;
+    btn.disabled = true; return;
   }
   if (S.phase === "waiting"){
     if (myBet){ btn.className = "cancel"; btn.innerHTML = `<span>Bet placed: ${fmt(myBet.amount)}<br><span class="sub">tap to cancel</span></span>`; }
@@ -1634,6 +1652,62 @@ function updateAction(){
     else { btn.className = "wait"; btn.innerHTML = "Next round…"; }
   }
 }
+
+/* =====================================================================
+   SUPERVISOR (owner) MODE — 5 quick taps on the logo, then the owner
+   code (asked once per device). Shows the drawn crash point live; the
+   server locks every peeked round to watch-only for this account, so
+   the information can never steer play. The same code unlocks the
+   admin dashboard and chip top-ups while Google sign-in is paused.
+   ===================================================================== */
+$("#fairPill").insertAdjacentHTML("afterend",
+  '<div id="supPill" hidden>🔍 <b id="supVal">–</b></div>');
+let supMode = store.get("avSup", false);
+let supRound = "";                       // roundId currently peeked
+async function supPeek(){
+  if (!supMode || !joined) return;
+  try{
+    const r = await FX("avPeek", {code: store.get("avSupCode", "")});
+    supRound = r.roundId;
+    $("#supVal").textContent = r.crashPoint.toFixed(2) + "x";
+    $("#supPill").hidden = false;
+    $("#adminBtn").hidden = false;       // the code doubles as the admin key
+    updateAction();
+  }catch(e){
+    $("#supPill").hidden = true;
+    const msg = String((e && e.message) || "");
+    if (/קוד/.test(msg)){                // wrong code — forget it, switch off
+      store.set("avSupCode", "");
+      supMode = false; store.set("avSup", false);
+    }
+    if (msg) toastErr(e);
+  }
+}
+let supTaps = [];
+$("#brand").addEventListener("click", () => {
+  const t = performance.now();
+  supTaps = supTaps.filter(x => t - x < 1600);
+  supTaps.push(t);
+  if (supTaps.length < 5) return;
+  supTaps = [];
+  if (!supMode){
+    let code = store.get("avSupCode", "");
+    if (!code){
+      code = (prompt("קוד מנהל:") || "").trim();
+      if (!code) return;
+      store.set("avSupCode", code);
+    }
+    supMode = true; store.set("avSup", true);
+    supPeek();
+  } else {
+    supMode = false; store.set("avSup", false);
+    supRound = "";
+    $("#supPill").hidden = true;
+    $("#adminBtn").hidden = !isAdminUser;
+    updateAction();
+  }
+  play("ui", 0.3);
+});
 
 /* =====================================================================
    TICKER — real top winners + real chat, stock-style
@@ -1695,6 +1769,7 @@ function onWaiting(){
   }
   setBetValue(betValue());
   renderPlayers(); updateAction(); buildTicker();
+  supPeek();                       // supervisor: reveal the fresh round
 }
 function onFlying(){
   $("#countdown").hidden = true;
@@ -1939,7 +2014,8 @@ $("#admPlayers").addEventListener("click", async e => {
   const amount = Number(prompt(`כמה צ'יפים להטעין ל-${row.dataset.name}? (מספר שלילי = הורדה)`));
   if (!amount) return;
   try{
-    const r = await FX("avCredit", {uid: row.dataset.uid, amount});
+    const r = await FX("avCredit",
+      {uid: row.dataset.uid, amount, code: store.get("avSupCode", "")});
     /* clock already noted by FX with rtt */
     play("bigwin", 0.5);
   }catch(err){ toastErr(err); }
@@ -1970,7 +2046,10 @@ function frame(){
     if (el >= S.waitMs + 150) maybeTick();
 
   } else if (S.phase === "flying"){
-    S.mult = clamp(multAt(el), 1, 5000);
+    /* render 150ms behind the server clock: what you see is never MORE
+       than what a press would get (the server also forgives 250ms of
+       network on top), so the shown number is one you can actually take */
+    S.mult = clamp(multAt(el - 150), 1, 5000);
     const mEl = $("#mult");
     mEl.textContent = S.mult.toFixed(2) + "x";
     if (!mEl.classList.contains("dead") && !mEl.classList.contains("safe"))
@@ -1989,6 +2068,8 @@ function frame(){
     }
     const ca = $("#cashAmt");
     if (ca && myBet && !myBet.cashedAt) ca.textContent = fmt(myBet.amount) + " → " + fmt(myBet.amount * S.mult) + " chips";
+    /* bots and auto-cashers visibly bail out as the plane passes their target */
+    if (now - lastPlayersRender > 450){ lastPlayersRender = now; renderPlayers(); }
     // nudge the server: only it knows when the crash lands
     if (el > 1200) maybeTick();
 

@@ -465,6 +465,11 @@ input{font-family:inherit;color:inherit}
   width:100%; height:48px; border-radius:var(--radius-m); font-size:16px; font-weight:900;
   background:linear-gradient(180deg,#E8CB8B,var(--pt-gold) 45%,var(--pt-gold-deep)); color:#161006;
 }
+#brokeClose{
+  width:100%; height:42px; margin-top:8px; border-radius:var(--radius-m);
+  font-size:13.5px; font-weight:700; color:var(--pt-dim);
+  background:var(--pt-card); border:1px solid var(--pt-line);
+}
 
 /* ---------- intro splash: ORIZIS → AVIATORIZIS → take off ---------- */
 #splash{
@@ -669,6 +674,7 @@ input{font-family:inherit;color:inherit}
     <h2>Out of chips</h2>
     <p>These are play-money chips, no real money involved.<br>Grab a fresh stack and get back in the game.</p>
     <button id="refillBtn">+ 10,000 chips</button>
+    <button id="brokeClose">Just watch</button>
   </div>
 </div>
 
@@ -1017,7 +1023,10 @@ function doCrash(){
   pushHistory(S.crashPoint);
   if (S.bet && !S.bet.cashed){ S.bet.lost = true; addNet("You", -S.bet.amount); }
   renderPlayers(); updateAction();
-  if (balance < MIN_BET && !S.queued) setTimeout(() => $("#brokeModal").classList.add("on"), 900);
+  if (balance < MIN_BET && !S.queued && !S.brokeShown){
+    S.brokeShown = true;   // ask once; "Just watch" means watch in peace
+    setTimeout(() => $("#brokeModal").classList.add("on"), 900);
+  }
 }
 function pushHistory(m){
   history.unshift(Math.round(m * 100) / 100);
@@ -1626,8 +1635,10 @@ $("#soundBtn").addEventListener("click", () => {
   else if (S.phase === "flying") toneStart();
 });
 $("#backBtn").addEventListener("click", () => { location.href = "index.html"; });
+$("#brokeClose").addEventListener("click", () => { $("#brokeModal").classList.remove("on"); play("ui", 0.25); });
 $("#refillBtn").addEventListener("click", () => {
   balance += START_CHIPS;
+  S.brokeShown = false;
   setBalance(balance);
   store.set("pt_av_chips", balance);
   $("#brokeModal").classList.remove("on");

@@ -8894,9 +8894,12 @@ function BackofficeView({
   }, balBox && ReactDOM.createPortal((() => {
     const t = balBox.target;
     const amt = Math.max(0, parseFloat(balBox.val) || 0);
-    const myAfter = round2((user.balance || 0) + (balBox.isDeposit ? -amt : amt));
+    const bankUid = (window.__club || {}).ownerUid || user.uid;
+    const bankMem = usersList.find(x => x.uid === bankUid) || {};
+    const bankBal = Number(bankMem.balance) || 0;
+    const bankAfter = round2(bankBal + (balBox.isDeposit ? -amt : amt));
     const theirAfter = round2((Number(t.balance) || 0) + (balBox.isDeposit ? amt : -amt));
-    const bad = balBox.isDeposit ? myAfter < 0 : theirAfter < 0;
+    const bad = balBox.isDeposit ? bankAfter < 0 : theirAfter < 0;
     return React.createElement("div", {
       className: "fixed inset-0 z-[460] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
       onClick: () => setBalBox(null)
@@ -8907,7 +8910,7 @@ function BackofficeView({
       className: "text-lg font-black text-white mb-1"
     }, balBox.isDeposit ? '⬆️ Deposit to ' : '⬇️ Withdraw from ', t.username), React.createElement("p", {
       className: "text-[11px] text-slate-400 font-bold mb-4"
-    }, balBox.isDeposit ? 'Chips move from YOUR balance to the player.' : "Chips move from the player's balance to YOURS."), React.createElement("div", {
+    }, balBox.isDeposit ? 'Chips move from the club bank to the player.' : "Chips move from the player's balance back to the club bank."), React.createElement("div", {
       className: "flex gap-2 mb-3"
     }, [100, 500, 1000, 5000].map(v => React.createElement("button", {
       key: v,
@@ -8916,7 +8919,14 @@ function BackofficeView({
         val: String(v)
       })),
       className: `flex-1 py-2 rounded-xl font-black text-xs border ${String(v) === balBox.val ? 'bg-gold-400 text-slate-900 border-gold-400' : 'bg-slate-900 text-slate-300 border-white/10 hover:text-white'}`
-    }, formatShort(v))), React.createElement("input", {
+    }, formatShort(v))), !balBox.isDeposit && (Number(t.balance) || 0) > 0 && React.createElement("button", {
+      onClick: () => setBalBox(b => ({
+        ...b,
+        val: String(round2(Number(t.balance) || 0))
+      })),
+      className: `flex-1 py-2 rounded-xl font-black text-xs border ${String(round2(Number(t.balance) || 0)) === balBox.val ? 'bg-gold-400 text-slate-900 border-gold-400' : 'bg-slate-900 text-amber-300 border-amber-400/40 hover:text-white'}`,
+      title: "Withdraw the player's entire balance to the club bank"
+    }, "All"), React.createElement("input", {
       type: "number",
       value: balBox.val,
       onChange: e => setBalBox(b => ({
@@ -8932,9 +8942,9 @@ function BackofficeView({
       className: "flex justify-between"
     }, React.createElement("span", {
       className: "text-slate-400"
-    }, "You"), React.createElement("span", {
-      className: myAfter < 0 ? 'text-rose-400' : 'text-white'
-    }, formatMoney(user.balance || 0), " → ", formatMoney(myAfter))), React.createElement("div", {
+    }, "🏛️ Club bank"), React.createElement("span", {
+      className: bankAfter < 0 ? 'text-rose-400' : 'text-white'
+    }, formatMoney(bankBal), " → ", formatMoney(bankAfter))), React.createElement("div", {
       className: "flex justify-between"
     }, React.createElement("span", {
       className: "text-slate-400"

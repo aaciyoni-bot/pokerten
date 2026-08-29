@@ -1044,7 +1044,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
@@ -1067,6 +1067,36 @@
             .catch(() => setPersistence(_auth, browserLocalPersistence))
             .catch(() => {});
         window.fb.signInAnonymously = async (a) => { await _persist; return signInAnonymously(a || _auth); };
+        // ---- verified phone sign-in (SMS one-time code) --------------------
+        // Firebase insists on a reCAPTCHA before it will send an SMS; invisible
+        // means the player never sees it unless Google decides the traffic is
+        // suspicious. The verifier is built once and reused: building a second
+        // one over the same container throws.
+        window.fb.phoneSend = async (e164) => {
+            await _persist;
+            if (!document.getElementById('pt-recaptcha')) {
+                const el = document.createElement('div');
+                el.id = 'pt-recaptcha';
+                el.style.display = 'none';
+                document.body.appendChild(el);
+            }
+            if (!window.__ptRecap) window.__ptRecap = new RecaptchaVerifier(_auth, 'pt-recaptcha', { size: 'invisible' });
+            window.__ptConfirm = await signInWithPhoneNumber(_auth, e164, window.__ptRecap);
+            return true;
+        };
+        window.fb.phoneVerify = async (code) => {
+            if (!window.__ptConfirm) throw Object.assign(new Error('no pending code'), { code: 'auth/no-pending-code' });
+            return window.__ptConfirm.confirm(String(code || '').trim());
+        };
+        // A used or failed verifier cannot send again — tear it down so the
+        // next attempt starts clean instead of failing silently.
+        window.fb.phoneReset = () => {
+            try { if (window.__ptRecap) window.__ptRecap.clear(); } catch (e) {}
+            const el = document.getElementById('pt-recaptcha');
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+            window.__ptRecap = null;
+            window.__ptConfirm = null;
+        };
         const _fx = getFunctions(app);
         window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
         // Robust Google sign-in: popup FIRST on every device. signInWithRedirect
@@ -4006,21 +4036,27 @@ function App() {
       // will have when the join request lands, so the name becomes the
       // username and the number becomes the player ID — the number the owner
       // approves by, and the one the guest can never change afterwards.
-      const isGuest = !!user.isAnonymous || !email;
+      // A verified phone is a real identity: the number was proved by SMS
+      // before this account existed. Only an anonymous session with neither an
+      // email nor a number is a guest.
+      const phone = (user.phoneNumber || '').trim();
+      const isGuest = !phone && (!!user.isAnonymous || !email);
       const pid = genPlayerId();
       const guestName = (window.__guestName || '').trim();
-      const guestNumber = (window.__guestNumber || '').trim();
+      const guestNumber = phone || (window.__guestNumber || '').trim();
       const newUser = {
-        username: isGuest ? guestName || 'אורח ' + pid.slice(0, 3) : user.displayName || 'Player',
+        username: guestName || (isGuest ? 'אורח ' + pid.slice(0, 3) : user.displayName || 'Player'),
         email: email,
         googleName: user.displayName || '',
         role: isSuper ? ROLES.SUPER_ADMIN : ROLES.PLAYER,
         status: isSuper || isGod ? 'approved' : 'pending',
-        playerId: isGuest && guestNumber ? guestNumber : pid,
+        playerId: guestNumber || pid,
         balance: isSuper ? 10000000 : 0,
         clubProfits: 0,
         isBot: false,
         isGuest: isGuest,
+        phone: phone,
+        phoneVerified: !!phone,
         managedGames: [],
         stats: {
           gamesPlayed: 0,
@@ -4808,28 +4844,80 @@ function AuthView() {
   // Guest sign-in: a name and a number, nothing else. The pair rides to
   // fetchOrInitUser on window, because an anonymous sign-in hands back a uid
   // and nothing else — this is the only moment the account can be named.
-  const [guestOpen, setGuestOpen] = useState(false);
+  // Sign-in by verified phone: the number is proved by an SMS code before an
+  // account exists at all, so the number the owner approves is a number that
+  // is really the player's. 'idle' -> 'phone' -> 'code'.
+  const [step, setStep] = useState('idle');
   const [gName, setGName] = useState('');
   const [gNum, setGNum] = useState('');
+  const [gCode, setGCode] = useState('');
   const [gErr, setGErr] = useState('');
   const [gBusy, setGBusy] = useState(false);
-  const doGuestLogin = async () => {
+  const [sentAt, setSentAt] = useState(0);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (step !== 'code') return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [step]);
+  const waitLeft = Math.max(0, 45 - Math.floor((now - sentAt) / 1000));
+  // Israeli numbers are typed as 05X-XXXXXXX; Firebase wants E.164. A number
+  // typed with a leading + is passed through, so a player abroad still works.
+  const toE164 = raw => {
+    const t = String(raw || '').trim().replace(/[^0-9+]/g, '');
+    if (t.startsWith('+')) return t;
+    const d = t.replace(/\D/g, '');
+    if (d.startsWith('972')) return '+' + d;
+    if (d.startsWith('0')) return '+972' + d.slice(1);
+    return '+972' + d;
+  };
+  const smsError = e => {
+    const c = (e && e.code) || '';
+    if (c === 'auth/invalid-phone-number') return 'מספר לא תקין';
+    if (c === 'auth/too-many-requests') return 'יותר מדי ניסיונות — נסה שוב בעוד כמה דקות';
+    if (c === 'auth/invalid-verification-code') return 'הקוד שגוי — בדוק שוב';
+    if (c === 'auth/code-expired') return 'הקוד פג תוקף — שלח קוד חדש';
+    if (c === 'auth/quota-exceeded') return 'מכסת ה-SMS נגמרה להיום';
+    if (c === 'auth/operation-not-allowed') return 'כניסה בטלפון כבויה — יש להפעיל Phone ב-Firebase Console';
+    if (c === 'auth/captcha-check-failed' || c === 'auth/invalid-app-credential') return 'אימות הדפדפן נכשל — רענן את הדף ונסה שוב';
+    return 'שליחה נכשלה, נסה שוב';
+  };
+  const doSendCode = async () => {
     const name = gName.trim();
-    const num = gNum.trim();
+    const e164 = toE164(gNum);
     if (name.length < 2) return setGErr('צריך שם — לפחות 2 תווים');
-    if (num.length < 3) return setGErr('צריך מספר — לפחות 3 ספרות');
+    if (!/^\+\d{9,15}$/.test(e164)) return setGErr('מספר לא תקין — לדוגמה 0501234567');
     setGErr('');
     setGBusy(true);
-    window.__guestName = name;
-    window.__guestNumber = num;
     try {
-      await window.fb.signInAnonymously(window.fb.auth);
+      await window.fb.phoneSend(e164);
+      setSentAt(Date.now());
+      setNow(Date.now());
+      setGCode('');
+      setStep('code');
+    } catch (e) {
+      try { window.fb.phoneReset(); } catch (e2) {}
+      setGErr(smsError(e));
+    }
+    setGBusy(false);
+  };
+  const doVerify = async () => {
+    const code = gCode.trim();
+    if (code.length < 6) return setGErr('צריך את 6 הספרות מה-SMS');
+    setGErr('');
+    setGBusy(true);
+    // The name rides on window: a phone sign-in hands back a uid and a number,
+    // and this is the only moment the account can be named.
+    window.__guestName = gName.trim();
+    window.__guestNumber = toE164(gNum);
+    try {
+      await window.fb.phoneVerify(code);
       // success: onAuthStateChanged takes over and this screen unmounts
     } catch (e) {
       window.__guestName = '';
       window.__guestNumber = '';
       setGBusy(false);
-      setGErr((e && e.code) === 'auth/operation-not-allowed' ? 'כניסת אורח כבויה — יש להפעיל Anonymous ב-Firebase Console' : 'כניסת אורח נכשלה, נסה שוב');
+      setGErr(smsError(e));
     }
   };
   const inputCls = "w-full bg-slate-950 border border-white/12 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-gold-400/60 text-[15px]";
@@ -4883,10 +4971,10 @@ function AuthView() {
     }
   }, "או"), React.createElement("div", {
     className: "flex-1 h-px bg-white/10"
-  })), !guestOpen ? React.createElement("button", {
-    onClick: () => setGuestOpen(true),
+  })), step === 'idle' ? React.createElement("button", {
+    onClick: () => setStep('phone'),
     className: "w-full bg-slate-900/80 hover:bg-slate-800 border border-gold-400/30 text-gold-400 py-3.5 px-6 rounded-xl font-black text-[15px] transition-transform hover:scale-[1.02]"
-  }, "👤 כניסה כאורח") : React.createElement("div", {
+  }, "\uD83D\uDCF1 כניסה עם מספר טלפון") : step === 'phone' ? React.createElement("div", {
     dir: "rtl",
     className: "text-right space-y-2.5"
   }, React.createElement("input", {
@@ -4901,12 +4989,13 @@ function AuthView() {
   }), React.createElement("input", {
     value: gNum,
     onChange: e => {
-      setGNum(e.target.value.replace(/[^0-9]/g, ''));
+      setGNum(e.target.value.replace(/[^0-9+]/g, ''));
       setGErr('');
     },
-    inputMode: "numeric",
-    maxLength: 15,
-    placeholder: "מספר טלפון",
+    inputMode: "tel",
+    autoComplete: "tel",
+    maxLength: 16,
+    placeholder: "05X-XXXXXXX",
     className: inputCls,
     dir: "ltr"
   }), React.createElement("p", {
@@ -4914,22 +5003,73 @@ function AuthView() {
     style: {
       color: 'var(--pt-text-2)'
     }
-  }, "בעל הקלאב יאשר אותך לפי השם והמספר. את המספר לא ניתן לשנות אחר-כך."), gErr && React.createElement("p", {
+  }, "נשלח קוד ב-SMS. המספר המאומת הוא מספר השחקן שלך — בעל הקלאב מאשר לפיו, ואי אפשר לשנות אותו אחר-כך."), gErr && React.createElement("p", {
     className: "text-[12px] font-bold text-rose-400"
   }, gErr), React.createElement("button", {
-    onClick: doGuestLogin,
+    onClick: doSendCode,
     disabled: gBusy,
     className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-60 text-white py-3.5 rounded-xl font-black text-[15px] shadow-lg"
-  }, gBusy ? "רגע..." : "המשך כאורח"), React.createElement("button", {
+  }, gBusy ? "שולח..." : "שלח לי קוד"), React.createElement("button", {
     onClick: () => {
-      setGuestOpen(false);
+      setStep('idle');
       setGErr('');
     },
     className: "w-full text-[12px] font-bold underline",
     style: {
       color: 'var(--pt-text-2)'
     }
-  }, "חזרה")), React.createElement(InstallBanner, {
+  }, "חזרה")) : React.createElement("div", {
+    dir: "rtl",
+    className: "text-right space-y-2.5"
+  }, React.createElement("p", {
+    className: "text-[12px] font-bold",
+    style: {
+      color: 'var(--pt-text-2)'
+    }
+  }, "שלחנו קוד בן 6 ספרות אל ", React.createElement("span", {
+    dir: "ltr",
+    className: "text-gold-400"
+  }, toE164(gNum))), React.createElement("input", {
+    value: gCode,
+    onChange: e => {
+      setGCode(e.target.value.replace(/[^0-9]/g, '').slice(0, 6));
+      setGErr('');
+    },
+    inputMode: "numeric",
+    autoComplete: "one-time-code",
+    maxLength: 6,
+    placeholder: "------",
+    className: inputCls + " text-center tracking-[0.6em] text-xl",
+    dir: "ltr"
+  }), gErr && React.createElement("p", {
+    className: "text-[12px] font-bold text-rose-400"
+  }, gErr), React.createElement("button", {
+    onClick: doVerify,
+    disabled: gBusy || gCode.length < 6,
+    className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-60 text-white py-3.5 rounded-xl font-black text-[15px] shadow-lg"
+  }, gBusy ? "מאמת..." : "אימות וכניסה"), React.createElement("button", {
+    onClick: () => {
+      try { window.fb.phoneReset(); } catch (e) {}
+      setGErr('');
+      doSendCode();
+    },
+    disabled: gBusy || waitLeft > 0,
+    className: "w-full text-[12px] font-bold underline disabled:opacity-50",
+    style: {
+      color: 'var(--pt-text-2)'
+    }
+  }, waitLeft > 0 ? "שליחה חוזרת בעוד " + waitLeft : "שלח קוד שוב"), React.createElement("button", {
+    onClick: () => {
+      try { window.fb.phoneReset(); } catch (e) {}
+      setGCode('');
+      setGErr('');
+      setStep('phone');
+    },
+    className: "w-full text-[12px] font-bold underline",
+    style: {
+      color: 'var(--pt-text-2)'
+    }
+  }, "שינוי מספר")), React.createElement(InstallBanner, {
     variant: "auth"
   })), React.createElement("div", {
     className: "absolute bottom-4 inset-x-0 z-20 flex flex-col items-center gap-2"
@@ -6735,10 +6875,12 @@ function LobbyView({
     }
   };
   const bwConf = clubSettings?.bonusWheel || {};
-  // Bonus games (wheel + scratch card) are OFF unless the club turns them on.
-  // The switch lives in club settings — flipping it there brings them back
-  // with their prizes intact; nothing here is deleted.
-  const bonusEnabled = bwConf.enabled === true;
+  // Bonus games (wheel + scratch card) are OFF in the build. A club setting is
+  // not enough: this club's doc still says enabled:true from before, and the
+  // gift button kept showing in the lobby because of it. Nothing is deleted —
+  // set BONUS_GAMES_OFF to false and the club switch is in charge again.
+  const BONUS_GAMES_OFF = true;
+  const bonusEnabled = !BONUS_GAMES_OFF && bwConf.enabled === true;
   const BONUS_SEGS = Array.isArray(bwConf.prizes) && bwConf.prizes.length === 8 ? bwConf.prizes.map(x => Number(x) || 0) : [5, 10, 20, 30, 50, 75, 100, 200];
   const BONUS_W = [800, 100, 35, 25, 18, 12, 5, 5];
   const [bonusOpen, setBonusOpen] = useState(false);
@@ -7153,7 +7295,18 @@ function LobbyView({
   }))), React.createElement("button", {
     onClick: () => setCashierOpen(true),
     className: "btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
-  }, "💳 Cashier")), React.createElement("div", {
+  }, "💳 Cashier"), React.createElement("button", {
+    // The settlement site, one tap from the lobby. It was only inside the
+    // cashier, which is two taps and out of sight — the owner could not find it.
+    onClick: () => {
+      try {
+        window.open('https://clubculation.com/pokerten', '_blank', 'noopener');
+      } catch (e) {}
+    },
+    title: "פירוט חשבון / התחשבנות",
+    "aria-label": "Settlement",
+    className: "ml-1.5 px-3 py-2 text-[12px] font-black rounded-xl shrink-0 bg-slate-900 border border-emerald-500/40 text-emerald-300"
+  }, "📊")), React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
   }, bonusEnabled && React.createElement("button", {
     onClick: () => setGiftOpen(true),

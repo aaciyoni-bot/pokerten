@@ -286,6 +286,10 @@ exports.avCancelBet = onCall(AV_OPTS, async (request) => {
 exports.avCashout = onCall(AV_OPTS, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
+  /* what the player's screen showed at the press. Payment is
+     min(seen, server) — claiming high changes nothing, claiming what you
+     saw makes the screen exactly truthful. */
+  const seen = Number(request.data && request.data.seen) || 0;
   const pRef = adb.doc(`aviatorPlayers/${uid}`);
   const out = await adb.runTransaction(async (tx) => {
     const now = Date.now();
@@ -303,11 +307,12 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
       throw new HttpsError("failed-precondition", "אין הימור פעיל");
     }
     const amount = bSnap.data().amount;
-    const win = Math.floor(amount * mult);
-    tx.update(bRef, {cashedAt: mult, win});
+    const payMult = seen >= 1.01 ? Math.min(mult, round2(seen)) : mult;
+    const win = Math.floor(amount * payMult);
+    tx.update(bRef, {cashedAt: payMult, win});
     tx.update(pRef, {balance: FieldValue.increment(win), net: FieldValue.increment(win - amount)});
-    ledger(tx, {uid, type: "cashout", amount: win, roundId: s.roundId, mult, by: "self"});
-    return {mult, win};
+    ledger(tx, {uid, type: "cashout", amount: win, roundId: s.roundId, mult: payMult, by: "self"});
+    return {mult: payMult, win};
   });
   return {...out, serverNow: Date.now()};
 });

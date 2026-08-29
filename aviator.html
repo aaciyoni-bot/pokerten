@@ -671,7 +671,19 @@ function betValue(){
   const v = parseInt($("#betInput").value.replace(/[^0-9]/g, ""), 10) || 0;
   return clamp(v, 0, 1e7);
 }
-function setBetValue(v){ $("#betInput").value = fmt(clamp(Math.round(v), MIN_BET, Math.max(MIN_BET, balance))); }
+/* while the betting window is open, a placed bet stays editable: its
+   amount counts as spendable credit and edits re-price it live */
+function betCredit(){ return (S.phase === "waiting" && S.bet && !S.bet.cashed) ? S.bet.amount : 0; }
+function setBetValue(v){ $("#betInput").value = fmt(clamp(Math.round(v), MIN_BET, Math.max(MIN_BET, balance + betCredit()))); }
+function syncPlacedBet(){
+  if (!betCredit()) return;
+  const amt = betValue();
+  if (amt === S.bet.amount) return;
+  balance += S.bet.amount - amt;
+  S.bet.amount = amt;
+  setBalance(balance);
+  renderPlayers();
+}
 function placeBet(amount, silent){
   if (amount < MIN_BET || amount > balance) return false;
   balance -= amount;
@@ -1078,17 +1090,18 @@ $("#actionBtn").addEventListener("click", () => {
     S.queued = 0; play("ui", 0.3); updateAction();
   }
 });
-$("#minus").addEventListener("click", () => { unlockAudio(); setBetValue(betValue() - 25); play("ui", 0.22); updateAction(); });
-$("#plus").addEventListener("click",  () => { unlockAudio(); setBetValue(betValue() + 25); play("ui", 0.22); updateAction(); });
+$("#minus").addEventListener("click", () => { unlockAudio(); setBetValue(betValue() - 25); syncPlacedBet(); play("ui", 0.22); updateAction(); });
+$("#plus").addEventListener("click",  () => { unlockAudio(); setBetValue(betValue() + 25); syncPlacedBet(); play("ui", 0.22); updateAction(); });
 document.querySelectorAll(".chip").forEach(ch => ch.addEventListener("click", () => {
   unlockAudio(); play("chip", 0.4);
   if (ch.dataset.add) setBetValue(betValue() + +ch.dataset.add);
   else if (ch.dataset.mul) setBetValue(betValue() * +ch.dataset.mul);
-  else setBetValue(balance);
+  else setBetValue(balance + betCredit());
+  syncPlacedBet();
   updateAction();
 }));
 $("#betInput").addEventListener("input", updateAction);
-$("#betInput").addEventListener("blur", () => setBetValue(betValue()));
+$("#betInput").addEventListener("blur", () => { setBetValue(betValue()); syncPlacedBet(); updateAction(); });
 $("#autoSwitch").addEventListener("click", e => {
   unlockAudio(); autoOn = !autoOn;
   e.currentTarget.classList.toggle("on", autoOn);

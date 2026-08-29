@@ -14,8 +14,8 @@
   #join { position:fixed; inset:0; z-index:50; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:14px; text-align:center;
     background:linear-gradient(#6ec3ff 0%,#a9dcff 55%,#7bb04a 55.2%,#5c8a36 100%); }
-  #join .logo { font-weight:900; font-size:clamp(34px,8vw,64px); color:#fff; letter-spacing:2px;
-    text-shadow:3px 3px 0 #3a5f1f, 6px 6px 0 rgba(0,0,0,.25); font-family:Arial Black,Arial,sans-serif; }
+  #logoCanvas { image-rendering:pixelated; width:min(92vw,600px); height:auto;
+    filter:drop-shadow(0 6px 0 rgba(0,0,0,.25)); }
   #join .sub { color:#204d10; font-weight:700; font-size:18px; margin-top:-8px; }
   #join .card { background:rgba(0,0,0,.55); border:4px solid #2b2b2b; border-radius:10px;
     padding:22px 26px; display:flex; flex-direction:column; gap:12px; width:min(92vw,380px); }
@@ -83,7 +83,7 @@
 <canvas id="game"></canvas>
 
 <div id="join">
-  <div class="logo">SHIMONCRAFT</div>
+  <canvas id="logoCanvas"></canvas>
   <div class="sub">שמעון-קראפט · עולם הקוביות של שמעון</div>
   <div class="card">
     <label>איך קוראים לך?</label>
@@ -138,15 +138,15 @@ const OPAQUE = id => SOLID(id) && id !== GLASS && id !== LEAF;
 
 // everything is named like Minecraft, but with SHIMON first — that's the whole joke
 const ITEMS = [
-  { name:'שמעון-חרב',    en:'SHIMON SWORD',   ico:'🗡️', block:0 },
-  { name:'שמעון-מכוש',   en:'SHIMON PICKAXE', ico:'⛏️', block:0 },
-  { name:'שמעון-עפר',    en:'SHIMON DIRT',    ico:'🟫', block:DIRT },
-  { name:'שמעון-אבן',    en:'SHIMON STONE',   ico:'🪨', block:STONE },
-  { name:'שמעון-עץ',     en:'SHIMON WOOD',    ico:'🪵', block:LOG },
-  { name:'שמעון-קרשים',  en:'SHIMON PLANKS',  ico:'🟧', block:PLANK },
-  { name:'שמעון-זכוכית', en:'SHIMON GLASS',   ico:'🧊', block:GLASS },
-  { name:'שמעון-יהלום',  en:'SHIMON DIAMOND', ico:'💎', block:DIAMOND },
-  { name:'שמעון-TNT',    en:'SHIMON TNT',     ico:'🧨', block:TNT },
+  { name:'שמעון-חרב',    en:'SHIMONSWORD',   ico:'🗡️', block:0 },
+  { name:'שמעון-מכוש',   en:'SHIMONPICKAXE', ico:'⛏️', block:0 },
+  { name:'שמעון-עפר',    en:'SHIMONDIRT',    ico:'🟫', block:DIRT },
+  { name:'שמעון-אבן',    en:'SHIMONSTONE',   ico:'🪨', block:STONE },
+  { name:'שמעון-עץ',     en:'SHIMONWOOD',    ico:'🪵', block:LOG },
+  { name:'שמעון-קרשים',  en:'SHIMONPLANKS',  ico:'🟧', block:PLANK },
+  { name:'שמעון-זכוכית', en:'SHIMONGLASS',   ico:'🧊', block:GLASS },
+  { name:'שמעון-יהלום',  en:'SHIMONDIAMOND', ico:'💎', block:DIAMOND },
+  { name:'שמעון-TNT',    en:'SHIMONTNT',     ico:'🧨', block:TNT },
 ];
 const SKINS = ['#e74c3c','#3498db','#2ecc71','#f1c40f','#9b59b6','#e67e22','#1abc9c','#fd79a8'];
 
@@ -461,7 +461,7 @@ function doBreak(){
   sndBreak();
   setBlockLocal(hit.x,hit.y,hit.z,AIR);
   net.sendEdit(hit.x,hit.y,hit.z,AIR);
-  if (ITEMS[selected-1]?.en==='SHIMON SWORD') swing();
+  if (ITEMS[selected-1]?.en==='SHIMONSWORD') swing();
 }
 function doPlace(){
   const item=ITEMS[selected-1];
@@ -517,7 +517,7 @@ function swing(){ swingT=0.28; }
 function updateHand(dt){
   const item=ITEMS[selected-1];
   hand.material.color.set(item?.block ? (TILE_COLORS[item.block]||0xc49254)
-    : item?.en==='SHIMON SWORD' ? 0xd9dde3 : 0x9a9a9a);
+    : item?.en==='SHIMONSWORD' ? 0xd9dde3 : 0x9a9a9a);
   if (swingT>0){ swingT-=dt; hand.rotation.x=-Math.sin((0.28-swingT)/0.28*Math.PI)*1.1; }
   else hand.rotation.x=0;
 }
@@ -752,8 +752,65 @@ const net = {
   },
 };
 
+/* ════════════════════════ logo — Minecraft-style pixel letters, drawn in code ════════════════════════ */
+// 5x7 chunky pixel font. 1 = stone face, 2 = dark pixel (the creeper face hides in the A)
+const PIXFONT = {
+  S:['11111','10000','10000','11111','00001','00001','11111'],
+  H:['10001','10001','10001','11111','10001','10001','10001'],
+  I:['111','010','010','010','010','010','111'],
+  M:['10001','11011','10101','10101','10001','10001','10001'],
+  O:['11111','10001','10001','10001','10001','10001','11111'],
+  N:['10001','11001','10101','10011','10001','10001','10001'],
+  C:['11111','10000','10000','10000','10000','10000','11111'],
+  R:['11110','10001','10001','11110','10100','10010','10001'],
+  A:['01110','11111','12121','11111','11211','12221','10001'],
+  F:['11111','10000','10000','11110','10000','10000','10000'],
+  T:['11111','00100','00100','00100','00100','00100','00100'],
+};
+function drawLogo(canvasId, word){
+  const s=8, depth=4, rows=7;
+  const glyphs=[...word].map(ch=>PIXFONT[ch]);
+  const cols=glyphs.reduce((a,g)=>a+g[0].length,0)+glyphs.length-1;
+  const cv=document.getElementById(canvasId);
+  cv.width=cols*s+depth+2; cv.height=rows*s+depth+2;
+  const g=cv.getContext('2d');
+  const cells=[]; // {cx,cy,face}
+  let ox=0;
+  for(const gl of glyphs){
+    for(let r=0;r<rows;r++) for(let c=0;c<gl[r].length;c++){
+      const v=gl[r][c];
+      if(v!=='0') cells.push({cx:ox+c, cy:r, dark:v==='2'});
+    }
+    ox+=gl[0].length+1;
+  }
+  const px=(cx,cy,color,grow=0)=>{ g.fillStyle=color;
+    g.fillRect(1+cx*s-grow, 1+cy*s-grow, s+grow*2, s+grow*2); };
+  // pass 1: dark outline around everything (front + extrusion footprint)
+  for(const c of cells) for(let d=depth;d>=0;d--){
+    g.fillStyle='#141414';
+    g.fillRect(1+c.cx*s+d-1, 1+c.cy*s+d-1, s+2, s+2);
+  }
+  // pass 2: 3D extrusion going down-right, darker toward the back
+  for(const c of cells) for(let d=depth;d>=1;d--){
+    const f=0.16+0.10*(depth-d)/depth;
+    g.fillStyle=c.dark?'#101010':`rgb(${52*f/0.26|0},${54*f/0.26|0},${58*f/0.26|0})`;
+    g.fillRect(1+c.cx*s+d, 1+c.cy*s+d, s, s);
+  }
+  // pass 3: stone front faces — brighter on top, noisy, with sparse cracks
+  for(const c of cells){
+    if(c.dark){ px(c.cx,c.cy,'#1f1f1f'); continue; }
+    const t=c.cy/(rows-1);
+    const base=232-t*62;
+    const n=(hash2(c.cx*13+7,c.cy*29+3)-0.5)*26;
+    let v=Math.max(120,Math.min(245,base+n))|0;
+    if(hash2(c.cx*31,c.cy*17)>0.93) v-=45; // crack pixel
+    px(c.cx,c.cy,`rgb(${v},${v},${v+4})`);
+  }
+}
+
 /* ════════════════════════ UI ════════════════════════ */
 const $=id=>document.getElementById(id);
+drawLogo('logoCanvas','SHIMONCRAFT');
 const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
 if (isTouch) document.body.classList.add('touch');
 let myColor = SKINS[0];

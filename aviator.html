@@ -165,6 +165,16 @@ input{font-family:inherit;color:inherit}
   font-size:34px; font-weight:900; font-variant-numeric:tabular-nums; color:var(--pt-gold);
 }
 #cdLabel{font-size:12px; font-weight:700; letter-spacing:3.5px; color:var(--pt-dim); text-transform:uppercase}
+#beltSign{
+  display:flex; align-items:center; gap:7px; padding:6px 14px; border-radius:999px;
+  background:rgba(213,179,107,0.08); border:1px solid rgba(213,179,107,0.3);
+  font-size:11px; font-weight:800; letter-spacing:2px; color:var(--pt-gold); text-transform:uppercase;
+}
+#beltSign .dot{
+  width:8px; height:8px; border-radius:50%; background:var(--pt-gold);
+  box-shadow:0 0 8px rgba(213,179,107,0.9); animation:beltBlink 1.2s ease-in-out infinite;
+}
+@keyframes beltBlink{50%{opacity:0.35}}
 
 /* cashout toast */
 #winToast{
@@ -369,6 +379,7 @@ input{font-family:inherit;color:inherit}
       <div id="redFlash"></div>
       <div id="stageCenter">
         <div id="countdown" hidden>
+          <div id="beltSign"><span class="dot"></span>Fasten seatbelts</div>
           <div id="ringBox">
             <svg width="104" height="104" viewBox="0 0 104 104">
               <circle id="ringBg" cx="52" cy="52" r="46"></circle>
@@ -558,6 +569,50 @@ function toneStop(fade = 0.12){
 }
 function haptic(ms){ if (!REDUCED && navigator.vibrate) navigator.vibrate(ms); }
 
+/* cabin ambience: seatbelt-sign chime + radio call before takeoff */
+let noiseBuf = null;
+function noiseBuffer(){
+  if (noiseBuf) return noiseBuf;
+  const len = AC.sampleRate * 1.2;
+  noiseBuf = AC.createBuffer(1, len, AC.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  return noiseBuf;
+}
+function beltChime(){
+  if (muted || !AC || !audioUnlocked) return;
+  const t = AC.currentTime;
+  [[987, 0], [659, 0.3]].forEach(([f, d]) => {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = "sine"; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + d);
+    g.gain.linearRampToValueAtTime(0.09, t + d + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d + 1);
+    o.connect(g).connect(AC.destination);
+    o.start(t + d); o.stop(t + d + 1.1);
+  });
+}
+function radioCall(){
+  if (muted || !AC || !audioUnlocked) return;
+  const t = AC.currentTime;
+  const src = AC.createBufferSource(); src.buffer = noiseBuffer();
+  const bp = AC.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1600; bp.Q.value = 4.5;
+  const g = AC.createGain(); g.gain.value = 0;
+  src.connect(bp).connect(g).connect(AC.destination);
+  let tt = t + 0.06;
+  g.gain.setValueAtTime(0.001, t);
+  for (let i = 0; i < 7; i++){
+    g.gain.linearRampToValueAtTime(rand(0.02, 0.05), tt); tt += rand(0.05, 0.12);
+    g.gain.linearRampToValueAtTime(rand(0.003, 0.01), tt); tt += rand(0.03, 0.06);
+  }
+  g.gain.linearRampToValueAtTime(0.0001, tt + 0.04);
+  src.start(t); src.stop(tt + 0.15);
+  const o = AC.createOscillator(), og = AC.createGain();
+  o.frequency.value = 2300;
+  og.gain.setValueAtTime(0.04, tt); og.gain.exponentialRampToValueAtTime(0.0001, tt + 0.07);
+  o.connect(og).connect(AC.destination); o.start(tt); o.stop(tt + 0.09);
+}
+
 /* =====================================================================
    BOTS
    ===================================================================== */
@@ -610,7 +665,9 @@ function startWaiting(){
   S.bet = null;
   S.lastTickSec = -1;
   S.lastWholeMult = 1;
+  S.radioDone = false;
   makeBots();
+  beltChime();
   particles.length = 0;
   view.yMax = 2; view.xMax = 8;
   $("#flightNums").hidden = true;
@@ -836,6 +893,18 @@ addEventListener("resize", resize);
 
 const view = { xMax: 8, yMax: 2 };       // seconds, multiplier (smoothed)
 const PAD = { l: 6, r: 44, t: 18, b: 24 };
+
+/* world map far below (Natural Earth 110m land, equirectangular 720x360) */
+let worldPath = null, mapShift = 0;
+fetch("assets/world-110m.json").then(r => r.json()).then(polys => {
+  const p = new Path2D();
+  for (const poly of polys){
+    p.moveTo(poly[0], poly[1]);
+    for (let i = 2; i < poly.length; i += 2) p.lineTo(poly[i], poly[i + 1]);
+    p.closePath();
+  }
+  worldPath = p;
+}).catch(() => {});
 const particles = [];
 const dust = Array.from({ length: 42 }, () => ({
   x: Math.random(), y: Math.random(), z: rand(0.25, 1), r: rand(0.6, 1.8)
@@ -889,8 +958,27 @@ function draw(now){
   const flying = S.phase === "flying";
   const t = (now - S.phaseAt) / 1000;
 
-  /* --- dust parallax --- */
   const drift = flying ? (0.0006 + S.mult * 0.00025) : 0.00012;
+
+  /* --- world map drifting far below --- */
+  if (worldPath){
+    mapShift += drift * 210;
+    const ms = (H * 1.25) / 360;
+    const mw = 720 * ms;
+    const offX = mapShift % mw;
+    ctx.save();
+    ctx.fillStyle = "rgba(213,179,107,0.05)";
+    ctx.strokeStyle = "rgba(213,179,107,0.09)";
+    ctx.translate(-offX, -H * 0.18);
+    ctx.scale(ms, ms);
+    ctx.lineWidth = 1 / ms;
+    ctx.fill(worldPath); ctx.stroke(worldPath);
+    ctx.translate(720, 0);
+    ctx.fill(worldPath); ctx.stroke(worldPath);
+    ctx.restore();
+  }
+
+  /* --- dust parallax --- */
   ctx.save();
   for (const d of dust){
     d.x -= drift * d.z * 16;
@@ -1025,6 +1113,7 @@ function frame(now){
     if (sec !== S.lastTickSec){
       S.lastTickSec = sec;
       if (sec <= 3 && sec > 0) play("tick", 0.3, 0.02);
+      if (sec === 2 && !S.radioDone){ S.radioDone = true; radioCall(); }
     }
     let joined = false;
     for (const b of bots){

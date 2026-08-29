@@ -789,9 +789,23 @@ function trueEquityVs(mine, oppHands, board, gameType) {
    neither made nor drawing — client parity (index.html botHandBody). */
 function handBody(cards, board, gameType) {
   try {
-    if (!cards || !cards.length || !board || board.length < 3) return {made: 2, outs: 0};
+    if (!cards || !cards.length || !board || board.length < 3) return {made: 3, outs: 0};
+    const RV = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, J: 11, Q: 12, K: 13, A: 14};
     const sc = C.bestScoreFull(cards, board, gameType);
-    const made = sc >= 2000000 ? 2 : sc >= 1000000 ? 1 : 0;
+    // Which pair, and is it even mine? A three on A-K-3 is a pair and it is
+    // worth nothing. 3 = two pair or better, 2 = top pair / overpair,
+    // 1 = second pair or worse, 0 = nothing, or a pair sitting on the board.
+    let made;
+    if (sc >= 2000000) {
+      made = 3;
+    } else if (sc >= 1000000) {
+      const pairRank = Math.floor((sc - 1000000) / 10000);
+      const mine = cards.map((c) => RV[c.val] || 0);
+      const topBoard = Math.max.apply(null, (board || []).map((c) => RV[c.val] || 0));
+      made = !mine.includes(pairRank) ? 0 : pairRank >= topBoard ? 2 : 1;
+    } else {
+      made = 0;
+    }
     if (board.length >= 5) return {made, outs: 0};
     const known = new Set([...board, ...cards].map((c) => c.id));
     let outs = 0;
@@ -800,7 +814,7 @@ function handBody(cards, board, gameType) {
     });
     return {made, outs};
   } catch (e) {
-    return {made: 2, outs: 0};
+    return {made: 3, outs: 0};
   }
 }
 
@@ -852,7 +866,8 @@ function botAction(S, uid) {
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
   const body = handBody(cards, g.board || [], gt);
-  const hasBody = body.made >= 1 || body.outs >= 8;
+  const hasBody = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
+  const hasAnything = body.made >= 1 || body.outs >= 4; // may call a small one
   // The god guard only exists on a table where every seat is a bot. One real
   // player sits down and it is off for the whole table, permanently.
   const botsOnly = Object.values(S.players).every((p) => p.isBot);
@@ -897,10 +912,13 @@ function botAction(S, uid) {
   // a pair nor a real draw folds. No exceptions, no miracle river.
   if (toCall >= stack) return hasSomething() && eq > Math.max(0.45, potOdds) ? {action: "call"} : {action: "fold"};
   // No pair, no draw, facing a bet: fold at any price — client parity.
-  if (!hasSomething()) {
+  if (!hasAnything) {
     const peek = body.outs >= 4 && (g.board || []).length < 5 && toCall <= potNow * 0.1;
     if (!peek) return {action: "fold"};
   }
+  // Second pair or worse can pay off a small bet. It cannot play a big pot,
+  // and it never calls off a stack — that is the 10-3 on A-K-3.
+  if (!hasSomething() && toCall > potNow * 0.4) return {action: "fold"};
   if (eq > potOdds + 0.18 && eq > 0.62) {
     if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
     return {action: "call"};

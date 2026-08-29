@@ -84,9 +84,8 @@ const check = (n, ok, extra) => { if (ok) { pass++; console.log('PASS  ' + n); }
     setter.call(el, '000000');
     el.dispatchEvent(new Event('input', {bubbles: true}));
   });
-  await click('אימות וכניסה');
-  await pg.waitForTimeout(800);
-  check('a wrong code is rejected with a readable message',
+  await pg.waitForTimeout(900);
+  check('a wrong code is rejected the moment the sixth digit lands — no button press',
     await pg.evaluate(() => /הקוד שגוי/.test(document.body.innerText)));
   check('  he is still on the login screen', await pg.evaluate(() => /Sign in with Google/.test(document.body.innerText)));
   check('  the half-typed name did not leak into a global',
@@ -99,8 +98,7 @@ const check = (n, ok, extra) => { if (ok) { pass++; console.log('PASS  ' + n); }
     setter.call(el, '123456');
     el.dispatchEvent(new Event('input', {bubbles: true}));
   });
-  await click('אימות וכניסה');
-  await pg.waitForTimeout(3500);
+  await pg.waitForTimeout(3500);   // no click: six digits submit themselves
 
   const out = await pg.evaluate(() => {
     const S = window.__stubStore;
@@ -109,7 +107,8 @@ const check = (n, ok, extra) => { if (ok) { pass++; console.log('PASS  ' + n); }
       screen: document.body.innerText.slice(0, 90).replace(/\n/g, ' | '),
       leakedName: window.__guestName, leakedNum: window.__guestNumber};
   });
-  check('he is signed in and off the login screen', out.leftAuth, out.screen);
+  check('the right code signs him in ON ITS OWN — the keyboard can fill it and he is through',
+    out.leftAuth, out.screen);
   check('a users doc was created', !!out.u, JSON.stringify(out.u));
   if (out.u) {
     check('  username is the name he typed', out.u.username === NAME, out.u.username);

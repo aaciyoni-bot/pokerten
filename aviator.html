@@ -398,6 +398,10 @@ input{font-family:inherit;color:inherit}
   /* the stage must never outgrow its grid track and bleed over the
      bet panel — the track minimum is the floor, not the element's */
   #stage{min-height:0}
+  /* slim the chrome around the bet amount so 9-digit bankrolls fit */
+  .step{flex-basis:32px}
+  #autoBox{gap:4px; padding:8px 6px}
+  #autoInput{width:42px}
 }
 /* short phones: shave the chrome so the whole game fits the viewport */
 @media (max-width:899px) and (max-height:760px){
@@ -613,10 +617,10 @@ input{font-family:inherit;color:inherit}
       </div>
     </div>
     <div id="chips">
-      <button class="chip" data-add="25">25</button>
-      <button class="chip" data-add="100">100</button>
-      <button class="chip" data-add="500">500</button>
-      <button class="chip" data-add="1000">1K</button>
+      <button class="chip" data-pct="0.05">5%</button>
+      <button class="chip" data-pct="0.10">10%</button>
+      <button class="chip" data-pct="0.25">25%</button>
+      <button class="chip" data-pct="0.50">50%</button>
       <button class="chip mod" data-mul="0.5">½</button>
       <button class="chip mod" data-mul="2">×2</button>
       <button class="chip mod" data-max="1">MAX</button>
@@ -1015,12 +1019,34 @@ function pushHistory(m){
    ===================================================================== */
 function betValue(){
   const v = parseInt($("#betInput").value.replace(/[^0-9]/g, ""), 10) || 0;
-  return clamp(v, 0, 1e7);
+  return clamp(v, 0, Math.max(0, balance + betCredit()));
+}
+/* quick-bet amounts scale with the player's bankroll: percentages are
+   rounded to 2 significant digits, and the +/- step is ~1% of it */
+function niceAmount(v){
+  if (v < 100) return Math.round(v);
+  const p = 10 ** (Math.floor(Math.log10(v)) - 1);
+  return Math.round(v / p) * p;
+}
+function betStep(){
+  const spend = Math.max(balance + betCredit(), MIN_BET);
+  return Math.max(25, 10 ** Math.max(0, Math.floor(Math.log10(spend)) - 2));
 }
 /* while the betting window is open, a placed bet stays editable: its
    amount counts as spendable credit and edits re-price it live */
 function betCredit(){ return (S.phase === "waiting" && S.bet && !S.bet.cashed) ? S.bet.amount : 0; }
-function setBetValue(v){ $("#betInput").value = fmt(clamp(Math.round(v), MIN_BET, Math.max(MIN_BET, balance + betCredit()))); }
+function setBetValue(v){ $("#betInput").value = fmt(clamp(Math.round(v), MIN_BET, Math.max(MIN_BET, balance + betCredit()))); fitBetFont(); }
+/* shrink the bet font until the full amount fits the input */
+function fitBetFont(){
+  const el = $("#betInput");
+  el.style.fontSize = "";
+  let size = parseFloat(getComputedStyle(el).fontSize);
+  while (el.scrollWidth > el.clientWidth && size > 10){
+    size -= 0.5;
+    el.style.fontSize = size + "px";
+  }
+}
+addEventListener("resize", fitBetFont);
 function syncPlacedBet(){
   if (!betCredit()) return;
   const amt = betValue();
@@ -1523,17 +1549,17 @@ $("#actionBtn").addEventListener("click", () => {
     S.queued = 0; play("ui", 0.3); updateAction();
   }
 });
-$("#minus").addEventListener("click", () => { unlockAudio(); setBetValue(betValue() - 25); syncPlacedBet(); play("ui", 0.22); updateAction(); });
-$("#plus").addEventListener("click",  () => { unlockAudio(); setBetValue(betValue() + 25); syncPlacedBet(); play("ui", 0.22); updateAction(); });
+$("#minus").addEventListener("click", () => { unlockAudio(); setBetValue(betValue() - betStep()); syncPlacedBet(); play("ui", 0.22); updateAction(); });
+$("#plus").addEventListener("click",  () => { unlockAudio(); setBetValue(betValue() + betStep()); syncPlacedBet(); play("ui", 0.22); updateAction(); });
 document.querySelectorAll(".chip").forEach(ch => ch.addEventListener("click", () => {
   unlockAudio(); play("chip", 0.4);
-  if (ch.dataset.add) setBetValue(betValue() + +ch.dataset.add);
+  if (ch.dataset.pct) setBetValue(niceAmount((balance + betCredit()) * +ch.dataset.pct));
   else if (ch.dataset.mul) setBetValue(betValue() * +ch.dataset.mul);
   else setBetValue(balance + betCredit());
   syncPlacedBet();
   updateAction();
 }));
-$("#betInput").addEventListener("input", updateAction);
+$("#betInput").addEventListener("input", () => { fitBetFont(); updateAction(); });
 $("#betInput").addEventListener("blur", () => { setBetValue(betValue()); syncPlacedBet(); updateAction(); });
 $("#autoSwitch").addEventListener("click", e => {
   unlockAudio(); autoOn = !autoOn;

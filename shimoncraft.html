@@ -404,22 +404,24 @@ function blip(freq, dur, type='square', vol=0.12) {
   } catch(e){}
 }
 
-/* background music — מקהלת נוגנים: יוסי בכינור (lead), פסי בתוף (drum),
-   משה בחצוצרה (answer). A lively klezmer march in A minor, synthesized live. */
-const BEAT=0.45;                                              // ~133bpm march
-const NT={E4:329.63,G4:392.00,GS4:415.30,A4:440.00,B4:493.88,
-          C5:523.25,D5:587.33,E5:659.25,
-          A2:110.00,C3:130.81,D3:146.83,E2:82.41,E3:164.81,A3:220.00,GS3:207.65,F3:174.61};
-// [note, beats] — four 8-beat phrases; the last one gets the trumpet answering
+/* background music — "יוסי בכנור" (מקהלת נוגנים): the tune transcribed from the
+   sheet — 8 bars in C major over C and G7, each phrase four quarters + a whole.
+   Yossi's violin leads, Pesi's drum + bass keep time, Moshe's trumpet answers. */
+const BEAT=0.55;                                              // ~109bpm, easy 4/4
+const NT={B4:493.88,C5:523.25,D5:587.33,E5:659.25,G5:783.99,
+          E4:329.63,F4:349.23,G4:392.00,B3:246.94,D4:293.66,
+          C3:130.81,G3:196.00,G2:98.00,D3:146.83};
+// [note, beats] — the melody as written: quarters then a held whole per phrase
 const YOSSI_TUNE=[
-  ['E4',1],['A4',1],['B4',1],['C5',1.5],['B4',.5],['A4',1],['B4',2],
-  ['E4',1],['A4',1],['B4',1],['C5',1.5],['D5',.5],['C5',1],['B4',2],
-  ['E5',1],['D5',1],['C5',1],['B4',1.5],['A4',.5],['B4',1],['C5',2],
-  ['B4',1],['A4',1],['GS4',1],['A4',1.5],['B4',.5],['A4',3],
+  ['E5',1],['D5',1],['C5',1],['D5',1],['C5',4],               // bar 1-2 (C)
+  ['D5',1],['C5',1],['B4',1],['C5',1],['D5',4],               // bar 3-4 (G7)
+  ['E5',1],['D5',1],['C5',1],['D5',1],['D5',4],               // bar 5-6 (G7)
+  ['G5',1],['E5',1],['D5',1],['D5',1],['C5',4],               // bar 7-8 (C)
 ];
-// per 8-beat phrase: [bass root, chord tones for the off-beat stab]
-const MARCH=[['A2',['A3','C5','E4']],['D3',['A3','D5','F3']],
-             ['C3',['C5','E4','G4']],['E2',['GS3','B4','E4']]];
+// harmony bar-by-bar, as marked on the sheet: C C | G7 G7 G7 G7 | C C
+const CHORD_C ={root:'C3',fifth:'G3',stab:['E4','G4','C5']};
+const CHORD_G7={root:'G2',fifth:'D3',stab:['F4','B4','D5']};
+const MARCH=[CHORD_C,CHORD_C,CHORD_G7,CHORD_G7,CHORD_G7,CHORD_G7,CHORD_C,CHORD_C];
 function violinNote(freq, t, beats, vol=0.05){
   const c=ac(), dur=beats*BEAT;
   const o=c.createOscillator();  o.type='sawtooth'; o.frequency.setValueAtTime(freq,t);
@@ -480,12 +482,12 @@ function startMusic(){
     const scheduleLoop=()=>{
       const now=ac().currentTime;
       while (nextLoop < now+3){
-        // פסי בתוף + באס + סטאבים: oom-pah through all four phrases
-        MARCH.forEach(([root,chord],ph)=>{
-          for(let b=0;b<8;b++){
-            const t=nextLoop+(ph*8+b)*BEAT;
-            if (b%2===0){ bassNote(NT[root]*(b%4===2?1.5:1), t); drumHit(t, b===0); }
-            else { stab(chord,t); drumHit(t,false); }
+        // פסי בתוף + באס + סטאבים: oom-pah, bar by bar (4 beats each)
+        MARCH.forEach((ch,bar)=>{
+          for(let b=0;b<4;b++){
+            const t=nextLoop+(bar*4+b)*BEAT;
+            if (b%2===0){ bassNote(NT[b===0?ch.root:ch.fifth], t); drumHit(t, b===0); }
+            else { stab(ch.stab,t); drumHit(t,false); }
           }
         });
         // יוסי בכינור: the tune; משה בחצוצרה echoes the closing phrase

@@ -1701,12 +1701,25 @@
     if (isArmon()) return true;
     return isCommander() && myCmdGroup() === UNIT_BY_ID[unit].grp;
   }
-  // inline "transfer within the company" box on the count screen — a quantity
-  // field for a qty item, or a per-piece checklist for a tracked item.
+  // inline transfer box on the count screen — a quantity field for a qty item,
+  // or a per-piece checklist for a tracked item. ARMON may send to ANY framework
+  // in the battalion (grouped by company); a company commander stays in-company.
   function xferBoxHtml(kind, iid) {
-    var dsts = companyUnits(UNIT_BY_ID[S.unit].grp).filter(function (u) { return u.id !== S.unit; });
-    var dstSel = '<select id="xcDst" style="flex:1;min-width:120px">' +
-      dsts.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('') + '</select>';
+    var dstSel;
+    if (isArmon()) {
+      dstSel = '<select id="xcDst" style="flex:1;min-width:120px">';
+      UNIT_GROUPS.forEach(function (g) {
+        var us = g.units.filter(function (u) { return u.id !== S.unit; });
+        if (!us.length) return;
+        dstSel += '<optgroup label="' + esc(g.name) + '">' +
+          us.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('') + '</optgroup>';
+      });
+      dstSel += '</select>';
+    } else {
+      var dsts = companyUnits(UNIT_BY_ID[S.unit].grp).filter(function (u) { return u.id !== S.unit; });
+      dstSel = '<select id="xcDst" style="flex:1;min-width:120px">' +
+        dsts.map(function (u) { return '<option value="' + u.id + '">' + esc(u.name) + '</option>'; }).join('') + '</select>';
+    }
     var inst = instOf(S.unit, kind, iid);
     var body;
     if (inst) {
@@ -1732,7 +1745,7 @@
         '<span style="font-size:11px;color:#075985;margin-top:2px">יש ' + xAvail + ' · מקס׳</span></div>';
     }
     return '<div style="grid-column:1/-1;display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#eff6ff;border:1.5px solid #7dd3fc;border-radius:12px;padding:10px;margin-top:-2px">' +
-      '<span style="font-size:13px;font-weight:800;color:#075985;width:100%">העברת ' + esc(itemName(kind, iid)) + ' בתוך הפלוגה:</span>' +
+      '<span style="font-size:13px;font-weight:800;color:#075985;width:100%">העברת ' + esc(itemName(kind, iid)) + (isArmon() ? ' בין מסגרות:' : ' בתוך הפלוגה:') + '</span>' +
       body +
       '<span style="font-size:13px;color:#075985">אל</span>' + dstSel +
       '<button class="btn-primary" id="xcGo" style="padding:9px 14px;font-size:14px">🔁 העבר</button>' +
@@ -2159,7 +2172,9 @@
   function transferFromCount(unit, kind, iid) {
     var dst = $('xcDst') ? $('xcDst').value : '';
     if (!dst || !UNIT_BY_ID[dst]) { toast('בחר מסגרת יעד'); return; }
-    if (UNIT_BY_ID[dst].grp !== UNIT_BY_ID[unit].grp) { toast('העברה מותרת רק בתוך אותה פלוגה'); return; }
+    if (dst === unit) { toast('בחר מסגרת יעד שונה'); return; }
+    // ARMON transfers anywhere in the battalion; a commander stays in-company
+    if (!isArmon() && UNIT_BY_ID[dst].grp !== UNIT_BY_ID[unit].grp) { toast('העברה מותרת רק בתוך אותה פלוגה'); return; }
     // tracked item (מטולון / רינגו) — move the checked signed pieces
     if (instOf(unit, kind, iid)) {
       if (!canMoveHere(unit)) { toast('אין הרשאה להעברה'); return; }

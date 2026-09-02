@@ -1415,7 +1415,7 @@
         '<optgroup label="צל״ם">' + equipList().map(function (it) { return '<option value="equip:' + it.id + '"' + (pick === 'equip:' + it.id ? ' selected' : '') + '>' + esc(it.name) + '</option>'; }).join('') + '</optgroup>' +
         '<optgroup label="חדש"><option value="__new__"' + (isNew ? ' selected' : '') + '>➕ פריט חדש...</option></optgroup>';
       h += '<div class="card"><h3>➕ הוספת פריט למסגרת (ARMON)</h3>' +
-        '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">בחר פריט מהקטלוג (או צור חדש) והגדר כמות — ומופיע מיד בספירה של ' + esc(UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : '') + '.</div>' +
+        '<div style="font-size:12px;color:#6b7f72;margin-bottom:6px">בחר פריט מהקטלוג (או צור חדש) והגדר כמות — ולפריט עם צ׳ (כמו מאג) הזן את הצ׳ — ומופיע מיד בספירה של ' + esc(UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : '') + '.</div>' +
         '<label class="fld">פריט</label><select id="ciPick">' + catOpts + '</select>';
       if (isNew) {
         h += '<div class="grid2" style="margin-top:8px">' +
@@ -1423,8 +1423,20 @@
           '<div><label class="fld">סוג</label><select id="ciKind"><option value="ammo">תחמושת</option><option value="equip">צל״ם</option></select></div></div>';
       }
       if (pick) {
-        h += '<label class="fld">כמות</label><input type="number" id="ciQty" inputmode="numeric" min="1" placeholder="0">' +
-          '<button class="btn-primary" id="btnCiAdd">➕ הוסף לספירה</button>';
+        var tmode = isNew ? 'qty' : trackOf(pick.split(':')[1]);
+        if (tmode === 'qty') {
+          h += '<label class="fld">כמות</label><input type="number" id="ciQty" inputmode="numeric" min="1" placeholder="0">';
+        } else {
+          // tracked item (e.g. מאג עם צ׳) — record a signed piece, not a plain count
+          var slbl = tmode === 'series' ? 'מספר סדרה' : 'צ׳';
+          h += '<div style="font-size:12px;color:#6b7f72;margin:8px 0 2px">פריט עוקב — כל הוספה רושמת פריט חתום נפרד (עם ' + esc(slbl) + ').</div>';
+          if (tmode !== 'holder') h += '<label class="fld">' + esc(slbl) + '</label><input type="text" id="ciSerial" placeholder="' + esc(slbl) + '">';
+          if (tmode === 'series') h += '<label class="fld">כמות בסדרה</label><input type="number" id="ciQty" inputmode="numeric" min="1" value="1">';
+          h += '<div class="grid2" style="margin-top:8px">' +
+            '<div><label class="fld">בידי (שם)</label><input type="text" id="ciOwner" placeholder="אופציונלי"></div>' +
+            '<div><label class="fld">מ.א</label><input type="text" id="ciNum" inputmode="numeric" placeholder="אופציונלי"></div></div>';
+        }
+        h += '<button class="btn-primary" id="btnCiAdd">➕ הוסף לספירה</button>';
       }
       h += '</div>';
     }
@@ -3758,9 +3770,7 @@
   function addItemToCount() {
     if (!isArmon()) { toast('הוספת פריט שמורה ל-ARMON'); return; }
     var pick = ($('ciPick') && $('ciPick').value) || S.ciPick || '';
-    var qty = Math.max(0, Math.floor(+($('ciQty') && $('ciQty').value || 0)));
     if (!pick) { toast('בחר פריט מהקטלוג'); return; }
-    if (!(qty > 0)) { toast('הזן כמות'); return; }
     var fb = window.fb, writes = [], kind, id, name;
     if (pick === '__new__') {
       name = ($('ciName') && $('ciName').value || '').trim();
@@ -3780,12 +3790,36 @@
     } else {
       var pp = pick.split(':'); kind = pp[0]; id = pp[1]; name = itemName(kind, id);
     }
+    var tmode = (pick === '__new__') ? 'qty' : trackOf(id);
     var next = cloneUnit(S.unit);
-    next[kind][id] = { q: qty, t: Date.now() };
+    var addedTxt;
+    if (tmode === 'qty') {
+      var qty = Math.max(0, Math.floor(+($('ciQty') && $('ciQty').value || 0)));
+      if (!(qty > 0)) { toast('הזן כמות'); return; }
+      next[kind][id] = { q: qty, t: Date.now() };
+      addedTxt = name + ' (' + qty + ')';
+    } else {
+      // tracked item (e.g. מאג עם צ׳) — append one signed piece to the stock
+      var serial = ($('ciSerial') && $('ciSerial').value || '').trim();
+      var owner = ($('ciOwner') && $('ciOwner').value || '').trim();
+      var num = ($('ciNum') && $('ciNum').value || '').trim();
+      if (tmode !== 'holder' && !serial) { toast('הזן ' + (tmode === 'series' ? 'מספר סדרה' : 'צ׳')); return; }
+      if (tmode === 'holder' && !owner && !num) { toast('הזן בידי מי הפריט'); return; }
+      var entry = {};
+      if (serial) entry.s = serial;
+      if (owner) entry.owner = owner;
+      if (num) entry.num = num;
+      if (tmode === 'series') entry.q = Math.max(1, Math.floor(+($('ciQty') && $('ciQty').value || 1)));
+      var cur = next[kind][id] || {};
+      var inst = (cur.inst || []).slice();
+      inst.push(entry);
+      next[kind][id] = { inst: inst, q: instTotal(inst), t: Date.now() };
+      addedTxt = name + ' · ' + (serial ? ((tmode === 'series' ? 'סדרה ' : 'צ׳ ') + serial) : (owner || num));
+    }
     writes.push(fb.setDoc(fb.doc(fb.db, 'ammo_stock', S.unit), next));
     var btn = $('btnCiAdd'); if (btn) btn.disabled = true;
     Promise.all(writes).then(function () {
-      toast('✓ נוסף: ' + name + ' (' + qty + ') ל' + (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : ''));
+      toast('✓ נוסף: ' + addedTxt + ' ל' + (UNIT_BY_ID[S.unit] ? UNIT_BY_ID[S.unit].full : ''));
       S.ciPick = '';
       renderCount();
     }).catch(function (e) { if (btn) btn.disabled = false; toast('שגיאה: ' + (e.code || e.message)); });

@@ -2281,7 +2281,13 @@
       if (!list.length) return;
       rows += '<tr class="sec"><td colspan="4">' + esc(pair[1]) + '</td></tr>';
       list.forEach(function (it) {
-        var exp = expectedFor(u.id, kind, it.id);
+        // צפי for a PAST date must reflect the baseline as it was WHEN counted —
+        // the count doc snapshots `expected` per item, so a later שצ״ל that
+        // lowers the current baseline never rewrites history. Fall back to the
+        // current baseline only when this date has no snapshot for the item.
+        var snapExp = null;
+        if (c) { var cs = kind === 'ammo' ? c.items : c.equip; var cv = cs && cs[it.id]; if (cv && cv.expected != null) snapExp = cv.expected; }
+        var exp = snapExp != null ? snapExp : expectedFor(u.id, kind, it.id);
         if (exp == null) exp = stockQty(u.id, kind, it.id);
         var st = itemStatusFor(c, kind, it.id, exp);
         var actTxt, gapTxt = '', cls = '';

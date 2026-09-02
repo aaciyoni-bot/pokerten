@@ -79,6 +79,8 @@ service cloud.firestore {
     match /aviatorBets/{id}    { allow read: if signedIn(); allow write: if false; }
     match /aviatorRounds/{id}  { allow read: if signedIn(); allow write: if false; }
     match /aviatorPeeks/{id}   { allow read, write: if false; }
+    // press-timing telemetry (only ever written after the fact)
+    match /aviatorTiming/{id}  { allow read: if signedIn(); allow write: if false; }
     match /aviatorLedger/{id}  {
       allow read: if superAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
       allow write: if false;

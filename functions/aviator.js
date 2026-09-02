@@ -301,7 +301,15 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
     if (s.phase !== "flying") throw new HttpsError("failed-precondition", "אין טיסה פעילה");
     const mult = round2(Math.min(
       multAt(Math.max(0, now - CASHOUT_GRACE_MS - s.phaseAt)), MAX_FLIGHT_MULT));
-    if (mult >= e.crashPoint) throw new HttpsError("failed-precondition", "המטוס כבר התרסק");
+    const timing = {
+      uid, roundId: s.roundId, ts: now, flightMs: now - s.phaseAt,
+      seen: seen || null, srvMult: mult,
+    };
+    if (mult >= e.crashPoint) {
+      tx.create(adb.collection("aviatorTiming").doc(),
+        {...timing, type: "late", crashPoint: e.crashPoint});
+      return {late: true};
+    }
     const bRef = adb.doc(`aviatorBets/${s.roundId}_${uid}`);
     const bSnap = await tx.get(bRef);
     if (!bSnap.exists || bSnap.data().cashedAt || bSnap.data().lost) {
@@ -310,11 +318,14 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
     const amount = bSnap.data().amount;
     const payMult = seen >= 1.01 ? Math.min(mult, round2(seen)) : mult;
     const win = Math.floor(amount * payMult);
+    tx.create(adb.collection("aviatorTiming").doc(),
+      {...timing, type: "cashout", paid: payMult});
     tx.update(bRef, {cashedAt: payMult, win});
     tx.update(pRef, {balance: FieldValue.increment(win), net: FieldValue.increment(win - amount)});
     ledger(tx, {uid, type: "cashout", amount: win, roundId: s.roundId, mult: payMult, by: "self"});
     return {mult: payMult, win};
   });
+  if (out.late) throw new HttpsError("failed-precondition", "המטוס כבר התרסק");
   return {...out, serverNow: Date.now()};
 });
 

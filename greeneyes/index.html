@@ -3884,8 +3884,34 @@
   }
 
   /* ═══════════ PWA: service worker + install prompt ═══════════ */
+  // Registers the SW and, when a newer version is deployed, shows a one-tap
+  // "יש עדכון — רענן" banner instead of leaving a stale page behind. We don't
+  // auto-reload so an in-progress count is never lost mid-marking.
+  function showUpdateBanner() {
+    if (document.getElementById('updBar')) return;
+    var b = document.createElement('div');
+    b.id = 'updBar';
+    b.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:80px;z-index:99999;background:#1b4332;color:#fff;padding:11px 18px;border-radius:999px;box-shadow:0 10px 26px -6px rgba(0,0,0,.55);font-size:14px;font-weight:800;display:flex;gap:10px;align-items:center;cursor:pointer';
+    b.innerHTML = '🔄 יש גרסה חדשה <span style="background:#fff;color:#1b4332;padding:3px 11px;border-radius:999px">רענן</span>';
+    b.onclick = function () { try { location.reload(); } catch (e) { location.href = location.href; } };
+    document.body.appendChild(b);
+  }
   if ('serviceWorker' in navigator) {
-    try { navigator.serviceWorker.register('/sw.js'); } catch (e) {}
+    try {
+      navigator.serviceWorker.register('/sw.js').then(function (reg) {
+        function watch(w) {
+          if (!w) return;
+          w.addEventListener('statechange', function () {
+            if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdateBanner();
+          });
+        }
+        watch(reg.waiting);
+        reg.addEventListener('updatefound', function () { watch(reg.installing); });
+        // re-check for a fresh deploy every 5 min and whenever the app regains focus
+        setInterval(function () { try { reg.update(); } catch (e) {} }, 5 * 60 * 1000);
+        window.addEventListener('focus', function () { try { reg.update(); } catch (e) {} });
+      }).catch(function () {});
+    } catch (e) {}
   }
   var deferredPrompt = null;
   var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;

@@ -40,21 +40,24 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
     // walk up to the table card (the element that also carries the stakes line)
     const up = el => { let e = el; for (let i = 0; i < 8 && e; i++) { if (/0\.5\s*\/\s*1/.test(e.textContent) && e.textContent.length < 400) return e; e = e.parentElement; } return el; };
     return {both: body.includes('ORACLETBL') && body.includes('STRONGTBL'),
-      oracleTag: !!o && /Training .* the bots see the cards/.test(up(o).textContent),
-      strongTag: !!s && /bots see the cards/.test(up(s).textContent)};
+      oracleTag: !!o && /Training table/.test(up(o).textContent) && !/see/.test(up(o).textContent),
+      strongTag: !!s && /Training/.test(up(s).textContent)};
   });
   check('both tables are listed in the lobby', lobby.both);
-  check('the training table says "the bots see the cards" in the lobby', lobby.oracleTag);
+  check('the training table is tagged "Training table" in the lobby, mechanism not spelled out there', lobby.oracleTag);
   check('the default table carries NO such tag', !lobby.strongTag);
 
   // open the training table
   await pg.evaluate(() => { const e = [...document.querySelectorAll('button,div')].filter(x => /ORACLETBL/.test(x.textContent || '')); const el = e[e.length - 1]; if (el) el.click(); });
   await pg.waitForTimeout(2500);
+  const dlg = await pg.evaluate(() => document.body.innerText);
+  await pg.screenshot({path: SP + '/botmode-buyin.png'});
+  check('the buy-in dialog says the bots can see every card, before he sits', /bots can see every card/.test(dlg));
   await pg.evaluate(() => { const x = [...document.querySelectorAll('button')].find(y => /Spectate the table/.test(y.textContent)); if (x) x.click(); });
   await pg.waitForTimeout(1200);
   await pg.screenshot({path: SP + '/botmode-table.png'});
   const hdr = await pg.evaluate(() => document.body.innerText);
-  check('the table header says "Training mode · the bots see the cards"', /Training mode/.test(hdr) && /bots see the cards/.test(hdr));
+  check('the table header says "Training table"', /Training table/.test(hdr));
   // and a hand actually runs there (the brain does not choke on the mode)
   let played = false;
   for (let i = 0; i < 20; i++) {
@@ -72,7 +75,7 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
   await pg.evaluate(() => { const e = [...document.querySelectorAll('button,div')].filter(x => /STRONGTBL/.test(x.textContent || '')); const el = e[e.length - 1]; if (el) el.click(); });
   await pg.waitForTimeout(2500);
   const hdr2 = await pg.evaluate(() => document.body.innerText);
-  check('the default table shows no training label', !/Training mode/.test(hdr2));
+  check('the default table shows no training label and no card notice', !/Training/.test(hdr2) && !/can see every card/.test(hdr2));
 
   // the create-table form: the field exists, "strong" is selected by default
   await pg.goto('http://localhost:8079/index.html?as=owner1&x=' + Date.now(), {waitUntil: 'load'});

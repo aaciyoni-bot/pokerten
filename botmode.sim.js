@@ -94,6 +94,33 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
   check('  "strong" is the default', form.value === 'strong', form.value);
   check('  the training option says the table will be labeled', (form.options || []).some(o => /labeled on the table/.test(o)), JSON.stringify(form.options));
   await pg.screenshot({path: SP + '/botmode-form.png', fullPage: true});
+
+  // a CLUB OWNER — every right to open tables, none to open a training one
+  await pg.evaluate(async () => {
+    await window.fb.setDoc(window.fb.doc(window.fb.db, 'users', 'clubowner1'), {
+      username: 'Club Owner', email: 'clubowner1@test.local', role: 'club_owner', status: 'approved',
+      playerId: '777777', balance: 5000, clubProfits: 0, isBot: false, isGuest: false, managedGames: ['poker']});
+    await window.fbStubAs('clubowner1', 'clubowner1@test.local');
+  });
+  await pg.waitForTimeout(2500);
+  await pg.evaluate(() => { const x = [...document.querySelectorAll('button')].find(y => /Enter/i.test(y.textContent)); if (x) x.click(); });
+  await pg.waitForTimeout(1500);
+  await pg.screenshot({path: SP + '/botmode-clubowner.png', fullPage: true});
+  // the form stays open across the account switch; if it did not, open it
+  const asOwner = await pg.evaluate(() => {
+    if (/New poker table/.test(document.body.innerText)) return {formOpen: true};
+    const nt = [...document.querySelectorAll('button')].find(y => /New table/.test(y.textContent));
+    if (!nt) return {formOpen: false, text: document.body.innerText.slice(0, 200)};
+    nt.click();
+    return {formOpen: true};
+  });
+  await pg.waitForTimeout(1500);
+  const form2 = await pg.evaluate(() => ({
+    formOpen: /New poker table/.test(document.body.innerText),
+    botField: [...document.querySelectorAll('select')].some(s => [...s.options].some(o => /plays from what everyone sees/.test(o.textContent)))
+  }));
+  check('a club owner sees the create-table form', asOwner.formOpen && form2.formOpen, JSON.stringify({asOwner, form2}));
+  check('  ...but sees NO Bot mode field — training tables are the site owner\'s alone', !form2.botField);
   check('no page errors', errs.length === 0, errs.join(' | '));
   console.log(`\n${pass} passed, ${fail} failed`);
   await b.close();

@@ -10445,6 +10445,10 @@ function PokerCreateView({
   onCreated,
   showToast
 }) {
+  // Training tables (bots see the cards) can be opened by ONE account only:
+  // the site owner's email. Not club owners, not managers. Everyone else gets
+  // no field at all, and whatever their form state says, the table is 'strong'.
+  const canTrain = String(user && user.email || '').toLowerCase() === SUPER_ADMIN_EMAIL;
   const [s, setS] = useState({
     baseGameType: 'NLH',
     isDealerChoice: false,
@@ -10537,6 +10541,7 @@ function PokerCreateView({
       settings: {
         ...s,
         serverEngine: nBots >= 2 ? true : s.serverEngine,
+        botMode: canTrain && s.botMode === 'oracle' ? 'oracle' : 'strong',
         blinds: Math.max(0.01, Number(s.blinds) || 0.5),
         rakePercent: Number(s.rakePercent),
         minBuyIn: Math.max(0.01, Number(s.minBuyIn) || 1),
@@ -10742,7 +10747,7 @@ function PokerCreateView({
     value: n
   }, n, " bots, playing non-stop"))), React.createElement("div", {
     className: "text-[11px] text-slate-400 mt-1 leading-snug"
-  }, "Seats the bots now and lets the server run the game, so the lobby shows a live table even when nobody is watching. Real players can sit down at any time.")), React.createElement(Field, {
+  }, "Seats the bots now and lets the server run the game, so the lobby shows a live table even when nobody is watching. Real players can sit down at any time.")), canTrain && React.createElement(Field, {
     label: "🧠 Bot mode"
   }, React.createElement("select", {
     value: s.botMode === 'oracle' ? 'oracle' : 'strong',

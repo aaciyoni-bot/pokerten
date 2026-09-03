@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>בונה הצעות מחיר — ORIZISTUDIO</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=Heebo:wght@400;500;700;900&family=Assistant:wght@400;600;700;800&display=swap">
+<style>
+:root{
+  --bg:#0b0b12;--card:#12121c;--card-2:#181826;--elev:#1f1f30;
+  --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);
+  --ink:#f5f5fa;--muted:#a6a6bd;--faint:#6c6c85;
+  --brand:#7c5cff;--brand-2:#a48bff;--glow:rgba(124,92,255,.35);
+  --ok:#35d39a;--warn:#e0b64f;--bad:#ff6b81;--wa:#25d366;
+  --fd:'Space Grotesk','Assistant','Heebo',sans-serif;
+  --fb:'Inter','Heebo',system-ui,sans-serif;--r:18px;--r-sm:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:15px;line-height:1.6;
+  direction:rtl;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--fd);font-weight:700;line-height:1.2}
+:focus-visible{outline:2px solid var(--brand-2);outline-offset:2px;border-radius:6px}
+
+.bar{border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:20}
+.bar .in{max-width:1280px;margin:0 auto;padding:14px 22px;display:flex;align-items:center;gap:14px}
+.logo{display:flex;align-items:center;gap:9px;font-family:var(--fd);font-weight:700;font-size:18px}
+.logo .mk{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:15px;
+  background:linear-gradient(135deg,var(--brand),#ff5ca8)}
+.logo .wm{direction:ltr;unicode-bidi:isolate}
+.logo b{color:var(--brand-2)}
+.bar .t{color:var(--faint);font-size:13.5px;margin-inline-start:auto}
+
+.page{max-width:1280px;margin:0 auto;padding:24px 22px 60px;
+  display:grid;grid-template-columns:minmax(340px,420px) 1fr;gap:22px;align-items:start}
+@media(max-width:980px){.page{grid-template-columns:1fr}}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:22px}
+.panel h2{font-family:var(--fb);font-size:16px;font-weight:700;margin-bottom:4px}
+.panel .sub{color:var(--faint);font-size:13px;margin-bottom:16px}
+.grp{margin-bottom:16px}
+.grp>label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
+input[type=text],input[type=tel],input[type=number],select,textarea{width:100%;background:var(--card-2);
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:11px 13px;color:var(--ink);
+  font-family:var(--fb);font-size:15px;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,select:focus,textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(124,92,255,.14)}
+textarea{min-height:74px;resize:vertical}
+select{cursor:pointer}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+.addons{display:grid;gap:8px}
+.ad{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;
+  background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 12px;
+  cursor:pointer;transition:border-color .15s,background .15s}
+.ad:hover{border-color:var(--line-2)}
+.ad.on{border-color:rgba(124,92,255,.5);background:rgba(124,92,255,.08)}
+.ad input[type=checkbox]{width:17px;height:17px;accent-color:var(--brand);cursor:pointer}
+.ad .nm{font-size:14px}
+.ad .pr{font-family:var(--fd);font-weight:700;font-size:14px;color:var(--brand-2);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ad .qty{width:56px;padding:5px 7px;font-size:13.5px;text-align:center}
+.ad .qty[hidden]{display:none}
+
+.disc{display:flex;align-items:center;gap:12px}
+.disc input[type=range]{flex:1;accent-color:var(--brand)}
+.disc .val{font-family:var(--fd);font-weight:700;font-size:18px;min-width:3.2em;text-align:center;
+  font-variant-numeric:tabular-nums}
+.alert{margin-top:9px;background:rgba(224,182,79,.1);border:1px solid rgba(224,182,79,.35);
+  border-radius:var(--r-sm);padding:9px 12px;font-size:13px;color:var(--warn)}
+.alert[hidden]{display:none}
+
+/* preview */
+.sheet{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.sheet .hd{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;
+  justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;
+  background:linear-gradient(180deg,rgba(124,92,255,.09),transparent)}
+.sheet .meta{text-align:end;font-size:12.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+.sheet .bd{padding:22px 26px 26px}
+.eyebrow{font-size:11.5px;font-weight:700;letter-spacing:.13em;color:var(--brand-2);text-transform:uppercase}
+.sheet h1{font-size:26px;margin-top:8px}
+.forwho{color:var(--muted);font-size:15px;margin-top:8px}
+.pnote{margin-top:14px;background:rgba(124,92,255,.09);border:1px solid rgba(124,92,255,.26);
+  border-radius:14px;padding:12px 15px;font-size:14px;color:var(--muted)}
+.pnote[hidden]{display:none}
+
+.blk{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.blk h3{font-family:var(--fb);font-size:15px;font-weight:700;margin-bottom:10px}
+.inc{list-style:none;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13.5px;color:var(--muted)}
+.inc li{display:flex;gap:8px}
+.ck{color:var(--ok);font-weight:700}
+@media(max-width:600px){.inc{grid-template-columns:1fr}}
+
+.ln{display:flex;align-items:baseline;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
+.ln:last-of-type{border-bottom:none}
+.ln .dots{flex:1;border-bottom:1px dashed var(--line-2);transform:translateY(-4px)}
+.ln .v{font-family:var(--fd);font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
+.ln small{display:block;color:var(--faint);font-size:12px}
+.ln.rec .v{color:var(--ok)}
+
+.total{margin-top:16px;background:linear-gradient(135deg,var(--brand),#9a6bff);color:#fff;
+  border-radius:14px;padding:18px 22px;display:flex;justify-content:space-between;align-items:center;
+  gap:16px;flex-wrap:wrap}
+.total .l{font-size:13px;opacity:.85}
+.total .vat{font-size:12.5px;opacity:.7;margin-top:2px}
+.total .amt{font-family:var(--fd);font-weight:700;font-size:34px;font-variant-numeric:tabular-nums}
+.pay{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:14px;
+  overflow:hidden;margin-top:12px}
+.pay div{padding:14px 18px;border-inline-start:1px solid var(--line)}
+.pay div:first-child{border-inline-start:none}
+.pay b{display:block;font-family:var(--fd);font-size:21px;font-variant-numeric:tabular-nums}
+.pay span{font-size:12.5px;color:var(--faint)}
+@media(max-width:600px){.pay{grid-template-columns:1fr}.pay div{border-inline-start:none;border-top:1px solid var(--line)}}
+
+.timeline{list-style:none;display:grid;gap:7px;font-size:13.5px;color:var(--muted)}
+.timeline b{color:var(--ink);font-family:var(--fd);font-variant-numeric:tabular-nums}
+
+/* commission strip */
+.comm{background:linear-gradient(135deg,rgba(53,211,154,.11),var(--card));
+  border:1px solid rgba(53,211,154,.3);border-radius:var(--r);padding:18px 20px;margin-bottom:22px;
+  display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.comm .k{font-family:var(--fd);font-weight:700;font-size:26px;color:var(--ok);
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.comm .l{font-size:12.5px;color:var(--muted);margin-top:4px}
+
+/* output */
+.out{margin-top:22px}
+.out .field{background:var(--card-2);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:11px 13px;font-size:13px;color:var(--muted);word-break:break-all;direction:ltr;
+  text-align:left;max-height:96px;overflow:auto;font-family:ui-monospace,Menlo,monospace}
+.out .field.he{direction:rtl;text-align:start;font-family:var(--fb);font-size:13.5px;white-space:pre-wrap}
+.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;cursor:pointer;
+  font-family:var(--fb);font-weight:600;font-size:14.5px;padding:12px 20px;border-radius:999px;
+  text-decoration:none;transition:transform .15s,filter .15s}
+.btn:hover{transform:translateY(-1px);filter:brightness(1.07)}
+.btn-p{background:linear-gradient(135deg,var(--brand),#9a6bff);color:#fff;box-shadow:0 10px 26px -12px var(--glow)}
+.btn-g{background:transparent;border:1px solid var(--line-2);color:var(--ink)}
+.btn-wa{background:var(--wa);color:#04310f}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+.checklist{background:rgba(224,182,79,.08);border:1px solid rgba(224,182,79,.3);
+  border-radius:var(--r-sm);padding:14px 16px;margin-top:16px;font-size:13.5px;color:var(--muted)}
+.checklist b{color:var(--warn);display:block;margin-bottom:6px;font-size:13.5px}
+.checklist label{display:flex;gap:9px;align-items:flex-start;margin-top:7px;cursor:pointer}
+.checklist input{accent-color:var(--warn);margin-top:4px}
+
+.toast{position:fixed;bottom:24px;inset-inline:0;margin-inline:auto;width:max-content;max-width:90%;
+  background:var(--elev);border:1px solid var(--line-2);border-radius:14px;padding:13px 20px;
+  box-shadow:0 18px 44px rgba(0,0,0,.6);display:flex;gap:10px;align-items:center;z-index:60;
+  transform:translateY(120px);transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.toast.on{transform:none}
+.toast .d{width:24px;height:24px;border-radius:50%;background:rgba(53,211,154,.16);color:var(--ok);
+  display:grid;place-items:center;font-size:13px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+@media print{.bar,.panel,.out,.checklist,.comm,.toast{display:none!important}
+  .page{grid-template-columns:1fr;padding:0}
+  body{background:#fff;color:#16191E}
+  .sheet{border:none;background:#fff}
+  .total{background:#16191E}
+  h1,h3,.ln .v,.pay b,.timeline b{color:#16191E}}
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="in">
+  <span class="logo"><span class="mk">◆</span><span class="wm">ORIZI<b>S</b>TUDIO</span></span>
+  <span class="t">בונה הצעות מחיר · לשימוש פנימי</span>
+</div></div>
+
+<div class="page">
+
+  <!-- ============ form ============ -->
+  <form class="panel" id="f" autocomplete="off">
+    <h2>פרטי ההצעה</h2>
+    <p class="sub">כל שינוי מתעדכן מיד בתצוגה משמאל</p>
+
+    <div class="grp"><label for="cname">שם איש הקשר</label>
+      <input type="text" id="cname" placeholder="נוגה לוי"></div>
+    <div class="grp"><label for="cbiz">שם העסק</label>
+      <input type="text" id="cbiz" placeholder="מספרת נוגה"></div>
+    <div class="grp"><label for="cphone">טלפון הלקוח</label>
+      <input type="tel" id="cphone" inputmode="tel" placeholder="050-000-0000"></div>
+
+    <div class="grp"><label for="pack">חבילה</label>
+      <select id="pack">
+        <option value="nano">NANO · כרטיס ביקור · ₪890</option>
+        <option value="one">ONE · עמוד נחיתה · ₪1,690</option>
+        <option value="pro" selected>PRO · אתר תדמית · ₪2,900</option>
+        <option value="business">BUSINESS · אתר עסקי · ₪4,900</option>
+        <option value="shop">SHOP · חנות אונליין · ₪6,900</option>
+      </select></div>
+
+    <div class="grp"><label>תוספות</label>
+      <div class="addons" id="addons"></div></div>
+
+    <div class="grp"><label for="care">אחזקה חודשית</label>
+      <select id="care">
+        <option value="">בלי אחזקה</option>
+        <option value="basic">BASIC · ₪99 לחודש</option>
+        <option value="plus" selected>PLUS · ₪199 לחודש</option>
+        <option value="care">CARE · ₪349 לחודש</option>
+      </select></div>
+
+    <div class="grp"><label for="disc">הנחה</label>
+      <div class="disc">
+        <input type="range" id="disc" min="0" max="20" step="1" value="0">
+        <span class="val" id="discv">0%</span>
+      </div>
+      <div class="alert" id="discAlert" hidden>מעל 10% דורש אישור בעלים. הנחה ניתנת רק בתמורה
+        לתשלום מלא מראש, המלצה מצולמת או הפניה סגורה.</div>
+    </div>
+
+    <div class="row2">
+      <div class="grp"><label for="valid">תוקף ההצעה</label>
+        <input type="number" id="valid" min="3" max="60" value="14"></div>
+      <div class="grp"><label for="agent">שם הסוכנת</label>
+        <input type="text" id="agent" placeholder="השם שלך"></div>
+    </div>
+
+    <div class="grp"><label for="note">הערה אישית ללקוח</label>
+      <textarea id="note" placeholder="נעים היה לדבר. הדמו שראית נמצא בקישור, וההצעה בהמשך העמוד."></textarea></div>
+  </form>
+
+  <!-- ============ preview + output ============ -->
+  <div>
+    <div class="comm">
+      <div><div class="k" id="commOnce">₪0</div>
+        <div class="l">העמלה שלך על העסקה · 33%</div></div>
+      <div><div class="k" id="commRec">₪0</div>
+        <div class="l">עמלה חוזרת מהאחזקה · כל חודש, 12 חודשים</div></div>
+    </div>
+
+    <div class="sheet" id="sheet">
+      <div class="hd">
+        <div><span class="logo"><span class="mk">◆</span><span class="wm">ORIZI<b>S</b>TUDIO</span></span></div>
+        <div class="meta">הצעה מספר <span id="ref">—</span><br><span id="today">—</span><br>
+          בתוקף עד <span id="validTo">—</span></div>
+      </div>
+      <div class="bd">
+        <p class="eyebrow">הצעת מחיר</p>
+        <h1 id="pTitle">—</h1>
+        <p class="forwho">עבור <b id="pBiz">—</b> · לידי <span id="pName">—</span><span id="pPhone"></span></p>
+        <p class="pnote" id="pNote" hidden></p>
+
+        <div class="blk"><h3>מה כלול בחבילה</h3><ul class="inc" id="pInc"></ul></div>
+
+        <div class="blk"><h3>פירוט המחיר</h3>
+          <div id="pLines"></div>
+          <div class="total">
+            <div><div class="l">סה״כ לתשלום, לא כולל מע״מ</div>
+              <div class="vat" id="pVat">—</div></div>
+            <div class="amt" id="pTotal">—</div>
+          </div>
+          <div class="pay">
+            <div><b id="pPay1">—</b><span>מקדמה עם אישור ההצעה. כאן מתחיל השעון.</span></div>
+            <div><b id="pPay2">—</b><span>יתרה לפני העלייה לאוויר, אחרי אישור הטיוטה.</span></div>
+          </div>
+        </div>
+
+        <div class="blk"><h3>לוח זמנים</h3>
+          <ul class="timeline" id="pTime"></ul></div>
+
+        <div class="blk"><h3>תנאים</h3>
+          <ul class="timeline" style="color:var(--faint);font-size:13px">
+            <li>המחירים אינם כוללים מע״מ. חשבונית מס מונפקת עם כל תשלום.</li>
+            <li>שני סבבי תיקונים כלולים. סבב נוסף מתומחר ב-290 ₪.</li>
+            <li>הדומיין נרשם על שם הלקוח. כל הגישות נמסרות ביום העלייה לאוויר.</li>
+            <li>לוח הזמנים בימי עסקים, ומותנה בקבלת חומרים מהלקוח.</li>
+            <li>כל יום איחור באשמתנו מזכה בהנחה של 5% מהעסקה.</li>
+            <li>ביטול תוך 48 שעות מהאישור — החזר מלא של המקדמה.</li>
+          </ul></div>
+      </div>
+    </div>
+
+    <div class="panel out">
+      <h2>שליחה ללקוח</h2>
+      <p class="sub">הקישור נבנה מהטופס. אפשר לשלוח אותו בוואטסאפ, במייל או בהודעה.</p>
+
+      <div class="grp"><label>קישור אישי להצעה</label>
+        <div class="field" id="outLink">—</div></div>
+
+      <div class="grp"><label>הודעת וואטסאפ מוכנה</label>
+        <div class="field he" id="outMsg">—</div></div>
+
+      <div class="checklist">
+        <b>לפני שליחה בוואטסאפ</b>
+        <label><input type="checkbox" id="ck1"><span>דיברתי איתו בטלפון וקיבלתי אישור מפורש לשלוח לו הודעה</span></label>
+        <label><input type="checkbox" id="ck2"><span>סימנתי את ההסכמה בטבלת הלידים עם תאריך</span></label>
+      </div>
+
+      <div class="btns">
+        <button type="button" class="btn btn-p" id="copyLink">העתקת הקישור</button>
+        <button type="button" class="btn btn-g" id="copyMsg">העתקת ההודעה</button>
+        <a class="btn btn-wa" id="waSend" href="#" target="_blank" rel="noopener">שליחה בוואטסאפ</a>
+        <a class="btn btn-g" id="openLink" href="#" target="_blank" rel="noopener">פתיחת ההצעה</a>
+        <button type="button" class="btn btn-g" id="printBtn">הדפסה או PDF</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="d">✓</span><span id="toastMsg"></span></div>
+
+<script>
+(function(){
+  var CONFIG = { whatsapp:'972542456102', domain:'orizistudio.com', commission:.33, vat:.18 };
+
+  var PACKS = {
+    nano:{t:'כרטיס ביקור דיגיטלי — חבילת NANO', p:890, draft:2, live:2,
+      inc:['עמוד אחד מותאם לנייד','וואטסאפ, חיוג וניווט בלחיצה','פרופיל העסק בגוגל','דומיין ואחסון לשנה','טופס פנייה למייל','נגישות לפי תקן 5568']},
+    one:{t:'עמוד נחיתה ממיר — חבילת ONE', p:1690, draft:3, live:5,
+      inc:['עמוד נחיתה ארוך עם טופס לידים','פיקסל מטא וגוגל מוטמעים','שתי גרסאות כותרת לבדיקה','לידים למייל ולטבלה','דומיין ואחסון לשנה','נגישות לפי תקן 5568']},
+    pro:{t:'אתר תדמית — חבילת PRO', p:2900, draft:6, live:10,
+      inc:['חמישה עמודים וכתיבת תוכן','גלריה, המלצות ובלוג בסיסי','אופטימיזציה למנועי חיפוש','אנליטיקס וסרץ׳ קונסול','דומיין ואחסון לשנה','נגישות לפי תקן 5568']},
+    business:{t:'אתר עסקי מורחב — חבילת BUSINESS', p:4900, draft:8, live:14,
+      inc:['עד עשרה עמודים ובלוג מלא','שתי שפות כולל היפוך כיוון','זימון תורים וטפסים חכמים','ניהול תוכן עצמאי והדרכה','דומיין ואחסון לשנה','נגישות לפי תקן 5568']},
+    shop:{t:'חנות אונליין — חבילת SHOP', p:6900, draft:12, live:21,
+      inc:['עד חמישים מוצרים והעלאת קטלוג','חיבור סליקה וחשבוניות','משלוחים, קופונים ומבצעים','ניהול הזמנות ומלאי','דומיין ואחסון לשנה','נגישות לפי תקן 5568']}
+  };
+  var ADDONS = [
+    {k:'logo',    n:'לוגו ומיתוג בסיסי', p:450},
+    {k:'content', n:'כתיבת תוכן שיווקי', p:250, qty:true, unit:'עמודים', per:'לעמוד'},
+    {k:'lang',    n:'שפה נוספת',        p:600, qty:true, unit:'שפות', per:'לשפה'},
+    {k:'access',  n:'הצהרת נגישות מורחבת', p:450},
+    {k:'bot',     n:'וואטסאפ עסקי עם בוט', p:1200},
+    {k:'booking', n:'זימון תורים ותשלום מקוון', p:700},
+    {k:'photo',   n:'יום צילום בבית העסק', p:900},
+    {k:'landing', n:'עמוד נחיתה נוסף',   p:690, qty:true, unit:'עמודים', per:'לעמוד'}
+  ];
+  var CARE = { basic:['אחזקה BASIC',99], plus:['אחזקה PLUS',199], care:['אחזקה CARE',349] };
+
+  var $ = function(id){ return document.getElementById(id); };
+  var ils = function(n){ return '₪' + Math.round(n).toLocaleString('en-US'); };
+
+  /* ---- addon checkboxes ---- */
+  $('addons').innerHTML = ADDONS.map(function(a){
+    return '<label class="ad" data-k="' + a.k + '">' +
+      '<input type="checkbox" data-k="' + a.k + '">' +
+      '<span class="nm">' + a.n + '</span>' +
+      (a.qty ? '<input class="qty" type="number" min="1" max="20" value="1" data-q="' + a.k + '" hidden aria-label="כמות ' + a.unit + '">' : '<span></span>') +
+      '<span class="pr">' + ils(a.p) + (a.per ? ' ' + a.per : '') + '</span>' +
+      '</label>';
+  }).join('');
+
+  /* ---- business days ---- */
+  function addBizDays(d, n){
+    var x = new Date(d);
+    while(n > 0){ x.setDate(x.getDate() + 1); var w = x.getDay(); if(w !== 5 && w !== 6) n--; }
+    return x;
+  }
+  var fmt = function(d){ return d.toLocaleDateString('he-IL'); };
+
+  /* ---- state ---- */
+  function read(){
+    var addons = [];
+    Array.prototype.forEach.call(document.querySelectorAll('#addons input[type=checkbox]'), function(cb){
+      var wrap = cb.closest('.ad'), q = wrap.querySelector('.qty');
+      wrap.classList.toggle('on', cb.checked);
+      if(q) q.hidden = !cb.checked;
+      if(cb.checked){
+        var def = ADDONS.filter(function(a){ return a.k === cb.dataset.k; })[0];
+        addons.push({ k:def.k, n:def.n, p:def.p, qty: q ? Math.max(1, Math.min(20, Number(q.value) || 1)) : 1 });
+      }
+    });
+    return {
+      name: $('cname').value.trim(),
+      biz:  $('cbiz').value.trim(),
+      phone:$('cphone').value.trim(),
+      pack: $('pack').value,
+      care: $('care').value,
+      disc: Number($('disc').value),
+      valid:Math.max(3, Math.min(60, Number($('valid').value) || 14)),
+      agent:$('agent').value.trim(),
+      note: $('note').value.trim(),
+      addons: addons
+    };
+  }
+
+  function render(){
+    var s = read(), pk = PACKS[s.pack];
+
+    $('discv').textContent = s.disc + '%';
+    $('discAlert').hidden = s.disc <= 10;
+
+    /* lines */
+    var rows = [{ n: pk.t, v: pk.p }];
+    s.addons.forEach(function(a){
+      rows.push({ n: a.qty > 1 ? a.n + ' × ' + a.qty : a.n, v: a.p * a.qty });
+    });
+    var total = rows.reduce(function(t, r){ return t + r.v; }, 0);
+    if(s.disc > 0){
+      var cut = Math.round(total * s.disc / 100);
+      rows.push({ n: 'הנחה מיוחדת ' + s.disc + '%', v: -cut });
+      total -= cut;
+    }
+
+    var html = rows.map(function(r){
+      return '<div class="ln"><span><b>' + r.n + '</b></span><span class="dots"></span>' +
+        '<span class="v">' + (r.v < 0 ? '–' + ils(-r.v) : ils(r.v)) + '</span></div>';
+    }).join('');
+    if(s.care){
+      html += '<div class="ln rec"><span><b>' + CARE[s.care][0] + '</b>' +
+        '<small>חיוב חודשי בהוראת קבע, מתחיל בעלייה לאוויר. ביטול בהודעה של 30 יום</small></span>' +
+        '<span class="dots"></span><span class="v">' + ils(CARE[s.care][1]) + ' לחודש</span></div>';
+    }
+    $('pLines').innerHTML = html;
+
+    /* totals */
+    var half = Math.round(total / 2);
+    $('pTotal').textContent = ils(total);
+    $('pVat').textContent = 'כולל מע״מ: ' + ils(Math.round(total * (1 + CONFIG.vat)));
+    $('pPay1').textContent = ils(half);
+    $('pPay2').textContent = ils(total - half);
+
+    /* commission */
+    $('commOnce').textContent = ils(total * CONFIG.commission);
+    $('commRec').textContent = s.care ? ils(CARE[s.care][1] * CONFIG.commission) : '₪0';
+
+    /* header */
+    $('pTitle').textContent = pk.t;
+    $('pBiz').textContent = s.biz || 'שם העסק';
+    $('pName').textContent = s.name || '—';
+    $('pPhone').textContent = s.phone ? ' · ' + s.phone : '';
+    $('pNote').textContent = s.note;
+    $('pNote').hidden = !s.note;
+    $('pInc').innerHTML = pk.inc.map(function(i){
+      return '<li><span class="ck">✓</span>' + i + '</li>';
+    }).join('');
+
+    /* dates */
+    var now = new Date();
+    var ref = 'OS-' + now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') +
+      '-' + s.pack.slice(0, 3).toUpperCase();
+    $('ref').textContent = ref;
+    $('today').textContent = fmt(now);
+    $('validTo').textContent = fmt(new Date(now.getTime() + s.valid * 864e5));
+
+    $('pTime').innerHTML =
+      '<li><b>יום 0</b> — אישור ההצעה ותשלום המקדמה.</li>' +
+      '<li><b>יום 1</b> — שאלון אפיון וקישור להעלאת לוגו, תמונות וטקסטים.</li>' +
+      '<li><b>' + fmt(addBizDays(now, pk.draft)) + '</b> — טיוטה ראשונה לצפייה בכתובת זמנית.</li>' +
+      '<li><b>+3 ימים</b> — שני סבבי תיקונים ואישור סופי.</li>' +
+      '<li><b>' + fmt(addBizDays(now, pk.live)) + '</b> — תשלום היתרה, חיבור דומיין ועלייה לאוויר.</li>' +
+      '<li><b>יום העלייה</b> — הדרכה של 20 דקות ומסירת כל הגישות.</li>';
+
+    /* link + message */
+    var q = new URLSearchParams();
+    if(s.biz)   q.set('biz', s.biz);
+    if(s.name)  q.set('name', s.name);
+    if(s.phone) q.set('phone', s.phone);
+    q.set('pack', s.pack);
+    if(s.addons.length) q.set('addons', s.addons.map(function(a){
+      return a.qty > 1 ? a.k + ':' + a.qty : a.k; }).join(','));
+    if(s.care)  q.set('care', s.care);
+    if(s.disc)  q.set('discount', s.disc);
+    if(s.valid !== 14) q.set('valid', s.valid);
+    if(s.agent) q.set('agent', s.agent);
+    if(s.note)  q.set('note', s.note);
+
+    var base = location.href.replace(/quote-builder\.html.*$/, '').replace(/[?#].*$/, '') || './';
+    var link = (window.OS_PROPOSAL_URL || (base + 'proposal.html')) +
+      (String(window.OS_PROPOSAL_URL || '').indexOf('?') > -1 ? '&' : '?') + q.toString();
+    $('outLink').textContent = link;
+    $('openLink').href = link;
+
+    var msg = 'היי' + (s.name ? ' ' + s.name : '') + ', כאן ' + (s.agent || 'ORIZISTUDIO') + '.\n' +
+      'כמו שדיברנו — הנה ההצעה ל' + (s.biz || 'עסק שלך') + ':\n' + link + '\n\n' +
+      pk.t + ' · ' + ils(total) + ' לא כולל מע״מ' +
+      (s.care ? '\nאחזקה חודשית ' + ils(CARE[s.care][1]) + ' מהעלייה לאוויר' : '') +
+      '\nבתוקף ' + s.valid + ' יום. יש בעמוד כפתור אישור — לוחצים ואנחנו מתחילים.';
+    $('outMsg').textContent = msg;
+
+    var ready = $('ck1').checked && $('ck2').checked && s.phone;
+    var wa = $('waSend');
+    wa.href = ready
+      ? 'https://wa.me/' + s.phone.replace(/\D/g, '').replace(/^0/, '972') + '?text=' + encodeURIComponent(msg)
+      : '#';
+    wa.style.opacity = ready ? '1' : '.45';
+    wa.style.pointerEvents = ready ? '' : 'none';
+    wa.textContent = ready ? 'שליחה בוואטסאפ' : (s.phone ? 'סמנו את שתי ההצהרות' : 'חסר טלפון לקוח');
+
+    try { localStorage.setItem('os_agent', s.agent); } catch(e){}
+  }
+
+  /* ---- copy + toast ---- */
+  var toastT;
+  function toast(m){
+    $('toastMsg').textContent = m;
+    $('toast').classList.add('on');
+    clearTimeout(toastT);
+    toastT = setTimeout(function(){ $('toast').classList.remove('on'); }, 2600);
+  }
+  function copy(text, label){
+    var done = function(){ toast(label + ' הועתק'); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done, function(){ fallback(text, done); });
+    } else fallback(text, done);
+  }
+  function fallback(text, done){
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); }
+    catch(e){ toast('ההעתקה נכשלה. סמנו והעתיקו ידנית.'); }
+    document.body.removeChild(ta);
+  }
+  $('copyLink').addEventListener('click', function(){ copy($('outLink').textContent, 'הקישור'); });
+  $('copyMsg').addEventListener('click', function(){ copy($('outMsg').textContent, 'ההודעה'); });
+  $('printBtn').addEventListener('click', function(){ window.print(); });
+
+  document.addEventListener('input', render);
+  document.addEventListener('change', render);
+  try { $('agent').value = localStorage.getItem('os_agent') || ''; } catch(e){}
+  render();
+})();
+</script>
+</body>
+</html>

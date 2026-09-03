@@ -34,6 +34,8 @@ p{margin:0}
 .eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;color:var(--grey);text-transform:uppercase}
 h1{font-size:34px;margin-top:10px}
 .for{font-size:17px;color:var(--ink-soft);margin-top:10px}
+.note-personal{margin-top:16px;background:rgba(124,92,255,.09);border:1px solid rgba(124,92,255,.28);
+  border-radius:14px;padding:14px 18px;font-size:15px;color:var(--ink-soft)}
 .block{border-top:1px solid var(--line-soft);padding-top:22px;margin-top:26px}
 .block h2{font-size:21px;margin-bottom:12px}
 .line{display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-soft);
@@ -100,7 +102,8 @@ ul.inc li{display:flex;gap:8px;color:var(--ink-soft)}
     <div style="margin-top:26px">
       <p class="eyebrow">הצעת מחיר</p>
       <h1 id="title">אתר תדמית — חבילת PRO</h1>
-      <p class="for">עבור <b id="biz">העסק שלכם</b> · לידי <span id="name">—</span></p>
+      <p class="for">עבור <b id="biz">העסק שלכם</b> · לידי <span id="name">—</span><span id="phoneline"></span></p>
+      <p class="note-personal" id="noteBox" hidden></p>
     </div>
 
     <div class="block">
@@ -138,7 +141,7 @@ ul.inc li{display:flex;gap:8px;color:var(--ink-soft)}
       <h2>תנאים</h2>
       <div class="terms">
         <span>· המחירים אינם כוללים מע״מ. חשבונית מס מונפקת עם כל תשלום.</span>
-        <span>· ההצעה תקפה 14 יום מתאריך השליחה.</span>
+        <span id="validline">· ההצעה תקפה 14 יום מתאריך השליחה.</span>
         <span>· שני סבבי תיקונים כלולים. סבב נוסף מתומחר ב־290 ₪.</span>
         <span>· הדומיין נרשם על שם הלקוח. כל הגישות נמסרות ביום העלייה לאוויר.</span>
         <span>· לוח הזמנים נמדד בימי עסקים ומותנה בקבלת חומרים מהלקוח.</span>
@@ -162,6 +165,7 @@ ul.inc li{display:flex;gap:8px;color:var(--ink-soft)}
   </div>
 
   <div class="foot">
+    <span id="agentline"></span>
     <span>ORIZISTUDIO · <a href="mailto:aaci.yoni@gmail.com" style="color:var(--ink-soft)">aaci.yoni@gmail.com</a> · 054-245-6102</span>
     <span>מבית ORIZIS TECHNOLOGY</span>
   </div>
@@ -193,16 +197,21 @@ ul.inc li{display:flex;gap:8px;color:var(--ink-soft)}
   var biz=q.get('biz')||'העסק שלכם', name=q.get('name')||'—';
   var disc=Number(q.get('discount')||0);
   var care=(q.get('care')||'').toLowerCase();
+  var phone=q.get('phone')||'', note=q.get('note')||'', agent=q.get('agent')||'';
+  var validDays=Number(q.get('valid')||14);
 
   document.getElementById('title').textContent=pk.t;
   document.getElementById('biz').textContent=biz;
   document.getElementById('name').textContent=name;
+  if(phone) document.getElementById('phoneline').textContent=' · '+phone;
+  if(note){ var nb=document.getElementById('noteBox'); nb.textContent=note; nb.hidden=false; }
   document.getElementById('inc').innerHTML=pk.inc.map(function(i){
     return '<li><span class="tick">✓</span>'+i+'</li>'}).join('');
 
   var rows=[[pk.t,pk.p]];
   (q.get('addons')||'').split(',').filter(Boolean).forEach(function(a){
-    var x=ADDONS[a.trim()]; if(x) rows.push([x[0],x[1]]);
+    var parts=a.trim().split(':'), x=ADDONS[parts[0]], qty=Math.max(1,Math.min(20,Number(parts[1]||1)));
+    if(x) rows.push([qty>1 ? x[0]+' × '+qty : x[0], x[1]*qty]);
   });
   var total=rows.reduce(function(s,r){return s+r[1]},0);
   if(disc>0){var cut=Math.round(total*disc/100); rows.push(['הנחה מיוחדת '+disc+'%',-cut]); total-=cut;}
@@ -220,14 +229,16 @@ ul.inc li{display:flex;gap:8px;color:var(--ink-soft)}
   document.getElementById('draft').textContent='יום '+pk.d;
   document.getElementById('live').textContent='יום '+pk.l;
 
-  var now=new Date(), valid=new Date(now.getTime()+14*864e5);
+  var now=new Date(), valid=new Date(now.getTime()+validDays*864e5);
   function d(x){return x.toLocaleDateString('he-IL')}
   document.getElementById('date').textContent=d(now);
   document.getElementById('valid').textContent=d(valid);
+  document.getElementById('validline').textContent='· ההצעה תקפה '+validDays+' יום מתאריך השליחה.';
   document.getElementById('ref').textContent='OS-'+now.getFullYear()+'-'+
     String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0')+'-'+
     key.slice(0,3).toUpperCase();
 
+  if(agent) document.getElementById('agentline').textContent='ההצעה הוכנה על ידי '+agent;
   document.getElementById('hint').innerHTML='<b>לשימוש פנימי:</b> proposal.html?biz=שם+העסק&amp;name=איש+קשר'+
     '&amp;pack=nano|one|pro|business|shop&amp;addons=logo,content&amp;care=plus&amp;discount=10';
 
@@ -237,7 +248,8 @@ ul.inc li{display:flex;gap:8px;color:var(--ink-soft)}
         note=document.getElementById('signnote'), btn=this;
     if(!n||!p){note.textContent='נא למלא שם וטלפון לפני האישור.';note.style.color='var(--accent)';return}
     var msg='אני '+n+' מ'+biz+' מאשר את הצעה מספר '+document.getElementById('ref').textContent+
-      ' על סך '+ils(total)+' לא כולל מע"מ. טלפון: '+p+'. נא לשלוח קישור לתשלום המקדמה.';
+      ' על סך '+ils(total)+' לא כולל מע"מ. טלפון: '+p+'.'+(agent?' סוכנת: '+agent+'.':'')+
+      ' נא לשלוח קישור לתשלום המקדמה.';
     btn.textContent='ההצעה אושרה ✓';btn.classList.add('done');
     note.textContent='נפתח וואטסאפ עם האישור. שלחו את ההודעה ותקבלו קישור לתשלום המקדמה תוך דקות.';
     note.style.color='var(--forest)';

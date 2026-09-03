@@ -53,30 +53,7 @@ service cloud.firestore {
     match /hands/{id}     { allow read, create: if signedIn(); allow update: if false;
                             allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
 
-    // Tables. One field is fenced off: settings.botMode == 'oracle' (a
-    // training table, where the bots play with the cards). Only the site
-    // owner's account may CREATE such a table or SWITCH a table into that
-    // mode; everyone else's writes to an already-training table (the game
-    // state moving along) are fine, because they change nothing about it.
-    function setsOracle() {
-      return ('settings' in request.resource.data)
-          && request.resource.data.settings is map
-          && ('botMode' in request.resource.data.settings)
-          && request.resource.data.settings.botMode == 'oracle';
-    }
-    function wasOracle() {
-      return resource != null
-          && ('settings' in resource.data)
-          && resource.data.settings is map
-          && ('botMode' in resource.data.settings)
-          && resource.data.settings.botMode == 'oracle';
-    }
-    match /tables/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && (!setsOracle() || superAdmin());
-      allow update: if signedIn() && (!setsOracle() || wasOracle() || superAdmin());
-      allow delete: if signedIn();
-    }
+    match /tables/{id}       { allow read, write: if signedIn(); }
 
     // Server-engine private data: a player may read ONLY their own hole cards.
     // The deck/engine doc (_engine) and everyone else's cards are server-only.

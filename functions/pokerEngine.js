@@ -862,35 +862,23 @@ function botAction(S, uid) {
   const gt = g.currentGameType || "NLH";
   const rng = rangeFacing(toCall, potNow, bb);
   const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), gt, rng);
-  let eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
-  // TRAINING MODE: the table was opened with botMode 'oracle' — the bots play
-  // with the actual cards, and the lobby and the table both say so. Real
-  // equity replaces the estimate, and the hand-shape rules (which exist only
-  // because the estimate misleads) step aside with it.
-  const oracle = S.settings.botMode === "oracle";
-  const oppHands = () => activesOf(S.players).filter((p) => p.uid !== uid)
-      .map((p) => ((S.priv || {})[p.uid] || []))
-      .filter((c) => c.length === (cards || []).length);
-  if (oracle) {
-    const opps = oppHands();
-    const real = opps.length ? trueEquityVs(cards, opps, g.board || [], gt) : null;
-    if (real != null) eq = real;
-  }
+  const eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
   const body = handBody(cards, g.board || [], gt);
-  const hasBody = oracle || body.made >= 2 || body.outs >= 8;   // may play a BIG pot
-  const hasAnything = oracle || body.made >= 1 || body.outs >= 4; // may call a small one
-  // The god guard is on in training mode, and otherwise only on a table where
-  // every seat is a bot. One real player sits down and it is off for the whole
-  // table, permanently — unless the manager opened the table as training.
+  const hasBody = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
+  const hasAnything = body.made >= 1 || body.outs >= 4; // may call a small one
+  // The god guard only exists on a table where every seat is a bot. One real
+  // player sits down and it is off for the whole table, permanently.
   const botsOnly = Object.values(S.players).every((p) => p.isBot);
-  const guardOn = oracle || (botsOnly && S.settings.botGodGuard !== false);
+  const guardOn = botsOnly && S.settings.botGodGuard !== false;
   let godSeen = null;
   const godOK = () => {
     if (!guardOn) return true;
     if (godSeen === null) {
-      const opps = oppHands();
+      const opps = activesOf(S.players).filter((p) => p.uid !== uid)
+          .map((p) => ((S.priv || {})[p.uid] || []))
+          .filter((c) => c.length === (cards || []).length);
       const real = opps.length ? trueEquityVs(cards, opps, g.board || [], gt) : null;
       godSeen = real == null ? true : real >= GOD_FLOOR;
     }
@@ -1250,10 +1238,7 @@ function removeSeat(S, uid, inHand) {
     g.pots = [...(g.pots || []), {amount: round2(p.bet), eligible: elig}];
   }
   const stack = round2(p.stack || 0);
-  // a training table is not a real game: practice chips leave with the seat
-  // and nothing is credited, logged or remembered as a re-entry floor
-  const practice = S.settings.botMode === "oracle";
-  const credit = practice ? 0 : S.settings.spinMode ?
+  const credit = S.settings.spinMode ?
     (S.raw.spin || S.table.spin ? 0 : round2(p.spinPaid || 0)) :
     round2(stack + (p.pendingTopUp || 0) + (inHand ? 0 : (p.bet || 0)));
   delete S.players[uid];

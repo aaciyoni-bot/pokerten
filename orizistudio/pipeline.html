@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ניהול לקוחות — ORIZISTUDIO</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=Heebo:wght@400;500;700;900&family=Assistant:wght@400;600;700;800&display=swap">
+<style>
+:root{
+  --bg:#0b0b12;--card:#12121c;--card-2:#181826;--elev:#1f1f30;
+  --line:rgba(255,255,255,.09);--line-2:rgba(255,255,255,.16);
+  --ink:#f5f5fa;--muted:#a6a6bd;--faint:#6c6c85;
+  --brand:#7c5cff;--brand-2:#a48bff;--glow:rgba(124,92,255,.35);
+  --ok:#35d39a;--warn:#e0b64f;--bad:#ff6b81;--wa:#25d366;
+  --fd:'Space Grotesk','Assistant','Heebo',sans-serif;
+  --fb:'Inter','Heebo',system-ui,sans-serif;--r:18px;--r-sm:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--fb);font-size:15px;line-height:1.6;
+  direction:rtl;-webkit-font-smoothing:antialiased;min-height:100vh}
+h1,h2,h3{font-family:var(--fd);font-weight:700;line-height:1.2}
+button,input,select,textarea{font-family:inherit;font-size:inherit}
+button{cursor:pointer;border:none;background:none;color:inherit}
+:focus-visible{outline:2px solid var(--brand-2);outline-offset:2px;border-radius:6px}
+
+.bar{border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:30}
+.bar .in{max-width:1280px;margin:0 auto;padding:13px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:9px;font-family:var(--fd);font-weight:700;font-size:17px;
+  text-decoration:none;color:inherit}
+.logo .mk{width:29px;height:29px;border-radius:9px;display:grid;place-items:center;font-size:14px;
+  background:linear-gradient(135deg,var(--brand),#ff5ca8)}
+.logo .wm{direction:ltr;unicode-bidi:isolate}
+.logo b{color:var(--brand-2)}
+.bar .t{color:var(--faint);font-size:13px}
+.bar .sp{margin-inline-start:auto;display:flex;gap:9px;flex-wrap:wrap}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;font-weight:600;
+  font-size:14px;padding:10px 17px;border-radius:999px;text-decoration:none;
+  transition:transform .15s,filter .15s,border-color .15s}
+.btn:hover{transform:translateY(-1px);filter:brightness(1.07)}
+.btn-p{background:linear-gradient(135deg,var(--brand),#9a6bff);color:#fff;box-shadow:0 8px 22px -12px var(--glow)}
+.btn-g{border:1px solid var(--line-2);color:var(--ink)}
+.btn-sm{padding:7px 13px;font-size:13px}
+
+.page{max-width:1280px;margin:0 auto;padding:20px 20px 80px}
+
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px}
+.kpi .k{font-family:var(--fd);font-weight:700;font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .l{color:var(--muted);font-size:13px;margin-top:5px}
+.kpi.money .k{color:var(--ok)}
+.kpi.due .k{color:var(--warn)}
+@media(max-width:860px){.kpis{grid-template-columns:1fr 1fr}}
+
+.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+.search{display:flex;align-items:center;gap:9px;background:var(--card-2);border:1px solid var(--line);
+  border-radius:999px;padding:9px 16px;flex:1;min-width:200px;max-width:340px}
+.search input{flex:1;background:none;border:none;outline:none;color:var(--ink)}
+.search input::placeholder{color:var(--faint)}
+.search svg{width:16px;height:16px;color:var(--faint);flex:none}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:8px 15px;border-radius:999px;font-size:13.5px;font-weight:600;border:1px solid var(--line);
+  background:var(--card);color:var(--muted);display:inline-flex;align-items:center;gap:7px;
+  transition:border-color .15s,color .15s}
+.chip:hover{border-color:var(--line-2);color:var(--ink)}
+.chip.on{background:linear-gradient(135deg,var(--brand),#9a6bff);color:#fff;border-color:transparent}
+.chip .n{font-variant-numeric:tabular-nums;opacity:.75;font-size:12.5px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+.lead{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:17px 18px;
+  display:flex;flex-direction:column;gap:9px;position:relative;transition:border-color .15s}
+.lead:hover{border-color:var(--line-2)}
+.lead.overdue{border-color:rgba(224,182,79,.45)}
+.lead.won{border-color:rgba(53,211,154,.4);background:linear-gradient(180deg,rgba(53,211,154,.06),var(--card))}
+.lead.lost{opacity:.5}
+.lead .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.lead h3{font-family:var(--fb);font-size:16.5px;font-weight:700}
+.lead .sub{color:var(--faint);font-size:12.5px;margin-top:2px}
+.stage{font-size:12px;font-weight:700;padding:4px 11px;border-radius:999px;white-space:nowrap;
+  border:1px solid}
+.lead .meta{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.lead .meta b{color:var(--ink);font-variant-numeric:tabular-nums}
+.lead .note{font-size:13px;color:var(--muted);background:var(--card-2);border-radius:10px;
+  padding:8px 11px;white-space:pre-wrap}
+.lead .acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.ia{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);display:grid;
+  place-items:center;font-size:15px;transition:border-color .15s,background .15s}
+.ia:hover{border-color:var(--brand-2);background:rgba(124,92,255,.1)}
+.ia.wa:hover{border-color:var(--wa);background:rgba(37,211,102,.12)}
+.ia.del:hover{border-color:var(--bad);background:rgba(255,107,129,.12)}
+.ia[disabled]{opacity:.3;cursor:not-allowed}
+.lead select.st{background:var(--card-2);border:1px solid var(--line);border-radius:10px;
+  padding:7px 10px;color:var(--ink);font-size:13.5px;flex:1;min-width:110px}
+.due{font-size:12.5px;font-weight:600}
+.due.hot{color:var(--warn)}
+.empty{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--faint)}
+
+/* modal */
+.back{position:fixed;inset:0;background:rgba(6,6,12,.72);backdrop-filter:blur(6px);z-index:60;
+  display:none;align-items:center;justify-content:center;padding:20px}
+.back.on{display:flex}
+.modal{background:var(--card);border:1px solid var(--line-2);border-radius:24px;max-width:480px;
+  width:100%;max-height:90vh;overflow:auto;padding:26px;box-shadow:0 24px 60px rgba(0,0,0,.7)}
+.modal h2{font-size:21px;margin-bottom:4px}
+.modal .ms{color:var(--faint);font-size:13.5px;margin-bottom:18px}
+.fld{margin-bottom:14px}
+.fld label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.fld input,.fld select,.fld textarea{width:100%;background:var(--card-2);border:1px solid var(--line);
+  border-radius:var(--r-sm);padding:11px 13px;color:var(--ink);outline:none;
+  transition:border-color .15s,box-shadow .15s}
+.fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--brand);
+  box-shadow:0 0 0 3px rgba(124,92,255,.14)}
+.fld textarea{min-height:70px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.consent{display:flex;gap:10px;align-items:flex-start;background:rgba(224,182,79,.08);
+  border:1px solid rgba(224,182,79,.3);border-radius:var(--r-sm);padding:12px 14px;font-size:13.5px;
+  color:var(--muted);margin-bottom:14px}
+.consent input{accent-color:var(--warn);margin-top:4px}
+.mbtns{display:flex;gap:10px;margin-top:6px}
+.mbtns .btn{flex:1}
+
+.toast{position:fixed;bottom:22px;inset-inline:0;margin-inline:auto;width:max-content;max-width:90%;
+  background:var(--elev);border:1px solid var(--line-2);border-radius:14px;padding:12px 19px;
+  box-shadow:0 18px 44px rgba(0,0,0,.6);display:flex;gap:10px;align-items:center;z-index:80;
+  transform:translateY(120px);transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.toast.on{transform:none}
+.toast .d{width:23px;height:23px;border-radius:50%;background:rgba(53,211,154,.16);color:var(--ok);
+  display:grid;place-items:center;font-size:12px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="in">
+  <a class="logo" href="./"><span class="mk">◆</span><span class="wm">ORIZI<b>S</b>TUDIO</span></a>
+  <span class="t">ניהול לקוחות</span>
+  <span class="sp">
+    <button class="btn btn-g btn-sm" id="importBtn">ייבוא לידים</button>
+    <button class="btn btn-g btn-sm" id="exportBtn">ייצוא</button>
+    <button class="btn btn-p btn-sm" id="addBtn">ליד חדש</button>
+  </span>
+  <input type="file" id="fileIn" accept=".csv,text/csv" hidden>
+</div></div>
+
+<div class="page">
+  <div class="kpis">
+    <div class="kpi"><div class="k" id="kTotal">0</div><div class="l">לידים בלוח</div></div>
+    <div class="kpi due"><div class="k" id="kDue">0</div><div class="l">למעקב היום או באיחור</div></div>
+    <div class="kpi"><div class="k" id="kWon">0</div><div class="l">נסגרו החודש</div></div>
+    <div class="kpi money"><div class="k" id="kComm">₪0</div><div class="l">עמלה החודש · 33%</div></div>
+  </div>
+
+  <div class="tools">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="q" type="search" placeholder="חיפוש לפי עסק, נישה, עיר או טלפון" aria-label="חיפוש">
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<div class="back" id="back">
+  <div class="modal">
+    <h2 id="mTitle">ליד חדש</h2>
+    <p class="ms">מה שחייב: שם עסק וטלפון. השאר אפשר להשלים אחר כך.</p>
+    <form id="form">
+      <div class="two">
+        <div class="fld"><label for="fBiz">שם העסק</label><input id="fBiz" required></div>
+        <div class="fld"><label for="fPhone">טלפון</label><input id="fPhone" type="tel" inputmode="tel" required></div>
+      </div>
+      <div class="two">
+        <div class="fld"><label for="fName">איש קשר</label><input id="fName"></div>
+        <div class="fld"><label for="fNiche">נישה</label><input id="fNiche" placeholder="מספרה"></div>
+      </div>
+      <div class="two">
+        <div class="fld"><label for="fCity">עיר</label><input id="fCity"></div>
+        <div class="fld"><label for="fStage">שלב</label><select id="fStage"></select></div>
+      </div>
+      <div class="two">
+        <div class="fld"><label for="fDue">מעקב הבא</label><input id="fDue" type="date"></div>
+        <div class="fld"><label for="fAmount">סכום העסקה</label><input id="fAmount" type="number" min="0" step="10" placeholder="2900"></div>
+      </div>
+      <div class="fld"><label for="fNote">הערות</label><textarea id="fNote" placeholder="מה נאמר בשיחה, מה מעניין אותו, מתי לחזור"></textarea></div>
+      <label class="consent"><input type="checkbox" id="fConsent">
+        <span>קיבלתי ממנו אישור טלפוני מפורש לשלוח לו הודעות בוואטסאפ</span></label>
+      <div class="mbtns">
+        <button type="submit" class="btn btn-p">שמירה</button>
+        <button type="button" class="btn btn-g" id="cancelBtn">ביטול</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span class="d">✓</span><span id="toastMsg"></span></div>
+
+<script>
+(function(){
+  var KEY = 'os_pipeline_v1';
+  var COMMISSION = 0.33;
+
+  var STAGES = [
+    { k:'new',      n:'חדש',          c:'#a48bff', next:0 },
+    { k:'called',   n:'שיחה',         c:'#7c5cff', next:1 },
+    { k:'demo',     n:'דמו נשלח',     c:'#4aa3ff', next:1 },
+    { k:'proposal', n:'הצעה נשלחה',   c:'#e0b64f', next:3 },
+    { k:'won',      n:'נסגר',         c:'#35d39a', next:0 },
+    { k:'lost',     n:'לא רלוונטי',   c:'#ff6b81', next:0 }
+  ];
+  var stageOf = function(k){ return STAGES.filter(function(s){ return s.k === k; })[0] || STAGES[0]; };
+
+  var $ = function(i){ return document.getElementById(i); };
+  var ils = function(n){ return '₪' + Math.round(n || 0).toLocaleString('en-US'); };
+  var today = function(){ return new Date().toISOString().slice(0, 10); };
+  var uid = function(){ return 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); };
+
+  var leads = [], filter = 'all', query = '', editing = null;
+
+  function load(){
+    try { leads = JSON.parse(localStorage.getItem(KEY) || '[]'); }
+    catch(e){ leads = []; }
+    if(!Array.isArray(leads)) leads = [];
+  }
+  function save(){
+    try { localStorage.setItem(KEY, JSON.stringify(leads)); }
+    catch(e){ toast('לא הצלחתי לשמור. ייתכן שהאחסון בדפדפן מלא.'); }
+  }
+
+  var toastT;
+  function toast(m){
+    $('toastMsg').textContent = m;
+    $('toast').classList.add('on');
+    clearTimeout(toastT);
+    toastT = setTimeout(function(){ $('toast').classList.remove('on'); }, 2800);
+  }
+
+  /* ---------- rendering ---------- */
+  function matches(l){
+    if(filter !== 'all' && l.stage !== filter) return false;
+    if(!query) return true;
+    return (l.biz + ' ' + (l.name||'') + ' ' + (l.niche||'') + ' ' + (l.city||'') + ' ' + (l.phone||''))
+      .toLowerCase().indexOf(query) > -1;
+  }
+
+  function renderChips(){
+    var counts = { all: leads.length };
+    STAGES.forEach(function(s){
+      counts[s.k] = leads.filter(function(l){ return l.stage === s.k; }).length;
+    });
+    var html = '<button class="chip' + (filter === 'all' ? ' on' : '') + '" data-f="all">הכל ' +
+      '<span class="n">' + counts.all + '</span></button>';
+    STAGES.forEach(function(s){
+      html += '<button class="chip' + (filter === s.k ? ' on' : '') + '" data-f="' + s.k + '">' +
+        s.n + ' <span class="n">' + counts[s.k] + '</span></button>';
+    });
+    $('chips').innerHTML = html;
+  }
+
+  function renderKpis(){
+    var t = today(), month = t.slice(0, 7);
+    var due = leads.filter(function(l){
+      return l.due && l.due <= t && l.stage !== 'won' && l.stage !== 'lost'; }).length;
+    var won = leads.filter(function(l){
+      return l.stage === 'won' && (l.wonAt || '').slice(0, 7) === month; });
+    var sum = won.reduce(function(a, l){ return a + (Number(l.amount) || 0); }, 0);
+    $('kTotal').textContent = leads.length;
+    $('kDue').textContent = due;
+    $('kWon').textContent = won.length;
+    $('kComm').textContent = ils(sum * COMMISSION);
+  }
+
+  function esc(t){
+    return String(t == null ? '' : t).replace(/[&<>"]/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; });
+  }
+
+  function render(){
+    renderChips();
+    renderKpis();
+    var t = today();
+    var list = leads.filter(matches).sort(function(a, b){
+      var rank = { proposal:0, demo:1, called:2, new:3, won:4, lost:5 };
+      if(rank[a.stage] !== rank[b.stage]) return rank[a.stage] - rank[b.stage];
+      return (a.due || '9999') < (b.due || '9999') ? -1 : 1;
+    });
+
+    if(!list.length){
+      $('grid').innerHTML = '<div class="empty">' +
+        (leads.length ? 'אין לידים שתואמים לסינון.' :
+        'הלוח ריק. אפשר לייבא את leads.csv או להוסיף ליד ידנית.') + '</div>';
+      return;
+    }
+
+    $('grid').innerHTML = list.map(function(l){
+      var s = stageOf(l.stage);
+      var overdue = l.due && l.due <= t && l.stage !== 'won' && l.stage !== 'lost';
+      var cls = 'lead' + (l.stage === 'won' ? ' won' : '') + (l.stage === 'lost' ? ' lost' : '') +
+        (overdue ? ' overdue' : '');
+      var wa = l.consent && l.phone
+        ? 'https://wa.me/' + l.phone.replace(/\D/g, '').replace(/^0/, '972')
+        : '';
+      var q = 'quote-builder' + (/\.html$/.test(location.pathname) ? '.html' : '') +
+        '?cbiz=' + encodeURIComponent(l.biz || '') +
+        '&cname=' + encodeURIComponent(l.name || '') +
+        '&cphone=' + encodeURIComponent(l.phone || '');
+      return '<article class="' + cls + '" data-id="' + l.id + '">' +
+        '<div class="hd"><div><h3>' + esc(l.biz) + '</h3>' +
+          '<div class="sub">' + esc([l.niche, l.city].filter(Boolean).join(' · ') || 'ללא נישה') + '</div></div>' +
+          '<span class="stage" style="color:' + s.c + ';border-color:' + s.c + '44;background:' + s.c + '18">' +
+          s.n + '</span></div>' +
+        '<div class="meta">' +
+          (l.name ? '<span>' + esc(l.name) + '</span>' : '') +
+          (l.phone ? '<span><b>' + esc(l.phone) + '</b></span>' : '') +
+          (l.amount ? '<span>עסקה <b>' + ils(l.amount) + '</b></span>' : '') +
+          (l.due ? '<span class="due' + (overdue ? ' hot' : '') + '">מעקב ' + esc(l.due) + '</span>' : '') +
+        '</div>' +
+        (l.note ? '<div class="note">' + esc(l.note) + '</div>' : '') +
+        '<div class="acts">' +
+          '<select class="st" data-act="stage">' + STAGES.map(function(x){
+            return '<option value="' + x.k + '"' + (x.k === l.stage ? ' selected' : '') + '>' + x.n + '</option>';
+          }).join('') + '</select>' +
+          (l.phone ? '<a class="ia" href="tel:' + esc(l.phone) + '" title="חיוג">📞</a>' : '') +
+          (wa ? '<a class="ia wa" href="' + wa + '" target="_blank" rel="noopener" title="וואטסאפ">💬</a>'
+              : '<button class="ia wa" disabled title="אין אישור לשלוח הודעה">💬</button>') +
+          '<a class="ia" href="' + q + '" title="בניית הצעה">🧾</a>' +
+          '<button class="ia" data-act="edit" title="עריכה">✏️</button>' +
+          '<button class="ia del" data-act="del" title="מחיקה">🗑️</button>' +
+        '</div></article>';
+    }).join('');
+  }
+
+  /* ---------- board actions ---------- */
+  $('grid').addEventListener('change', function(e){
+    var sel = e.target.closest('[data-act="stage"]'); if(!sel) return;
+    var id = e.target.closest('.lead').dataset.id;
+    var l = leads.filter(function(x){ return x.id === id; })[0]; if(!l) return;
+    l.stage = sel.value;
+    if(l.stage === 'won'){ l.wonAt = today(); l.due = ''; }
+    else if(l.stage === 'lost'){ l.due = ''; }
+    else {
+      var d = new Date();
+      d.setDate(d.getDate() + (stageOf(l.stage).next || 1));
+      l.due = d.toISOString().slice(0, 10);
+    }
+    save(); render();
+  });
+
+  $('grid').addEventListener('click', function(e){
+    var b = e.target.closest('[data-act]'); if(!b) return;
+    var act = b.dataset.act;
+    if(act === 'stage') return;
+    var id = e.target.closest('.lead').dataset.id;
+    var l = leads.filter(function(x){ return x.id === id; })[0]; if(!l) return;
+    if(act === 'edit') openForm(l);
+    if(act === 'del'){
+      if(confirm('למחוק את "' + l.biz + '" מהלוח?')){
+        leads = leads.filter(function(x){ return x.id !== id; });
+        save(); render(); toast('הליד נמחק');
+      }
+    }
+  });
+
+  $('chips').addEventListener('click', function(e){
+    var c = e.target.closest('.chip'); if(!c) return;
+    filter = c.dataset.f; render();
+  });
+  $('q').addEventListener('input', function(){ query = this.value.trim().toLowerCase(); render(); });
+
+  /* ---------- form ---------- */
+  $('fStage').innerHTML = STAGES.map(function(s){
+    return '<option value="' + s.k + '">' + s.n + '</option>'; }).join('');
+
+  function openForm(l){
+    editing = l || null;
+    $('mTitle').textContent = l ? 'עריכת ליד' : 'ליד חדש';
+    $('fBiz').value = l ? l.biz : '';
+    $('fPhone').value = l ? (l.phone || '') : '';
+    $('fName').value = l ? (l.name || '') : '';
+    $('fNiche').value = l ? (l.niche || '') : '';
+    $('fCity').value = l ? (l.city || '') : '';
+    $('fStage').value = l ? l.stage : 'new';
+    $('fDue').value = l ? (l.due || '') : today();
+    $('fAmount').value = l ? (l.amount || '') : '';
+    $('fNote').value = l ? (l.note || '') : '';
+    $('fConsent').checked = l ? !!l.consent : false;
+    $('back').classList.add('on');
+    setTimeout(function(){ $('fBiz').focus(); }, 50);
+  }
+  function closeForm(){ $('back').classList.remove('on'); editing = null; }
+
+  $('addBtn').addEventListener('click', function(){ openForm(null); });
+  $('cancelBtn').addEventListener('click', closeForm);
+  $('back').addEventListener('click', function(e){ if(e.target === this) closeForm(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeForm(); });
+
+  $('form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var biz = $('fBiz').value.trim(), phone = $('fPhone').value.trim();
+    if(!biz || !phone){ toast('חסר שם עסק או טלפון'); return; }
+    var data = {
+      biz: biz, phone: phone,
+      name: $('fName').value.trim(), niche: $('fNiche').value.trim(),
+      city: $('fCity').value.trim(), stage: $('fStage').value,
+      due: $('fDue').value, amount: Number($('fAmount').value) || 0,
+      note: $('fNote').value.trim(), consent: $('fConsent').checked
+    };
+    if(editing){
+      Object.keys(data).forEach(function(k){ editing[k] = data[k]; });
+      if(editing.stage === 'won' && !editing.wonAt) editing.wonAt = today();
+      save(); closeForm(); render(); toast('הליד עודכן');
+    } else {
+      data.id = uid();
+      data.added = today();
+      if(data.stage === 'won') data.wonAt = today();
+      leads.unshift(data);
+      save(); closeForm(); render(); toast('הליד נוסף');
+    }
+  });
+
+  /* ---------- CSV ---------- */
+  function parseCsv(text){
+    var rows = [], field = '', row = [], quoted = false;
+    text = text.replace(/^﻿/, '');
+    for(var i = 0; i < text.length; i++){
+      var c = text[i];
+      if(quoted){
+        if(c === '"' && text[i+1] === '"'){ field += '"'; i++; }
+        else if(c === '"') quoted = false;
+        else field += c;
+      }
+      else if(c === '"') quoted = true;
+      else if(c === ','){ row.push(field); field = ''; }
+      else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ''; }
+      else if(c !== '\r') field += c;
+    }
+    if(field || row.length){ row.push(field); rows.push(row); }
+    if(!rows.length) return [];
+    var head = rows.shift().map(function(h){ return h.trim(); });
+    return rows.filter(function(r){ return r.length > 1; }).map(function(r){
+      var o = {};
+      head.forEach(function(h, i){ o[h] = (r[i] || '').trim(); });
+      return o;
+    });
+  }
+
+  $('importBtn').addEventListener('click', function(){ $('fileIn').click(); });
+  $('fileIn').addEventListener('change', function(){
+    var f = this.files && this.files[0]; if(!f) return;
+    var r = new FileReader();
+    r.onload = function(){
+      var rows = parseCsv(String(r.result));
+      var have = {};
+      leads.forEach(function(l){ have[(l.phone || '').replace(/\D/g, '')] = true; });
+      var added = 0, skipped = 0;
+      rows.forEach(function(o){
+        var biz = o['שם העסק'] || o.name || o.business || '';
+        var phone = o['טלפון'] || o.phone || '';
+        if(!biz || !phone){ skipped++; return; }
+        var digits = phone.replace(/\D/g, '');
+        if(have[digits]){ skipped++; return; }
+        have[digits] = true;
+        leads.push({
+          id: uid(), biz: biz, phone: phone,
+          name: o['איש קשר'] || '', niche: o['נישה'] || o.niche || '',
+          city: o['עיר'] || o.city || '',
+          stage: 'new', due: today(), amount: 0, consent: false,
+          note: [o['דירוג'] ? 'דירוג ' + o['דירוג'] : '',
+                 o['מספר ביקורות'] ? o['מספר ביקורות'] + ' ביקורות' : '']
+                .filter(Boolean).join(' · '),
+          added: today()
+        });
+        added++;
+      });
+      save(); render();
+      toast('נוספו ' + added + ' לידים' + (skipped ? ', ' + skipped + ' דולגו' : ''));
+    };
+    r.readAsText(f, 'utf-8');
+    this.value = '';
+  });
+
+  $('exportBtn').addEventListener('click', function(){
+    if(!leads.length){ toast('אין מה לייצא'); return; }
+    var head = ['שם העסק','איש קשר','טלפון','נישה','עיר','שלב','מעקב הבא','סכום','הסכמה לוואטסאפ',
+      'תאריך סגירה','נוסף בתאריך','הערות'];
+    var esc2 = function(v){ return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+    var lines = [head.map(esc2).join(',')];
+    leads.forEach(function(l){
+      lines.push([l.biz, l.name, l.phone, l.niche, l.city, stageOf(l.stage).n, l.due,
+        l.amount, l.consent ? 'כן' : 'לא', l.wonAt || '', l.added || '', l.note].map(esc2).join(','));
+    });
+    var blob = new Blob(['﻿' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'orizistudio-leads-' + today() + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+    toast('הקובץ יורד');
+  });
+
+  /* ---------- first run ---------- */
+  load();
+  if(!leads.length){
+    leads = [{
+      id: uid(), biz: 'מוסך אבו־חצירא', name: 'יוסי', phone: '03-000-0000',
+      niche: 'מוסך', city: 'פתח תקווה', stage: 'called', due: today(), amount: 890,
+      consent: true, note: 'דוגמה — אפשר למחוק. אין לו אתר, ביקש לראות משהו לפני שהוא מחליט.',
+      added: today()
+    }];
+    save();
+  }
+  render();
+})();
+</script>
+</body>
+</html>

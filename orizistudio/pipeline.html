@@ -202,7 +202,6 @@ button{cursor:pointer;border:none;background:none;color:inherit}
 <script>
 (function(){
   var KEY = 'os_pipeline_v1';
-  var AGENT_KEY = 'os_agent';
   var COMMISSION = 0.33;
 
   var STAGES = [
@@ -413,14 +412,14 @@ button{cursor:pointer;border:none;background:none;color:inherit}
     if(editing){
       Object.keys(data).forEach(function(k){ editing[k] = data[k]; });
       if(editing.stage === 'won' && !editing.wonAt) editing.wonAt = today();
+      save(); closeForm(); render(); toast('הליד עודכן');
     } else {
       data.id = uid();
       data.added = today();
       if(data.stage === 'won') data.wonAt = today();
       leads.unshift(data);
+      save(); closeForm(); render(); toast('הליד נוסף');
     }
-    save(); closeForm(); render();
-    toast(editing ? 'הליד עודכן' : 'הליד נוסף');
   });
 
   /* ---------- CSV ---------- */

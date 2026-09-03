@@ -1250,7 +1250,10 @@ function removeSeat(S, uid, inHand) {
     g.pots = [...(g.pots || []), {amount: round2(p.bet), eligible: elig}];
   }
   const stack = round2(p.stack || 0);
-  const credit = S.settings.spinMode ?
+  // a training table is not a real game: practice chips leave with the seat
+  // and nothing is credited, logged or remembered as a re-entry floor
+  const practice = S.settings.botMode === "oracle";
+  const credit = practice ? 0 : S.settings.spinMode ?
     (S.raw.spin || S.table.spin ? 0 : round2(p.spinPaid || 0)) :
     round2(stack + (p.pendingTopUp || 0) + (inHand ? 0 : (p.bet || 0)));
   delete S.players[uid];

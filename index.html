@@ -10543,7 +10543,7 @@ function PokerCreateView({
         serverEngine: nBots >= 2 ? true : s.serverEngine,
         botMode: canTrain && s.botMode === 'oracle' ? 'oracle' : 'strong',
         blinds: Math.max(0.01, Number(s.blinds) || 0.5),
-        rakePercent: Number(s.rakePercent),
+        rakePercent: canTrain && s.botMode === 'oracle' ? 0 : Number(s.rakePercent),
         minBuyIn: Math.max(0.01, Number(s.minBuyIn) || 1),
         maxBuyIn: Math.max(Number(s.minBuyIn) || 1, Number(s.maxBuyIn) || 1)
       },
@@ -11258,6 +11258,10 @@ function PokerTable({
   const [buyAmt, setBuyAmt] = useState(0);
   const [trainAck, setTrainAck] = useState(false); // told once what a training table is
   const trainingNeedsAck = (setts0 => setts0.botMode === 'oracle')((tableState || {}).settings || {}) && !trainAck && !(user && user.trainingAck);
+  // A training table is not a real game, so it is not a real ledger either:
+  // nothing here ever touches a wallet — no buy-in, no rebuy, no top-up, no
+  // cash-out, no game log, no rake. Practice chips come and go with the seat.
+  const practice = (((tableState || {}).settings || {}).botMode === 'oracle');
   const ackTraining = () => {
     setTrainAck(true);
     try { window.fb.updateDoc(window.fb.doc(window.fb.db, "users", user.uid), { trainingAck: true }); } catch (e) {}
@@ -11582,7 +11586,7 @@ function PokerTable({
     // simply not written.
     const dealtAll = Object.values(pl).filter(q => (q.cards || []).length);
     const rkUids = dealtAll.filter(q => !q.isBot).map(q => q.uid);
-    if (rake > 0 && rkUids.length) {
+    if (rake > 0 && rkUids.length && !practice) {
       const share = round2(rake / dealtAll.length);
       logGameResult(rkUids.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share, tableId: tableDocId })), tableDocId);
     }
@@ -11729,7 +11733,7 @@ function PokerTable({
     // Record rake per human player for the reports (split among players dealt in).
     const dealtAll2 = Object.values(pl).filter(q => (q.cards || []).length);
     const rkUids2 = dealtAll2.filter(q => !q.isBot).map(q => q.uid);
-    if (rakeTotal > 0 && rkUids2.length) {
+    if (rakeTotal > 0 && rkUids2.length && !practice) {
       const share2 = round2(rakeTotal / dealtAll2.length);
       logGameResult(rkUids2.map(uid => ({ uid, username: pl[uid].name, game: 'poker', profit: 0, rake: share2 })), tableDocId);
     }
@@ -12286,7 +12290,7 @@ function PokerTable({
         // player with 0 chips at a random free seat. Never again.)
         const minSit = Math.max(0.01, buyInMin(t.settings || {}));
         if (!(Number(buyAmt) >= minSit)) throw `Pick a buy-in first (minimum ${formatMoney(minSit)})`;
-        if ((uSnap.data().balance || 0) < buyAmt) throw "Not enough balance in wallet";
+        if (!practice && (uSnap.data().balance || 0) < buyAmt) throw "Not enough balance in wallet";
         const left = (t.leftStacks || {})[user.uid];
         if (left && Date.now() - left.at < 12 * 60 * 60 * 1000 && buyAmt < round2(left.amount)) throw `You left this table with ${formatMoney(left.amount)} - you must return with at least this amount`;
         // Seats must stay inside the table's capacity: an index handed out past
@@ -12299,7 +12303,7 @@ function PokerTable({
         if (seatIndex < 0) { seatIndex = 0; while (seatIndex < cap && taken.has(seatIndex)) seatIndex++; }
         if (seatIndex >= cap) throw "This table is full";
         const midHand = !['waiting', 'showdown'].includes(t.gameState.phase);
-        tr.update(uRef, {
+        if (!practice) tr.update(uRef, {
           balance: round2(uSnap.data().balance - buyAmt)
         });
         tr.update(tblRef(), {
@@ -12392,12 +12396,12 @@ function PokerTable({
           if (p2[user.uid]) throw "seated";
           if (!w2.length || w2[0].uid !== user.uid) throw "not-first";
           if (Object.keys(p2).length >= ((td.settings || {}).maxPlayers || 6)) throw "full";
-          if ((uSnap.data().balance || 0) < want) throw "You reached the top of the waitlist but don't have enough balance — removed from list";
+          if (!practice && (uSnap.data().balance || 0) < want) throw "You reached the top of the waitlist but don't have enough balance — removed from list";
           let seatIndex = 0;
           const taken = new Set(Object.values(p2).map(p => p.seatIndex));
           while (taken.has(seatIndex)) seatIndex++;
           const midHand = !['waiting', 'showdown'].includes(td.gameState.phase);
-          tr.update(uRef, {
+          if (!practice) tr.update(uRef, {
             balance: round2(uSnap.data().balance - want)
           });
           tr.update(tblRef(), {
@@ -12447,8 +12451,8 @@ function PokerTable({
         const room = round2(capMax - (t.players[user.uid].stack || 0));
         if (room <= 0) throw `You're already at the max table buy-in (${formatMoney(capMax)})`;
         const addAmt = Math.min(round2(buyAmt), room);
-        if ((uSnap.data().balance || 0) < addAmt) throw "Not enough balance in wallet";
-        tr.update(uRef, {
+        if (!practice && (uSnap.data().balance || 0) < addAmt) throw "Not enough balance in wallet";
+        if (!practice) tr.update(uRef, {
           balance: round2(uSnap.data().balance - addAmt)
         });
         tr.update(tblRef(), {
@@ -12569,10 +12573,10 @@ function PokerTable({
         const ms = await tr.get(memDoc(user.uid));
         const ts2 = await tr.get(tblRef());
         if (!ms.exists() || !ts2.exists()) throw "err";
-        if ((ms.data().balance || 0) < add) throw "Not enough in wallet";
+        if (!practice && (ms.data().balance || 0) < add) throw "Not enough in wallet";
         const cur = ts2.data().players[user.uid];
         if (!cur) throw "err";
-        tr.update(ms.ref, {
+        if (!practice) tr.update(ms.ref, {
           balance: round2((ms.data().balance || 0) - add)
         });
         if (inHand) tr.update(tblRef(), {
@@ -12620,7 +12624,7 @@ function PokerTable({
           ...t.players
         };
         delete pl[uid];
-        if (ms && ms.exists()) tr.update(ms.ref, {
+        if (!practice && ms && ms.exists()) tr.update(ms.ref, {
           balance: round2((ms.data().balance || 0) + (p.stack || 0) + (p.pendingTopUp || 0) + (inHand ? 0 : p.bet || 0)),
           lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
         });
@@ -12670,8 +12674,8 @@ function PokerTable({
         const me = t.players[user.uid];
         if (!me || me.status !== 'busted') throw "Not allowed";
         const amt = Math.min(Math.max(round2(buyAmt), minBuy), maxBuy);
-        if ((uSnap.data().balance || 0) < amt) throw "Not enough balance in wallet";
-        tr.update(uRef, {
+        if (!practice && (uSnap.data().balance || 0) < amt) throw "Not enough balance in wallet";
+        if (!practice) tr.update(uRef, {
           balance: round2(uSnap.data().balance - amt)
         });
         tr.update(tblRef(), {
@@ -12816,7 +12820,7 @@ function PokerTable({
             eligible: elig
           });
         }
-        tr.update(uRef, {
+        if (!practice) tr.update(uRef, {
           balance: round2((uSnap.data().balance || 0) + (me.stack || 0)),
           lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
         });
@@ -12824,13 +12828,13 @@ function PokerTable({
           players: pl,
           'gameState.pots': pots
         };
-        if ((me.stack || 0) > 0) upd[`leftStacks.${user.uid}`] = {
+        if (!practice && (me.stack || 0) > 0) upd[`leftStacks.${user.uid}`] = {
           amount: round2(me.stack),
           at: Date.now()
         };
         tr.update(tblRef(), upd);
       });
-      if (session) logGameResult([{
+      if (session && !practice) logGameResult([{
         uid: user.uid,
         username: user.username,
         game: 'poker',
@@ -15403,17 +15407,15 @@ function PokerTable({
   }, needRebuy ? 'Out of chips - Rebuy' : Number.isFinite(pickSeat) ? `Seat ${pickSeat + 1} — buy-in` : 'Table buy-in'), React.createElement("p", {
     className: "text-slate-400 text-xs font-bold mb-4",
     dir: "ltr"
-  }, "Blinds ", formatShort(setts.blinds), "/", formatShort(BB), " · Balance: ", formatMoney(user.balance)), setts.botMode === 'oracle' && React.createElement("p", {
+  }, "Blinds ", formatShort(setts.blinds), "/", formatShort(BB), " · ", setts.botMode === 'oracle' ? "Practice chips — your wallet is not touched" : "Balance: " + formatMoney(user.balance)), setts.botMode === 'oracle' && React.createElement("p", {
     className: "text-amber-300 text-xs font-black tracking-[0.2em] mb-3"
   }, "\uD83C\uDF93 TRAINING TABLE"), trainingNeedsAck && React.createElement("div", {
     // explained ONCE per account, the first time he goes to sit at one;
     // after that the label alone is the whole notice
     className: "bg-amber-400/10 border border-amber-400/30 rounded-2xl p-3 mb-3 text-left"
   }, React.createElement("div", {
-    className: "text-white text-sm font-black mb-1"
-  }, "What is a training table?"), React.createElement("div", {
-    className: "text-slate-200 text-xs font-bold leading-snug mb-2"
-  }, "The opponents here play with your cards visible, so every mistake gets punished. Use it as a drill: nothing here is a real game."), React.createElement("button", {
+    className: "text-white text-sm font-black tracking-wide mb-2 text-center"
+  }, "NOTHING HERE IS A REAL GAME"), React.createElement("button", {
     onClick: ackTraining,
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm"
   }, "Got it")), React.createElement("div", {

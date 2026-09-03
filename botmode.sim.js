@@ -53,16 +53,18 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
   const dlg = await pg.evaluate(() => { const d = [...document.querySelectorAll('div')].filter(x => /Table buy-in/.test(x.textContent) && x.textContent.length < 900).pop(); return d ? d.innerText : ''; });
   await pg.screenshot({path: SP + '/botmode-buyin.png'});
   check('the seat dialog carries the label "TRAINING TABLE"', /TRAINING TABLE/.test(dlg), dlg.slice(0, 120));
-  check('  first time: it explains what a training table is (opponents play with your cards visible)', /cards visible/.test(dlg));
+  check('  first time: the one line — NOTHING HERE IS A REAL GAME', /NOTHING HERE IS A REAL GAME/.test(dlg));
   check('  the word "bot" appears nowhere in the dialog', !/\bbots?\b/i.test(dlg), dlg);
   check('  no seat button until he has read it', !/Take a seat/.test(dlg));
   await pg.evaluate(() => { const x = [...document.querySelectorAll('button')].find(y => /Got it/.test(y.textContent)); if (x) x.click(); });
   await pg.waitForTimeout(800);
   const dlg2 = await pg.evaluate(() => { const d = [...document.querySelectorAll('div')].filter(x => /Table buy-in/.test(x.textContent) && x.textContent.length < 900).pop(); return d ? d.innerText : ''; });
   await pg.screenshot({path: SP + '/botmode-buyin-2.png'});
-  check('  after "Got it": the explanation is gone, the label stays, the seat button is back', !/cards visible/.test(dlg2) && /TRAINING TABLE/.test(dlg2) && /Take a seat/.test(dlg2), dlg2.slice(0, 200));
+  check('  after "Got it": the line is gone, the label stays, the seat button is back', !/NOTHING HERE/.test(dlg2) && /TRAINING TABLE/.test(dlg2) && /Take a seat/.test(dlg2), dlg2.slice(0, 200));
   const acked = await pg.evaluate(() => !!((window.__stubStore.users || {}).owner1 || {}).trainingAck);
   check('  ...and it is remembered on the account, so he is never told twice', acked);
+  check('  the dialog says practice chips, wallet not touched — never "Balance"', /wallet is not touched/.test(dlg2) && !/Balance:/.test(dlg2));
+
   await pg.evaluate(() => { const x = [...document.querySelectorAll('button')].find(y => /Spectate the table/.test(y.textContent)); if (x) x.click(); });
   await pg.waitForTimeout(1200);
   await pg.screenshot({path: SP + '/botmode-table.png'});
@@ -76,6 +78,56 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
     if (n > 0) { played = true; break; }
   }
   check('a hand completes on the training table', played);
+
+  // NOT A REAL GAME, in the ledger too: sit, play, stand up — the wallet never moves
+  const walletOf = () => { const M = window.__stubStore.memberships || {}; const k = Object.keys(M).find(x => (M[x].uid === 'owner1') || /owner1/.test(x)); return k ? Number(M[k].balance) : null; };
+  const w0 = await pg.evaluate(walletOf);
+  // as a spectator the bottom "Take a seat" opens the dialog; the dialog's own button seats him
+  for (let k = 0; k < 2; k++) {
+    await pg.evaluate(() => { const bs = [...document.querySelectorAll('button')].filter(y => /Take a seat/.test(y.textContent)); const x = bs[bs.length - 1]; if (x) x.click(); });
+    await pg.waitForTimeout(1500);
+  }
+  await pg.waitForTimeout(1500);
+  const seated = await pg.evaluate(() => { const p = (((window.__stubStore.tables || {}).toracle || {}).players || {}).owner1; return p ? {stack: p.stack, buyTotal: p.buyTotal} : null; });
+  const w1 = await pg.evaluate(walletOf);
+  check('sitting at a training table seats him with practice chips', !!seated && seated.stack === 40, JSON.stringify(seated));
+  check('  ...and the wallet did not move', w0 !== null && w1 === w0, `${w0} -> ${w1}`);
+  await pg.waitForTimeout(9000);   // let a hand or two run with him in it
+  await pg.evaluate(() => { const m = document.querySelector('[title="Table menu"]'); if (m) m.click(); });
+  await pg.waitForTimeout(700);
+  await pg.evaluate(() => { const x = document.querySelector('[title="Stand up"]'); if (x) x.click(); });
+  await pg.waitForTimeout(3500);
+  const after = await pg.evaluate(() => {
+    const T = ((window.__stubStore.tables || {}).toracle || {});
+    const G = window.__stubStore.gameLog || {};
+    return {seated: !!((T.players || {}).owner1), left: !!((T.leftStacks || {}).owner1),
+      logs: Object.values(G).filter(g => g.uid === 'owner1').length};
+  });
+  const w2 = await pg.evaluate(walletOf);
+  check('standing up leaves the training table', !after.seated, JSON.stringify(after));
+  check('  the wallet still did not move', w2 === w0, `${w0} -> ${w2}`);
+  check('  nothing written to the game log for him', after.logs === 0, `${after.logs} entries`);
+  check('  no re-entry floor remembered', !after.left);
+  // control: the SAME sit on a normal table costs the buy-in
+  await pg.goto('http://localhost:8079/index.html?as=owner1&x=' + Date.now(), {waitUntil: 'load'});
+  await pg.waitForTimeout(2500);
+  await pg.evaluate(() => { const x = [...document.querySelectorAll('button')].find(y => /Enter/i.test(y.textContent)); if (x) x.click(); });
+  await pg.waitForTimeout(1800);
+  await pg.evaluate(async () => {
+    const seat = (uid, name, ix) => ({uid, name, seatIndex: ix, stack: 100, bet: 0, buyTotal: 100, status: 'active', cards: [], hasActed: false, actionText: '', isBot: true});
+    await window.fb.setDoc(window.fb.doc(window.fb.db, 'tables', 'tctrl'), {type: 'poker', clubId: 'main', createdAt: Date.now(), status: '', hostUid: 'owner1',
+      settings: {baseGameType: 'NLH', tableName: 'CTRLTBL', maxPlayers: 6, blinds: 0.5, actionTime: 30, minBuyIn: 40, maxBuyIn: 200, serverEngine: false, rakePercent: 5, autoStart: 2},
+      players: {b1: seat('b1', 'Bot One', 0), b2: seat('b2', 'Bot Two', 1)}, gameState: {phase: 'waiting', deck: [], board: [], pots: [], highestBet: 0, minRaise: 1, dealerUid: 'b1', currentGameType: 'NLH', activeTurnUid: null, __seq: 1},
+      chat: [], leftStacks: {}, tournamentId: null, history: []});
+  });
+  await pg.waitForTimeout(1500);
+  const c0 = await pg.evaluate(walletOf);
+  await pg.evaluate(() => { const e = [...document.querySelectorAll('button,div')].filter(x => /CTRLTBL/.test(x.textContent || '')); const el = e[e.length - 1]; if (el) el.click(); });
+  await pg.waitForTimeout(2500);
+  await pg.evaluate(() => { const x = [...document.querySelectorAll('button')].find(y => /Take a seat/.test(y.textContent)); if (x) x.click(); });
+  await pg.waitForTimeout(2500);
+  const c1 = await pg.evaluate(walletOf);
+  check('control: the same seat at a normal table costs the buy-in', c0 !== null && c1 === c0 - 40, `${c0} -> ${c1}`);
 
   // back to the lobby, open the default table: no label
   await pg.goto('http://localhost:8079/index.html?as=owner1&x=' + Date.now(), {waitUntil: 'load'});

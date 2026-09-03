@@ -217,6 +217,21 @@ const BRAINS = [["client (index.html)", askClient], ["server (pokerEngine)", ask
   check("server: 'oracle' mode — top pair folds to a set it can see", folds === 60, `folded ${folds}/60`);
 }
 
+/* --- rule 5: a training table is not a real game, so it pays nothing out --- */
+{
+  const mk = (botMode) => ({id: "t", settings: {blinds: 0.5, baseGameType: "NLH", maxPlayers: 6, ...(botMode ? {botMode} : {})},
+    players: {me: {uid: "me", name: "me", seatIndex: 0, status: "active", bet: 0, stack: 150, buyTotal: 100, isBot: false},
+      opp: {uid: "opp", seatIndex: 1, status: "active", bet: 0, stack: 100, isBot: true}},
+    gameState: {phase: "waiting", board: [], pots: [], highestBet: 0, minRaise: 1, currentGameType: "NLH", activeTurnUid: null},
+    priv: {}, table: {history: []}, raw: {}, effects: [], now: 17e11});
+  const S1 = mk(undefined); E.removeSeat(S1, "me", false);
+  const S2 = mk("oracle"); E.removeSeat(S2, "me", false);
+  const credit1 = S1.effects.filter((e) => e.type === "credit").length;
+  const credit2 = S2.effects.filter((e) => e.type === "credit").length;
+  check("server: leaving a normal table credits the stack back", credit1 === 1 && S1.effects.some((e) => e.type === "gameLog"), JSON.stringify(S1.effects));
+  check("server: leaving a TRAINING table credits nothing and logs nothing", credit2 === 0 && !S2.effects.some((e) => e.type === "gameLog") && !S2.leftWrites, JSON.stringify(S2.effects));
+}
+
 /* --- rule 3: the god guard, and the line it must never cross ------------- */
 {
   // Turn: A K 9 4 rainbow. The bot holds AQ — TOP pair, which every ordinary

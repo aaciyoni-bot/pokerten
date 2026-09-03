@@ -33,6 +33,13 @@ const isGodEmail = (e) => GOD_EMAILS.includes(String(e || "").toLowerCase().trim
 const BETTING = ["preflop", "flop", "turn", "river"]; // index.html:8951
 const rnd = () => crypto.randomInt(0, 1000000) / 1000000; // CSPRNG in [0,1)
 
+// Bot brain v2 — shared module (byte-identical copy inlined in index.html).
+// Plays from public information only; see botBrain.js.
+const BRAIN = require("./botBrain").create({
+  evaluate5Cards: C.evaluate5Cards, getCombinations: C.getCombinations, bestScoreFull: C.bestScoreFull,
+  HOLE_ORD: C.HOLE_ORD, SUITS: C.SUITS, CARD_VALUES: C.CARD_VALUES, rnd, budgetMs: 220,
+});
+
 // CSPRNG Fisher–Yates over the client's deck builder (index.html:2114-2126).
 function shuffledDeck() {
   const deck = [];
@@ -190,6 +197,7 @@ function executeDeal(S, gameType) {
   g.bombPot = !!bombOn;
   g.aof = !!aofOn;
   g.tourLevel = S.settings.spinMode ? spinLevel(S) : 0;
+  g.acts = []; // fresh public action log for this hand
   g.lastWinners = null;
   g.lastWinAmount = 0;
   g.allInReveal = false;
@@ -267,6 +275,9 @@ function applyAction(S, actorUid, action, amount, auto) {
   if (g.activeTurnUid !== actorUid) throw new HttpsError("failed-precondition", "Not your turn");
   const p = pl[actorUid];
   if (!p || p.status !== "active") throw new HttpsError("failed-precondition", "You are not in the hand");
+  // public action log (feeds the hand-history UI and the bots' opponent model)
+  const potBefore = round2((g.pots || []).reduce((s, x) => s + (Number(x.amount) || 0), 0) + Object.values(pl).reduce((s, q) => s + (Number(q.bet) || 0), 0));
+  const tcBefore = round2(Math.max(0, (g.highestBet || 0) - (p.bet || 0)));
   p.missed = auto ? (p.missed || 0) + 1 : 0;
   if (auto && p.missed >= 2 && !p.sitOut && !p.sitOutNext) {
     p.sitOutNext = true;
@@ -309,6 +320,11 @@ function applyAction(S, actorUid, action, amount, auto) {
   } else {
     throw new HttpsError("invalid-argument", "Unknown action");
   }
+  g.acts = [...(g.acts || []), {
+    ph: g.phase, n: p.name, u: actorUid, a: p.actionText,
+    amt: p.actionText === "Fold" || p.actionText === "Check" ? 0 : p.bet,
+    to: p.bet, pot: potBefore, tc: tcBefore,
+  }].slice(-60);
   afterAction(S, actorUid);
 }
 
@@ -604,15 +620,24 @@ function settleAfterHand(S, rake, winnerUids) {
     rake,
     amount: g.lastWinAmount,
     winners: g.lastWinners || "",
+    bb: blindsOf(S).bb,
+    acts: g.acts || [],
     ps: dealt.map((p) => ({
       n: p.name,
+      u: p.uid,
       c: p.cards && p.cards.length ? p.cards : (p.reveal && S.priv[p.uid] ? S.priv[p.uid] : null),
       cc: p.cardCount || 0,
       w: winnerUids.has(p.uid),
       f: p.status === "folded",
     })),
   };
-  S.table.history = [...(S.table.history || []), hist].slice(-100);
+  // keep 100 hands, but the per-action log only on the last 40 — bounds the
+  // table document well under Firestore's 1MB limit on long sessions
+  S.table.history = [...(S.table.history || []), hist].slice(-100).map((h, i, arr) => {
+    if (i >= arr.length - 40 || !h.acts) return h;
+    const {acts, ...rest} = h; // eslint-disable-line no-unused-vars
+    return rest;
+  });
   if (rake > 0) {
     const dealtUids = dealt.map((p) => p.uid);
     S.effects.push({type: "rake", rake, uids: dealtUids});
@@ -624,8 +649,8 @@ function settleAfterHand(S, rake, winnerUids) {
   }
 }
 
-// Bot policy port — index.html:10287-10306.
-function botAction(S, uid) {
+// Old simple bot policy — kept ONLY as the failsafe behind the brain.
+function botActionLegacy(S, uid) {
   const g = S.gameState;
   const b = S.players[uid];
   const toCall = round2(Math.max(0, g.highestBet - (b.bet || 0)));
@@ -635,6 +660,27 @@ function botAction(S, uid) {
   }
   if (toCall >= b.stack) return rnd() < 0.5 ? {action: "call"} : {action: "fold"};
   return rnd() < 0.82 ? {action: "call"} : {action: "fold"};
+}
+
+// Bot brain v2 (botBrain.js). The bot sees ONLY its own priv cards + public
+// state. Any exception falls back to the legacy policy so a table never freezes.
+function botAction(S, uid) {
+  const g = S.gameState;
+  const b = S.players[uid];
+  const toCall = round2(Math.max(0, g.highestBet - (b.bet || 0)));
+  try {
+    const mv = BRAIN.decide({
+      g, players: S.players, history: S.table.history || [], me: b, cards: S.priv[uid] || [],
+      bb: blindsOf(S).bb, gameType: g.currentGameType || S.settings.baseGameType || "NLH",
+      tournament: false, spin: !!S.settings.spinMode, tableId: S.id,
+    });
+    if (!mv || !mv.type) return botActionLegacy(S, uid);
+    if (mv.type === "raise" && mv.amt > (b.bet || 0) + 0.001 && mv.amt > (g.highestBet || 0)) return {action: "raise", amount: round2(mv.amt)};
+    if (mv.type === "fold" && toCall > 0) return {action: "fold"};
+    return {action: "call"};
+  } catch (e) {
+    return botActionLegacy(S, uid);
+  }
 }
 
 /* ============================ Firestore plumbing ============================ */

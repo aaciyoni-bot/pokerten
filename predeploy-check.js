@@ -172,5 +172,22 @@ check('mttOrchestrate reconciles zombie players (alive with 0 chips)',
   /ZOMBIE RECONCILER/.test(bundle) && /zombies\.length && zombies\.length < rankAlive\.length/.test(bundle),
   'the idle-gated zombie sweep in mttOrchestrate must stay');
 
+// 19) BOT BRAIN: the inline copy in index.html must be byte-identical to
+//     functions/botBrain.js — cash tables (client engine) and Spin tables
+//     (server engine) must play the SAME bot. Run `node sync-bot-brain.js`.
+try {
+  const brainFile = fs.readFileSync(path.join(__dirname, 'functions', 'botBrain.js'), 'utf8').replace(/\s+$/, '');
+  const inline = (html.match(/<script id="bot-brain">\n([\s\S]*?)\n?    <\/script>\n    <!-- BOT-BRAIN-END -->/) || [])[1];
+  check('inline bot brain is byte-identical to functions/botBrain.js',
+    !!inline && inline.replace(/\s+$/, '') === brainFile,
+    'run `node sync-bot-brain.js` — the client and server bots have drifted apart');
+  check('bot brain module parses and exposes create()',
+    (() => { try { const m = { exports: {} }; new Function('module', 'self', brainFile)(m, {}); return typeof m.exports.create === 'function'; } catch (e) { return false; } })(),
+    'functions/botBrain.js failed to evaluate');
+  check('client bot falls back to the legacy policy if the brain is missing',
+    /const botPokerMoveLegacy = \(g, t, b\) => \{/.test(bundle) && /return botPokerMoveLegacy\(g, t, b\);/.test(bundle),
+    'botPokerMove must keep the botPokerMoveLegacy fallback so a bot can never freeze a hand');
+} catch (e) { bad('bot brain checks — ' + e.message); }
+
 console.log('\n' + (fails ? `FAILED: ${fails} check(s) failed, ${passes} passed — DO NOT DEPLOY` : `OK: all ${passes} checks passed`));
 process.exit(fails ? 1 : 0);

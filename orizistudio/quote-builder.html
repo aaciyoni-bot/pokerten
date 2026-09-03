@@ -460,13 +460,17 @@ select{cursor:pointer}
     if(s.agent) q.set('agent', s.agent);
     if(s.note)  q.set('note', s.note);
 
-    var base = location.href.replace(/quote-builder\.html.*$/, '').replace(/[?#].*$/, '') || './';
-    var link = (window.OS_PROPOSAL_URL || (base + 'proposal.html')) +
-      (String(window.OS_PROPOSAL_URL || '').indexOf('?') > -1 ? '&' : '?') + q.toString();
+    // באותה תיקייה שבה יושב הכלי. עם cleanUrls בוורסל אין סיומת, ומקומית יש.
+    var path = location.pathname, dir = path.replace(/[^/]*$/, '');
+    var file = /\.html$/.test(path) ? 'proposal.html' : 'proposal';
+    var base = (location.protocol === 'file:' ? dir : location.origin + dir) + file;
+    var target = window.OS_PROPOSAL_URL || base;
+    var link = target + (target.indexOf('?') > -1 ? '&' : '?') + q.toString();
     $('outLink').textContent = link;
     $('openLink').href = link;
 
-    var msg = 'היי' + (s.name ? ' ' + s.name : '') + ', כאן ' + (s.agent || 'ORIZISTUDIO') + '.\n' +
+    var msg = 'היי' + (s.name ? ' ' + s.name : '') + ', כאן ' +
+      (s.agent ? s.agent + ' מ-ORIZISTUDIO' : 'ORIZISTUDIO') + '.\n' +
       'כמו שדיברנו — הנה ההצעה ל' + (s.biz || 'עסק שלך') + ':\n' + link + '\n\n' +
       pk.t + ' · ' + ils(total) + ' לא כולל מע״מ' +
       (s.care ? '\nאחזקה חודשית ' + ils(CARE[s.care][1]) + ' מהעלייה לאוויר' : '') +
@@ -513,7 +517,16 @@ select{cursor:pointer}
 
   document.addEventListener('input', render);
   document.addEventListener('change', render);
-  try { $('agent').value = localStorage.getItem('os_agent') || ''; } catch(e){}
+
+  // שם הסוכנת נשמר במכשיר שלה. ברירת מחדל לפי מי שעובדת היום.
+  try { $('agent').value = localStorage.getItem('os_agent') || 'ג\'ני'; } catch(e){ $('agent').value = 'ג\'ני'; }
+
+  // הגעה מלוח הלקוחות עם ליד מוכן
+  var pre = new URLSearchParams(location.search);
+  ['cbiz','cname','cphone'].forEach(function(k){
+    var v = pre.get(k); if(v) $(k).value = v;
+  });
+
   render();
 })();
 </script>

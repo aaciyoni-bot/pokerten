@@ -862,23 +862,35 @@ function botAction(S, uid) {
   const gt = g.currentGameType || "NLH";
   const rng = rangeFacing(toCall, potNow, bb);
   const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), gt, rng);
-  const eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
+  let eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
+  // TRAINING MODE: the table was opened with botMode 'oracle' — the bots play
+  // with the actual cards, and the lobby and the table both say so. Real
+  // equity replaces the estimate, and the hand-shape rules (which exist only
+  // because the estimate misleads) step aside with it.
+  const oracle = S.settings.botMode === "oracle";
+  const oppHands = () => activesOf(S.players).filter((p) => p.uid !== uid)
+      .map((p) => ((S.priv || {})[p.uid] || []))
+      .filter((c) => c.length === (cards || []).length);
+  if (oracle) {
+    const opps = oppHands();
+    const real = opps.length ? trueEquityVs(cards, opps, g.board || [], gt) : null;
+    if (real != null) eq = real;
+  }
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
   const body = handBody(cards, g.board || [], gt);
-  const hasBody = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
-  const hasAnything = body.made >= 1 || body.outs >= 4; // may call a small one
-  // The god guard only exists on a table where every seat is a bot. One real
-  // player sits down and it is off for the whole table, permanently.
+  const hasBody = oracle || body.made >= 2 || body.outs >= 8;   // may play a BIG pot
+  const hasAnything = oracle || body.made >= 1 || body.outs >= 4; // may call a small one
+  // The god guard is on in training mode, and otherwise only on a table where
+  // every seat is a bot. One real player sits down and it is off for the whole
+  // table, permanently — unless the manager opened the table as training.
   const botsOnly = Object.values(S.players).every((p) => p.isBot);
-  const guardOn = botsOnly && S.settings.botGodGuard !== false;
+  const guardOn = oracle || (botsOnly && S.settings.botGodGuard !== false);
   let godSeen = null;
   const godOK = () => {
     if (!guardOn) return true;
     if (godSeen === null) {
-      const opps = activesOf(S.players).filter((p) => p.uid !== uid)
-          .map((p) => ((S.priv || {})[p.uid] || []))
-          .filter((c) => c.length === (cards || []).length);
+      const opps = oppHands();
       const real = opps.length ? trueEquityVs(cards, opps, g.board || [], gt) : null;
       godSeen = real == null ? true : real >= GOD_FLOOR;
     }

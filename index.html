@@ -2792,6 +2792,38 @@ const botHandBody = (cards, board, gameType) => {
     return { made: 3, outs: 0 };
   }
 };
+/* TRAINING MODE ("oracle"): equity against the cards the opponents are
+   actually holding. Only ever consulted when the table was opened with
+   botMode === 'oracle' — a mode the lobby and the table both label out loud,
+   so everyone who sits down knows what they are practising against. */
+const botTrueEquity = (mine, oppHands, board, gameType) => {
+  try {
+    if (!mine || !mine.length || !oppHands.length) return null;
+    const beat = fb => {
+      const my = bestScoreFull(mine, fb, gameType);
+      let ties = 1;
+      for (const h of oppHands) {
+        const sc = bestScoreFull(h, fb, gameType);
+        if (sc > my) return 0;
+        if (sc === my) ties++;
+      }
+      return 1 / ties;
+    };
+    if ((board || []).length >= 5) return beat(board);
+    const known = [...mine, ...(board || []), ...oppHands.flat()];
+    let win = 0;
+    const iters = 150;
+    for (let i = 0; i < iters; i++) {
+      const d = deckWithout(known);
+      const fb = [...(board || [])];
+      while (fb.length < 5) fb.push(d.pop());
+      win += beat(fb);
+    }
+    return win / iters;
+  } catch (e) {
+    return null;
+  }
+};
 // ---- Bot poker brain ----
 // Decides with ONLY the bot's own cards + the board (Monte Carlo vs unknown
 // hands) — a bot can never act on information a human couldn't have, so it
@@ -2867,12 +2899,22 @@ const botPokerMove = (g, t, b) => {
   const eqP = simMyEquity(b.cards || [], g.board || [], Math.min(3, oppN), gt, botRangeFacing(toCall, potNow, bb));
   // An unknown hand used to default to 50%, which is what made a bot call off
   // its stack holding nothing. Unknown now means "do not gamble".
-  const eq = (eqP == null ? 35 : eqP) / 100;
+  let eq = (eqP == null ? 35 : eqP) / 100;
+  // Training mode: the table was opened with the bots seeing the cards, and
+  // says so on its face. Real equity replaces the estimate; the hand-shape
+  // rules below are estimates too, so they step aside with it.
+  const oracle = ((t.settings || {}).botMode === 'oracle');
+  if (oracle) {
+    const myN = (b.cards || []).length;
+    const opps = Object.values(t.players || {}).filter(p => p.status === 'active' && p.uid !== b.uid && (p.cards || []).length === myN && myN > 0);
+    const real = opps.length ? botTrueEquity(b.cards, opps.map(p => p.cards), g.board || [], gt) : null;
+    if (real != null) eq = real;
+  }
   const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
   const committed = potNow > 0 && stack <= potNow * 0.6;
   const body = botHandBody(b.cards || [], g.board || [], gt);
-  const hasSomething = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
-  const hasAnything = body.made >= 1 || body.outs >= 4;    // may call a small one
+  const hasSomething = oracle ? eq >= 0.2 : body.made >= 2 || body.outs >= 8;   // may play a BIG pot
+  const hasAnything = oracle ? true : body.made >= 1 || body.outs >= 4;          // may call a small one
   // Sizing is priced off the POT, never off the opponent's bet: betting 1 into
   // a pot of 1000 because he bet 1 is not a bet, it is a free card with a fee.
   const raisePot = frac => {
@@ -7849,7 +7891,11 @@ function LobbyView({
       className: "tbl-dc"
     }, "DC"), t.players && t.players[user.uid] && React.createElement("span", {
       className: "tbl-me"
-    }, "You're seated")), React.createElement("div", {
+    }, "You're seated")), s.botMode === 'oracle' && React.createElement("div", {
+      // its own line: the name column clips anything that rides beside the name
+      className: "text-[10px] font-black text-amber-300 leading-tight mt-0.5 pr-1",
+      title: "Training mode: the bots see the cards"
+    }, "\uD83D\uDD2E Training \u00b7 the bots see the cards"), React.createElement("div", {
       className: "tbl-stakes",
       dir: "ltr"
     }, formatShort(s.blinds), "/", formatShort(s.blinds * 2)), React.createElement("div", {
@@ -10421,6 +10467,7 @@ function PokerCreateView({
     bombAnte: 2,
     aofEvery: 0,
     showcaseBots: 0, // >0 = a self-running showcase table: seats N bots and runs on the server driver
+    botMode: 'strong', // 'strong' = bots play from what everyone sees (default); 'oracle' = labeled training mode, bots see the cards
     spinMode: false,
     spinBuyIn: 50,
     spinStack: 1000,
@@ -10695,7 +10742,19 @@ function PokerCreateView({
     value: n
   }, n, " bots, playing non-stop"))), React.createElement("div", {
     className: "text-[11px] text-slate-400 mt-1 leading-snug"
-  }, "Seats the bots now and lets the server run the game, so the lobby shows a live table even when nobody is watching. Real players can sit down at any time — the bots stop seeing cards the moment one does.")), React.createElement(Field, {
+  }, "Seats the bots now and lets the server run the game, so the lobby shows a live table even when nobody is watching. Real players can sit down at any time.")), React.createElement(Field, {
+    label: "🧠 Bot mode"
+  }, React.createElement("select", {
+    value: s.botMode === 'oracle' ? 'oracle' : 'strong',
+    onChange: e => upd('botMode', e.target.value),
+    className: sel
+  }, React.createElement("option", {
+    value: "strong"
+  }, "Strong — plays from what everyone sees (default)"), React.createElement("option", {
+    value: "oracle"
+  }, "🔮 Training — bots see the cards (labeled on the table)")), React.createElement("div", {
+    className: "text-[11px] text-slate-400 mt-1 leading-snug"
+  }, s.botMode === 'oracle' ? "Hard mode for practice: the bots play with the actual cards. The lobby and the table both show a clear \"bots see the cards\" label, so everyone who sits down knows what they are up against." : "The bots play the best game they can from the same information a player has: their own cards, the board, and the action.")), React.createElement(Field, {
     label: "Min buy-in (₪) — type any amount"
   }, React.createElement("input", {
     type: "number",
@@ -14085,7 +14144,9 @@ function PokerTable({
     return 'Blinds ' + formatShort(setts.blinds) + '/' + formatShort(BB) + (Number(setts.ante) > 0 ? ' · Ante ' + formatShort(setts.ante) : '');
   })()), React.createElement("div", {
     className: "flex items-center justify-center gap-3 mt-0.5 text-[11px]"
-  }, React.createElement("span", null, "GPS \u00b7 ON"), React.createElement("span", null, "IP \u00b7 ON")), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
+  }, React.createElement("span", null, "GPS \u00b7 ON"), React.createElement("span", null, "IP \u00b7 ON")), setts.botMode === 'oracle' && React.createElement("div", {
+    className: "text-amber-300 font-black text-[12px] mt-0.5"
+  }, "\uD83D\uDD2E Training mode \u00b7 the bots see the cards"), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
     className: "text-amber-300 font-black text-xs animate-pulse"
   }, "🍍 Pineapple - discard one card...")), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);

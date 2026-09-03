@@ -50,9 +50,19 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
   // open the training table
   await pg.evaluate(() => { const e = [...document.querySelectorAll('button,div')].filter(x => /ORACLETBL/.test(x.textContent || '')); const el = e[e.length - 1]; if (el) el.click(); });
   await pg.waitForTimeout(2500);
-  const dlg = await pg.evaluate(() => document.body.innerText);
+  const dlg = await pg.evaluate(() => { const d = [...document.querySelectorAll('div')].filter(x => /Table buy-in/.test(x.textContent) && x.textContent.length < 900).pop(); return d ? d.innerText : ''; });
   await pg.screenshot({path: SP + '/botmode-buyin.png'});
-  check('the buy-in dialog says the bots can see every card, before he sits', /bots can see every card/.test(dlg));
+  check('the seat dialog carries the label "TRAINING TABLE"', /TRAINING TABLE/.test(dlg), dlg.slice(0, 120));
+  check('  first time: it explains what a training table is (opponents play with your cards visible)', /cards visible/.test(dlg));
+  check('  the word "bot" appears nowhere in the dialog', !/\bbots?\b/i.test(dlg), dlg);
+  check('  no seat button until he has read it', !/Take a seat/.test(dlg));
+  await pg.evaluate(() => { const x = [...document.querySelectorAll('button')].find(y => /Got it/.test(y.textContent)); if (x) x.click(); });
+  await pg.waitForTimeout(800);
+  const dlg2 = await pg.evaluate(() => { const d = [...document.querySelectorAll('div')].filter(x => /Table buy-in/.test(x.textContent) && x.textContent.length < 900).pop(); return d ? d.innerText : ''; });
+  await pg.screenshot({path: SP + '/botmode-buyin-2.png'});
+  check('  after "Got it": the explanation is gone, the label stays, the seat button is back', !/cards visible/.test(dlg2) && /TRAINING TABLE/.test(dlg2) && /Take a seat/.test(dlg2), dlg2.slice(0, 200));
+  const acked = await pg.evaluate(() => !!((window.__stubStore.users || {}).owner1 || {}).trainingAck);
+  check('  ...and it is remembered on the account, so he is never told twice', acked);
   await pg.evaluate(() => { const x = [...document.querySelectorAll('button')].find(y => /Spectate the table/.test(y.textContent)); if (x) x.click(); });
   await pg.waitForTimeout(1200);
   await pg.screenshot({path: SP + '/botmode-table.png'});
@@ -75,7 +85,7 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
   await pg.evaluate(() => { const e = [...document.querySelectorAll('button,div')].filter(x => /STRONGTBL/.test(x.textContent || '')); const el = e[e.length - 1]; if (el) el.click(); });
   await pg.waitForTimeout(2500);
   const hdr2 = await pg.evaluate(() => document.body.innerText);
-  check('the default table shows no training label and no card notice', !/Training/.test(hdr2) && !/can see every card/.test(hdr2));
+  check('the default table shows no training label and no notice', !/Training/.test(hdr2) && !/cards visible/.test(hdr2));
 
   // the create-table form: the field exists, "strong" is selected by default
   await pg.goto('http://localhost:8079/index.html?as=owner1&x=' + Date.now(), {waitUntil: 'load'});
@@ -93,6 +103,7 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
   check('the create-table form has a Bot mode field', form.found);
   check('  "strong" is the default', form.value === 'strong', form.value);
   check('  the training option says the table will be labeled', (form.options || []).some(o => /labeled on the table/.test(o)), JSON.stringify(form.options));
+  check('  the form never says "bot" either', !(form.options || []).some(o => /\bbots?\b/i.test(o)) && !/\bbots?\b/i.test(form.help || ''), JSON.stringify(form.options));
   await pg.screenshot({path: SP + '/botmode-form.png', fullPage: true});
 
   // a CLUB OWNER — every right to open tables, none to open a training one

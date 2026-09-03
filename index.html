@@ -7895,7 +7895,7 @@ function LobbyView({
       // its own line: the name column clips anything that rides beside the name
       className: "text-[10px] font-black text-amber-300 leading-tight mt-0.5 pr-1",
       title: "Training mode: the bots see the cards"
-    }, "\uD83D\uDD2E Training table"), React.createElement("div", {
+    }, "\uD83C\uDF93 Training table"), React.createElement("div", {
       className: "tbl-stakes",
       dir: "ltr"
     }, formatShort(s.blinds), "/", formatShort(s.blinds * 2)), React.createElement("div", {
@@ -10748,18 +10748,18 @@ function PokerCreateView({
   }, n, " bots, playing non-stop"))), React.createElement("div", {
     className: "text-[11px] text-slate-400 mt-1 leading-snug"
   }, "Seats the bots now and lets the server run the game, so the lobby shows a live table even when nobody is watching. Real players can sit down at any time.")), canTrain && React.createElement(Field, {
-    label: "🧠 Bot mode"
+    label: "🎓 Table mode"
   }, React.createElement("select", {
     value: s.botMode === 'oracle' ? 'oracle' : 'strong',
     onChange: e => upd('botMode', e.target.value),
     className: sel
   }, React.createElement("option", {
     value: "strong"
-  }, "Strong — plays from what everyone sees (default)"), React.createElement("option", {
+  }, "Standard — the opposition plays from what everyone sees (default)"), React.createElement("option", {
     value: "oracle"
-  }, "🔮 Training — bots see the cards (labeled on the table)")), React.createElement("div", {
+  }, "🎓 Training — the opposition plays with open cards (labeled on the table)")), React.createElement("div", {
     className: "text-[11px] text-slate-400 mt-1 leading-snug"
-  }, s.botMode === 'oracle' ? "Hard mode for practice: the bots play with the actual cards. The lobby and the table both show a clear \"bots see the cards\" label, so everyone who sits down knows what they are up against." : "The bots play the best game they can from the same information a player has: their own cards, the board, and the action.")), React.createElement(Field, {
+  }, s.botMode === 'oracle' ? "A drill table: the opposition plays with the actual cards. It is tagged \"Training table\" in the lobby and on the felt, and a player is told once, before his first seat, what that means." : "The opposition plays the best game it can from the same information a player has: its own cards, the board, and the action.")), React.createElement(Field, {
     label: "Min buy-in (₪) — type any amount"
   }, React.createElement("input", {
     type: "number",
@@ -11256,6 +11256,12 @@ function PokerTable({
   }, [srvEngine, godView, godPhaseKey, tableDocId]);
   const [spectate, setSpectate] = useState(false);
   const [buyAmt, setBuyAmt] = useState(0);
+  const [trainAck, setTrainAck] = useState(false); // told once what a training table is
+  const trainingNeedsAck = (setts0 => setts0.botMode === 'oracle')((tableState || {}).settings || {}) && !trainAck && !(user && user.trainingAck);
+  const ackTraining = () => {
+    setTrainAck(true);
+    try { window.fb.updateDoc(window.fb.doc(window.fb.db, "users", user.uid), { trainingAck: true }); } catch (e) {}
+  };
   const [raiseAmt, setRaiseAmt] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
   const [acting, setActing] = useState(false);
@@ -14151,7 +14157,7 @@ function PokerTable({
     className: "flex items-center justify-center gap-3 mt-0.5 text-[11px]"
   }, React.createElement("span", null, "GPS \u00b7 ON"), React.createElement("span", null, "IP \u00b7 ON")), setts.botMode === 'oracle' && React.createElement("div", {
     className: "text-amber-300 font-black text-[12px] mt-0.5"
-  }, "\uD83D\uDD2E Training table"), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
+  }, "\uD83C\uDF93 Training table"), setts.isDealerChoice && React.createElement("div", null, "Dealer's Choice"), setts.actionDeal && React.createElement("div", null, "⚡ Action Deal"), setts.straddle && React.createElement("div", null, "Straddle")), gs.phase === 'discard' && React.createElement("div", {
     className: "text-amber-300 font-black text-xs animate-pulse"
   }, "🍍 Pineapple - discard one card...")), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
@@ -15398,9 +15404,19 @@ function PokerTable({
     className: "text-slate-400 text-xs font-bold mb-4",
     dir: "ltr"
   }, "Blinds ", formatShort(setts.blinds), "/", formatShort(BB), " · Balance: ", formatMoney(user.balance)), setts.botMode === 'oracle' && React.createElement("p", {
-    // said once, where it matters: before he takes the seat
-    className: "text-amber-300 text-xs font-black mb-3"
-  }, "\uD83D\uDD2E Training table \u2014 the bots can see every card. Play it as a drill."), React.createElement("div", {
+    className: "text-amber-300 text-xs font-black tracking-[0.2em] mb-3"
+  }, "\uD83C\uDF93 TRAINING TABLE"), trainingNeedsAck && React.createElement("div", {
+    // explained ONCE per account, the first time he goes to sit at one;
+    // after that the label alone is the whole notice
+    className: "bg-amber-400/10 border border-amber-400/30 rounded-2xl p-3 mb-3 text-left"
+  }, React.createElement("div", {
+    className: "text-white text-sm font-black mb-1"
+  }, "What is a training table?"), React.createElement("div", {
+    className: "text-slate-200 text-xs font-bold leading-snug mb-2"
+  }, "The opponents here play with your cards visible, so every mistake gets punished. Use it as a drill: nothing here is a real game."), React.createElement("button", {
+    onClick: ackTraining,
+    className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm"
+  }, "Got it")), React.createElement("div", {
     className: "text-3xl font-black text-gold-400 mb-2",
     dir: "ltr"
   }, formatMoney(buyAmt)), React.createElement("input", {
@@ -15433,7 +15449,7 @@ function PokerTable({
   }, "🪑 On the waitlist — position ", myWaitPos + 1, " of ", waitlist.length), React.createElement("button", {
     onClick: leaveWaitlist,
     className: "w-full bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 py-2.5 rounded-2xl font-black"
-  }, "Leave waitlist")), !(isFull && !needRebuy) && React.createElement("button", {
+  }, "Leave waitlist")), !(isFull && !needRebuy) && !trainingNeedsAck && React.createElement("button", {
     onClick: needRebuy ? handleRebuy : handleSit,
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
   }, needRebuy ? 'Do Rebuy' : 'Take a seat 🪑'), !needRebuy && React.createElement("button", {

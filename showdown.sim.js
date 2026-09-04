@@ -27,8 +27,10 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
       type: 'poker', clubId: 'main', createdAt: Date.now(), status: '', hostUid: 'owner1',
       settings: {baseGameType: 'NLH', tableName: 'SHOWDOWN', maxPlayers: 6, blinds: 1, actionTime: 30,
         minBuyIn: 40, maxBuyIn: 200, serverEngine: false, rakePercent: 5, autoStart: 2},
-      // three chips each: the blinds alone put them all-in
-      players: {b1: seat('b1', 'Bot One', 0, 3), b2: seat('b2', 'Bot Two', 1, 3), b3: seat('b3', 'Bot Three', 2, 3)},
+      // two chips each at 1/2: the big blind is all-in posting, and the brain's
+      // crumbs rule (a blind or less behind never folds preflop) puts the other
+      // two all-in behind it — a three-way showdown on the very first hand
+      players: {b1: seat('b1', 'Bot One', 0, 2), b2: seat('b2', 'Bot Two', 1, 2), b3: seat('b3', 'Bot Three', 2, 2)},
       gameState: {phase: 'waiting', deck: [], board: [], pots: [], highestBet: 0, minRaise: 2,
         dealerUid: 'b1', currentGameType: 'NLH', activeTurnUid: null, __seq: 1},
       chat: [], leftStacks: {}, tournamentId: null, history: []

@@ -11628,7 +11628,10 @@ function PokerTable({
       winners: g.lastWinners,
       ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({
         n: q.name,
-        c: q.status === 'active' || q.reveal ? q.cards : null,
+        // a player who went broke at this showdown was all-in through it — his
+        // cards were on the table, and the history must show them (busting
+        // is marked before this row is built, so 'active' alone lost them)
+        c: q.status === 'active' || q.status === 'busted' || q.reveal ? q.cards : null,
         cc: (q.cards || []).length,
         w: winnerNames.has(q.name),
         f: q.status === 'folded'

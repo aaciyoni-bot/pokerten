@@ -180,10 +180,56 @@ nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(16px);
   .aurora .a,.aurora .b,.aurora .c,.marquee,.pack.feat{animation:none}
   .cursor-orb{display:none}.pack:hover::after{animation:none}}
 
+/* ===== self-building browser ===== */
+.builder{max-width:520px;margin:0 auto 40px}
+.bwin{background:var(--card-2);border:1px solid var(--line-2);border-radius:16px;overflow:hidden;
+  box-shadow:0 24px 60px -24px rgba(124,92,255,.5);transition:box-shadow .5s}
+.builder.live .bwin{box-shadow:0 24px 70px -18px rgba(53,211,154,.6)}
+.bbar{display:flex;align-items:center;gap:6px;padding:9px 12px;background:rgba(255,255,255,.03);
+  border-bottom:1px solid var(--line)}
+.bbar .bd{width:9px;height:9px;border-radius:50%;background:var(--faint);opacity:.6}
+.bbar .burl{margin-inline-start:10px;font-family:ui-monospace,Menlo,monospace;font-size:12px;
+  color:var(--muted);direction:ltr;background:var(--bg);border:1px solid var(--line);border-radius:6px;
+  padding:3px 10px;min-width:170px}
+.bbar .burl::after{content:"▏";color:var(--brand-2)}
+.builder.live .bbar .burl::after{content:""}
+.bstage{padding:16px;min-height:210px;background:linear-gradient(180deg,rgba(124,92,255,.05),transparent)}
+.bx{opacity:0;transform:translateY(10px) scale(.96);transition:opacity .45s,transform .45s cubic-bezier(.2,.7,.2,1)}
+.bx.in{opacity:1;transform:none}
+.bnav{display:flex;align-items:center;gap:8px;margin-bottom:16px}
+.blogo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--brand),#ff5ca8)}
+.bnl{width:34px;height:6px;border-radius:3px;background:rgba(255,255,255,.15)}
+.bcta{margin-inline-start:auto;width:52px;height:18px;border-radius:6px;background:var(--brand)}
+.bhero{display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center;margin-bottom:16px}
+.bt1{width:70%;height:14px;border-radius:5px;background:linear-gradient(90deg,var(--brand-2),#ff7cc0)}
+.bt2{width:52%;height:9px;border-radius:4px;background:rgba(255,255,255,.16)}
+.bbtn{margin-top:4px;width:96px;height:26px;border-radius:8px;
+  background:linear-gradient(135deg,var(--brand),#9a6bff);box-shadow:0 8px 20px -8px var(--glow)}
+.bcards{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.bcards span{height:56px;border-radius:9px;background:linear-gradient(160deg,rgba(124,92,255,.22),rgba(255,255,255,.05));
+  border:1px solid var(--line)}
+.bprog{height:5px;background:var(--card);border-radius:99px;overflow:hidden;margin-top:16px}
+.bfill{display:block;height:100%;width:0;border-radius:99px;
+  background:linear-gradient(90deg,var(--brand),#ff7cc0,#7ce7d0);transition:width .2s linear}
+.blabel{text-align:center;margin-top:10px;font-size:13.5px;font-weight:600;color:var(--muted);
+  font-family:var(--font-display)}
+.builder.live .blabel{color:var(--ok)}
+/* פעימת לוגו */
+.logo .mark,.logo .mk{position:relative}
+.logo .mark::after,.logo .mk::after{content:"";position:absolute;inset:-3px;border-radius:inherit;
+  box-shadow:0 0 0 0 var(--glow);animation:logoPulse 3.5s ease-in-out infinite}
+@keyframes logoPulse{0%,100%{box-shadow:0 0 14px -4px var(--glow)}50%{box-shadow:0 0 26px 2px var(--glow)}}
+@media(prefers-reduced-motion:reduce){.bx{opacity:1;transform:none}.logo .mark::after,.logo .mk::after{animation:none}}
+
 /* sections */
 .section{padding:clamp(46px,6.5vw,84px) 0}
 .section-head{text-align:center;margin-bottom:38px}
-.section-head h2{font-size:clamp(26px,4vw,40px);margin-bottom:12px}
+.section-head h2{font-size:clamp(26px,4vw,40px);margin-bottom:12px;position:relative;display:inline-block}
+.section-head h2::after{content:"";position:absolute;bottom:-12px;inset-inline-start:50%;transform:translateX(-50%);
+  width:60px;height:3px;border-radius:2px;background:linear-gradient(90deg,var(--brand),#ff7cc0,#7ce7d0);
+  background-size:220% 100%;box-shadow:0 0 14px var(--glow);animation:beamShimmer 4s linear infinite}
+@keyframes beamShimmer{to{background-position:220% 0}}
+@media(prefers-reduced-motion:reduce){.section-head h2::after{animation:none}}
 .section-head p{color:var(--muted);max-width:60ch;margin-inline:auto}
 .band{background:linear-gradient(180deg,rgba(124,92,255,.09),transparent);
   border-block:1px solid var(--line)}
@@ -417,6 +463,19 @@ footer .parent{color:var(--muted);font-weight:600}
       <div class="section-head">
         <h2>שלושה שלבים, אפס סיכון מצידכם</h2>
         <p>לא מדובר בתמונה או במצגת. זה אתר אמיתי שרץ בדפדפן, עם השם שלכם, השירותים שלכם והתמונות שלכם.</p>
+      </div>
+      <div class="builder" aria-hidden="true">
+        <div class="bwin">
+          <div class="bbar"><span class="bd"></span><span class="bd"></span><span class="bd"></span>
+            <span class="burl" id="burl"></span></div>
+          <div class="bstage">
+            <div class="bnav"><span class="blogo bx"></span><span class="bnl bx"></span><span class="bnl bx"></span><span class="bcta bx"></span></div>
+            <div class="bhero"><span class="bt1 bx"></span><span class="bt2 bx"></span><span class="bbtn bx"></span></div>
+            <div class="bcards"><span class="bx"></span><span class="bx"></span><span class="bx"></span></div>
+          </div>
+        </div>
+        <div class="bprog"><span class="bfill" id="bfill"></span></div>
+        <div class="blabel" id="blabel">בונה את האתר שלך…</div>
       </div>
       <div class="steps">
         <div class="step"><div class="num">01</div><h3>אתם משאירים שם עסק</h3>
@@ -740,6 +799,9 @@ footer .parent{color:var(--muted);font-weight:600}
     <p style="margin-top:10px"><span class="parent">orizistudio.com</span> · מוצר של
       <span class="parent">ORIZIS TECHNOLOGY</span></p>
     <p style="margin-top:10px"><a href="accessibility.html" style="color:var(--brand-2);text-decoration:none">הצהרת נגישות</a> · כל המחירים באתר אינם כוללים מע"מ</p>
+    <p style="margin-top:12px"><a href="/admin" style="color:var(--faint);text-decoration:none;font-size:12.5px;display:inline-flex;align-items:center;gap:6px">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      כניסת צוות</a></p>
   </div>
 </footer>
 

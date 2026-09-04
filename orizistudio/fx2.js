@@ -136,3 +136,65 @@
     }).observe(modal, { attributes: true, attributeFilter: ['class'] });
   }
 })();
+
+/* ---------- מנוע "בונים לך אתר" חי ---------- */
+(function () {
+  var el = document.querySelector('.builder');
+  if (!el) return;
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches;
+  var burl = document.getElementById('burl'), bfill = document.getElementById('bfill'),
+      blabel = document.getElementById('blabel');
+  var parts = [].slice.call(el.querySelectorAll('.bx'));
+  var domains = ['noga-salon.co.il', 'david-garage.co.il', 'shoresh-clinic.co.il',
+                 'levi-law.co.il', 'zayit-shop.co.il'];
+  var di = 0, alive = true, timers = [];
+  function clr(){ timers.forEach(clearTimeout); timers = []; }
+  function at(fn, ms){ timers.push(setTimeout(fn, ms)); }
+
+  if (reduce) {
+    parts.forEach(function (p) { p.classList.add('in'); });
+    burl.textContent = domains[0]; bfill.style.width = '100%';
+    el.classList.add('live'); blabel.textContent = 'האתר עלה לאוויר!';
+    return;
+  }
+
+  function run() {
+    clr();
+    el.classList.remove('live');
+    parts.forEach(function (p) { p.classList.remove('in'); });
+    bfill.style.width = '0';
+    blabel.textContent = 'בונה את האתר שלך…';
+    var url = domains[di % domains.length]; di++;
+    burl.textContent = '';
+    // הקלדת כתובת
+    for (var i = 1; i <= url.length; i++) {
+      (function (n) { at(function () { burl.textContent = url.slice(0, n); }, n * 55); })(i);
+    }
+    var t0 = url.length * 55 + 250;
+    // בניית רכיבים + מילוי פס
+    parts.forEach(function (p, idx) {
+      at(function () {
+        p.classList.add('in');
+        bfill.style.width = Math.round(((idx + 1) / parts.length) * 100) + '%';
+      }, t0 + idx * 230);
+    });
+    var done = t0 + parts.length * 230 + 300;
+    at(function () {
+      bfill.style.width = '100%';
+      el.classList.add('live');
+      blabel.textContent = 'האתר עלה לאוויר! 🎉';
+    }, done);
+    at(run, done + 2800);   // לולאה
+  }
+
+  // מריץ רק כשגלוי
+  if ('IntersectionObserver' in window) {
+    var vis = false;
+    new IntersectionObserver(function (es) {
+      es.forEach(function (x) {
+        if (x.isIntersecting && !vis) { vis = true; run(); }
+        else if (!x.isIntersecting && vis) { vis = false; clr(); }
+      });
+    }, { threshold: 0.3 }).observe(el);
+  } else { run(); }
+})();

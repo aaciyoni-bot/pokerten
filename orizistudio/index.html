@@ -119,6 +119,67 @@ nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(16px);
 @media(prefers-reduced-motion:reduce){.hero h1 .grad{animation:none}
   .js-reveal .reveal{opacity:1;transform:none;transition:none}}
 
+/* ===== studio showcase layer ===== */
+.scroll-progress{position:fixed;top:0;inset-inline:0;height:3px;z-index:100;transform-origin:0 50%;
+  transform:scaleX(0);background:linear-gradient(90deg,var(--brand),#ff7cc0,#7ce7d0);
+  box-shadow:0 0 12px var(--glow)}
+.cursor-orb{position:fixed;top:0;left:0;width:26px;height:26px;border-radius:50%;z-index:9997;
+  pointer-events:none;transform:translate(-50%,-50%);mix-blend-mode:screen;opacity:0;
+  background:radial-gradient(circle,rgba(164,139,255,.9),rgba(255,124,192,.35) 45%,transparent 70%);
+  transition:width .2s,height .2s,opacity .25s}
+.cursor-orb.on{opacity:1}
+.cursor-orb.grab{width:52px;height:52px;background:radial-gradient(circle,rgba(124,231,208,.5),transparent 68%)}
+@media(hover:none),(pointer:coarse){.cursor-orb{display:none}}
+/* aurora נעה — האתר כולו חי */
+.aurora .a{animation:drift1 26s ease-in-out infinite}
+.aurora .b{animation:drift2 32s ease-in-out infinite}
+.aurora .c{animation:drift3 24s ease-in-out infinite}
+@keyframes drift1{50%{transform:translate(120px,80px) scale(1.15)}}
+@keyframes drift2{50%{transform:translate(-100px,60px) scale(1.1)}}
+@keyframes drift3{50%{transform:translate(80px,-70px) scale(1.2)}}
+/* רצועת קטגוריות אינסופית */
+.marquee-band{position:relative;z-index:1;overflow:hidden;padding:16px 0;
+  border-block:1px solid var(--line);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.marquee{display:flex;gap:12px;width:max-content;animation:marq 42s linear infinite}
+.marquee-band:hover .marquee{animation-play-state:paused}
+.marquee .m-chip{display:inline-flex;align-items:center;gap:9px;white-space:nowrap;flex:none;
+  padding:10px 18px;border-radius:999px;border:1px solid var(--line);background:var(--card);
+  font-size:14.5px;font-weight:600;color:var(--muted)}
+.marquee .m-chip .e{font-size:17px}
+.marquee .m-chip.hot{border-color:rgba(124,92,255,.4);color:var(--ink);
+  background:linear-gradient(135deg,rgba(124,92,255,.14),var(--card))}
+@keyframes marq{to{transform:translateX(50%)}}
+/* מגנטי — הזזה עדינה של הכפתור */
+.btn.magnetic{will-change:transform}
+/* כרטיס עבודה — הטיה תלת-ממדית */
+.grid{perspective:1200px}
+.work{transform-style:preserve-3d;transition:transform .18s cubic-bezier(.2,.7,.2,1),
+  box-shadow .25s,border-color .25s}
+.work .thumb img{transition:transform .4s cubic-bezier(.2,.7,.2,1)}
+.work:hover .thumb img{transform:scale(1.06)}
+/* חבילת PRO — מסגרת גרדיאנט חיה + נצנוץ על כל החבילות */
+.pack{overflow:hidden}
+.pack::after{content:"";position:absolute;top:0;inset-inline-start:-60%;width:45%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.10),transparent);
+  transform:skewX(-18deg);transition:none;pointer-events:none}
+.pack:hover::after{animation:shine 1s ease}
+@keyframes shine{to{inset-inline-start:120%}}
+.pack.feat{border:1px solid transparent;background:
+  linear-gradient(var(--surface),var(--surface)) padding-box,
+  linear-gradient(130deg,var(--brand),#ff7cc0,#7ce7d0,var(--brand)) border-box;
+  background-size:100% 100%,300% 300%;animation:borderFlow 6s linear infinite}
+@keyframes borderFlow{to{background-position:0 0,300% 300%}}
+/* קונפטי */
+.confetti{position:fixed;inset:0;z-index:200;pointer-events:none;overflow:hidden}
+.confetti i{position:absolute;top:-12px;width:9px;height:14px;border-radius:2px;
+  animation:fall linear forwards}
+@keyframes fall{to{transform:translateY(110vh) rotate(720deg);opacity:.2}}
+@media(prefers-reduced-motion:reduce){
+  .aurora .a,.aurora .b,.aurora .c,.marquee,.pack.feat{animation:none}
+  .cursor-orb{display:none}.pack:hover::after{animation:none}}
+
 /* sections */
 .section{padding:clamp(46px,6.5vw,84px) 0}
 .section-head{text-align:center;margin-bottom:38px}
@@ -305,6 +366,8 @@ footer .parent{color:var(--muted);font-weight:600}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
+<div class="scroll-progress" id="scrollbar" aria-hidden="true"></div>
+<div class="cursor-orb" id="cursorOrb" aria-hidden="true"></div>
 <div class="aurora"><span class="a"></span><span class="b"></span><span class="c"></span></div>
 
 <nav>
@@ -343,6 +406,11 @@ footer .parent{color:var(--muted);font-weight:600}
     </div>
   </header>
   </div><!-- /hero-shell -->
+
+  <div class="marquee-band" aria-hidden="true">
+    <div class="marquee" id="marquee"></div>
+  </div>
+
 
   <section class="section band" id="how">
     <div class="wrap">
@@ -714,6 +782,7 @@ footer .parent{color:var(--muted);font-weight:600}
 
 <script src="a11y.js"></script>
 <script src="fx.js"></script>
+<script src="fx2.js"></script>
 <script src="portfolio.js"></script>
 <script>
 const CONFIG = {

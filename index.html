@@ -11634,6 +11634,10 @@ function PokerTable({
         f: q.status === 'folded'
       }))
     };
+    // The whole pot is what was paid out plus what the house took. (This used
+    // to read a `pot` that does not exist in this function — a ReferenceError
+    // thrown BEFORE the showdown state was saved, which left every client-engine
+    // showdown unsaved and the hand stuck at the river.)
     saveHandRecord({
       code: hCode2,
       clubId: CLUB_ID,
@@ -11642,7 +11646,7 @@ function PokerTable({
       game: g.currentGameType,
       blinds: Number(setts.blinds) || 0,
       board: g.board || [],
-      pot: round2(pot),
+      pot: round2((Number(winTotal) || 0) + (Number(rakeTotal) || 0)),
       rake: rakeTotal,
       acts: g.acts || [],
       ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({

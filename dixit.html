@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MURMUR — a storytelling party game</title>
+<meta name="theme-color" content="#0b0f1a" />
+<style>
+  :root{
+    --bg:#0b0f1a; --bg2:#121a2e; --felt:#123a2e; --felt2:#0e2c22;
+    --ink:#eef2ff; --muted:#9fb0d0; --line:#25314f;
+    --gold:#f4c95d; --gold2:#e0a93b; --accent:#6ea8ff; --accent2:#3b6fd6;
+    --good:#57d99a; --bad:#ff7a7a; --chip:#1b2740;
+    --radius:16px; --shadow:0 10px 30px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:"Segoe UI",Roboto,system-ui,-apple-system,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 700px at 50% -10%, #152036 0, transparent 60%),
+      radial-gradient(900px 600px at 90% 110%, #16224a 0, transparent 55%),
+      linear-gradient(160deg,var(--bg),#070a12 70%);
+    background-attachment:fixed;
+    -webkit-tap-highlight-color:transparent;
+  }
+  a{color:var(--accent)}
+  .wrap{max-width:1080px;margin:0 auto;padding:18px 16px 60px}
+  .brand{display:flex;align-items:center;gap:12px;justify-content:center;margin:8px 0 4px}
+  .brand h1{
+    font-size:clamp(28px,7vw,52px);letter-spacing:.22em;margin:0;font-weight:800;
+    background:linear-gradient(180deg,#fff,var(--gold));-webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .brand .dot{width:12px;height:12px;border-radius:50%;background:var(--gold);box-shadow:0 0 18px var(--gold)}
+  .tag{text-align:center;color:var(--muted);letter-spacing:.28em;text-transform:uppercase;font-size:12px;margin-bottom:22px}
+
+  .card-panel{
+    background:linear-gradient(180deg,rgba(24,33,58,.92),rgba(15,21,40,.92));
+    border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:22px;backdrop-filter:blur(6px);
+  }
+  .stack{display:grid;gap:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .grow{flex:1 1 auto}
+  label.lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;display:block;margin-bottom:6px}
+  input,select{
+    width:100%;background:#0e152a;border:1px solid var(--line);color:var(--ink);
+    padding:13px 14px;border-radius:12px;font-size:16px;outline:none;transition:border .15s,box-shadow .15s;
+  }
+  input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(110,168,255,.18)}
+  .code-in{letter-spacing:.4em;text-align:center;font-weight:800;text-transform:uppercase;font-size:22px}
+  button{
+    cursor:pointer;border:0;border-radius:12px;padding:13px 18px;font-size:15px;font-weight:700;
+    color:#0b0f1a;background:linear-gradient(180deg,var(--gold),var(--gold2));
+    box-shadow:0 6px 18px rgba(224,169,59,.28);transition:transform .08s ease,filter .15s,opacity .15s;
+  }
+  button:hover{filter:brightness(1.05)}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.3)}
+  button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);box-shadow:none}
+  button.ghost:hover{border-color:var(--accent);color:#fff}
+  button.blue{background:linear-gradient(180deg,var(--accent),var(--accent2));color:#fff;box-shadow:0 6px 18px rgba(59,111,214,.3)}
+  button.sm{padding:9px 12px;font-size:13px;border-radius:10px}
+  .divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin:4px 0}
+  .divider::before,.divider::after{content:"";height:1px;background:var(--line);flex:1}
+
+  .muted{color:var(--muted)}
+  .small{font-size:13px}
+  .err{color:var(--bad);font-size:13px;min-height:16px}
+  .pill{background:var(--chip);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;display:inline-flex;gap:8px;align-items:center}
+  .pill .num{color:var(--gold);font-weight:800}
+
+  /* players */
+  .players{display:flex;gap:10px;flex-wrap:wrap}
+  .pcard{background:var(--chip);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;min-width:130px}
+  .avatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#0b0f1a;background:linear-gradient(180deg,var(--gold),var(--gold2))}
+  .pcard.host .avatar{background:linear-gradient(180deg,var(--accent),var(--accent2));color:#fff}
+  .pcard .nm{font-weight:700;font-size:14px;line-height:1.1}
+  .pcard .sc{font-size:12px;color:var(--muted)}
+  .badge{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:1px 5px;margin-left:auto}
+  .badge.you{color:var(--accent);border-color:var(--accent)}
+  .badge.done{color:var(--good);border-color:var(--good)}
+
+  /* board / hand */
+  .phase-hd{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline;margin-bottom:6px}
+  .phase-hd h2{margin:0;font-size:20px}
+  .clue-box{
+    text-align:center;font-size:clamp(20px,4.4vw,30px);font-weight:800;color:var(--gold);
+    padding:14px;border:1px dashed var(--gold);border-radius:14px;background:rgba(244,201,93,.06);margin:6px 0 4px;
+    word-break:break-word;
+  }
+  .clue-quote{font-style:italic}
+  .cardgrid{
+    display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));margin-top:12px;
+  }
+  .gcard{
+    position:relative;border-radius:14px;overflow:hidden;border:2px solid var(--line);
+    background:#0a0f1f;aspect-ratio:3/4;cursor:pointer;transition:transform .12s ease,border-color .15s,box-shadow .15s;
+  }
+  .gcard img{width:100%;height:100%;object-fit:cover;display:block}
+  .gcard:hover{transform:translateY(-4px);border-color:var(--accent)}
+  .gcard.sel{border-color:var(--gold);box-shadow:0 0 0 3px rgba(244,201,93,.35),0 12px 24px rgba(0,0,0,.5)}
+  .gcard.dim{opacity:.5}
+  .gcard.locked{cursor:default}
+  .gcard.locked:hover{transform:none;border-color:var(--line)}
+  .gcard .ribbon{
+    position:absolute;left:0;right:0;bottom:0;padding:6px 8px;font-size:12px;font-weight:700;
+    background:linear-gradient(180deg,transparent,rgba(0,0,0,.82));color:#fff;display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  }
+  .gcard .tick{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;background:var(--gold);color:#0b0f1a;display:grid;place-items:center;font-weight:900;font-size:15px}
+  .vote-chip{background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:1px 7px;font-size:11px}
+  .owner-tag{background:rgba(255,255,255,.14);border-radius:6px;padding:1px 6px;font-size:11px}
+  .story-tag{color:var(--gold)}
+
+  .waiting{display:flex;align-items:center;gap:10px;color:var(--muted);padding:10px 0}
+  .spinner{width:18px;height:18px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--gold);animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#0e152a;border:1px solid var(--line);
+    padding:10px 16px;border-radius:12px;box-shadow:var(--shadow);z-index:50;max-width:90vw;text-align:center}
+
+  .scoretable{width:100%;border-collapse:collapse;margin-top:8px}
+  .scoretable th,.scoretable td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);font-size:14px}
+  .scoretable th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+  .delta{color:var(--good);font-weight:800}
+  .delta.zero{color:var(--muted)}
+
+  .topbar{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap}
+  .roomtag{font-weight:800;letter-spacing:.3em;color:var(--gold)}
+  .help{font-size:13px;color:var(--muted);line-height:1.55}
+  .winner{text-align:center;padding:20px}
+  .winner .crown{font-size:54px}
+  .winner h2{font-size:30px;margin:6px 0}
+  details.setup{margin-top:14px;border:1px solid var(--line);border-radius:12px;padding:6px 12px;background:#0c1226}
+  details.setup summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
+  code{background:#0e152a;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12px}
+  @media (max-width:520px){
+    .cardgrid{grid-template-columns:repeat(auto-fill,minmax(108px,1fr))}
+    .wrap{padding:14px 12px 50px}
+    .card-panel{padding:16px}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- ============ Firebase config (fill in for ONLINE rooms) ============ -->
+<script>
+  // To enable online multiplayer rooms, create a free Firebase project
+  // (console.firebase.google.com), enable Cloud Firestore, and paste its
+  // web config below. Local "same device" play works without any of this.
+  window.MURMUR_FIREBASE = {
+    apiKey: "PASTE_API_KEY",
+    authDomain: "PASTE.firebaseapp.com",
+    projectId: "PASTE_PROJECT_ID",
+    storageBucket: "PASTE.appspot.com",
+    messagingSenderId: "PASTE_SENDER_ID",
+    appId: "PASTE_APP_ID"
+  };
+</script>
+
+<script type="importmap">
+{"imports":{
+  "preact": "data:text/javascript;base64,dmFyIG4sbCx1LHQsaSxvLHIsZixlLGMscyxhLGg9e30sdj1bXSxwPS9hY2l0fGV4KD86c3xnfG58cHwkKXxycGh8Z3JpZHxvd3N8bW5jfG50d3xpbmVbY2hdfHpvb3xeb3JkfGl0ZXJhL2kseT1BcnJheS5pc0FycmF5O2Z1bmN0aW9uIGQobixsKXtmb3IodmFyIHUgaW4gbCluW3VdPWxbdV07cmV0dXJuIG59ZnVuY3Rpb24gdyhuKXtuJiZuLnBhcmVudE5vZGUmJm4ucGFyZW50Tm9kZS5yZW1vdmVDaGlsZChuKX1mdW5jdGlvbiBfKGwsdSx0KXt2YXIgaSxvLHIsZj17fTtmb3IociBpbiB1KSJrZXkiPT1yP2k9dVtyXToicmVmIj09cj9vPXVbcl06ZltyXT11W3JdO2lmKGFyZ3VtZW50cy5sZW5ndGg+MiYmKGYuY2hpbGRyZW49YXJndW1lbnRzLmxlbmd0aD4zP24uY2FsbChhcmd1bWVudHMsMik6dCksImZ1bmN0aW9uIj09dHlwZW9mIGwmJm51bGwhPWwuZGVmYXVsdFByb3BzKWZvcihyIGluIGwuZGVmYXVsdFByb3BzKXZvaWQgMD09PWZbcl0mJihmW3JdPWwuZGVmYXVsdFByb3BzW3JdKTtyZXR1cm4gZyhsLGYsaSxvLG51bGwpfWZ1bmN0aW9uIGcobix0LGksbyxyKXt2YXIgZj17dHlwZTpuLHByb3BzOnQsa2V5OmkscmVmOm8sX19rOm51bGwsX186bnVsbCxfX2I6MCxfX2U6bnVsbCxfX2Q6dm9pZCAwLF9fYzpudWxsLGNvbnN0cnVjdG9yOnZvaWQgMCxfX3Y6bnVsbD09cj8rK3U6cixfX2k6LTEsX191OjB9O3JldHVybiBudWxsPT1yJiZudWxsIT1sLnZub2RlJiZsLnZub2RlKGYpLGZ9ZnVuY3Rpb24gbSgpe3JldHVybntjdXJyZW50Om51bGx9fWZ1bmN0aW9uIGIobil7cmV0dXJuIG4uY2hpbGRyZW59ZnVuY3Rpb24gayhuLGwpe3RoaXMucHJvcHM9bix0aGlzLmNvbnRleHQ9bH1mdW5jdGlvbiB4KG4sbCl7aWYobnVsbD09bClyZXR1cm4gbi5fXz94KG4uX18sbi5fX2krMSk6bnVsbDtmb3IodmFyIHU7bDxuLl9fay5sZW5ndGg7bCsrKWlmKG51bGwhPSh1PW4uX19rW2xdKSYmbnVsbCE9dS5fX2UpcmV0dXJuIHUuX19lO3JldHVybiJmdW5jdGlvbiI9PXR5cGVvZiBuLnR5cGU/eChuKTpudWxsfWZ1bmN0aW9uIEMobil7dmFyIGwsdTtpZihudWxsIT0obj1uLl9fKSYmbnVsbCE9bi5fX2Mpe2ZvcihuLl9fZT1uLl9fYy5iYXNlPW51bGwsbD0wO2w8bi5fX2subGVuZ3RoO2wrKylpZihudWxsIT0odT1uLl9fa1tsXSkmJm51bGwhPXUuX19lKXtuLl9fZT1uLl9fYy5iYXNlPXUuX19lO2JyZWFrfXJldHVybiBDKG4pfX1mdW5jdGlvbiBTKG4peyghbi5fX2QmJihuLl9fZD0hMCkmJmkucHVzaChuKSYmIU0uX19yKyt8fG8hPT1sLmRlYm91bmNlUmVuZGVyaW5nKSYmKChvPWwuZGVib3VuY2VSZW5kZXJpbmcpfHxyKShNKX1mdW5jdGlvbiBNKCl7dmFyIG4sdSx0LG8scixlLGMscztmb3IoaS5zb3J0KGYpO249aS5zaGlmdCgpOyluLl9fZCYmKHU9aS5sZW5ndGgsbz12b2lkIDAsZT0ocj0odD1uKS5fX3YpLl9fZSxjPVtdLHM9W10sdC5fX1AmJigobz1kKHt9LHIpKS5fX3Y9ci5fX3YrMSxsLnZub2RlJiZsLnZub2RlKG8pLE8odC5fX1AsbyxyLHQuX19uLHQuX19QLm5hbWVzcGFjZVVSSSwzMiZyLl9fdT9bZV06bnVsbCxjLG51bGw9PWU/eChyKTplLCEhKDMyJnIuX191KSxzKSxvLl9fdj1yLl9fdixvLl9fLl9fa1tvLl9faV09byxqKGMsbyxzKSxvLl9fZSE9ZSYmQyhvKSksaS5sZW5ndGg+dSYmaS5zb3J0KGYpKTtNLl9fcj0wfWZ1bmN0aW9uIFAobixsLHUsdCxpLG8scixmLGUsYyxzKXt2YXIgYSxwLHksZCx3LF89dCYmdC5fX2t8fHYsZz1sLmxlbmd0aDtmb3IodS5fX2Q9ZSwkKHUsbCxfKSxlPXUuX19kLGE9MDthPGc7YSsrKW51bGwhPSh5PXUuX19rW2FdKSYmKHA9LTE9PT15Ll9faT9oOl9beS5fX2ldfHxoLHkuX19pPWEsTyhuLHkscCxpLG8scixmLGUsYyxzKSxkPXkuX19lLHkucmVmJiZwLnJlZiE9eS5yZWYmJihwLnJlZiYmTihwLnJlZixudWxsLHkpLHMucHVzaCh5LnJlZix5Ll9fY3x8ZCx5KSksbnVsbD09dyYmbnVsbCE9ZCYmKHc9ZCksNjU1MzYmeS5fX3V8fHAuX19rPT09eS5fX2s/ZT1JKHksZSxuKToiZnVuY3Rpb24iPT10eXBlb2YgeS50eXBlJiZ2b2lkIDAhPT15Ll9fZD9lPXkuX19kOmQmJihlPWQubmV4dFNpYmxpbmcpLHkuX19kPXZvaWQgMCx5Ll9fdSY9LTE5NjYwOSk7dS5fX2Q9ZSx1Ll9fZT13fWZ1bmN0aW9uICQobixsLHUpe3ZhciB0LGksbyxyLGYsZT1sLmxlbmd0aCxjPXUubGVuZ3RoLHM9YyxhPTA7Zm9yKG4uX19rPVtdLHQ9MDt0PGU7dCsrKW51bGwhPShpPWxbdF0pJiYiYm9vbGVhbiIhPXR5cGVvZiBpJiYiZnVuY3Rpb24iIT10eXBlb2YgaT8ocj10K2EsKGk9bi5fX2tbdF09InN0cmluZyI9PXR5cGVvZiBpfHwibnVtYmVyIj09dHlwZW9mIGl8fCJiaWdpbnQiPT10eXBlb2YgaXx8aS5jb25zdHJ1Y3Rvcj09U3RyaW5nP2cobnVsbCxpLG51bGwsbnVsbCxudWxsKTp5KGkpP2coYix7Y2hpbGRyZW46aX0sbnVsbCxudWxsLG51bGwpOnZvaWQgMD09PWkuY29uc3RydWN0b3ImJmkuX19iPjA/ZyhpLnR5cGUsaS5wcm9wcyxpLmtleSxpLnJlZj9pLnJlZjpudWxsLGkuX192KTppKS5fXz1uLGkuX19iPW4uX19iKzEsbz1udWxsLC0xIT09KGY9aS5fX2k9TChpLHUscixzKSkmJihzLS0sKG89dVtmXSkmJihvLl9fdXw9MTMxMDcyKSksbnVsbD09b3x8bnVsbD09PW8uX192PygtMT09ZiYmYS0tLCJmdW5jdGlvbiIhPXR5cGVvZiBpLnR5cGUmJihpLl9fdXw9NjU1MzYpKTpmIT09ciYmKGY9PXItMT9hLS06Zj09cisxP2ErKzooZj5yP2EtLTphKyssaS5fX3V8PTY1NTM2KSkpOmk9bi5fX2tbdF09bnVsbDtpZihzKWZvcih0PTA7dDxjO3QrKyludWxsIT0obz11W3RdKSYmMD09KDEzMTA3MiZvLl9fdSkmJihvLl9fZT09bi5fX2QmJihuLl9fZD14KG8pKSxWKG8sbykpfWZ1bmN0aW9uIEkobixsLHUpe3ZhciB0LGk7aWYoImZ1bmN0aW9uIj09dHlwZW9mIG4udHlwZSl7Zm9yKHQ9bi5fX2ssaT0wO3QmJmk8dC5sZW5ndGg7aSsrKXRbaV0mJih0W2ldLl9fPW4sbD1JKHRbaV0sbCx1KSk7cmV0dXJuIGx9bi5fX2UhPWwmJihsJiZuLnR5cGUmJiF1LmNvbnRhaW5zKGwpJiYobD14KG4pKSx1Lmluc2VydEJlZm9yZShuLl9fZSxsfHxudWxsKSxsPW4uX19lKTtkb3tsPWwmJmwubmV4dFNpYmxpbmd9d2hpbGUobnVsbCE9bCYmOD09PWwubm9kZVR5cGUpO3JldHVybiBsfWZ1bmN0aW9uIEgobixsKXtyZXR1cm4gbD1sfHxbXSxudWxsPT1ufHwiYm9vbGVhbiI9PXR5cGVvZiBufHwoeShuKT9uLnNvbWUoZnVuY3Rpb24obil7SChuLGwpfSk6bC5wdXNoKG4pKSxsfWZ1bmN0aW9uIEwobixsLHUsdCl7dmFyIGk9bi5rZXksbz1uLnR5cGUscj11LTEsZj11KzEsZT1sW3VdO2lmKG51bGw9PT1lfHxlJiZpPT1lLmtleSYmbz09PWUudHlwZSYmMD09KDEzMTA3MiZlLl9fdSkpcmV0dXJuIHU7aWYodD4obnVsbCE9ZSYmMD09KDEzMTA3MiZlLl9fdSk/MTowKSlmb3IoO3I+PTB8fGY8bC5sZW5ndGg7KXtpZihyPj0wKXtpZigoZT1sW3JdKSYmMD09KDEzMTA3MiZlLl9fdSkmJmk9PWUua2V5JiZvPT09ZS50eXBlKXJldHVybiByO3ItLX1pZihmPGwubGVuZ3RoKXtpZigoZT1sW2ZdKSYmMD09KDEzMTA3MiZlLl9fdSkmJmk9PWUua2V5JiZvPT09ZS50eXBlKXJldHVybiBmO2YrK319cmV0dXJuLTF9ZnVuY3Rpb24gVChuLGwsdSl7Ii0iPT09bFswXT9uLnNldFByb3BlcnR5KGwsbnVsbD09dT8iIjp1KTpuW2xdPW51bGw9PXU/IiI6Im51bWJlciIhPXR5cGVvZiB1fHxwLnRlc3QobCk/dTp1KyJweCJ9ZnVuY3Rpb24gQShuLGwsdSx0LGkpe3ZhciBvO246aWYoInN0eWxlIj09PWwpaWYoInN0cmluZyI9PXR5cGVvZiB1KW4uc3R5bGUuY3NzVGV4dD11O2Vsc2V7aWYoInN0cmluZyI9PXR5cGVvZiB0JiYobi5zdHlsZS5jc3NUZXh0PXQ9IiIpLHQpZm9yKGwgaW4gdCl1JiZsIGluIHV8fFQobi5zdHlsZSxsLCIiKTtpZih1KWZvcihsIGluIHUpdCYmdVtsXT09PXRbbF18fFQobi5zdHlsZSxsLHVbbF0pfWVsc2UgaWYoIm8iPT09bFswXSYmIm4iPT09bFsxXSlvPWwhPT0obD1sLnJlcGxhY2UoLyhQb2ludGVyQ2FwdHVyZSkkfENhcHR1cmUkL2ksIiQxIikpLGw9bC50b0xvd2VyQ2FzZSgpaW4gbnx8Im9uRm9jdXNPdXQiPT09bHx8Im9uRm9jdXNJbiI9PT1sP2wudG9Mb3dlckNhc2UoKS5zbGljZSgyKTpsLnNsaWNlKDIpLG4ubHx8KG4ubD17fSksbi5sW2wrb109dSx1P3Q/dS51PXQudToodS51PWUsbi5hZGRFdmVudExpc3RlbmVyKGwsbz9zOmMsbykpOm4ucmVtb3ZlRXZlbnRMaXN0ZW5lcihsLG8/czpjLG8pO2Vsc2V7aWYoImh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj09aSlsPWwucmVwbGFjZSgveGxpbmsoSHw6aCkvLCJoIikucmVwbGFjZSgvc05hbWUkLywicyIpO2Vsc2UgaWYoIndpZHRoIiE9bCYmImhlaWdodCIhPWwmJiJocmVmIiE9bCYmImxpc3QiIT1sJiYiZm9ybSIhPWwmJiJ0YWJJbmRleCIhPWwmJiJkb3dubG9hZCIhPWwmJiJyb3dTcGFuIiE9bCYmImNvbFNwYW4iIT1sJiYicm9sZSIhPWwmJiJwb3BvdmVyIiE9bCYmbCBpbiBuKXRyeXtuW2xdPW51bGw9PXU/IiI6dTticmVhayBufWNhdGNoKG4pe30iZnVuY3Rpb24iPT10eXBlb2YgdXx8KG51bGw9PXV8fCExPT09dSYmIi0iIT09bFs0XT9uLnJlbW92ZUF0dHJpYnV0ZShsKTpuLnNldEF0dHJpYnV0ZShsLCJwb3BvdmVyIj09bCYmMT09dT8iIjp1KSl9fWZ1bmN0aW9uIEYobil7cmV0dXJuIGZ1bmN0aW9uKHUpe2lmKHRoaXMubCl7dmFyIHQ9dGhpcy5sW3UudHlwZStuXTtpZihudWxsPT11LnQpdS50PWUrKztlbHNlIGlmKHUudDx0LnUpcmV0dXJuO3JldHVybiB0KGwuZXZlbnQ/bC5ldmVudCh1KTp1KX19fWZ1bmN0aW9uIE8obix1LHQsaSxvLHIsZixlLGMscyl7dmFyIGEsaCx2LHAsdyxfLGcsbSx4LEMsUyxNLCQsSSxILEwsVD11LnR5cGU7aWYodm9pZCAwIT09dS5jb25zdHJ1Y3RvcilyZXR1cm4gbnVsbDsxMjgmdC5fX3UmJihjPSEhKDMyJnQuX191KSxyPVtlPXUuX19lPXQuX19lXSksKGE9bC5fX2IpJiZhKHUpO246aWYoImZ1bmN0aW9uIj09dHlwZW9mIFQpdHJ5e2lmKG09dS5wcm9wcyx4PSJwcm90b3R5cGUiaW4gVCYmVC5wcm90b3R5cGUucmVuZGVyLEM9KGE9VC5jb250ZXh0VHlwZSkmJmlbYS5fX2NdLFM9YT9DP0MucHJvcHMudmFsdWU6YS5fXzppLHQuX19jP2c9KGg9dS5fX2M9dC5fX2MpLl9fPWguX19FOih4P3UuX19jPWg9bmV3IFQobSxTKToodS5fX2M9aD1uZXcgayhtLFMpLGguY29uc3RydWN0b3I9VCxoLnJlbmRlcj1xKSxDJiZDLnN1YihoKSxoLnByb3BzPW0saC5zdGF0ZXx8KGguc3RhdGU9e30pLGguY29udGV4dD1TLGguX19uPWksdj1oLl9fZD0hMCxoLl9faD1bXSxoLl9zYj1bXSkseCYmbnVsbD09aC5fX3MmJihoLl9fcz1oLnN0YXRlKSx4JiZudWxsIT1ULmdldERlcml2ZWRTdGF0ZUZyb21Qcm9wcyYmKGguX19zPT1oLnN0YXRlJiYoaC5fX3M9ZCh7fSxoLl9fcykpLGQoaC5fX3MsVC5nZXREZXJpdmVkU3RhdGVGcm9tUHJvcHMobSxoLl9fcykpKSxwPWgucHJvcHMsdz1oLnN0YXRlLGguX192PXUsdil4JiZudWxsPT1ULmdldERlcml2ZWRTdGF0ZUZyb21Qcm9wcyYmbnVsbCE9aC5jb21wb25lbnRXaWxsTW91bnQmJmguY29tcG9uZW50V2lsbE1vdW50KCkseCYmbnVsbCE9aC5jb21wb25lbnREaWRNb3VudCYmaC5fX2gucHVzaChoLmNvbXBvbmVudERpZE1vdW50KTtlbHNle2lmKHgmJm51bGw9PVQuZ2V0RGVyaXZlZFN0YXRlRnJvbVByb3BzJiZtIT09cCYmbnVsbCE9aC5jb21wb25lbnRXaWxsUmVjZWl2ZVByb3BzJiZoLmNvbXBvbmVudFdpbGxSZWNlaXZlUHJvcHMobSxTKSwhaC5fX2UmJihudWxsIT1oLnNob3VsZENvbXBvbmVudFVwZGF0ZSYmITE9PT1oLnNob3VsZENvbXBvbmVudFVwZGF0ZShtLGguX19zLFMpfHx1Ll9fdj09PXQuX192KSl7Zm9yKHUuX192IT09dC5fX3YmJihoLnByb3BzPW0saC5zdGF0ZT1oLl9fcyxoLl9fZD0hMSksdS5fX2U9dC5fX2UsdS5fX2s9dC5fX2ssdS5fX2suc29tZShmdW5jdGlvbihuKXtuJiYobi5fXz11KX0pLE09MDtNPGguX3NiLmxlbmd0aDtNKyspaC5fX2gucHVzaChoLl9zYltNXSk7aC5fc2I9W10saC5fX2gubGVuZ3RoJiZmLnB1c2goaCk7YnJlYWsgbn1udWxsIT1oLmNvbXBvbmVudFdpbGxVcGRhdGUmJmguY29tcG9uZW50V2lsbFVwZGF0ZShtLGguX19zLFMpLHgmJm51bGwhPWguY29tcG9uZW50RGlkVXBkYXRlJiZoLl9faC5wdXNoKGZ1bmN0aW9uKCl7aC5jb21wb25lbnREaWRVcGRhdGUocCx3LF8pfSl9aWYoaC5jb250ZXh0PVMsaC5wcm9wcz1tLGguX19QPW4saC5fX2U9ITEsJD1sLl9fcixJPTAseCl7Zm9yKGguc3RhdGU9aC5fX3MsaC5fX2Q9ITEsJCYmJCh1KSxhPWgucmVuZGVyKGgucHJvcHMsaC5zdGF0ZSxoLmNvbnRleHQpLEg9MDtIPGguX3NiLmxlbmd0aDtIKyspaC5fX2gucHVzaChoLl9zYltIXSk7aC5fc2I9W119ZWxzZSBkb3toLl9fZD0hMSwkJiYkKHUpLGE9aC5yZW5kZXIoaC5wcm9wcyxoLnN0YXRlLGguY29udGV4dCksaC5zdGF0ZT1oLl9fc313aGlsZShoLl9fZCYmKytJPDI1KTtoLnN0YXRlPWguX19zLG51bGwhPWguZ2V0Q2hpbGRDb250ZXh0JiYoaT1kKGQoe30saSksaC5nZXRDaGlsZENvbnRleHQoKSkpLHgmJiF2JiZudWxsIT1oLmdldFNuYXBzaG90QmVmb3JlVXBkYXRlJiYoXz1oLmdldFNuYXBzaG90QmVmb3JlVXBkYXRlKHAsdykpLFAobix5KEw9bnVsbCE9YSYmYS50eXBlPT09YiYmbnVsbD09YS5rZXk/YS5wcm9wcy5jaGlsZHJlbjphKT9MOltMXSx1LHQsaSxvLHIsZixlLGMscyksaC5iYXNlPXUuX19lLHUuX191Jj0tMTYxLGguX19oLmxlbmd0aCYmZi5wdXNoKGgpLGcmJihoLl9fRT1oLl9fPW51bGwpfWNhdGNoKG4pe2lmKHUuX192PW51bGwsY3x8bnVsbCE9cil7Zm9yKHUuX191fD1jPzE2MDoxMjg7ZSYmOD09PWUubm9kZVR5cGUmJmUubmV4dFNpYmxpbmc7KWU9ZS5uZXh0U2libGluZztyW3IuaW5kZXhPZihlKV09bnVsbCx1Ll9fZT1lfWVsc2UgdS5fX2U9dC5fX2UsdS5fX2s9dC5fX2s7bC5fX2Uobix1LHQpfWVsc2UgbnVsbD09ciYmdS5fX3Y9PT10Ll9fdj8odS5fX2s9dC5fX2ssdS5fX2U9dC5fX2UpOnUuX19lPXoodC5fX2UsdSx0LGksbyxyLGYsYyxzKTsoYT1sLmRpZmZlZCkmJmEodSl9ZnVuY3Rpb24gaihuLHUsdCl7dS5fX2Q9dm9pZCAwO2Zvcih2YXIgaT0wO2k8dC5sZW5ndGg7aSsrKU4odFtpXSx0WysraV0sdFsrK2ldKTtsLl9fYyYmbC5fX2ModSxuKSxuLnNvbWUoZnVuY3Rpb24odSl7dHJ5e249dS5fX2gsdS5fX2g9W10sbi5zb21lKGZ1bmN0aW9uKG4pe24uY2FsbCh1KX0pfWNhdGNoKG4pe2wuX19lKG4sdS5fX3YpfX0pfWZ1bmN0aW9uIHoodSx0LGksbyxyLGYsZSxjLHMpe3ZhciBhLHYscCxkLF8sZyxtLGI9aS5wcm9wcyxrPXQucHJvcHMsQz10LnR5cGU7aWYoInN2ZyI9PT1DP3I9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIjoibWF0aCI9PT1DP3I9Imh0dHA6Ly93d3cudzMub3JnLzE5OTgvTWF0aC9NYXRoTUwiOnJ8fChyPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hodG1sIiksbnVsbCE9Zilmb3IoYT0wO2E8Zi5sZW5ndGg7YSsrKWlmKChfPWZbYV0pJiYic2V0QXR0cmlidXRlImluIF89PSEhQyYmKEM/Xy5sb2NhbE5hbWU9PT1DOjM9PT1fLm5vZGVUeXBlKSl7dT1fLGZbYV09bnVsbDticmVha31pZihudWxsPT11KXtpZihudWxsPT09QylyZXR1cm4gZG9jdW1lbnQuY3JlYXRlVGV4dE5vZGUoayk7dT1kb2N1bWVudC5jcmVhdGVFbGVtZW50TlMocixDLGsuaXMmJmspLGMmJihsLl9fbSYmbC5fX20odCxmKSxjPSExKSxmPW51bGx9aWYobnVsbD09PUMpYj09PWt8fGMmJnUuZGF0YT09PWt8fCh1LmRhdGE9ayk7ZWxzZXtpZihmPWYmJm4uY2FsbCh1LmNoaWxkTm9kZXMpLGI9aS5wcm9wc3x8aCwhYyYmbnVsbCE9Zilmb3IoYj17fSxhPTA7YTx1LmF0dHJpYnV0ZXMubGVuZ3RoO2ErKyliWyhfPXUuYXR0cmlidXRlc1thXSkubmFtZV09Xy52YWx1ZTtmb3IoYSBpbiBiKWlmKF89YlthXSwiY2hpbGRyZW4iPT1hKTtlbHNlIGlmKCJkYW5nZXJvdXNseVNldElubmVySFRNTCI9PWEpcD1fO2Vsc2UgaWYoIShhIGluIGspKXtpZigidmFsdWUiPT1hJiYiZGVmYXVsdFZhbHVlImluIGt8fCJjaGVja2VkIj09YSYmImRlZmF1bHRDaGVja2VkImluIGspY29udGludWU7QSh1LGEsbnVsbCxfLHIpfWZvcihhIGluIGspXz1rW2FdLCJjaGlsZHJlbiI9PWE/ZD1fOiJkYW5nZXJvdXNseVNldElubmVySFRNTCI9PWE/dj1fOiJ2YWx1ZSI9PWE/Zz1fOiJjaGVja2VkIj09YT9tPV86YyYmImZ1bmN0aW9uIiE9dHlwZW9mIF98fGJbYV09PT1ffHxBKHUsYSxfLGJbYV0scik7aWYodiljfHxwJiYodi5fX2h0bWw9PT1wLl9faHRtbHx8di5fX2h0bWw9PT11LmlubmVySFRNTCl8fCh1LmlubmVySFRNTD12Ll9faHRtbCksdC5fX2s9W107ZWxzZSBpZihwJiYodS5pbm5lckhUTUw9IiIpLFAodSx5KGQpP2Q6W2RdLHQsaSxvLCJmb3JlaWduT2JqZWN0Ij09PUM/Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGh0bWwiOnIsZixlLGY/ZlswXTppLl9fayYmeChpLDApLGMscyksbnVsbCE9Zilmb3IoYT1mLmxlbmd0aDthLS07KXcoZlthXSk7Y3x8KGE9InZhbHVlIiwicHJvZ3Jlc3MiPT09QyYmbnVsbD09Zz91LnJlbW92ZUF0dHJpYnV0ZSgidmFsdWUiKTp2b2lkIDAhPT1nJiYoZyE9PXVbYV18fCJwcm9ncmVzcyI9PT1DJiYhZ3x8Im9wdGlvbiI9PT1DJiZnIT09YlthXSkmJkEodSxhLGcsYlthXSxyKSxhPSJjaGVja2VkIix2b2lkIDAhPT1tJiZtIT09dVthXSYmQSh1LGEsbSxiW2FdLHIpKX1yZXR1cm4gdX1mdW5jdGlvbiBOKG4sdSx0KXt0cnl7aWYoImZ1bmN0aW9uIj09dHlwZW9mIG4pe3ZhciBpPSJmdW5jdGlvbiI9PXR5cGVvZiBuLl9fdTtpJiZuLl9fdSgpLGkmJm51bGw9PXV8fChuLl9fdT1uKHUpKX1lbHNlIG4uY3VycmVudD11fWNhdGNoKG4pe2wuX19lKG4sdCl9fWZ1bmN0aW9uIFYobix1LHQpe3ZhciBpLG87aWYobC51bm1vdW50JiZsLnVubW91bnQobiksKGk9bi5yZWYpJiYoaS5jdXJyZW50JiZpLmN1cnJlbnQhPT1uLl9fZXx8TihpLG51bGwsdSkpLG51bGwhPShpPW4uX19jKSl7aWYoaS5jb21wb25lbnRXaWxsVW5tb3VudCl0cnl7aS5jb21wb25lbnRXaWxsVW5tb3VudCgpfWNhdGNoKG4pe2wuX19lKG4sdSl9aS5iYXNlPWkuX19QPW51bGx9aWYoaT1uLl9faylmb3Iobz0wO288aS5sZW5ndGg7bysrKWlbb10mJlYoaVtvXSx1LHR8fCJmdW5jdGlvbiIhPXR5cGVvZiBuLnR5cGUpO3R8fHcobi5fX2UpLG4uX19jPW4uX189bi5fX2U9bi5fX2Q9dm9pZCAwfWZ1bmN0aW9uIHEobixsLHUpe3JldHVybiB0aGlzLmNvbnN0cnVjdG9yKG4sdSl9ZnVuY3Rpb24gQih1LHQsaSl7dmFyIG8scixmLGU7bC5fXyYmbC5fXyh1LHQpLHI9KG89ImZ1bmN0aW9uIj09dHlwZW9mIGkpP251bGw6aSYmaS5fX2t8fHQuX19rLGY9W10sZT1bXSxPKHQsdT0oIW8mJml8fHQpLl9faz1fKGIsbnVsbCxbdV0pLHJ8fGgsaCx0Lm5hbWVzcGFjZVVSSSwhbyYmaT9baV06cj9udWxsOnQuZmlyc3RDaGlsZD9uLmNhbGwodC5jaGlsZE5vZGVzKTpudWxsLGYsIW8mJmk/aTpyP3IuX19lOnQuZmlyc3RDaGlsZCxvLGUpLGooZix1LGUpfWZ1bmN0aW9uIEQobixsKXtCKG4sbCxEKX1mdW5jdGlvbiBFKGwsdSx0KXt2YXIgaSxvLHIsZixlPWQoe30sbC5wcm9wcyk7Zm9yKHIgaW4gbC50eXBlJiZsLnR5cGUuZGVmYXVsdFByb3BzJiYoZj1sLnR5cGUuZGVmYXVsdFByb3BzKSx1KSJrZXkiPT1yP2k9dVtyXToicmVmIj09cj9vPXVbcl06ZVtyXT12b2lkIDA9PT11W3JdJiZ2b2lkIDAhPT1mP2Zbcl06dVtyXTtyZXR1cm4gYXJndW1lbnRzLmxlbmd0aD4yJiYoZS5jaGlsZHJlbj1hcmd1bWVudHMubGVuZ3RoPjM/bi5jYWxsKGFyZ3VtZW50cywyKTp0KSxnKGwudHlwZSxlLGl8fGwua2V5LG98fGwucmVmLG51bGwpfWZ1bmN0aW9uIEcobixsKXt2YXIgdT17X19jOmw9Il9fY0MiK2ErKyxfXzpuLENvbnN1bWVyOmZ1bmN0aW9uKG4sbCl7cmV0dXJuIG4uY2hpbGRyZW4obCl9LFByb3ZpZGVyOmZ1bmN0aW9uKG4pe3ZhciB1LHQ7cmV0dXJuIHRoaXMuZ2V0Q2hpbGRDb250ZXh0fHwodT1uZXcgU2V0LCh0PXt9KVtsXT10aGlzLHRoaXMuZ2V0Q2hpbGRDb250ZXh0PWZ1bmN0aW9uKCl7cmV0dXJuIHR9LHRoaXMuY29tcG9uZW50V2lsbFVubW91bnQ9ZnVuY3Rpb24oKXt1PW51bGx9LHRoaXMuc2hvdWxkQ29tcG9uZW50VXBkYXRlPWZ1bmN0aW9uKG4pe3RoaXMucHJvcHMudmFsdWUhPT1uLnZhbHVlJiZ1LmZvckVhY2goZnVuY3Rpb24obil7bi5fX2U9ITAsUyhuKX0pfSx0aGlzLnN1Yj1mdW5jdGlvbihuKXt1LmFkZChuKTt2YXIgbD1uLmNvbXBvbmVudFdpbGxVbm1vdW50O24uY29tcG9uZW50V2lsbFVubW91bnQ9ZnVuY3Rpb24oKXt1JiZ1LmRlbGV0ZShuKSxsJiZsLmNhbGwobil9fSksbi5jaGlsZHJlbn19O3JldHVybiB1LlByb3ZpZGVyLl9fPXUuQ29uc3VtZXIuY29udGV4dFR5cGU9dX1uPXYuc2xpY2UsbD17X19lOmZ1bmN0aW9uKG4sbCx1LHQpe2Zvcih2YXIgaSxvLHI7bD1sLl9fOylpZigoaT1sLl9fYykmJiFpLl9fKXRyeXtpZigobz1pLmNvbnN0cnVjdG9yKSYmbnVsbCE9by5nZXREZXJpdmVkU3RhdGVGcm9tRXJyb3ImJihpLnNldFN0YXRlKG8uZ2V0RGVyaXZlZFN0YXRlRnJvbUVycm9yKG4pKSxyPWkuX19kKSxudWxsIT1pLmNvbXBvbmVudERpZENhdGNoJiYoaS5jb21wb25lbnREaWRDYXRjaChuLHR8fHt9KSxyPWkuX19kKSxyKXJldHVybiBpLl9fRT1pfWNhdGNoKGwpe249bH10aHJvdyBufX0sdT0wLHQ9ZnVuY3Rpb24obil7cmV0dXJuIG51bGwhPW4mJm51bGw9PW4uY29uc3RydWN0b3J9LGsucHJvdG90eXBlLnNldFN0YXRlPWZ1bmN0aW9uKG4sbCl7dmFyIHU7dT1udWxsIT10aGlzLl9fcyYmdGhpcy5fX3MhPT10aGlzLnN0YXRlP3RoaXMuX19zOnRoaXMuX19zPWQoe30sdGhpcy5zdGF0ZSksImZ1bmN0aW9uIj09dHlwZW9mIG4mJihuPW4oZCh7fSx1KSx0aGlzLnByb3BzKSksbiYmZCh1LG4pLG51bGwhPW4mJnRoaXMuX192JiYobCYmdGhpcy5fc2IucHVzaChsKSxTKHRoaXMpKX0say5wcm90b3R5cGUuZm9yY2VVcGRhdGU9ZnVuY3Rpb24obil7dGhpcy5fX3YmJih0aGlzLl9fZT0hMCxuJiZ0aGlzLl9faC5wdXNoKG4pLFModGhpcykpfSxrLnByb3RvdHlwZS5yZW5kZXI9YixpPVtdLHI9ImZ1bmN0aW9uIj09dHlwZW9mIFByb21pc2U/UHJvbWlzZS5wcm90b3R5cGUudGhlbi5iaW5kKFByb21pc2UucmVzb2x2ZSgpKTpzZXRUaW1lb3V0LGY9ZnVuY3Rpb24obixsKXtyZXR1cm4gbi5fX3YuX19iLWwuX192Ll9fYn0sTS5fX3I9MCxlPTAsYz1GKCExKSxzPUYoITApLGE9MDtleHBvcnR7ayBhcyBDb21wb25lbnQsYiBhcyBGcmFnbWVudCxFIGFzIGNsb25lRWxlbWVudCxHIGFzIGNyZWF0ZUNvbnRleHQsXyBhcyBjcmVhdGVFbGVtZW50LG0gYXMgY3JlYXRlUmVmLF8gYXMgaCxEIGFzIGh5ZHJhdGUsdCBhcyBpc1ZhbGlkRWxlbWVudCxsIGFzIG9wdGlvbnMsQiBhcyByZW5kZXIsSCBhcyB0b0NoaWxkQXJyYXl9OwovLyMgc291cmNlTWFwcGluZ1VSTD1wcmVhY3QubW9kdWxlLmpzLm1hcAo=",
+  "preact/hooks": "data:text/javascript;base64,aW1wb3J0e29wdGlvbnMgYXMgbn1mcm9tInByZWFjdCI7dmFyIHQscix1LGksbz0wLGY9W10sYz1uLGU9Yy5fX2IsYT1jLl9fcix2PWMuZGlmZmVkLGw9Yy5fX2MsbT1jLnVubW91bnQscz1jLl9fO2Z1bmN0aW9uIGQobix0KXtjLl9faCYmYy5fX2gocixuLG98fHQpLG89MDt2YXIgdT1yLl9fSHx8KHIuX19IPXtfXzpbXSxfX2g6W119KTtyZXR1cm4gbj49dS5fXy5sZW5ndGgmJnUuX18ucHVzaCh7fSksdS5fX1tuXX1mdW5jdGlvbiBoKG4pe3JldHVybiBvPTEscChELG4pfWZ1bmN0aW9uIHAobix1LGkpe3ZhciBvPWQodCsrLDIpO2lmKG8udD1uLCFvLl9fYyYmKG8uX189W2k/aSh1KTpEKHZvaWQgMCx1KSxmdW5jdGlvbihuKXt2YXIgdD1vLl9fTj9vLl9fTlswXTpvLl9fWzBdLHI9by50KHQsbik7dCE9PXImJihvLl9fTj1bcixvLl9fWzFdXSxvLl9fYy5zZXRTdGF0ZSh7fSkpfV0sby5fX2M9ciwhci51KSl7dmFyIGY9ZnVuY3Rpb24obix0LHIpe2lmKCFvLl9fYy5fX0gpcmV0dXJuITA7dmFyIHU9by5fX2MuX19ILl9fLmZpbHRlcihmdW5jdGlvbihuKXtyZXR1cm4hIW4uX19jfSk7aWYodS5ldmVyeShmdW5jdGlvbihuKXtyZXR1cm4hbi5fX059KSlyZXR1cm4hY3x8Yy5jYWxsKHRoaXMsbix0LHIpO3ZhciBpPSExO3JldHVybiB1LmZvckVhY2goZnVuY3Rpb24obil7aWYobi5fX04pe3ZhciB0PW4uX19bMF07bi5fXz1uLl9fTixuLl9fTj12b2lkIDAsdCE9PW4uX19bMF0mJihpPSEwKX19KSwhKCFpJiZvLl9fYy5wcm9wcz09PW4pJiYoIWN8fGMuY2FsbCh0aGlzLG4sdCxyKSl9O3IudT0hMDt2YXIgYz1yLnNob3VsZENvbXBvbmVudFVwZGF0ZSxlPXIuY29tcG9uZW50V2lsbFVwZGF0ZTtyLmNvbXBvbmVudFdpbGxVcGRhdGU9ZnVuY3Rpb24obix0LHIpe2lmKHRoaXMuX19lKXt2YXIgdT1jO2M9dm9pZCAwLGYobix0LHIpLGM9dX1lJiZlLmNhbGwodGhpcyxuLHQscil9LHIuc2hvdWxkQ29tcG9uZW50VXBkYXRlPWZ9cmV0dXJuIG8uX19OfHxvLl9ffWZ1bmN0aW9uIHkobix1KXt2YXIgaT1kKHQrKywzKTshYy5fX3MmJkMoaS5fX0gsdSkmJihpLl9fPW4saS5pPXUsci5fX0guX19oLnB1c2goaSkpfWZ1bmN0aW9uIF8obix1KXt2YXIgaT1kKHQrKyw0KTshYy5fX3MmJkMoaS5fX0gsdSkmJihpLl9fPW4saS5pPXUsci5fX2gucHVzaChpKSl9ZnVuY3Rpb24gQShuKXtyZXR1cm4gbz01LFQoZnVuY3Rpb24oKXtyZXR1cm57Y3VycmVudDpufX0sW10pfWZ1bmN0aW9uIEYobix0LHIpe289NixfKGZ1bmN0aW9uKCl7cmV0dXJuImZ1bmN0aW9uIj09dHlwZW9mIG4/KG4odCgpKSxmdW5jdGlvbigpe3JldHVybiBuKG51bGwpfSk6bj8obi5jdXJyZW50PXQoKSxmdW5jdGlvbigpe3JldHVybiBuLmN1cnJlbnQ9bnVsbH0pOnZvaWQgMH0sbnVsbD09cj9yOnIuY29uY2F0KG4pKX1mdW5jdGlvbiBUKG4scil7dmFyIHU9ZCh0KyssNyk7cmV0dXJuIEModS5fX0gscikmJih1Ll9fPW4oKSx1Ll9fSD1yLHUuX19oPW4pLHUuX199ZnVuY3Rpb24gcShuLHQpe3JldHVybiBvPTgsVChmdW5jdGlvbigpe3JldHVybiBufSx0KX1mdW5jdGlvbiB4KG4pe3ZhciB1PXIuY29udGV4dFtuLl9fY10saT1kKHQrKyw5KTtyZXR1cm4gaS5jPW4sdT8obnVsbD09aS5fXyYmKGkuX189ITAsdS5zdWIocikpLHUucHJvcHMudmFsdWUpOm4uX199ZnVuY3Rpb24gUChuLHQpe2MudXNlRGVidWdWYWx1ZSYmYy51c2VEZWJ1Z1ZhbHVlKHQ/dChuKTpuKX1mdW5jdGlvbiBiKG4pe3ZhciB1PWQodCsrLDEwKSxpPWgoKTtyZXR1cm4gdS5fXz1uLHIuY29tcG9uZW50RGlkQ2F0Y2h8fChyLmNvbXBvbmVudERpZENhdGNoPWZ1bmN0aW9uKG4sdCl7dS5fXyYmdS5fXyhuLHQpLGlbMV0obil9KSxbaVswXSxmdW5jdGlvbigpe2lbMV0odm9pZCAwKX1dfWZ1bmN0aW9uIGcoKXt2YXIgbj1kKHQrKywxMSk7aWYoIW4uX18pe2Zvcih2YXIgdT1yLl9fdjtudWxsIT09dSYmIXUuX19tJiZudWxsIT09dS5fXzspdT11Ll9fO3ZhciBpPXUuX19tfHwodS5fX209WzAsMF0pO24uX189IlAiK2lbMF0rIi0iK2lbMV0rK31yZXR1cm4gbi5fX31mdW5jdGlvbiBqKCl7Zm9yKHZhciBuO249Zi5zaGlmdCgpOylpZihuLl9fUCYmbi5fX0gpdHJ5e24uX19ILl9faC5mb3JFYWNoKHopLG4uX19ILl9faC5mb3JFYWNoKEIpLG4uX19ILl9faD1bXX1jYXRjaCh0KXtuLl9fSC5fX2g9W10sYy5fX2UodCxuLl9fdil9fWMuX19iPWZ1bmN0aW9uKG4pe3I9bnVsbCxlJiZlKG4pfSxjLl9fPWZ1bmN0aW9uKG4sdCl7biYmdC5fX2smJnQuX19rLl9fbSYmKG4uX19tPXQuX19rLl9fbSkscyYmcyhuLHQpfSxjLl9fcj1mdW5jdGlvbihuKXthJiZhKG4pLHQ9MDt2YXIgaT0ocj1uLl9fYykuX19IO2kmJih1PT09cj8oaS5fX2g9W10sci5fX2g9W10saS5fXy5mb3JFYWNoKGZ1bmN0aW9uKG4pe24uX19OJiYobi5fXz1uLl9fTiksbi5pPW4uX19OPXZvaWQgMH0pKTooaS5fX2guZm9yRWFjaCh6KSxpLl9faC5mb3JFYWNoKEIpLGkuX19oPVtdLHQ9MCkpLHU9cn0sYy5kaWZmZWQ9ZnVuY3Rpb24obil7diYmdihuKTt2YXIgdD1uLl9fYzt0JiZ0Ll9fSCYmKHQuX19ILl9faC5sZW5ndGgmJigxIT09Zi5wdXNoKHQpJiZpPT09Yy5yZXF1ZXN0QW5pbWF0aW9uRnJhbWV8fCgoaT1jLnJlcXVlc3RBbmltYXRpb25GcmFtZSl8fHcpKGopKSx0Ll9fSC5fXy5mb3JFYWNoKGZ1bmN0aW9uKG4pe24uaSYmKG4uX19IPW4uaSksbi5pPXZvaWQgMH0pKSx1PXI9bnVsbH0sYy5fX2M9ZnVuY3Rpb24obix0KXt0LnNvbWUoZnVuY3Rpb24obil7dHJ5e24uX19oLmZvckVhY2goeiksbi5fX2g9bi5fX2guZmlsdGVyKGZ1bmN0aW9uKG4pe3JldHVybiFuLl9ffHxCKG4pfSl9Y2F0Y2gocil7dC5zb21lKGZ1bmN0aW9uKG4pe24uX19oJiYobi5fX2g9W10pfSksdD1bXSxjLl9fZShyLG4uX192KX19KSxsJiZsKG4sdCl9LGMudW5tb3VudD1mdW5jdGlvbihuKXttJiZtKG4pO3ZhciB0LHI9bi5fX2M7ciYmci5fX0gmJihyLl9fSC5fXy5mb3JFYWNoKGZ1bmN0aW9uKG4pe3RyeXt6KG4pfWNhdGNoKG4pe3Q9bn19KSxyLl9fSD12b2lkIDAsdCYmYy5fX2UodCxyLl9fdikpfTt2YXIgaz0iZnVuY3Rpb24iPT10eXBlb2YgcmVxdWVzdEFuaW1hdGlvbkZyYW1lO2Z1bmN0aW9uIHcobil7dmFyIHQscj1mdW5jdGlvbigpe2NsZWFyVGltZW91dCh1KSxrJiZjYW5jZWxBbmltYXRpb25GcmFtZSh0KSxzZXRUaW1lb3V0KG4pfSx1PXNldFRpbWVvdXQociwxMDApO2smJih0PXJlcXVlc3RBbmltYXRpb25GcmFtZShyKSl9ZnVuY3Rpb24geihuKXt2YXIgdD1yLHU9bi5fX2M7ImZ1bmN0aW9uIj09dHlwZW9mIHUmJihuLl9fYz12b2lkIDAsdSgpKSxyPXR9ZnVuY3Rpb24gQihuKXt2YXIgdD1yO24uX19jPW4uX18oKSxyPXR9ZnVuY3Rpb24gQyhuLHQpe3JldHVybiFufHxuLmxlbmd0aCE9PXQubGVuZ3RofHx0LnNvbWUoZnVuY3Rpb24odCxyKXtyZXR1cm4gdCE9PW5bcl19KX1mdW5jdGlvbiBEKG4sdCl7cmV0dXJuImZ1bmN0aW9uIj09dHlwZW9mIHQ/dChuKTp0fWV4cG9ydHtxIGFzIHVzZUNhbGxiYWNrLHggYXMgdXNlQ29udGV4dCxQIGFzIHVzZURlYnVnVmFsdWUseSBhcyB1c2VFZmZlY3QsYiBhcyB1c2VFcnJvckJvdW5kYXJ5LGcgYXMgdXNlSWQsRiBhcyB1c2VJbXBlcmF0aXZlSGFuZGxlLF8gYXMgdXNlTGF5b3V0RWZmZWN0LFQgYXMgdXNlTWVtbyxwIGFzIHVzZVJlZHVjZXIsQSBhcyB1c2VSZWYsaCBhcyB1c2VTdGF0ZX07Ci8vIyBzb3VyY2VNYXBwaW5nVVJMPWhvb2tzLm1vZHVsZS5qcy5tYXAK",
+  "htm": "data:text/javascript;base64,dmFyIG49ZnVuY3Rpb24odCxzLHIsZSl7dmFyIHU7c1swXT0wO2Zvcih2YXIgaD0xO2g8cy5sZW5ndGg7aCsrKXt2YXIgcD1zW2grK10sYT1zW2hdPyhzWzBdfD1wPzE6MixyW3NbaCsrXV0pOnNbKytoXTszPT09cD9lWzBdPWE6ND09PXA/ZVsxXT1PYmplY3QuYXNzaWduKGVbMV18fHt9LGEpOjU9PT1wPyhlWzFdPWVbMV18fHt9KVtzWysraF1dPWE6Nj09PXA/ZVsxXVtzWysraF1dKz1hKyIiOnA/KHU9dC5hcHBseShhLG4odCxhLHIsWyIiLG51bGxdKSksZS5wdXNoKHUpLGFbMF0/c1swXXw9Mjooc1toLTJdPTAsc1toXT11KSk6ZS5wdXNoKGEpfXJldHVybiBlfSx0PW5ldyBNYXA7ZXhwb3J0IGRlZmF1bHQgZnVuY3Rpb24ocyl7dmFyIHI9dC5nZXQodGhpcyk7cmV0dXJuIHJ8fChyPW5ldyBNYXAsdC5zZXQodGhpcyxyKSksKHI9bih0aGlzLHIuZ2V0KHMpfHwoci5zZXQocyxyPWZ1bmN0aW9uKG4pe2Zvcih2YXIgdCxzLHI9MSxlPSIiLHU9IiIsaD1bMF0scD1mdW5jdGlvbihuKXsxPT09ciYmKG58fChlPWUucmVwbGFjZSgvXlxzKlxuXHMqfFxzKlxuXHMqJC9nLCIiKSkpP2gucHVzaCgwLG4sZSk6Mz09PXImJihufHxlKT8oaC5wdXNoKDMsbixlKSxyPTIpOjI9PT1yJiYiLi4uIj09PWUmJm4/aC5wdXNoKDQsbiwwKToyPT09ciYmZSYmIW4/aC5wdXNoKDUsMCwhMCxlKTpyPj01JiYoKGV8fCFuJiY1PT09cikmJihoLnB1c2gociwwLGUscykscj02KSxuJiYoaC5wdXNoKHIsbiwwLHMpLHI9NikpLGU9IiJ9LGE9MDthPG4ubGVuZ3RoO2ErKyl7YSYmKDE9PT1yJiZwKCkscChhKSk7Zm9yKHZhciBsPTA7bDxuW2FdLmxlbmd0aDtsKyspdD1uW2FdW2xdLDE9PT1yPyI8Ij09PXQ/KHAoKSxoPVtoXSxyPTMpOmUrPXQ6ND09PXI/Ii0tIj09PWUmJiI+Ij09PXQ/KHI9MSxlPSIiKTplPXQrZVswXTp1P3Q9PT11P3U9IiI6ZSs9dDonIic9PT10fHwiJyI9PT10P3U9dDoiPiI9PT10PyhwKCkscj0xKTpyJiYoIj0iPT09dD8ocj01LHM9ZSxlPSIiKToiLyI9PT10JiYocjw1fHwiPiI9PT1uW2FdW2wrMV0pPyhwKCksMz09PXImJihoPWhbMF0pLHI9aCwoaD1oWzBdKS5wdXNoKDIsMCxyKSxyPTApOiIgIj09PXR8fCJcdCI9PT10fHwiXG4iPT09dHx8IlxyIj09PXQ/KHAoKSxyPTIpOmUrPXQpLDM9PT1yJiYiIS0tIj09PWUmJihyPTQsaD1oWzBdKX1yZXR1cm4gcCgpLGh9KHMpKSxyKSxhcmd1bWVudHMsW10pKS5sZW5ndGg+MT9yOnJbMF19Cg=="
+}}
+</script>
+
+<script type="module">
+import { h, render } from "preact";
+import { useState, useEffect, useRef, useMemo } from "preact/hooks";
+import htm from "htm";
+const html = htm.bind(h);
+
+/* ------------------------------------------------------------------ *
+ *  Firebase (Firestore) — loaded lazily, only for online rooms.       *
+ * ------------------------------------------------------------------ */
+let FB = null;                 // { db, doc, setDoc, onSnapshot, runTransaction, deleteField }
+let fbInitError = null;
+const fbConfig = window.MURMUR_FIREBASE || {};
+const fbConfigured = fbConfig.apiKey && !String(fbConfig.apiKey).startsWith("PASTE");
+
+async function ensureFirebase(){
+  if (FB) return FB;
+  if (!fbConfigured) throw new Error("Online play is not configured yet.");
+  const [{ initializeApp }, fs] = await Promise.all([
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"),
+    import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"),
+  ]);
+  const app = initializeApp(fbConfig);
+  const db = fs.getFirestore(app);
+  FB = { db, doc: fs.doc, setDoc: fs.setDoc, getDoc: fs.getDoc,
+         onSnapshot: fs.onSnapshot, runTransaction: fs.runTransaction,
+         deleteField: fs.deleteField, serverTimestamp: fs.serverTimestamp };
+  return FB;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Deck — the animal images already in this repo.                     *
+ * ------------------------------------------------------------------ */
+const DECK = ["Ant","BabyChick","Bat","BearFace","Bird","BlowFish","Boar","Bug","Butterfly",
+"Camel","CatFace","Cat","ChickenFace","CowFace","Cow","Crab","Cricket","Crocodile","DeerFace",
+"DogFace","Dog","Dolphin","DragonFace","Dragon","EagleFace","Elephant","Ewe","Fish","Flamingo",
+"FoxFace","FrogFace","Giraffe","Goat","Gorilla","Hamster","HatchingChick","HedgehogFace",
+"Hippopotamus","HoneyBee","HorseFace","Horse","KoalaFace","LadyBeetle","LionFace","Lizard",
+"Llama","Lobster","Microbe","MonkeyFace","Monkey","Mosquitos","MouseFace","Mouse","Octopus",
+"Owl","Ox","PandaFace","Parrot","PigFace","Pig"].map(n => n + "_2k.png");
+
+const cardSrc = id => id;   // images sit next to this file
+
+/* ------------------------------------------------------------------ *
+ *  Small helpers                                                      *
+ * ------------------------------------------------------------------ */
+const uid = () => {
+  let v = localStorage.getItem("murmur_uid");
+  if (!v){ v = "u_" + Math.random().toString(36).slice(2,10); localStorage.setItem("murmur_uid", v); }
+  return v;
+};
+const MY = uid();
+const savedName = () => localStorage.getItem("murmur_name") || "";
+const genCode = () => { const A="ABCDEFGHJKLMNPQRSTUVWXYZ"; let s=""; for(let i=0;i<4;i++) s+=A[Math.floor(Math.random()*A.length)]; return s; };
+const initials = n => (n||"?").trim().slice(0,2).toUpperCase();
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+const clone = o => JSON.parse(JSON.stringify(o));
+
+/* ------------------------------------------------------------------ *
+ *  Pure game engine — shared by local + online play.                  *
+ *  A "game" is a plain object (serialisable to Firestore).            *
+ * ------------------------------------------------------------------ */
+const Engine = {
+  newGame(hostUid, hostName, opts){
+    return {
+      status:"lobby",
+      hostUid,
+      targetScore: opts?.targetScore || 30,
+      handSize: 6,
+      players: { [hostUid]: { name: hostName, score: 0 } },
+      order: [hostUid],
+      deck: [], discard: [], hands: {},
+      round: 0, storyteller: null,
+      clue: "", storyCard: null,
+      submissions: {}, votes: {}, board: [],
+      scoring: null, winners: null,
+    };
+  },
+
+  addPlayer(g, id, name){
+    if (g.status!=="lobby") return g;
+    if (g.players[id]) { g.players[id].name = name; return g; }
+    g.players[id] = { name, score:0 };
+    g.order.push(id);
+    return g;
+  },
+
+  start(g){
+    if (g.status!=="lobby" || g.order.length < 3) return g;
+    g.deck = shuffle(DECK);
+    g.discard = [];
+    g.hands = {};
+    for (const id of g.order){
+      g.hands[id] = g.deck.splice(0, g.handSize);
+    }
+    g.round = 1;
+    g.storyteller = g.order[0];
+    g.status = "clue";
+    g.clue=""; g.storyCard=null; g.submissions={}; g.votes={}; g.board=[]; g.scoring=null;
+    return g;
+  },
+
+  setClue(g, id, cardId, clue){
+    if (g.status!=="clue" || id!==g.storyteller) return g;
+    if (!g.hands[id]?.includes(cardId) || !clue.trim()) return g;
+    g.storyCard = cardId;
+    g.clue = clue.trim();
+    g.status = "submit";
+    return g;
+  },
+
+  submit(g, id, cardId){
+    if (g.status!=="submit" || id===g.storyteller) return g;
+    if (!g.players[id] || !g.hands[id]?.includes(cardId)) return g;
+    g.submissions[id] = cardId;
+    // when every non-storyteller has submitted -> voting
+    const voters = g.order.filter(u => u!==g.storyteller);
+    if (voters.every(u => g.submissions[u])){
+      const cards = [g.storyCard, ...voters.map(u => g.submissions[u])];
+      g.board = shuffle(cards);
+      g.status = "vote";
+    }
+    return g;
+  },
+
+  vote(g, id, cardId){
+    if (g.status!=="vote" || id===g.storyteller) return g;
+    if (g.submissions[id]===cardId) return g;        // can't vote your own
+    if (!g.board.includes(cardId)) return g;
+    g.votes[id] = cardId;
+    const voters = g.order.filter(u => u!==g.storyteller);
+    if (voters.every(u => g.votes[u])){
+      Engine._score(g);
+      g.status = "reveal";
+    }
+    return g;
+  },
+
+  _ownerOf(g, cardId){
+    if (cardId===g.storyCard) return g.storyteller;
+    for (const u in g.submissions) if (g.submissions[u]===cardId) return u;
+    return null;
+  },
+
+  _score(g){
+    const voters = g.order.filter(u => u!==g.storyteller);
+    const N = voters.length;
+    const correct = voters.filter(u => g.votes[u]===g.storyCard).length;
+    const delta = {}; g.order.forEach(u => delta[u]=0);
+
+    if (correct===0 || correct===N){
+      voters.forEach(u => delta[u]+=2);            // storyteller fooled everyone / nobody
+    } else {
+      delta[g.storyteller]+=3;
+      voters.forEach(u => { if (g.votes[u]===g.storyCard) delta[u]+=3; });
+    }
+    // +1 to a card's owner for every vote it received (storyteller excluded)
+    const votesFor = {};
+    voters.forEach(u => { const c=g.votes[u]; votesFor[c]=(votesFor[c]||0)+1; });
+    for (const c in votesFor){
+      const o = Engine._ownerOf(g, c);
+      if (o && o!==g.storyteller) delta[o]+=votesFor[c];
+    }
+    g.order.forEach(u => g.players[u].score += delta[u]);
+
+    g.scoring = {
+      correct, voters:N,
+      cards: g.board.map(c => ({
+        id:c, owner:Engine._ownerOf(g,c), isStory:c===g.storyCard,
+        voters: voters.filter(u => g.votes[u]===c),
+      })),
+      delta,
+      votesByUser: clone(g.votes),
+    };
+  },
+
+  next(g){
+    if (g.status!=="reveal") return g;
+    // check win
+    const top = Math.max(...g.order.map(u => g.players[u].score));
+    if (top >= g.targetScore){
+      g.winners = g.order.filter(u => g.players[u].score===top);
+      g.status = "ended";
+      return g;
+    }
+    // discard played cards, refill hands
+    const played = [g.storyCard, ...Object.values(g.submissions)];
+    g.discard.push(...played);
+    for (const u of g.order){
+      const used = (u===g.storyteller) ? g.storyCard : g.submissions[u];
+      g.hands[u] = g.hands[u].filter(c => c!==used);
+      if (g.hands[u].length < g.handSize){
+        if (g.deck.length===0){ g.deck = shuffle(g.discard); g.discard=[]; }
+        if (g.deck.length) g.hands[u].push(g.deck.shift());
+      }
+    }
+    // rotate storyteller
+    const idx = g.order.indexOf(g.storyteller);
+    g.storyteller = g.order[(idx+1)%g.order.length];
+    g.round += 1;
+    g.clue=""; g.storyCard=null; g.submissions={}; g.votes={}; g.board=[]; g.scoring=null;
+    g.status = "clue";
+    return g;
+  },
+};
+
+/* ------------------------------------------------------------------ *
+ *  Online room store (Firestore) — thin wrapper over the engine.      *
+ *  The whole game object lives in one doc: murmurRooms/{code}.        *
+ *  Phase-advancing moves are wrapped in a transaction so two clients  *
+ *  finishing at once can't double-apply.                              *
+ * ------------------------------------------------------------------ */
+const Online = {
+  ref(code){ return FB.doc(FB.db, "murmurRooms", code); },
+
+  async create(code, name){
+    await ensureFirebase();
+    const g = Engine.newGame(MY, name, {});
+    await FB.setDoc(this.ref(code), { game:g, updated:Date.now() });
+  },
+  async join(code, name){
+    await ensureFirebase();
+    const snap = await FB.getDoc(this.ref(code));
+    if (!snap.exists()) throw new Error("No room with that code.");
+    await FB.runTransaction(FB.db, async tx => {
+      const d = await tx.get(this.ref(code));
+      if (!d.exists()) throw new Error("No room with that code.");
+      const g = d.data().game;
+      if (g.status!=="lobby" && !g.players[MY]) throw new Error("That game has already started.");
+      Engine.addPlayer(g, MY, name);
+      tx.set(this.ref(code), { game:g, updated:Date.now() });
+    });
+  },
+  subscribe(code, cb){
+    return FB.onSnapshot(this.ref(code), s => cb(s.exists()? s.data().game : null));
+  },
+  // apply an engine move transactionally
+  async move(code, fn){
+    await FB.runTransaction(FB.db, async tx => {
+      const d = await tx.get(this.ref(code));
+      if (!d.exists()) return;
+      const g = d.data().game;
+      fn(g);
+      tx.set(this.ref(code), { game:g, updated:Date.now() });
+    });
+  },
+};
+
+/* ================================================================== *
+ *  UI                                                                 *
+ * ================================================================== */
+function Brand(){
+  return html`<div>
+    <div class="brand"><span class="dot"></span><h1>MURMUR</h1><span class="dot"></span></div>
+    <div class="tag">a storytelling party game</div>
+  </div>`;
+}
+
+function Card({id, sel, dim, locked, onClick, ribbon}){
+  return html`<div class=${"gcard"+(sel?" sel":"")+(dim?" dim":"")+(locked?" locked":"")} onClick=${locked?null:onClick}>
+    <img loading="lazy" src=${cardSrc(id)} alt="" />
+    ${sel && html`<div class="tick">✓</div>`}
+    ${ribbon && html`<div class="ribbon">${ribbon}</div>`}
+  </div>`;
+}
+
+function Players({g, me, small}){
+  return html`<div class="players">
+    ${g.order.map(id => {
+      const p=g.players[id];
+      const isHost=id===g.hostUid, isStory=id===g.storyteller && g.status!=="lobby" && g.status!=="ended";
+      let done=false;
+      if (g.status==="submit") done = id===g.storyteller || !!g.submissions[id];
+      if (g.status==="vote")   done = id===g.storyteller || !!g.votes[id];
+      return html`<div class=${"pcard"+(isHost?" host":"")} key=${id}>
+        <div class="avatar">${initials(p.name)}</div>
+        <div>
+          <div class="nm">${p.name}${id===me?" ":""}${isStory?" 🎙️":""}</div>
+          <div class="sc">${p.score} pts${isHost?" · host":""}</div>
+        </div>
+        ${id===me && html`<span class="badge you">you</span>`}
+        ${done && html`<span class="badge done">✓</span>`}
+      </div>`;
+    })}
+  </div>`;
+}
+
+/* ---------------- Home screen ---------------- */
+function Home({onLocal, onCreate, onJoin, busy, error}){
+  const [name,setName]=useState(savedName());
+  const [code,setCode]=useState("");
+  const nm = name.trim();
+  const saveName = v => { setName(v); localStorage.setItem("murmur_name", v.trim()); };
+  return html`<div class="wrap">
+    <${Brand}/>
+    <div class="card-panel stack">
+      <div>
+        <label class="lbl">Your name</label>
+        <input value=${name} maxlength="16" placeholder="e.g. Maya"
+          onInput=${e=>saveName(e.target.value)} />
+      </div>
+
+      <div class="divider">play online</div>
+      <div class="row">
+        <button class="grow" disabled=${!nm||busy} onClick=${()=>onCreate(nm)}>Create a room</button>
+      </div>
+      <div class="row">
+        <input class="code-in grow" value=${code} maxlength="4" placeholder="CODE"
+          onInput=${e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z]/g,""))} />
+        <button class="blue" disabled=${!nm||code.length<4||busy} onClick=${()=>onJoin(nm,code)}>Join</button>
+      </div>
+      ${!fbConfigured && html`<div class="small muted">Online rooms need a one-time Firebase setup (see below). You can play on one device right now →</div>`}
+
+      <div class="divider">or same device</div>
+      <button class="ghost" disabled=${!nm} onClick=${()=>onLocal(nm)}>Pass-and-play (hotseat)</button>
+
+      <div class="err">${error||""}</div>
+
+      <details class="setup">
+        <summary>How to play & online setup</summary>
+        <div class="help">
+          <b>MURMUR</b> is played like Dixit. Each round one player is the <b>storyteller</b>:
+          they pick a card from their hand and give a <b>clue</b> (a word, phrase, or sound).
+          Everyone else secretly plays a card that could match the clue. All cards are shuffled
+          and revealed; then everyone (except the storyteller) <b>votes</b> for the card they
+          think was the storyteller's.<br/><br/>
+          <b>Scoring:</b> if <i>everyone</i> or <i>no one</i> finds the storyteller's card, the
+          storyteller scores 0 and each other player scores 2. Otherwise the storyteller and each
+          player who guessed right score 3. Any player also scores +1 for every vote their own card
+          received. First to <b>30</b> wins. 3+ players (4+ is best).<br/><br/>
+          <b>Online setup:</b> create a free Firebase project, turn on Cloud Firestore, and paste
+          its web config into <code>window.MURMUR_FIREBASE</code> at the top of <code>dixit.html</code>.
+          Set Firestore rules to allow read/write on <code>murmurRooms/{code}</code>.
+        </div>
+      </details>
+    </div>
+  </div>`;
+}
+
+/* ---------------- Lobby ---------------- */
+function Lobby({g, code, online, onStart, onLeave, toast}){
+  const isHost = g.hostUid===MY;
+  return html`<div class="wrap">
+    <div class="topbar">
+      <${Brand}/>
+    </div>
+    <div class="card-panel stack">
+      ${online && html`<div class="row" style="justify-content:space-between">
+        <div>Room code <span class="roomtag">${code}</span></div>
+        <button class="ghost sm" onClick=${()=>toast("share")}>Share</button>
+      </div>`}
+      <div class="muted small">${online?"Share the code so friends can join. ":""}Players (${g.order.length}):</div>
+      <${Players} g=${g} me=${MY}/>
+      ${g.order.length<3 && html`<div class="muted small">Need at least 3 players to start.</div>`}
+      <div class="row">
+        ${isHost
+          ? html`<button class="grow" disabled=${g.order.length<3} onClick=${onStart}>Start game</button>`
+          : html`<div class="waiting"><div class="spinner"></div> Waiting for the host to start…</div>`}
+        <button class="ghost" onClick=${onLeave}>Leave</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------------- Game screens ---------------- */
+function Clue({g, me, act}){
+  const isStory = g.storyteller===me;
+  const [pick,setPick]=useState(null);
+  const [clue,setClue]=useState("");
+  const st = g.players[g.storyteller];
+  if (!isStory){
+    return html`<div class="waiting"><div class="spinner"></div> <b style="color:var(--gold)">${st.name}</b> is thinking of a clue…</div>`;
+  }
+  return html`<div>
+    <div class="muted small">You are the storyteller. Pick a card, then give a clue that is not too obvious, not too obscure.</div>
+    <div class="row" style="margin-top:12px">
+      <input class="grow" placeholder="Your clue…" maxlength="60" value=${clue} onInput=${e=>setClue(e.target.value)} />
+      <button disabled=${!pick||!clue.trim()} onClick=${()=>act(g=>Engine.setClue(g,me,pick,clue))}>Tell it</button>
+    </div>
+    <div class="cardgrid">
+      ${g.hands[me].map(c => html`<${Card} key=${c} id=${c} sel=${pick===c} onClick=${()=>setPick(c)}/>`) }
+    </div>
+  </div>`;
+}
+
+function Submit({g, me, act}){
+  const isStory = g.storyteller===me;
+  const mine = g.submissions[me];
+  const [pick,setPick]=useState(null);
+  const voters = g.order.filter(u=>u!==g.storyteller);
+  const done = voters.filter(u=>g.submissions[u]).length;
+  return html`<div>
+    <div class="clue-box"><span class="clue-quote">“${g.clue}”</span></div>
+    ${isStory
+      ? html`<div class="waiting"><div class="spinner"></div> Players are choosing a card to match your clue… (${done}/${voters.length})</div>`
+      : mine
+        ? html`<div class="waiting"><div class="spinner"></div> Card played. Waiting for others… (${done}/${voters.length})</div>`
+        : html`<div>
+            <div class="muted small">Pick a card from your hand that fits the clue.</div>
+            <div class="row" style="margin-top:10px">
+              <button disabled=${!pick} onClick=${()=>act(g=>Engine.submit(g,me,pick))}>Play this card</button>
+            </div>
+            <div class="cardgrid">
+              ${g.hands[me].map(c => html`<${Card} key=${c} id=${c} sel=${pick===c} onClick=${()=>setPick(c)}/>`) }
+            </div>
+          </div>`}
+  </div>`;
+}
+
+function Vote({g, me, act}){
+  const isStory = g.storyteller===me;
+  const myVote = g.votes[me];
+  const [pick,setPick]=useState(null);
+  const voters = g.order.filter(u=>u!==g.storyteller);
+  const done = voters.filter(u=>g.votes[u]).length;
+  return html`<div>
+    <div class="clue-box"><span class="clue-quote">“${g.clue}”</span></div>
+    ${isStory
+      ? html`<div class="waiting"><div class="spinner"></div> Players are voting for your card… (${done}/${voters.length})</div>`
+      : html`<div>
+          <div class="muted small">${myVote?"Vote locked. Waiting for the others…":"Which card is the storyteller's? (You can't pick your own.)"}</div>
+          ${!myVote && html`<div class="row" style="margin-top:10px">
+            <button disabled=${!pick} onClick=${()=>act(g=>Engine.vote(g,me,pick))}>Vote</button>
+          </div>`}
+        </div>`}
+    <div class="cardgrid">
+      ${g.board.map(c => {
+        const own = g.submissions[me]===c;
+        const locked = isStory || !!myVote || own;
+        const sel = myVote? myVote===c : pick===c;
+        return html`<${Card} key=${c} id=${c} sel=${sel} dim=${own} locked=${locked}
+          ribbon=${own?html`<span class="owner-tag">your card</span>`:null}
+          onClick=${()=>setPick(c)}/>`;
+      })}
+    </div>
+  </div>`;
+}
+
+function Reveal({g, act}){
+  const isHost = g.hostUid===MY;
+  const sc = g.scoring;
+  const nm = id => g.players[id]?.name || "?";
+  return html`<div>
+    <div class="clue-box"><span class="clue-quote">“${g.clue}”</span> <span class="muted small" style="display:block;font-size:13px;margin-top:4px">— ${nm(g.storyteller)}</span></div>
+    <div class="cardgrid">
+      ${sc.cards.map(cd => html`<${Card} key=${cd.id} id=${cd.id} locked=${true}
+        sel=${cd.isStory}
+        ribbon=${html`<span class=${"owner-tag"+(cd.isStory?" story-tag":"")}>${cd.isStory?"🎙️ "+nm(cd.owner):nm(cd.owner)}</span>
+          ${cd.voters.map(v=>html`<span class="vote-chip">${initials(nm(v))}</span>`)}`}/>`)}
+    </div>
+    <table class="scoretable">
+      <thead><tr><th>Player</th><th>This round</th><th>Total</th></tr></thead>
+      <tbody>
+        ${g.order.map(id=>html`<tr key=${id}>
+          <td>${nm(id)}${id===g.storyteller?" 🎙️":""}</td>
+          <td class=${"delta"+(sc.delta[id]?"":" zero")}>${sc.delta[id]>0?"+"+sc.delta[id]:"—"}</td>
+          <td><b>${g.players[id].score}</b></td>
+        </tr>`)}
+      </tbody>
+    </table>
+    <div class="row" style="margin-top:14px">
+      ${isHost
+        ? html`<button class="grow" onClick=${()=>act(g=>Engine.next(g))}>Next round →</button>`
+        : html`<div class="waiting"><div class="spinner"></div> Waiting for the host to continue…</div>`}
+    </div>
+  </div>`;
+}
+
+function Ended({g, onAgain, onHome}){
+  const nm = id => g.players[id]?.name || "?";
+  const win = (g.winners||[]).map(nm).join(" & ");
+  const sorted = g.order.slice().sort((a,b)=>g.players[b].score-g.players[a].score);
+  const isHost = g.hostUid===MY;
+  return html`<div class="winner">
+    <div class="crown">👑</div>
+    <h2>${win} win${(g.winners||[]).length>1?"":"s"}!</h2>
+    <table class="scoretable" style="max-width:420px;margin:14px auto">
+      <tbody>${sorted.map((id,i)=>html`<tr key=${id}><td>${i+1}. ${nm(id)}</td><td style="text-align:right"><b>${g.players[id].score}</b></td></tr>`)}</tbody>
+    </table>
+    <div class="row" style="justify-content:center;margin-top:10px">
+      ${isHost && html`<button onClick=${onAgain}>Play again</button>`}
+      <button class="ghost" onClick=${onHome}>Home</button>
+    </div>
+  </div>`;
+}
+
+/* ---------------- Game shell ---------------- */
+function GameView({g, me, code, online, act, onHome}){
+  const phase = g.status;
+  const label = {clue:"Storyteller's turn", submit:"Play a card", vote:"Vote", reveal:"Round results"}[phase]||"";
+  return html`<div class="wrap">
+    <div class="topbar">
+      <div class="row">
+        <span class="pill">Round <span class="num">${g.round}</span></span>
+        ${online && html`<span class="pill">Room <span class="num">${code}</span></span>`}
+        <span class="pill">to <span class="num">${g.targetScore}</span></span>
+      </div>
+      <button class="ghost sm" onClick=${onHome}>Leave</button>
+    </div>
+    <div class="card-panel">
+      <div class="phase-hd"><h2>${label}</h2>
+        ${!online && phase!=="reveal" && html`<span class="muted small">playing as <b style="color:var(--gold)">${g.players[me]?.name}</b></span>`}</div>
+      ${phase==="clue"   && html`<${Clue}   key=${"c"+me} g=${g} me=${me} act=${act}/>`}
+      ${phase==="submit" && html`<${Submit} key=${"s"+me} g=${g} me=${me} act=${act}/>`}
+      ${phase==="vote"   && html`<${Vote}   key=${"v"+me} g=${g} me=${me} act=${act}/>`}
+      ${phase==="reveal" && html`<${Reveal} g=${g} act=${act}/>`}
+    </div>
+    <div style="margin-top:14px" class="card-panel">
+      <div class="muted small" style="margin-bottom:8px">Scores</div>
+      <${Players} g=${g} me=${online?MY:null}/>
+    </div>
+  </div>`;
+}
+
+/* Hotseat "pass the device" curtain, shown before each hidden action. */
+function Curtain({name, onReady}){
+  return html`<div class="wrap">
+    <div class="card-panel stack" style="text-align:center;padding:40px 22px">
+      <div class="muted small">Pass the device to</div>
+      <div style="font-size:34px;font-weight:800;color:var(--gold);margin:6px 0">${name}</div>
+      <div class="muted small">Make sure no one else is looking.</div>
+      <button style="margin-top:8px" onClick=${onReady}>I'm ${name} — I'm ready</button>
+    </div>
+  </div>`;
+}
+
+/* ================================================================== *
+ *  Root                                                               *
+ * ================================================================== */
+function App(){
+  const [screen,setScreen]=useState("home");     // home | lobby | game | end
+  const [online,setOnline]=useState(false);
+  const [code,setCode]=useState("");
+  const [game,setGame]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const [toastMsg,setToastMsg]=useState("");
+  const [revealed,setRevealed]=useState(null);   // hotseat: whose curtain is lifted
+  const unsub=useRef(null);
+  const localG=useRef(null);
+
+  // In hotseat, the player who should be holding the device right now.
+  const localActor=(g)=>{
+    if (g.status==="clue") return g.storyteller;
+    if (g.status==="submit") return g.order.find(u=>u!==g.storyteller && !g.submissions[u]) || null;
+    if (g.status==="vote")   return g.order.find(u=>u!==g.storyteller && !g.votes[u]) || null;
+    return null;
+  };
+
+  const toast=(m)=>{
+    if (m==="share"){
+      const url=location.origin+location.pathname+"#"+code;
+      const txt=`Join my MURMUR game — room ${code}: ${url}`;
+      if (navigator.share) { navigator.share({title:"MURMUR",text:txt,url}).catch(()=>{}); return; }
+      navigator.clipboard?.writeText(txt); m="Invite copied!";
+    }
+    setToastMsg(m); setTimeout(()=>setToastMsg(""),2200);
+  };
+
+  // route from #code in the URL
+  useEffect(()=>{
+    const hash=location.hash.replace("#","").toUpperCase().replace(/[^A-Z]/g,"");
+    if (hash.length===4 && fbConfigured && savedName()){
+      doJoin(savedName(), hash);
+    }
+  },[]); // eslint-disable-line
+
+  const cleanup=()=>{ if(unsub.current){unsub.current();unsub.current=null;} localG.current=null; };
+
+  /* ---- online actions ---- */
+  async function doCreate(name){
+    setError(""); setBusy(true);
+    try{
+      const c=genCode();
+      await Online.create(c,name);
+      setCode(c); setOnline(true);
+      unsub.current=Online.subscribe(c, g=>onRemote(g));
+      history.replaceState(null,"","#"+c);
+    }catch(e){ setError(e.message||"Could not create room."); }
+    setBusy(false);
+  }
+  async function doJoin(name,c){
+    setError(""); setBusy(true);
+    try{
+      await Online.join(c,name);
+      setCode(c); setOnline(true);
+      unsub.current=Online.subscribe(c, g=>onRemote(g));
+      history.replaceState(null,"","#"+c);
+    }catch(e){ setError(e.message||"Could not join room."); }
+    setBusy(false);
+  }
+  function onRemote(g){
+    if (!g){ setError("The room was closed."); goHome(); return; }
+    setGame(g);
+    setScreen(g.status==="lobby" ? "lobby" : g.status==="ended" ? "end" : "game");
+  }
+
+  /* ---- local (hotseat) ---- */
+  function doLocal(name){
+    // seed with the host; more players are added in a tiny setup step
+    const g=Engine.newGame(MY,name,{});
+    // hotseat needs >=3 players: add placeholders the host can rename
+    Engine.addPlayer(g,"p2","Player 2");
+    Engine.addPlayer(g,"p3","Player 3");
+    localG.current=g; setOnline(false); setCode(""); setRevealed(null); setGame(clone(g)); setScreen("lobby");
+  }
+
+  /* apply an engine move (fn mutates a game object) */
+  async function act(fn){
+    if (online){
+      try{ await Online.move(code, fn); }
+      catch(e){ toast(e.message||"Move failed"); }
+    } else {
+      const g=clone(localG.current); fn(g); localG.current=g;
+      setGame(g);
+      setScreen(g.status==="lobby"?"lobby":g.status==="ended"?"end":"game");
+    }
+  }
+
+  function startGame(){ act(g=>Engine.start(g)); }
+  function playAgain(){
+    if (online) act(g=>{ const ng=Engine.newGame(g.hostUid,g.players[g.hostUid].name,{targetScore:g.targetScore});
+      // keep everyone
+      for(const id of g.order){ if(id!==g.hostUid) Engine.addPlayer(ng,id,g.players[id].name); }
+      Object.assign(g,ng); });
+    else { const g=localG.current; const ng=Engine.newGame(g.hostUid,g.players[g.hostUid].name,{targetScore:g.targetScore});
+      for(const id of g.order){ if(id!==g.hostUid) Engine.addPlayer(ng,id,g.players[id].name); }
+      localG.current=ng; setGame(clone(ng)); setScreen("lobby"); }
+  }
+  function goHome(){ cleanup(); setOnline(false); setCode(""); setGame(null); setRevealed(null); setScreen("home"); history.replaceState(null,"",location.pathname); }
+
+  if (screen==="home")
+    return html`<${Home} onLocal=${doLocal} onCreate=${doCreate} onJoin=${doJoin} busy=${busy} error=${error}/>`;
+
+  if (!game) return html`<div class="wrap"><div class="waiting"><div class="spinner"></div> Loading…</div></div>`;
+
+  if (screen==="lobby")
+    return html`<div>
+      ${!online && html`<${LocalLobby} g=${game} act=${act} onStart=${startGame} onHome=${goHome}/>`}
+      ${online && html`<${Lobby} g=${game} code=${code} online=${true} onStart=${startGame} onLeave=${goHome} toast=${toast}/>`}
+      ${toastMsg && html`<div class="toast">${toastMsg}</div>`}
+    </div>`;
+
+  if (screen==="end")
+    return html`<div class="wrap"><div class="card-panel"><${Ended} g=${game} onAgain=${playAgain} onHome=${goHome}/></div></div>`;
+
+  const me = online ? MY : localActor(game);
+  if (!online && game.status!=="reveal" && me && revealed!==me)
+    return html`<${Curtain} name=${game.players[me].name} onReady=${()=>setRevealed(me)}/>`;
+
+  return html`<div>
+    <${GameView} g=${game} me=${me} code=${code} online=${online} act=${act} onHome=${goHome}/>
+    ${toastMsg && html`<div class="toast">${toastMsg}</div>`}
+  </div>`;
+}
+
+/* Local hotseat lobby lets the host set player names & count (3–8). */
+function LocalLobby({g, act, onStart, onHome}){
+  const setName=(id,v)=>act(gg=>{ if(gg.players[id]) gg.players[id].name=v; });
+  const addP=()=>act(gg=>{ const id="p"+(gg.order.length+1)+"_"+Math.random().toString(36).slice(2,5);
+    Engine.addPlayer(gg,id,"Player "+(gg.order.length+1)); });
+  const delP=(id)=>act(gg=>{ if(id===gg.hostUid) return; delete gg.players[id]; gg.order=gg.order.filter(x=>x!==id); });
+  return html`<div class="wrap">
+    <${Brand}/>
+    <div class="card-panel stack">
+      <div class="muted small">Pass-and-play on one device. Set each player's name (3–8 players).</div>
+      ${g.order.map((id,i)=>html`<div class="row" key=${id}>
+        <div class="avatar">${i+1}</div>
+        <input class="grow" maxlength="16" value=${g.players[id].name} onInput=${e=>setName(id,e.target.value)} />
+        ${id!==g.hostUid && g.order.length>3 && html`<button class="ghost sm" onClick=${()=>delP(id)}>✕</button>`}
+      </div>`)}
+      <div class="row">
+        ${g.order.length<8 && html`<button class="ghost sm" onClick=${addP}>+ Add player</button>`}
+      </div>
+      <div class="row">
+        <button class="grow" disabled=${g.order.length<3} onClick=${onStart}>Start game</button>
+        <button class="ghost" onClick=${onHome}>Home</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+render(html`<${App}/>`, document.getElementById("app"));
+</script>
+</body>
+</html>

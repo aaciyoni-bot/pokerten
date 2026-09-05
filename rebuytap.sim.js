@@ -26,13 +26,14 @@ const URL = process.env.RK_URL || 'http://localhost:8079/index.html';
       settings: {baseGameType: 'NLH', tableName: 'BUST', maxPlayers: 6, blinds: 1, actionTime: 30,
         minBuyIn: 50, maxBuyIn: 200, serverEngine: false, rakePercent: 5},
       players: {
-        marcelos: {...seat('marcelos', 'You', 3, 0, false, 'busted'), bustedAt: Date.now()},
-        owner1: seat('owner1', 'Mishmar', 0, 98, false),
+        // the signed-in browser (owner1 in the stub) is the busted hero
+        owner1: {...seat('owner1', 'You', 3, 0, false, 'busted'), bustedAt: Date.now()},
+        marcelos: seat('marcelos', 'Mishmar', 0, 98, false),
         bot_l: seat('bot_l', 'לביא וקסמן', 1, 185.99, true)
       },
       gameState: {phase: 'flop', deck: [], board: [{r: '2', s: 'c'}, {r: '7', s: 'h'}, {r: 'A', s: 'c'}],
-        pots: [{amount: 4, eligible: ['owner1', 'bot_l']}], highestBet: 0, minRaise: 2,
-        dealerUid: 'owner1', currentGameType: 'NLH', activeTurnUid: 'bot_l', turnStartedAt: Date.now(),
+        pots: [{amount: 4, eligible: ['marcelos', 'bot_l']}], highestBet: 0, minRaise: 2,
+        dealerUid: 'marcelos', currentGameType: 'NLH', activeTurnUid: 'bot_l', turnStartedAt: Date.now(),
         lastWinners: null, lastWinAmount: 0, allInReveal: false, __seq: 1},
       chat: [], leftStacks: {}, tournamentId: null, history: []
     });
@@ -64,12 +65,12 @@ const URL = process.env.RK_URL || 'http://localhost:8079/index.html';
 
   // and prove the tap actually works end to end
   if (!r.covers && r.found) {
-    await pg.evaluate(() => { const S = window.__stubStore; S.memberships.marcelos_main.balance = 5000; });
+    await pg.evaluate(() => { const S = window.__stubStore; S.memberships.owner1_main.balance = 5000; });
     await pg.waitForTimeout(400);
     await pg.click('button:has-text("Rebuy")').catch(() => {});
     await pg.waitForTimeout(1800);
     const after = await pg.evaluate(() => {
-      const p = (window.__stubStore.tables.bust.players || {}).marcelos || {};
+      const p = (window.__stubStore.tables.bust.players || {}).owner1 || {};
       return {stack: p.stack, status: p.status};
     });
     console.log('after tapping Rebuy:', JSON.stringify(after),

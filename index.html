@@ -11249,6 +11249,14 @@ function PokerTable({
   const setts = tableState?.settings || {};
   const gs = tableState?.gameState || {};
   const players = tableState?.players || {};
+  // DRIVER ELECTION. Bots, discards and the next deal used to be driven by the
+  // super admin's browser alone: with him away, every bot turn waited for the
+  // 52-second watchdog and the table crawled — "stuck", to anyone playing.
+  // Now the first seated human who is actually online (heartbeat within 20s)
+  // drives as well. Two drivers at once are harmless: saveGame drops the
+  // stale write. Nobody online means nobody is waiting.
+  const onlineHumans = Object.values(players).filter(p => !p.isBot && (p.uid === user.uid || p.lastSeen && Date.now() - p.lastSeen < 20000)).sort((a, b) => (a.seatIndex || 0) - (b.seatIndex || 0));
+  const iDrive = isSuperAdmin || (onlineHumans[0] && onlineHumans[0].uid === user.uid);
   const myPlayer = players[user.uid];
   const isSeated = !!myPlayer;
   useEffect(() => {
@@ -12846,7 +12854,7 @@ function PokerTable({
     if (cur && Object.keys(cur.players || {}).length >= ((cur.settings || {}).maxPlayers || 6)) spawnTwinTable(cur, true);
   };
   useEffect(() => {
-    if (!isSuperAdmin || !tableState || !gs.phase) return;
+    if (!iDrive || !tableState || !gs.phase) return;
     const actor0 = players[gs.activeTurnUid];
     if (BETTING.includes(gs.phase) && gs.activeTurnUid && actor0 && (actor0.isBot || tableState.tournamentId && actor0.sitOut)) {
       const uid = gs.activeTurnUid;
@@ -12892,7 +12900,7 @@ function PokerTable({
       }, 2200);
       return () => clearTimeout(tm);
     }
-  }, [gs.activeTurnUid, gs.phase, gs.turnStartedAt, isSuperAdmin]);
+  }, [gs.activeTurnUid, gs.phase, gs.turnStartedAt, iDrive]);
   // Bot table talk: one line every 10-15 hands, and usually an answer from a
   // different bot a few seconds later, so the table sounds like people.
   const talkRef = useRef({
@@ -12919,7 +12927,7 @@ function PokerTable({
     } catch (e) {}
   };
   useEffect(() => {
-    if (!isSuperAdmin || !tableState || tableState.chatMuted) return;
+    if (!iDrive || !tableState || tableState.chatMuted) return;
     const st = talkRef.current;
     if (gs.phase !== 'showdown') {
       st.saidPhase = '';
@@ -12950,18 +12958,19 @@ function PokerTable({
       clearTimeout(openTm);
       if (replyTm) clearTimeout(replyTm);
     };
-  }, [gs.phase, isSuperAdmin]);
+  }, [gs.phase, iDrive]);
   const playersCount = Object.keys(players).length;
   useEffect(() => {
     if (!tableState || gs.phase !== 'waiting') return;
     const eligible = Object.values(players).filter(p => p.stack > 0);
-    const humans = eligible.filter(p => !p.isBot).sort((a, b) => a.seatIndex - b.seatIndex);
-    const iStart = humans[0]?.uid === user.uid || isSuperAdmin;
+    // the first human ONLINE deals, not the first human by seat: a seat whose
+    // owner closed the app used to hold every table it was first in
+    const iStart = iDrive;
     if (eligible.length >= 2 && iStart) {
       const tm = setTimeout(() => startHand(), 1600);
       return () => clearTimeout(tm);
     }
-  }, [gs.phase, playersCount, isSuperAdmin]);
+  }, [gs.phase, playersCount, iDrive]);
   useEffect(() => {
     if (!isSuperAdmin || !tableState) return;
     if (clubSettings?.botsAuto !== true) return;
@@ -13066,9 +13075,9 @@ function PokerTable({
     if (!['waiting'].includes(g0.phase)) return;
     const alive = Object.values(tableState.players || {}).filter(q => (q.stack || 0) > 0);
     if (alive.length < 2) return;
-    const humans = alive.filter(q => !q.isBot).map(q => q.uid).sort();
+    const humans = alive.filter(q => !q.isBot && (q.uid === user.uid || q.lastSeen && Date.now() - q.lastSeen < 20000)).map(q => q.uid).sort();
     const leader = humans[0] || alive.map(q => q.uid).sort()[0];
-    if (leader !== user.uid) return;
+    if (leader !== user.uid && !isSuperAdmin) return;
     const tm = setTimeout(() => {
       startHand();
     }, 3500);
@@ -13237,7 +13246,7 @@ function PokerTable({
             sd.key = key;
             sd.at = Date.now();
           } else if (Date.now() - sd.at > 20000) {
-            const humans2 = Object.values(t.players || {}).filter(q => !q.isBot && (q.stack || 0) > 0).sort((a, b) => a.seatIndex - b.seatIndex);
+            const humans2 = Object.values(t.players || {}).filter(q => !q.isBot && (q.stack || 0) > 0 && (q.uid === user.uid || q.lastSeen && Date.now() - q.lastSeen < 20000)).sort((a, b) => a.seatIndex - b.seatIndex);
             if (humans2[0]?.uid === user.uid || isSuperAdmin) {
               sd.at = Date.now();
               await startHand();
@@ -13284,7 +13293,7 @@ function PokerTable({
           // so the hand keeps moving. 20s threshold > 2 missed 8s heartbeats,
           // so a merely-slow connection is never falsely timed out.
           const gone = !actor.isBot && actor.lastSeen && Date.now() - actor.lastSeen > 20000;
-          const limit = gone ? 9000 : ((Number(setts.actionTime) || 30) + (isSuperAdmin ? 12 : 22)) * 1000;
+          const limit = actor.isBot ? 15000 : gone ? 9000 : ((Number(setts.actionTime) || 30) + (isSuperAdmin ? 12 : 22)) * 1000;
           if (isSitSkip || stuckFor > limit) {
             const toCall = round2(Math.max(0, (g.highestBet || 0) - (actor.bet || 0)));
             await performAction(g.activeTurnUid, toCall > 0 ? 'fold' : 'call', undefined, !isSitSkip);
@@ -16377,13 +16386,6 @@ function DurakTable({
   }, React.createElement("i", {
     className: "fa-solid fa-spinner fa-spin text-3xl"
   }));
-  const dealDelay = (uid, ci) => {
-    const dd = dealAnimRef.current;
-    if (!dd || dd.order[uid] == null) return ci * 45;
-    const k = uid + ':' + ci;
-    if (dd.cache[k] == null) dd.cache[k] = Math.max(0, Math.round((ci * dd.n + dd.order[uid]) * dd.iv * 1000 - (Date.now() - dd.t0)));
-    return dd.cache[k];
-  };
   const list = Object.values(players).sort((a, b) => a.seatIndex - b.seatIndex);
   let displayList = list;
   if (isSeated) {

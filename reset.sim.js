@@ -39,6 +39,10 @@ const check = (n, ok, extra) => { if (ok) { pass++; console.log('PASS  ' + n); }
       {clubId: 'main', name: 'Last night', status: 'done', game: 'poker', players: {}, results: []});
     S.securityAlerts = S.securityAlerts || {};
     S.securityAlerts.chips_main_old0_x = {kind: 'chips', clubId: 'main', tableId: 'old0', at: Date.now(), count: 3, delta: -50};
+    // last night's money history — the thing a general reset must clear
+    S.gameLog = S.gameLog || {};
+    S.gameLog.g_old_1 = {clubId: 'main', uid: 'p9', username: 'Nightowl', game: 'poker', profit: 120, rake: 6, tableId: 'old0', at: Date.now() - 3600000};
+    S.gameLog.g_old_2 = {clubId: 'main', uid: 'z1', username: 'Leftover', game: 'poker', profit: -120, rake: 6, tableId: 'old0', at: Date.now() - 3500000};
     // a player who played, took a bonus and has a balance
     S.memberships.p9_main = {uid: 'p9', clubId: 'main', username: 'Nightowl', playerId: 'P009', role: 'player',
       status: 'approved', balance: 812.5, clubProfits: 33, agentProfits: 5, bonusTotal: 100, bonusOpen: 60,

@@ -56,6 +56,10 @@ const check = (name, ok, detail) => { console.log((ok ? 'PASS  ' : 'FAIL  ') + n
     });
     if (sd.rows > 0) break;
   }
+  // the reveal is staggered by seat: the turned-over hands carry delays that
+  // step by 180ms (the app's deal delays are multiples of 45ms, never of 180)
+  const delays = await pg.evaluate(() => [...document.querySelectorAll('.card-reveal')].map(e => e.style.animationDelay).filter(d => /^(180|360|540|720)ms$/.test(d)));
+  check('showdown hands turn over one seat at a time (staggered reveal delays present)', delays.length >= 2, JSON.stringify(delays));
   check('a hand reached a real showdown (two hands turned over)', sd && sd.rows > 0, JSON.stringify(sd));
   check('  the showdown was SAVED: it is in the table history', sd && sd.hist > 0, JSON.stringify(sd));
   check('  the hand record for it was written, with the pot', !!(sd && sd.rec) && sd.rec.pot > 0, JSON.stringify(sd && sd.rec));

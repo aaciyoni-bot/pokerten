@@ -3171,10 +3171,14 @@ const PCard = ({
 const CasinoChipStack = ({
   amount,
   scale = 1,
-  showLabel = true
+  showLabel = true,
+  unit = 1
 }) => {
   if (!amount || amount <= 0) return null;
-  let remaining = Math.round(amount);
+  // Chips are denominated in SMALL BLINDS, not absolute units: at 1/2 a bet of
+  // 26 is a green and a grey, not twenty-six greys. A player learns the
+  // colours once and reads every table the same way.
+  let remaining = Math.round(amount / (unit > 0 ? unit : 1));
   const DEN = [[1000, 'chip-1000', '1K'], [500, 'chip-500', '500'], [100, 'chip-100', '100'], [25, 'chip-25', '25'], [5, 'chip-5', '5'], [1, 'chip-1', '1']];
   const chips = [];
   for (const [v, cls, lab] of DEN) {
@@ -3194,7 +3198,7 @@ const CasinoChipStack = ({
   for (let i = 0; i < chips.length; i += PER) cols.push(chips.slice(i, i + PER));
   const chipSize = 22 * scale;
   const tallest = Math.max(...cols.map(c => c.length));
-  const pileH = chipSize + tallest * 3 * scale;
+  const pileH = chipSize + tallest * 4 * scale;
   return React.createElement("div", {
     className: "relative pointer-events-none",
     style: {
@@ -3219,7 +3223,7 @@ const CasinoChipStack = ({
     style: {
       width: `${chipSize}px`,
       height: `${chipSize}px`,
-      bottom: `${index * (3 * scale)}px`,
+      bottom: `${index * (4 * scale)}px`,
       // each chip in a real stack lands at a slightly different angle
       transform: `rotate(${(index * 53 + ci * 29) % 44 - 22}deg)`,
       position: 'absolute',
@@ -3233,7 +3237,7 @@ const CasinoChipStack = ({
       fontSize: `${7.5 * scale}px`
     }
   }, chip.lab)))))), showLabel && React.createElement("div", {
-    className: "absolute transform -translate-x-1/2 left-1/2 bg-slate-950/90 text-gold-400 font-black px-2 py-0.5 rounded-md text-[10px] whitespace-nowrap shadow-lg border border-white/10",
+    className: "absolute transform -translate-x-1/2 left-1/2 bg-slate-950/90 text-gold-400 font-black px-2 py-0.5 rounded-md text-[12px] tabular-nums whitespace-nowrap shadow-lg border border-white/10",
     style: {
       bottom: `${pileH + 4}px`
     }
@@ -3698,7 +3702,7 @@ const DiscardFly = ({
 const CountNum = ({
   value,
   fmt,
-  dur = 600
+  dur = 380
 }) => {
   const [disp, setDisp] = React.useState(value);
   const ref = React.useRef({
@@ -3724,6 +3728,7 @@ const CountNum = ({
   return (fmt || (x => x))(disp);
 };
 const BetCollect = ({
+  unit,
   from,
   to,
   amount,
@@ -3751,16 +3756,25 @@ const BetCollect = ({
   }, React.createElement(CasinoChipStack, {
     amount: amount,
     scale: 0.85,
-    showLabel: false
+    showLabel: false,
+    unit
   }));
 };
 const PotAward = ({
   to,
   amount,
   dur,
-  snd
+  snd,
+  unit
 }) => {
   const [go, setGo] = React.useState(false);
+  // the amount is the one number that should run: it starts at nothing and
+  // climbs to the award as the stack slides to the winner
+  const [shown, setShown] = React.useState(0);
+  React.useEffect(() => {
+    const t = setTimeout(() => setShown(amount), 40);
+    return () => clearTimeout(t);
+  }, [amount]);
   React.useEffect(() => {
     // The long slide already plays on the showdown transition; here just one
     // soft chip "settle" as the stack lands on the winner (owner request —
@@ -3781,10 +3795,21 @@ const PotAward = ({
         transform: 'translate(-50%, -50%) scale(1.15)',
         transition: `left ${dur}s ease-in-out, top ${dur}s ease-in-out, opacity 0.45s ease-in ${dur}s`
       }
-    }, React.createElement(CasinoChipStack, {
+    }, React.createElement("div", {
+      className: "flex flex-col items-center gap-1"
+    }, React.createElement("div", {
+      className: "win-amt text-[15px] font-black text-gold-400 tabular-nums bg-slate-950/90 px-2.5 py-0.5 rounded-md border border-gold-400/40 shadow-lg",
+      dir: "ltr"
+    }, "+", React.createElement(CountNum, {
+      value: shown,
+      fmt: formatShort,
+      dur: Math.max(300, Math.min(900, dur * 700))
+    })), React.createElement(CasinoChipStack, {
       amount: amount,
-      scale: 1.05
-    }))
+      scale: 1.05,
+      showLabel: false,
+      unit
+    })))
   );
 };
 function App() {
@@ -13414,6 +13439,8 @@ function PokerTable({
   // server-engine tables until their first counted hand.
   const handKey = gs.handN || (dealAnimRef.current || {}).t0 || 0;
   const muckCls = gs.phase === 'showdown' ? ' card-mucked' : '';
+  // one chip = one small blind (see CasinoChipStack)
+  const chipUnit = ((Number(gs.handBB) || 0) > 0 ? Number(gs.handBB) / 2 : Number(setts.blinds)) || 0.5;
   // Showdown: the winning 5-card combination gets a gold highlight (board +
   // the winner's revealed hole cards). Computed once per showdown.
   const cid = c => c ? c.id || String(c.val) + String(c.suit) : '';
@@ -14000,7 +14027,8 @@ function PokerTable({
     key: i,
     amount: pot.amount,
     scale: 0.5,
-    showLabel: false
+    showLabel: false,
+    unit: chipUnit
   })), React.createElement("div", {
     className: "text-[14px] font-black text-amber-300 leading-tight"
   }, React.createElement(CountNum, {
@@ -14162,7 +14190,7 @@ function PokerTable({
     const farPod = !isMe && seatYv <= 22;
     const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
     const inX = -(seatXv - 50) / 50;
-    let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && p.status === 'active') && !(gs.allInReveal && p.status === 'active');
+    let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && (p.status === 'active' || p.status === 'busted')) && !(gs.allInReveal && p.status === 'active');
     let dispCards = p.cards || [];
     if (srvEngine) {
       if (isMe) {
@@ -14183,6 +14211,10 @@ function PokerTable({
       }
     }
     const showCards = (dispCards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout' && !(p.status === 'folded' && hidden && !isMe);
+    // Showdown: the hands turn over one seat at a time, not all at once. A
+    // fresh key remounts the card so the reveal replays, delayed by seat.
+    const sdReveal = !isMe && !hidden && gs.phase === 'showdown' && !gs.earlyWin && (p.status === 'active' || p.status === 'busted');
+    const sdDelay = `${Math.min(i, 8) * 180}ms`;
     const folded = p.status === 'folded';
     const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
     const isWinner = gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name);
@@ -14293,7 +14325,7 @@ function PokerTable({
         card: c,
         size: "xl"
       })) : doFan ? React.createElement("span", {
-        key: `h${handKey}:${ci}`,
+        key: `h${handKey}:${ci}${sdReveal ? ':sd' : ''}`,
         className: "inline-block",
         style: {
           marginLeft: ci === 0 ? 0 : ovl,
@@ -14304,7 +14336,7 @@ function PokerTable({
       }, React.createElement("span", {
         className: (isMe && noRedealRef.current.hold ? '' : 'card-reveal') + muckCls,
         style: {
-          animationDelay: isMe && noRedealRef.current.hold ? '0ms' : `${dealDelay(p.uid, ci)}ms`
+          animationDelay: sdReveal ? sdDelay : isMe && noRedealRef.current.hold ? '0ms' : `${dealDelay(p.uid, ci)}ms`
         }
       }, React.createElement(PCard, {
         card: c,
@@ -14312,10 +14344,10 @@ function PokerTable({
         size: isMe ? nC > 4 ? 'md' : 'lg' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))) : React.createElement("span", {
-        key: `h${handKey}:${ci}`,
+        key: `h${handKey}:${ci}${sdReveal ? ':sd' : ''}`,
         className: (isMe && noRedealRef.current.hold ? '' : 'card-reveal') + muckCls,
         style: {
-          animationDelay: isMe && noRedealRef.current.hold ? '0ms' : `${dealDelay(p.uid, ci)}ms`
+          animationDelay: sdReveal ? sdDelay : isMe && noRedealRef.current.hold ? '0ms' : `${dealDelay(p.uid, ci)}ms`
         }
       }, React.createElement(PCard, {
         card: c,
@@ -14383,7 +14415,7 @@ function PokerTable({
         },
         dir: "ltr"
       }, dispCards.map((c, ci) => doFan ? React.createElement("span", {
-        key: `h${handKey}:${ci}`,
+        key: `h${handKey}:${ci}${sdReveal ? ':sd' : ''}`,
         className: "inline-block",
         style: {
           marginLeft: ci === 0 ? 0 : ovl,
@@ -14394,7 +14426,7 @@ function PokerTable({
       }, React.createElement("span", {
         className: "card-reveal" + muckCls,
         style: {
-          animationDelay: `${dealDelay(p.uid, ci)}ms`
+          animationDelay: sdReveal ? sdDelay : `${dealDelay(p.uid, ci)}ms`
         }
       }, React.createElement(PCard, {
         card: c,
@@ -14402,10 +14434,10 @@ function PokerTable({
         size: hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))) : React.createElement("span", {
-        key: `h${handKey}:${ci}`,
+        key: `h${handKey}:${ci}${sdReveal ? ':sd' : ''}`,
         className: "card-reveal" + muckCls,
         style: {
-          animationDelay: `${dealDelay(p.uid, ci)}ms`
+          animationDelay: sdReveal ? sdDelay : `${dealDelay(p.uid, ci)}ms`
         }
       }, React.createElement(PCard, {
         card: c,
@@ -14447,12 +14479,14 @@ function PokerTable({
       }
     }, React.createElement(CasinoChipStack, {
       amount: p.bet,
-      scale: 0.85
+      scale: 0.85,
+      unit: chipUnit
     }));
   }), discFx && React.createElement(DiscardFly, {
     key: discFx.id,
     card: discFx.card
   }), betFx.map((fx, fxi) => React.createElement(BetCollect, {
+    unit: chipUnit,
     key: fx.id,
     from: fx.from,
     to: {
@@ -14482,6 +14516,7 @@ function PokerTable({
     if (!awards.length) return null;
     const dur = Math.min(3.2, 0.9 + Math.log10(1 + awards[0].amount) * 0.55);
     return awards.map((a, k) => React.createElement(PotAward, {
+      unit: chipUnit,
       key: 'pa' + (displayList[a.ix]?.uid || a.ix) + '_' + (gs.showdownAt || 0),
       to: seatPos(a.ix),
       amount: a.amount,

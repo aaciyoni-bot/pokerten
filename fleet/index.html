@@ -1,0 +1,502 @@
+<title>ניהול צי רכב — גדוד</title>
+<meta name="description" content="מערכת ניהול צי רכב, נהגים ותזקיקים גדודית">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap">
+<style>
+:root{
+  --bg:#eef2ef; --panel:#fff; --panel2:#f5f8f5; --ink:#14231b; --ink2:#5c6f63; --mut:#8a9a8f;
+  --line:#e0e7e1; --brand:#1f7a4d; --brand-d:#155e3a; --brand-l:#e7f4ec; --glow:#34c47d;
+  --ok:#1f9d57; --okbg:#e6f6ec; --warn:#c67e12; --warnbg:#fdf3e0; --bad:#d63b3b; --badbg:#fdeaea;
+  --info:#2563c4; --infobg:#e8f0fd; --army:#111; --civil:#ffd400;
+  --r:18px; --sh:0 10px 30px -14px rgba(20,50,35,.35); --sh2:0 3px 10px -4px rgba(20,50,35,.2);
+  color-scheme:light;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{direction:rtl;font-family:"Rubik",system-ui,Arial,sans-serif;background:
+  radial-gradient(1100px 480px at 90% -8%,rgba(31,122,77,.10),transparent 60%),var(--bg);
+  color:var(--ink);font-size:15px;-webkit-font-smoothing:antialiased;padding-bottom:78px;min-height:100vh}
+button{font-family:inherit;cursor:pointer}
+.tnum{font-variant-numeric:tabular-nums}
+h1,h2,h3{margin:0;text-wrap:balance}
+.wrap{max-width:1120px;margin:0 auto;padding:14px}
+.hidden{display:none!important}
+
+/* header */
+header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--brand-d),var(--brand));color:#fff;box-shadow:0 6px 22px -12px rgba(0,0,0,.5)}
+.head{max-width:1120px;margin:auto;display:flex;align-items:center;gap:12px;padding:12px 14px}
+.logo{width:44px;height:44px;border-radius:13px;background:#ffffff18;border:1px solid #ffffff33;display:grid;place-items:center;font-size:22px;flex:none}
+.head h1{font-size:18px;font-weight:800;letter-spacing:-.01em}
+.head .sub{font-size:11.5px;color:#d7e9de;margin-top:2px;font-weight:500}
+.head .role{margin-inline-start:auto;display:flex;align-items:center;gap:8px}
+.rolechip{background:#ffffff1c;border:1px solid #ffffff33;color:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px;font-weight:700}
+.menu-btn{width:42px;height:42px;border-radius:12px;border:1px solid #ffffff33;background:#ffffff12;color:#fff;font-size:21px}
+
+/* menu */
+.menu-pop{display:none;position:fixed;top:66px;inset-inline-start:12px;z-index:70;width:min(300px,calc(100vw - 24px));background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 45px -18px rgba(0,0,0,.4);padding:8px;overflow:hidden}
+.menu-pop.show{display:block;animation:pop .16s ease}
+@keyframes pop{from{opacity:0;transform:translateY(-6px)}}
+.menu-pop button{width:100%;border:0;background:#fff;border-radius:11px;padding:12px 13px;text-align:right;font-weight:700;color:var(--ink);display:flex;gap:10px;align-items:center}
+.menu-pop button:hover{background:var(--panel2)}
+.menu-pop .sep{height:1px;background:var(--line);margin:6px 4px}
+.menu-pop .danger{color:#a13333}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:6px 0 14px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:13px 14px;box-shadow:var(--sh2);position:relative;overflow:hidden;transition:transform .12s}
+.kpi:active{transform:scale(.98)}
+.kpi .n{font-size:27px;font-weight:900;line-height:1}
+.kpi .l{font-size:12px;color:var(--ink2);margin-top:3px;font-weight:600}
+.kpi.acc::after{content:"";position:absolute;inset:auto 0 0 0;height:3px;background:var(--brand)}
+.kpi.alert{background:var(--badbg);border-color:#f3c7c7}.kpi.alert .n{color:var(--bad)}
+.kpi.good .n{color:var(--ok)} .kpi.warnk .n{color:var(--warn)}
+.kpi.clk{cursor:pointer}
+
+/* filter chips */
+.chips{display:flex;gap:7px;overflow-x:auto;padding:2px 0 4px;margin-bottom:8px;-webkit-overflow-scrolling:touch}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--panel);color:var(--ink2);border-radius:999px;padding:8px 14px;font-size:13px;font-weight:700;transition:.14s}
+.chip[aria-pressed=true]{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 6px 14px -8px var(--brand)}
+
+/* search */
+.search{position:relative;margin-bottom:12px}
+.search input{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px 44px 13px 14px;font-size:15px;background:#fff;box-shadow:var(--sh2)}
+.search .ic{position:absolute;top:50%;transform:translateY(-50%);inset-inline-start:14px;color:var(--mut);font-size:17px}
+
+/* vehicle grid */
+.section-h{display:flex;align-items:center;justify-content:space-between;margin:16px 2px 9px}
+.section-h h2{font-size:16px;font-weight:800}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.vcard{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 14px 12px;box-shadow:var(--sh2);transition:transform .12s,box-shadow .2s;overflow:hidden}
+.vcard:hover{box-shadow:var(--sh);transform:translateY(-2px)}
+.vcard::before{content:"";position:absolute;inset:0 auto 0 0;width:4px;background:var(--stripe,var(--line))}
+.vcard.s-ok{--stripe:var(--ok)} .vcard.s-mission{--stripe:var(--info)} .vcard.s-bad{--stripe:var(--bad)}
+.vcard.s-service{--stripe:var(--warn)} .vcard.s-wait{--stripe:var(--mut)}
+.card-x{position:absolute;top:10px;inset-inline-start:10px;z-index:5;width:28px;height:28px;border-radius:9px;border:1px solid #f0c2c2;background:#fff;color:var(--bad);font-size:19px;font-weight:800;line-height:1;display:grid;place-items:center;padding:0;transition:.12s}
+.card-x:active{transform:scale(.9)}
+.vtop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding-inline-start:26px}
+.vtitle{min-width:0}
+.plate{display:inline-flex;align-items:center;justify-content:center;min-width:118px;height:34px;border-radius:6px;font-weight:900;letter-spacing:.6px;direction:ltr;padding:0 10px;font-size:16px;box-shadow:0 1px 3px #0002}
+.plate.army{background:var(--army);color:#fff;border:2px solid #e9e9e9;position:relative;padding-inline-end:26px}
+.plate.army::after{content:'צ';position:absolute;inset-inline-end:7px;font-weight:900}
+.plate.civil{background:var(--civil);color:#111;border:2px solid #111;position:relative;padding-inline-start:24px}
+.plate.civil::before{content:'🇮🇱';position:absolute;inset-inline-start:5px;font-size:11px}
+.vtype{font-size:12.5px;color:var(--ink2);margin-top:6px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{font-size:11px;font-weight:800;padding:5px 10px;border-radius:999px;white-space:nowrap;height:max-content;display:inline-flex;gap:4px;align-items:center}
+.pill.ok{background:var(--okbg);color:var(--ok)} .pill.mission{background:var(--infobg);color:var(--info)}
+.pill.bad{background:var(--badbg);color:var(--bad)} .pill.service{background:var(--warnbg);color:var(--warn)} .pill.wait{background:#eef0ee;color:#6a776e}
+.vmeta{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:11px}
+.mbox{background:var(--panel2);border-radius:11px;padding:8px 10px}
+.mbox small{display:block;color:var(--mut);font-size:10.5px;font-weight:600} .mbox b{font-size:13px}
+.valert{margin-top:9px;border-radius:10px;padding:8px 10px;font-size:12px;font-weight:700;display:flex;gap:6px;align-items:center}
+.valert.bad{background:var(--badbg);color:var(--bad)} .valert.warn{background:var(--warnbg);color:var(--warn)}
+.vacts{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:11px}
+.vacts button{border:0;border-radius:10px;padding:9px 4px;font-size:12px;font-weight:800;background:var(--panel2);color:var(--ink2);transition:.12s}
+.vacts button:active{transform:scale(.96)}
+.vacts .b-ok{background:var(--okbg);color:var(--ok)} .vacts .b-move{background:var(--infobg);color:var(--info)} .vacts .b-edit{background:var(--brand-l);color:var(--brand-d)}
+
+/* fuel */
+.fuel-base{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:15px;box-shadow:var(--sh2);margin-bottom:12px}
+.fuel-base h3{font-size:15px;font-weight:800;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.frow{display:grid;grid-template-columns:110px 1fr 46px;gap:10px;align-items:center;margin:9px 0}
+.frow .fk{font-size:13px;color:var(--ink2);font-weight:600}
+.ftrk{height:12px;background:#ecefec;border-radius:7px;overflow:hidden}
+.ffill{height:100%;border-radius:7px;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.fv{font-size:13px;font-weight:800;text-align:left}
+.cardlist{display:grid;gap:8px}
+.fcard{display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:11px 13px;box-shadow:var(--sh2)}
+.fcard .fic{width:40px;height:28px;border-radius:6px;background:linear-gradient(135deg,var(--brand),var(--glow));color:#fff;display:grid;place-items:center;font-size:15px;flex:none}
+.fcard b{font-size:14px} .fcard small{display:block;color:var(--mut);font-size:11.5px;margin-top:1px}
+.fcard .st{margin-inline-start:auto}
+
+/* drivers */
+.dcard{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:13px 14px;box-shadow:var(--sh2);margin-bottom:9px}
+.dtop{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.dname{font-size:15.5px;font-weight:800}
+.dsub{font-size:12px;color:var(--ink2);margin-top:2px}
+.permits{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
+.perm{font-size:11px;font-weight:700;background:var(--brand-l);color:var(--brand-d);border-radius:8px;padding:3px 9px}
+.phone-line{display:flex;gap:7px;margin-top:10px;align-items:center}
+.mini{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;text-decoration:none;color:var(--ink);font-size:16px}
+.mini.wa{color:#128c4a}
+
+/* bottom nav */
+.bottom{position:fixed;bottom:0;inset-inline:0;z-index:40;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid var(--line);padding-bottom:max(6px,env(safe-area-inset-bottom));box-shadow:0 -8px 24px -18px rgba(0,0,0,.3)}
+.bottom button{border:0;background:none;padding:9px 4px 6px;color:var(--mut);font-size:10.5px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;transition:.12s}
+.bottom button .bi{font-size:20px;line-height:1;transition:transform .16s}
+.bottom button.active{color:var(--brand)} .bottom button.active .bi{transform:translateY(-2px) scale(1.08)}
+
+/* login */
+.login{min-height:100vh;display:grid;place-items:center;padding:22px;background:
+  radial-gradient(900px 500px at 50% -10%,rgba(31,122,77,.18),transparent 60%),var(--bg)}
+.login-card{width:min(420px,100%);background:var(--panel);border:1px solid var(--line);border-radius:26px;padding:28px 24px;box-shadow:0 30px 70px -30px rgba(20,50,35,.5);text-align:center}
+.login .biglogo{width:82px;height:82px;border-radius:24px;background:linear-gradient(140deg,var(--brand-d),var(--glow));display:grid;place-items:center;margin:0 auto 14px;box-shadow:0 16px 34px -12px var(--brand)}
+.veh{display:block} .biglogo .veh{width:56px;height:auto} .logo .veh{width:30px;height:auto}
+.login h2{font-size:22px;font-weight:900}.login .p{color:var(--ink2);font-size:13px;margin:4px 0 18px}
+.login input{width:100%;border:1.5px solid var(--line);border-radius:14px;padding:14px;font-size:17px;text-align:center;margin-bottom:10px}
+.login input:focus{outline:none;border-color:var(--brand)}
+.login .go{width:100%;border:0;border-radius:14px;padding:15px;font-size:16px;font-weight:800;color:#fff;background:linear-gradient(180deg,var(--brand),var(--brand-d));box-shadow:0 12px 26px -12px var(--brand)}
+.login .go:active{transform:scale(.98)} .login .err{color:var(--bad);font-size:13px;font-weight:700;min-height:18px;margin-top:6px}
+
+/* modal */
+.modal{display:none;position:fixed;inset:0;background:#0007;z-index:9999;align-items:flex-end}
+.modal.show{display:flex;animation:fade .15s}
+@keyframes fade{from{opacity:0}}
+.sheet{background:#fff;width:100%;max-height:92vh;overflow:auto;border-radius:24px 24px 0 0;padding:20px;animation:up .22s cubic-bezier(.2,.8,.2,1)}
+@keyframes up{from{transform:translateY(30px)}}
+.sheet h3{font-size:18px;font-weight:900;margin-bottom:14px}
+.field{margin:11px 0}.field label{display:block;font-size:12.5px;color:var(--ink2);font-weight:600;margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:12px;font-size:15px}
+.srow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+.btn{border:0;border-radius:13px;padding:14px;font-weight:800;font-size:15px}
+.btn.primary{background:var(--brand);color:#fff}.btn.ghost{background:var(--panel2);color:var(--ink2)}
+
+.empty{background:var(--panel);border:1px dashed var(--line);border-radius:16px;padding:26px;text-align:center;color:var(--mut);font-weight:600}
+.demo-tag{display:inline-block;font-size:10px;font-weight:800;background:#fff4d8;color:#8a6410;border-radius:6px;padding:2px 7px;margin-inline-start:6px}
+@media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<!-- ===== LOGIN ===== -->
+<div id="login" class="login">
+  <div class="login-card">
+    <div class="biglogo"><svg class="veh" viewBox="0 0 84 60" aria-hidden="true"><g fill="#fff"><path d="M10 34 L20 20 H40 L47 34 Z"/><rect x="4" y="33" width="74" height="13" rx="3.5"/><rect x="48" y="26" width="30" height="8" rx="2.5"/></g><path d="M23 32 L28 23 H38 L42 32 Z" fill="rgba(10,40,25,.5)"/><circle cx="24" cy="47" r="9" fill="#0d3a24" stroke="#fff" stroke-width="3"/><circle cx="24" cy="47" r="3.2" fill="#fff"/><circle cx="60" cy="47" r="9" fill="#0d3a24" stroke="#fff" stroke-width="3"/><circle cx="60" cy="47" r="3.2" fill="#fff"/><path d="M72 26 V13" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/><circle cx="72" cy="12" r="2.2" fill="#fff"/></svg></div>
+    <h2>ניהול צי רכב</h2>
+    <div class="p">גדוד · התחברות במספר אישי</div>
+    <input id="lgPn" inputmode="numeric" placeholder="מספר אישי" autocomplete="off">
+    <input id="lgPin" inputmode="numeric" type="password" placeholder="קוד (4 ספרות אחרונות)" autocomplete="off">
+    <button class="go" onclick="doLogin()">כניסה</button>
+    <div class="err" id="lgErr"></div>
+    <div style="margin-top:14px;font-size:11.5px;color:var(--mut)">תצוגה מקדימה · נתוני דמו · טרם מחובר ל‑Firebase</div>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="app" class="hidden">
+  <header>
+    <div class="head">
+      <button class="menu-btn" onclick="toggleMenu(event)">☰</button>
+      <div class="logo"><svg class="veh" viewBox="0 0 84 60" aria-hidden="true"><g fill="#fff"><path d="M10 34 L20 20 H40 L47 34 Z"/><rect x="4" y="33" width="74" height="13" rx="3.5"/><rect x="48" y="26" width="30" height="8" rx="2.5"/></g><circle cx="24" cy="47" r="9" fill="#155e3a" stroke="#fff" stroke-width="3"/><circle cx="60" cy="47" r="9" fill="#155e3a" stroke="#fff" stroke-width="3"/><path d="M72 26 V14" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></div>
+      <div>
+        <h1 id="hdrTitle">מערכת קצין רכב</h1>
+        <div class="sub" id="hdrSub">שליטה מלאה בצי הרכבים</div>
+      </div>
+      <div class="role"><span id="syncDot" style="font-size:11px;font-weight:700;color:#f2d9a6">○ מקומי</span><span class="rolechip" id="roleChip">קצין רכב</span></div>
+    </div>
+  </header>
+
+  <div id="menu" class="menu-pop">
+    <button onclick="closeMenu();go('fleet')">🚗 <span>רכבים</span></button>
+    <button onclick="closeMenu();go('drivers')">👤 <span>נהגים</span></button>
+    <button onclick="closeMenu();go('fuel')">⛽ <span>תזקיקים וכרטיסי דלק</span></button>
+    <button onclick="closeMenu();go('company')">🎖️ <span>תצוגת פלוגה</span></button>
+    <div class="sep"></div>
+    <button onclick="closeMenu();openIntake()">➕ <span>קליטת רכב חדש</span></button>
+    <button onclick="closeMenu();shareCommander()">📲 <span>שליחת דשבורד למפקד</span></button>
+    <button onclick="closeMenu();shareSergeant()">🔐 <span>שליחת מערכת לסמל רכב</span></button>
+    <div class="sep"></div>
+    <button onclick="closeMenu();alert('גיבוי JSON — יופעל בגרסה המחוברת')">💾 <span>גיבוי נתונים</span></button>
+    <button onclick="closeMenu();alert('שחזור — יופעל בגרסה המחוברת')">♻️ <span>שחזור מגיבוי</span></button>
+    <button onclick="closeMenu();switchRole()">🔁 <span>החלף תצוגת תפקיד (דמו)</span></button>
+    <button class="danger" onclick="closeMenu();logout()">🚪 <span>התנתקות</span></button>
+  </div>
+
+  <div class="wrap" id="screen"></div>
+</div>
+
+<nav class="bottom" id="nav"></nav>
+<div id="modal" class="modal"><div class="sheet" id="sheet"></div></div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  const cfg = { apiKey:"AIzaSyC1MuCmX0bUAW6XakFzkqS8LHVxkDRTrfo", authDomain:"pokerten.firebaseapp.com", projectId:"pokerten",
+    storageBucket:"pokerten.firebasestorage.app", messagingSenderId:"861274065626", appId:"1:861274065626:web:512b8383ea1fae7a8c73e3" };
+  try{
+    const app = initializeApp(cfg); const auth = getAuth(app); const db = getFirestore(app);
+    window.fb = { db, doc, getDoc, setDoc, onSnapshot };
+    signInAnonymously(auth).then(()=>{ if(window.__fbReady) window.__fbReady(); })
+      .catch(e=>{ console.warn('fleet auth failed → offline mode', e.code||e.message); if(window.__fbFail) window.__fbFail(e); });
+  }catch(e){ console.warn('firebase init failed → offline mode', e); if(window.__fbFail) window.__fbFail(e); }
+</script>
+
+<script>
+const SEED = {"frameworks": [{"id": "A", "name": "פלוגה א׳", "base": "בסיס א׳", "slots": ["חפ״ק פלוגתי", "סיור 1", "סיור 2", "כ״כ"]}, {"id": "C", "name": "פלוגה ג׳", "base": "בסיס ג׳", "slots": ["חפ״ק פלוגתי", "סיור 1", "סיור 2", "כ״כ"]}, {"id": "D", "name": "פלוגה ד׳", "base": "בסיס ד׳", "slots": ["חפ״ק פלוגתי", "סיור 1", "סיור 2", "כ״כ"]}, {"id": "CO", "name": "חפ״ק מג״ד", "base": "גדוד", "slots": ["דויד", "רכב ת״ש"]}, {"id": "DCO", "name": "חפ״ק סמג״ד", "base": "גדוד", "slots": ["דויד", "רכב ת״ש"]}, {"id": "KTL", "name": "כתק״ל", "base": "גדוד", "slots": ["רכב"]}, {"id": "TAG", "name": "תאג״ד", "base": "גדוד", "slots": ["אמבולנס", "רכב"]}, {"id": "MIN", "name": "מנהלה", "base": "גדוד", "slots": ["משאית", "רכב"]}], "drivers": [{"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "יאיר לקס", "pn": "5854498", "phone": "050-9168621", "trailer": "כן", "license": "C", "private": "", "permits": ["האמר", "אושקוש", "אמבולנס", "דוד", "חומס"], "lastRefresh": "2025-11-20", "courses": "זאב", "pin": "4498"}, {"company": "מפג\"ד", "dept": "מפג\"ד", "role": "מפ\"מ", "name": "גדעון בר זכאי", "pn": "6859461", "phone": "054-7841358", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-07-31", "courses": "", "pin": "9461"}, {"company": "פלס\"ם", "dept": "לוגיסטיקה", "role": "ע' קלג", "name": "איתי מרום", "pn": "8516045", "phone": "052-5833077", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2026-06-12", "courses": "האמר, מלגזה", "pin": "6045"}, {"company": "פלס\"ם", "dept": "לוגיסטיקה", "role": "", "name": "הדריאל גלר", "pn": "5791054", "phone": "054-8100377", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "מלגזה, האמר", "pin": "1054"}, {"company": "פלס\"ם", "dept": "לוגיסטיקה", "role": "", "name": "אבירם מוסטקי", "pn": "8530152", "phone": "053-8290224", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2024-05-01", "courses": "האמר, מלגזה", "pin": "0152"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "יותם שריקי", "pn": "7538335", "phone": "052-8833359", "trailer": "כן", "license": "C1", "private": "", "permits": ["דוד"], "lastRefresh": "2025-08-12", "courses": "האמר, דוד, אמבולנס, סוואנה, זאב, \"חומ\"\"ס\"", "pin": "8335"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "דייגו טפלנסקי", "pn": "5004804", "phone": "050-7994960", "trailer": "כן", "license": "C1", "private": "", "permits": ["האמר", "אמבולנס"], "lastRefresh": "2025-07-16", "courses": "אמבולנס, סוואנה, זאב, מלגזה, \"חומ\"\"ס\", דוד", "pin": "4804"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "שילה נתן", "pn": "8016195", "phone": "052-5413080", "trailer": "כן", "license": "C", "private": "", "permits": ["האמר", "אושקוש"], "lastRefresh": "2023-10-15", "courses": "דוד, \"חומ\"\"ס\", זאב, סוואנה, אמבולנס", "pin": "6195"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "רפאל דהן", "pn": "7295651", "phone": "052-3353886", "trailer": "לא", "license": "C D E", "private": "", "permits": ["האמר", "אמבולנס", "חומס"], "lastRefresh": "2024-07-11", "courses": "אושקוש, אמבולנס, סוואנה", "pin": "5651"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "עודה גאן", "pn": "8452929", "phone": "052-6242765", "trailer": "כן", "license": "C", "private": "", "permits": ["האמר", "אושקוש", "אמבולנס"], "lastRefresh": "2026-05-13", "courses": "אמבולנס, דוד, סוואנה, זאב, \"חומ\"\"ס\"", "pin": "2929"}, {"company": "א", "dept": "פלוגה א", "role": "סרספ", "name": "אלימלך יוני", "pn": "7529800", "phone": "052-3922385", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "האמר", "pin": "9800"}, {"company": "ד", "dept": "פלוגה ד", "role": "מפל\"ג", "name": "אמיר כץ", "pn": "8801742", "phone": "052-707-1022⁩", "trailer": "לא", "license": "B", "private": "", "permits": ["דוד"], "lastRefresh": "", "courses": "", "pin": "1742"}, {"company": "ד", "dept": "פלוגה ד", "role": "חפק", "name": "דובר גפן", "pn": "8732237", "phone": "052-2556253", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-05-06", "courses": "", "pin": "2237"}, {"company": "פלס\"ם", "dept": "רכב", "role": "קצין רכב", "name": "גיל כהן", "pn": "6124233", "phone": "054-5888874", "trailer": "כן", "license": "C", "private": "", "permits": ["האמר", "אושקוש", "אמבולנס", "דוד", "מלגזה", "חומס"], "lastRefresh": "2025-06-04", "courses": "אמבולנס, דוד, סוואנה, זאב, מלגזה, \"חומ\"\"ס\"", "pin": "4233"}, {"company": "ב", "dept": "פלוגה ב", "role": "חפק סמ\"פ", "name": "מתניה זילברברג", "pn": "8123704", "phone": "052-8470355", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "דוד", "pin": "3704"}, {"company": "מפג\"ד", "dept": "מפג\"ד", "role": "מג\"ד", "name": "מישאל חייקין", "pn": "6317432", "phone": "058-456013", "trailer": "כן", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "", "courses": "", "pin": "7432"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "יערה בן ניסן", "pn": "8474073", "phone": "054-9445688", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "דוד, סוואנה, האמר", "pin": "4073"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "מורי בן דוד", "pn": "8634439", "phone": "050-4655660", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "האמר, דוד, סוואנה", "pin": "4439"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "גיא בן משה", "pn": "8306918", "phone": "054-610617", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "האמר, דוד, סוואנה", "pin": "6918"}, {"company": "פלס\"ם", "dept": "רכב", "role": "נהג משא כבד", "name": "אלון ונגר", "pn": "5313706", "phone": "050-6956504", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "האמר, דוד, סוואנה", "pin": "3706"}, {"company": "פלס\"ם", "dept": "מפג\"ד", "role": "ע' מפ\"מ", "name": "גילי חסין", "pn": "3590712", "phone": "054-674688", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-06-11", "courses": "", "pin": "0712"}, {"company": "פלס\"ם", "dept": "לוגיסטיקה", "role": "קל\"ג", "name": "יהונתן פרידמן", "pn": "6962697", "phone": "054-2456102", "trailer": "כן", "license": "", "private": "", "permits": ["האמר"], "lastRefresh": "", "courses": "", "pin": "2697"}, {"company": "פלס\"ם", "dept": "לוגיסטיקה", "role": "", "name": "אמיתי זנדני", "pn": "5919778", "phone": "050-899733", "trailer": "כן", "license": "", "private": "", "permits": [], "lastRefresh": "", "courses": "מלגזה", "pin": "9778"}, {"company": "ג", "dept": "מפלג", "role": "רספ", "name": "דודו פרץ", "pn": "8387646", "phone": "0526161040", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-06-04", "courses": "", "pin": "7646"}, {"company": "פלס\"ם", "dept": "מפג\"ד", "role": "סרספ", "name": "שראל דינר", "pn": "5241995", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "2025-08-05", "courses": "", "pin": "1995"}, {"company": "ג", "dept": "מפלג", "role": "סרספ א", "name": "אסף אזולאי", "pn": "8387990", "phone": "0547315900", "trailer": "כן", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "", "courses": "", "pin": "7990"}, {"company": "ד", "dept": "פלוגה ד", "role": "סרספ", "name": "עמית לרנר", "pn": "7555621", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-08-10", "courses": "", "pin": "5621"}, {"company": "פלס\"ם", "dept": "מפגד", "role": "שלישות", "name": "אבישי רוצ'טיין", "pn": "8884664", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": ["אמבולנס"], "lastRefresh": "", "courses": "", "pin": "4664"}, {"company": "ד", "dept": "פלוגה ד", "role": "סרספ", "name": "בנימין לייקין", "pn": "8795741", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "5741"}, {"company": "ג", "dept": "מפלג", "role": "חופל", "name": "דביר חן", "pn": "8386617", "phone": "0537499006", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6617"}, {"company": "פלס\"ם", "dept": "לוגיסטיקה", "role": "כללי", "name": "נתן זמסקיך", "pn": "8287479", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7479"}, {"company": "א", "dept": "פלוגה א", "role": "סמ\"פ", "name": "בר נוימן", "pn": "5763328", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-07-30", "courses": "", "pin": "3328"}, {"company": "פלס\"ם", "dept": "לוגיסטיקה", "role": "", "name": "חן יהודה", "pn": "6632813", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2813"}, {"company": "ד", "dept": "פלוגה ד", "role": "חופל", "name": "אראל זהבי", "pn": "8814624", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-06-03", "courses": "", "pin": "4624"}, {"company": "פלס\"ם", "dept": "קשר", "role": "קשרג", "name": "משה בן-עמי", "pn": "6921280", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-08-01", "courses": "", "pin": "1280"}, {"company": "פלס\"ם", "dept": "תקשוב", "role": "תקשוב", "name": "אלכס קלניצקי", "pn": "5426152", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-08-01", "courses": "", "pin": "6152"}, {"company": "פלס\"ם", "dept": "לוגיסטיקה", "role": "", "name": "רז תורג׳מן", "pn": "8294916", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4916"}, {"company": "ד", "dept": "פלוגה ד", "role": "סרספ", "name": "דניאל טבריה", "pn": "8121679", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": ["האמר", "דוד"], "lastRefresh": "2025-05-27", "courses": "", "pin": "1679"}, {"company": "ב", "dept": "", "role": "מ\"כ", "name": "אריאל רייז", "pn": "8048300", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "", "courses": "", "pin": "8300"}, {"company": "ב", "dept": "", "role": "חפק מפ", "name": "מאור שמחון", "pn": "8050951", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "2024-12-01", "courses": "", "pin": "0951"}, {"company": "ב", "dept": "", "role": "", "name": "יוגב חופי", "pn": "6631271", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1271"}, {"company": "ב", "dept": "פלוגה ב", "role": "חפק מפ", "name": "אביאל ברק", "pn": "5398763", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-08-12", "courses": "", "pin": "8763"}, {"company": "מפג\"ד", "dept": "מפג\"ד", "role": "חפק מגד", "name": "אורי פאסי", "pn": "8444392", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "דוד", "pin": "4392"}, {"company": "מפג\"ד", "dept": "מפג\"ד", "role": "חפק מגד", "name": "אמיתי צורי", "pn": "8145355", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "דוד", "pin": "5355"}, {"company": "מפג\"ד", "dept": "מפג\"ד", "role": "חפק סמגד", "name": "יהודה שושן", "pn": "8011134", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-06-05", "courses": "דוד", "pin": "1134"}, {"company": "ב", "dept": "מחלקת רכב", "role": "לוחם", "name": "יוחנן פוסך", "pn": "7665647", "phone": "", "trailer": "כן", "license": "C1", "private": "", "permits": [], "lastRefresh": "2025-03-10", "courses": "", "pin": "5647"}, {"company": "ב", "dept": "פלוגה ב", "role": "מפ", "name": "נתן שמיר", "pn": "6374802", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-01-06", "courses": "", "pin": "4802"}, {"company": "ב", "dept": "", "role": "לוחם", "name": "לוגאן לוין", "pn": "8202606", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2606"}, {"company": "ב", "dept": "", "role": "מ\"כ", "name": "מייקל חדד", "pn": "7586814", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "2025-06-05", "courses": "", "pin": "6814"}, {"company": "ב", "dept": "פלוגה ב", "role": "רספ", "name": "אביחי ניימן", "pn": "5765015", "phone": "054-3009781", "trailer": "כן", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "", "courses": "האמר", "pin": "5015"}, {"company": "פלס\"ם", "dept": "מפג\"ד", "role": "חפק מגד", "name": "שומרון שבות", "pn": "6388244", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "דוד", "pin": "8244"}, {"company": "ד", "dept": "", "role": "חפק ממ״פ ", "name": "אליה לונסקי", "pn": "8244148", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4148"}, {"company": "מפג\"ד", "dept": "מפג\"ד", "role": "משקש ", "name": "אורי צימרינג", "pn": "9120411", "phone": "", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "2025-04-08", "courses": "", "pin": "0411"}, {"company": "פלס\"ם", "dept": "מפג\"ד", "role": "ק. אגמ", "name": "יגאל וולברומסקי", "pn": "7554711", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4711"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "חיים יהונדב", "pn": "8472483", "phone": "054-4599664", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2483"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "בן יוסף עילי", "pn": "8297074", "phone": "052-3053339", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7074"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "כהן שלמה", "pn": "4382623", "phone": "052-4292033", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2623"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "ליפובצקי חן", "pn": "5318308", "phone": "052-8566946", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8308"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "צביאלי מאור", "pn": "5672216", "phone": "0509963088", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2216"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "בן אברם רועי", "pn": "6069963", "phone": "0547980263", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "9963"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "בן דוד עומר", "pn": "8477991", "phone": "0503458989", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7991"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "וילנסקי מיכאל", "pn": "8451300", "phone": "0586884922", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1300"}, {"company": "א", "dept": "מחלקה 1", "role": "לוחם", "name": "סעדון ברק", "pn": "7638728", "phone": "0542330741", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8728"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "שגיא בן", "pn": "5918224", "phone": "0532727106", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8224"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "סעדון אליאל", "pn": "8583869", "phone": "0506439093", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3869"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "ארזה ניצן", "pn": "8362935", "phone": "0524712303", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2935"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "נבון בן", "pn": "8138129", "phone": "0543226344", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8129"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "פרץ קובי", "pn": "6917708", "phone": "054-2383162", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7708"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "בן אמנון  עומר", "pn": "8494961", "phone": "0548800361", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4961"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "אביקסיס נאור", "pn": "8384619", "phone": "0527537994", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4619"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "קטריבס איתי", "pn": "8328499", "phone": "0545752423", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8499"}, {"company": "א", "dept": "מחלקה 2", "role": "לוחם", "name": "גרנות דן", "pn": "5937049", "phone": "‭058-7981077‬", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7049"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "בראון דוד", "pn": "5166462", "phone": "052-8705006", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6462"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "איזקסון אנטון", "pn": "5900158", "phone": "0526967242", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "0158"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "קורול מיכאל", "pn": "7664988", "phone": "0523136026", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4988"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "וולך עמית", "pn": "8084934", "phone": "052-5058488", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4934"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "אליצור משה", "pn": "8248811", "phone": "0527572333", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8811"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "קליינהאוז נמרוד", "pn": "8027814", "phone": "0507263146", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7814"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "דוב מנשה", "pn": "8411468", "phone": "0535317822", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1468"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "צוילינג גלעד זאב", "pn": "8089542", "phone": "0547932565", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "9542"}, {"company": "א", "dept": "מחלקה 3", "role": "לוחם", "name": "הרוש אלירן", "pn": "8341171", "phone": "050-2720059", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1171"}, {"company": "א", "dept": "מפל\"ג", "role": "חפ\"ק", "name": "בגרי אנטון", "pn": "7517247", "phone": "0552814784", "trailer": "לא", "license": "B", "private": "", "permits": ["דוד"], "lastRefresh": "", "courses": "", "pin": "7247"}, {"company": "א", "dept": "מפל\"ג", "role": "מפל\"ג", "name": "פרץ אהרון", "pn": "6159762", "phone": "050-5073458", "trailer": "לא", "license": "C1", "private": "", "permits": ["האמר"], "lastRefresh": "", "courses": "", "pin": "9762"}, {"company": "א", "dept": "מפל\"ג", "role": "מפל\"ג", "name": "וינברגר לירון", "pn": "7025965", "phone": "054-6050172", "trailer": "לא", "license": "C1", "private": "", "permits": ["האמר", "דוד"], "lastRefresh": "", "courses": "", "pin": "5965"}, {"company": "א", "dept": "מחלקה 1", "role": "כיתה א'", "name": "אלוש עומר", "pn": "8455644", "phone": "0542549985", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "5644"}, {"company": "א", "dept": "מפל\"ג", "role": "חפ\"ק", "name": "ויינברג גיא", "pn": "6142489", "phone": "0503723185", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2489"}, {"company": "א", "dept": "מפל\"ג", "role": "חפ\"ק", "name": "נוימן שגיב", "pn": "4687720", "phone": "0502496663", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7720"}, {"company": "א", "dept": "מפל\"ג", "role": "חפ\"ק", "name": "בלומנפלד עידו", "pn": "5219706", "phone": "054-6050948", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "9706"}, {"company": "א", "dept": "מפל\"ג", "role": "חפ\"ק", "name": "גולן יוגב", "pn": "5670864", "phone": "0528948046", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "0864"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "דוד נריה", "pn": "8849233", "phone": "0584045850", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "9233"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "ברמן רועי", "pn": "8861232", "phone": "0584008884", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1232"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "פרשל גלעד", "pn": "8747277", "phone": "0543186050", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7277"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "מנסבך דוד", "pn": "9076385", "phone": "0507723042", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6385"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "מקסימוב איתי", "pn": "9026020", "phone": "0558861017", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6020"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "לב טוב יהונתן רועי", "pn": "8181221", "phone": "0509355420", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1221"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "נהיר נתן", "pn": "8853239", "phone": "0548355072", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3239"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "נזרי איתי", "pn": "9088695", "phone": "0523980265", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8695"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "סייפרס יונה", "pn": "8723542", "phone": "0584867800", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3542"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "פריאנטה הלל", "pn": "9146057", "phone": "0549951747", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6057"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "ליבשיץ אייל", "pn": "9083548", "phone": "0549010799", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3548"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "צמל נתנאל", "pn": "8816023", "phone": "0546648672", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6023"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "נוה יעל", "pn": "9026670", "phone": "0509130273", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6670"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "הרשקוביץ יהודה", "pn": "8587997", "phone": "0586274006", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7997"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "קדיקוב ניקיטה", "pn": "6062889", "phone": "0526440042", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2889"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "דה לאון ג'קי יעקב", "pn": "9006749", "phone": "0522726031", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6749"}, {"company": "ד", "dept": "מחלקה 3", "role": "", "name": "גרבובסקי אליאב", "pn": "8223640", "phone": "0584448824", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3640"}, {"company": "ד", "dept": "מחלקה 3", "role": "", "name": "גרינברג לירן", "pn": "8827774", "phone": "052-7032186", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7774"}, {"company": "ד", "dept": "מחלקה 3", "role": "", "name": "בראונשטיין אביעד", "pn": "8460191", "phone": "0549579458", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "0191"}, {"company": "ד", "dept": "מחלקה 1", "role": "", "name": "קלרמן אורי-אור", "pn": "9099672", "phone": "0547592470", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "9672"}, {"company": "ד", "dept": "מחלקה 2", "role": "", "name": "קנפל דניאל", "pn": "8572396", "phone": "0547350205", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2396"}, {"company": "ד", "dept": "פלוגה ד", "role": "מ\"פ", "name": "הראל סלהוב", "pn": "8495139", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "5139"}, {"company": "ד", "dept": "פלוגה ד", "role": "חפק מפ", "name": "אביאל נגאוקר", "pn": "8386650", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "2025-05-04", "courses": "", "pin": "6650"}, {"company": "ב", "dept": "מחלקה 1", "role": "לוחם", "name": "יוסף חיים פרץ", "pn": "5803342", "phone": "", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3342"}, {"company": "ב", "dept": "מחלקה 1", "role": "לוחם", "name": "דניאל מנדל", "pn": "8462289", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2289"}, {"company": "ב", "dept": "מחלקה 1", "role": "לוחם", "name": "דביר רוזנברג", "pn": "5755629", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "5629"}, {"company": "ב", "dept": "מחלקה 2", "role": "לוחם", "name": "מיכאל אוזדנסקי", "pn": "7665304", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "5304"}, {"company": "ב", "dept": "מחלקה 2", "role": "לוחם", "name": "דוד חיים טרשנסקי", "pn": "8090076", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "0076"}, {"company": "ב", "dept": "מחלקה 2", "role": "לוחם", "name": "אורי רובינשטיין", "pn": "6069141", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "9141"}, {"company": "ב", "dept": "מחלקה 2", "role": "לוחם", "name": "גיל מליכוב", "pn": "7647329", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7329"}, {"company": "ב", "dept": "מחלקה 3", "role": "לוחם", "name": "אלי בוימל", "pn": "5862156", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2156"}, {"company": "ב", "dept": "מחלקה 3", "role": "לוחם", "name": "נדב אליהו", "pn": "8166496", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6496"}, {"company": "ב", "dept": "מחלקה 3", "role": "לוחם", "name": "שחר קרסנטי", "pn": "7603077", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3077"}, {"company": "ב", "dept": "פלוגה ב", "role": "רספ", "name": "נאור לידני", "pn": "8076008", "phone": "", "trailer": "כן", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "2025-06-11", "courses": "", "pin": "6008"}, {"company": "ב", "dept": "פלוגה ב", "role": "סמל", "name": "שחף אגם", "pn": "7433703", "phone": "", "trailer": "לא", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "", "courses": "", "pin": "3703"}, {"company": "ג", "dept": "מפלג", "role": "סרספ ב", "name": "גיא פרץ", "pn": "8606383", "phone": "0526969198", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6383"}, {"company": "פלס\"ם", "dept": "מפלג", "role": "רס\"פ", "name": "נתי מצגר", "pn": "5203649", "phone": "054-5608545", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "האמר", "pin": "3649"}, {"company": "ד", "dept": "", "role": "", "name": "אריאל קרני", "pn": "8824781", "phone": "054-4855310", "trailer": "לא", "license": "B", "private": "", "permits": ["האמר"], "lastRefresh": "", "courses": "", "pin": "4781"}, {"company": "א", "dept": "מחלקה 3", "role": "", "name": "הראל כהן", "pn": "8180424", "phone": "052-7898243", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "0424"}, {"company": "א", "dept": "מחלקה 3", "role": "", "name": "פבל קורוטקביץ", "pn": "7594584", "phone": "052-5408802", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4584"}, {"company": "א", "dept": "מחלקה 3", "role": "", "name": "אור איתן עיני", "pn": "8139412", "phone": "052-5705673", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "9412"}, {"company": "א", "dept": "מחלקה 3", "role": "", "name": "מתנאל שולטו", "pn": "8147686", "phone": "054-4410106", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7686"}, {"company": "א", "dept": "מחלקה 3", "role": "", "name": "דולב אנטיפוב", "pn": "8626981", "phone": "050-9111466", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6981"}, {"company": "א", "dept": "מחלקה 3", "role": "", "name": "נתן קרן", "pn": "8235487", "phone": "054-6229032", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "5487"}, {"company": "א", "dept": "מחלקה 3", "role": "", "name": "טל קוניו", "pn": "8811553", "phone": "050-9210799", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1553"}, {"company": "א", "dept": "מחלקה 3", "role": "", "name": "אביעד בר שי", "pn": "8108968", "phone": "054-4487940", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8968"}, {"company": "א", "dept": "", "role": "", "name": "יונתן כהן", "pn": "8264773", "phone": "058-6071864", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4773"}, {"company": "א", "dept": "", "role": "", "name": "עידו קליין", "pn": "8174335", "phone": "054-2563703", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "4335"}, {"company": "א", "dept": "", "role": "", "name": "אברהם אילון סלאב", "pn": "8440017", "phone": "058-5802958", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "0017"}, {"company": "א", "dept": "", "role": "", "name": "אליאסף אשורוב", "pn": "8306019", "phone": "054-2294699", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6019"}, {"company": "א", "dept": "", "role": "", "name": "רועי בראון", "pn": "8516504", "phone": "054-2016134", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "6504"}, {"company": "א", "dept": "", "role": "", "name": "יניר זהבי", "pn": "8411896", "phone": "050-4895350", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1896"}, {"company": "א", "dept": "", "role": "", "name": "אביעד דוד והב", "pn": "8328732", "phone": "050-3120326", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "8732"}, {"company": "", "dept": "מחלקה 1", "role": "לוחם", "name": "דור ארצי", "pn": "", "phone": "054-3304550", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": ""}, {"company": "", "dept": "מחלקה 1", "role": "", "name": "דור עובדיה", "pn": "8561814", "phone": "054-5716710", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1814"}, {"company": "", "dept": "מחלקה 1", "role": "", "name": "ניר משה גמזו", "pn": "6387314", "phone": "050-6899882", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "7314"}, {"company": "", "dept": "מחלקה 1", "role": "", "name": "אושר שוקר", "pn": "8301424", "phone": "054-5528790", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "1424"}, {"company": "", "dept": "מחלקה 1", "role": "", "name": "מאור לארי", "pn": "8595835", "phone": "052-059889", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "5835"}, {"company": "", "dept": "מחלקה 1", "role": "", "name": "איילון חיים", "pn": "", "phone": "054-6699139", "trailer": "לא", "license": "B", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": ""}, {"company": "ד", "dept": "", "role": "לוחם", "name": "ערן באך", "pn": "8343840", "phone": "", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3840"}, {"company": "ד", "dept": "", "role": "לוחם", "name": "דוד אדמוני", "pn": "8793411", "phone": "", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "3411"}, {"company": "ד", "dept": "", "role": "לוחם", "name": "סולומון גוואנגול", "pn": "8832034", "phone": "", "trailer": "לא", "license": "C1", "private": "", "permits": [], "lastRefresh": "", "courses": "", "pin": "2034"}], "vehicles": [{"id": 1, "prefix": "צ-", "number": "591220", "type": "טריטון", "unit": "A", "slot": "סיור 1", "commander": "סמל דניאל", "status": "כשיר", "deliveryVideo": "צולם", "lastService": "2026-08-30", "frequency": 14, "notes": "", "drivers": [], "demo": true}, {"id": 2, "prefix": "צ-", "number": "488317", "type": "דויד", "unit": "A", "slot": "חפ״ק פלוגתי", "commander": "רס״ן כהן", "status": "במשימה", "deliveryVideo": "לא צולם", "lastService": "2026-08-20", "frequency": 14, "notes": "", "drivers": [], "demo": true}, {"id": 3, "prefix": "ל.ז-", "number": "12345678", "type": "פורד סילברדו", "unit": "MIN", "slot": "רכב", "commander": "", "status": "בטיפול", "testExpiry": "2026-09-14", "notes": "", "drivers": [], "demo": true}, {"id": 4, "prefix": "צ-", "number": "773901", "type": "טריטון", "unit": "D", "slot": "סיור 2", "commander": "סמל אבי", "status": "תקול", "deliveryVideo": "לא צולם", "lastService": "2026-07-28", "frequency": 30, "notes": "תקלת מנוע", "drivers": [], "demo": true}, {"id": 5, "prefix": "צ-", "number": "640022", "type": "דויד", "unit": "C", "slot": "חפ״ק פלוגתי", "commander": "", "status": "ממתין לשיבוץ", "deliveryVideo": "", "lastService": "2026-08-25", "frequency": 14, "notes": "", "drivers": [], "demo": true}, {"id": 6, "prefix": "ל.ז-", "number": "87654321", "type": "אמבולנס", "unit": "TAG", "slot": "אמבולנס", "commander": "", "status": "כשיר", "testExpiry": "2027-01-10", "notes": "", "drivers": [], "demo": true}], "fuel": [{"base": "בסיס א׳", "items": [{"k": "סולר", "pct": 72}, {"k": "בנזין", "pct": 45}, {"k": "אוריאה (AdBlue)", "pct": 60}, {"k": "גז מטבח", "pct": 30}]}, {"base": "בסיס ג׳", "items": [{"k": "סולר", "pct": 88}, {"k": "בנזין", "pct": 55}, {"k": "אוריאה (AdBlue)", "pct": 40}, {"k": "גז מטבח", "pct": 65}]}, {"base": "בסיס ד׳", "items": [{"k": "סולר", "pct": 20}, {"k": "בנזין", "pct": 80}, {"k": "אוריאה (AdBlue)", "pct": 15}, {"k": "גז מטבח", "pct": 50}]}], "cards": [{"id": "FC-201", "holder": "פלוגה א׳", "type": "דלקן", "status": "פעיל", "last": "2026-09-01"}, {"id": "FC-202", "holder": "פלוגה ד׳", "type": "דלקן", "status": "פעיל", "last": "2026-08-29"}, {"id": "FC-207", "holder": "מנהלה", "type": "כרטיס אשראי דלק", "status": "חסום", "last": "2026-08-10"}]};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LS='fleet_v2_state';
+let S = load();
+function load(){ try{const r=JSON.parse(localStorage.getItem(LS)); if(r&&r.vehicles) return r;}catch(e){}
+  return {vehicles:JSON.parse(JSON.stringify(SEED.vehicles)), fuel:JSON.parse(JSON.stringify(SEED.fuel)),
+          cards:JSON.parse(JSON.stringify(SEED.cards))}; }
+let FB=null, fbOn=false;
+function save(){ localStorage.setItem(LS, JSON.stringify(S)); pushRemote(); }
+function pushRemote(){ if(!FB) return; ['vehicles','fuel','cards'].forEach(k=>{
+  try{ FB.setDoc(FB.doc(FB.db,'fleet_data',k), {items:S[k], ts:Date.now()}); }catch(e){} }); }
+function setSync(){ const el=document.getElementById('syncDot'); if(el){ el.textContent=fbOn?'● מסונכרן':'○ מקומי'; el.style.color=fbOn?'#bff3d4':'#f2d9a6'; } }
+window.__fbReady=function(){ FB=window.fb; fbOn=true; setSync(); startSync(); };
+window.__fbFail=function(){ fbOn=false; setSync(); };
+function startSync(){ ['vehicles','fuel','cards'].forEach(k=>{
+  FB.onSnapshot(FB.doc(FB.db,'fleet_data',k), snap=>{
+    if(snap.exists()){ const d=snap.data(); if(d&&Array.isArray(d.items)){ S[k]=d.items; localStorage.setItem(LS,JSON.stringify(S));
+      if(!document.getElementById('app').classList.contains('hidden')) render(); } }
+    else { try{ FB.setDoc(FB.doc(FB.db,'fleet_data',k), {items:S[k], ts:Date.now()}); }catch(e){} }
+  }, err=>{ fbOn=false; setSync(); }); }); }
+const FR = SEED.frameworks, FRBY={}; FR.forEach(f=>FRBY[f.id]=f);
+const DRIVERS = SEED.drivers;
+
+// session (prototype auth — real Firebase next)
+let sess = { role:'officer', name:'קצין הרכב', scope:null }; // scope=company id for commander
+const ROLE_TITLE={officer:'מערכת קצין רכב',sergeant:'מערכת סמל רכב',commander:'תמונת מצב — מפקד'};
+const ROLE_SUB={officer:'שליטה מלאה בצי הרכבים',sergeant:'עריכה מלאה · גיבוי לקצין הרכב',commander:'צפייה בלבד'};
+const ROLE_CHIP={officer:'קצין רכב',sergeant:'סמל רכב',commander:'מפקד'};
+
+function doLogin(){
+  const pn=($('#lgPn').value||'').replace(/\D/g,''), pin=($('#lgPin').value||'').replace(/\D/g,'');
+  const d=DRIVERS.find(x=>x.pn===pn);
+  // demo: officer master code 1894; otherwise match driver's last-4
+  if(pn==='0000'||pn==='1894'){ startSession('officer','קצין הרכב',null); return; }
+  if(!d){ $('#lgErr').textContent='מספר אישי לא נמצא ברשומה'; return; }
+  if(pin!==d.pin){ $('#lgErr').textContent='קוד שגוי (4 ספרות אחרונות של המ״א)'; return; }
+  // map company → commander scope; others → officer (demo)
+  const cmap={'א':'A','ג':'C','ד':'D'}; const sc=cmap[d.company]||null;
+  startSession(sc?'commander':'officer', d.name, sc);
+}
+function startSession(role,name,scope){ sess={role,name,scope}; $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+  applyRole(); go(role==='commander'?'company':'fleet'); }
+function applyRole(){ $('#hdrTitle').textContent=ROLE_TITLE[sess.role]; $('#hdrSub').textContent=ROLE_SUB[sess.role];
+  $('#roleChip').textContent=ROLE_CHIP[sess.role]+(sess.scope?' · '+FRBY[sess.scope].name:''); buildNav(); }
+function switchRole(){ const order=['officer','sergeant','commander']; let i=order.indexOf(sess.role);
+  sess.role=order[(i+1)%3]; sess.scope = sess.role==='commander'?'A':null; sess.name = ROLE_CHIP[sess.role];
+  applyRole(); go(sess.role==='commander'?'company':'fleet'); }
+function logout(){ location.reload(); }
+
+// ── nav ──
+let view='fleet';
+function buildNav(){
+  const items = sess.role==='commander'
+    ? [['company','🎖️','פלוגה'],['fuel','⛽','תזקיקים'],['drivers','👤','נהגים']]
+    : [['fleet','📊','מצב הצי'],['company','🎖️','פלוגות'],['drivers','👤','נהגים'],['fuel','⛽','תזקיקים'],['intake','➕','קליטה']];
+  $('#nav').innerHTML=items.map(([v,ic,l])=>`<button data-v="${v}" onclick="go('${v}')"><span class="bi">${ic}</span>${l}</button>`).join('');
+}
+function go(v){ if(v==='intake'){openIntake();return;} view=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.v===v));
+  window.scrollTo(0,0); render(); }
+function toggleMenu(e){ e.stopPropagation(); $('#menu').classList.toggle('show'); }
+function closeMenu(){ $('#menu').classList.remove('show'); }
+document.addEventListener('click',e=>{ if(!e.target.closest('#menu')&&!e.target.closest('.menu-btn')) closeMenu(); });
+
+// ── helpers ──
+const isCivil=v=>String(v.prefix||'').includes('ל');
+const fullNum=v=>v.prefix+v.number;
+const STAT={'כשיר':'ok','במשימה':'mission','תקול':'bad','בטיפול':'service','מושבת':'bad','ממתין לשיבוץ':'wait'};
+function daysUntil(d){ if(!d) return null; const a=new Date();a.setHours(0,0,0,0); return Math.ceil((new Date(d+'T00:00:00')-a)/864e5); }
+function nextService(v){ if(isCivil(v)||!v.lastService||!v.frequency) return ''; const d=new Date(v.lastService+'T00:00:00'); d.setDate(d.getDate()+Number(v.frequency)); return d.toISOString().slice(0,10); }
+function trackDate(v){ return isCivil(v)?(v.testExpiry||''):nextService(v); }
+function fmtHe(d){ if(!d) return '—'; const [y,m,dd]=d.split('-'); return dd+'/'+m+'/'+y; }
+function plate(v){ return `<span class="plate ${isCivil(v)?'civil':'army'}">${esc(v.number)}</span>`; }
+function scopeVehicles(){ let vs=S.vehicles; if(sess.role==='commander'&&sess.scope) vs=vs.filter(v=>v.unit===sess.scope); return vs; }
+function needsAttention(v){ const t=trackDate(v),n=daysUntil(t);
+  return (!v.drivers||!v.drivers.length)||['תקול','מושבת'].includes(v.status)||(t&&n!=null&&n<=7)||v.deliveryVideo==='לא צולם'; }
+
+// ── render dispatcher ──
+function render(){ ({fleet:renderFleet,company:renderCompany,drivers:renderDrivers,fuel:renderFuel})[view]?.(); }
+
+/* ===== FLEET (officer full control) ===== */
+let fleetFilter='all', fleetStatus='all', fleetSearch='';
+function renderFleet(){
+  const all=scopeVehicles();
+  const k={total:all.length,ok:0,mission:0,bad:0,service:0,noDrv:0,att:0};
+  all.forEach(v=>{ if(v.status==='כשיר')k.ok++; if(v.status==='במשימה')k.mission++;
+    if(['תקול','מושבת'].includes(v.status))k.bad++; if(v.status==='בטיפול')k.service++;
+    if(!v.drivers||!v.drivers.length)k.noDrv++; if(needsAttention(v))k.att++; });
+  let vs=all.filter(v=>{
+    if(fleetStatus!=='all'&&STAT[v.status]!==fleetStatus) return false;
+    if(fleetFilter!=='all'&&v.unit!==fleetFilter) return false;
+    if(fleetSearch){ const q=fleetSearch, dg=q.replace(/\D/g,''); const num=String(v.number).replace(/\D/g,'');
+      if(!( (v.type||'').includes(q)||(dg&&num.includes(dg))||(v.commander||'').includes(q) )) return false; }
+    return true;
+  });
+  let h=`<div class="kpis">
+    <div class="kpi acc clk" onclick="fleetStatus='all';render()"><div class="n tnum">${k.total}</div><div class="l">סה״כ רכבים</div></div>
+    <div class="kpi good clk" onclick="setStatusFilter('ok')"><div class="n tnum">${k.ok}</div><div class="l">כשירים</div></div>
+    <div class="kpi clk" onclick="setStatusFilter('mission')"><div class="n tnum" style="color:var(--info)">${k.mission}</div><div class="l">במשימה</div></div>
+    <div class="kpi alert clk" onclick="setStatusFilter('bad')"><div class="n tnum">${k.bad}</div><div class="l">תקולים/מושבתים</div></div>
+    <div class="kpi warnk clk" onclick="setStatusFilter('service')"><div class="n tnum">${k.service}</div><div class="l">בטיפול</div></div>
+    <div class="kpi clk" onclick="fleetStatus='all';render()"><div class="n tnum" style="color:var(--mut)">${k.noDrv}</div><div class="l">ללא נהג</div></div>
+    <div class="kpi alert clk" onclick="scrollAttention()"><div class="n tnum">${k.att}</div><div class="l">דורש תשומת לב</div></div>
+    <div class="kpi clk" onclick="openIntake()"><div class="n" style="color:var(--brand)">➕</div><div class="l">קליטת רכב</div></div>
+  </div>`;
+  h+=`<div class="search"><span class="ic">🔍</span><input placeholder="חיפוש מספר / סוג / מפקד" value="${esc(fleetSearch)}" oninput="fleetSearch=this.value.trim();renderFleetList()"></div>`;
+  h+=`<div class="chips" id="frChips">${chip('all','כל המסגרות',fleetFilter==='all',"setFleetFilter('all')")}
+    ${FR.map(f=>chip(f.id,f.name,fleetFilter===f.id,`setFleetFilter('${f.id}')`)).join('')}</div>`;
+  h+=`<div class="section-h"><h2>הצי <span style="color:var(--mut);font-weight:600;font-size:13px">(${vs.length})</span></h2></div>`;
+  h+=`<div class="grid" id="fleetGrid">${vs.map(vehicleCard).join('')||emptyBox('אין רכבים בסינון זה')}</div>`;
+  $('#screen').innerHTML=h;
+}
+function renderFleetList(){ renderFleet(); const inp=$('#screen .search input'); if(inp){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);} }
+function setStatusFilter(s){ fleetStatus = fleetStatus===s?'all':s; render(); }
+function setFleetFilter(id){ fleetFilter=id; render(); }
+function chip(id,label,on,fn){ return `<button class="chip" aria-pressed="${on}" onclick="${fn}">${esc(label)}</button>`; }
+function scrollAttention(){ fleetStatus='all'; render(); }
+
+function vehicleCard(v){
+  const sc=STAT[v.status]||'wait', t=trackDate(v), n=daysUntil(t);
+  let al='';
+  if(t&&n!=null){ if(n<0) al=`<div class="valert bad">⚠ ${isCivil(v)?'טסט פג':'טיפול באיחור'} · ${Math.abs(n)} ימים</div>`;
+    else if(n<=7) al=`<div class="valert warn">${isCivil(v)?'🟨 טסט':'🛠 טיפול'} בעוד ${n} ימים</div>`; }
+  const vid = v.deliveryVideo==='לא צולם' ? `<div class="valert bad">🔴 סרטון מסירה לא צולם</div>`:'';
+  const fr=FRBY[v.unit];
+  return `<div class="vcard s-${sc}">
+    <button class="card-x" title="הסר קובייה" onclick="hideCard(${v.id})">×</button>
+    <div class="vtop"><div class="vtitle">${plate(v)}
+      <div class="vtype">${esc(v.type)} · ${esc(fr?fr.name:'—')}${v.slot?' · '+esc(v.slot):''}${v.demo?'<span class="demo-tag">דמו</span>':''}</div></div>
+      <span class="pill ${sc}">${esc(v.status)}</span></div>
+    <div class="vmeta">
+      <div class="mbox"><small>${isCivil(v)?'תוקף טסט':'טיפול הבא'}</small><b class="tnum">${fmtHe(t)}</b></div>
+      <div class="mbox"><small>מפקד/אחראי</small><b>${esc(v.commander||'—')}</b></div>
+    </div>${al}${vid}
+    <div class="vacts">
+      <button class="b-ok" onclick="markOk(${v.id})">✔ תקין</button>
+      <button class="b-move" onclick="openTransfer(${v.id})">🔄 העבר</button>
+      <button class="b-edit" onclick="openEdit(${v.id})">✏ ערוך</button>
+    </div></div>`;
+}
+function emptyBox(t){ return `<div class="empty" style="grid-column:1/-1">${esc(t)}</div>`; }
+
+/* ===== COMPANY (green-eyes-like scoped) ===== */
+let compSel='A';
+function renderCompany(){
+  const cid = sess.role==='commander' ? sess.scope : compSel;
+  const fr=FRBY[cid]; const vs=S.vehicles.filter(v=>v.unit===cid);
+  const done=vs.filter(v=>v.status==='כשיר'&&!needsAttention(v)).length;
+  let h='';
+  if(sess.role!=='commander'){
+    h+=`<div class="chips">${FR.filter(f=>['A','C','D'].includes(f.id)).map(f=>chip(f.id,f.name,cid===f.id,`compSel='${f.id}';render()`)).join('')}
+      ${FR.filter(f=>!['A','C','D'].includes(f.id)).map(f=>chip(f.id,f.name,cid===f.id,`compSel='${f.id}';render()`)).join('')}</div>`;
+  }
+  h+=`<div class="section-h"><h2>🎖️ ${esc(fr.name)} <span style="color:var(--mut);font-weight:600;font-size:13px">· ${esc(fr.base)}</span></h2></div>`;
+  h+=`<div class="kpis"><div class="kpi acc"><div class="n tnum">${vs.length}</div><div class="l">רכבים במסגרת</div></div>
+    <div class="kpi good"><div class="n tnum">${done}</div><div class="l">כשירים ותקינים</div></div>
+    <div class="kpi warnk"><div class="n tnum">${vs.filter(needsAttention).length}</div><div class="l">דורש תשומת לב</div></div>
+    <div class="kpi"><div class="n tnum" style="color:var(--info)">${vs.filter(v=>v.status==='במשימה').length}</div><div class="l">במשימה</div></div></div>`;
+  // slot checklist (green-eyes style)
+  h+=`<div class="section-h"><h2>סבב בדיקה יומי</h2></div><div class="grid">`;
+  fr.slots.forEach(slot=>{ const v=vs.find(x=>x.slot===slot);
+    if(v){ h+=vehicleCard(v); }
+    else h+=`<div class="vcard s-wait" style="opacity:.85"><div class="vtop"><div class="vtitle"><b>${esc(slot)}</b><div class="vtype">אין רכב משובץ</div></div><span class="pill wait">ריק</span></div>
+      <div class="vacts" style="grid-template-columns:1fr"><button class="b-edit" onclick="openIntake('${cid}','${esc(slot)}')">➕ שבץ רכב</button></div></div>`; });
+  h+=`</div>`;
+  $('#screen').innerHTML=h;
+}
+
+/* ===== DRIVERS ===== */
+let drvSearch='';
+function renderDrivers(){
+  const q=drvSearch.trim(), dg=q.replace(/\D/g,'');
+  let list=DRIVERS.filter(d=>{ if(!q) return true;
+    return (d.name||'').includes(q)||(dg&&(d.pn.includes(dg)||(d.phone||'').replace(/\D/g,'').includes(dg))); });
+  if(sess.role==='commander'){ const c={A:'א',C:'ג',D:'ד'}[sess.scope]; list=list.filter(d=>d.company===c); }
+  let h=`<div class="search"><span class="ic">🔍</span><input placeholder="חיפוש נהג — שם / מ״א / טלפון" value="${esc(drvSearch)}" oninput="drvSearch=this.value;renderDrivers();focusSearch()"></div>`;
+  h+=`<div class="section-h"><h2>נהגים <span style="color:var(--mut);font-weight:600;font-size:13px">(${list.length})</span></h2></div>`;
+  h+=list.slice(0,120).map(driverCard).join('')||emptyBox('לא נמצאו נהגים');
+  if(list.length>120) h+=`<div class="empty">מוצגים 120 ראשונים — צמצם בחיפוש</div>`;
+  $('#screen').innerHTML=h;
+}
+function focusSearch(){ const i=$('#screen .search input'); if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);} }
+function driverCard(d){
+  const showPhone = sess.role!=='commander';
+  const phone=(d.phone||'').replace(/\D/g,'');
+  return `<div class="dcard"><div class="dtop"><div><div class="dname">${esc(d.name||'—')}</div>
+    <div class="dsub">${esc(d.company?('פלוגה '+d.company):'')}${d.dept?' · '+esc(d.dept):''}${d.role?' · '+esc(d.role):''}${d.license?' · רישיון '+esc(d.license):''}</div></div>
+    ${showPhone?`<span class="pill wait tnum">מ״א ${esc(d.pn)}</span>`:''}</div>
+    ${d.permits&&d.permits.length?`<div class="permits">${d.permits.map(p=>`<span class="perm">${esc(p)}</span>`).join('')}</div>`:''}
+    ${showPhone&&phone?`<div class="phone-line"><a class="mini" href="tel:${phone}">📞</a>
+      <a class="mini wa" href="https://wa.me/972${phone.replace(/^0/,'')}" target="_blank" rel="noopener">🟢</a>
+      <span style="color:var(--ink2);font-size:13px" class="tnum">${esc(d.phone)}</span></div>`:''}
+  </div>`;
+}
+
+/* ===== FUEL / תזקיקים ===== */
+function renderFuel(){
+  const fuelColor=p=>p<25?'var(--bad)':p<50?'var(--warn)':'var(--ok)';
+  let h=`<div class="section-h"><h2>⛽ תזקיקים לפי בסיס</h2></div>`;
+  h+=`<div class="kpis"><div class="kpi acc"><div class="n">${S.fuel.length}</div><div class="l">בסיסים</div></div>
+    <div class="kpi alert"><div class="n tnum">${S.fuel.reduce((a,b)=>a+b.items.filter(i=>i.pct<25).length,0)}</div><div class="l">מלאי קריטי</div></div>
+    <div class="kpi"><div class="n tnum">${S.cards.length}</div><div class="l">כרטיסי דלק</div></div>
+    <div class="kpi alert"><div class="n tnum">${S.cards.filter(c=>c.status==='חסום').length}</div><div class="l">כרטיסים חסומים</div></div></div>`;
+  S.fuel.forEach((b,bi)=>{ h+=`<div class="fuel-base"><h3>📍 ${esc(b.base)}</h3>`;
+    b.items.forEach((it,ii)=>{ h+=`<div class="frow"><div class="fk">${esc(it.k)}</div>
+      <div class="ftrk"><div class="ffill" style="width:${it.pct}%;background:${fuelColor(it.pct)}"></div></div>
+      <div class="fv tnum" style="color:${fuelColor(it.pct)}">${it.pct}%</div></div>`; });
+    h+=`</div>`; });
+  h+=`<div class="section-h"><h2>💳 כרטיסי דלק</h2><button class="chip" aria-pressed="false" onclick="alert('הוספת כרטיס — בגרסה המחוברת')">➕ כרטיס</button></div>`;
+  h+=`<div class="cardlist">${S.cards.map(c=>`<div class="fcard"><div class="fic">💳</div>
+    <div><b>${esc(c.id)}</b><small>${esc(c.holder)} · ${esc(c.type)} · פעולה אחרונה ${esc(c.last)}</small></div>
+    <span class="pill ${c.status==='פעיל'?'ok':'bad'} st">${esc(c.status)}</span></div>`).join('')}</div>`;
+  $('#screen').innerHTML=h;
+}
+
+/* ===== ACTIONS ===== */
+function canEdit(){ return sess.role!=='commander'; }
+function guard(){ if(!canEdit()){ toast('מצב צפייה בלבד'); return false;} return true; }
+function hideCard(id){ if(!guard())return; const v=S.vehicles.find(x=>x.id===id);
+  if(confirm(`להסיר את הקובייה של ${fullNum(v)} מהתצוגה?\nהרכב וכל נתוניו יישארו במאגר.`)){ v.hiddenCard=true; save(); toast('הקובייה הוסרה'); render(); } }
+function markOk(id){ if(!guard())return; const v=S.vehicles.find(x=>x.id===id); v.status='כשיר'; v.lastCheck=new Date().toISOString().slice(0,10); save(); toast('✔ סומן תקין'); render(); }
+function openEdit(id){ const v=S.vehicles.find(x=>x.id===id);
+  openSheet('עריכת '+fullNum(v),`
+    <div class="field"><label>סטטוס</label><select id="e_st">${['כשיר','במשימה','תקול','בטיפול','מושבת','ממתין לשיבוץ'].map(s=>`<option ${v.status===s?'selected':''}>${s}</option>`).join('')}</select></div>
+    <div class="field"><label>מפקד / אחראי (טקסט חופשי)</label><input id="e_cmd" value="${esc(v.commander||'')}"></div>
+    <div class="field"><label>🎬 סרטון מסירה</label><select id="e_vid"><option value="">— לא הוגדר —</option><option ${v.deliveryVideo==='צולם'?'selected':''}>צולם</option><option ${v.deliveryVideo==='לא צולם'?'selected':''}>לא צולם</option></select></div>
+    <div class="field"><label>הערות</label><textarea id="e_notes" rows="2">${esc(v.notes||'')}</textarea></div>`,
+    ()=>{ if(!guard())return; v.status=$('#e_st').value; v.commander=$('#e_cmd').value.trim(); v.deliveryVideo=$('#e_vid').value; v.notes=$('#e_notes').value.trim(); save(); toast('נשמר'); closeSheet(); render(); },
+    v.status==='מושבת'?null:{label:'⛔ השבת רכב',fn:()=>{ if(!guard())return; v.status='מושבת'; save(); closeSheet(); toast('הרכב הושבת'); render(); }});
+}
+function openTransfer(id){ const v=S.vehicles.find(x=>x.id===id);
+  openSheet('העברת '+fullNum(v)+' בין מסגרות',`
+    <div class="field"><label>מסגרת יעד</label><select id="t_fr">${FR.map(f=>`<option value="${f.id}" ${v.unit===f.id?'selected':''}>${f.name}</option>`).join('')}</select></div>
+    <div class="field"><label>משימה / slot</label><input id="t_slot" value="${esc(v.slot||'')}" placeholder="למשל סיור 1"></div>
+    <div style="font-size:12px;color:var(--ink2)">מעביר מסגרת · משימה · והשיוך לרכב.</div>`,
+    ()=>{ if(!guard())return; v.unit=$('#t_fr').value; v.slot=$('#t_slot').value.trim(); save(); toast('✔ הרכב הועבר'); closeSheet(); render(); });
+}
+function openIntake(unit,slot){ if(!guard())return;
+  openSheet('➕ קליטת רכב חדש',`
+    <div class="srow" style="margin-top:0"><div class="field"><label>סוג מספר</label><select id="i_pref"><option>צ-</option><option>ל.ז-</option></select></div>
+      <div class="field"><label>מספר רכב</label><input id="i_num" inputmode="numeric" placeholder="591220"></div></div>
+    <div class="field"><label>סוג רכב</label><input id="i_type" placeholder="טריטון / דויד / אמבולנס..."></div>
+    <div class="field"><label>מסגרת</label><select id="i_fr">${FR.map(f=>`<option value="${f.id}" ${f.id===unit?'selected':''}>${f.name}</option>`).join('')}</select></div>
+    <div class="field"><label>משימה / slot</label><input id="i_slot" value="${slot?esc(slot):''}" placeholder="סיור 1 / כ״כ..."></div>
+    <div class="field"><label>מפקד / אחראי</label><input id="i_cmd" placeholder="שם (חופשי)"></div>`,
+    ()=>{ const num=($('#i_num').value||'').trim(); if(!num){toast('הזן מספר רכב');return;}
+      const id=Math.max(0,...S.vehicles.map(x=>x.id))+1; const pref=$('#i_pref').value;
+      S.vehicles.push({id,prefix:pref,number:num,type:$('#i_type').value.trim()||'לא הוגדר',unit:$('#i_fr').value,slot:$('#i_slot').value.trim(),
+        commander:$('#i_cmd').value.trim(),status:'ממתין לשיבוץ',drivers:[],notes:'',deliveryVideo:'',
+        ...(pref.includes('ל')?{testExpiry:''}:{lastService:new Date().toISOString().slice(0,10),frequency:14})});
+      save(); toast('✔ הרכב נקלט'); closeSheet(); view='fleet'; go('fleet'); });
+}
+function shareCommander(){ openSheet('📲 שליחת דשבורד למפקד',`<div class="field"><label>מספר טלפון</label><input id="wa_p" inputmode="tel" placeholder="05..."></div>
+  <div style="font-size:12px;color:var(--ink2)">יישלח קישור לצפייה בלבד (READ ONLY) — יופעל במלואו בגרסה המחוברת.</div>`,
+  ()=>{ const p=($('#wa_p').value||'').replace(/\D/g,''); if(!p){toast('הזן טלפון');return;}
+    const msg=encodeURIComponent('מצורף קישור לתמונת מצב צי הרכב הגדודי:\n[URL יתווסף בגרסה המחוברת]');
+    window.open('https://wa.me/972'+p.replace(/^0/,'')+'?text='+msg,'_blank'); closeSheet(); }); }
+function shareSergeant(){ openSheet('🔐 שליחת מערכת לסמל רכב',`<div class="field"><label>מספר טלפון</label><input id="wa_s" inputmode="tel" placeholder="05..."></div>
+  <div style="font-size:12px;color:var(--ink2)">גישת עריכה מלאה · דורש התחברות אמיתית (מ״א+קוד), לא פרמטר URL.</div>`,
+  ()=>{ const p=($('#wa_s').value||'').replace(/\D/g,''); if(!p){toast('הזן טלפון');return;}
+    window.open('https://wa.me/972'+p.replace(/^0/,'')+'?text='+encodeURIComponent('הזמנה למערכת סמל רכב — התחבר במ״א+קוד:\n[URL]'),'_blank'); closeSheet(); }); }
+
+/* ===== modal + toast ===== */
+function openSheet(title,body,onSave,extra){
+  $('#sheet').innerHTML=`<h3>${esc(title)}</h3>${body}
+    <div class="srow"><button class="btn primary" id="_sv">שמור</button><button class="btn ghost" onclick="closeSheet()">ביטול</button></div>
+    ${extra?`<button class="btn" style="width:100%;margin-top:8px;background:var(--badbg);color:var(--bad)" id="_ex">${esc(extra.label)}</button>`:''}`;
+  $('#modal').classList.add('show'); if(onSave)$('#_sv').onclick=onSave; if(extra)$('#_ex').onclick=extra.fn;
+}
+function closeSheet(){ $('#modal').classList.remove('show'); }
+$('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeSheet(); });
+let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createElement('div'); t.id='toast';
+  t.style.cssText='position:fixed;bottom:92px;left:50%;transform:translateX(-50%);z-index:99999;background:#14231b;color:#fff;padding:11px 18px;border-radius:999px;font-weight:700;font-size:13px;box-shadow:0 10px 30px -8px #0007;opacity:0;transition:opacity .2s'; document.body.appendChild(t);}
+  t.textContent=m; t.style.opacity=1; clearTimeout(toastT); toastT=setTimeout(()=>t.style.opacity=0,1800); }
+
+// boot
+$('#lgPn').addEventListener('keydown',e=>{if(e.key==='Enter')$('#lgPin').focus();});
+$('#lgPin').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+</script>

@@ -188,6 +188,15 @@ service cloud.firestore {
       allow delete: if ammoAdmin();
     }
 
+    // ═══ Gadud 1894 — fleet management (vehicles / fuel / fuel-cards) ═══
+    // Separate app, separate collections. Operational data is read/written by any
+    // signed-in (anonymous) session for now; role-based hardening (commander
+    // read-only, per-company scope) lands next. The driver roster is a login
+    // lookup (a single doc by personal number); listing and writing it are
+    // reserved for the break-glass admin who seeds it.
+    match /fleet_data/{doc}   { allow read, write: if signedIn(); }
+    match /fleet_people/{pn}  { allow get: if signedIn(); allow list, write: if breakGlass(); }
+
     // Anything not explicitly matched above — denied.
     match /{document=**}     { allow read, write: if false; }
   }

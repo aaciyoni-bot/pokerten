@@ -239,6 +239,12 @@ service cloud.firestore {
     match /fleet_data/{doc}   { allow read, write: if signedIn(); }
     match /fleet_people/{pn}  { allow get: if signedIn(); allow list, write: if breakGlass(); }
 
+    // ═══ Gadud 1894 — unified shell / דוח 1 (daily presence) ═══
+    // Presence roster (who is mobilized) + per-date reports. Read/write by any
+    // signed-in (anonymous) session for now; role/company hardening lands with
+    // the unified-shell rework, alongside fleet_.
+    match /d1_data/{doc}      { allow read, write: if signedIn(); }
+
     // Anything not explicitly matched above — denied.
     match /{document=**}     { allow read, write: if false; }
   }

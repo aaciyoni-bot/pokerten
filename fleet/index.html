@@ -271,8 +271,8 @@ header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--
   <header>
     <div class="head">
       <button class="menu-btn" onclick="toggleMenu(event)">☰</button>
-      <div class="logo"><svg class="veh" viewBox="0 0 84 60" aria-hidden="true"><g fill="#fff"><path d="M10 34 L20 20 H40 L47 34 Z"/><rect x="4" y="33" width="74" height="13" rx="3.5"/><rect x="48" y="26" width="30" height="8" rx="2.5"/></g><circle cx="24" cy="47" r="9" fill="#155e3a" stroke="#fff" stroke-width="3"/><circle cx="60" cy="47" r="9" fill="#155e3a" stroke="#fff" stroke-width="3"/><path d="M72 26 V14" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></div>
-      <div>
+      <div class="logo" style="cursor:pointer" onclick="homeView()" title="מסך ראשי"><svg class="veh" viewBox="0 0 84 60" aria-hidden="true"><g fill="#fff"><path d="M10 34 L20 20 H40 L47 34 Z"/><rect x="4" y="33" width="74" height="13" rx="3.5"/><rect x="48" y="26" width="30" height="8" rx="2.5"/></g><circle cx="24" cy="47" r="9" fill="#155e3a" stroke="#fff" stroke-width="3"/><circle cx="60" cy="47" r="9" fill="#155e3a" stroke="#fff" stroke-width="3"/><path d="M72 26 V14" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></div>
+      <div style="cursor:pointer" onclick="homeView()">
         <h1 id="hdrTitle">מערכת קצין רכב</h1>
         <div class="sub" id="hdrSub">שליטה מלאה בצי הרכבים</div>
       </div>
@@ -281,6 +281,8 @@ header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--
   </header>
 
   <div id="menu" class="menu-pop">
+    <button onclick="closeMenu();backToUnified()">🏠 <span>חזרה למערכת 1894</span></button>
+    <div class="sep"></div>
     <button onclick="closeMenu();go('fleet')">🚗 <span>רכבים</span></button>
     <button onclick="closeMenu();go('drivers')">👤 <span>נהגים</span></button>
     <button onclick="closeMenu();go('fuel')">⛽ <span>תזקיקים וכרטיסי דלק</span></button>
@@ -377,19 +379,23 @@ function doLogin(){
   else role='viewer';
   startSession(role, d.name, sc);
 }
-function startSession(role,name,scope){ sess={role,name,scope}; $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+const SS_F='fleet_sess', UNIFIED_URL='https://gdud-1894.vercel.app';
+function startSession(role,name,scope){ sess={role,name,scope}; try{sessionStorage.setItem(SS_F,JSON.stringify(sess));}catch(e){}
+  $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
   applyRole();
   const dl=new URLSearchParams(location.search).get('company');
   if(dl&&FRBY[dl]&&role!=='commander'){ compSel=dl; go('company'); }
   else go(role==='commander'?'company':'fleet');
   if(name) setTimeout(()=>toast('👋 ברוך הבא, '+name),350); }
+function homeView(){ go(sess.role==='commander'?'company':'fleet'); }
+function backToUnified(){ location.href = UNIFIED_URL + (window.__ssoPn?('?sso='+encodeURIComponent(window.__ssoPn)):''); }
 function applyRole(){ $('#hdrTitle').textContent=ROLE_TITLE[sess.role];
   $('#hdrSub').textContent = sess.name ? ('שלום, '+firstName(sess.name)+' · '+ROLE_SUB[sess.role]) : ROLE_SUB[sess.role];
   $('#roleChip').textContent=ROLE_CHIP[sess.role]+(sess.scope?' · '+FRBY[sess.scope].name:''); buildNav(); }
 function switchRole(){ const order=['officer','sergeant','commander']; let i=order.indexOf(sess.role);
   sess.role=order[(i+1)%3]; sess.scope = sess.role==='commander'?'A':null; sess.name = ROLE_CHIP[sess.role];
   applyRole(); go(sess.role==='commander'?'company':'fleet'); }
-function logout(){ location.reload(); }
+function logout(){ try{sessionStorage.removeItem(SS_F);}catch(e){} location.href=location.pathname; }
 
 // ── nav ──
 let view='fleet';
@@ -763,15 +769,18 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 // boot
 $('#lgPn').addEventListener('keydown',e=>{if(e.key==='Enter')$('#lgPin').focus();});
 $('#lgPin').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
-// SSO — arrive already-authenticated from the unified 1894 shell (no re-entry of the code)
-(function(){ const raw=new URLSearchParams(location.search).get('sso'); if(!raw) return;
-  const pn=String(raw).replace(/\D/g,'');
-  if(pn==='1894'||pn==='0000'){ startSession('officer','קצין הרכב',null); return; }
-  const d=DRIVERS.find(x=>x.pn===pn); if(!d) return; // unknown → fall back to normal login
-  let role='viewer',sc=null;
-  if(d.role==='קצין רכב') role='officer';
-  else if(d.role==='סמל רכב') role='sergeant';
-  else if(['א','ג','ד'].includes(d.company)){ role='commander'; sc={'א':'A','ג':'C','ד':'D'}[d.company]; }
-  startSession(role,d.name,sc);
+// SSO / resume — arrive already-authenticated from the unified 1894 shell, or resume on return
+(function(){ const raw=new URLSearchParams(location.search).get('sso');
+  if(raw){ const pn=String(raw).replace(/\D/g,''); window.__ssoPn=pn;
+    if(pn==='1894'||pn==='0000'){ startSession('officer','קצין הרכב',null); return; }
+    const d=DRIVERS.find(x=>x.pn===pn);
+    if(d){ let role='viewer',sc=null;
+      if(d.role==='קצין רכב') role='officer';
+      else if(d.role==='סמל רכב') role='sergeant';
+      else if(['א','ג','ד'].includes(d.company)){ role='commander'; sc={'א':'A','ג':'C','ד':'D'}[d.company]; }
+      startSession(role,d.name,sc); return; } }
+  // no SSO param → resume a live session if one exists (survives leaving to the shell and back)
+  let s=null; try{s=JSON.parse(sessionStorage.getItem(SS_F));}catch(e){}
+  if(s&&s.role) startSession(s.role,s.name,s.scope);
 })();
 </script>

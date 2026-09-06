@@ -183,8 +183,8 @@ header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--
 <!-- APP -->
 <div id="app" class="hidden">
   <header><div class="head">
-    <div class="logo">1894</div>
-    <div><h1 id="hdrTitle">גדוד 1894</h1><div class="sub" id="hdrSub">מערכת מאוחדת</div></div>
+    <div class="logo" style="cursor:pointer" onclick="goHome()" title="מסך ראשי">1894</div>
+    <div style="cursor:pointer" onclick="goHome()"><h1 id="hdrTitle">גדוד 1894</h1><div class="sub" id="hdrSub">מערכת מאוחדת</div></div>
     <div class="role"><span id="syncDot">○ מקומי</span><span class="rolechip" id="roleChip">—</span></div>
   </div></header>
   <div class="wrap" id="screen"></div>
@@ -217,7 +217,10 @@ const LS='gdud1894_v1';
 const ROSTER=SEED_DRIVERS, FR=SEED_FR, FRBY={}; FR.forEach(f=>FRBY[f.id]=f);
 const CO_LETTER={A:'א',C:'ג',D:'ד'}; // participating companies
 const CO_LETTER_INV={'א':'A','ג':'C','ד':'D'};
-function isCommander(d){ return /מ"פ|ממ"פ|סמ"פ|מ״פ|ממ״פ|סמ״פ/.test(d.role||''); }
+// full-access users (see everything) — the vehicle officer plus named battalion staff
+const FULL_ACCESS=['6124233','6962697','6859461']; // גיל כהן (קצין רכב), יהונתן פרידמן, גדעון בר זכאי
+// company commanders (see their company only) — actual מ״פ/סמ״פ/ממ״פ, not command-group (חפק) members
+function isCommander(d){ const r=d.role||''; if(/חפק/.test(r)) return false; return /מ"פ|ממ"פ|סמ"פ|מ״פ|ממ״פ|סמ״פ/.test(r); }
 
 // presence statuses (from DOH1 model)
 const D1ST=[
@@ -277,17 +280,21 @@ function doLogin(){
   if(!d){ $('#lgErr').textContent='מספר אישי לא נמצא'; return; }
   if(pin!==d.pin){ $('#lgErr').textContent='קוד שגוי (4 ספרות אחרונות)'; return; }
   let role='viewer',sc=null;
-  if(d.role==='קצין רכב') role='officer';
+  if(d.role==='קצין רכב'||FULL_ACCESS.indexOf(d.pn)>=0) role='officer';
   else if(isCommander(d)&&CO_LETTER_INV[d.company]){ role='commander'; sc=CO_LETTER_INV[d.company]; }
-  else role='viewer'; // regular soldier — personal view only
+  else role='viewer'; // regular soldier — sees only himself
   start(role,d.name,sc,d.pn);
 }
-function start(role,name,scope,pn){ sess={role,name,scope,pn:pn||''}; $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#nav').classList.remove('hidden');
+const SS='gd1894_sess';
+function persist(){ try{sessionStorage.setItem(SS,JSON.stringify(sess));}catch(e){} }
+function start(role,name,scope,pn){ sess={role,name,scope,pn:pn||''}; persist(); $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#nav').classList.remove('hidden');
   applyRole(); go('home'); if(name) setTimeout(()=>toast('👋 ברוך הבא, '+firstName(name)),350); }
+function resume(s){ sess={role:s.role,name:s.name,scope:s.scope,pn:s.pn||''}; $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#nav').classList.remove('hidden'); applyRole(); go('home'); }
+function goHome(){ if(!$('#app').classList.contains('hidden')) go('home'); }
 function applyRole(){ $('#roleChip').textContent=ROLE_CHIP[sess.role]+(sess.scope?' · '+FRBY[sess.scope].name:'');
   $('#hdrSub').textContent = sess.name?('שלום, '+firstName(sess.name)):'מערכת מאוחדת'; buildNav(); }
 function canEdit(){ return sess.role==='officer'||sess.role==='sergeant'||sess.role==='commander'; }
-function logout(){ location.reload(); }
+function logout(){ try{sessionStorage.removeItem(SS);}catch(e){} location.href=location.pathname; }
 
 // nav
 let view='home';
@@ -297,7 +304,7 @@ function buildNav(){ const items = sess.role==='viewer'
   $('#nav').style.gridTemplateColumns='repeat('+items.length+',1fr)';
   $('#nav').innerHTML=items.map(([v,ic,l])=>`<button data-v="${v}" onclick="go('${v}')"><span class="bi">${ic}</span>${l}</button>`).join(''); }
 function ssoUrl(base){ return base + (sess.pn?('?sso='+encodeURIComponent(sess.pn)):''); }
-function go(v){ if(v==='veh'){ window.open(ssoUrl(EXT.veh),'_blank'); return; } if(v==='green'){ window.open(ssoUrl(EXT.green),'_blank'); return; }
+function go(v){ if(v==='veh'){ location.href=ssoUrl(EXT.veh); return; } if(v==='green'){ location.href=ssoUrl(EXT.green); return; }
   view=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.v===v)); window.scrollTo(0,0); render(); }
 function render(){ ({home:renderHome,me:renderMe,doh1:renderDoh1,plan:renderPlan})[view]?.(); }
 
@@ -605,4 +612,16 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){t=document.createElemen
   t.textContent=m;t.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>t.style.opacity=0,1800); }
 $('#lgPn').addEventListener('keydown',e=>{if(e.key==='Enter')$('#lgPin').focus();});
 $('#lgPin').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+// boot — resume a live session (survives leaving to a module and coming back), or SSO
+(function(){
+  const ssoPn=new URLSearchParams(location.search).get('sso');
+  if(ssoPn){ const pn=String(ssoPn).replace(/\D/g,'');
+    if(pn==='1894'||pn==='0000'){ start('officer','קצין הגדוד',null,pn); return; }
+    const d=ROSTER.find(x=>x.pn===pn); if(d){ let role='viewer',sc=null;
+      if(d.role==='קצין רכב'||FULL_ACCESS.indexOf(d.pn)>=0) role='officer';
+      else if(isCommander(d)&&CO_LETTER_INV[d.company]){ role='commander'; sc=CO_LETTER_INV[d.company]; }
+      start(role,d.name,sc,d.pn); return; } }
+  let s=null; try{s=JSON.parse(sessionStorage.getItem(SS));}catch(e){}
+  if(s&&s.role) resume(s);
+})();
 </script>

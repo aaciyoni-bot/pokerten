@@ -216,6 +216,8 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 const LS='gdud1894_v1';
 const ROSTER=SEED_DRIVERS, FR=SEED_FR, FRBY={}; FR.forEach(f=>FRBY[f.id]=f);
 const CO_LETTER={A:'א',C:'ג',D:'ד'}; // participating companies
+const CO_LETTER_INV={'א':'A','ג':'C','ד':'D'};
+function isCommander(d){ return /מ"פ|ממ"פ|סמ"פ|מ״פ|ממ״פ|סמ״פ/.test(d.role||''); }
 
 // presence statuses (from DOH1 model)
 const D1ST=[
@@ -237,7 +239,7 @@ const todayStr=()=>{const d=new Date();d.setHours(0,0,0,0);return d.toISOString(
 // state
 let S=load();
 function load(){ try{const r=JSON.parse(localStorage.getItem(LS)); if(r&&r.active){ r.quals=r.quals||{}; r.missions=r.missions||{}; r.plan=r.plan||{}; return r;}}catch(e){}
-  return {active:[], reports:{}, quals:{}, missions:{}, plan:{}}; }
+  return {active:ROSTER.filter(d=>d.pn).map(d=>d.pn), reports:{}, quals:{}, missions:{}, plan:{}}; }
   // active=[pn]; reports={date:{pn:status}}; quals={pn:[qualId]}; missions={fid:[{id,name,req:[{q,n}],size}]}; plan={date:{fid:{mid:[pn]}}}
 let FB=null,fbOn=false;
 function save(){ localStorage.setItem(LS,JSON.stringify(S)); pushRemote(); }
@@ -276,8 +278,8 @@ function doLogin(){
   if(pin!==d.pin){ $('#lgErr').textContent='קוד שגוי (4 ספרות אחרונות)'; return; }
   let role='viewer',sc=null;
   if(d.role==='קצין רכב') role='officer';
-  else if(['א','ג','ד'].includes(d.company)){ role='commander'; sc={'א':'A','ג':'C','ד':'D'}[d.company]; }
-  else role='viewer';
+  else if(isCommander(d)&&CO_LETTER_INV[d.company]){ role='commander'; sc=CO_LETTER_INV[d.company]; }
+  else role='viewer'; // regular soldier — personal view only
   start(role,d.name,sc,d.pn);
 }
 function start(role,name,scope,pn){ sess={role,name,scope,pn:pn||''}; $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#nav').classList.remove('hidden');
@@ -289,12 +291,45 @@ function logout(){ location.reload(); }
 
 // nav
 let view='home';
-function buildNav(){ const items=[['home','🏠','בית'],['doh1','📋','דוח 1'],['plan','🧩','שיבוץ'],['veh','🚗','רכב'],['green','🟢','ירוק']];
+function buildNav(){ const items = sess.role==='viewer'
+    ? [['home','🏠','בית'],['veh','🚗','רכב'],['green','🟢','ירוק']]
+    : [['home','🏠','בית'],['doh1','📋','דוח 1'],['plan','🧩','שיבוץ'],['veh','🚗','רכב'],['green','🟢','ירוק']];
+  $('#nav').style.gridTemplateColumns='repeat('+items.length+',1fr)';
   $('#nav').innerHTML=items.map(([v,ic,l])=>`<button data-v="${v}" onclick="go('${v}')"><span class="bi">${ic}</span>${l}</button>`).join(''); }
 function ssoUrl(base){ return base + (sess.pn?('?sso='+encodeURIComponent(sess.pn)):''); }
 function go(v){ if(v==='veh'){ window.open(ssoUrl(EXT.veh),'_blank'); return; } if(v==='green'){ window.open(ssoUrl(EXT.green),'_blank'); return; }
   view=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.v===v)); window.scrollTo(0,0); render(); }
-function render(){ ({home:renderHome,doh1:renderDoh1,plan:renderPlan})[view]?.(); }
+function render(){ ({home:renderHome,me:renderMe,doh1:renderDoh1,plan:renderPlan})[view]?.(); }
+
+/* ===== ME — personal soldier view ===== */
+function renderMe(){
+  const pn=sess.pn, d=ROSTER.find(x=>x.pn===pn);
+  if(!d){ $('#screen').innerHTML=`<div class="section-h"><h2>🪖 הנתונים שלי</h2></div><div class="empty">אין כרטיס אישי למשתמש זה (כניסת מנהל).</div>`; return; }
+  const st=STBY[statusOf(pn)]||STBY['לא דווח']; const qs=[...qualsOf(pn)];
+  let assign=null; const day=S.plan[d1date]||{};
+  Object.keys(day).forEach(fid=>{ const mm=day[fid]||{}; Object.keys(mm).forEach(mid=>{ if((mm[mid]||[]).indexOf(pn)>=0){ const m=(missionsFor(fid)||[]).find(x=>x.id===mid); assign={fw:FRBY[fid]?FRBY[fid].name:fid,mission:m?m.name:mid}; } }); });
+  const phone=(d.phone||'').replace(/\D/g,'');
+  let h=`<div class="section-h"><h2>🪖 הנתונים שלי</h2></div>`;
+  h+=`<div class="card"><div style="font-size:21px;font-weight:900">${esc(d.name)}</div>
+    <div style="color:var(--ink2);font-size:13px;margin-top:3px">${esc(d.company?('פלוגה '+d.company):'')}${d.dept?' · '+esc(d.dept):''}${d.role?' · '+esc(d.role):''}</div>
+    <div style="color:var(--mut);font-size:12px;margin-top:2px" class="tnum">מ״א ${esc(d.pn)}</div></div>`;
+  h+=`<div class="card"><div class="section-h" style="margin:0 0 9px"><h2>נוכחות היום · ${fmtHe(d1date)}</h2></div>
+    <span class="stchip" style="background:${st.bg};color:${st.c};font-size:15px;padding:12px 17px">${st.e} ${esc(st.v)}</span></div>`;
+  h+=`<div class="card"><div class="section-h" style="margin:0 0 9px"><h2>כשירויות</h2></div>
+    <div class="stwrap">${qs.length?qs.map(q=>`<span class="stpill" style="background:var(--brand-l);color:var(--brand-d)">${QBY[q]?QBY[q].e:''} ${esc(QBY[q]?QBY[q].name:q)}</span>`).join(''):'<span style="color:var(--mut)">טרם נרשמו כשירויות</span>'}</div></div>`;
+  if(assign) h+=`<div class="card"><div class="section-h" style="margin:0 0 9px"><h2>שיבוץ להיום</h2></div><b style="font-size:15.5px">${esc(assign.mission)}</b> <span style="color:var(--ink2)">· ${esc(assign.fw)}</span></div>`;
+  h+=`<div class="card"><div class="section-h" style="margin:0 0 9px"><h2>נהיגה ורישוי</h2></div>
+    <div class="stwrap">
+      ${d.license?`<span class="stpill" style="background:var(--panel2);color:var(--ink2)">🪪 רישיון ${esc(d.license)}</span>`:''}
+      <span class="stpill" style="background:var(--panel2);color:var(--ink2)">🚛 נגררת: ${esc(d.trailer||'—')}</span>
+      ${(d.permits||[]).map(p=>`<span class="stpill" style="background:var(--brand-l);color:var(--brand-d)">🔑 ${esc(p)}</span>`).join('')}
+    </div>
+    ${phone?`<div style="margin-top:11px"><a class="act-btn" href="tel:${phone}">📞 ${esc(d.phone)}</a></div>`:''}</div>`;
+  h+=`<div class="section-h"><h2>מודולים</h2></div><div class="tiles">
+    <button class="tile veh" onclick="go('veh')"><div class="ic">🚗</div><div class="tt"><b>ניהול צי רכב</b><small>כרטיס הנהג והרכבים שלי</small></div><span class="ext">מודול</span></button>
+    <button class="tile green" onclick="go('green')"><div class="ic">🟢</div><div class="tt"><b>ירוק בעיניים</b><small>תחמושת וצל״מ</small></div><span class="ext">מודול</span></button></div>`;
+  $('#screen').innerHTML=h;
+}
 
 /* ===== scope helpers ===== */
 function scopedRoster(){ let l=ROSTER.filter(d=>d.pn);
@@ -305,6 +340,7 @@ function statusOf(pn){ return (S.reports[d1date]||{})[pn]||'לא דווח'; }
 
 /* ===== HOME / hub ===== */
 function renderHome(){
+  if(sess.role==='viewer') return renderMe();
   const act=activeRoster(); const present=act.filter(d=>statusOf(d.pn)==='נוכח').length;
   const pct=act.length?Math.round(present/act.length*100):0;
   const col=pct>=85?'var(--ok)':pct>=60?'var(--warn)':'var(--bad)';
@@ -313,6 +349,7 @@ function renderHome(){
     <div class="gbar"><div class="gfill" style="width:${pct}%;background:${col}"></div></div>
     <div class="gsub">${present} נוכחים מתוך ${act.length} מגויסים${act.length?'':' · טרם הוגדרה מצבה'}</div></div>`;
   h+=`<div class="section-h"><h2>מודולים</h2></div><div class="tiles">
+    ${sess.pn&&ROSTER.some(x=>x.pn===sess.pn)?`<button class="tile" onclick="go('me')"><div class="ic" style="background:linear-gradient(140deg,#334155,#64748b)">🪖</div><div class="tt"><b>הנתונים שלי</b><small>נוכחות · כשירויות · רישוי</small></div><span class="go">›</span></button>`:''}
     <button class="tile d1" onclick="go('doh1')"><div class="ic">📋</div><div class="tt"><b>דוח 1 — נוכחות</b><small>מצבה יומית · דיווח וייצוא</small></div><span class="go">›</span></button>
     <button class="tile d1" style="--x:0" onclick="go('plan')"><div class="ic" style="background:linear-gradient(140deg,#7c3aed,#a78bfa)">🧩</div><div class="tt"><b>שיבוץ ואיוש</b><small>משימות · כשירויות · זיהוי פערים</small></div><span class="go">›</span></button>
     <button class="tile veh" onclick="go('veh')"><div class="ic">🚗</div><div class="tt"><b>ניהול צי רכב</b><small>רכבים · נהגים · תזקיקים</small></div><span class="ext">מודול</span></button>

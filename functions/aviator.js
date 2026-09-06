@@ -316,7 +316,11 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
       throw new HttpsError("failed-precondition", "אין הימור פעיל");
     }
     const amount = bSnap.data().amount;
-    const payMult = seen >= 1.01 ? Math.min(mult, round2(seen)) : mult;
+    /* True WYSIWYG: pay exactly the number the screen showed. The only cap
+       is the crash point — you can't cash a value the plane never reached.
+       (Play money; every press is audited in aviatorTiming.) */
+    const seenR = round2(seen);
+    const payMult = (seenR >= 1.01 && seenR < e.crashPoint) ? seenR : mult;
     const win = Math.floor(amount * payMult);
     tx.create(adb.collection("aviatorTiming").doc(),
       {...timing, type: "cashout", paid: payMult});

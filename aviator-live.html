@@ -926,12 +926,13 @@ function noteServerNow(sn, rtt){
   if (rtt == null) rtt = 800;
   if (coAt && rtt > coBestRtt * 1.4) return;      // noisier than what we have
   coBestRtt = Math.min(coBestRtt, rtt);
-  /* sn is stamped just before the reply leaves the server, so sn - now is
-     off by only the downlink leg. NOT rtt/2: server processing (cold
-     starts, transactions) inflates rtt asymmetrically and would push the
-     clock AHEAD of the server — the one direction that lies to the
-     player. This way the shown multiplier can only lag, never lead. */
-  clockOffset = sn - now;
+  /* sn is stamped when the reply leaves the server; add back half the
+     round-trip so the display sits on the server's clock in real time,
+     not a full downlink-leg behind it. Payment is exact-WYSIWYG on the
+     server now, so a small lead is harmless — you're paid the number you
+     saw regardless. Cap the correction so a cold-start outlier can't
+     fling the clock far ahead. */
+  clockOffset = sn - now + Math.min(rtt / 2, 300);
   coAt = now;
 }
 const eNow = () => Date.now() + clockOffset;
@@ -2073,10 +2074,9 @@ function frame(){
     if (el >= S.waitMs + 150) maybeTick();
 
   } else if (S.phase === "flying"){
-    /* render 150ms behind the server clock: what you see is never MORE
-       than what a press would get (the server also forgives 250ms of
-       network on top), so the shown number is one you can actually take */
-    S.mult = clamp(multAt(el - 150), 1, 5000);
+    /* real-time on the server's clock; payment is exact-WYSIWYG so the
+       number on screen is exactly what a press pays */
+    S.mult = clamp(multAt(el), 1, 5000);
     const mEl = $("#mult");
     mEl.textContent = S.mult.toFixed(2) + "x";
     if (!mEl.classList.contains("dead") && !mEl.classList.contains("safe"))

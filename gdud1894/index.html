@@ -106,7 +106,7 @@ header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--
 .search input{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px 44px 13px 14px;font-size:16px;background:#fff;box-shadow:var(--sh2)}
 .search .ic{position:absolute;top:50%;transform:translateY(-50%);inset-inline-start:14px;color:var(--mut);font-size:17px}
 
-.bottom{position:fixed;bottom:0;inset-inline:0;z-index:40;display:grid;grid-template-columns:repeat(4,1fr);background:#fff;border-top:1px solid var(--line);padding-bottom:max(6px,env(safe-area-inset-bottom));box-shadow:0 -8px 24px -18px rgba(0,0,0,.3)}
+.bottom{position:fixed;bottom:0;inset-inline:0;z-index:40;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid var(--line);padding-bottom:max(6px,env(safe-area-inset-bottom));box-shadow:0 -8px 24px -18px rgba(0,0,0,.3)}
 .bottom button{border:0;background:none;padding:9px 4px 6px;color:var(--mut);font-size:10.5px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:3px;transition:.12s}
 .bottom button .bi{font-size:20px;line-height:1;transition:transform .16s}
 .bottom button.active{color:var(--brand)} .bottom button.active .bi{transform:translateY(-2px) scale(1.08)}
@@ -134,7 +134,27 @@ header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--
 .empty{background:var(--panel);border:1px dashed var(--line);border-radius:16px;padding:26px;text-align:center;color:var(--mut);font-weight:600}
 .act-btn{border:0;border-radius:12px;padding:11px 14px;font-weight:800;font-size:13px;background:var(--brand-l);color:var(--brand-d);display:inline-flex;gap:7px;align-items:center;box-shadow:var(--sh2)}
 .act-btn.wa{background:#e7f6ec;color:#128c4a}
-.mod-acts{display:flex;gap:9px;flex-wrap:wrap;margin:2px 0 14px}.mod-acts .act-btn{flex:1;justify-content:center;min-width:140px}
+.mod-acts{display:flex;gap:9px;flex-wrap:wrap;margin:2px 0 14px}.mod-acts .act-btn{flex:1;justify-content:center;min-width:130px}
+
+/* planning / assignments */
+.mcard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh2);margin-bottom:12px;overflow:hidden}
+.mcard.gap{border-color:#f3c7c7}
+.mcard .mh{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:13px 15px;background:var(--panel2)}
+.mcard .mh b{font-size:15px;font-weight:800} .mcard .mh .mcount{font-size:11.5px;font-weight:800;color:var(--ink2);white-space:nowrap}
+.mcard.gap .mh .mcount{color:var(--bad)}
+.reqs{display:flex;flex-wrap:wrap;gap:6px;padding:11px 15px 4px}
+.req{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:5px 9px;font-size:11.5px;font-weight:800;border:1px solid}
+.req.ok{background:var(--okbg);color:var(--ok);border-color:#bfe6cd}
+.req.miss{background:var(--badbg);color:var(--bad);border-color:#f3c7c7}
+.assigned{padding:8px 12px 10px;display:grid;gap:7px}
+.arow{display:flex;align-items:center;gap:9px;background:var(--panel2);border-radius:11px;padding:9px 11px}
+.arow .an{flex:1;min-width:0} .arow .an b{font-size:13.5px;font-weight:700;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arow .aq{font-size:11px;color:var(--ink2)}
+.arow .rm{border:1px solid var(--line);background:#fff;border-radius:8px;width:28px;height:28px;color:var(--bad);font-weight:800;flex:none}
+.addbtn{margin:0 12px 12px;border:1px dashed var(--line);background:#fff;border-radius:11px;padding:10px;font-weight:800;color:var(--brand-d);width:calc(100% - 24px)}
+.pickrow{display:flex;align-items:center;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.pickrow:last-child{border-bottom:0} .pickrow .pn2{flex:1;min-width:0}
+.pickrow .pn2 b{font-size:14px} .pickrow .pn2 small{display:block;color:var(--mut);font-size:11px}
 
 @media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)} .stopts{grid-template-columns:1fr}}
 @media(max-width:480px){
@@ -216,23 +236,32 @@ const todayStr=()=>{const d=new Date();d.setHours(0,0,0,0);return d.toISOString(
 
 // state
 let S=load();
-function load(){ try{const r=JSON.parse(localStorage.getItem(LS)); if(r&&r.active) return r;}catch(e){}
-  return {active:[], reports:{}}; } // active=[pn], reports={date:{pn:status}}
+function load(){ try{const r=JSON.parse(localStorage.getItem(LS)); if(r&&r.active){ r.quals=r.quals||{}; r.missions=r.missions||{}; r.plan=r.plan||{}; return r;}}catch(e){}
+  return {active:[], reports:{}, quals:{}, missions:{}, plan:{}}; }
+  // active=[pn]; reports={date:{pn:status}}; quals={pn:[qualId]}; missions={fid:[{id,name,req:[{q,n}],size}]}; plan={date:{fid:{mid:[pn]}}}
 let FB=null,fbOn=false;
 function save(){ localStorage.setItem(LS,JSON.stringify(S)); pushRemote(); }
 function pushRemote(){ if(!FB)return;
   try{ FB.setDoc(FB.doc(FB.db,'d1_data','active'),{pns:S.active,ts:Date.now()}); }catch(e){}
-  try{ FB.setDoc(FB.doc(FB.db,'d1_data','report_'+d1date),{map:S.reports[d1date]||{},ts:Date.now()}); }catch(e){} }
+  try{ FB.setDoc(FB.doc(FB.db,'d1_data','quals'),{map:S.quals||{},ts:Date.now()}); }catch(e){}
+  try{ FB.setDoc(FB.doc(FB.db,'d1_data','missions'),{map:S.missions||{},ts:Date.now()}); }catch(e){}
+  try{ FB.setDoc(FB.doc(FB.db,'d1_data','report_'+d1date),{map:S.reports[d1date]||{},ts:Date.now()}); }catch(e){}
+  try{ FB.setDoc(FB.doc(FB.db,'d1_data','plan_'+d1date),{map:S.plan[d1date]||{},ts:Date.now()}); }catch(e){} }
 function setSync(){ const el=$('#syncDot'); if(el){el.textContent=fbOn?'● מסונכרן':'○ מקומי';el.style.color=fbOn?'#bff3d4':'#f2d9a6';} }
 window.__fbReady=function(){ FB=window.fb; fbOn=true; setSync(); startSync(); };
 window.__fbFail=function(){ fbOn=false; setSync(); };
 function startSync(){
   FB.onSnapshot(FB.doc(FB.db,'d1_data','active'),snap=>{ if(snap.exists()){const d=snap.data(); if(d&&Array.isArray(d.pns)){S.active=d.pns; localStorage.setItem(LS,JSON.stringify(S)); if(shown())render();}} });
+  FB.onSnapshot(FB.doc(FB.db,'d1_data','quals'),snap=>{ if(snap.exists()){const d=snap.data(); if(d&&d.map){S.quals=d.map; localStorage.setItem(LS,JSON.stringify(S)); if(shown())render();}} });
+  FB.onSnapshot(FB.doc(FB.db,'d1_data','missions'),snap=>{ if(snap.exists()){const d=snap.data(); if(d&&d.map){S.missions=d.map; localStorage.setItem(LS,JSON.stringify(S)); if(shown())render();}} });
   watchDate();
 }
-let dateUnsub=null;
-function watchDate(){ if(!FB)return; if(dateUnsub){try{dateUnsub();}catch(e){}}
-  dateUnsub=FB.onSnapshot(FB.doc(FB.db,'d1_data','report_'+d1date),snap=>{ if(snap.exists()){const d=snap.data(); if(d&&d.map){S.reports[d1date]=d.map; localStorage.setItem(LS,JSON.stringify(S)); if(shown()&&view==='doh1')render();}} }); }
+let dateUnsub=null, planUnsub=null;
+function watchDate(){ if(!FB)return;
+  if(dateUnsub){try{dateUnsub();}catch(e){}}
+  dateUnsub=FB.onSnapshot(FB.doc(FB.db,'d1_data','report_'+d1date),snap=>{ if(snap.exists()){const d=snap.data(); if(d&&d.map){S.reports[d1date]=d.map; localStorage.setItem(LS,JSON.stringify(S)); if(shown()&&(view==='doh1'||view==='plan'||view==='home'))render();}} });
+  if(planUnsub){try{planUnsub();}catch(e){}}
+  planUnsub=FB.onSnapshot(FB.doc(FB.db,'d1_data','plan_'+d1date),snap=>{ if(snap.exists()){const d=snap.data(); if(d&&d.map){S.plan[d1date]=d.map; localStorage.setItem(LS,JSON.stringify(S)); if(shown()&&view==='plan')render();}} }); }
 const shown=()=>!$('#app').classList.contains('hidden');
 
 // session
@@ -260,11 +289,11 @@ function logout(){ location.reload(); }
 
 // nav
 let view='home';
-function buildNav(){ const items=[['home','🏠','בית'],['doh1','📋','דוח 1'],['veh','🚗','רכב'],['green','🟢','ירוק בעיניים']];
+function buildNav(){ const items=[['home','🏠','בית'],['doh1','📋','דוח 1'],['plan','🧩','שיבוץ'],['veh','🚗','רכב'],['green','🟢','ירוק']];
   $('#nav').innerHTML=items.map(([v,ic,l])=>`<button data-v="${v}" onclick="go('${v}')"><span class="bi">${ic}</span>${l}</button>`).join(''); }
 function go(v){ if(v==='veh'){ window.open(EXT.veh,'_blank'); return; } if(v==='green'){ window.open(EXT.green,'_blank'); return; }
   view=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.v===v)); window.scrollTo(0,0); render(); }
-function render(){ ({home:renderHome,doh1:renderDoh1})[view]?.(); }
+function render(){ ({home:renderHome,doh1:renderDoh1,plan:renderPlan})[view]?.(); }
 
 /* ===== scope helpers ===== */
 function scopedRoster(){ let l=ROSTER.filter(d=>d.pn);
@@ -284,6 +313,7 @@ function renderHome(){
     <div class="gsub">${present} נוכחים מתוך ${act.length} מגויסים${act.length?'':' · טרם הוגדרה מצבה'}</div></div>`;
   h+=`<div class="section-h"><h2>מודולים</h2></div><div class="tiles">
     <button class="tile d1" onclick="go('doh1')"><div class="ic">📋</div><div class="tt"><b>דוח 1 — נוכחות</b><small>מצבה יומית · דיווח וייצוא</small></div><span class="go">›</span></button>
+    <button class="tile d1" style="--x:0" onclick="go('plan')"><div class="ic" style="background:linear-gradient(140deg,#7c3aed,#a78bfa)">🧩</div><div class="tt"><b>שיבוץ ואיוש</b><small>משימות · כשירויות · זיהוי פערים</small></div><span class="go">›</span></button>
     <button class="tile veh" onclick="go('veh')"><div class="ic">🚗</div><div class="tt"><b>ניהול צי רכב</b><small>רכבים · נהגים · תזקיקים</small></div><span class="ext">מודול</span></button>
     <button class="tile green" onclick="go('green')"><div class="ic">🟢</div><div class="tt"><b>ירוק בעיניים</b><small>ספירת תחמושת וצל״מ</small></div><span class="ext">מודול</span></button>
   </div>`;
@@ -393,6 +423,138 @@ function exportReport(){
     L.push(`${s.e} ${s.v} (${cnt[s.v]}): ${names.join(', ')}`); });
   const nr=list.filter(d=>statusOf(d.pn)==='לא דווח');
   if(nr.length) L.push('', `⚪ טרם דווחו (${nr.length}): ${nr.map(d=>d.name).join(', ')}`);
+  window.open('https://wa.me/?text='+encodeURIComponent(L.join('\n')),'_blank');
+}
+
+/* ===== PLAN — manpower planning by missions & qualifications ===== */
+const QUALS=[
+ {id:'mk',name:'מ״כ',e:'🎖️'},{id:'mag',name:'מא״ג',e:'🔫'},{id:'negev',name:'נגב',e:'🪖'},
+ {id:'matol',name:'מטול',e:'💥'},{id:'medic',name:'חובש',e:'⛑️'},{id:'sharp',name:'קלע',e:'🎯'},
+ {id:'driver',name:'נהג',e:'🚗'},{id:'radio',name:'קשר',e:'📡'},
+];
+const QBY={}; QUALS.forEach(q=>QBY[q.id]=q);
+function defaultReq(slot){ const s=slot||'';
+  if(s.indexOf('סיור')>=0) return {req:[['mk',1],['mag',1],['driver',1],['medic',1]],size:5};
+  if(s.indexOf('חפ')>=0)   return {req:[['driver',1],['radio',1]],size:4};
+  if(s.indexOf('כ')>=0&&s.indexOf('כ')!==s.lastIndexOf('כ')) return {req:[['mk',1],['mag',1]],size:6}; // כ״כ
+  if(s.indexOf('כוננות')>=0) return {req:[['mk',1],['mag',1]],size:6};
+  return {req:[],size:4};
+}
+function missionsFor(fid){ if(S.missions[fid]) return S.missions[fid];
+  const fr=FRBY[fid]; const arr=((fr&&fr.slots)||[]).map((slot,i)=>{ const d=defaultReq(slot);
+    return {id:'m'+i,name:slot,req:d.req.map(a=>({q:a[0],n:a[1]})),size:d.size}; });
+  S.missions[fid]=arr; return arr; }
+function qualsOf(pn){ return new Set(S.quals[pn]||[]); }
+function fwCompanyLetter(fid){ return CO_LETTER[fid]||null; }
+function fwSoldiers(fid){ const c=fwCompanyLetter(fid); return c?ROSTER.filter(d=>d.pn&&d.company===c):[]; }
+function isAvailable(pn){ return statusOf(pn)==='נוכח'; }
+function planCell(fid,mid){ return (((S.plan[d1date]||{})[fid]||{})[mid])||[]; }
+function assignedInFw(fid){ const p=(S.plan[d1date]||{})[fid]||{}; const s=new Set(); Object.values(p).forEach(a=>a.forEach(pn=>s.add(pn))); return s; }
+function setPlan(fid,mid,arr){ S.plan[d1date]=S.plan[d1date]||{}; S.plan[d1date][fid]=S.plan[d1date][fid]||{}; S.plan[d1date][fid][mid]=arr; save(); }
+
+let planFw=null;
+function renderPlan(){
+  const commander=sess.role==='commander';
+  const fids = commander ? [sess.scope] : Object.keys(CO_LETTER);
+  if(!planFw||fids.indexOf(planFw)<0) planFw=fids[0];
+  const fid=planFw, fr=FRBY[fid];
+  const soldiers=fwSoldiers(fid), avail=soldiers.filter(d=>isAvailable(d.pn));
+  const missions=missionsFor(fid), assigned=assignedInFw(fid);
+
+  let h=`<div class="section-h"><h2>🧩 שיבוץ ואיוש — ${esc(fr.name)}</h2>
+    ${canEdit()?`<button class="chip" onclick="editMissions('${fid}')">⚙️ משימות</button>`:''}</div>`;
+  h+=`<div class="field" style="margin:0 0 10px"><input type="date" value="${d1date}" onchange="d1date=this.value;watchDate();render()"></div>`;
+  if(!commander) h+=`<div class="chips">${fids.map(f=>chip(f,FRBY[f].name,f===fid,`planFw='${f}';render()`)).join('')}</div>`;
+
+  h+=`<div class="card" style="padding:13px 15px"><div style="display:flex;justify-content:space-between;font-weight:800"><span>זמינים היום (נוכחים)</span><b class="tnum">${avail.length}/${soldiers.length}</b></div>
+    <div style="font-size:12px;color:var(--ink2);margin-top:3px">${avail.length?('משובצים: '+assigned.size+' · פנויים: '+avail.filter(d=>!assigned.has(d.pn)).length):'אין נוכחים — מלאו דוח 1 כדי לזהות זמינות'}</div>
+    ${canEdit()?`<div class="mod-acts" style="margin:12px 0 0"><button class="act-btn" onclick="autoAssign('${fid}')">⚡ שיבוץ אוטומטי</button><button class="act-btn wa" onclick="exportPlan('${fid}')">📤 ייצוא</button><button class="act-btn" style="background:var(--panel2);color:var(--ink2)" onclick="clearPlan('${fid}')">🧹 נקה</button></div>
+      <button class="chip" style="margin-top:9px" onclick="manageQuals('${fid}')">🏅 כשירויות חיילים</button>`:''}</div>`;
+
+  missions.forEach(m=>{ const list=planCell(fid,m.id);
+    const reqHtml=m.req.map(r=>{ const have=list.filter(pn=>qualsOf(pn).has(r.q)).length, ok=have>=r.n;
+      return `<span class="req ${ok?'ok':'miss'}">${QBY[r.q]?QBY[r.q].e:''} ${esc(QBY[r.q]?QBY[r.q].name:r.q)} ${have}/${r.n}</span>`; }).join('');
+    const gap=m.req.some(r=>list.filter(pn=>qualsOf(pn).has(r.q)).length<r.n)||list.length<m.size;
+    h+=`<div class="mcard ${gap?'gap':''}"><div class="mh"><b>${esc(m.name)}</b><span class="mcount">${list.length}/${m.size}${gap?' · ⚠ פער':' · ✓ מלא'}</span></div>
+      ${reqHtml?`<div class="reqs">${reqHtml}</div>`:''}
+      <div class="assigned">${list.map(pn=>{const d=ROSTER.find(x=>x.pn===pn)||{};const qs=[...qualsOf(pn)];
+        return `<div class="arow"><div class="an"><b>${esc(d.name||pn)}</b><span class="aq">${qs.length?qs.map(q=>QBY[q]?QBY[q].e+QBY[q].name:q).join(' · '):'ללא כשירות רשומה'}</span></div>
+        ${canEdit()?`<button class="rm" onclick="unassign('${fid}','${m.id}','${pn}')">✕</button>`:''}</div>`;}).join('')||'<div style="color:var(--mut);font-size:12.5px;padding:2px">— טרם שובצו —</div>'}</div>
+      ${canEdit()?`<button class="addbtn" onclick="pickAssign('${fid}','${m.id}')">➕ הוסף חייל זמין</button>`:''}</div>`;
+  });
+  $('#screen').innerHTML=h;
+}
+function unassign(fid,mid,pn){ if(!canEdit())return; setPlan(fid,mid,planCell(fid,mid).filter(x=>x!==pn)); render(); }
+function assign(fid,mid,pn){ if(!canEdit())return; const cur=planCell(fid,mid); if(cur.indexOf(pn)<0) setPlan(fid,mid,cur.concat(pn)); }
+function clearPlan(fid){ if(!canEdit())return; if(!confirm('לנקות את כל השיבוץ למסגרת זו בתאריך זה?'))return; if(S.plan[d1date])delete S.plan[d1date][fid]; save(); toast('נוקה'); render(); }
+function autoAssign(fid){ if(!canEdit())return;
+  const missions=missionsFor(fid); const used=assignedInFw(fid);
+  let pool=fwSoldiers(fid).filter(d=>isAvailable(d.pn)&&!used.has(d.pn)).map(d=>d.pn);
+  if(!pool.length){ toast('אין נוכחים פנויים לשיבוץ'); return; }
+  missions.forEach(m=>{ let list=planCell(fid,m.id).slice();
+    m.req.forEach(r=>{ let have=list.filter(pn=>qualsOf(pn).has(r.q)).length;
+      while(have<r.n){ const idx=pool.findIndex(pn=>qualsOf(pn).has(r.q)); if(idx<0)break; list.push(pool.splice(idx,1)[0]); have++; } });
+    while(list.length<m.size&&pool.length) list.push(pool.shift());
+    setPlan(fid,m.id,list);
+  });
+  toast('⚡ שובץ אוטומטית'); render();
+}
+let pickSearch='';
+function pickAssign(fid,mid){ if(!canEdit())return; renderPick(fid,mid,''); $('#modal').classList.add('show'); }
+function renderPick(fid,mid,q){ pickSearch=q; const assigned=assignedInFw(fid);
+  const m=missionsFor(fid).find(x=>x.id===mid), list=planCell(fid,mid);
+  const missing=new Set(m.req.filter(r=>list.filter(pn=>qualsOf(pn).has(r.q)).length<r.n).map(r=>r.q));
+  let sold=fwSoldiers(fid).filter(d=>isAvailable(d.pn)&&!assigned.has(d.pn));
+  const dg=q.replace(/\D/g,''); if(q) sold=sold.filter(d=>(d.name||'').indexOf(q)>=0||(dg&&d.pn.indexOf(dg)>=0));
+  sold.sort((a,b)=>([...qualsOf(a.pn)].some(x=>missing.has(x))?0:1)-([...qualsOf(b.pn)].some(x=>missing.has(x))?0:1));
+  $('#sheet').innerHTML=`<h3>שיבוץ ל${esc(m.name)}</h3>
+    ${missing.size?`<div style="font-size:12.5px;color:var(--bad);font-weight:700;margin-bottom:8px">חסר: ${[...missing].map(x=>QBY[x].name).join(', ')} — מסומן ⭐</div>`:''}
+    <div class="search"><span class="ic">🔍</span><input value="${esc(q)}" placeholder="חיפוש זמין" oninput="renderPick('${fid}','${mid}',this.value)"></div>
+    <div style="max-height:56vh;overflow:auto;border:1px solid var(--line);border-radius:14px">${sold.slice(0,150).map(d=>{const qs=[...qualsOf(d.pn)],hot=qs.some(x=>missing.has(x));
+      return `<div class="pickrow" onclick="assign('${fid}','${mid}','${d.pn}');closeSheet();render()"><div class="pn2"><b>${esc(d.name)}${hot?' ⭐':''}</b><small>${esc(d.role||'')} ${qs.map(x=>QBY[x]?QBY[x].e:'').join('')}</small></div></div>`;}).join('')||'<div style="padding:16px;text-align:center;color:var(--mut)">אין חיילים זמינים פנויים</div>'}</div>
+    <div class="srowbtns"><span></span><button class="btn ghost" onclick="closeSheet()">סגירה</button></div>`;
+}
+let qSearch='';
+function manageQuals(fid){ if(!canEdit())return; renderQuals(fid,''); $('#modal').classList.add('show'); }
+function renderQuals(fid,q){ qSearch=q; let sold=fwSoldiers(fid); const dg=q.replace(/\D/g,'');
+  if(q) sold=sold.filter(d=>(d.name||'').indexOf(q)>=0||(dg&&d.pn.indexOf(dg)>=0));
+  $('#sheet').innerHTML=`<h3>כשירויות — ${esc(FRBY[fid].name)}</h3>
+    <div style="font-size:12px;color:var(--ink2);margin-bottom:8px">סמנו לכל חייל את הכשירויות (מא״ג, חובש, נהג...). ישמשו לשיבוץ ולזיהוי פערים.</div>
+    <div style="max-height:60vh;overflow:auto">${sold.slice(0,120).map(d=>{const set=qualsOf(d.pn);
+      return `<div style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px"><b style="font-size:14px">${esc(d.name)}</b>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px">${QUALS.map(qd=>`<button onclick="toggleQual('${fid}','${d.pn}','${qd.id}')" style="border:1px solid ${set.has(qd.id)?'var(--brand)':'var(--line)'};background:${set.has(qd.id)?'var(--brand-l)':'#fff'};color:${set.has(qd.id)?'var(--brand-d)':'var(--ink2)'};border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800">${qd.e} ${esc(qd.name)}</button>`).join('')}</div></div>`;}).join('')||'<div style="padding:16px;text-align:center;color:var(--mut)">אין חיילים</div>'}</div>
+    <div class="srowbtns"><span></span><button class="btn primary" onclick="closeSheet();render()">סיום</button></div>`;
+}
+function toggleQual(fid,pn,qid){ S.quals[pn]=S.quals[pn]||[]; const i=S.quals[pn].indexOf(qid);
+  if(i<0)S.quals[pn].push(qid); else S.quals[pn].splice(i,1); if(!S.quals[pn].length)delete S.quals[pn]; save(); renderQuals(fid,qSearch); }
+function editMissions(fid){ if(!canEdit())return; const ms=missionsFor(fid);
+  $('#sheet').innerHTML=`<h3>הגדרת משימות — ${esc(FRBY[fid].name)}</h3>
+    <div style="font-size:12px;color:var(--ink2);margin-bottom:8px">גודל הצוות והכשירויות הנדרשות לכל משימה.</div>
+    <div style="max-height:62vh;overflow:auto">${ms.map((m,mi)=>`<div style="border:1px solid var(--line);border-radius:13px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:14.5px">${esc(m.name)}</b>
+        <label style="font-size:12px;color:var(--ink2);display:flex;gap:6px;align-items:center">גודל צוות<input type="number" min="0" max="20" value="${m.size}" style="width:64px;padding:8px" onchange="setMissionSize('${fid}',${mi},this.value)"></label></div>
+      <div style="display:grid;gap:7px;margin-top:9px">${QUALS.map(q=>{const r=m.req.find(x=>x.q===q.id),n=r?r.n:0;
+        return `<div style="display:flex;align-items:center;gap:8px"><span style="flex:1;font-size:13px;font-weight:700">${q.e} ${esc(q.name)}</span>
+          <button class="rm" style="width:32px;height:32px" onclick="setReq('${fid}',${mi},'${q.id}',${n-1})">−</button>
+          <b style="min-width:22px;text-align:center" class="tnum">${n}</b>
+          <button class="rm" style="width:32px;height:32px;color:var(--brand-d);border-color:var(--brand-l)" onclick="setReq('${fid}',${mi},'${q.id}',${n+1})">+</button></div>`;}).join('')}</div></div>`).join('')}</div>
+    <div class="srowbtns"><span></span><button class="btn primary" onclick="closeSheet();render()">שמור וסיום</button></div>`;
+  $('#modal').classList.add('show');
+}
+function setMissionSize(fid,mi,v){ const ms=missionsFor(fid); ms[mi].size=Math.max(0,parseInt(v,10)||0); S.missions[fid]=ms; save(); }
+function setReq(fid,mi,qid,n){ n=Math.max(0,n); const ms=missionsFor(fid),m=ms[mi],r=m.req.find(x=>x.q===qid);
+  if(n<=0) m.req=m.req.filter(x=>x.q!==qid); else if(r) r.n=n; else m.req.push({q:qid,n});
+  S.missions[fid]=ms; save(); editMissions(fid); }
+function exportPlan(fid){ const fr=FRBY[fid], ms=missionsFor(fid);
+  const L=['🧩 שיבוץ — '+fr.name,'📅 '+fmtHe(d1date),''];
+  ms.forEach(m=>{ const list=planCell(fid,m.id);
+    L.push('▸ '+m.name+' ('+list.length+'/'+m.size+'):');
+    list.forEach(pn=>{const d=ROSTER.find(x=>x.pn===pn)||{};const qs=[...qualsOf(pn)].map(q=>QBY[q]?QBY[q].name:q);L.push('   • '+d.name+(qs.length?' ['+qs.join(',')+']':''));});
+    const gaps=m.req.filter(r=>list.filter(pn=>qualsOf(pn).has(r.q)).length<r.n).map(r=>QBY[r.q].name+' חסר '+(r.n-list.filter(pn=>qualsOf(pn).has(r.q)).length));
+    if(list.length<m.size) gaps.push('חסרים '+(m.size-list.length)+' לוחמים');
+    if(gaps.length) L.push('   ⚠ פער: '+gaps.join(' · '));
+    L.push('');
+  });
   window.open('https://wa.me/?text='+encodeURIComponent(L.join('\n')),'_blank');
 }
 

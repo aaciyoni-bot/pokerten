@@ -270,7 +270,7 @@ const firstName=n=>String(n||'').split(' ').slice(0,3).join(' ');
 const ROLE_CHIP={officer:'קצין רכב',sergeant:'סמל',commander:'מפקד',viewer:'צפייה'};
 function doLogin(){
   const pn=($('#lgPn').value||'').replace(/\D/g,''), pin=($('#lgPin').value||'').replace(/\D/g,'');
-  if(pn==='1894'||pn==='0000'){ start('officer','קצין הגדוד',null); return; }
+  if(pn==='1894'||pn==='0000'){ start('officer','קצין הגדוד',null,pn||'1894'); return; }
   const d=ROSTER.find(x=>x.pn===pn);
   if(!d){ $('#lgErr').textContent='מספר אישי לא נמצא'; return; }
   if(pin!==d.pin){ $('#lgErr').textContent='קוד שגוי (4 ספרות אחרונות)'; return; }
@@ -278,9 +278,9 @@ function doLogin(){
   if(d.role==='קצין רכב') role='officer';
   else if(['א','ג','ד'].includes(d.company)){ role='commander'; sc={'א':'A','ג':'C','ד':'D'}[d.company]; }
   else role='viewer';
-  start(role,d.name,sc);
+  start(role,d.name,sc,d.pn);
 }
-function start(role,name,scope){ sess={role,name,scope}; $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#nav').classList.remove('hidden');
+function start(role,name,scope,pn){ sess={role,name,scope,pn:pn||''}; $('#login').classList.add('hidden'); $('#app').classList.remove('hidden'); $('#nav').classList.remove('hidden');
   applyRole(); go('home'); if(name) setTimeout(()=>toast('👋 ברוך הבא, '+firstName(name)),350); }
 function applyRole(){ $('#roleChip').textContent=ROLE_CHIP[sess.role]+(sess.scope?' · '+FRBY[sess.scope].name:'');
   $('#hdrSub').textContent = sess.name?('שלום, '+firstName(sess.name)):'מערכת מאוחדת'; buildNav(); }
@@ -291,7 +291,8 @@ function logout(){ location.reload(); }
 let view='home';
 function buildNav(){ const items=[['home','🏠','בית'],['doh1','📋','דוח 1'],['plan','🧩','שיבוץ'],['veh','🚗','רכב'],['green','🟢','ירוק']];
   $('#nav').innerHTML=items.map(([v,ic,l])=>`<button data-v="${v}" onclick="go('${v}')"><span class="bi">${ic}</span>${l}</button>`).join(''); }
-function go(v){ if(v==='veh'){ window.open(EXT.veh,'_blank'); return; } if(v==='green'){ window.open(EXT.green,'_blank'); return; }
+function ssoUrl(base){ return base + (sess.pn?('?sso='+encodeURIComponent(sess.pn)):''); }
+function go(v){ if(v==='veh'){ window.open(ssoUrl(EXT.veh),'_blank'); return; } if(v==='green'){ window.open(ssoUrl(EXT.green),'_blank'); return; }
   view=v; document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.v===v)); window.scrollTo(0,0); render(); }
 function render(){ ({home:renderHome,doh1:renderDoh1,plan:renderPlan})[view]?.(); }
 

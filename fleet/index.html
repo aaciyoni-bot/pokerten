@@ -763,4 +763,15 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 // boot
 $('#lgPn').addEventListener('keydown',e=>{if(e.key==='Enter')$('#lgPin').focus();});
 $('#lgPin').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+// SSO — arrive already-authenticated from the unified 1894 shell (no re-entry of the code)
+(function(){ const raw=new URLSearchParams(location.search).get('sso'); if(!raw) return;
+  const pn=String(raw).replace(/\D/g,'');
+  if(pn==='1894'||pn==='0000'){ startSession('officer','קצין הרכב',null); return; }
+  const d=DRIVERS.find(x=>x.pn===pn); if(!d) return; // unknown → fall back to normal login
+  let role='viewer',sc=null;
+  if(d.role==='קצין רכב') role='officer';
+  else if(d.role==='סמל רכב') role='sergeant';
+  else if(['א','ג','ד'].includes(d.company)){ role='commander'; sc={'א':'A','ג':'C','ד':'D'}[d.company]; }
+  startSession(role,d.name,sc);
+})();
 </script>

@@ -118,6 +118,12 @@ header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--
 .phone-line{display:flex;gap:7px;margin-top:10px;align-items:center}
 .mini{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;text-decoration:none;color:var(--ink);font-size:16px}
 .mini.wa{color:#128c4a}
+.dcard{transition:transform .12s,box-shadow .2s} .dcard:hover{box-shadow:var(--sh);transform:translateY(-1px)}
+.dchips{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:9px;font-size:12.5px;color:var(--ink2);font-weight:600}
+.dchips .more{margin-inline-start:auto;color:var(--brand);font-weight:800}
+.dgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.dg{background:var(--panel2);border-radius:11px;padding:9px 11px}
+.dg small{display:block;color:var(--mut);font-size:11px;margin-bottom:2px} .dg b{font-size:13.5px}
 
 /* bottom nav */
 .bottom{position:fixed;bottom:0;inset-inline:0;z-index:40;display:grid;grid-template-columns:repeat(5,1fr);background:#fff;border-top:1px solid var(--line);padding-bottom:max(6px,env(safe-area-inset-bottom));box-shadow:0 -8px 24px -18px rgba(0,0,0,.3)}
@@ -152,7 +158,23 @@ header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--
 
 .empty{background:var(--panel);border:1px dashed var(--line);border-radius:16px;padding:26px;text-align:center;color:var(--mut);font-weight:600}
 .demo-tag{display:inline-block;font-size:10px;font-weight:800;background:#fff4d8;color:#8a6410;border-radius:6px;padding:2px 7px;margin-inline-start:6px}
+.head>div{min-width:0} .head .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:480px){
+  body{font-size:14px;padding-bottom:74px}
+  .wrap{padding:12px 11px}
+  .head{gap:8px;padding:10px 11px} .head h1{font-size:16px} .head .sub{font-size:10.5px}
+  #syncDot{font-size:10px} .rolechip{padding:5px 9px;font-size:11px}
+  .kpis{gap:8px} .kpi{padding:11px 12px} .kpi .n{font-size:23px} .kpi .l{font-size:11px}
+  .grid{grid-template-columns:1fr;gap:10px}
+  .vcard{padding:13px 13px 11px} .plate{min-width:104px;height:32px;font-size:15px}
+  .vacts button{font-size:11.5px;padding:9px 3px}
+  .frow{grid-template-columns:84px 1fr 40px;gap:8px}
+  .fuel-base,.dcard{padding:13px}
+  .bottom button{font-size:9.5px;padding:8px 2px 5px} .bottom button .bi{font-size:18px}
+  .sheet{padding:16px} .login-card{padding:24px 18px}
+}
+@media(max-width:360px){ .kpis{grid-template-columns:repeat(2,1fr)} .head h1{font-size:15px} }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 
@@ -226,13 +248,15 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS='fleet_v2_state';
 let S = load();
-function load(){ try{const r=JSON.parse(localStorage.getItem(LS)); if(r&&r.vehicles) return r;}catch(e){}
+function load(){ try{const r=JSON.parse(localStorage.getItem(LS)); if(r&&r.vehicles){ if(!r.driverOverrides)r.driverOverrides={}; return r;}}catch(e){}
   return {vehicles:JSON.parse(JSON.stringify(SEED.vehicles)), fuel:JSON.parse(JSON.stringify(SEED.fuel)),
-          cards:JSON.parse(JSON.stringify(SEED.cards))}; }
+          cards:JSON.parse(JSON.stringify(SEED.cards)), driverOverrides:{}}; }
+function getDriver(pn){ const b=DRIVERS.find(x=>x.pn===pn)||{}; const o=(S.driverOverrides||{})[pn]||{}; return {...b,...o}; }
 let FB=null, fbOn=false;
 function save(){ localStorage.setItem(LS, JSON.stringify(S)); pushRemote(); }
 function pushRemote(){ if(!FB) return; ['vehicles','fuel','cards'].forEach(k=>{
-  try{ FB.setDoc(FB.doc(FB.db,'fleet_data',k), {items:S[k], ts:Date.now()}); }catch(e){} }); }
+  try{ FB.setDoc(FB.doc(FB.db,'fleet_data',k), {items:S[k], ts:Date.now()}); }catch(e){} });
+  try{ FB.setDoc(FB.doc(FB.db,'fleet_data','driverOverrides'), {map:S.driverOverrides||{}, ts:Date.now()}); }catch(e){} }
 function setSync(){ const el=document.getElementById('syncDot'); if(el){ el.textContent=fbOn?'● מסונכרן':'○ מקומי'; el.style.color=fbOn?'#bff3d4':'#f2d9a6'; } }
 window.__fbReady=function(){ FB=window.fb; fbOn=true; setSync(); startSync(); };
 window.__fbFail=function(){ fbOn=false; setSync(); };
@@ -241,15 +265,19 @@ function startSync(){ ['vehicles','fuel','cards'].forEach(k=>{
     if(snap.exists()){ const d=snap.data(); if(d&&Array.isArray(d.items)){ S[k]=d.items; localStorage.setItem(LS,JSON.stringify(S));
       if(!document.getElementById('app').classList.contains('hidden')) render(); } }
     else { try{ FB.setDoc(FB.doc(FB.db,'fleet_data',k), {items:S[k], ts:Date.now()}); }catch(e){} }
-  }, err=>{ fbOn=false; setSync(); }); }); }
+  }, err=>{ fbOn=false; setSync(); }); });
+  FB.onSnapshot(FB.doc(FB.db,'fleet_data','driverOverrides'), snap=>{ if(snap.exists()){ const d=snap.data();
+    if(d&&d.map){ S.driverOverrides=d.map; localStorage.setItem(LS,JSON.stringify(S));
+      if(!document.getElementById('app').classList.contains('hidden')&&view==='drivers') render(); } } }); }
 const FR = SEED.frameworks, FRBY={}; FR.forEach(f=>FRBY[f.id]=f);
 const DRIVERS = SEED.drivers;
 
 // session (prototype auth — real Firebase next)
 let sess = { role:'officer', name:'קצין הרכב', scope:null }; // scope=company id for commander
-const ROLE_TITLE={officer:'מערכת קצין רכב',sergeant:'מערכת סמל רכב',commander:'תמונת מצב — מפקד'};
-const ROLE_SUB={officer:'שליטה מלאה בצי הרכבים',sergeant:'עריכה מלאה · גיבוי לקצין הרכב',commander:'צפייה בלבד'};
-const ROLE_CHIP={officer:'קצין רכב',sergeant:'סמל רכב',commander:'מפקד'};
+const ROLE_TITLE={officer:'מערכת קצין רכב',sergeant:'מערכת סמל רכב',commander:'תמונת מצב — מפקד',viewer:'צי הרכב הגדודי'};
+const ROLE_SUB={officer:'שליטה מלאה בצי הרכבים',sergeant:'עריכה מלאה · גיבוי לקצין הרכב',commander:'צפייה בלבד',viewer:'צפייה בלבד'};
+const ROLE_CHIP={officer:'קצין רכב',sergeant:'סמל רכב',commander:'מפקד',viewer:'צפייה'};
+const firstName=n=>String(n||'').split(' ').slice(0,3).join(' ');
 
 function doLogin(){
   const pn=($('#lgPn').value||'').replace(/\D/g,''), pin=($('#lgPin').value||'').replace(/\D/g,'');
@@ -258,13 +286,19 @@ function doLogin(){
   if(pn==='0000'||pn==='1894'){ startSession('officer','קצין הרכב',null); return; }
   if(!d){ $('#lgErr').textContent='מספר אישי לא נמצא ברשומה'; return; }
   if(pin!==d.pin){ $('#lgErr').textContent='קוד שגוי (4 ספרות אחרונות של המ״א)'; return; }
-  // map company → commander scope; others → officer (demo)
-  const cmap={'א':'A','ג':'C','ד':'D'}; const sc=cmap[d.company]||null;
-  startSession(sc?'commander':'officer', d.name, sc);
+  // role by the roster's own role field — the source of truth
+  let role, sc=null;
+  if(d.role==='קצין רכב') role='officer';
+  else if(d.role==='סמל רכב') role='sergeant';
+  else if(['א','ג','ד'].includes(d.company)){ role='commander'; sc={'א':'A','ג':'C','ד':'D'}[d.company]; }
+  else role='viewer';
+  startSession(role, d.name, sc);
 }
 function startSession(role,name,scope){ sess={role,name,scope}; $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
-  applyRole(); go(role==='commander'?'company':'fleet'); }
-function applyRole(){ $('#hdrTitle').textContent=ROLE_TITLE[sess.role]; $('#hdrSub').textContent=ROLE_SUB[sess.role];
+  applyRole(); go(role==='commander'?'company':'fleet');
+  if(name) setTimeout(()=>toast('👋 ברוך הבא, '+name),350); }
+function applyRole(){ $('#hdrTitle').textContent=ROLE_TITLE[sess.role];
+  $('#hdrSub').textContent = sess.name ? ('שלום, '+firstName(sess.name)+' · '+ROLE_SUB[sess.role]) : ROLE_SUB[sess.role];
   $('#roleChip').textContent=ROLE_CHIP[sess.role]+(sess.scope?' · '+FRBY[sess.scope].name:''); buildNav(); }
 function switchRole(){ const order=['officer','sergeant','commander']; let i=order.indexOf(sess.role);
   sess.role=order[(i+1)%3]; sess.scope = sess.role==='commander'?'A':null; sess.name = ROLE_CHIP[sess.role];
@@ -276,6 +310,8 @@ let view='fleet';
 function buildNav(){
   const items = sess.role==='commander'
     ? [['company','🎖️','פלוגה'],['fuel','⛽','תזקיקים'],['drivers','👤','נהגים']]
+    : sess.role==='viewer'
+    ? [['fleet','📊','מצב הצי'],['company','🎖️','פלוגות'],['fuel','⛽','תזקיקים'],['drivers','👤','נהגים']]
     : [['fleet','📊','מצב הצי'],['company','🎖️','פלוגות'],['drivers','👤','נהגים'],['fuel','⛽','תזקיקים'],['intake','➕','קליטה']];
   $('#nav').innerHTML=items.map(([v,ic,l])=>`<button data-v="${v}" onclick="go('${v}')"><span class="bi">${ic}</span>${l}</button>`).join('');
 }
@@ -403,17 +439,51 @@ function renderDrivers(){
   $('#screen').innerHTML=h;
 }
 function focusSearch(){ const i=$('#screen .search input'); if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);} }
-function driverCard(d){
-  const showPhone = sess.role!=='commander';
-  const phone=(d.phone||'').replace(/\D/g,'');
-  return `<div class="dcard"><div class="dtop"><div><div class="dname">${esc(d.name||'—')}</div>
-    <div class="dsub">${esc(d.company?('פלוגה '+d.company):'')}${d.dept?' · '+esc(d.dept):''}${d.role?' · '+esc(d.role):''}${d.license?' · רישיון '+esc(d.license):''}</div></div>
-    ${showPhone?`<span class="pill wait tnum">מ״א ${esc(d.pn)}</span>`:''}</div>
-    ${d.permits&&d.permits.length?`<div class="permits">${d.permits.map(p=>`<span class="perm">${esc(p)}</span>`).join('')}</div>`:''}
-    ${showPhone&&phone?`<div class="phone-line"><a class="mini" href="tel:${phone}">📞</a>
-      <a class="mini wa" href="https://wa.me/972${phone.replace(/^0/,'')}" target="_blank" rel="noopener">🟢</a>
-      <span style="color:var(--ink2);font-size:13px" class="tnum">${esc(d.phone)}</span></div>`:''}
+function piiOk(){ return sess.role==='officer'||sess.role==='sergeant'; } // מ״א/טלפון — קצין/סמל בלבד
+function driverCard(base){
+  const d=getDriver(base.pn); const pii=piiOk(); const phone=(d.phone||'').replace(/\D/g,'');
+  const np=(d.permits||[]).length;
+  return `<div class="dcard" onclick="openDriver('${esc(d.pn)}')" style="cursor:pointer">
+    <div class="dtop"><div><div class="dname">${esc(d.name||'—')}</div>
+      <div class="dsub">${esc(d.company?('פלוגה '+d.company):'')}${d.dept?' · '+esc(d.dept):''}${d.role?' · '+esc(d.role):''}</div></div>
+      ${pii?`<span class="pill wait tnum">מ״א ${esc(d.pn)}</span>`:''}</div>
+    <div class="dchips">
+      ${d.license?`<span>🪪 ${esc(d.license)}</span>`:''}
+      ${np?`<span>🔑 ${np} היתרים</span>`:'<span style="color:var(--mut)">ללא היתרים מיוחדים</span>'}
+      ${pii&&phone?`<span>📞 ${esc(d.phone)}</span>`:''}
+      <span class="more">כרטיס מלא ›</span></div>
   </div>`;
+}
+function openDriver(pn){
+  const d=getDriver(pn); if(!d.name&&!d.pn) return; const pii=piiOk(); const phone=(d.phone||'').replace(/\D/g,'');
+  const rows=[['תפקיד',d.role],['פלוגה',d.company],['מחלקה',d.dept],['סוג רישיון',d.license],
+    ['נגררת',d.trailer],['רכב פרטי',d.private],['רענון נהיגה אחרון',d.lastRefresh],['דרישות קורסים',d.courses]];
+  if(pii) rows.unshift(['מספר אישי',d.pn]);
+  let b=`<div class="dgrid">${rows.map(([k,v])=>`<div class="dg"><small>${esc(k)}</small><b>${esc(v||'—')}</b></div>`).join('')}</div>`;
+  b+=`<div class="detail-block"><small>🔑 היתרי נהיגה / רכבים</small>${(d.permits&&d.permits.length)
+    ?`<div class="permits" style="margin-top:8px">${d.permits.map(p=>`<span class="perm">${esc(p)}</span>`).join('')}</div>`
+    :`<div style="color:var(--mut);margin-top:6px">אין היתרים מיוחדים רשומים</div>`}</div>`;
+  if(pii){ b+=`<div class="detail-block"><small>📞 טלפון</small>${phone
+    ?`<div class="phone-line" style="margin-top:8px"><a class="mini" href="tel:${phone}">📞</a>
+        <a class="mini wa" href="https://wa.me/972${phone.replace(/^0/,'')}" target="_blank" rel="noopener">🟢</a>
+        <span class="tnum" style="font-size:15px;font-weight:700">${esc(d.phone)}</span></div>`
+    :`<div style="color:var(--mut);margin-top:6px">אין טלפון${canEdit()?' — הוסף בעריכה':''}</div>`}</div>`; }
+  if(d.notes) b+=`<div class="detail-block"><small>הערות</small><div style="margin-top:4px">${esc(d.notes)}</div></div>`;
+  $('#sheet').innerHTML=`<h3>כרטיס נהג — ${esc(d.name||'')}</h3>${b}
+    <div class="srow">${canEdit()?`<button class="btn primary" onclick="editDriver('${esc(pn)}')">✏️ עריכת נהג</button>`:'<span></span>'}
+      <button class="btn ghost" onclick="closeSheet()">סגירה</button></div>`;
+  $('#modal').classList.add('show');
+}
+function editDriver(pn){
+  const d=getDriver(pn); const ov=(S.driverOverrides||{})[pn]||{};
+  openSheet('עריכת נהג — '+(d.name||''),`
+    <div class="field"><label>טלפון (עדכון ידני נשמר כ-Override)</label><input id="ed_phone" inputmode="tel" value="${esc(d.phone||'')}" placeholder="05..."></div>
+    <div class="field"><label>תפקיד</label><input id="ed_role" value="${esc(d.role||'')}"></div>
+    <div class="field"><label>מחלקה</label><input id="ed_dept" value="${esc(d.dept||'')}"></div>
+    <div class="field"><label>הערות</label><textarea id="ed_notes" rows="2">${esc(d.notes||'')}</textarea></div>`,
+    ()=>{ if(!guard())return; S.driverOverrides=S.driverOverrides||{};
+      S.driverOverrides[pn]={...ov, phone:$('#ed_phone').value.trim(), role:$('#ed_role').value.trim(), dept:$('#ed_dept').value.trim(), notes:$('#ed_notes').value.trim()};
+      save(); toast('✔ נשמר'); closeSheet(); render(); });
 }
 
 /* ===== FUEL / תזקיקים ===== */
@@ -437,7 +507,7 @@ function renderFuel(){
 }
 
 /* ===== ACTIONS ===== */
-function canEdit(){ return sess.role!=='commander'; }
+function canEdit(){ return sess.role==='officer'||sess.role==='sergeant'; }
 function guard(){ if(!canEdit()){ toast('מצב צפייה בלבד'); return false;} return true; }
 function hideCard(id){ if(!guard())return; const v=S.vehicles.find(x=>x.id===id);
   if(confirm(`להסיר את הקובייה של ${fullNum(v)} מהתצוגה?\nהרכב וכל נתוניו יישארו במאגר.`)){ v.hiddenCard=true; save(); toast('הקובייה הוסרה'); render(); } }

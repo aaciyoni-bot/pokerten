@@ -37,13 +37,22 @@ body = body.replace('<div id="iosModal">', read(P + '/extra.html') + '\n<div id=
 body = body.replace('id="minus"', 'id="minus" aria-label="Decrease bet amount"')
            .replace('id="plus"', 'id="plus" aria-label="Increase bet amount"');
 body = require('./cockpit-layout.js')(body);
+body = body.replace('<button id="actionBtn" class="bet">Place bet</button>',
+  '<button id="actionBtn" class="bet">Place bet</button>' +
+  '<div id="syncStatus" role="status" dir="rtl">מתחבר לבקרת הטיסה…</div>' +
+  '<div class="flightNote" dir="rtl">משיכה ידנית נספרת כשהבקשה מגיעה לשרת. יעד אוטומטי נשמר מראש.</div>');
+
 
 /* --- reusable script sections from the solo game --- */
 const js = cut(src, '"use strict";', '</script>\n</body>', 'main script');
 // The live sound engine is maintained here independently of the solo game.
 const sound = read(P + '/audio.js');
-const canvas = cut(js, '/* =====================================================================\n   CANVAS',
+let canvas = cut(js, '/* =====================================================================\n   CANVAS',
                        '/* =====================================================================\n   MAIN LOOP', 'canvas');
+const graphClock = 'const t = (now - S.phaseAt) / 1000;';
+if (!canvas.includes(graphClock)) throw new Error('Missing graph clock anchor');
+canvas = canvas.replace(graphClock,
+  'const t = flying ? timeForMult(S.mult) / 1000 : (now - S.phaseAt) / 1000;');
 const pwa    = cut(js, '/* =====================================================================\n   APP INSTALL',
                        '/* keep the screen awake', 'pwa')
              + cut(js, '/* keep the screen awake', '/* persist chips */', 'wakelock');

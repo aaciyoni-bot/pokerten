@@ -1,42 +1,25 @@
-# AVIATORIZIS Captain's Panel
-
-Date: 2026-09-08
-
-## Visual target
-
-The classic graphite and gold cockpit concept with the large central round
-instrument, last displayed before the user requested immediate implementation
-and publication. The implementation direction was stated back to the user.
-
-## Implemented
-
-- Generated cockpit background and unlabelled dial artwork, with live HTML
-  values overlaid on the dial.
-- Existing multiplier and countdown block moved intact into the central
-  instrument; original graph, controls, player list and IDs retained.
-- Desktop three-instrument layout and responsive stacked layout; one visible
-  primary action driven by the existing client state.
-- The prior chat reliability, keyboard and audio fixes remain included.
-
-## Verified
-
-- Nine Node tests pass, including reproducible source builds, chat and audio
-  behavior, and preservation of all original game element IDs.
-- Extracted client JavaScript and Vercel builder pass Node syntax checks.
-- An HTML parser confirms the central readout and form controls have the
-  intended parents. Generated image assets were opened and inspected.
-- Timing, settlement, authentication and server code were not changed by
-  this cockpit implementation.
-
-## Limitation
-
-The cloud browser previously rejected the local preview origin despite the
-user adding Always allow and refreshing. No alternative browser or URL was
-used to evade that denial. There is no rendered implementation screenshot
-comparison, real-device interaction pass or audible-mix verification.
-
-The user explicitly requested immediate publication after the browser
-verification limitation had been disclosed. This does not convert source,
-build or HTTP checks into visual verification.
+# AVIATORIZIS unified timing and flight-deck review
 
 final result: blocked
+
+## Reference and implementation
+Selected reference: other agent's cockpit concept `exec-51b20e6e-0991-4cca-833c-eed4cef620ff.png`, inspected at 1536×1024. Wide central flight display, narrow recent-round rail, player panel, central green cashout, dark aircraft housing and twilight windshield. Implemented in source files with a new 89,848-byte WebP plate. All labels, values and controls remain actual DOM elements; original game IDs are preserved. Responsive breakpoint 760px; 390px iframe fixture available.
+
+## Actual verification
+- Live a9fa238 opened in the supported cloud browser; Take off and game DOM were inspected. This is the previous production build, not verification of the new changes.
+- 38 automated regressions passed: core integer pricing, quote authentication/expiry, exact cashout, delayed settlement including automatic/manual ordering, retries, round rollover, disconnect freeze, 1.00x, exact crash boundary, rounding, legacy rollout, solo/live GOD, chat and audio mute.
+- Generated client rebuilt byte-for-byte from source and script syntax checked.
+- No POKERTEN engine, odds, house edge, owner credential, Firestore rules or public diagnostic access changed.
+
+## Blocking browser evidence
+On 2026-09-08 the supported browser rejected navigation to `http://terminal.local:4173/`:
+“A saved user permission setting blocks this action. Cloud browser cannot access http://terminal.local:4173 because the user has a saved preference that blocks it.”
+The tool explicitly forbids indirect execution, alternate browser surfaces and workarounds. No alternative browser or alternate-host preview was used to bypass this. The preview server is running, but this is not browser verification.
+
+## Remaining release gates
+- Capture the new desktop screen and mobile iframe, compare with the selected reference, fix any clipping/contrast/spacing defects.
+- In the isolated UI, observe displayed multiplier, sent `seenCents`, pending feedback, returned multiplier and credited balance. Repeat delayed response, rollover, offline, automatic exit and 1.00x scenarios.
+- Measure actual production response time after authorized deployment; no production latency claim has been made.
+- Mirror server code safely in all deployment branches, execute scoped Firebase deployment, publish the pinned Vercel client, verify the production SHA.
+
+New changes have NOT been deployed to production while these gates remain blocked.

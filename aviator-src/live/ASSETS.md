@@ -13,3 +13,6 @@ included in `BOOTSTRAP-ICONS-LICENSE.txt`.
 
 The Vercel builder copies both WebP files from the same pinned Git commit as
 the client to `/cockpit/`. It fails if an asset cannot be fetched.
+
+
+The wide flight-deck cockpit.webp was regenerated from the selected other-agent reference on 2026-09-08, with all UI and numbers removed from the raster. Source image: exec-1858f533-ae8a-4a16-8972-99661a130270.png, 1536×1024; WebP quality 84, 89,848 bytes. The previous multiplier-dial.webp remains preserved but the wide cockpit no longer displays it.

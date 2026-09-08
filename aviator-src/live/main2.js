@@ -5,12 +5,14 @@
 let user = null, joined = false, isAdminUser = false;
 let balance = 0, shownBalance = 0;
 let myBet = null;           // my aviatorBets doc data for this round
-let placing = false, cashing = false;
+let placing = false, cashing = false, pendingCash = null, queuedEdit = null, pendingPlace = null;
+let announcedRound = "";
+let cashoutRtt = null, tickRtt = null;
 let autoOn = false;
 const FX = (name, data) => {
   const t0 = Date.now();
   return window.avFB.fx(name, data || {}).then(r => {
-    if (r && r.serverNow) noteServerNow(r.serverNow, Date.now() - t0);
+    if (r && r.serverNow) noteServerNow(r.serverNow, Date.now() - t0, r.serverReceivedAt);
     return r;
   });
 };
@@ -123,79 +125,119 @@ let rebetTimer = 0;
 function syncPlacedBet(){
   if (!betCredit()) return;
   const amt = betValue();
-  if (amt === myBet.amount) return;
   clearTimeout(rebetTimer);
   rebetTimer = setTimeout(() => {
     if (S.phase === "waiting" && myBet && amt >= MIN_BET) doPlaceBet(amt, true);
-  }, 450);
+  }, 120);
 }
 
 /* =====================================================================
    SERVER ACTIONS
    ===================================================================== */
-async function doPlaceBet(amount, silent){
-  if (placing || !joined) return;
+async function sendAction(name, payload){
+  try { return await FX(name, payload); }
+  catch(e){
+    if (!/(unavailable|deadline-exceeded|internal|network)/.test(String(e.code || e.message))) throw e;
+    // Retry the identical request ID: a lost response must never debit or pay twice.
+    return FX(name, payload);
+  }
+}
+async function doPlaceBet(amount, silent, desiredAuto){
+  if (!joined || S.phase !== "waiting" || S.protocol !== 2) return;
+  const autoAt = desiredAuto ?? (autoOn ? (parseFloat($("#autoInput").value) || 0) : 0);
+  if (placing){ queuedEdit = {amount, autoAt, roundId:S.roundId}; return; }
+  const roundId = S.roundId;
+  const operation = newRequestId(); pendingPlace = operation;
   placing = true; updateAction();
   try{
-    const autoAt = autoOn ? (parseFloat($("#autoInput").value) || 0) : 0;
-    const r = await FX("avBet", {amount, autoAt});
-    /* clock already noted by FX with rtt */
-    setBalance(r.balance);
-    if (!silent){ play("bet", 0.55); haptic(12); }
-  }catch(e){ toastErr(e); }
-  placing = false; updateAction();
+    const r = await sendAction("avBet", {roundId, requestId:operation, amount, autoAt});
+    if (S.roundId === roundId && S.phase === "waiting") myBet = r.bet;
+    if (!silent && S.roundId === roundId){ play("bet", 0.55); haptic(12); }
+  }catch(e){ if (S.roundId === roundId) toastErr(e); }
+  if (pendingPlace !== operation) return;
+  pendingPlace = null; placing = false; updateAction();
+  const next = queuedEdit; queuedEdit = null;
+  if (next && next.roundId === S.roundId && S.phase === "waiting") doPlaceBet(next.amount, true, next.autoAt);
 }
 async function doCancelBet(){
-  if (placing || !myBet) return;
+  if (placing || !myBet || S.phase !== "waiting") return;
+  clearTimeout(rebetTimer); queuedEdit = null;
+  const roundId = S.roundId;
+  const operation = newRequestId(); pendingPlace = operation;
   placing = true; updateAction();
   try{
-    const r = await FX("avCancelBet", {});
-    /* clock already noted by FX with rtt */
-    play("ui", 0.3);
-  }catch(e){ toastErr(e); }
-  placing = false; updateAction();
+    await sendAction("avCancelBet", {roundId, requestId:operation});
+    if (S.roundId === roundId && S.phase === "waiting") myBet = null;
+    if (S.roundId === roundId) play("ui", 0.3);
+  }catch(e){ if (S.roundId === roundId) toastErr(e); }
+  if (pendingPlace !== operation) return;
+  pendingPlace = null; placing = false; updateAction();
+}
+function confirmCashout(r){
+  if (r.roundId !== S.roundId || announcedRound === r.roundId) return;
+  announcedRound = r.roundId;
+  play(r.mult >= 5 ? "bigwin" : "win", 0.55, 0.02);
+  haptic([15, 30, 15]); celebrate(r.win, r.mult);
+  if (S.phase === "flying") $("#mult").classList.add("safe");
+  const st = $("#safeTag");
+  st.textContent = `✔ ${r.auto ? "משיכה אוטומטית אושרה" : "המשיכה אושרה"} · ${r.mult.toFixed(2)}x · +${fmt(r.win)}${cashoutRtt === null ? "" : ` · ${cashoutRtt}ms`}`;
+  st.classList.add("on");
 }
 async function doCashout(){
-  if (cashing || !joined || !myBet || myBet.cashedAt || myBet.lost) return;
-  cashing = true;
-  const seen = S.mult;      // the number on screen at the moment of the press
+  if (cashing || !joined || S.phase !== "flying" || !quoteFresh() ||
+      !myBet || myBet.cashedAt || myBet.lost) return;
+  const payload = {roundId:S.roundId, requestId:newRequestId(), seenCents:S.cents, quote:S.quote};
+  const sentAt = performance.now();
+  pendingCash = payload; cashing = true;
+  updateAction(); haptic(8);
   try{
-    const r = await FX("avCashout", {seen});
-    /* clock already noted by FX with rtt */
-    play(r.mult >= 5 ? "bigwin" : "win", r.mult >= 5 ? 0.8 : 0.65, 0.02);
-    haptic([15, 30, 15]);
-    celebrate(r.win, r.mult);
-    /* unmistakable "I got out in time": green multiplier + a badge that
-       stays up for the rest of the flight, through the crash */
-    $("#mult").classList.add("safe");
-    const st = $("#safeTag");
-    st.textContent = `✔ עצרת בזמן · ${r.mult.toFixed(2)}x · +${fmt(r.win)}`;
-    st.classList.remove("on"); void st.offsetWidth;
-    st.classList.add("on");
-  }catch(e){
-    /* the press reached the server after the real crash — tick the round
-       forward NOW so the crash screen appears immediately, and say so */
-    maybeTick(true);
-    if (e && /התרסק/.test(String(e.message || ""))){
-      toastErr({message: "המטוס התרסק רגע לפני שהלחיצה הגיעה"});
+    const r = await sendAction("avCashout", payload);
+    if (r.roundId === payload.roundId && r.requestId === payload.requestId && S.roundId === payload.roundId){
+      cashoutRtt = Math.round(performance.now() - sentAt);
+      myBet = {...myBet, cashedAt:r.mult, win:r.win, auto:r.auto, lost:false};
+      confirmCashout(r);
     }
+  }catch(e){
+    if (payload.roundId === S.roundId){ maybeTick(true); toastErr(e); }
+  }finally{
+    if (pendingCash === payload){ pendingCash = null; cashing = false; }
+    updateAction();
   }
-  cashing = false; updateAction();
 }
 
-/* round ticks: any client may nudge the server past a phase deadline */
-let lastTickAt = 0;
+addEventListener("offline", () => { S.quote = null; updateSyncStatus(); });
+addEventListener("online", () => { maybeTick(true); });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") S.quote = null;
+  else maybeTick(true);
+});
+
+/* One tick in flight at a time. Responses carry both state and signed price. */
+let lastTickAt = 0, tickPending = false, lastSyncLabel = "";
+function updateSyncStatus(){
+  const offline = navigator.onLine === false;
+  const stale = S.phase === "flying" && !quoteFresh();
+  const label = S.protocol !== 2 ? "מסנכרן את גרסת המשחק…" :
+    offline ? "אין חיבור — המכפיל מושהה" : stale ? "הנתונים מתעכבים — המכפיל מושהה" :
+    `מחובר לבקרת הטיסה${tickRtt === null ? "" : ` · ${tickRtt}ms`}`;
+  if (label !== lastSyncLabel){
+    lastSyncLabel = label; $("#syncStatus").textContent = label;
+    $("#syncStatus").classList.toggle("stale", stale); updateAction();
+  }
+}
 function maybeTick(force){
   const now = Date.now();
-  if (!joined || document.visibilityState !== "visible") return;
-  /* tick faster mid-flight: the crash only becomes real when someone
-     ticks it, and a slow tick is what made the plane fly past its crash */
-  if (!force && now - lastTickAt < (S.phase === "flying" ? 450 : 1400)) return;
-  lastTickAt = now;
+  if (!joined || tickPending || document.visibilityState !== "visible") return;
+  if (!force && now - lastTickAt < (S.phase === "flying" ? 100 : 400)) return;
+  lastTickAt = now; tickPending = true;
+  const sentAt = performance.now();
   FX("avTick", {}).then(r => {
-    /* clock already noted by FX with rtt */
-  }).catch(() => {});
+    if (r.state) applyState(r.state);
+    tickRtt = Math.round(performance.now() - sentAt);
+    acceptQuote(r.quote, tickRtt);
+  }).catch(() => {}).finally(() => { tickPending = false; updateSyncStatus(); });
 }
+
 
 /* =====================================================================
    RENDER — history, players (real bets), action button
@@ -223,16 +265,13 @@ function renderPlayers(){
   $("#roundTotals").textContent = "";
   $("#players").innerHTML = rows.map(r => {
     const me = r.uid === uid;
-    /* an auto cash-out is settled on the server only at crash time, but the
-       target is public — show it the moment the plane passes it */
-    const eff = r.cashedAt ||
-      ((S.phase === "flying" && r.autoAt && S.mult >= r.autoAt) ? r.autoAt : null);
+    const eff = r.cashedAt;
     const cls = eff ? "cashed" : (r.lost ? "bust" : "");
     const st = eff ? eff.toFixed(2) + "x" : (r.lost ? "BUST" : "…");
     return `
     <div class="prow ${me ? "me" : ""} ${cls}">
       <img src="${esc(avatarFor(r.uid, r.photo))}" alt="" loading="lazy" referrerpolicy="no-referrer">
-      <span class="nm">${esc(me ? "You" : r.name || "Pilot")}</span>
+      <span class="nm">${esc(me ? "You" : r.name || "Pilot")}${r.bot ? ' <small>BOT</small>' : ""}</span>
       <span class="bt">${fmt(r.amount)}</span>
       <span class="st">${st}</span>
     </div>`;
@@ -245,6 +284,16 @@ function updateAction(){
   if (!joined){
     btn.className = "wait"; btn.innerHTML = "מתחבר…"; btn.disabled = true; return;
   }
+  $("#autoSwitch").disabled = S.phase !== "waiting" && !!myBet;
+  $("#autoInput").disabled = S.phase !== "waiting" && !!myBet;
+  if (S.protocol !== 2){
+    btn.className = "wait"; btn.textContent = "מסנכרן את גרסת המשחק…"; btn.disabled = true; return;
+  }
+  if (cashing && pendingCash && pendingCash.roundId === S.roundId){
+    btn.className = "pending";
+    btn.innerHTML = `<span>נשלחה משיכה · ${(pendingCash.seenCents / 100).toFixed(2)}x<br><span class="sub">ממתין לאישור</span></span>`;
+    btn.disabled = true; return;
+  }
   if (placing){
     btn.className = "wait"; btn.innerHTML = "רגע…"; btn.disabled = true; return;
   }
@@ -254,6 +303,9 @@ function updateAction(){
     btn.disabled = true; return;
   }
   if (S.phase === "waiting"){
+    if (eNow() >= S.phaseAt + S.waitMs){
+      btn.className = "wait"; btn.textContent = "ממריאים…"; btn.disabled = true; return;
+    }
     if (myBet){ btn.className = "cancel"; btn.innerHTML = `<span>Bet placed: ${fmt(myBet.amount)}<br><span class="sub">tap to cancel</span></span>`; }
     else if (balance < MIN_BET){
       btn.className = "wait";
@@ -266,10 +318,14 @@ function updateAction(){
     }
   } else if (S.phase === "flying"){
     if (myBet && !myBet.cashedAt && !myBet.lost){
+      if (!quoteFresh()){
+        btn.className = "wait"; btn.textContent = "ממתין לנתון עדכני…"; btn.disabled = true; return;
+      }
       btn.className = "cash";
       btn.innerHTML = `<span>Cash out<br><span class="sub" id="cashAmt"></span></span>`;
     } else if (myBet && myBet.cashedAt){
-      btn.className = "wait"; btn.innerHTML = `Cashed @ ${myBet.cashedAt.toFixed(2)}x`;
+      btn.className = "confirmed"; btn.disabled = true;
+      btn.textContent = `${myBet.auto ? "AUTO CASH OUT" : "CASH OUT"} CONFIRMED · ${myBet.cashedAt.toFixed(2)}x`;
     } else if (S.queued){
       btn.className = "cancel"; btn.innerHTML = `Queued ${fmt(S.queued)} · cancel`;
     } else if (balance < MIN_BET){
@@ -296,22 +352,26 @@ function updateAction(){
 $("#fairPill").insertAdjacentHTML("afterend",
   '<div id="supPill" hidden>🔍 <b id="supVal">–</b></div>');
 let supMode = store.get("avSup", false);
+let supGeneration = 0;
 let supRound = "";                       // roundId currently peeked
 async function supPeek(){
-  if (!supMode || !joined) return;
+  const generation = ++supGeneration, roundId = S.roundId;
+  $("#supPill").hidden = true;
+  if (!supMode || !joined || !roundId) return;
   try{
-    const r = await FX("avPeek", {code: store.get("avSupCode", "")});
+    const r = await FX("avPeek", {roundId, code:store.get("avSupCode", "")});
+    // Ignore a response for an old round or for a mode that has since been closed.
+    if (generation !== supGeneration || !supMode || roundId !== S.roundId || r.roundId !== roundId) return;
     supRound = r.roundId;
     $("#supVal").textContent = r.crashPoint.toFixed(2) + "x";
-    $("#supPill").hidden = false;
-    $("#adminBtn").hidden = false;       // the code doubles as the admin key
+    $("#supPill").hidden = false; $("#adminBtn").hidden = false;
     updateAction();
   }catch(e){
+    if (generation !== supGeneration || roundId !== S.roundId || !supMode) return;
     $("#supPill").hidden = true;
     const msg = String((e && e.message) || "");
-    if (/קוד/.test(msg)){                // wrong code — forget it, switch off
-      store.set("avSupCode", "");
-      supMode = false; store.set("avSup", false);
+    if (/קוד/.test(msg)){
+      store.set("avSupCode", ""); supMode = false; store.set("avSup", false);
     }
     if (msg) toastErr(e);
   }
@@ -334,7 +394,7 @@ $("#brand").addEventListener("click", () => {
     supPeek();
   } else {
     supMode = false; store.set("avSup", false);
-    supRound = "";
+    ++supGeneration; // Keep the watch-only lock for the round already seen.
     $("#supPill").hidden = true;
     $("#adminBtn").hidden = !isAdminUser;
     updateAction();
@@ -389,7 +449,6 @@ function onWaiting(){
   /* safe moment for a self-update: round is fresh, no bet is down yet */
   if (newBuildLive && !myBet && !S.queued){ location.reload(); return; }
   S.lastTickSec = -1; S.lastWholeMult = 1; S.radioDone = false;
-  cashing = false;
   beltChime();
   particles.length = 0;
   view.yMax = 2; view.xMax = 8;
@@ -414,7 +473,8 @@ function onFlying(){
   updateAction();
 }
 function onCrashed(){
-  S.mult = S.crashPoint || S.mult;
+  $("#countdown").hidden = true; $("#flightNums").hidden = false;
+  S.mult = S.crashPoint || S.mult; S.cents = toCents(S.mult);
   toneStop(0.05);
   play("crash", 0.75, 0.03);
   haptic([30, 40, 60]);
@@ -432,6 +492,11 @@ function onCrashed(){
   updateAction();
 }
 function applyState(s){
+  if (!s || !/^r[0-9]+$/.test(s.roundId || "")) return;
+  const order = {boot:-1, waiting:0, flying:1, crashed:2};
+  if (!(s.phase in order) || (S.roundId && Number(s.roundId.slice(1)) < Number(S.roundId.slice(1)))) return;
+  if (s.roundId === S.roundId && order[s.phase] < order[S.phase]) return;
+  S.protocol = s.protocol || 0;
   GROWTH_K = s.growthK || GROWTH_K;
   S.waitMs = s.waitMs || S.waitMs;
   S.crashHold = s.crashHold || S.crashHold;
@@ -442,14 +507,20 @@ function applyState(s){
   S.seed = s.seed || null;
   S.crashPoint = s.crashPoint || null;
   S.phaseAt = s.phaseAt;
-  if (newRound) subscribeBets(s.roundId);
+  if (newRound){
+    S.mult = 1; S.cents = 100; S.confirmedCents = 100; S.quote = null; S.quoteAt = 0;
+    announcedRound = ""; cashoutRtt = null; pendingCash = null; cashing = false; pendingPlace = null; placing = false; queuedEdit = null; clearTimeout(rebetTimer);
+    ++supGeneration; $("#supPill").hidden = true;
+    subscribeBets(s.roundId);
+  }
   if (newPhase){
     S.phase = s.phase;
     if (s.phase === "waiting") onWaiting();
     else if (s.phase === "flying") onFlying();
     else if (s.phase === "crashed") onCrashed();
   }
-  updateFair();
+  updateFair(); updateSyncStatus();
+  if (newRound && s.phase !== "waiting") supPeek();
 }
 
 /* =====================================================================
@@ -463,11 +534,13 @@ function subscribeBets(roundId){
   unsubBets = F.onSnapshot(
     F.query(F.collection(F.db, "aviatorBets"), F.where("roundId", "==", roundId)),
     snap => {
+      if (roundId !== S.roundId) return;
       roundBets = snap.docs.map(d => d.data());
       const uid = user && user.uid;
       myBet = roundBets.find(b => b.uid === uid) || null;
+      if (myBet && myBet.cashedAt && !(pendingCash && pendingCash.roundId === roundId)) confirmCashout({roundId, mult:myBet.cashedAt, win:myBet.win, auto:myBet.auto});
       renderPlayers(); updateAction();
-    });
+    }, e => { toastErr(e); });
 }
 function subscribeAll(){
   const F = window.avFB;
@@ -662,12 +735,10 @@ function frame(){
       if (sec <= 3 && sec > 0) play("tick", 0.3, 0.02);
       if (sec === 2 && !S.radioDone){ S.radioDone = true; radioCall(); }
     }
-    if (el >= S.waitMs + 150) maybeTick();
+    if (el >= S.waitMs){ maybeTick(); if (S.lastTickSec === 0) updateAction(); }
 
   } else if (S.phase === "flying"){
-    /* real-time on the server's clock; payment is exact-WYSIWYG so the
-       number on screen is exactly what a press pays */
-    S.mult = clamp(multAt(el), 1, 5000);
+    renderFlightValue();
     const mEl = $("#mult");
     mEl.textContent = S.mult.toFixed(2) + "x";
     if (!mEl.classList.contains("dead") && !mEl.classList.contains("safe"))
@@ -679,17 +750,12 @@ function frame(){
       setTimeout(() => mEl.classList.remove("pulse"), 320);
     }
     toneUpdate(S.mult);
-    // client-side auto fire (the server also enforces autoAt at settle)
-    if (autoOn && myBet && !myBet.cashedAt && !myBet.lost && !cashing){
-      const target = parseFloat($("#autoInput").value) || 0;
-      if (target >= 1.01 && S.mult >= target) doCashout();
-    }
+    // The stored target is enforced by the server even with the page closed.
+    if (myBet && myBet.autoAt && !myBet.cashedAt && !myBet.lost && !cashing && S.mult >= myBet.autoAt) doCashout();
     const ca = $("#cashAmt");
-    if (ca && myBet && !myBet.cashedAt) ca.textContent = fmt(myBet.amount) + " → " + fmt(myBet.amount * S.mult) + " chips";
-    /* bots and auto-cashers visibly bail out as the plane passes their target */
-    if (now - lastPlayersRender > 450){ lastPlayersRender = now; renderPlayers(); }
-    // nudge the server: only it knows when the crash lands
-    if (el > 1200) maybeTick();
+    if (ca && myBet && !myBet.cashedAt) ca.textContent = S.mult.toFixed(2) + "x · " + fmt(chipPayout(myBet.amount, S.cents)) + " chips";
+    maybeTick();
+
 
   } else if (S.phase === "crashed"){
     if (el >= (S.crashHold || 3200) + 150) maybeTick();
@@ -697,6 +763,8 @@ function frame(){
     maybeTick();
   }
 
+  updateSyncStatus();
+  updateFlightStatus();
   updateCockpit(now);
   draw(now);
   requestAnimationFrame(frame);
@@ -705,7 +773,17 @@ function frame(){
 /* =====================================================================
    INPUT WIRING
    ===================================================================== */
-$("#actionBtn").addEventListener("click", () => {
+let cashPointerHandled = false;
+$("#actionBtn").addEventListener("pointerdown", e => {
+  if (e.button !== 0 || !e.isPrimary || e.currentTarget.disabled) return;
+  if (S.phase === "flying" && myBet && !myBet.cashedAt && !myBet.lost){
+    cashPointerHandled = true; unlockAudio(); doCashout();
+  }
+});
+$("#actionBtn").addEventListener("pointercancel", () => { cashPointerHandled = false; });
+$("#actionBtn").addEventListener("click", e => {
+  if (cashPointerHandled && e.detail !== 0){ cashPointerHandled = false; return; }
+  cashPointerHandled = false;
   unlockAudio();
   if (S.phase === "waiting"){
     myBet ? doCancelBet() : doPlaceBet(betValue());

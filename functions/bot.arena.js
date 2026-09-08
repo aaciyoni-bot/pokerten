@@ -23,8 +23,11 @@ const SEATS = 6;
 const BB = 1;            // blinds 0.5/1
 const START = 100 * BB;  // 100bb stacks, topped back up each hand
 
-let seed = 424242;
+let seed = Number(process.env.ARENA_SEED) || 424242;
 const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+
+// Keep deals and decision sampling repeatable, not just the reference opponent.
+Math.random = rnd;
 
 /* ------------------------------ reference brains ------------------------ */
 const station = (S, uid) => ({action: "call"});
@@ -68,7 +71,7 @@ const mk = (uid, seatIndex) => ({uid, name: uid, seatIndex, stack: START, bet: 0
 
 const S = {
   id: "arena",
-  settings: {blinds: BB / 2, baseGameType: "NLH", rakePercent: 0, actionTime: 30, maxPlayers: SEATS},
+  settings: {blinds: BB / 2, baseGameType: "NLH", rakePercent: 0, actionTime: 30, maxPlayers: SEATS, botGodGuard: process.env.BOT_GOD_GUARD === "1"},
   players: {}, gameState: {phase: "waiting"},
   table: {clubId: "main", history: [], handCount: 0},
   raw: {}, priv: {}, deck: null, now: 1700000000000, effects: [],
@@ -104,6 +107,7 @@ for (let h = 0; h < HANDS; h++) {
     E.applyAction(S, uid, mv.action, mv.amount, false);
     acted++;
   }
+  if (S.gameState.phase !== "showdown") throw new Error(`Arena hand ${h} did not finish; refusing to count it`);
   if (acted > SEATS) handsWithAction++;
   Object.values(S.players).forEach((p) => { won[p.uid] += (p.stack + (p.bet || 0)) - START; });
 }
@@ -116,6 +120,7 @@ Object.values(S.players).forEach((p) => {
   byBrain[n].chips += won[p.uid];
   byBrain[n].seats++;
 });
+console.log(`Opponent-hand guard: ${S.settings.botGodGuard ? "on (bots-only experiment)" : "off"}; seed: ${Number(process.env.ARENA_SEED) || 424242}`);
 console.log(`${dealt} hands dealt, ${handsWithAction} with post-blind action, ${SEATS} seats\n`);
 Object.entries(byBrain).forEach(([n, v]) => {
   const handsPerSeat = dealt;                    // every seat sees every hand

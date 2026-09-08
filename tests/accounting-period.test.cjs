@@ -1,0 +1,5 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+const text=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8'),start=text.indexOf('function cycleStartIL('),end=text.indexOf('const genAgentCode',start);const ctx={};vm.createContext(ctx);vm.runInContext(text.slice(start,end)+'\nthis.start=cycleStartIL;this.closed=closedWeekEntry;',ctx);
+test('Poker keeps its Monday cycle with stable millisecond-free keys',()=>{assert.equal(ctx.start(0,new Date('2026-09-08T12:45:33.999Z')),Date.parse('2026-09-06T21:01:00Z'));assert.equal(ctx.start(0,new Date('2026-09-06T21:00:30Z')),Date.parse('2026-08-30T21:01:00Z'));});
+test('Poker historical periods respect daylight-saving offset',()=>{assert.equal(ctx.start(1,new Date('2026-03-31T12:00:00Z')),Date.parse('2026-03-22T22:01:00Z'));});
+test('previous payment flags survive millisecond-key lookup',()=>{const start=Date.parse('2026-09-06T21:01:00Z');assert.equal(ctx.closed({[start+312]:{paid:{agent:true}}},start)[1].paid.agent,true);});

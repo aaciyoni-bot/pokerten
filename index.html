@@ -1142,8 +1142,9 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 @media(max-width:600px){.accounting-entry{align-items:flex-start;flex-direction:column;padding:20px;gap:16px}.accounting-entry strong{font-size:20px}.accounting-entry small{font-size:13px}.club-admin td,.club-admin th{padding:10px}.admin-shortcuts{gap:8px;padding:10px}.admin-shortcuts a{flex:1;text-align:center;font-size:12px;padding:9px}}
 
 </style>
+<link rel="stylesheet" href="assets/css/club-ui.css?v=1">
 </head>
-<body class="bg-slate-950 h-full w-full">
+<body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <linearGradient id="pcGRed" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stop-color="#c31c20"/><stop offset="0.52" stop-color="#8f1114"/><stop offset="1" stop-color="#350709"/></linearGradient>
@@ -1201,7 +1202,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
         });
     </script>
 
-    <script>
+    <script src="assets/js/club-ui.js?v=1"></script>
+<script>
 const {
   useState,
   useEffect,
@@ -5356,7 +5358,7 @@ function LeadersView({
     style: {
       overflowX: "hidden"
     },
-    className: "scrollable-content cl-page aurora-bg px-4 py-2 sm:p-8 h-full"
+    className: "club-surface scrollable-content cl-page aurora-bg px-4 py-2 sm:p-8 h-full"
   }, React.createElement("div", {
     className: "max-w-2xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
@@ -5608,9 +5610,9 @@ function PendingView({
   banned
 }) {
   return React.createElement("div", {
-    className: "h-full w-full aurora-bg text-slate-300 flex justify-center items-center font-bold text-xl flex-col gap-4"
+    className: "club-surface club-pending h-full w-full aurora-bg text-slate-300 flex justify-center items-center font-bold text-xl flex-col gap-4"
   }, React.createElement("i", {
-    className: banned ? "fa-solid fa-ban text-4xl text-rose-500" : "fa-solid fa-clock-rotate-left text-4xl text-amber-500 animate-spin"
+    className: banned ? "fa-solid fa-ban text-4xl text-rose-500" : "fa-solid fa-clock-rotate-left text-4xl text-amber-500"
   }), React.createElement("div", {
     className: "text-center"
   }, banned ? React.createElement(React.Fragment, null, "Your access to this club is suspended.", React.createElement("div", {
@@ -5939,7 +5941,7 @@ function ClubsView({
     style: {
       overflowX: "hidden"
     },
-    className: "scrollable-content cl-page aurora-bg p-4 sm:p-8"
+    className: "club-surface scrollable-content cl-page aurora-bg p-4 sm:p-8"
   }, React.createElement("div", {
     className: "max-w-2xl mx-auto animate-fade-in relative z-10 flex flex-col"
   }, React.createElement("div", {
@@ -6501,7 +6503,7 @@ function ProfileView({
     style: {
       overflowX: "hidden"
     },
-    className: "scrollable-content aurora-bg p-4 sm:p-8"
+    className: "club-surface scrollable-content aurora-bg p-4 sm:p-8"
   }, React.createElement("div", {
     className: "max-w-4xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {
@@ -7350,7 +7352,7 @@ function LobbyView({
     style: {
       overflowX: "hidden"
     },
-    className: "scrollable-content aurora-bg p-4 sm:p-6"
+    className: "club-lobby scrollable-content aurora-bg p-4 sm:p-6"
   }, buyinEdit && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
@@ -7459,7 +7461,7 @@ function LobbyView({
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Close"))), document.body), React.createElement("div", {
     className: "max-w-6xl mx-auto animate-fade-in relative z-10"
-  }, React.createElement("div", {
+  }, window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"POKERTEN",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
     className: "flex items-center justify-between gap-3 mb-5"
   }, React.createElement("div", {
     className: "lobby-wallet",
@@ -8811,7 +8813,7 @@ function SettlementSection({
       className: "text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-200 px-2.5 py-1.5 rounded-lg font-black"
     }, React.createElement("i", {
       className: `fa-solid ${big ? 'fa-xmark' : 'fa-expand'}`
-    })))), React.createElement("div", {
+    })))), !big && window.ClubUI && React.createElement(window.ClubUI.SettlementPlayerCards,{players:rows,results:pres,rakes,members:byUid,logs:gLog.filter(e=>inCyc(e.at)),period:cycLabel,formatAmount:formatMoney}), React.createElement(big ? "div" : "details", {className:big ? "" : "club-report-details"}, !big && React.createElement("summary",null,"Detailed player report"), React.createElement("div", {
       className: "overflow-x-auto"
     }, React.createElement("table", {
       className: `w-full ${big ? 'text-sm' : 'text-xs'}`,
@@ -8883,7 +8885,7 @@ function SettlementSection({
       className: `${cell(big)} text-right text-slate-300`
     }, formatMoney(tot.rk)), React.createElement("td", {
       className: `py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
-    }, formatMoney(tot.all)))))));
+    }, formatMoney(tot.all))))))));
     // Settlement summary: one line per agent — how many players, what they made
     // or lost between them, and how much rake they generated. This is the sheet
     // the club settles on at the end of a cycle.
@@ -9656,6 +9658,7 @@ function BackofficeView({
   const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
   const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && !isGhostOversight(u)).filter(u => (isOwner || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true);
+  const balanceMembers = usersList.filter(m => ["approved","banned"].includes(m.status) && !m.isBot && m.uid !== user.uid && m.uid !== "bot_bank").filter(m => canManageAny || m.agentUid === user.uid);
   const statTiles = [{
     label: 'Your balance',
     value: formatMoney(user.balance),
@@ -9663,7 +9666,7 @@ function BackofficeView({
     color: 'text-white'
   }, {
     label: 'Total held by Players',
-    value: formatMoney(players.reduce((s, p) => s + (p.balance || 0), 0)),
+    value: formatMoney(balanceMembers.reduce((s, p) => s + (Number(p.balance) || 0), 0)),
     icon: 'fa-users',
     color: 'text-blue-400'
   }, {
@@ -9673,7 +9676,7 @@ function BackofficeView({
     color: 'text-amber-400'
   }, {
     label: 'Registered Players',
-    value: realPlayers.length,
+    value: realPlayers.filter(m => canManageAny || m.uid === user.uid || m.agentUid === user.uid).length,
     icon: 'fa-id-card',
     color: 'text-emerald-400'
   }, {
@@ -10377,13 +10380,14 @@ function BackofficeView({
     onClick: () => setMemFilter(k2),
     className: `text-[11px] font-black px-3 py-1.5 rounded-full border ${memFilter === k2 ? 'bg-gold-400 text-slate-900 border-gold-400' : 'bg-slate-900 text-slate-400 border-white/10 hover:text-white'}`
   }, lb2))), React.createElement("div", {
-    className: "flex flex-col gap-2 max-h-96 overflow-y-auto pl-1"
+    className: "club-player-grid"
   }, players.map(u => React.createElement("div", {
     key: u.id,
-    className: "flex items-center justify-between flex-wrap gap-y-2 bg-slate-900/70 rounded-2xl p-3 border border-white/5 hover:border-emerald-500/30 transition-colors"
+    className: "club-player-card flex items-center justify-between flex-wrap gap-y-2 bg-slate-900/70 rounded-2xl p-3 border border-white/5 hover:border-emerald-500/30 transition-colors"
   }, React.createElement("div", {
     className: "flex items-center gap-3 min-w-0 cursor-pointer flex-1 basis-[200px]",
     onClick: () => !u.isBot && setPlayerFile(u),
+    role: "button", tabIndex: 0, onKeyDown: e => {if(e.key === "Enter" || e.key === " "){e.preventDefault();if(!u.isBot)setPlayerFile(u);}},
     title: "Open player file"
   }, React.createElement("img", {
     src: avatarUrl({
@@ -10416,7 +10420,8 @@ function BackofficeView({
     className: "flex items-center gap-2 sm:gap-3 shrink-0"
   }, React.createElement(Coin, {
     amount: u.balance,
-    className: "text-sm hidden sm:inline-flex"
+    className: "club-member-balance text-sm",
+    title: "Current balance"
   }), React.createElement("button", {
     onClick: () => adjustBalance(u, true),
     className: "w-9 h-9 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-800 hover:from-emerald-400 text-white font-black shadow-md",
@@ -10722,7 +10727,7 @@ function PokerCreateView({
     style: {
       overflowX: "hidden"
     },
-    className: "scrollable-content aurora-bg p-4 sm:p-6"
+    className: "club-surface scrollable-content aurora-bg p-4 sm:p-6"
   }, React.createElement("div", {
     className: "max-w-2xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("div", {

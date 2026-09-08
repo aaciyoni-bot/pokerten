@@ -24,6 +24,7 @@ const BONUS_GAMES_OFF = true;
 // pkReveal/pkPickGame/pkDiscard/godPeek/admFixGameLog) — see pokerEngine.js.
 // Requires the app to be initialized first, hence the require after initializeApp.
 Object.assign(exports, require("./pokerEngine"));
+Object.assign(exports, require("./personalCode"));
 
 // AVIATORIZIS — server-authoritative crash game (avJoin/avTick/avBet/
 // avCancelBet/avCashout/avCredit) — see aviator.js.

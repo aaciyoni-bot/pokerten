@@ -64,6 +64,16 @@ const BRAINS = {hero: E.botAction, station, nit, maniac};
 const seatBrain = [];           // brain name per seat
 const NAME_A = process.argv[3] || "hero";
 const NAME_B = process.argv[4] || "station";
+if ([NAME_A, NAME_B].includes("client")) {
+  const client = require("../tests/ui/load-client-bot.cjs")();
+  BRAINS.client = (state, uid) => {
+    // Give this policy public seat data and ONLY its own private hand.
+    const players = Object.fromEntries(Object.entries(state.players).map(([u, p]) => [u, {...p, cards: u === uid ? state.priv[uid] : []}]));
+    const move = client.botPokerMove(state.gameState, {settings: state.settings, players}, players[uid]);
+    return {action: move.type, amount: move.amt};
+  };
+}
+for (const name of [NAME_A, NAME_B]) if (!BRAINS[name]) throw new Error(`Unknown brain: ${name}`);
 for (let i = 0; i < SEATS; i++) seatBrain.push(i % 2 === 0 ? NAME_A : NAME_B);
 
 const mk = (uid, seatIndex) => ({uid, name: uid, seatIndex, stack: START, bet: 0,
@@ -103,7 +113,9 @@ for (let h = 0; h < HANDS; h++) {
     if (!p) { E.advancePhase(S); continue; }
     const brain = BRAINS[seatBrain[p.seatIndex]];
     let mv;
-    try { mv = brain(S, uid) || {action: "call"}; } catch (e) { mv = {action: "call"}; }
+    // A broken policy must fail the measurement, never silently turn into a caller.
+    mv = brain(S, uid);
+    if (!mv || !["call", "raise", "fold"].includes(mv.action)) throw new Error(`Invalid action from ${seatBrain[p.seatIndex]} at hand ${h}`);
     E.applyAction(S, uid, mv.action, mv.amount, false);
     acted++;
   }

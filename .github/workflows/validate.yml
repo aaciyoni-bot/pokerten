@@ -1,0 +1,34 @@
+name: Validate game and bot decisions
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install test and engine dependencies
+        run: |
+          npm ci --prefix tests/ui --ignore-scripts
+          npm ci --prefix functions --ignore-scripts
+      - name: Check mandatory game invariants
+        run: node predeploy-check.js
+      - name: Check actual client and server bot decisions
+        run: node tests/ui/bot-policy.test.cjs
+      - name: Check game engine
+        run: node functions/engine.smoke.test.js
+      - name: Check audio and accounting
+        run: node --test tests/*.test.cjs
+      - name: Check simulated login, chat, lobby and settlement flows
+        run: npm test --prefix tests/ui

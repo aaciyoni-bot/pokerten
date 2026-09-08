@@ -688,11 +688,12 @@ function equityOf(myCards, board, oppCount, gameType, range) {
     if (!myCards || !myCards.length) return null;
     const omaha = (gameType || "").startsWith("Omaha");
     const iters = omaha ? 90 : 200;
-    const k = Math.max(1, Math.min(6, Math.round(range || 1)));
+    const wantedRange = Math.max(1, Math.min(6, Math.round(range || 1)));
     const known = new Set([...myCards, ...(board || [])].map((c) => c.id));
     const rest = C.pokerDeck().filter((c) => !known.has(c.id));
-    const need = myCards.length * oppCount * k + 5;
-    if (rest.length < need) return null;
+    const missingBoard = Math.max(0, 5 - (board || []).length);
+    const k = Math.min(wantedRange, Math.floor((rest.length - missingBoard) / (myCards.length * oppCount)));
+    if (k < 1) return null;
     let score = 0;
     for (let i = 0; i < iters; i++) {
       // cheap partial shuffle of the remaining deck
@@ -710,7 +711,7 @@ function equityOf(myCards, board, oppCount, gameType, range) {
       }
       while (fb.length < 5) fb.push(d.pop());
       const my = C.bestScoreFull(myCards, fb, gameType);
-      let lose = false; let tie = false;
+      let lose = false; let ties = 1;
       for (const cands of oppHands) {
         let best = 0;
         for (const oc of cands) {
@@ -718,9 +719,9 @@ function equityOf(myCards, board, oppCount, gameType, range) {
           if (sc > best) best = sc;
         }
         if (best > my) { lose = true; break; }
-        if (best === my) tie = true;
+        if (best === my) ties++;
       }
-      if (!lose) score += tie ? 0.5 : 1;
+      if (!lose) score += 1 / ties;
     }
     return score / iters;
   } catch (e) {

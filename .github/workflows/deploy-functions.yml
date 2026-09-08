@@ -15,7 +15,10 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
   deploy:
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,7 +30,7 @@ jobs:
           node-version: '20'
 
       - name: Install function dependencies
-        run: npm --prefix functions install
+        run: npm ci --prefix functions
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools

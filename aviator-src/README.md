@@ -48,7 +48,7 @@ GOD (5 לחיצות על הלוגו + קוד מנהל). אין GOD MODE במשח
 | קובץ | תפקיד |
 |---|---|
 | `vercel/build.js` | סקריפט הבנייה של Vercel: מושך את שני הלקוחות מ-commit נעוץ, מבצע rewrites, כותב ל-`public/`, חותם `version.json` |
-| `vercel/api/timing.js` | פונקציית `/api/timing` — אבחון תזמון היציאות (מה השחקן ראה מול מה השרת חישב) |
+| `vercel/api/timing.js` | כתובת האבחון הציבורית נסגרה: מחזירה 404 ואינה קוראת נתוני תזמון. פתיחה מחדש מחייבת אימות בעלים בצד השרת |
 | `vercel/manifest.json` | מניפסט ה-PWA |
 | `vercel/sw.js` | Service worker (navigation-only, network-first) |
 | `vercel/vercel.json.template` | תבנית ה-rewrites (פרוקסי `/__/auth`, אייקונים, `/solo`) — החלף `<SHA>` |

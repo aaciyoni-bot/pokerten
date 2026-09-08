@@ -6,6 +6,25 @@ const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 
+test('public timing diagnostics fail closed without creating an account or reading records', async () => {
+  const route = require('./aviator-src/vercel/api/timing.js');
+  let status, body, requests = 0;
+  const headers = {};
+  const previousFetch = global.fetch;
+  global.fetch = async () => { requests++; throw new Error('Public diagnostics must not query Firebase'); };
+  try {
+    await route({method:'GET', headers:{}}, {
+      setHeader(name, value) { headers[name] = value; },
+      status(value) { status = value; return this; },
+      json(value) { body = value; }
+    });
+    assert.equal(status, 404);
+    assert.deepEqual(body, {error:'Not found'});
+    assert.equal(headers['Cache-Control'], 'no-store');
+    assert.equal(requests, 0);
+  } finally { global.fetch = previousFetch; }
+});
+
 test('source rebuild reproduces the committed client with its chat, styles and audio included', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aviator-build-'));
   try {

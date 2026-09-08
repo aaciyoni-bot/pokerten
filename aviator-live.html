@@ -698,6 +698,7 @@ input{font-family:inherit;color:inherit}
 
 #backBtn{display:none}
 </style>
+<link rel="stylesheet" href="aviator-ux.css">
 </head>
 <body>
 <div id="splash">
@@ -720,7 +721,7 @@ input{font-family:inherit;color:inherit}
     <div id="brand"><span class="word">AVIATORIZIS</span></div>
     <div id="balance"><span class="coin"></span><span id="balanceNum">0</span></div>
     <button class="icon-btn" id="installBtn" hidden aria-label="Install app">⤓</button>
-    <button class="icon-btn badge" id="chatBtn" aria-label="Chat">💬</button>
+    <button class="icon-btn badge" id="chatBtn" aria-label="Chat" aria-haspopup="dialog" aria-controls="chatCard" aria-expanded="false">💬</button>
     <button class="icon-btn" id="adminBtn" hidden aria-label="Admin dashboard">⚙️</button>
     <button class="icon-btn" id="soundBtn" aria-label="Toggle sound">🔊</button>
   </header>
@@ -770,9 +771,9 @@ input{font-family:inherit;color:inherit}
   <section id="betPanel">
     <div class="betRow">
       <div id="amountBox">
-        <button class="step" id="minus">−</button>
+        <button class="step" id="minus" aria-label="Decrease bet amount">−</button>
         <input id="betInput" inputmode="numeric" pattern="[0-9]*" value="100" aria-label="Bet amount">
-        <button class="step" id="plus">+</button>
+        <button class="step" id="plus" aria-label="Increase bet amount">+</button>
       </div>
       <div id="autoBox">
         <span class="lbl">Auto<br>cash&nbsp;out</span>
@@ -815,13 +816,14 @@ input{font-family:inherit;color:inherit}
 </div>
 
 <div id="chatModal">
-  <div id="chatCard" dir="rtl">
-    <div id="chatHead"><span>צ'אט המועדון</span><button id="chatClose">✕</button></div>
-    <div id="chatList"></div>
+  <div id="chatCard" dir="rtl" role="dialog" aria-modal="true" aria-labelledby="chatHeading" aria-describedby="chatSubtitle">
+    <div id="chatHead"><div><h2 id="chatHeading">צ׳אט המועדון</h2><p id="chatSubtitle">שיחה עם הטייסים בחדר</p></div><button id="chatClose" aria-label="סגירת הצ׳אט">✕</button></div>
+    <div id="chatList" role="log" aria-label="הודעות בחדר" aria-live="off" tabindex="0"></div>
     <form id="chatForm">
-      <input id="chatInput" maxlength="140" placeholder="כתוב הודעה…" autocomplete="off">
+      <input id="chatInput" maxlength="140" placeholder="כתוב הודעה…" aria-label="הודעה לצ׳אט" aria-describedby="chatStatus chatCount" autocomplete="off" dir="auto">
       <button id="chatSend" type="submit">שלח</button>
     </form>
+    <div id="chatFooter"><p id="chatStatus" role="status" aria-live="polite">עד 140 תווים להודעה</p><span id="chatCount">0/140</span></div>
   </div>
 </div>
 
@@ -852,6 +854,7 @@ input{font-family:inherit;color:inherit}
   </div>
 </div>
 
+<script src="aviator-ux.js"></script>
 <script type="module">
   /* Firebase — same pokerten project as the POKERTEN club app */
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -976,17 +979,42 @@ let audioUnlocked = false;
 let entered = false;   // no sound until the player taps TAKE OFF
 let AC = null, jetSrc = null, jetGain = null, jetFilter = null, jetBuf = null,
     rumbleOsc = null, rumbleGain = null, whineOsc = null, whineGain = null;
+let masterGain = null, audioResumePending = false;
 const bufferCache = new Map();
 
+function updateSoundOutput(){
+  const silent = muted || document.visibilityState === "hidden";
+  if (masterGain && AC) {
+    masterGain.gain.cancelScheduledValues(AC.currentTime);
+    masterGain.gain.setTargetAtTime(silent ? 0 : 0.75, AC.currentTime, 0.01);
+  }
+  $("#soundBtn").textContent = muted ? "🔇" : "🔊";
+  $("#soundBtn").setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
+  $("#soundBtn").setAttribute("aria-pressed", String(!muted));
+}
 function unlockAudio(){
-  if (audioUnlocked) return;
-  audioUnlocked = true;
-  $("#audioHint").classList.add("off");
   try{
-    AC = new (window.AudioContext || window.webkitAudioContext)();
-    if (AC.state === "suspended") AC.resume();
-    Object.values(SND_FILES).flat().forEach(loadBuffer);
-  }catch(e){ AC = null; }
+    if (!AC){
+      AC = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = AC.createGain();
+      masterGain.gain.value = muted ? 0 : 0.75;
+      masterGain.connect(AC.destination);
+      Object.values(SND_FILES).flat().forEach(loadBuffer);
+    }
+    audioUnlocked = AC.state === "running";
+    $("#audioHint").classList.toggle("off", audioUnlocked || muted);
+    if (!audioUnlocked && !audioResumePending){
+      audioResumePending = true;
+      AC.resume().then(() => {
+        audioUnlocked = AC.state === "running";
+        $("#audioHint").classList.toggle("off", audioUnlocked || muted);
+        if (audioUnlocked && entered && !muted && S.phase === "flying" && !jetSrc) toneStart();
+      }).catch(() => {
+        audioUnlocked = false;
+        $("#audioHint").classList.toggle("off", muted);
+      }).finally(() => { audioResumePending = false; });
+    }
+  }catch(e){ audioUnlocked = false; }
 }
 function loadBuffer(url){
   if (!AC || bufferCache.has(url)) return;
@@ -1005,7 +1033,7 @@ function play(name, vol = 0.5, rateVar = 0.08){
   src.playbackRate.value = 1 + rand(-rateVar, rateVar);
   const g = AC.createGain();
   g.gain.value = vol;
-  src.connect(g).connect(AC.destination);
+  src.connect(g).connect(masterGain);
   src.start();
 }
 /* jet-engine take-off during flight: three layers — broadband roar
@@ -1025,7 +1053,7 @@ function jetBuffer(){
   return jetBuf;
 }
 function toneStart(){
-  if (!entered || muted || !AC || REDUCED) return;
+  if (!entered || muted || !AC || !audioUnlocked) return;
   toneStop(0.01);
   jetSrc = AC.createBufferSource();
   jetSrc.buffer = jetBuffer();
@@ -1036,7 +1064,7 @@ function toneStart(){
   jetFilter.Q.value = 0.8;
   jetGain = AC.createGain();
   jetGain.gain.value = 0;
-  jetSrc.connect(jetFilter).connect(jetGain).connect(AC.destination);
+  jetSrc.connect(jetFilter).connect(jetGain).connect(masterGain);
   jetSrc.playbackRate.value = 0.7;
   jetSrc.start();
   rumbleOsc = AC.createOscillator();
@@ -1046,14 +1074,14 @@ function toneStart(){
   rf.type = "lowpass"; rf.frequency.value = 130;
   rumbleGain = AC.createGain();
   rumbleGain.gain.value = 0;
-  rumbleOsc.connect(rf).connect(rumbleGain).connect(AC.destination);
+  rumbleOsc.connect(rf).connect(rumbleGain).connect(masterGain);
   rumbleOsc.start();
   whineOsc = AC.createOscillator();
   whineOsc.type = "sine";
   whineOsc.frequency.value = 1400;
   whineGain = AC.createGain();
   whineGain.gain.value = 0;
-  whineOsc.connect(whineGain).connect(AC.destination);
+  whineOsc.connect(whineGain).connect(masterGain);
   whineOsc.start();
 }
 function toneUpdate(m){
@@ -1101,7 +1129,7 @@ function beltChime(){
     g.gain.setValueAtTime(0.0001, t + d);
     g.gain.linearRampToValueAtTime(0.09, t + d + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t + d + 1);
-    o.connect(g).connect(AC.destination);
+    o.connect(g).connect(masterGain);
     o.start(t + d); o.stop(t + d + 1.1);
   });
 }
@@ -1111,7 +1139,7 @@ function radioCall(){
   const src = AC.createBufferSource(); src.buffer = noiseBuffer();
   const bp = AC.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1600; bp.Q.value = 4.5;
   const g = AC.createGain(); g.gain.value = 0;
-  src.connect(bp).connect(g).connect(AC.destination);
+  src.connect(bp).connect(g).connect(masterGain);
   let tt = t + 0.06;
   g.gain.setValueAtTime(0.001, t);
   for (let i = 0; i < 7; i++){
@@ -1123,7 +1151,7 @@ function radioCall(){
   const o = AC.createOscillator(), og = AC.createGain();
   o.frequency.value = 2300;
   og.gain.setValueAtTime(0.04, tt); og.gain.exponentialRampToValueAtTime(0.0001, tt + 0.07);
-  o.connect(og).connect(AC.destination); o.start(tt); o.stop(tt + 0.09);
+  o.connect(og).connect(masterGain); o.start(tt); o.stop(tt + 0.09);
 }
 
 
@@ -1964,31 +1992,14 @@ addEventListener("fb-ready", () => {
 /* =====================================================================
    CHAT
    ===================================================================== */
-function renderChat(msgs){
-  const uid = user && user.uid;
-  const list = $("#chatList");
-  const stick = list.scrollTop + list.clientHeight >= list.scrollHeight - 60;
-  list.innerHTML = msgs.map(m => `
-    <div class="chatMsg ${m.uid === uid ? "me" : ""}"><b>${esc(m.name || "Pilot")}</b> ${esc(m.text)}</div>`).join("");
-  if (stick) list.scrollTop = list.scrollHeight;
-}
-$("#chatBtn").addEventListener("click", () => {
-  $("#chatModal").classList.add("on");
-  $("#chatBtn").classList.remove("on");
-  const list = $("#chatList"); list.scrollTop = list.scrollHeight;
+const chatUI = AviatorUX.createChat({
+  document, getUser: () => user, getName: myName,
+  send: message => {
+    const F = window.avFB;
+    return F.addDoc(F.collection(F.db, "aviatorChat"), message);
+  }
 });
-$("#chatClose").addEventListener("click", () => $("#chatModal").classList.remove("on"));
-$("#chatModal").addEventListener("click", e => { if (e.target.id === "chatModal") $("#chatModal").classList.remove("on"); });
-$("#chatForm").addEventListener("submit", e => {
-  e.preventDefault();
-  const text = $("#chatInput").value.trim().slice(0, 140);
-  if (!text || !user) return;
-  $("#chatInput").value = "";
-  const F = window.avFB;
-  F.addDoc(F.collection(F.db, "aviatorChat"),
-    {uid: user.uid, name: myName(), text, ts: Date.now()}).catch(() => {});
-  $("#chatModal").classList.remove("on");   // back to the game right away
-});
+function renderChat(msgs){ chatUI.render(msgs); }
 
 /* =====================================================================
    ADMIN — supervision & settlement (owner account only).
@@ -2155,13 +2166,14 @@ $("#soundBtn").addEventListener("click", () => {
   unlockAudio();
   muted = !muted;
   store.set("pt_av_muted", muted);
-  $("#soundBtn").textContent = muted ? "🔇" : "🔊";
+  updateSoundOutput();
   if (muted) toneStop(0.03);
   else if (S.phase === "flying") toneStart();
 });
 ["pointerdown", "keydown", "touchstart"].forEach(ev =>
   addEventListener(ev, unlockAudio, { once: false, passive: true }));
 document.addEventListener("visibilitychange", () => {
+  updateSoundOutput();
   if (document.visibilityState === "visible") maybeTick(true);
 });
 
@@ -2226,7 +2238,7 @@ if ("wakeLock" in navigator){
 /* =====================================================================
    BOOT
    ===================================================================== */
-$("#soundBtn").textContent = muted ? "🔇" : "🔊";
+updateSoundOutput();
 $("#balanceNum").textContent = "0";
 renderHistory();
 setBetValue(100);

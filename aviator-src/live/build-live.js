@@ -19,7 +19,11 @@ const cut = (hay, from, to, label) => {
 
 /* --- head + css --- */
 let head = src.slice(0, src.indexOf('</style>'));
-head += read(P + '/extra.css') + '\n' + read(P + '/ux.css') + '\n#backBtn{display:none}\n</style>\n</head>\n<body>\n';
+const icons = JSON.parse(read(P + '/icons.json'));
+const iconCSS = ':root{' + Object.entries(icons).map(([name, svg]) =>
+  '--icon-' + name + ':url("data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64') + '")'
+).join(';') + '}';
+head += read(P + '/extra.css') + '\n' + read(P + '/ux.css') + '\n' + iconCSS + '\n' + read(P + '/cockpit.css') + '\n#backBtn{display:none}\n</style>\n</head>\n<body>\n';
 
 /* --- body html --- */
 let body = cut(src, '<div id="splash">', '<script type="module">', 'body');
@@ -32,6 +36,7 @@ body = body.replace('<div id="godPill" hidden>⚡ crash @ <b id="godVal">—</b>
 body = body.replace('<div id="iosModal">', read(P + '/extra.html') + '\n<div id="iosModal">');
 body = body.replace('id="minus"', 'id="minus" aria-label="Decrease bet amount"')
            .replace('id="plus"', 'id="plus" aria-label="Increase bet amount"');
+body = require('./cockpit-layout.js')(body);
 
 /* --- reusable script sections from the solo game --- */
 const js = cut(src, '"use strict";', '</script>\n</body>', 'main script');
@@ -50,6 +55,7 @@ const script = [
   patch(sound),
   patch(canvas),
   read(P + '/main2.js'),
+  read(P + '/cockpit.js'),
   patch(pwa),
   read(P + '/main3.js'),
 ].join('\n');

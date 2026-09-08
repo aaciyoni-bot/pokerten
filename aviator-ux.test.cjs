@@ -15,7 +15,7 @@ test('source rebuild reproduces the committed client with its chat, styles and a
     });
     const built = fs.readFileSync(path.join(dir, 'aviator-live.html'), 'utf8');
     assert.equal(built, fs.readFileSync(path.join(__dirname, 'aviator-live.html'), 'utf8'));
-    for (const file of ['ux.js', 'ux.css', 'audio.js']) {
+    for (const file of ['ux.js', 'ux.css', 'audio.js', 'cockpit.js', 'cockpit.css']) {
       assert.ok(built.includes(fs.readFileSync(path.join(__dirname, 'aviator-src/live', file), 'utf8')));
     }
     assert.doesNotMatch(built, /(?:src|href)="aviator-ux\.(?:js|css)"/);
@@ -25,6 +25,19 @@ test('source rebuild reproduces the committed client with its chat, styles and a
   } finally {
     fs.rmSync(dir, {recursive:true, force:true});
   }
+});
+
+test('cockpit layout preserves each original game control and moves the live readout as one block', () => {
+  const built = fs.readFileSync(path.join(__dirname, 'aviator-live.html'), 'utf8');
+  const before = execFileSync('git', ['show', '12abccb3835e4937163d9a8895f884ea32690390:aviator-live.html'], {cwd:__dirname, encoding:'utf8'});
+  const markup = source => source.slice(0, source.indexOf('<script'));
+  const ids = source => [...markup(source).matchAll(/\bid="([^"\s]+)"/g)].map(match => match[1]);
+  const actual = ids(built);
+  for (const id of ids(before)) assert.equal(actual.filter(value => value === id).length, 1, id + ' must exist exactly once');
+  assert.ok(built.indexOf('id="flightInstrument"') < built.indexOf('id="stageCenter"'));
+  const instrument = built.slice(built.indexOf('<section id="flightInstrument"'), built.indexOf('<section id="betPanel"'));
+  for (const id of ['stageCenter', 'mult', 'flightNums', 'countdown', 'ringFg']) assert.ok(instrument.includes('id="' + id + '"'));
+  for (const file of ['cockpit.webp', 'multiplier-dial.webp']) assert.ok(fs.statSync(path.join(__dirname, 'aviator-src/live/assets', file)).size > 1000);
 });
 
 // Behaviour fixture only: these tests do not claim browser/layout verification.

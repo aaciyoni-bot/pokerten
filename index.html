@@ -1044,7 +1044,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, linkWithPopup, reauthenticateWithPopup, reauthenticateWithCredential, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
@@ -1067,14 +1067,28 @@
             .catch(() => setPersistence(_auth, browserLocalPersistence))
             .catch(() => {});
         window.fb.signInAnonymously = async (a) => { await _persist; return signInAnonymously(a || _auth); };
-        // ---- verified phone sign-in (SMS one-time code) --------------------
-        // Firebase insists on a reCAPTCHA before it will send an SMS; invisible
-        // means the player never sees it unless Google decides the traffic is
-        // suspicious. The verifier is built once and reused: building a second
-        // one over the same container throws.
         const _fx = getFunctions(app);
         window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
         window.fb.customSignIn = async token => { await _persist; return signInWithCustomToken(_auth, token); };
+        // Keep the signed-in UID when attaching Google to an existing phone account.
+        window.fb.reauthPlayerWithGoogle = async () => {
+            const player = _auth.currentUser;
+            if (!player) throw Object.assign(new Error('יש להיכנס לחשבון השחקן הקיים.'), {code:'auth/no-current-user'});
+            const uid = player.uid;
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({prompt:'select_account'});
+            if (player.providerData.some(item => item.providerId === 'google.com')) {
+                await reauthenticateWithPopup(player, provider);
+            } else {
+                const linked = await linkWithPopup(player, provider);
+                const credential = GoogleAuthProvider.credentialFromResult(linked);
+                if (!credential) throw new Error('האימות לא הושלם. נסה שוב.');
+                await reauthenticateWithCredential(player, credential);
+            }
+            if (_auth.currentUser?.uid !== uid) throw new Error('חשבון השחקן השתנה. יש להיכנס מחדש.');
+            await player.getIdToken(true);
+            return {uid};
+        };
         // Robust Google sign-in: popup FIRST on every device. signInWithRedirect
         // breaks on modern mobile browsers when authDomain (…firebaseapp.com)
         // differs from the app origin — Chrome/Safari storage partitioning drops
@@ -4810,6 +4824,18 @@ function PersonalCodeForm({ account = false }) {
     }).catch(() => { if (active) setError('הכניסה בקוד אישי אינה זמינה כרגע. אפשר להיכנס עם Google .'); });
     return () => { active = false; };
   }, [account]);
+  const verifyGoogle = async () => {
+    if (busy) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await window.fb.reauthPlayerWithGoogle();
+      setNotice('האימות הושלם בחשבון הנוכחי. עכשיו אפשר לשמור קוד אישי.');
+    } catch(e) {
+      setError(/credential-already-in-use|account-exists-with-different-credential/.test(e?.code||'')
+        ? 'חשבון Google הזה שייך לשחקן אחר. בחר חשבון Google פנוי או פנה למנהל לשחזור גישה.'
+        : /popup-closed|cancelled-popup/.test(e?.code||'') ? 'האימות בוטל. אפשר לנסות שוב.' : 'האימות לא הושלם. נסה שוב או פנה למנהל.');
+    } finally { setBusy(false); }
+  };
   const submit = async event => {
     event.preventDefault();
     if (busy || !available) return;
@@ -4838,6 +4864,9 @@ function PersonalCodeForm({ account = false }) {
     account && savedId && React.createElement('div', {className:'personal-code-id'},
       React.createElement('span', null, 'קוד השחקן שלך'), React.createElement('strong', {dir:'ltr'}, savedId),
       React.createElement('button', {type:'button', onClick:async()=>{try{await navigator.clipboard.writeText(savedId);setNotice('קוד השחקן הועתק.');}catch(_){setNotice('אפשר לבחור ולהעתיק את המספר שמופיע כאן.');}}}, 'העתקה')),
+    account && React.createElement('div',{className:'personal-code-verify'},
+      React.createElement('p',null,'נכנסת בעבר עם SMS, או שהאימות פג? אפשר לחבר Google לחשבון השחקן הנוכחי ולאמת אותו לפני שמירת הקוד.'),
+      React.createElement('button',{type:'button',onClick:verifyGoogle,disabled:busy},'אימות עם Google לחשבון הנוכחי')),
     !account && React.createElement('div', {className:'personal-code-tabs'}, ['login','register'].map(value=>React.createElement('button', {
       key:value, type:'button', disabled:busy, 'aria-pressed':mode===value,
       onClick:()=>{setMode(value);setError('');setPin('');setConfirm('');}
@@ -4875,7 +4904,7 @@ function AuthView() {
       React.createElement('i',{className:'fa-brands fa-google text-blue-500'}),busy?'מתחבר…':'כניסה עם Google'),
     error && React.createElement('p',{role:'alert',className:'auth-error'},error),
     React.createElement('p',{className:'personal-code-help',dir:'rtl'},'לכל חשבון קוד שחקן קבוע וייחודי. אפשר להגדיר קוד אישי גם אחרי כניסה עם Google.'),
-    React.createElement('p',{className:'personal-code-help',dir:'rtl'},'נכנסת בעבר עם SMS? אם החשבון פתוח במכשיר אחר, הגדר בו קוד אישי דרך הפרופיל. אחרת יש לפנות למנהל לשחזור גישה לאותו חשבון.'),
+    React.createElement('p',{className:'personal-code-help',dir:'rtl'},'נכנסת בעבר עם SMS? אם החשבון פתוח במכשיר אחר, אמת בו את החשבון עם Google דרך הפרופיל והגדר קוד אישי. אחרת יש לפנות למנהל לשחזור גישה לאותו חשבון.'),
     React.createElement(InstallBanner,{variant:'auth'})),
     React.createElement('div',{className:'auth-footer'},'POKERTEN · Powered by ORIZIS TECHNOLOGY'));
 }

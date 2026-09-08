@@ -3,11 +3,11 @@
 final result: blocked
 
 ## Reference and implementation
-Selected reference: other agent's cockpit concept `exec-51b20e6e-0991-4cca-833c-eed4cef620ff.png`, inspected at 1536×1024. Wide central flight display, narrow recent-round rail, player panel, central green cashout, dark aircraft housing and twilight windshield. Implemented in source files with a new 89,848-byte WebP plate. All labels, values and controls remain actual DOM elements; original game IDs are preserved. Responsive breakpoint 760px; 390px iframe fixture available.
+Selected reference: other agent's cockpit concept `exec-51b20e6e-0991-4cca-833c-eed4cef620ff.png`, inspected at 1536×1024. Wide central flight display, narrow recent-round rail, player panel, central green cashout, dark aircraft housing and twilight windshield. Implemented in source files with a new 89,848-byte WebP plate. All labels, values and controls remain actual DOM elements; original game IDs are preserved. Responsive breakpoint 760px; 390px iframe fixture available. Latest user steering adds an embedded Natural Earth world map and a realistic generated jet sprite, replacing the comet head. Map geometry is rasterized only on resize; both visual layers use the authoritative graph endpoint. These additions also await browser QA.
 
 ## Actual verification
 - Live a9fa238 opened in the supported cloud browser; Take off and game DOM were inspected. This is the previous production build, not verification of the new changes.
-- 38 automated regressions passed: core integer pricing, quote authentication/expiry, exact cashout, delayed settlement including automatic/manual ordering, retries, round rollover, disconnect freeze, 1.00x, exact crash boundary, rounding, legacy rollout, solo/live GOD, chat and audio mute.
+- 40 automated regressions passed: core integer pricing, quote authentication/expiry, exact cashout, delayed settlement including automatic/manual ordering, retries, round rollover, disconnect freeze, 1.00x, exact crash boundary, rounding, legacy rollout, solo/live GOD, chat and audio mute.
 - Generated client rebuilt byte-for-byte from source and script syntax checked.
 - No POKERTEN engine, odds, house edge, owner credential, Firestore rules or public diagnostic access changed.
 

@@ -108,3 +108,19 @@ test('solo GOD display follows the current solo round and hides on disable', () 
   ctx.S.crashPoint=1;ctx.updateGod();assert.equal(els['#godVal'].textContent,'1.00x');
   ctx.godMode=false;ctx.updateGod();assert.equal(els['#godPill'].hidden,true);
 });
+
+test('world-map geometry is local and cached between frames; only a resize rerasterizes it', () => {
+  const visuals=fs.readFileSync(__dirname+'/flight-visuals.js','utf8')
+    .replace('/*__WORLD_LAND__*/ []',fs.readFileSync(__dirname+'/assets/world-110m.json','utf8'));
+  let geometryDraws=0,bitmapDraws=0;
+  const map={setTransform(){},translate(){},scale(){},fill(){geometryDraws++;},stroke(){}};
+  const layer={getContext:()=>map};
+  const ctx={W:600,H:360,DPR:2,document:{createElement:()=>layer},
+    Path2D:class {moveTo(){}lineTo(){}closePath(){}},Image:class {},
+    ctx:{drawImage(){bitmapDraws++;}}};
+  vm.runInNewContext(visuals,ctx);
+  for(let i=0;i<120;i++)ctx.drawWorldMap();
+  assert.equal(geometryDraws,1);assert.equal(bitmapDraws,120);
+  ctx.W=390;ctx.drawWorldMap();assert.equal(geometryDraws,2);
+  assert(!client.includes('fetch("assets/world-110m.json")'));
+});

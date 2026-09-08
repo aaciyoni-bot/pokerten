@@ -165,3 +165,14 @@ test('rollout bridge refunds an existing legacy bet once, without allowing new l
   await assert.rejects(s.call('avBet',{amount:100}),/לרענן/);
   const r=await s.call('avBet',{...ids(),amount:100});assert.equal(r.bet.protocol,2);
 });
+
+
+test('in-flight price reads do not acquire transaction locks needed by cashout', async () => {
+  const time=Math.ceil(tFor(2)), s=setup({time,crash:3});
+  let transactionStarted=false;
+  s.beforeNextTransaction(()=>{transactionStarted=true;});
+  const r=await s.call('avTick');
+  assert.equal(transactionStarted,false);
+  assert.equal(r.quote.maxCents,Core.centsAt(time));
+  assert(Core.validQuote(r.quote,'fixture','u1','r1',200,time));
+});

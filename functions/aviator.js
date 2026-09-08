@@ -177,6 +177,22 @@ exports.avTick = onCall(AV_OPTS, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
   const serverReceivedAt = Date.now();
+  // Read-only price requests must not hold transaction locks needed by cashout.
+  // Revalidate time AND the state/engine round pair after both reads; transitions
+  // and settlement still go through the authoritative transaction below.
+  const observed = await stateRef().get();
+  const flying = observed.exists && observed.data();
+  if (flying && flying.phase === "flying") {
+    const engineSnap = await engineRef().get();
+    const engine = engineSnap.exists && engineSnap.data();
+    const issuedAt = Date.now(), startedAt = flying.startedAt ?? flying.phaseAt;
+    if (engine && engine.roundId === flying.roundId && issuedAt >= startedAt &&
+        issuedAt < startedAt + timeForMult(engine.crashPoint)) {
+      return {state:flying, quote:Core.makeQuote(engine.seed, uid, flying.roundId,
+        Math.min(Core.centsAt(issuedAt - startedAt), Core.toCents(engine.crashPoint) - 1), issuedAt),
+        serverReceivedAt, serverNow:Date.now()};
+    }
+  }
   const out = await adb.runTransaction(async (tx) => {
     const now = Date.now();
     const sSnap = await tx.get(stateRef());

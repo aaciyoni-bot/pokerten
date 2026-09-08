@@ -53,6 +53,15 @@ const graphClock = 'const t = (now - S.phaseAt) / 1000;';
 if (!canvas.includes(graphClock)) throw new Error('Missing graph clock anchor');
 canvas = canvas.replace(graphClock,
   'const t = flying ? timeForMult(S.mult) / 1000 : (now - S.phaseAt) / 1000;');
+// Keep the graph's data-driven world map local and cache its raster layer.
+canvas = canvas.replace(cut(canvas, '/* world map far below', 'const particles =', 'map loader'), '');
+canvas = canvas.replace(cut(canvas, '  /* --- world map drifting far below --- */', '  /* --- dust parallax --- */', 'map drawing'), '  drawWorldMap();\n\n');
+const cometStart = canvas.indexOf('    /* --- comet head --- */');
+const cometEnd = canvas.indexOf('\n  } else {\n    // waiting:', cometStart);
+if (cometStart < 0 || cometEnd < cometStart) throw new Error('Missing flight-head anchor');
+canvas = canvas.slice(0, cometStart) + '    if (!crashed) drawFlightJet(headX, headY);' + canvas.slice(cometEnd);
+const visuals = read(P + '/flight-visuals.js').replace('/*__WORLD_LAND__*/ []', read(P + '/assets/world-110m.json').trim());
+
 const pwa    = cut(js, '/* =====================================================================\n   APP INSTALL',
                        '/* keep the screen awake', 'pwa')
              + cut(js, '/* keep the screen awake', '/* persist chips */', 'wakelock');
@@ -62,6 +71,7 @@ const script = [
   read(P + '/main1.js'),
   read(P + '/ux.js'),
   patch(sound),
+  visuals,
   patch(canvas),
   read(P + '/main2.js'),
   read(P + '/cockpit.js'),

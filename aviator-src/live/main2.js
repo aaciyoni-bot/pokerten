@@ -189,9 +189,11 @@ async function doCashout(){
   const payload = {roundId:S.roundId, requestId:newRequestId(), seenCents:S.cents, quote:S.quote};
   const sentAt = performance.now();
   pendingCash = payload; cashing = true;
+  // Dispatch before feedback/audio work; the price is captured once at input.
+  const response = sendAction("avCashout", payload);
   updateAction(); haptic(8);
   try{
-    const r = await sendAction("avCashout", payload);
+    const r = await response;
     if (r.roundId === payload.roundId && r.requestId === payload.requestId && S.roundId === payload.roundId){
       cashoutRtt = Math.round(performance.now() - sentAt);
       myBet = {...myBet, cashedAt:r.mult, win:r.win, auto:r.auto, lost:false};
@@ -777,13 +779,16 @@ let cashPointerHandled = false;
 $("#actionBtn").addEventListener("pointerdown", e => {
   if (e.button !== 0 || !e.isPrimary || e.currentTarget.disabled) return;
   if (S.phase === "flying" && myBet && !myBet.cashedAt && !myBet.lost){
-    cashPointerHandled = true; unlockAudio(); doCashout();
+    cashPointerHandled = true; doCashout(); unlockAudio();
   }
 });
 $("#actionBtn").addEventListener("pointercancel", () => { cashPointerHandled = false; });
 $("#actionBtn").addEventListener("click", e => {
   if (cashPointerHandled && e.detail !== 0){ cashPointerHandled = false; return; }
   cashPointerHandled = false;
+  if (S.phase === "flying" && myBet && !myBet.cashedAt && !myBet.lost){
+    doCashout(); unlockAudio(); return;
+  }
   unlockAudio();
   if (S.phase === "waiting"){
     myBet ? doCancelBet() : doPlaceBet(betValue());

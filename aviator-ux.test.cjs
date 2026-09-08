@@ -2,6 +2,30 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
+const os = require('node:os');
+const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+
+test('source rebuild reproduces the committed client with its chat, styles and audio included', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aviator-build-'));
+  try {
+    fs.copyFileSync(path.join(__dirname, 'aviator.html'), path.join(dir, 'aviator.html'));
+    execFileSync(process.execPath, [path.join(__dirname, 'aviator-src/live/build-live.js')], {
+      cwd: dir, env: {...process.env, AVIATOR_REPO_ROOT: dir}
+    });
+    const built = fs.readFileSync(path.join(dir, 'aviator-live.html'), 'utf8');
+    assert.equal(built, fs.readFileSync(path.join(__dirname, 'aviator-live.html'), 'utf8'));
+    for (const file of ['ux.js', 'ux.css', 'audio.js']) {
+      assert.ok(built.includes(fs.readFileSync(path.join(__dirname, 'aviator-src/live', file), 'utf8')));
+    }
+    assert.doesNotMatch(built, /(?:src|href)="aviator-ux\.(?:js|css)"/);
+    const scripts = [...built.matchAll(/<script>\s*([\s\S]*?)<\/script>/g)];
+    assert.ok(scripts.length);
+    for (const [, source] of scripts) new vm.Script(source);
+  } finally {
+    fs.rmSync(dir, {recursive:true, force:true});
+  }
+});
 
 // Behaviour fixture only: these tests do not claim browser/layout verification.
 function fixture(send = async () => {}) {
@@ -29,7 +53,7 @@ function fixture(send = async () => {}) {
   }
   for(const id of ['app','chatModal','chatInput','chatSend','chatList','chatStatus','chatBtn','chatClose','chatCount','chatForm']) elements.set(id,new Element(id));
   doc.createElement=()=>new Element();doc.createDocumentFragment=()=>new Element();
-  const context={window:{}};vm.runInNewContext(fs.readFileSync(__dirname+'/aviator-ux.js','utf8'),context);
+  const context={window:{}};vm.runInNewContext(fs.readFileSync(__dirname+'/aviator-src/live/ux.js','utf8'),context);
   const controller=context.window.AviatorUX.createChat({document:doc,send,getUser:()=>({uid:'test-user'}),getName:()=> 'Test pilot'});
   const get=id=>elements.get(id);
   return {doc,get,controller};

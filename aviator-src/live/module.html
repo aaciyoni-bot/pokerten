@@ -1,0 +1,28 @@
+<script type="module">
+  /* Firebase — same pokerten project as the POKERTEN club app */
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged, signOut }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import { getFirestore, doc, onSnapshot, collection, query, where, orderBy,
+           limit, addDoc, getDocs }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+  import { getFunctions, httpsCallable }
+    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+  const app = initializeApp({
+    apiKey: "AIzaSyC1MuCmX0bUAW6XakFzkqS8LHVxkDRTrfo",
+    authDomain: "www.aviatorizis.com",
+    projectId: "pokerten",
+    storageBucket: "pokerten.firebasestorage.app",
+    messagingSenderId: "861274065626",
+    appId: "1:861274065626:web:512b8383ea1fae7a8c73e3"
+  });
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  const fxs = getFunctions(app, "us-central1");
+  window.avFB = {
+    auth, db, signInAnonymously, onAuthStateChanged, signOut,
+    doc, onSnapshot, collection, query, where, orderBy, limit, addDoc, getDocs,
+    fx: (name, data) => httpsCallable(fxs, name)(data).then(r => r.data)
+  };
+  window.dispatchEvent(new Event("fb-ready"));
+</script>

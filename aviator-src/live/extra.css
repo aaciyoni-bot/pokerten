@@ -1,0 +1,146 @@
+
+/* ---------- login (club entrance) ---------- */
+#loginModal{
+  position:fixed; inset:0; z-index:95; display:none; place-items:center;
+  background:
+    radial-gradient(90% 70% at 50% 30%, rgba(213,179,107,0.09), transparent 60%),
+    var(--pt-bg);
+}
+#loginModal.on{display:grid}
+#loginCard{
+  width:min(92vw,360px); background:var(--pt-raised); border:1px solid var(--pt-line);
+  border-radius:var(--radius-l); box-shadow:var(--pt-shadow); padding:26px 24px;
+  display:grid; gap:12px; text-align:center;
+}
+#loginCard h2{font-family:'Frank Ruhl Libre',serif; font-size:24px; color:var(--pt-gold)}
+#loginCard .note{font-size:12px; color:var(--pt-dim); line-height:1.5}
+.lgBtn{
+  height:48px; border-radius:var(--radius-m); font-size:15px; font-weight:800;
+  display:flex; align-items:center; justify-content:center; gap:10px;
+}
+.lgField{
+  height:46px; border-radius:var(--radius-m); background:var(--pt-card);
+  border:1px solid var(--pt-line); padding:0 14px; font-size:16px; text-align:center;
+  outline:none; color:var(--pt-text); width:100%;
+  font-variant-numeric:tabular-nums;
+}
+.lgField:focus{border-color:rgba(213,179,107,0.5)}
+#guestBtn{
+  background:linear-gradient(180deg,#E8CB8B,var(--pt-gold) 45%,var(--pt-gold-deep));
+  color:#161006;
+}
+#loginErr{font-size:12.5px; color:var(--pt-red); min-height:16px}
+
+/* ---------- chat overlay ---------- */
+#chatModal{
+  position:fixed; inset:0; z-index:90; display:none;
+  background:rgba(7,9,15,0.72); backdrop-filter:blur(6px);
+  place-items:end center;
+}
+#chatModal.on{display:grid}
+#chatCard{
+  width:min(100vw,520px); height:min(72dvh,560px); display:flex; flex-direction:column;
+  background:var(--pt-raised); border:1px solid var(--pt-line);
+  border-radius:var(--radius-l) var(--radius-l) 0 0; box-shadow:var(--pt-shadow);
+}
+#chatHead{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 16px; border-bottom:1px solid var(--pt-line);
+  font-weight:800; letter-spacing:1px; color:var(--pt-gold);
+}
+#chatClose{font-size:18px; color:var(--pt-dim); padding:4px 8px}
+#chatList{flex:1; overflow-y:auto; padding:10px 14px; display:flex; flex-direction:column; gap:8px}
+.chatMsg{font-size:13.5px; line-height:1.45; word-break:break-word}
+.chatMsg b{color:var(--pt-gold); font-weight:800}
+.chatMsg.me b{color:var(--pt-green)}
+#chatForm{display:flex; gap:8px; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid var(--pt-line)}
+#chatInput{
+  flex:1; height:44px; border-radius:999px; background:var(--pt-card);
+  border:1px solid var(--pt-line); padding:0 16px; font-size:14px; outline:none; color:var(--pt-text);
+}
+#chatSend{
+  padding:0 20px; border-radius:999px; font-weight:800; font-size:14px;
+  background:linear-gradient(180deg,#E8CB8B,var(--pt-gold) 45%,var(--pt-gold-deep)); color:#161006;
+}
+
+/* ---------- admin dashboard ---------- */
+#adminModal{
+  position:fixed; inset:0; z-index:92; display:none; place-items:center;
+  background:rgba(7,9,15,0.78); backdrop-filter:blur(6px);
+}
+#adminModal.on{display:grid}
+#adminCard{
+  width:min(94vw,560px); max-height:86dvh; overflow-y:auto;
+  background:var(--pt-raised); border:1px solid var(--pt-line);
+  border-radius:var(--radius-l); box-shadow:var(--pt-shadow); padding:18px;
+  display:grid; gap:14px;
+}
+#adminCard h2{font-family:'Frank Ruhl Libre',serif; font-size:20px; color:var(--pt-gold); display:flex; justify-content:space-between; align-items:center}
+#adminClose{font-size:18px; color:var(--pt-dim)}
+.admSec{font-size:11px; font-weight:800; letter-spacing:2px; color:var(--pt-dim); text-transform:uppercase; border-bottom:1px solid var(--pt-line); padding-bottom:6px}
+.admRow{
+  display:flex; align-items:center; gap:10px; padding:7px 8px; border-radius:10px;
+  background:var(--pt-card); border:1px solid var(--pt-line); font-size:13px;
+}
+.admRow img{width:26px;height:26px;border-radius:50%}
+.admRow .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700}
+.admRow .bal{font-variant-numeric:tabular-nums; font-weight:800; color:var(--pt-gold)}
+.admRow .net{font-variant-numeric:tabular-nums; font-size:12px; width:74px; text-align:right}
+.admRow .net.up{color:var(--pt-green)} .admRow .net.dn{color:var(--pt-red)}
+.admCredit{
+  padding:5px 12px; border-radius:999px; font-weight:800; font-size:12px;
+  background:rgba(61,214,140,0.12); border:1px solid rgba(61,214,140,0.45); color:var(--pt-green);
+}
+.admRound{display:flex; gap:10px; font-size:12.5px; font-variant-numeric:tabular-nums; color:var(--pt-dim); padding:4px 6px}
+.admRound b{color:var(--pt-text)}
+
+/* error flavor of the win toast */
+#winToast.err{
+  background:linear-gradient(180deg, rgba(240,85,109,0.18), rgba(240,85,109,0.08));
+  border-color:rgba(240,85,109,0.5); color:var(--pt-red);
+  box-shadow:0 6px 30px rgba(240,85,109,0.22); font-size:15px;
+}
+
+/* fairness pill (replaces god pill in live play) */
+#fairPill{
+  position:absolute; left:12px; top:12px; z-index:5; max-width:46%;
+  font-size:10px; font-weight:700; color:var(--pt-dim); background:rgba(14,18,25,0.75);
+  border:1px solid var(--pt-line); border-radius:999px; padding:4px 10px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+#topbar .icon-btn.badge{position:relative}
+#topbar .icon-btn.badge::after{
+  content:""; position:absolute; top:7px; right:7px; width:7px; height:7px; border-radius:50%;
+  background:var(--pt-red); opacity:0; transition:opacity var(--t-fast);
+}
+#topbar .icon-btn.badge.on::after{opacity:1}
+
+/* ---------- "cashed out in time" badge ---------- */
+#mult.safe{color:var(--pt-green); text-shadow:0 0 44px rgba(61,214,140,0.5); transition:none}
+#safeTag{
+  margin-top:8px; display:none; align-items:center; justify-content:center; gap:8px;
+  font-size:14.5px; font-weight:900; letter-spacing:0.2px; color:#0E2417;
+  background:linear-gradient(180deg,#7BE6AE,var(--pt-green));
+  border-radius:999px; padding:8px 18px; white-space:nowrap;
+  box-shadow:0 6px 24px rgba(61,214,140,0.35);
+}
+#safeTag.on{display:inline-flex; animation:safePop 480ms var(--ease-out)}
+@keyframes safePop{
+  0%{transform:scale(0.55); opacity:0}
+  55%{transform:scale(1.1)}
+  100%{transform:scale(1); opacity:1}
+}
+
+/* ---------- supervisor pill (owner control view) ---------- */
+#supPill{
+  position:absolute; left:12px; top:44px; z-index:5;
+  display:flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px;
+  font-size:12.5px; font-weight:800; font-variant-numeric:tabular-nums;
+  color:#C9A2FF; background:rgba(30,20,50,0.82); border:1px solid rgba(201,162,255,0.45);
+}
+
+/* build tag — tiny, for remote debugging */
+#buildTag{
+  position:fixed; left:6px; bottom:3px; z-index:4; pointer-events:none;
+  font-size:9px; color:rgba(255,255,255,0.22); font-variant-numeric:tabular-nums;
+}

@@ -23,6 +23,7 @@
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
 const crypto = require("crypto");
+const Core = require("./aviatorCore");
 
 const adb = getFirestore();
 
@@ -36,9 +37,6 @@ const HOUSE_EDGE = 0.03;            // 3% instant bust
 const MIN_BET = 25;
 const WELCOME_CHIPS = 10000;
 const MAX_FLIGHT_MULT = 5000;       // hard ceiling, keeps flights finite
-const CASHOUT_GRACE_MS = 250;       // network forgiveness: price the press a
-                                    // beat earlier so latency can't eat a
-                                    // cash-out the player made in time
 
 const stateRef = () => adb.doc("aviator/state");
 const engineRef = () => adb.doc("aviator/_engine");
@@ -60,7 +58,7 @@ function seedBots(tx, roundId){
     const amount = Math.max(100,
       Math.round(Math.pow(10, 2 + Math.random() * 1.301) / 25) * 25);
     const autoAt = Math.random() < 0.8
-      ? Math.min(30, round2(1.02 - Math.log(1 - Math.random()) / 1.1))
+      ? Math.min(30, Math.round((1.02 - Math.log(1 - Math.random()) / 1.1) * 100) / 100)
       : null;                                        // ~20% ride it to the crash
     tx.create(adb.doc(`aviatorBets/${roundId}_bot_${i}`), {
       uid: `bot_${i}`, roundId, amount, autoAt, bot: true,
@@ -72,7 +70,37 @@ function seedBots(tx, roundId){
 
 const multAt = (ms) => Math.exp(GROWTH_K * ms / 1000);
 const timeForMult = (m) => Math.log(m) / GROWTH_K * 1000;
-const round2 = (m) => Math.floor(m * 100) / 100;
+const round2 = (m) => Core.toCents(m) / 100;
+
+function actionIds(request) {
+  const {roundId, requestId} = request.data || {};
+  if (!/^r[0-9]+$/.test(roundId || "") || !/^[a-zA-Z0-9_-]{8,80}$/.test(requestId || "")) {
+    throw new HttpsError("failed-precondition", "המשחק עודכן — יש לרענן את העמוד");
+  }
+  return {roundId, requestId};
+}
+// Rollout bridge: only pre-protocol-2 bets may use the old request format.
+// New bets require IDs and are marked protocol 2; no client can opt them out.
+async function exitIds(request, operation) {
+  if (request.data && (request.data.roundId || request.data.requestId)) return {...actionIds(request), legacy:false};
+  const snap = await stateRef().get();
+  if (!snap.exists) throw new HttpsError("failed-precondition", "אין חדר פעיל");
+  const roundId = snap.data().roundId;
+  return {roundId, requestId:`legacy-${operation}-${roundId}`, legacy:true};
+}
+function sameRound(s, roundId) {
+  if (s.roundId !== roundId) throw new HttpsError("failed-precondition", "הסיבוב השתנה — הפעולה לא בוצעה");
+}
+function requestRef(uid, id) { return adb.doc(`aviatorRequests/${uid}_${id}`); }
+function priorResult(snap, op, roundId) {
+  if (!snap.exists) return null;
+  const data = snap.data();
+  if (data.op !== op || data.roundId !== roundId) throw new HttpsError("invalid-argument", "מזהה בקשה כבר בשימוש");
+  return data.result;
+}
+function remember(tx, ref, op, roundId, result, receivedAt) {
+  tx.create(ref, {op, roundId, result, receivedAt, ts: Date.now()});
+}
 
 function isAdmin(request) {
   const email = request.auth && request.auth.token && request.auth.token.email;
@@ -92,7 +120,7 @@ function drawRound(roundId) {
   return {seed, crashPoint, hash};
 }
 
-async function ledger(tx, entry) {
+function ledger(tx, entry) {
   tx.create(adb.collection("aviatorLedger").doc(), {...entry, ts: Date.now()});
 }
 
@@ -102,13 +130,14 @@ function bootRound(tx, now) {
   const roundId = `r${now}`;
   const {seed, crashPoint, hash} = drawRound(roundId);
   tx.set(engineRef(), {roundId, seed, crashPoint});
-  tx.set(stateRef(), {
-    roundId, phase: "waiting", phaseAt: now, waitMs: WAIT_MS,
+  const state = {
+    protocol: 2, version: now, roundId, phase: "waiting", phaseAt: now, waitMs: WAIT_MS,
     crashHold: CRASH_HOLD_MS, growthK: GROWTH_K, hash,
     crashPoint: null, seed: null,
-  });
+  };
+  tx.set(stateRef(), state);
   seedBots(tx, roundId);
-  return roundId;
+  return state;
 }
 
 /* -------------------------------------------------------------------------
@@ -145,74 +174,64 @@ exports.avJoin = onCall(AV_OPTS, async (request) => {
  * Any client may call it; the transaction makes duplicates harmless.
  * ---------------------------------------------------------------------- */
 exports.avTick = onCall(AV_OPTS, async (request) => {
-  if (!(request.auth && request.auth.uid)) {
-    throw new HttpsError("unauthenticated", "צריך להתחבר");
-  }
-  await adb.runTransaction(async (tx) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
+  const serverReceivedAt = Date.now();
+  const out = await adb.runTransaction(async (tx) => {
     const now = Date.now();
     const sSnap = await tx.get(stateRef());
-    if (!sSnap.exists) { bootRound(tx, now); return; }
-    const s = sSnap.data();
-
-    if (s.phase === "waiting" && now >= s.phaseAt + s.waitMs) {
-      tx.update(stateRef(), {phase: "flying", phaseAt: now});
-      return;
+    if (!sSnap.exists) return {state: bootRound(tx, now)};
+    let s = sSnap.data();
+    const takeoff = s.phase === "waiting" && now >= s.phaseAt + s.waitMs;
+    if (takeoff) {
+      const startedAt = s.phaseAt + s.waitMs;
+      s = {...s, protocol: 2, phase: "flying", phaseAt: startedAt, startedAt, version: now};
     }
-
     if (s.phase === "flying") {
       const eSnap = await tx.get(engineRef());
-      const e = eSnap.data() || {};
-      const crashAt = s.phaseAt + timeForMult(e.crashPoint || 1);
-      if (now < crashAt) return;
-
-      // settle: server-enforced auto cash-outs, everyone else busts
-      const betsQ = adb.collection("aviatorBets").where("roundId", "==", s.roundId);
-      const bets = await tx.get(betsQ);
-      let totalBets = 0; let totalPaid = 0; let players = 0;
-      const results = [];
+      const e = eSnap.data();
+      if (!e || e.roundId !== s.roundId) throw new HttpsError("unavailable", "מסנכרן את הסיבוב");
+      const startedAt = s.startedAt ?? s.phaseAt;
+      const crashAt = startedAt + timeForMult(e.crashPoint);
+      if (now < crashAt) {
+        if (takeoff) tx.update(stateRef(), s);
+        return {state: s, quote: Core.makeQuote(e.seed, uid, s.roundId,
+          Math.min(Core.centsAt(now - startedAt), Core.toCents(e.crashPoint) - 1), now)};
+      }
+      const bets = await tx.get(adb.collection("aviatorBets").where("roundId", "==", s.roundId));
+      let totalBets = 0, totalPaid = 0, players = 0;
       for (const d of bets.docs) {
         const b = d.data();
-        players++; totalBets += b.amount;
-        if (b.cashedAt) { totalPaid += b.win; continue; }
-        if (b.autoAt && b.autoAt >= 1.01 && b.autoAt < e.crashPoint) {
-          const win = Math.floor(b.amount * b.autoAt);
-          totalPaid += win;
-          tx.update(d.ref, {cashedAt: b.autoAt, win, auto: true});
-          results.push({uid: b.uid, delta: win, betAmount: b.amount, mult: b.autoAt, bot: !!b.bot});
-        } else {
-          tx.update(d.ref, {lost: true});
-          results.push({uid: b.uid, delta: 0, betAmount: b.amount, mult: null, bot: !!b.bot});
-        }
+        if (!b.bot) { players++; totalBets += b.amount; }
+        if (b.cashedAt) { if (!b.bot) totalPaid += b.win; continue; }
+        const price = Core.cashoutPrice({receivedAt: now, startedAt,
+          crashPoint: e.crashPoint, autoAt: b.autoAt});
+        const win = price.auto ? Core.payout(b.amount, price.cents) : 0;
+        if (price.auto) tx.update(d.ref, {cashedAt: price.cents / 100, win, auto: true, lost: false});
+        else tx.update(d.ref, {lost: true});
+        if (b.bot) continue;
+        totalPaid += win;
+        tx.update(adb.doc(`aviatorPlayers/${b.uid}`), {
+          balance: FieldValue.increment(win), net: FieldValue.increment(win - b.amount),
+        });
+        if (win) ledger(tx, {uid: b.uid, type: "auto_cashout", amount: win,
+          roundId: s.roundId, mult: price.cents / 100, by: "system"});
       }
-      for (const r of results) {
-        if (r.bot) continue;                 // bots have no wallet or ledger
-        const pRef = adb.doc(`aviatorPlayers/${r.uid}`);
-        const net = r.delta - r.betAmount;
-        if (r.delta > 0) {
-          tx.update(pRef, {balance: FieldValue.increment(r.delta), net: FieldValue.increment(net)});
-          ledger(tx, {uid: r.uid, type: "auto_cashout", amount: r.delta,
-            roundId: s.roundId, mult: r.mult, by: "system"});
-        } else {
-          tx.update(pRef, {net: FieldValue.increment(net)});
-        }
-      }
+      const state = {...s, protocol: 2, phase: "crashed", phaseAt: crashAt,
+        startedAt, version: now, crashPoint: e.crashPoint, seed: e.seed};
       tx.create(adb.doc(`aviatorRounds/${s.roundId}`), {
         roundId: s.roundId, crashPoint: e.crashPoint, seed: e.seed, hash: s.hash,
-        endedAt: now, players, totalBets, totalPaid,
+        startedAt, crashAt, endedAt: crashAt, settledAt: now, players, totalBets, totalPaid,
       });
-      tx.update(stateRef(), {
-        phase: "crashed", phaseAt: now,
-        crashPoint: e.crashPoint, seed: e.seed,
-      });
-      return;
+      tx.update(stateRef(), state);
+      return {state};
     }
-
     if (s.phase === "crashed" && now >= s.phaseAt + (s.crashHold || CRASH_HOLD_MS)) {
-      bootRound(tx, now);
+      return {state: bootRound(tx, now)};
     }
+    return {state: s};
   });
-  const after = await stateRef().get();
-  return {serverNow: Date.now(), state: after.data() || null};
+  return {...out, serverReceivedAt, serverNow: Date.now()};
 });
 
 /* -------------------------------------------------------------------------
@@ -222,61 +241,72 @@ exports.avTick = onCall(AV_OPTS, async (request) => {
 exports.avBet = onCall(AV_OPTS, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
-  const amount = Math.floor(Number(request.data && request.data.amount) || 0);
-  const rawAuto = Number(request.data && request.data.autoAt) || 0;
-  const autoAt = rawAuto >= 1.01 ? Math.min(1000, round2(rawAuto)) : null;
-  if (amount < MIN_BET) throw new HttpsError("invalid-argument", `מינימום ${MIN_BET}`);
-
-  const pRef = adb.doc(`aviatorPlayers/${uid}`);
+  const receivedAt = Date.now();
+  const {roundId, requestId} = actionIds(request);
+  const amount = Number(request.data.amount);
+  const rawAuto = Number(request.data.autoAt || 0);
+  if (!Number.isSafeInteger(amount) || amount < MIN_BET || amount > 1e12 ||
+      !Number.isFinite(rawAuto) || rawAuto < 0 || (rawAuto > 0 && (rawAuto < 1.01 || rawAuto > 1000))) {
+    throw new HttpsError("invalid-argument", "סכום או יעד אוטומטי לא תקינים");
+  }
+  const autoAt = rawAuto ? round2(rawAuto) : null;
+  const pRef = adb.doc(`aviatorPlayers/${uid}`), rRef = requestRef(uid, requestId);
   const out = await adb.runTransaction(async (tx) => {
+    const cached = priorResult(await tx.get(rRef), "bet", roundId);
+    if (cached) return cached;
     const [sSnap, pSnap] = await Promise.all([tx.get(stateRef()), tx.get(pRef)]);
     if (!sSnap.exists || !pSnap.exists) throw new HttpsError("failed-precondition", "אין חדר פעיל");
-    const s = sSnap.data();
-    if (s.phase !== "waiting" || Date.now() >= s.phaseAt + s.waitMs) {
+    const s = sSnap.data(); sameRound(s, roundId);
+    if (s.phase !== "waiting" || receivedAt >= s.phaseAt + s.waitMs || Date.now() >= s.phaseAt + s.waitMs) {
       throw new HttpsError("failed-precondition", "חלון ההימורים סגור");
     }
     const p = pSnap.data();
-    const peekSnap = await tx.get(adb.doc(`aviatorPeeks/${s.roundId}_${uid}`));
-    if (peekSnap.exists) {
-      throw new HttpsError("failed-precondition",
-        "מצב בקרה פעיל — בסיבוב שנצפה אפשר רק לצפות");
-    }
-    const bRef = adb.doc(`aviatorBets/${s.roundId}_${uid}`);
+    const peek = await tx.get(adb.doc(`aviatorPeeks/${roundId}_${uid}`));
+    if (peek.exists) throw new HttpsError("failed-precondition", "מצב בקרה פעיל — בסיבוב שנצפה אפשר רק לצפות");
+    const bRef = adb.doc(`aviatorBets/${roundId}_${uid}`);
     const bSnap = await tx.get(bRef);
-    const prior = bSnap.exists && !bSnap.data().cashedAt && !bSnap.data().lost
-      ? bSnap.data().amount : 0;
-    if (amount > p.balance + prior) throw new HttpsError("failed-precondition", "אין מספיק צ'יפים");
-    tx.set(bRef, {
-      uid, roundId: s.roundId, amount, autoAt,
-      name: p.name || "Pilot", photo: p.photo || "",
-      cashedAt: null, win: 0, lost: false, ts: Date.now(),
-    });
+    const prior = bSnap.exists && !bSnap.data().cashedAt && !bSnap.data().lost ? bSnap.data().amount : 0;
+    if (amount > p.balance + prior) throw new HttpsError("failed-precondition", "אין מספיק צ׳יפים");
+    const bet = {uid, roundId, protocol:2, amount, autoAt, name: p.name || "Pilot", photo: p.photo || "",
+      cashedAt: null, win: 0, lost: false, ts: Date.now()};
+    tx.set(bRef, bet);
     tx.update(pRef, {balance: FieldValue.increment(prior - amount)});
-    ledger(tx, {uid, type: "bet", amount: -(amount - prior), roundId: s.roundId, by: "self"});
-    return {balance: p.balance + prior - amount, roundId: s.roundId};
+    ledger(tx, {uid, type: "bet", amount: prior - amount, roundId, by: "self", requestId});
+    const result = {balance: p.balance + prior - amount, roundId, bet};
+    remember(tx, rRef, "bet", roundId, result, receivedAt);
+    return result;
   });
-  return {...out, serverNow: Date.now()};
+  return {...out, serverReceivedAt: receivedAt, serverNow: Date.now()};
 });
 
 exports.avCancelBet = onCall(AV_OPTS, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
-  const pRef = adb.doc(`aviatorPlayers/${uid}`);
+  const receivedAt = Date.now();
+  const {roundId, requestId, legacy} = await exitIds(request, "cancel");
+  const pRef = adb.doc(`aviatorPlayers/${uid}`), rRef = requestRef(uid, requestId);
   const out = await adb.runTransaction(async (tx) => {
+    const cached = priorResult(await tx.get(rRef), "cancel", roundId);
+    if (cached) return cached;
     const sSnap = await tx.get(stateRef());
     if (!sSnap.exists) throw new HttpsError("failed-precondition", "אין חדר פעיל");
-    const s = sSnap.data();
-    if (s.phase !== "waiting") throw new HttpsError("failed-precondition", "הסיבוב כבר יצא");
-    const bRef = adb.doc(`aviatorBets/${s.roundId}_${uid}`);
+    const s = sSnap.data(); sameRound(s, roundId);
+    if (s.phase !== "waiting" || receivedAt >= s.phaseAt + s.waitMs || Date.now() >= s.phaseAt + s.waitMs) {
+      throw new HttpsError("failed-precondition", "חלון ההימורים סגור");
+    }
+    const bRef = adb.doc(`aviatorBets/${roundId}_${uid}`);
     const bSnap = await tx.get(bRef);
     if (!bSnap.exists) throw new HttpsError("failed-precondition", "אין הימור לביטול");
+    if (legacy && bSnap.data().protocol === 2) throw new HttpsError("failed-precondition", "המשחק עודכן — יש לרענן את העמוד");
     const amount = bSnap.data().amount;
     tx.delete(bRef);
     tx.update(pRef, {balance: FieldValue.increment(amount)});
-    ledger(tx, {uid, type: "bet_cancel", amount, roundId: s.roundId, by: "self"});
-    return {refunded: amount};
+    ledger(tx, {uid, type: "bet_cancel", amount, roundId, by: "self", requestId});
+    const result = {refunded: amount, roundId};
+    remember(tx, rRef, "cancel", roundId, result, receivedAt);
+    return result;
   });
-  return {...out, serverNow: Date.now()};
+  return {...out, serverReceivedAt: receivedAt, serverNow: Date.now()};
 });
 
 /* -------------------------------------------------------------------------
@@ -287,50 +317,66 @@ exports.avCancelBet = onCall(AV_OPTS, async (request) => {
 exports.avCashout = onCall(AV_OPTS, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
-  /* what the player's screen showed at the press. Payment is
-     min(seen, server) — claiming high changes nothing, claiming what you
-     saw makes the screen exactly truthful. */
-  const seen = Number(request.data && request.data.seen) || 0;
-  const pRef = adb.doc(`aviatorPlayers/${uid}`);
+  // Fixed at entry, not recalculated when Firestore retries or waits for locks.
+  const receivedAt = Date.now();
+  const {roundId, requestId, legacy} = await exitIds(request, "cashout");
+  const seenCents = legacy ? Core.toCents(request.data && request.data.seen) : request.data.seenCents;
+  const quote = request.data && request.data.quote;
+  const pRef = adb.doc(`aviatorPlayers/${uid}`), rRef = requestRef(uid, requestId);
   const out = await adb.runTransaction(async (tx) => {
-    const now = Date.now();
-    const [sSnap, eSnap] = await Promise.all([tx.get(stateRef()), tx.get(engineRef())]);
-    if (!sSnap.exists) throw new HttpsError("failed-precondition", "אין חדר פעיל");
-    const s = sSnap.data();
-    const e = eSnap.data() || {};
-    if (s.phase !== "flying") throw new HttpsError("failed-precondition", "אין טיסה פעילה");
-    const mult = round2(Math.min(
-      multAt(Math.max(0, now - CASHOUT_GRACE_MS - s.phaseAt)), MAX_FLIGHT_MULT));
-    const timing = {
-      uid, roundId: s.roundId, ts: now, flightMs: now - s.phaseAt,
-      seen: seen || null, srvMult: mult,
-    };
-    if (mult >= e.crashPoint) {
-      tx.create(adb.collection("aviatorTiming").doc(),
-        {...timing, type: "late", crashPoint: e.crashPoint});
-      return {late: true};
+    const cached = priorResult(await tx.get(rRef), "cashout", roundId);
+    if (cached) return cached;
+    const bRef = adb.doc(`aviatorBets/${roundId}_${uid}`);
+    const [bSnap, sSnap] = await Promise.all([tx.get(bRef), tx.get(stateRef())]);
+    if (!bSnap.exists) throw new HttpsError("failed-precondition", "אין הימור בסיבוב המבוקש");
+    const b = bSnap.data();
+    if (legacy && b.protocol === 2) throw new HttpsError("failed-precondition", "המשחק עודכן — יש לרענן את העמוד");
+    if (b.cashedAt && !b.auto) {
+      const result = {roundId, requestId, mult:b.cashedAt, win:b.win, auto:false};
+      remember(tx, rRef, "cashout", roundId, result, receivedAt);
+      return result;
     }
-    const bRef = adb.doc(`aviatorBets/${s.roundId}_${uid}`);
-    const bSnap = await tx.get(bRef);
-    if (!bSnap.exists || bSnap.data().cashedAt || bSnap.data().lost) {
-      throw new HttpsError("failed-precondition", "אין הימור פעיל");
+    let round, archived = false;
+    const s = sSnap.exists && sSnap.data();
+    if (s && s.roundId === roundId && s.phase === "flying") {
+      const eSnap = await tx.get(engineRef());
+      const e = eSnap.data();
+      if (!e || e.roundId !== roundId) throw new HttpsError("unavailable", "מסנכרן את הסיבוב");
+      round = {...e, startedAt: s.startedAt ?? s.phaseAt};
+    } else {
+      const oldSnap = await tx.get(adb.doc(`aviatorRounds/${roundId}`));
+      if (!oldSnap.exists) throw new HttpsError("failed-precondition", "אין טיסה פעילה בסיבוב המבוקש");
+      round = oldSnap.data(); archived = true;
     }
-    const amount = bSnap.data().amount;
-    /* True WYSIWYG: pay exactly the number the screen showed. The only cap
-       is the crash point — you can't cash a value the plane never reached.
-       (Play money; every press is audited in aviatorTiming.) */
-    const seenR = round2(seen);
-    const payMult = (seenR >= 1.01 && seenR < e.crashPoint) ? seenR : mult;
-    const win = Math.floor(amount * payMult);
-    tx.create(adb.collection("aviatorTiming").doc(),
-      {...timing, type: "cashout", paid: payMult});
-    tx.update(bRef, {cashedAt: payMult, win});
-    tx.update(pRef, {balance: FieldValue.increment(win), net: FieldValue.increment(win - amount)});
-    ledger(tx, {uid, type: "cashout", amount: win, roundId: s.roundId, mult: payMult, by: "self"});
-    return {mult: payMult, win};
+    if (!Number.isFinite(round.startedAt)) throw new HttpsError("failed-precondition", "הסיבוב הסתיים");
+    const price = Core.cashoutPrice({receivedAt, startedAt: round.startedAt,
+      crashPoint: round.crashPoint, autoAt: b.autoAt, seenCents});
+    if (price.late) throw new HttpsError("failed-precondition", "המטוס התרסק לפני שהבקשה הגיעה לשרת");
+    if (price.invalid || (!price.auto && !legacy && !Core.validQuote(quote, round.seed, uid, roundId, seenCents, receivedAt))) {
+      throw new HttpsError("failed-precondition", "המכפיל אינו מעודכן — ממתין לסנכרון");
+    }
+    const mult = price.cents / 100, win = Core.payout(b.amount, price.cents);
+    if (b.cashedAt && price.auto) {
+      const result = {roundId, requestId, mult:b.cashedAt, win:b.win, auto:true};
+      remember(tx, rRef, "cashout", roundId, result, receivedAt);
+      return result;
+    }
+    const paidAlready = b.cashedAt ? b.win : 0, delta = win - paidAlready;
+    tx.update(bRef, {cashedAt: mult, win, auto: price.auto, lost: false, requestId, receivedAt});
+    // A timely request can wait behind settlement. Correct that same old bet once.
+    tx.update(pRef, {balance: FieldValue.increment(delta),
+      net: FieldValue.increment(delta - (b.lost || b.cashedAt ? 0 : b.amount))});
+    tx.create(adb.collection("aviatorTiming").doc(), {uid, roundId, requestId,
+      receivedAt, ts: Date.now(), seenCents: Number.isSafeInteger(seenCents) ? seenCents : null,
+      paid: mult, type: "cashout", auto: price.auto});
+    ledger(tx, {uid, type: paidAlready ? "cashout_correction" : price.auto ? "auto_cashout" : "cashout", amount: delta,
+      roundId, mult, by: "self", requestId});
+    if (archived) tx.update(adb.doc(`aviatorRounds/${roundId}`), {totalPaid: FieldValue.increment(delta)});
+    const result = {roundId, requestId, mult, win, auto: price.auto};
+    remember(tx, rRef, "cashout", roundId, result, receivedAt);
+    return result;
   });
-  if (out.late) throw new HttpsError("failed-precondition", "המטוס כבר התרסק");
-  return {...out, serverNow: Date.now()};
+  return {...out, serverReceivedAt: receivedAt, serverNow: Date.now()};
 });
 
 /* -------------------------------------------------------------------------
@@ -359,12 +405,15 @@ exports.avPeek = onCall(AV_OPTS, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
   if (!codeOk(request)) throw new HttpsError("permission-denied", "קוד שגוי");
+  const roundId = String(request.data.roundId || "");
   const out = await adb.runTransaction(async (tx) => {
     const [sSnap, eSnap] = await Promise.all([tx.get(stateRef()), tx.get(engineRef())]);
     if (!sSnap.exists || !eSnap.exists) {
       throw new HttpsError("failed-precondition", "אין חדר פעיל");
     }
     const s = sSnap.data();
+    sameRound(s, roundId);
+    if (eSnap.data().roundId !== roundId) throw new HttpsError("unavailable", "מסנכרן את הסיבוב");
     const bSnap = await tx.get(adb.doc(`aviatorBets/${s.roundId}_${uid}`));
     if (bSnap.exists && !bSnap.data().cashedAt && !bSnap.data().lost && !bSnap.data().bot) {
       throw new HttpsError("failed-precondition",
@@ -378,6 +427,7 @@ exports.avPeek = onCall(AV_OPTS, async (request) => {
 });
 
 exports.avCredit = onCall(AV_OPTS, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "צריך להתחבר");
   if (!isAdmin(request) && !codeOk(request)) {
     throw new HttpsError("permission-denied", "מנהל בלבד");
   }

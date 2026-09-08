@@ -369,6 +369,43 @@
   .iosg-arrow { color: #16a34a; font-size: 34px; line-height: 1; margin-top: 3px; text-shadow: 0 2px 6px rgba(0,0,0,.35); animation: iosbounce 1.1s infinite; }
   @keyframes iosbounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(9px); } }
   @media (prefers-reduced-motion: reduce) { .iosg-arrow { animation: none; } }
+
+/* UI/UX update: preserve the existing green identity and application behavior. */
+button,input,select,textarea{font-family:inherit;touch-action:manipulation}
+button:focus-visible,[role="button"]:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #2563eb;outline-offset:4px}
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+button:disabled{cursor:wait;opacity:.65}
+.ux-field-label{display:block;text-align:start;font-size:14px;font-weight:700;line-height:1.5;margin:14px 0 6px;color:var(--ink2,var(--muted))}
+.ux-help{font-size:14px;line-height:1.7;color:var(--ink2,var(--muted))}
+.ux-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+:root{--line:#d8e2da;--muted:#50685a;--shadow:0 3px 14px -8px #1237202b;--shadow-sm:0 2px 8px -5px #12372026}
+body{background:#f3f6f3;font-size:16px;line-height:1.5}
+header.app{border-radius:0;padding:16px max(16px,calc((100vw - 1000px)/2));box-shadow:none;gap:14px}
+header.app .ttl{font-size:21px;line-height:1.25}header.app .sub{font-size:13px;opacity:.9}header.app .who .nm{font-size:14px}
+header.app .who .logout{min-height:40px;font-size:13px}.rolebadge{font-size:12px;padding:3px 9px}
+.wrap{max-width:1000px;padding:24px 20px calc(140px + env(safe-area-inset-bottom))}
+#scrCount,#scrUsage{max-width:800px;margin-inline:auto}.card{border:1px solid var(--line);border-radius:14px;padding:20px;margin:16px 0;box-shadow:var(--shadow-sm)}
+.card h3{font-size:19px}.sec-head{margin:28px 0 12px}.sec-head h2{font-size:20px}.btn-mini{min-height:44px;font-size:14px}
+label.fld{font-size:14px;margin:16px 0 7px}.dates{gap:9px;padding:8px 2px 16px}.dchip{min-width:70px;border-radius:12px;padding:10px 12px;box-shadow:none}
+.dchip .dw{font-size:12px}.dchip .dd{font-size:17px}.dchip .eq{font-size:11px}.item{border-radius:12px;padding:14px;margin:10px 0;border:1px solid var(--line);box-shadow:none;gap:14px}
+.item.ok{border:2px solid var(--green);background:#f1fbf4}.item.diff{border:2px solid var(--danger);background:#fff5f4}.item.sens{box-shadow:0 0 0 2px var(--danger) inset}
+.iname .nm{font-size:17px;line-height:1.5}.iname .exp{font-size:14px;line-height:1.6}.vbtn{width:54px;min-height:54px;border-radius:12px;box-shadow:none}.xbtn,.missbtn,.qedit,.shatzal,.loss,.xfercount{min-height:44px;font-size:14px}
+.banner-done,.banner-warn{font-size:15px;line-height:1.7;box-shadow:none;padding:14px 16px}.kit-head{font-size:16px}
+nav.tabs{background:#fff;max-width:1000px;margin-inline:auto;border-radius:16px 16px 0 0;box-shadow:0 -4px 18px #14302008}
+nav.tabs button{font-size:13px;color:#50685a;min-height:72px;padding:11px 8px}nav.tabs button.on{background:#ecf7ef}nav.tabs button.on .ic{transform:none}
+.btn-primary{min-height:52px;font-size:17px;border-radius:12px}.btn-float-save{bottom:calc(82px + env(safe-area-inset-bottom));box-shadow:0 6px 20px #1237202b}
+#login{--muted:#c8e0d0;--danger:#ffb8b2;padding-top:36px;padding-bottom:36px}
+#login .pickbox{max-width:390px;gap:9px;text-align:start}#login .pick-title{font-size:21px;margin-bottom:4px}#login h1{font-size:40px}
+#login .ux-field-label{color:#e6f5ec;font-size:14px;margin:9px 0 4px}#login p{font-size:15px;opacity:1;color:#d4e6da}
+#login .gbtn.confirm{font-size:18px;min-height:54px;padding:15px 18px;background:#12833d;border-radius:12px;box-shadow:none}
+#login .gbtn .gsub{color:#52645a}
+#login input{min-height:52px;border-radius:12px;border:1px solid #b4cebe;text-align:start!important}
+#login .linkish{min-height:44px}#login #btnInstall{background:transparent!important;color:#d4e6da!important;border:1px solid #6c9980;box-shadow:none;min-height:44px;font-size:14px}
+#loginMsg{line-height:1.7}#toast{font-size:15px;max-width:calc(100vw - 32px)}
+@media(max-width:600px){header.app{padding:12px 14px;gap:9px}header.app .ttl{font-size:18px}header.app .sub{font-size:12px}header.app .who .nm{font-size:12px;max-width:43vw}.wrap{padding:16px 12px calc(140px + env(safe-area-inset-bottom))}.card{padding:16px}.card h3{font-size:17px}.sec-head h2{font-size:18px}.item{padding:12px 10px;gap:9px;flex-wrap:wrap}.iname{flex:1 1 125px}.iname .nm{font-size:16px}.iname .exp{font-size:13px}.vbtn{width:48px;min-height:48px;height:48px}.xbtn,.missbtn{padding:8px 10px}.dchip{min-width:64px}.grid2{gap:10px}nav.tabs{border-radius:0}nav.tabs button{font-size:12px;min-height:70px}#login h1{font-size:35px}}
+
 </style>
 
 <script type="module">
@@ -431,13 +468,15 @@
   <div id="loginBox" class="pickbox">
     <div class="pick-title">כניסה למערכת</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:10px">הזינו את המספר האישי שלכם</div>
+    <label class="ux-field-label" for="pnInput">מספר אישי</label>
     <input type="text" id="pnInput" inputmode="numeric" autocomplete="off" placeholder="מספר אישי" style="direction:ltr;text-align:center">
     <div id="pinWrap" style="display:none;margin-top:2px">
       <div style="font-size:13px;color:var(--muted);margin:6px 0">חשבון מנהל — הזינו קוד אישי</div>
+      <label class="ux-field-label" for="pinInput">קוד אישי</label>
       <input type="password" id="pinInput" inputmode="numeric" autocomplete="off" placeholder="קוד אישי" style="direction:ltr;text-align:center">
     </div>
     <button class="gbtn confirm" id="btnLoginPn">כניסה</button>
-    <div id="loginMsg" style="font-size:13px;font-weight:700;color:var(--danger);margin-top:8px;min-height:18px"></div>
+    <div role="alert" aria-live="polite" id="loginMsg" style="font-size:13px;font-weight:700;color:var(--danger);margin-top:8px;min-height:18px"></div>
   </div>
 
   <!-- framework picker (soldiers, after login) — choose company, then framework -->
@@ -505,7 +544,7 @@
     <div id="scrAdmin" style="display:none"></div>
   </div>
 
-  <nav class="tabs">
+  <nav class="tabs" aria-label="ניווט ראשי">
     <button data-tab="count" id="tabCount" class="on"><span class="ic">✅</span>ספירה</button>
     <button data-tab="usage" id="tabUsage" style="display:none"><span class="ic">📉</span>עדכון שצ״ל</button>
     <button data-tab="report" style="position:relative"><span class="ic">📊</span>דוחות<span id="gapBadge" class="tabbadge" style="display:none">0</span></button>
@@ -528,7 +567,7 @@
   <div class="iosg-arrow">⬇︎</div>
 </div>
 
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div id="celebrate"><div class="burst"><div class="mk">✅</div><div class="tx" id="celebrateTx">נספר ודווח!</div></div></div>
 
 <script>
@@ -1400,7 +1439,7 @@
 
       if (!bothDepts) {
         var soloDept = ammoVis.length ? 'ammo' : 'equip';
-        h += '<button class="btn-primary" id="btnSubmit" data-dept="' + soloDept + '">שליחת ספירה ✓</button>';
+        h += '<button class="btn-primary btn-float-save" id="btnSubmit" data-dept="' + soloDept + '">שליחת ספירה ✓</button>';
       }
       h += '<div style="font-size:11px;color:#6b7f72;text-align:center;margin-bottom:8px">V ירוק = קיים ותואם · ״שונה״ = הקלדת הכמות בפועל (גם 0) · ״חסר״ = פריט חתום שלא נמצא</div>';
     }
@@ -1936,15 +1975,17 @@
     depts.forEach(function (k) { Object.keys(collected[k]).forEach(function (key) { if (!collected[k][key].ok) hasGap = true; }); });
     var deptTxt = depts.length > 1 ? 'הספירה' : DEPT_HE[depts[0]];
     var fb = window.fb;
-    var btn = $(dept ? ('btnSubmit_' + dept) : 'btnSubmit') || $('btnSubmit'); if (btn) btn.disabled = true;
+    var btn = $(dept ? ('btnSubmit_' + dept) : 'btnSubmit') || $('btnSubmit');
+    var submitLabel = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); btn.textContent = 'שולח ' + deptTxt + '…'; }
     fb.setDoc(fb.doc(fb.db, 'ammo_counts', countId(S.unit, S.date)), docData)
       .then(function () {
-        if (btn) btn.disabled = false;
+        if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = submitLabel; }
         toast('✓ ' + deptTxt + ' נשלח — ' + UNIT_BY_ID[S.unit].full);
         celebrate(hasGap ? 'נשלח' : 'נספר ודווח — הכל תקין!', !hasGap);
         renderCount();
       })
-      .catch(function (e) { toast('שגיאה בשמירה: ' + e.message); if (btn) btn.disabled = false; });
+      .catch(function (e) { toast('שגיאה בשמירה: ' + e.message); if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); btn.textContent = 'ניסיון נוסף — ' + deptTxt; } });
   }
 
   /* ═══════════ USAGE screen ═══════════ */
@@ -3949,6 +3990,46 @@
   if (window.fb) start();
   else window.addEventListener('firebase-ready', start, { once: true });
 })();
+</script>
+<script>
+
+// Semantic labels and keyboard access follow dynamically rendered controls.
+(function(){
+  let serial=0,queued=false;
+  function enhance(){
+    queued=false;
+    document.querySelectorAll('input,select,textarea').forEach(el=>{
+      if(el.type==='hidden'||el.getAttribute('aria-label')||el.getAttribute('aria-labelledby')||(el.labels&&el.labels.length))return;
+      let label=el.previousElementSibling;
+      if(!label||label.tagName!=='LABEL')label=el.parentElement.querySelector(':scope > label');
+      if(label&&label.tagName==='LABEL'&&(!label.control||label.control===el)){
+        if(!el.id)el.id='ux-field-'+(++serial);label.htmlFor=el.id;
+      }else if(el.getAttribute('placeholder')){
+        if(!el.id)el.id='ux-field-'+(++serial);
+        label=document.createElement('label');label.htmlFor=el.id;label.className='ux-field-label';label.textContent=el.getAttribute('placeholder');
+        const parent=el.closest('.search');
+        if(parent)parent.before(label);else el.before(label);
+      }
+    });
+    document.querySelectorAll('div[onclick]').forEach(el=>{
+      if(el.dataset.uxKeyboard)return;
+      el.dataset.uxKeyboard='1';el.setAttribute('role','button');el.tabIndex=0;
+      el.addEventListener('keydown',e=>{if(e.target===el&&(e.key==='Enter'||e.key===' ')){e.preventDefault();el.click();}});
+    });
+    document.querySelectorAll('nav button[data-tab],nav button[data-v]').forEach(el=>{
+      const active=el.classList.contains('on')||el.classList.contains('active');
+      if(active)el.setAttribute('aria-current','page');else el.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('#scrCount .vbtn').forEach(el=>{
+      const row=el.closest('.item');const name=row&&row.querySelector('.nm');
+      el.setAttribute('aria-label','אישור ספירה'+(name?' — '+name.textContent.trim():''));
+      el.setAttribute('aria-pressed',String(!!row&&row.classList.contains('ok')));
+    });
+  }
+  new MutationObserver(()=>{if(!queued){queued=true;queueMicrotask(enhance);}}).observe(document.body,{subtree:true,childList:true});
+  enhance();
+})();
+
 </script>
 </body>
 </html>

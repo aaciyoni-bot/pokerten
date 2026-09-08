@@ -2840,11 +2840,14 @@ const simMyEquity = (myCards, board, oppCount, gameType, range) => {
     const omaha = (gameType || '').startsWith('Omaha');
     const iters = omaha ? 100 : 220;
     const holeN = myCards.length;
-    const k = Math.max(1, Math.min(6, Math.round(range || 1)));
+    const wantedRange = Math.max(1, Math.min(6, Math.round(range || 1)));
+    const missingBoard = Math.max(0, 5 - board.length);
     let score = 0;
     for (let i = 0; i < iters; i++) {
       const deck = deckWithout([...myCards, ...board]);
-      if (deck.length < holeN * oppCount * k + 5) return null;
+      // Alternative range samples cannot consume more cards than remain.
+      const k = Math.min(wantedRange, Math.floor((deck.length - missingBoard) / (holeN * oppCount)));
+      if (k < 1) return null;
       const opps = [];
       for (let o = 0; o < oppCount; o++) {
         const cands = [];
@@ -2855,7 +2858,7 @@ const simMyEquity = (myCards, board, oppCount, gameType, range) => {
       while (fb.length < 5) fb.push(deck.pop());
       const my = bestScoreFull(myCards, fb, gameType);
       let lose = false,
-        tie = false;
+        ties = 1;
       for (const cands of opps) {
         let best = 0;
         for (const oc of cands) {
@@ -2866,9 +2869,9 @@ const simMyEquity = (myCards, board, oppCount, gameType, range) => {
           lose = true;
           break;
         }
-        if (best === my) tie = true;
+        if (best === my) ties++;
       }
-      if (!lose) score += tie ? 0.5 : 1;
+      if (!lose) score += 1 / ties;
     }
     return Math.round(score / iters * 100);
   } catch (e) {

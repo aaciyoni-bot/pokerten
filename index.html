@@ -1044,7 +1044,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
@@ -1072,33 +1072,9 @@
         // means the player never sees it unless Google decides the traffic is
         // suspicious. The verifier is built once and reused: building a second
         // one over the same container throws.
-        window.fb.phoneSend = async (e164) => {
-            await _persist;
-            if (!document.getElementById('pt-recaptcha')) {
-                const el = document.createElement('div');
-                el.id = 'pt-recaptcha';
-                el.style.display = 'none';
-                document.body.appendChild(el);
-            }
-            if (!window.__ptRecap) window.__ptRecap = new RecaptchaVerifier(_auth, 'pt-recaptcha', { size: 'invisible' });
-            window.__ptConfirm = await signInWithPhoneNumber(_auth, e164, window.__ptRecap);
-            return true;
-        };
-        window.fb.phoneVerify = async (code) => {
-            if (!window.__ptConfirm) throw Object.assign(new Error('no pending code'), { code: 'auth/no-pending-code' });
-            return window.__ptConfirm.confirm(String(code || '').trim());
-        };
-        // A used or failed verifier cannot send again — tear it down so the
-        // next attempt starts clean instead of failing silently.
-        window.fb.phoneReset = () => {
-            try { if (window.__ptRecap) window.__ptRecap.clear(); } catch (e) {}
-            const el = document.getElementById('pt-recaptcha');
-            if (el && el.parentNode) el.parentNode.removeChild(el);
-            window.__ptRecap = null;
-            window.__ptConfirm = null;
-        };
         const _fx = getFunctions(app);
         window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
+        window.fb.customSignIn = async token => { await _persist; return signInWithCustomToken(_auth, token); };
         // Robust Google sign-in: popup FIRST on every device. signInWithRedirect
         // breaks on modern mobile browsers when authDomain (…firebaseapp.com)
         // differs from the app origin — Chrome/Safari storage partitioning drops
@@ -1142,7 +1118,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 @media(max-width:600px){.accounting-entry{align-items:flex-start;flex-direction:column;padding:20px;gap:16px}.accounting-entry strong{font-size:20px}.accounting-entry small{font-size:13px}.club-admin td,.club-admin th{padding:10px}.admin-shortcuts{gap:8px;padding:10px}.admin-shortcuts a{flex:1;text-align:center;font-size:12px;padding:9px}}
 
 </style>
-<link rel="stylesheet" href="assets/css/club-ui.css?v=1">
+<link rel="stylesheet" href="assets/css/club-ui.css?v=2">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=1">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1203,6 +1180,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     </script>
 
     <script src="assets/js/club-ui.js?v=1"></script>
+    <script src="assets/js/poker-runtime.js?v=258"></script>
 <script>
 const {
   useState,
@@ -1549,6 +1527,7 @@ const SFX_FILES = {
   flip: ['card_flip_1', 'card_flip_2', 'card_flip_3'],
   chip: ['chips_slide_1', 'chips_slide_2', 'chips_slide_3'],
   chip1: ['chip_single_1', 'chip_single_2'],
+  roulette: ['roulette_roll', 'roulette_tick'],
   check: ['check_knock'],
   fold: ['fold_toss_1', 'fold_toss_2'],
   tick: ['timer_tick_1', 'timer_tick_2'],
@@ -1614,7 +1593,7 @@ setTimeout(() => {
     sfxLoad();
   } catch (e) {}
 }, 2500);
-const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0) => {
+const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0, scope = null) => {
   if (window.__pkMuted || window.__pkVolume === 0 || document.hidden) return false;
   const ctx = sfxCtx();
   const b = SFX.buf[name];
@@ -1652,6 +1631,7 @@ const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0) => {
     tail.connect(SFX.bus);
     const t0 = ctx.currentTime + when;
     src.start(t0);
+    if (scope) scope.push(src);
     if (maxDur > 0) {
       // trim long samples: hold, then quick fade so the cut isn't a click
       const fadeAt = t0 + Math.max(0.05, maxDur - 0.2);
@@ -2795,20 +2775,16 @@ const bestScoreNow = (hole, board, gameType) => {
   return Object.values(counts).some(v => v >= 2) ? 1000001 : 1;
 };
 
-/* ================= Spin & Cash prize wheel (client-side) =================
-   Owner rules: house never loses; prize = entry × multiplier; ×100 is shown
-   on the wheel as a lure but NEVER lands; non-round prizes rounded DOWN, the
-   house keeps the remainder. Edit SPIN_WHEEL weights to retune the edge —
-   just keep the weighted-average multiplier < 3 so the house never loses. */
+/* Spin & Cash: show only prizes supported by the actual draw. */
 const SPIN_WHEEL = [
   { mult: 2, weight: 720 },
   { mult: 3, weight: 200 },
   { mult: 5, weight: 50 },
   { mult: 10, weight: 25 },
   { mult: 25, weight: 5 }
-  // ×100 intentionally absent from the draw — display-only jackpot lure.
+
 ];
-const SPIN_DISPLAY_MULTS = [2, 3, 5, 10, 25, 100]; // what the wheel shows
+const SPIN_DISPLAY_MULTS = SPIN_WHEEL.map(entry => entry.mult);
 const spinExpectedMult = () => {
   const tot = SPIN_WHEEL.reduce((s, f) => s + f.weight, 0);
   return SPIN_WHEEL.reduce((s, f) => s + f.mult * f.weight, 0) / tot;
@@ -3485,7 +3461,7 @@ const PlayerPeek = ({
     className: "w-full mt-2.5 bg-rose-950/60 hover:bg-rose-800 border border-rose-500/40 text-rose-300 hover:text-white py-2 rounded-xl font-black text-[11px]"
   }, "🚪 Remove from table"));
 };
-const SPIN_SEGS = [2, 3, 100, 2, 5, 3, 10, 2, 3, 20, 4, 3];
+const SPIN_SEGS = [2, 3, 5, 2, 10, 3, 2, 5, 3, 25, 2, 3];
 const SEG_COL = {
   2: '#334155',
   3: '#0f766e',
@@ -3493,189 +3469,42 @@ const SEG_COL = {
   5: '#b45309',
   10: '#be185d',
   20: '#b91c1c',
+  25: '#d5b36b',
   100: '#eab308'
 };
-const SpinWheel = ({
-  mult,
-  near,
-  prize,
-  buyIn
-}) => {
-  const [go, setGo] = React.useState(false);
-  const [done, setDone] = React.useState(false);
+const SpinWheel = ({mult, prize, buyIn}) => {
+  const segments = React.useMemo(() => SPIN_SEGS.includes(mult) ? SPIN_SEGS : Number.isFinite(mult) && mult >= 2 ? [...SPIN_SEGS.slice(0,-1),mult] : SPIN_SEGS,[mult]);
   const target = React.useMemo(() => {
-    const idxs = SPIN_SEGS.map((m, i2) => m === mult ? i2 : -1).filter(i2 => i2 >= 0);
-    if (near) return SPIN_SEGS[1] === mult ? 1 : SPIN_SEGS[3] === mult ? 3 : idxs[0];
-    const pool = idxs.filter(i2 => i2 !== 1 && i2 !== 3);
-    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : idxs[0];
-  }, []);
-  React.useEffect(() => {
-    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
-    // roulette clicks: one tick per peg, spaced by inverting the ease-out curve,
-    // so the clicking naturally slows down with the ball
-    try {
-      const segA = 360 / SPIN_SEGS.length;
-      const fRot = 6 * 360 + (target * segA + segA / 2);
-      const pegs = Math.min(90, Math.floor(fRot / segA));
-      for (let k = 1; k <= pegs; k++) {
-        const tt = 6.5 * (1 - Math.cbrt(1 - k * segA / fRot));
-        sfxPlay('chip_single_1', tt, 0.13 + 0.12 * (k / pegs));
-      }
-    } catch (e) {}
-    const tm = setTimeout(() => {
-      setDone(true);
-      try {
-        playSnd('win', 4);
-        if (navigator.vibrate) navigator.vibrate([60, 40, 120]);
-      } catch (e) {}
-    }, 6600);
-    return () => {
-      cancelAnimationFrame(r);
-      clearTimeout(tm);
-    };
-  }, []);
-  const n = SPIN_SEGS.length,
-    segAng = 360 / n;
-  const grad = SPIN_SEGS.map((m, i2) => `${SEG_COL[m]} ${i2 * segAng}deg ${(i2 + 1) * segAng}deg`).join(', ');
-  const finalRot = 6 * 360 + (target * segAng + segAng / 2);
-  return React.createElement("div", {
-    className: "fixed inset-0 z-[400] flex flex-col items-center justify-center",
-    dir: "ltr",
-    style: {
-      background: 'radial-gradient(ellipse at 50% 30%, rgba(60,16,40,0.97), rgba(2,6,15,0.99) 70%)'
-    }
-  }, React.createElement("div", {
-    className: "font-black text-2xl mb-5 tracking-[0.3em]",
-    style: {
-      background: 'linear-gradient(100deg,#8a6a25,#fde68a 30%,#f5c860 50%,#fde68a 70%,#8a6a25)',
-      WebkitBackgroundClip: 'text',
-      backgroundClip: 'text',
-      color: 'transparent',
-      textShadow: 'none'
-    }
-  }, "SPIN & CASH"), React.createElement("div", {
-    className: "relative",
-    style: {
-      width: '320px',
-      height: '320px'
-    }
-  }, React.createElement("div", {
-    className: "absolute inset-0 rounded-full",
-    style: {
-      background: 'conic-gradient(#7a5a1c, #e8c96a, #8a6a25, #f3dc9a, #7a5a1c, #e8c96a, #8a6a25)',
-      boxShadow: '0 18px 60px rgba(0,0,0,0.8), 0 0 70px rgba(245,200,96,0.22), inset 0 2px 6px rgba(255,255,255,0.35)'
-    }
-  }), React.createElement("div", {
-    className: "absolute inset-[7px] rounded-full",
-    style: {
-      background: 'repeating-conic-gradient(rgba(255,244,200,0.95) 0 2deg, rgba(90,60,15,0.9) 2deg 30deg)',
-      maskImage: 'radial-gradient(circle, transparent 62%, black 63%)',
-      WebkitMaskImage: 'radial-gradient(circle, transparent 62%, black 63%)'
-    }
-  }), React.createElement("div", {
-    className: "absolute inset-[18px] rounded-full overflow-hidden",
-    style: {
-      background: `conic-gradient(${grad})`,
-      boxShadow: 'inset 0 0 35px rgba(0,0,0,0.75)'
-    }
-  }, React.createElement("div", {
-    className: "absolute inset-0",
-    style: {
-      background: `repeating-conic-gradient(rgba(245,220,150,0.9) 0 0.7deg, transparent 0.7deg ${segAng}deg)`
-    }
-  }), React.createElement("div", {
-    className: "absolute inset-0",
-    style: {
-      background: 'radial-gradient(circle, transparent 55%, rgba(0,0,0,0.35) 100%)'
-    }
-  })), done && React.createElement("div", {
-    // winning wedge lights up so the eye lands on the result, not the ball
-    className: "absolute inset-[18px] rounded-full pointer-events-none animate-pulse",
-    style: {
-      background: `conic-gradient(transparent ${target * segAng}deg, rgba(255,255,255,0.34) ${target * segAng}deg ${(target + 1) * segAng}deg, transparent ${(target + 1) * segAng}deg)`,
-      mixBlendMode: 'screen'
-    }
-  }), done && React.createElement("div", {
-    className: "absolute inset-0 pointer-events-none"
-  }, Array.from({
-    length: 18
-  }, (_, ci) => React.createElement("div", {
-    key: ci,
-    className: "spin-confetti",
-    style: {
-      '--ca': ci * 20 + 'deg',
-      animationDelay: ci % 6 * 0.05 + 's',
-      background: ci % 3 === 0 ? '#f5c860' : ci % 3 === 1 ? '#fde68a' : '#e879f9'
-    }
-  }))), SPIN_SEGS.map((m, i2) => {
-    const amt = formatShort(m * (buyIn || 50));
-    return React.createElement("div", {
-      key: i2,
-      className: "absolute left-1/2 top-1/2 font-black",
-      style: {
-        transform: `rotate(${i2 * segAng + segAng / 2}deg) translateY(-120px) translateX(-50%)`,
-        transformOrigin: '0 0',
-        fontSize: amt.length > 4 ? '11px' : amt.length > 3 ? '12px' : '14px',
-        color: m === 100 ? '#fff3bf' : '#f8fafc',
-        textShadow: '0 2px 4px rgba(0,0,0,0.95)',
-        letterSpacing: '0.01em'
-      }
-    }, amt);
-  }), React.createElement("div", {
-    className: "absolute inset-[104px] rounded-full flex items-center justify-center",
-    style: {
-      background: 'radial-gradient(circle at 35% 30%, #fde68a, #b8862b 45%, #6b4d16)',
-      boxShadow: '0 4px 14px rgba(0,0,0,0.7), inset 0 -3px 8px rgba(0,0,0,0.45)'
-    }
-  }, React.createElement("div", {
-    className: "w-[78px] h-[78px] rounded-full bg-slate-950/95 border border-amber-300/40 flex items-center justify-center"
-  }, React.createElement("span", {
-    className: `font-black ${done ? 'text-amber-300 animate-pop-in' : 'text-slate-600'}`,
-    style: {
-      fontSize: done ? String(prize).length > 4 ? '20px' : '26px' : '24px'
-    }
-  }, done ? formatShort(prize) : '?'))), React.createElement("div", {
-    className: "absolute left-1/2 -translate-x-1/2 -top-1 z-10",
-    style: {
-      width: 0,
-      height: 0,
-      borderLeft: '11px solid transparent',
-      borderRight: '11px solid transparent',
-      borderTop: '18px solid #fde68a',
-      filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.7))'
-    }
-  }), React.createElement("div", {
-    className: "absolute inset-0",
-    style: {
-      transform: `rotate(${go ? finalRot : 0}deg)`,
-      transition: go ? 'transform 6.5s cubic-bezier(0.13, 0.82, 0.16, 1)' : 'none'
-    }
-  }, React.createElement("div", {
-    className: "absolute left-1/2 -translate-x-1/2",
-    style: {
-      top: '26px',
-      width: '18px',
-      height: '18px',
-      borderRadius: '50%',
-      background: 'radial-gradient(circle at 35% 28%, #ffffff, #d7dde6 60%, #7c8794)',
-      boxShadow: '0 3px 8px rgba(0,0,0,0.8), 0 0 10px rgba(255,255,255,0.35)'
-    }
-  }))), React.createElement("div", {
-    className: `mt-6 text-center transition-all duration-700 ${done ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`
-  }, React.createElement("div", {
-    className: "text-[11px] font-black text-amber-200/70 tracking-[0.35em] uppercase"
-  }, "The table plays for"), React.createElement("div", {
-    className: "text-5xl font-black mt-1",
-    style: {
-      background: 'linear-gradient(180deg,#fff7d6,#f5c860 55%,#a87e22)',
-      WebkitBackgroundClip: 'text',
-      backgroundClip: 'text',
-      color: 'transparent'
-    },
-    dir: "ltr"
-  }, formatShort(prize)), React.createElement("div", {
-    className: "text-slate-400 text-xs font-bold mt-2"
-  }, "Winner takes all · good luck 🍀")));
+    const choices=segments.map((value,index)=>value===mult?index:-1).filter(index=>index>=0);
+    return choices.length ? choices[Math.floor(Math.random()*choices.length)] : null;
+  },[mult,segments]);
+  const [go,setGo]=React.useState(false),[done,setDone]=React.useState(false);
+  const angle=360/segments.length;
+  const rotation=6*360+(360-((target??0)*angle+angle/2));
+  React.useEffect(()=>{
+    if(target===null)return;
+    setGo(false);setDone(false);
+    let frame=0;const sources=[];
+    const first=requestAnimationFrame(()=>{frame=requestAnimationFrame(()=>{
+      setGo(true);
+      sfxPlay('roulette_roll',0,.65,1,6.5,sources);
+      window.PokerRuntime.spinTickTimes(rotation,segments.length,6.5).forEach((time,i,ticks)=>sfxPlay('roulette_tick',time,.35+.22*i/ticks.length,.95+.05*i/ticks.length,0,sources));
+    });});
+    const timer=setTimeout(()=>{setDone(true);try{playSnd('win',2);if(navigator.vibrate)navigator.vibrate([35,50,70]);}catch(_){}},6650);
+    return()=>{cancelAnimationFrame(first);cancelAnimationFrame(frame);clearTimeout(timer);sources.forEach(source=>{try{source.stop();}catch(_){}});};
+  },[target,rotation,segments.length]);
+  if(target===null)return React.createElement('div',{className:'spin-cash-scene',role:'status'},'Waiting for the prize result…');
+  return React.createElement('div',{className:'spin-cash-scene',dir:'ltr',role:'dialog','aria-label':'Spin and Cash prize draw'},
+    React.createElement('header',{className:'spin-cash-heading'},React.createElement('span',null,'POKERTEN'),React.createElement('h1',null,'SPIN & CASH'),React.createElement('p',null,done?'Your prize pool is ready':'The table is ready. Let it spin.')),
+    React.createElement('div',{className:'spin-cash-wheel-frame','aria-hidden':'true'},
+      React.createElement('i',{className:'fa-solid fa-caret-down spin-cash-pointer'}),
+      React.createElement('div',{className:'spin-cash-rotor',style:{transform:`rotate(${go?rotation:0}deg)`}},
+        React.createElement('img',{src:'assets/design/spin-cash-wheel.webp',alt:'',draggable:false}),
+        segments.map((m,i)=>React.createElement('div',{key:i,className:'spin-cash-label'+(done&&i===target?' is-winner':''),style:{'--segment-angle':`${i*angle+angle/2}deg`,left:`${50+32*Math.sin((i*angle+angle/2)*Math.PI/180)}%`,top:`${50-32*Math.cos((i*angle+angle/2)*Math.PI/180)}%`}},React.createElement('strong',null,'×'+m),React.createElement('small',null,formatShort(spinPrize(buyIn||50,m))))))),
+    React.createElement('div',{className:'spin-cash-result',role:'status','aria-live':'polite'},
+      React.createElement('span',null,done?'PRIZE POOL':'SPINNING'),
+      React.createElement('strong',null,done?formatMoney(prize):'…'),
+      React.createElement('p',null,done?'Winner takes all · ×'+mult:'Good luck at the table')));
 };
 const PodiumScreen = ({
   place,
@@ -3837,6 +3666,7 @@ const CountNum = ({
   });
   React.useEffect(() => {
     const st = ref.current;
+    if (value === null || disp === null) { cancelAnimationFrame(st.raf); st.to = value; setDisp(value); return; }
     if (value === st.to && disp === value) return;
     const from = disp,
       t0 = performance.now();
@@ -3851,7 +3681,7 @@ const CountNum = ({
     st.raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(st.raf);
   }, [value]);
-  return (fmt || (x => x))(disp);
+  return (fmt || (x => x))(value === null ? null : disp);
 };
 const BetCollect = ({
   unit,
@@ -4188,57 +4018,14 @@ function App() {
     return () => unsub();
   }, [fbReady, activeClub?.id]);
   const fetchOrInitUser = async user => {
-    const ref = window.fb.doc(window.fb.db, "users", user.uid);
-    const snap = await window.fb.getDoc(ref);
-    if (snap.exists()) {
-      setDbUser({
-        uid: user.uid,
-        ...snap.data()
-      });
-    } else {
-      const email = (user.email || '').toLowerCase();
-      const isSuper = email === SUPER_ADMIN_EMAIL;
-      const isGod = GOD_EMAILS.includes(email);
-      // A guest signed in anonymously: no Google name, no email. The name and
-      // number typed on the login screen are the ONLY identity the club owner
-      // will have when the join request lands, so the name becomes the
-      // username and the number becomes the player ID — the number the owner
-      // approves by, and the one the guest can never change afterwards.
-      // A verified phone is a real identity: the number was proved by SMS
-      // before this account existed. Only an anonymous session with neither an
-      // email nor a number is a guest.
-      const phone = (user.phoneNumber || '').trim();
-      const isGuest = !phone && (!!user.isAnonymous || !email);
-      const pid = genPlayerId();
-      const guestName = (window.__guestName || '').trim();
-      const guestNumber = phone || (window.__guestNumber || '').trim();
-      const newUser = {
-        username: guestName || (isGuest ? 'אורח ' + pid.slice(0, 3) : user.displayName || 'Player'),
-        email: email,
-        googleName: user.displayName || '',
-        role: isSuper ? ROLES.SUPER_ADMIN : ROLES.PLAYER,
-        status: isSuper || isGod ? 'approved' : 'pending',
-        playerId: guestNumber || pid,
-        balance: isSuper ? 10000000 : 0,
-        clubProfits: 0,
-        isBot: false,
-        isGuest: isGuest,
-        phone: phone,
-        phoneVerified: !!phone,
-        managedGames: [],
-        stats: {
-          gamesPlayed: 0,
-          gamesWon: 0,
-          totalProfit: 0
-        }
-      };
-      window.__guestName = '';
-      window.__guestNumber = '';
-      await window.fb.setDoc(ref, newUser);
-      setDbUser({
-        uid: user.uid,
-        ...newUser
-      });
+    try {
+      await window.fb.fx('pkEnsurePlayer', {});
+      const snapshot = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', user.uid));
+      if (!snapshot.exists()) throw new Error('Profile unavailable');
+      setDbUser({ ...snapshot.data(), uid: user.uid });
+    } catch (error) {
+      showToast('לא הצלחנו לטעון את החשבון. נסה להיכנס שוב; היתרה שלך לא שונתה.', 'error');
+      setCurrentView('auth');
     }
   };
   useEffect(() => {
@@ -4474,13 +4261,6 @@ function App() {
           uid: d.id,
           ...data
         });
-        if (!data.playerId) {
-          try {
-            window.fb.updateDoc(d.ref, {
-              playerId: genPlayerId()
-            });
-          } catch (e) {}
-        }
         if (!data.googleName && data.username) {
           try {
             window.fb.updateDoc(d.ref, {
@@ -5008,282 +4788,98 @@ function InstallBanner({
     className: "mt-5 text-slate-500 hover:text-white underline text-sm font-bold"
   }, "Close"))), document.body));
 }
-function AuthView() {
-  // Guest sign-in: a name and a number, nothing else. The pair rides to
-  // fetchOrInitUser on window, because an anonymous sign-in hands back a uid
-  // and nothing else — this is the only moment the account can be named.
-  // Sign-in by verified phone: the number is proved by an SMS code before an
-  // account exists at all, so the number the owner approves is a number that
-  // is really the player's. 'idle' -> 'phone' -> 'code'.
-  const [googleBusy,setGoogleBusy]=useState(false);
-  const googleLogin=async()=>{if(googleBusy)return;setGoogleBusy(true);setGErr('');try{await window.fb.signIn();}catch(e){setGErr('ההתחברות לא הושלמה. נסה שוב או היכנס עם הטלפון.');}finally{setGoogleBusy(false);}};
-  const [step, setStep] = useState('idle');
-  const [gName, setGName] = useState('');
-  const [gNum, setGNum] = useState('');
-  const [gCode, setGCode] = useState('');
-  const [gErr, setGErr] = useState('');
-  const [gBusy, setGBusy] = useState(false);
-  const [sentAt, setSentAt] = useState(0);
-  const [now, setNow] = useState(Date.now());
+function PersonalCodeForm({ account = false }) {
+  const [mode, setMode] = useState('login');
+  const [loginId, setLoginId] = useState(() => { try { return localStorage.getItem('pkLoginId') || ''; } catch (_) { return ''; } });
+  const [name, setName] = useState('');
+  const [pin, setPin] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [available, setAvailable] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [savedId, setSavedId] = useState('');
   useEffect(() => {
-    if (step !== 'code') return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [step]);
-  const waitLeft = Math.max(0, 45 - Math.floor((now - sentAt) / 1000));
-  // Israeli numbers are typed as 05X-XXXXXXX; Firebase wants E.164. A number
-  // typed with a leading + is passed through, so a player abroad still works.
-  const toE164 = raw => {
-    const t = String(raw || '').trim().replace(/[^0-9+]/g, '');
-    if (t.startsWith('+')) return t;
-    const d = t.replace(/\D/g, '');
-    if (d.startsWith('972')) return '+' + d;
-    if (d.startsWith('0')) return '+972' + d.slice(1);
-    return '+972' + d;
-  };
-  const smsError = e => {
-    const c = (e && e.code) || '';
-    if (c === 'auth/invalid-phone-number') return 'מספר לא תקין';
-    if (c === 'auth/too-many-requests') return 'יותר מדי ניסיונות — נסה שוב בעוד כמה דקות';
-    if (c === 'auth/invalid-verification-code') return 'הקוד שגוי — בדוק שוב';
-    if (c === 'auth/code-expired') return 'הקוד פג תוקף — שלח קוד חדש';
-    if (c === 'auth/quota-exceeded') return 'מכסת ה-SMS נגמרה להיום';
-    if (c === 'auth/operation-not-allowed') return 'כניסה בטלפון כבויה — יש להפעיל Phone ב-Firebase Console';
-    if (c === 'auth/captcha-check-failed' || c === 'auth/invalid-app-credential') return 'אימות הדפדפן נכשל — רענן את הדף ונסה שוב';
-    return 'שליחה נכשלה, נסה שוב';
-  };
-  const doSendCode = async () => {
-    const name = gName.trim();
-    const e164 = toE164(gNum);
-    if (name.length < 2) return setGErr('צריך שם — לפחות 2 תווים');
-    if (!/^\+\d{9,15}$/.test(e164)) return setGErr('מספר לא תקין — לדוגמה 0501234567');
-    setGErr('');
-    setGBusy(true);
+    let active = true;
+    if (!window.fb.fx) return;
+    window.fb.fx('pkPinStatus', {}).then(result => {
+      if (!active) return;
+      setAvailable(!!result.available);
+      if (!result.available) setError('הכניסה בקוד אישי עדיין אינה זמינה. אפשר להיכנס עם Google.');
+      if (account && result.playerId) { setSavedId(result.playerId); setLoginId(result.playerId); }
+    }).catch(() => { if (active) setError('הכניסה בקוד אישי אינה זמינה כרגע. אפשר להיכנס עם Google .'); });
+    return () => { active = false; };
+  }, [account]);
+  const submit = async event => {
+    event.preventDefault();
+    if (busy || !available) return;
+    setError(''); setNotice('');
+    if (!/^\d{8,12}$/.test(pin)) return setError('בחר קוד של 8–12 ספרות.');
+    if ((account || mode === 'register') && pin !== confirm) return setError('שני הקודים אינם זהים.');
+    if (!account && mode === 'login' && !/^P\d{9}$/.test(loginId)) return setError('יש להזין קוד שחקן שמתחיל באות P וממשיך ב־9 ספרות.');
+    setBusy(true);
     try {
-      await window.fb.phoneSend(e164);
-      setSentAt(Date.now());
-      setNow(Date.now());
-      setGCode('');
-      setStep('code');
+      const result = await window.fb.fx(account ? 'pkPinEnroll' : mode === 'register' ? 'pkPinRegister' : 'pkPinLogin', account ? {pin} : mode === 'register' ? {name: name.trim(), pin} : {loginId, pin});
+      try { localStorage.setItem('pkLoginId', result.loginId); } catch (_) {}
+      setLoginId(result.loginId); setSavedId(result.loginId); setPin(''); setConfirm('');
+      if (account) setNotice('הקוד נשמר. שמור את קוד השחקן שמופיע כאן לפעם הבאה.');
+      else await window.fb.customSignIn(result.token);
     } catch (e) {
-      try { window.fb.phoneReset(); } catch (e2) {}
-      setGErr(smsError(e));
-    }
-    setGBusy(false);
+      const code = e?.code || '';
+      setError(/unauthenticated/.test(code) ? 'קוד השחקן או הקוד שגויים.' : /resource-exhausted/.test(code) ? 'יותר מדי ניסיונות. נסה שוב בעוד 15 דקות.' : /invalid-argument|failed-precondition/.test(code) ? e.message : 'הפעולה לא הושלמה. נסה שוב או היכנס עם Google.');
+    } finally { setBusy(false); }
   };
-  // `typed` lets the field submit the moment the sixth digit lands — whether
-  // the player typed it or the keyboard filled it in from the SMS — without
-  // waiting for the state round-trip.
-  const doVerify = async typed => {
-    const code = String(typed === undefined ? gCode : typed).trim();
-    if (code.length < 6) return setGErr('צריך את 6 הספרות מה-SMS');
-    setGErr('');
-    setGBusy(true);
-    // The name rides on window: a phone sign-in hands back a uid and a number,
-    // and this is the only moment the account can be named.
-    window.__guestName = gName.trim();
-    window.__guestNumber = toE164(gNum);
-    try {
-      await window.fb.phoneVerify(code);
-      // success: onAuthStateChanged takes over and this screen unmounts
-    } catch (e) {
-      window.__guestName = '';
-      window.__guestNumber = '';
-      setGBusy(false);
-      setGErr(smsError(e));
-    }
-  };
-  const inputCls = "w-full bg-slate-950 border border-white/12 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-gold-400/60 text-[15px]";
-  return React.createElement("div", {
-    className: "auth-screen auth-poker auth-shell h-full w-full flex flex-col items-center justify-center p-4 relative",
-    style: {
-      background: "linear-gradient(rgba(7,9,15,0.72), rgba(7,9,15,0.86)), url('assets/login-bg.jpg') center / cover no-repeat, #07090F"
-    }
-  }, React.createElement("div", {
-    className: "auth-card text-center relative z-10 w-full"
-  }, React.createElement("div", {
-    className: "auth-mark",
-    style: {
-      background: 'var(--pt-raised)',
-      border: '1px solid rgba(213,179,107,0.35)',
-      boxShadow: 'var(--pt-shadow)'
-    }
-  }, React.createElement(SuitGlyph, {
-    s: '♠',
-    color: '#D5B36B',
-    size: "30px"
-  })), React.createElement("h2", {
-    className: "auth-logo",
-    style: {
-      fontWeight: 700
-    }
-  }, React.createElement("span", {
-    className: "auth-wordmark"
-  }, "POKERTEN")), React.createElement("p", {
-    className: "auth-kicker",
-    style: {
-      color: 'var(--pt-text-2)',
-      fontWeight: 500
-    }
-  }, "המועדון שלך. השולחן שלך."), React.createElement("h1", {className:"auth-title"}, "השולחן מחכה לך."), React.createElement("p",{className:"auth-intro"},"היכנס לחשבון והצטרף למשחק."), React.createElement("button", {
-    onClick: googleLogin,
-    disabled:googleBusy||gBusy,
-    className: "w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 py-4 px-6 rounded-xl shadow-xl flex items-center justify-center gap-3",
-    style: {
-      fontWeight: 600
-    }
-  }, React.createElement("i", {
-    className: "fa-brands fa-google text-blue-500 text-xl"
-  }), googleBusy ? "מתחבר…" : "כניסה עם Google"), step==='idle'&&gErr&&React.createElement("p",{role:"alert",className:"auth-error"},gErr), React.createElement("div", {
-    className: "flex items-center gap-3 my-5"
-  }, React.createElement("div", {
-    className: "flex-1 h-px bg-white/10"
-  }), React.createElement("span", {
-    className: "text-[11px] font-bold tracking-widest",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "או"), React.createElement("div", {
-    className: "flex-1 h-px bg-white/10"
-  })), step === 'idle' ? React.createElement("button", {
-    onClick: () => setStep('phone'),
-    className: "w-full bg-slate-900/80 hover:bg-slate-800 border border-gold-400/30 text-gold-400 py-3.5 px-6 rounded-xl font-black text-[15px] transition-transform hover:scale-[1.02]"
-  }, "\uD83D\uDCF1 כניסה עם מספר טלפון") : step === 'phone' ? React.createElement("div", {
-    dir: "rtl",
-    className: "text-right space-y-2.5"
-  }, React.createElement("input", {
-    value: gName,
-    onChange: e => {
-      setGName(e.target.value);
-      setGErr('');
-    },
-    maxLength: 20,
-    placeholder: "השם שלך",
-    "aria-label":"השם שלך",
-    autoComplete:"nickname",
-    className: inputCls
-  }), React.createElement("input", {
-    value: gNum,
-    onChange: e => {
-      setGNum(e.target.value.replace(/[^0-9+]/g, ''));
-      setGErr('');
-    },
-    inputMode: "tel",
-    autoComplete: "tel",
-    maxLength: 16,
-    placeholder: "05X-XXXXXXX",
-    "aria-label":"מספר טלפון",
-    className: inputCls,
-    dir: "ltr"
-  }), React.createElement("p", {
-    className: "text-[11px] leading-relaxed font-bold",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "נשלח קוד ב-SMS. המספר המאומת הוא מספר השחקן שלך — בעל הקלאב מאשר לפיו, ואי אפשר לשנות אותו אחר-כך."), gErr && React.createElement("p", {
-    className: "text-[12px] font-bold text-rose-400"
-  }, gErr), React.createElement("button", {
-    onClick: doSendCode,
-    disabled: gBusy,
-    className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-60 text-white py-3.5 rounded-xl font-black text-[15px] shadow-lg"
-  }, gBusy ? "שולח..." : "שלח לי קוד"), React.createElement("button", {
-    onClick: () => {
-      setStep('idle');
-      setGErr('');
-    },
-    className: "w-full text-[12px] font-bold underline",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "חזרה")) : React.createElement("div", {
-    dir: "rtl",
-    className: "text-right space-y-2.5"
-  }, React.createElement("p", {
-    className: "text-[12px] font-bold",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "שלחנו קוד בן 6 ספרות אל ", React.createElement("span", {
-    dir: "ltr",
-    className: "text-gold-400"
-  }, toE164(gNum))), React.createElement("input", {
-    value: gCode,
-    autoFocus: true,
-    onChange: e => {
-      const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
-      setGCode(v);
-      setGErr('');
-      // Six digits is the whole code — there is nothing left to decide, so
-      // don't make him hunt for a button. This is also what fires when the
-      // keyboard fills the code in from the SMS: one tap on the suggestion
-      // and he is in.
-      if (v.length === 6 && !gBusy) doVerify(v);
-    },
-    inputMode: "numeric",
-    autoComplete: "one-time-code",
-    maxLength: 6,
-    placeholder: "------",
-    "aria-label":"קוד אימות מההודעה",
-    className: inputCls + " text-center tracking-[0.6em] text-xl",
-    dir: "ltr"
-  }), gErr && React.createElement("p", {
-    className: "text-[12px] font-bold text-rose-400"
-  }, gErr), React.createElement("button", {
-    onClick: () => doVerify(),
-    disabled: gBusy || gCode.length < 6,
-    className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-60 text-white py-3.5 rounded-xl font-black text-[15px] shadow-lg"
-  }, gBusy ? "מאמת..." : "אימות וכניסה"), React.createElement("button", {
-    onClick: () => {
-      try { window.fb.phoneReset(); } catch (e) {}
-      setGErr('');
-      doSendCode();
-    },
-    disabled: gBusy || waitLeft > 0,
-    className: "w-full text-[12px] font-bold underline disabled:opacity-50",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, waitLeft > 0 ? "שליחה חוזרת בעוד " + waitLeft : "שלח קוד שוב"), React.createElement("button", {
-    onClick: () => {
-      try { window.fb.phoneReset(); } catch (e) {}
-      setGCode('');
-      setGErr('');
-      setStep('phone');
-    },
-    className: "w-full text-[12px] font-bold underline",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "שינוי מספר")), React.createElement(InstallBanner, {
-    variant: "auth"
-  })), React.createElement("div", {
-    className: "auth-footer"
-  }, React.createElement("div", {
-    className: "flex items-center gap-2 px-4 py-2 rounded-full border border-gold-400/25 bg-slate-950/60"
-  }, React.createElement("svg", {
-    viewBox: "0 0 24 24",
-    style: {
-      width: '15px',
-      height: '15px'
-    }
-  }, React.createElement("path", {
-    d: "M12 2l8 3v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5l8-3z",
-    fill: "none",
-    stroke: "#e3ae4e",
-    strokeWidth: "1.6"
-  }), React.createElement("path", {
-    d: "M8.5 12l2.4 2.4L15.5 9.8",
-    fill: "none",
-    stroke: "#e3ae4e",
-    strokeWidth: "1.8",
-    strokeLinecap: "round",
-    strokeLinejoin: "round"
-  })), React.createElement("span", {
-    className: "text-[10px] text-gold-400/90 font-bold tracking-[0.18em] uppercase"
-  }, "POKERTEN · משחקי קלאב")), React.createElement("span", {
-    className: "text-[8px] text-slate-600 font-bold tracking-[0.3em] uppercase"
-  }, "Powered by ORIZIS TECHNOLOGY")));
+  const field = (label, value, setter, extra = {}) => React.createElement('label', {className:'personal-code-field'},
+    React.createElement('span', null, label), React.createElement('input', {
+      value, onChange:e=>setter(e.target.value), 'aria-label':label, required:true, disabled:busy, ...extra
+    }));
+  return React.createElement('section', {className:'personal-code', dir:'rtl'},
+    React.createElement('h2', null, account ? 'הגדרת קוד אישי' : mode === 'register' ? 'פתיחת חשבון עם קוד אישי' : 'כניסה עם קוד אישי'),
+    account && savedId && React.createElement('div', {className:'personal-code-id'},
+      React.createElement('span', null, 'קוד השחקן שלך'), React.createElement('strong', {dir:'ltr'}, savedId),
+      React.createElement('button', {type:'button', onClick:async()=>{try{await navigator.clipboard.writeText(savedId);setNotice('קוד השחקן הועתק.');}catch(_){setNotice('אפשר לבחור ולהעתיק את המספר שמופיע כאן.');}}}, 'העתקה')),
+    !account && React.createElement('div', {className:'personal-code-tabs'}, ['login','register'].map(value=>React.createElement('button', {
+      key:value, type:'button', disabled:busy, 'aria-pressed':mode===value,
+      onClick:()=>{setMode(value);setError('');setPin('');setConfirm('');}
+    }, value==='login'?'כבר יש לי קוד':'חשבון חדש'))),
+    React.createElement('form', {onSubmit:submit},
+      !account && mode==='login' && field('קוד שחקן', loginId, value=>setLoginId(value.toUpperCase().replace(/[^P0-9]/g,'').slice(0,10)), {autoComplete:'username', autoCapitalize:'characters', placeholder:'P123456789', maxLength:10, dir:'ltr'}),
+      !account && mode==='register' && field('השם שלך',name,setName,{autoComplete:'nickname',minLength:2,maxLength:20}),
+      field(account?'קוד אישי חדש':'קוד אישי',pin,value=>setPin(value.replace(/\D/g,'').slice(0,12)),{type:'password',inputMode:'numeric',autoComplete:account||mode==='register'?'new-password':'current-password',minLength:8,maxLength:12,dir:'ltr'}),
+      (account||mode==='register') && field('הקלד שוב את הקוד',confirm,value=>setConfirm(value.replace(/\D/g,'').slice(0,12)),{type:'password',inputMode:'numeric',autoComplete:'new-password',minLength:8,maxLength:12,dir:'ltr'}),
+      error && React.createElement('p',{role:'alert',className:'personal-code-error'},error),
+      notice && React.createElement('p',{role:'status',className:'personal-code-notice'},notice),
+      React.createElement('button',{type:'submit',className:'personal-code-submit',disabled:busy||!available},busy?'רק רגע…':account?'שמירת הקוד':mode==='register'?'יצירת החשבון':'כניסה לשולחנות')),
+    React.createElement('p',{className:'personal-code-help'},account?'הקוד שייך לחשבון הנוכחי. קוד השחקן, הקלאבים והיתרה שלך נשארים איתך.':mode==='register'?'כבר שיחקת כאן? היכנס לחשבון הקיים והגדר קוד בפרופיל. חשבון חדש אינו מעביר יתרה מחשבון קודם.':'עוד לא הגדרת קוד? היכנס עם Google , ובחר ״הגדרת קוד אישי״ בפרופיל.'));
 }
+
+function AuthView() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const googleLogin = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await window.fb.signIn(); }
+    catch (_) { setError('ההתחברות לא הושלמה. נסה שוב או היכנס עם קוד שחקן וקוד אישי.'); }
+    finally { setBusy(false); }
+  };
+  return React.createElement('div', {
+    className:'auth-screen auth-poker auth-shell h-full w-full flex flex-col items-center p-4 relative',
+    style:{background:"linear-gradient(rgba(7,9,15,0.72), rgba(7,9,15,0.86)), url('assets/login-bg.jpg') center / cover no-repeat, #07090F"}
+  }, React.createElement('div',{className:'auth-card text-center relative z-10 w-full'},
+    React.createElement('h2',{className:'auth-logo'},React.createElement('span',{className:'auth-wordmark'},'POKERTEN')),
+    React.createElement('p',{className:'auth-kicker'},'המועדון שלך. השולחן שלך.'),
+    React.createElement('h1',{className:'auth-title'},'השולחן מחכה לך.'),
+    React.createElement(PersonalCodeForm),
+    React.createElement('button',{onClick:googleLogin,disabled:busy,className:'w-full bg-white text-slate-900 py-4 px-6 rounded-xl flex items-center justify-center gap-3 font-bold'},
+      React.createElement('i',{className:'fa-brands fa-google text-blue-500'}),busy?'מתחבר…':'כניסה עם Google'),
+    error && React.createElement('p',{role:'alert',className:'auth-error'},error),
+    React.createElement('p',{className:'personal-code-help',dir:'rtl'},'לכל חשבון קוד שחקן קבוע וייחודי. אפשר להגדיר קוד אישי גם אחרי כניסה עם Google.'),
+    React.createElement('p',{className:'personal-code-help',dir:'rtl'},'נכנסת בעבר עם SMS? אם החשבון פתוח במכשיר אחר, הגדר בו קוד אישי דרך הפרופיל. אחרת יש לפנות למנהל לשחזור גישה לאותו חשבון.'),
+    React.createElement(InstallBanner,{variant:'auth'})),
+    React.createElement('div',{className:'auth-footer'},'POKERTEN · Powered by ORIZIS TECHNOLOGY'));
+}
+
 function LeadersView({
   user,
   showToast
@@ -6209,10 +5805,11 @@ function ClubsView({
       }, React.createElement("i", {
         className: "fa-solid fa-users"
       }), members > 0 ? members : '\u2014'), React.createElement("span", {
-        className: "cl-stat"
-      }, React.createElement("i", {
-        className: "fa-solid fa-coins"
-      }), formatShort((m && m.balance) || 0))), d.kind === 'pending' ? React.createElement("div", {
+        className: "cl-stat cl-balance",
+        title: m && Number.isFinite(m.balance) ? m.balance.toLocaleString() : 'Balance unavailable'
+      }, React.createElement('span', { className: 'cl-balance-label' }, 'YOUR BALANCE'), React.createElement('span', {
+        className: 'cl-balance-amount'
+      }, m && Number.isFinite(m.balance) ? formatShort(m.balance) : '—'))), d.kind === 'pending' ? React.createElement("div", {
         className: "cl-cta cl-cta-wait"
       }, React.createElement("i", {
         className: "fa-solid fa-hourglass-half mr-1.5"
@@ -6509,7 +6106,7 @@ function ProfileView({
     className: "club-surface scrollable-content aurora-bg p-4 sm:p-8"
   }, React.createElement("div", {
     className: "max-w-4xl mx-auto animate-fade-in relative z-10"
-  }, React.createElement("div", {
+  }, React.createElement(PersonalCodeForm, { account: true }), React.createElement("div", {
     className: "glass-panel p-8 rounded-3xl text-center mb-6"
   }, React.createElement("img", {
     src: avatarUrl(user),
@@ -10975,7 +10572,7 @@ function PokerCreateView({
     className: "accent-amber-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-white text-sm font-bold"
-  }, "3 players · the wheel picks the prize (×2–×20, jackpot on display) · winner takes all · no rake")), s.spinMode && React.createElement("div", {
+  }, "3 players · the wheel picks the prize (×2–×25) · winner takes all · no rake")), s.spinMode && React.createElement("div", {
     className: "grid grid-cols-2 gap-2 mt-2"
   }, React.createElement("div", null, React.createElement("div", {
     className: "text-[10px] text-slate-400 font-black mb-1"
@@ -11107,7 +10704,7 @@ function PokerCreateView({
         React.createElement("option", { value: 240 }, "4 min")
       )
     )),
-    React.createElement("div", { className: "text-center text-amber-300/80 text-[11px] font-black mb-4", dir: "ltr" }, `Top prize on the wheel: ${formatShort((Number(sf.buy) || 50) * 100)}`),
+    React.createElement("div", { className: "text-center text-amber-300/80 text-[11px] font-black mb-4", dir: "ltr" }, `Top prize on the wheel: ${formatShort((Number(sf.buy) || 50) * Math.max(...SPIN_DISPLAY_MULTS))}`),
     React.createElement("button", { onClick: createSpin, className: "w-full bg-gradient-to-b from-fuchsia-600 to-amber-600 hover:from-fuchsia-500 text-white py-3.5 rounded-2xl font-black text-lg shadow-lg mb-2" }, "🎡 Open Spin & Cash"),
     React.createElement("button", { onClick: () => setSpinOpen(false), className: "w-full text-slate-400 hover:text-white text-sm font-bold" }, "Cancel")
   )), document.body))));
@@ -11121,8 +10718,16 @@ function PokerTable({
   showToast,
   headless
 }) {
+  const oddsWorkerRef = useRef(null);
+  const botWorkerRef = useRef(null);
+  if (!oddsWorkerRef.current) oddsWorkerRef.current = window.PokerRuntime.createWorkerClient(window.Worker);
+  if (!botWorkerRef.current) botWorkerRef.current = window.PokerRuntime.createWorkerClient(window.Worker);
+  useEffect(() => () => { oddsWorkerRef.current.close(); botWorkerRef.current.close(); }, []);
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tableError, setTableError] = useState('');
+  const [connectionRetry, setConnectionRetry] = useState(0);
+
   const [godView, setGodView] = useState(false);
   const [rabbit, setRabbit] = useState([]);
   const [betFx, setBetFx] = useState([]);
@@ -11403,7 +11008,7 @@ function PokerTable({
   // Now the first seated human who is actually online (heartbeat within 20s)
   // drives as well. Two drivers at once are harmless: saveGame drops the
   // stale write. Nobody online means nobody is waiting.
-  const onlineHumans = Object.values(players).filter(p => !p.isBot && (p.uid === user.uid || p.lastSeen && Date.now() - p.lastSeen < 20000)).sort((a, b) => (a.seatIndex || 0) - (b.seatIndex || 0));
+  const onlineHumans = Object.entries(players).map(([uid, p]) => ({ ...p, uid })).filter(p => !p.isBot && (p.uid === user.uid || p.lastSeen && Date.now() - p.lastSeen < 20000)).sort((a, b) => (a.seatIndex || 0) - (b.seatIndex || 0));
   const iDrive = isSuperAdmin || (onlineHumans[0] && onlineHumans[0].uid === user.uid);
   const myPlayer = players[user.uid];
   const isSeated = !!myPlayer;
@@ -11423,14 +11028,9 @@ function PokerTable({
       playSnd('turn');
     }
   }, [isMyTurn, gs.activeTurnUid, gs.turnStartedAt]);
-  const clonePlayers = pl => {
-    const o = {};
-    Object.entries(pl || {}).forEach(([k, v]) => o[k] = {
-      ...v,
-      cards: [...(v.cards || [])]
-    });
-    return o;
-  };
+  const playerCopiesRef = useRef(null);
+  if (!playerCopiesRef.current) playerCopiesRef.current = window.PokerRuntime.createPlayerCopies();
+  const clonePlayers = pl => playerCopiesRef.current.clone(pl);
   const saveGame = async (g, pl, extra = {}) => {
     // Optimistic-concurrency guard. Every save carries the sequence number of
     // the snapshot it was computed from; if the table doc moved on since (a
@@ -11441,6 +11041,7 @@ function PokerTable({
     const gOut = {
       ...g
     };
+    let savedPlayers;
     try {
       await window.fb.runTransaction(window.fb.db, async trx => {
         const s = await trx.get(tblRef());
@@ -11448,6 +11049,7 @@ function PokerTable({
         const d0 = s.data();
         const cur = Number((d0.gameState || {}).__seq) || 0;
         if (cur !== base) throw 'stale';
+        savedPlayers = playerCopiesRef.current.merge(d0.players || {}, pl);
         gOut.__seq = cur + 1;
         // chip-conservation sensor: total chips on the table must not change
         // except for rake leaving at showdown or approved top-ups entering.
@@ -11486,37 +11088,60 @@ function PokerTable({
         } catch (e2) {}
         trx.update(tblRef(), {
           gameState: gOut,
-          players: pl,
+          players: savedPlayers,
           ...extra
         });
       });
       // chained flows (save → advancePhase timer with the same object) must
       // keep matching the doc, so bump the caller's copy in place
       g.__seq = gOut.__seq;
-    } catch (e) {}
+      playerCopiesRef.current.committed(pl, savedPlayers);
+      return true;
+    } catch (e) {
+      const reason = e?.message || String(e);
+      console.warn('Poker save rejected', { tableId: tableDocId, reason });
+      if (g.activeTurnUid === user.uid || tableRef.current?.gameState?.activeTurnUid === user.uid) {
+        actedTurnRef.current = null;
+        setActing(false);
+        showToast(reason === 'stale' || reason === 'stale-players' ? 'The table updated. Please try your action again.' : 'Action was not saved. Check your connection and try again.', 'error');
+      }
+      return false;
+    }
   };
   useEffect(() => {
     if (!tableDocId) return;
-    const unsub = window.fb.onSnapshot(tblRef(), d => {
+    setTableError('');
+    let received = false;
+    const timeout = setTimeout(() => {
+      if (!received) setTableError('The table is taking too long to connect. Retry to reconnect.');
+    }, 12000);
+    const unsub = window.fb.onSnapshot(tblRef(), { includeMetadataChanges: true }, d => {
+      received = true;
+      clearTimeout(timeout);
       if (d.exists()) {
-        const t = {
-          id: d.id,
-          ...d.data()
-        };
+        const t = { id: d.id, ...d.data() };
+        // The document key is the seat identity, including older malformed seats.
+        // Preserve the server snapshot exactly for optimistic concurrency checks.
         tableRef.current = t;
         setTableState(t);
+        setTableError(d.metadata?.fromCache ? 'Reconnecting — showing the last saved table.' : '');
         setLoading(false);
-      } else {
-        showToast("The table closed", "error");
+      } else if (!d.metadata?.fromCache) {
+        showToast('The table closed', 'error');
         onLeave();
-      }
+      } else setTableError('Waiting for the table to reconnect.');
+    }, error => {
+      clearTimeout(timeout);
+      setTableError('Connection to the table failed. Retry to reconnect.');
+      console.warn('Poker subscription failed', { tableId: tableDocId, code: error.code });
     });
     return () => {
+      clearTimeout(timeout);
       unsub();
       clearTimeout(advanceRef.current);
       clearTimeout(nextHandRef.current);
     };
-  }, [tableDocId]);
+  }, [tableDocId, connectionRetry]);
   useEffect(() => {
     if (!tableState) return;
     const left = (tableState.leftStacks || {})[user.uid];
@@ -11691,10 +11316,10 @@ function PokerTable({
         f: q.status === 'folded'
       }))
     });
-    await saveGame(g, pl, {
+    if (!(await saveGame(g, pl, {
       history: [...(histT && histT.history || []), histEntry].slice(-100),
       ...tourExtra
-    });
+    }))) return;
     distributeRake(rake, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
     // Rake per player, for the reports. The share is over EVERY player dealt
     // into the hand, not just the humans: the rake came out of a pot that bot
@@ -11849,10 +11474,10 @@ function PokerTable({
         w: winnerNames.has(q.name), f: q.status === 'folded'
       }))
     });
-    await saveGame(g, pl, {
+    if (!(await saveGame(g, pl, {
       history: [...(histT && histT.history || []), histEntry].slice(-100),
       ...tourExtra
-    });
+    }))) return;
     distributeRake(rakeTotal, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
     // Record rake per human player for the reports (split among players dealt in).
     const dealtAll2 = Object.values(pl).filter(q => (q.cards || []).length);
@@ -11889,7 +11514,7 @@ function PokerTable({
         g.phase = 'discard';
         g.activeTurnUid = null;
         g.turnStartedAt = Date.now();
-        await saveGame(g, pl);
+        if (!(await saveGame(g, pl))) return;
         return;
       }
       g.phase = 'flop';
@@ -11911,14 +11536,14 @@ function PokerTable({
     if (actors.length < 2) {
       g.allInReveal = true;
       g.activeTurnUid = null;
-      await saveGame(g, pl);
+      if (!(await saveGame(g, pl))) return;
       clearTimeout(advanceRef.current);
       advanceRef.current = setTimeout(() => advancePhase(g, pl), 1500);
       return;
     }
     g.activeTurnUid = firstAfterDealer(g, pl);
     g.turnStartedAt = Date.now();
-    await saveGame(g, pl);
+    if (!(await saveGame(g, pl))) return;
   };
   const performAction = async (actorUid, type, targetBet, autoTimeout) => {
     if (setts.serverEngine) {
@@ -12018,12 +11643,12 @@ function PokerTable({
     if (next) {
       g.activeTurnUid = next.uid;
       g.turnStartedAt = Date.now();
-      await saveGame(g, pl);
+      if (!(await saveGame(g, pl))) return;
     } else {
       g.activeTurnUid = null;
       const actorsLeft = actives.filter(q => q.stack > 0);
       if (actives.length > 1 && actorsLeft.length < 2) g.allInReveal = true;
-      await saveGame(g, pl);
+      if (!(await saveGame(g, pl))) return;
       clearTimeout(advanceRef.current);
       advanceRef.current = setTimeout(() => advancePhase(g, pl), 1300);
     }
@@ -12054,11 +11679,11 @@ function PokerTable({
     if (actives.length < 2) {
       // not enough live players for a hand — park the table; the busted sweep
       // and the orchestrator take it from here
-      await saveGame({
+      if (!(await saveGame({
         ...gBase,
         phase: 'waiting',
         activeTurnUid: null
-      }, pl);
+      }, pl))) return;
       return;
     }
     const n = GAME_CARDS[gameType] || 2;
@@ -12149,7 +11774,7 @@ function PokerTable({
       allInReveal: false,
       tourLevel: lvl
     };
-    await saveGame(g, pl);
+    if (!(await saveGame(g, pl))) return;
   };
   const startHand = async (forceClient) => {
     // Tournament break gate — ONE shared clock for every table. A hand that is
@@ -12216,13 +11841,13 @@ function PokerTable({
       });
       const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
       if (actives.length < 2) {
-        await saveGame({
+        if (!(await saveGame({
           ...g0,
           phase: 'waiting',
           activeTurnUid: null,
           board: [],
           pots: []
-        }, pl);
+        }, pl))) return;
         return;
       }
       const uids = actives.map(p => p.uid);
@@ -12256,7 +11881,7 @@ function PokerTable({
         g.phase = 'dc_selection';
         g.activeTurnUid = null;
         g.turnStartedAt = Date.now();
-        await saveGame(g, pl);
+        if (!(await saveGame(g, pl))) return;
       } else {
         await executeDeal(g, pl, setts.isDealerChoice ? g.currentGameType || setts.baseGameType : setts.baseGameType);
       }
@@ -12350,7 +11975,7 @@ function PokerTable({
       const actors = Object.values(pl).filter(q => q.status === 'active' && q.stack > 0);
       if (actors.length < 2) {
         g.activeTurnUid = null;
-        await saveGame(g, pl);
+        if (!(await saveGame(g, pl))) return;
         clearTimeout(advanceRef.current);
         advanceRef.current = setTimeout(() => advancePhase(g, pl), 1400);
         return;
@@ -12358,7 +11983,7 @@ function PokerTable({
       g.activeTurnUid = firstAfterDealer(g, pl);
       g.turnStartedAt = Date.now();
     }
-    await saveGame(g, pl);
+    if (!(await saveGame(g, pl))) return;
   };
   const handleSit = async () => {
     if (tableState?.tournament) return showToast("Tournament table - join via registration in the lobby", "error");
@@ -13010,14 +12635,15 @@ function PokerTable({
     if (cur && Object.keys(cur.players || {}).length >= ((cur.settings || {}).maxPlayers || 6)) spawnTwinTable(cur, true);
   };
   useEffect(() => {
-    if (!iDrive || !tableState || !gs.phase) return;
+    if (srvEngine || !iDrive || !tableState || !gs.phase) return;
     const actor0 = players[gs.activeTurnUid];
     if (BETTING.includes(gs.phase) && gs.activeTurnUid && actor0 && (actor0.isBot || tableState.tournamentId && actor0.sitOut)) {
       const uid = gs.activeTurnUid;
       // sit-out humans are skipped almost instantly (no dead time at the
       // table); bots "think" for a human-looking, varied moment.
       const delay = actor0.isBot ? 1300 + Math.random() * 2400 : 700;
-      const tm = setTimeout(() => {
+      let cancelled = false;
+      const tm = setTimeout(async () => {
         const t = tableRef.current;
         if (!t) return;
         const g = t.gameState;
@@ -13030,12 +12656,13 @@ function PokerTable({
           performAction(uid, toCall > 0 ? 'fold' : 'call');
           return;
         }
-        const mv = botPokerMove(g, t, b) || {
+        const mv = await botWorkerRef.current.request('bot', [g, t, b]) || {
           type: toCall > 0 ? 'fold' : 'call'
         };
+        if (cancelled || tableRef.current?.gameState?.activeTurnUid !== uid || tableRef.current?.gameState?.turnStartedAt !== g.turnStartedAt) return;
         if (mv.type === 'raise' && mv.amt > (b.bet || 0) + 0.001 && mv.amt > g.highestBet) performAction(uid, 'raise', round2(mv.amt));else performAction(uid, mv.type === 'raise' ? 'call' : mv.type);
       }, delay);
-      return () => clearTimeout(tm);
+      return () => { cancelled = true; clearTimeout(tm); botWorkerRef.current.close(); };
     }
     if (gs.phase === 'discard') {
       const iv = setInterval(() => {
@@ -13056,7 +12683,7 @@ function PokerTable({
       }, 2200);
       return () => clearTimeout(tm);
     }
-  }, [gs.activeTurnUid, gs.phase, gs.turnStartedAt, iDrive]);
+  }, [gs.activeTurnUid, gs.phase, gs.turnStartedAt, iDrive, srvEngine]);
   // Bot table talk: one line every 10-15 hands, and usually an answer from a
   // different bot a few seconds later, so the table sounds like people.
   const talkRef = useRef({
@@ -13205,7 +12832,7 @@ function PokerTable({
   const [bustLeft, setBustLeft] = useState(300);
   const [skin, setSkin] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('pkSkin') || '{}') || {};
+      return { ...(JSON.parse(localStorage.getItem('pkSkin') || '{}') || {}), deck4: window.__pkDeck4 };
     } catch (e) {
       return {};
     }
@@ -13434,12 +13061,12 @@ function PokerTable({
             if (actives.length === 0) {
               g2.phase = 'waiting';
               g2.activeTurnUid = null;
-              await saveGame(g2, pl);
+              if (!(await saveGame(g2, pl))) return;
               return;
             }
             g2.activeTurnUid = firstAfterDealer(g2, pl);
             g2.turnStartedAt = Date.now();
-            await saveGame(g2, pl);
+            if (!(await saveGame(g2, pl))) return;
             return;
           }
           const isSitSkip = t.tournamentId && actor.sitOut && actor.status === 'active';
@@ -13514,25 +13141,28 @@ function PokerTable({
     if (nR.prev === 3 && n === 2) nR.hold = true;else if (n === 0 || n > nR.prev) nR.hold = false;
     nR.prev = n;
   }
+  const cardsKey = JSON.stringify(myCards);
+  const boardKey = JSON.stringify(gs.board || []);
+  const revealHands = Object.values(players).filter(p => p.status === 'active' && (p.cards || []).length > 0).map(p => ({ uid: p.uid, cards: p.cards }));
+  const revealKey = JSON.stringify(revealHands);
   const myHand = useMemo(() => {
     if (!myPlayer || !myCards.length) return null;
     return handName(bestScoreNow(myCards, gs.board || [], gs.currentGameType));
-  }, [myCards.length, (gs.board || []).length, gs.phase]);
-  const myEquity = useMemo(() => {
-    if (!myPlayer || myPlayer.status !== 'active' || !myCards.length) return null;
-    if (gs.allInReveal || !['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase)) return null;
-    if (activesOppCount < 1) return null;
-    return simMyEquity(myCards, gs.board || [], activesOppCount, gs.currentGameType);
-  }, [myCards.length, (gs.board || []).length, gs.phase, activesOppCount, gs.allInReveal]);
-  const realEq = useMemo(() => {
-    if (!gs.allInReveal && gs.phase !== 'showdown') return null;
-    const hands = Object.values(players).filter(p => p.status === 'active' && (p.cards || []).length > 0).map(p => ({
-      uid: p.uid,
-      cards: p.cards
-    }));
-    if (hands.length < 2) return null;
-    return simRealEquity(hands, gs.board || [], gs.currentGameType);
-  }, [gs.allInReveal, (gs.board || []).length, gs.phase]);
+  }, [cardsKey, boardKey, gs.currentGameType]);
+  const [equityResult, setEquityResult] = useState({key: '', mine: null, real: null});
+  const equityKey = JSON.stringify([cardsKey, boardKey, revealKey, gs.currentGameType, gs.phase, !!gs.allInReveal, activesOppCount, myPlayer?.status]);
+  useEffect(() => {
+    let active = true;
+    const reveal = gs.allInReveal || gs.phase === 'showdown';
+    const canMine = !headless && !reveal && myPlayer?.status === 'active' && myCards.length && activesOppCount > 0 && ['preflop','discard','flop','turn','river'].includes(gs.phase);
+    const canReal = !headless && reveal && revealHands.length >= 2;
+    if (canMine || canReal) oddsWorkerRef.current.request(canMine ? 'mine' : 'real', canMine ? [myCards, gs.board || [], activesOppCount, gs.currentGameType] : [revealHands, gs.board || [], gs.currentGameType]).then(value => {
+      if (active) setEquityResult({ key: equityKey, mine: canMine ? value : null, real: canReal ? value : null });
+    });
+    return () => { active = false; oddsWorkerRef.current.close(); };
+  }, [equityKey, headless]);
+  const myEquity = equityResult.key === equityKey ? equityResult.mine : null;
+  const realEq = equityResult.key === equityKey ? equityResult.real : null;
   const prevSnd = useRef({
     board: 0,
     phase: '',
@@ -13587,11 +13217,11 @@ function PokerTable({
     ps.turnMine = mine;
     ps.chatLen = cl;
   }, [tableState]);
-  if (loading || !tableState) return React.createElement("div", {
-    className: "h-full flex items-center justify-center text-amber-500"
-  }, React.createElement("i", {
-    className: "fa-solid fa-spinner fa-spin text-3xl"
-  }));
+  if (loading || !tableState) return React.createElement('div', {
+    className: 'h-full flex flex-col gap-4 items-center justify-center p-6 text-amber-300', role: 'status'
+  }, tableError || 'Connecting to your table…', tableError && React.createElement('button', {
+    className: 'px-6 py-3 rounded-xl bg-amber-400 text-slate-950 font-bold', onClick: () => setConnectionRetry(n => n + 1)
+  }, 'Retry connection'), React.createElement('button', { className: 'text-slate-300 underline', onClick: onLeave }, 'Back to lobby'));
   const dealDelay = (uid, ci) => {
     const dd = dealAnimRef.current;
     if (!dd || dd.order[uid] == null) return ci * 45;
@@ -13835,12 +13465,14 @@ function PokerTable({
   const needRebuy = false;
   const eligibleCount = Object.values(players).filter(p => p.stack > 0).length;
   return React.createElement("div", {
-    className: "h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative",
+    className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative",
     dir: "ltr",
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
     }
-  }, skinOpen && ReactDOM.createPortal(React.createElement("div", {
+  }, tableError && React.createElement('div', { className: 'poker-connection-status', role: 'status' }, tableError,
+    React.createElement('button', { onClick: () => setConnectionRetry(n => n + 1) }, 'Retry')),
+  skinOpen && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[500] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setSkinOpen(false)
@@ -14159,14 +13791,12 @@ function PokerTable({
       };
     })()
   }, React.createElement("div", {
-    className: "pt-wrap"
-  }, React.createElement("div", {
-    className: "pt-felt3d hidden lg:block"
-  }), React.createElement("div", {
-    className: "pt-fsvg lg:hidden",
-    dangerouslySetInnerHTML: {
-      __html: PT_FELT_SVG
-    }
+    className: "pt-wrap approved-poker-table"
+  }, React.createElement("img", {
+    className: "approved-poker-material",
+    src: "assets/design/poker-table-portrait.webp",
+    alt: "",
+    draggable: false
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "absolute inset-0 pointer-events-none z-[6]",
     style: {
@@ -14397,14 +14027,14 @@ function PokerTable({
       key: p.uid,
       // a talking player's whole seat lifts above the bet stacks (z-35) —
       // the bubble's own z is trapped inside the seat's stacking context
-      className: "absolute " + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
+      className: "poker-seat " + (isMe ? "poker-seat-hero " : "") + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       style: isMe ? {
         left: '50%',
         // Anchored in pixels on the phone so the fixed-height action bar can
         // never cover his stack (see .pt-hero — on a landscape/desktop window
         // the action bar sits BELOW the table, so there he takes the ring's
         // bottom seat like everyone else, instead of floating mid-felt).
-        bottom: 'var(--heroBottom, clamp(84px, calc(var(--vhpx, 900px) * 0.1667), 150px))',
+        bottom: '12px',
         transform: 'translateX(-50%)'
       } : {
         ...seatPos(i),
@@ -14412,21 +14042,7 @@ function PokerTable({
       }
     }, isTurn && React.createElement("div", {
       className: "player-spotlight"
-    }), p.actionText && React.createElement("div", {
-      className: `action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
-      style: isMe ? {} : farPod ? {
-        top: 'auto',
-        bottom: '-18px',
-        left: '50%',
-        right: 'auto',
-        transform: 'translateX(-50%)'
-      } : {
-        top: '-12px',
-        left: '50%',
-        right: 'auto',
-        transform: 'translateX(-50%)'
-      }
-    }, p.actionText), React.createElement("div", {
+    }), React.createElement("div", {
       className: `relative flex flex-col items-center ${folded ? isMe ? 'opacity-75' : 'opacity-40 grayscale' : ''} ${p.sitOut ? 'opacity-50' : ''}`
     }, ch.bubbles[p.uid] && React.createElement("div", {
       className: "chat-bubble" + (fanBelow ? ' chat-bubble-below' : '')
@@ -14467,12 +14083,12 @@ function PokerTable({
       className: "gift-fx"
     }, g.giftE)), showCards && (isMe || !fanBelow) && (() => {
       const nC = dispCards.length;
-      const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
+      const doFan = hidden && !isMe && nC >= 3;
       const midC = (nC - 1) / 2;
       const ovl = isMe ? nC >= 5 ? -28 : -32 : hidden ? nC >= 5 ? -13 : -11 : nC >= 5 ? -22 : -18;
       const ang = isMe ? nC >= 5 ? 5 : 6 : nC >= 5 ? 6 : 7;
       return React.createElement("div", {
-        className: `flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
+        className: `poker-hole-cards ${!hidden && !isMe ? 'poker-revealed-hand' : ''} flex z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
         style: {
           transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)`
         },
@@ -14562,7 +14178,7 @@ function PokerTable({
     }))), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
       className: "absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30"
     }, "DC"), React.createElement("div", {
-      className: "mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
+      className: "poker-player-info mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
       style: {
         // far pods slimmer (spec: 72px far / 88px near = 0.24T);
         // centered under the avatar (GG) — no inward shift, bets clear it
@@ -14575,16 +14191,30 @@ function PokerTable({
       className: "text-gold-400 font-black text-[12px] leading-tight",
       dir: "ltr"
     }, React.createElement(CountNum, {
-      value: p.stack || 0,
-      fmt: formatShort
-    }))), showCards && !isMe && fanBelow && (() => {
+      value: window.PokerRuntime.visibleStack(p.stack),
+      fmt: value => value === null ? '—' : formatShort(value)
+    })), p.actionText && React.createElement("div", {
+      className: `poker-seat-action action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
+      style: isMe ? {} : farPod ? {
+        top: 'auto',
+        bottom: '-18px',
+        left: '50%',
+        right: 'auto',
+        transform: 'translateX(-50%)'
+      } : {
+        top: '-12px',
+        left: '50%',
+        right: 'auto',
+        transform: 'translateX(-50%)'
+      }
+    }, p.actionText)), showCards && !isMe && fanBelow && (() => {
       const nC = dispCards.length;
-      const doFan = nC >= 3;
+      const doFan = hidden && nC >= 3;
       const midC = (nC - 1) / 2;
       const ovl = nC >= 5 ? -18 : nC === 4 ? -15 : -11;
       const ang = nC >= 5 ? 6 : 7;
       return React.createElement("div", {
-        className: `flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
+        className: `poker-hole-cards ${!hidden ? 'poker-revealed-hand' : ''} flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
         style: {
           transform: `translateX(${Math.round(inX * 12)}px)`
         },
@@ -14746,12 +14376,9 @@ function PokerTable({
   }), players[gs.dcUid]?.name, " is picking the next game...")), gs.phase === 'waiting' && isSeated && React.createElement("div", {
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
-    className: "absolute bottom-0 left-0 right-0 z-[70] bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2 pt-2 pb-[max(5px,env(safe-area-inset-bottom))] min-h-[64px] flex flex-col justify-center"
+    className: "poker-action-dock"
   }, isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
-    className: "absolute left-2 mb-1.5 flex gap-1.5 z-40 pointer-events-none",
-    style: {
-      bottom: isMyTurn ? 'calc(100% + 70px)' : '100%'
-    }
+    className: "poker-hand-status"
   }, !gs.allInReveal && myHand && React.createElement("span", {
     className: "bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg"
   }, myHand), !gs.allInReveal && myEquity !== null && React.createElement("span", {
@@ -14761,7 +14388,7 @@ function PokerTable({
     className: "bg-amber-900/80 border border-amber-500/50 text-amber-300 text-[11px] font-black px-3 py-1 rounded-lg animate-pulse",
     dir: "ltr"
   }, "ALL-IN · ", realEq[user.uid], "%")), isMyTurn && React.createElement("div", {
-    className: "absolute bottom-full left-1 right-1 mb-2 z-40"
+    className: "poker-action-buttons"
   }, (() => {
     const minRaiseTo = Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet);
     const allInTo = round2((myPlayer?.bet || 0) + (myPlayer?.stack || 0));

@@ -86,3 +86,44 @@ body.poker-theme{--club-accent:#e8c879;--club-action:#8a641c}
 @media(prefers-reduced-motion:reduce){.club-surface *,.club-lobby *,.club-admin *{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
 .club-player-card>div:last-child{flex-wrap:wrap}.club-player-card button{min-width:42px}
 .club-pending{padding:36px 24px;text-align:center;gap:24px!important}.club-pending>i{font-size:48px;padding:24px;border:1px solid #2e4964;border-radius:24px;background:#132b40}.club-pending>div{max-width:520px;line-height:1.7}.club-surface.aurora-bg:before,.club-surface.aurora-bg:after{display:none!important}
+/* Poker room: the action dock owns space in the page, never the player's stack. */
+.poker-room .pt-stage{min-height:0;flex:1 1 0}
+.poker-action-dock{position:relative;z-index:70;flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:10px max(10px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));background:#101b2c;border-top:1px solid #344259;box-shadow:0 -8px 28px #050a1466}
+.poker-action-buttons{position:relative;width:100%;margin:auto;max-width:470px}
+.poker-action-buttons button{min-height:48px;border-radius:12px;letter-spacing:.035em}
+.poker-action-buttons .btn-call{background:#19846f;border:1px solid #4ac4a8;box-shadow:inset 0 1px #ffffff30}
+.poker-action-buttons .btn-fold{background:#334157;border:1px solid #57667c}
+.poker-action-buttons .btn-raise{background:#d5b36b;border:1px solid #f1d599;color:#131d2b}
+.poker-hand-status{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;pointer-events:none}
+.poker-seat{position:absolute}
+.poker-player-info{overflow:hidden;min-width:0;font-variant-numeric:tabular-nums;padding:4px 6px!important;border-color:#536078!important;background:#101c2e!important}
+.poker-player-info>div{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.poker-player-info .poker-seat-action{position:static!important;transform:none!important;display:block;border-radius:4px;margin-top:3px;padding:2px 3px;min-height:15px;font-size:8px;line-height:11px;box-shadow:none;letter-spacing:.025em}
+.poker-seat-hero>.relative.flex.flex-col.items-center{display:grid;grid-template-columns:40px minmax(104px,1fr);column-gap:8px;align-items:center}
+.poker-seat-hero .player-pod{width:40px!important;height:40px!important;min-width:40px}
+.poker-seat-hero .poker-player-info{width:auto!important;margin:0;text-align:left;padding:5px 10px!important}
+.poker-seat-hero .poker-player-info>div:nth-child(2){font-size:16px;line-height:21px}
+.poker-seat-hero .poker-hole-cards{grid-column:1/-1;justify-content:center;margin:0 0 7px!important;transform:none!important}
+.poker-hole-cards{flex-shrink:0}
+.poker-hole-cards>span{flex-shrink:0}
+.poker-revealed-hand{display:grid!important;grid-template-columns:repeat(3,max-content);gap:2px!important;margin:5px 0!important;transform:none!important}
+.poker-revealed-hand .card-face{width:28px!important;height:42px!important}
+.poker-room .pt-fsvg{top:5%;height:90%;width:min(99.4vw,470px)}
+.poker-connection-status{position:absolute;top:8px;left:8px;right:8px;z-index:220;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px 12px;background:#492d13;color:#ffdb9b;border:1px solid #aa7939;border-radius:12px;font-size:13px}
+.poker-connection-status button{border:1px solid currentColor;border-radius:8px;min-height:36px;padding:4px 12px}
+/* A club balance is a labelled amount with its own row, including long values. */
+.cl-card .cl-stats{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%}
+.cl-card .cl-stat{min-width:0;max-width:100%;box-sizing:border-box;padding:6px 8px}
+.cl-card .cl-balance{display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:10px;background:#0c1828;border-color:#43536a}
+.cl-balance-label{font-size:8px;letter-spacing:.11em;color:#a6b8cf}
+.cl-balance-amount{display:block;width:100%;min-width:0;overflow-wrap:anywhere;font-size:clamp(15px,4.2vw,20px);line-height:1.2;font-weight:800;font-variant-numeric:tabular-nums;color:#f0ce8a}
+@media(max-height:680px){.poker-action-dock{gap:5px;padding-top:6px}.poker-hand-status:empty{display:none}.poker-seat-hero .card-face{height:46px!important}.poker-seat-hero .poker-player-info>div:nth-child(2){font-size:14px;line-height:18px}}
+.personal-code{padding:20px;margin:16px 0 24px;background:#101e30;border:1px solid #40526a;border-radius:16px;color:#eef2f8;text-align:right}
+.personal-code h2{font-size:19px;font-weight:800;margin:0 0 14px;color:#f1ce87}
+.personal-code form{display:grid;gap:12px}.personal-code-field{display:grid;gap:5px;font-size:12px;color:#b9c9df}
+.personal-code-field input{width:100%;min-width:0;box-sizing:border-box;background:#091321;border:1px solid #53657f;color:#fff;padding:12px 14px;border-radius:10px;font-size:16px;min-height:46px;outline-offset:2px}
+.personal-code-tabs{display:flex;gap:8px;margin-bottom:16px}.personal-code-tabs button{flex:1;border:1px solid #50617a;border-radius:8px;padding:8px;min-height:40px;font-size:13px}.personal-code-tabs button[aria-pressed=true]{background:#2c3d52;border-color:#d5b36b;color:#ffdc99}
+.personal-code .personal-code-submit{padding:12px 16px;min-height:46px;border-radius:10px;background:#d5b36b;color:#091321;font-weight:800;font-size:15px}.personal-code button:disabled{opacity:.5;cursor:wait}
+.personal-code-help{color:#a8b9d0;font-size:12px;line-height:1.7;margin:12px 0 0}.personal-code-error{font-size:13px;color:#ffb6bb;line-height:1.6}.personal-code-notice{font-size:13px;color:#98dec7;line-height:1.6}
+.personal-code-id{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px;background:#23374d;border-radius:10px;margin-bottom:16px}.personal-code-id span{font-size:12px}.personal-code-id strong{font-size:23px;letter-spacing:.08em;user-select:text}.personal-code-id button{border:1px solid #8293a7;border-radius:8px;padding:8px 12px}
+.auth-poker.auth-shell{overflow-y:auto!important;justify-content:flex-start!important;padding-top:max(20px,env(safe-area-inset-top))!important}.auth-poker .auth-card{flex-shrink:0;margin:auto 0}.auth-poker .personal-code{padding:16px}.auth-poker .auth-footer{flex-shrink:0}

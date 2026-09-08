@@ -34,6 +34,7 @@ function transform(out) {
   out = out.replaceAll('"assets/sounds/', `"${RAW}assets/sounds/`);
   out = out.replaceAll('"assets/avatars/"', `"${RAW}assets/avatars/"`);
   out = out.replace('fetch("assets/world-110m.json")', `fetch("${RAW}assets/world-110m.json")`);
+  out = out.replaceAll('aviator-src/live/assets/', 'cockpit/');
   return out;
 }
 
@@ -52,6 +53,12 @@ function transform(out) {
   if (!solo.includes('GOD_HASH')) throw new Error('god gate missing from solo');
 
   fs.mkdirSync('public', { recursive: true });
+  fs.mkdirSync('public/cockpit', { recursive: true });
+  for (const file of ['cockpit.webp', 'multiplier-dial.webp']) {
+    const response = await fetch(RAW + 'aviator-src/live/assets/' + file);
+    if (!response.ok) throw new Error('Missing cockpit asset: ' + file + ' -> ' + response.status);
+    fs.writeFileSync('public/cockpit/' + file, Buffer.from(await response.arrayBuffer()));
+  }
   fs.writeFileSync('public/index.html', live);
   fs.writeFileSync('public/solo.html', solo);
   fs.writeFileSync('public/version.json', JSON.stringify({ v: V }));

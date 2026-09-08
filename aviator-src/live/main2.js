@@ -572,31 +572,14 @@ addEventListener("fb-ready", () => {
 /* =====================================================================
    CHAT
    ===================================================================== */
-function renderChat(msgs){
-  const uid = user && user.uid;
-  const list = $("#chatList");
-  const stick = list.scrollTop + list.clientHeight >= list.scrollHeight - 60;
-  list.innerHTML = msgs.map(m => `
-    <div class="chatMsg ${m.uid === uid ? "me" : ""}"><b>${esc(m.name || "Pilot")}</b> ${esc(m.text)}</div>`).join("");
-  if (stick) list.scrollTop = list.scrollHeight;
-}
-$("#chatBtn").addEventListener("click", () => {
-  $("#chatModal").classList.add("on");
-  $("#chatBtn").classList.remove("on");
-  const list = $("#chatList"); list.scrollTop = list.scrollHeight;
+const chatUI = AviatorUX.createChat({
+  document, getUser: () => user, getName: myName,
+  send: message => {
+    const F = window.avFB;
+    return F.addDoc(F.collection(F.db, "aviatorChat"), message);
+  }
 });
-$("#chatClose").addEventListener("click", () => $("#chatModal").classList.remove("on"));
-$("#chatModal").addEventListener("click", e => { if (e.target.id === "chatModal") $("#chatModal").classList.remove("on"); });
-$("#chatForm").addEventListener("submit", e => {
-  e.preventDefault();
-  const text = $("#chatInput").value.trim().slice(0, 140);
-  if (!text || !user) return;
-  $("#chatInput").value = "";
-  const F = window.avFB;
-  F.addDoc(F.collection(F.db, "aviatorChat"),
-    {uid: user.uid, name: myName(), text, ts: Date.now()}).catch(() => {});
-  $("#chatModal").classList.remove("on");   // back to the game right away
-});
+function renderChat(msgs){ chatUI.render(msgs); }
 
 /* =====================================================================
    ADMIN — supervision & settlement (owner account only).
@@ -763,13 +746,14 @@ $("#soundBtn").addEventListener("click", () => {
   unlockAudio();
   muted = !muted;
   store.set("pt_av_muted", muted);
-  $("#soundBtn").textContent = muted ? "🔇" : "🔊";
+  updateSoundOutput();
   if (muted) toneStop(0.03);
   else if (S.phase === "flying") toneStart();
 });
 ["pointerdown", "keydown", "touchstart"].forEach(ev =>
   addEventListener(ev, unlockAudio, { once: false, passive: true }));
 document.addEventListener("visibilitychange", () => {
+  updateSoundOutput();
   if (document.visibilityState === "visible") maybeTick(true);
 });
 

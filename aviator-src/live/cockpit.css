@@ -1,0 +1,86 @@
+/* Captain's Panel: source-owned live UI. Raster plates are generated assets;
+ * icon masks come from the unmodified Bootstrap Icons SVGs in icons.json. */
+:root{--pt-bg:#090c10;--pt-card:#0c1117;--pt-raised:#151b22;--pt-gold:#efc77d;--pt-gold-deep:#b48b49;--pt-text:#f3f1e9;--pt-dim:#b5c2d0;--pt-line:#ffffff1c}
+body{overflow-y:auto;background:#090c10 url("aviator-src/live/assets/cockpit.webp") center top / cover fixed no-repeat}
+#app{width:100%;max-width:1740px;height:100dvh;min-height:700px;padding:14px 26px 10px;gap:12px;grid-template-columns:minmax(0,.96fr) minmax(0,1.12fr) minmax(0,.96fr);grid-template-rows:78px minmax(40px,12vh) minmax(240px,1fr) 118px 26px;grid-template-areas:"top top top" "horizon horizon horizon" "stage instrument side" "bet bet bet" "tick tick tick";align-items:stretch}
+#topbar{grid-area:top;padding:10px 18px;gap:10px;background:#0c1117ed;border:1px solid #69717a70;border-radius:12px;min-width:0;box-shadow:0 5px 20px #0008}
+#brand{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;margin:0 14px 0 0;flex-shrink:0;cursor:pointer}
+#brand .word{font-size:clamp(24px,2.5vw,39px);letter-spacing:1px;line-height:1.15;background:none;color:#efc77d}
+.brandSub{display:flex;align-items:center;gap:10px;font-size:10px;letter-spacing:3px;color:#c3ced8;white-space:nowrap}
+.brandSub .avIcon{width:17px;height:17px;color:var(--pt-gold);transform:rotate(90deg)}
+.panelLabel{display:block;font-size:10px;font-weight:500;letter-spacing:2.2px;color:#b8c6d6;line-height:1.5}
+.historyGroup{flex:1;min-width:60px;padding-left:18px;border-left:1px solid #d5b36b40}
+.historyGroup>.panelLabel{margin-bottom:7px}
+#history{padding:0;gap:6px;min-width:0;mask-image:none;-webkit-mask-image:none}
+.pill{padding:3px 10px;font-size:13px;min-width:56px;text-align:center;background:#090d13;border-radius:12px}
+#balance{padding:8px 12px;gap:10px;border-radius:12px;background:#090d13;box-shadow:none;flex-shrink:0}
+.balanceReadout{display:flex;flex-direction:column;align-items:center}
+#balanceNum{font-size:21px;line-height:1.1;white-space:nowrap}
+#balance .panelLabel{font-size:8px;letter-spacing:2px;margin-top:4px}
+#topbar .icon-btn{width:46px;height:46px;border-radius:10px;background:#101720;border-color:#78879769;font-size:0;color:var(--pt-text);position:relative}
+.avIcon,.icon-btn::before{display:block;width:22px;height:22px;background-color:currentColor;mask-repeat:no-repeat;mask-size:contain;mask-position:center;-webkit-mask-repeat:no-repeat;-webkit-mask-size:contain;-webkit-mask-position:center;flex-shrink:0}
+#topbar .icon-btn::before{content:""}
+.planeIcon{mask-image:var(--icon-airplane-fill);-webkit-mask-image:var(--icon-airplane-fill)}
+#chatBtn::before{mask-image:var(--icon-chat-dots-fill);-webkit-mask-image:var(--icon-chat-dots-fill)}
+#soundBtn::before{mask-image:var(--icon-volume-up-fill);-webkit-mask-image:var(--icon-volume-up-fill)}
+#soundBtn[aria-pressed="false"]::before{mask-image:var(--icon-volume-mute-fill);-webkit-mask-image:var(--icon-volume-mute-fill)}
+#installBtn::before{mask-image:var(--icon-download);-webkit-mask-image:var(--icon-download)}
+#adminBtn::before{mask-image:var(--icon-gear-fill);-webkit-mask-image:var(--icon-gear-fill)}
+.cockpitHorizon{grid-area:horizon;pointer-events:none}
+#stageWrap{grid-area:stage;align-self:center;height:89%;min-height:180px}
+#stage{height:100%;min-height:0;border:2px solid #75828d54;border-radius:22px;background:#0a1017ed;box-shadow:0 0 0 5px #090b0fe8,0 8px 18px #000a;overflow:hidden}
+.chartHeading{position:absolute;z-index:2;top:0;left:0;right:0;height:42px;display:flex;align-items:center;gap:9px;padding:0 16px;background:#0b1118f2;border-bottom:1px solid #ffffff14;letter-spacing:2.4px;font-size:11px;color:#e3c48c}
+.chartHeading .avIcon{width:15px;height:15px;transform:rotate(45deg)}
+#cv{top:44px;height:calc(100% - 44px)}
+#cockpit{display:none}
+#audioHint{top:auto;bottom:10px;right:8px;font-size:10px;z-index:3}
+#fairPill{top:48px;left:8px;font-size:9px;max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.8}
+#supPill{top:76px;left:8px;font-size:11px;z-index:5}
+#winToast{top:58%;font-size:18px;max-width:94%;white-space:normal;text-align:center}
+#flightInstrument{grid-area:instrument;min-height:0;min-width:0;display:grid;place-items:center;align-self:stretch;position:relative}
+.instrumentFace{position:relative;aspect-ratio:1;width:min(100%,calc(100dvh - 365px));max-width:540px;min-width:230px;border-radius:50%;background:#090c10 url("aviator-src/live/assets/multiplier-dial.webp") center / contain no-repeat;container-type:inline-size;filter:drop-shadow(0 12px 16px #000c)}
+.instrumentLabel{position:absolute;top:30%;left:18%;right:18%;text-align:center;letter-spacing:2px;color:#d9e2e9;font-size:clamp(9px,2.7cqw,14px);font-weight:500}
+#stageCenter{inset:32% 16% 25%;display:grid;place-items:center;text-align:center}
+#flightNums{max-width:100%;width:100%}
+#mult{font-size:clamp(28px,var(--readout-size,21cqw),112px);line-height:1.05;color:#ffe2a9;letter-spacing:-.04em;font-weight:700;text-shadow:0 0 30px #eab96b33;animation:none;transform:none!important;transition:color .15s ease}
+#mult.gold{color:#ffdf9b}#mult.hot{color:#80f3bd}#mult.dead{color:#ff8190}#mult.safe{color:#80f3bd}
+#crashTag{font-size:clamp(10px,2.8cqw,14px);letter-spacing:2px;margin-top:8px}
+#safeTag{font-size:clamp(10px,2.7cqw,13px);padding:5px 7px;margin-top:5px;background:#122b21f2;border-color:#62d39a66;line-height:1.35;max-width:100%}
+.instrumentPlane{position:absolute;bottom:25%;left:calc(50% - 14px);width:28px;height:28px;color:#efc77d;transform:rotate(90deg)}
+.instrumentCaption{position:absolute;bottom:16%;left:20%;right:20%;font-size:clamp(7px,2.2cqw,11px);letter-spacing:2px;text-align:center;color:#d9b777}
+.instrumentBoot{position:absolute;top:46%;width:100%;text-align:center;font-size:13px;letter-spacing:2px;color:#c6d0dc}
+.instrumentFace:has(#flightNums:not([hidden])) .instrumentBoot,.instrumentFace:has(#countdown:not([hidden])) .instrumentBoot{display:none}
+.instrumentFace:has(#countdown:not([hidden])) .instrumentLabel{visibility:hidden}
+#countdown{gap:5px;max-width:100%}#beltSign{font-size:8px;padding:4px 8px;letter-spacing:1px;white-space:nowrap}
+#ringBox{width:70px;height:70px}#ringBox svg{width:70px;height:70px}#ringNum{font-size:29px}#cdLabel{font-size:9px;letter-spacing:1px}
+#sidePanel{grid-area:side;align-self:center;height:89%;min-height:180px;padding:0;border-radius:20px;background:#0a1018f2;border:2px solid #75828d54;box-shadow:0 0 0 5px #090b0fe8,0 8px 18px #000a;overflow:hidden}
+#sideHead{min-height:44px;flex-shrink:0;padding:10px 14px;border-bottom:1px solid #ffffff20}
+#sideHead .t{color:#e0e7ed;font-size:12px;letter-spacing:2px}.playerColumns{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px;gap:5px;padding:10px 14px 8px;color:#b6c6d7;font-size:9px;letter-spacing:1.5px;flex-shrink:0}.playerColumns span:not(:first-child){text-align:right}
+#players{padding:0 10px 8px;gap:0;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.prow{display:grid;grid-template-columns:26px minmax(0,1fr) 65px 65px;gap:7px;min-height:42px;padding:7px 4px;border-radius:0;border-bottom:1px solid #ffffff10;background:transparent;animation:none}
+.prow img{width:25px;height:25px}.prow .nm{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.prow .bt,.prow .st{font-size:12px;text-align:right}.prow.cashed{background:transparent}.prow.me{background:#b6904920;border-color:#dfb86450;border-radius:6px}.prow.cashed .st{color:#59eaaa}
+#betPanel{grid-area:bet;position:relative;display:grid;grid-template-columns:minmax(180px,.85fr) minmax(240px,1.35fr) 155px minmax(230px,1fr);grid-template-rows:1fr;gap:14px;align-items:center;padding:16px 18px;background:#11161ded;border:2px solid #9e907966;border-radius:18px;box-shadow:0 0 0 5px #0a0d10e8,0 8px 16px #0009}
+.betRow{display:contents}.amountControl{min-width:0}.amountControl>.panelLabel{margin-bottom:6px}
+#amountBox{height:52px;min-height:52px;background:#080d13;border:1px solid #71808e88;border-radius:10px;flex:none}
+.step{flex:0 0 44px;min-height:44px;color:#dbe6ee;font-size:24px}.step:active{background:#26323e}
+#betInput{min-width:0;width:100%;font-size:24px;font-weight:700;background:transparent}
+#chips{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;grid-column:2;grid-row:1;align-self:end;margin:0 0 3px}
+.chip{height:49px;padding:0 3px;min-width:0;background:#0a1018;border:1px solid #6b7785a6;border-radius:9px;font-size:12px;color:#edf0f4;box-shadow:none}
+.chip:active,.chip:focus-visible{background:#2c271d;border-color:#e8bd72}
+#autoBox{grid-column:3;grid-row:1;display:grid;grid-template-columns:1fr 44px;grid-template-rows:auto 44px;gap:3px 5px;padding:0 0 0 14px;min-width:0;min-height:80px;border:0;border-left:1px solid #70809059;border-radius:0;background:none}
+#autoBox .lbl{grid-column:1 / -1;font-size:10px;letter-spacing:1px;color:#bdcddd;line-height:1.5;max-width:none;align-self:center}
+#autoInput{grid-row:2;grid-column:1;width:100%;font-size:20px;text-align:center;color:#f6dfb4;background:#090e15;border:1px solid #71808e70;border-radius:7px;min-width:0}
+#autoSwitch{grid-row:2;grid-column:2}.switch::before{background:#34404b}.switch.on::before{background:#b3873a}.switch.on::after{background:#f5dcaa}
+#actionBtn{grid-column:4;grid-row:1;min-height:80px;height:100%;padding:10px 14px;background:#eac078;border:1px solid #ffe1a5;border-radius:12px;color:#17150e;font-size:clamp(17px,1.8vw,27px);font-weight:900;box-shadow:inset 0 0 0 3px #9f773b42,0 0 25px #c9963130;letter-spacing:.7px;text-transform:uppercase;line-height:1.2;animation:none}
+#actionBtn.cash{background:#edc777;color:#17150e;border-color:#ffe7b6;box-shadow:inset 0 0 0 3px #9f773b42,0 0 25px #c9963140}
+#actionBtn.cancel{background:#342616;color:#ffe1ac;border-color:#bc9257}#actionBtn.wait{background:#18212b;color:#b9c8d7;border-color:#6b7e8f}#actionBtn .sub{font-size:12px;letter-spacing:0;text-transform:none;line-height:1.5}#actionBtn:disabled{opacity:.7;filter:none}
+#ticker{grid-area:tick;height:26px;min-height:0;border:0;border-radius:6px;background:#0a1019d9;color:#c2ceda;font-size:11px}
+#splash{background:#090c10 url("aviator-src/live/assets/cockpit.webp") center / cover no-repeat}
+.spStage{background:#080c12dc;border:1px solid #d5b36b66;border-radius:22px;padding:30px;box-shadow:0 20px 70px #000a}
+#spPlay{background:#eac078;color:#17150e;border:1px solid #ffdf9d;box-shadow:none;border-radius:12px}
+#chatCard{border-color:#b591566b;background:#0d141c}#chatHead{background:#131c25;border-bottom:1px solid #d5b36b33}#chatHeading{color:#f1d39f}#chatSend{background:#e8c078;color:#15130e;border:1px solid #ffdda0}
+@media(min-width:1600px){#app{padding-inline:36px;gap:18px;grid-template-rows:88px minmax(50px,12vh) minmax(300px,1fr) 132px 26px}.prow .nm,.prow .bt,.prow .st{font-size:14px}.prow{min-height:48px}.instrumentFace{width:min(100%,calc(100dvh - 410px))}}
+@media(min-width:900px) and (max-width:1150px){#app{padding-inline:16px;gap:10px;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(0,1fr)}#brand .word{font-size:24px}.brandSub{font-size:8px;letter-spacing:2px}#topbar{padding:8px;gap:7px}#brand{margin-right:3px}.historyGroup{padding-left:9px}#balance{padding:7px}#topbar .icon-btn{width:42px;height:42px}#betPanel{gap:9px;grid-template-columns:165px minmax(200px,1fr) 130px minmax(180px,.9fr);padding:14px 12px}.chip{font-size:11px}#autoBox{padding-left:9px}.playerColumns{grid-template-columns:1fr 55px 55px;font-size:8px}.prow{grid-template-columns:22px minmax(0,1fr) 49px 48px;gap:4px}.prow img{width:22px;height:22px}.prow .nm,.prow .bt,.prow .st{font-size:11px}}
+@media(max-width:899px){body{background-size:auto 850px;background-position:center top;background-attachment:scroll}#app{height:auto;min-height:100dvh;padding:10px 12px 20px;gap:14px;grid-template-columns:1fr;grid-template-rows:auto 42px auto auto 240px 300px 26px;grid-template-areas:"top" "horizon" "instrument" "bet" "stage" "side" "tick"}#topbar{flex-wrap:wrap;padding:10px;gap:8px}#brand{margin-right:auto;align-items:flex-start}#brand .word{font-size:26px}.brandSub{font-size:8px;letter-spacing:2px}.historyGroup{order:10;flex-basis:100%;border-left:0;border-top:1px solid #d5b36b33;padding:8px 0 0}.historyGroup>.panelLabel{display:none}#balance{padding:7px 9px}#balanceNum{font-size:17px}#balance .coin{width:17px;height:17px}#topbar .icon-btn{width:42px;height:42px}#topbar .avIcon{width:20px;height:20px}.instrumentFace{width:min(90vw,390px);max-width:100%;min-width:0}#stageWrap,#sidePanel{height:100%;min-height:0}#stageWrap{margin:0 4px}#stage{border-radius:16px}.chartHeading{height:36px}#cv{top:38px;height:calc(100% - 38px)}#fairPill{top:43px}#betPanel{position:sticky;bottom:0;z-index:6;padding:10px 12px max(10px,env(safe-area-inset-bottom));gap:9px;grid-template-columns:minmax(0,1fr) minmax(125px,.8fr);grid-template-rows:auto auto 61px;border-radius:14px;background:#11171ff7;backdrop-filter:blur(12px);box-shadow:0 -4px 16px #0008}.amountControl{grid-column:1;grid-row:1}.amountControl>.panelLabel{font-size:9px;margin-bottom:3px}#amountBox{height:46px;min-height:46px}#betInput{font-size:22px}.step{flex-basis:44px}#autoBox{grid-column:2;grid-row:1;min-height:0;grid-template-rows:17px 44px;padding-left:8px}#autoBox .lbl{font-size:9px}#autoInput{font-size:18px}#chips{grid-column:1 / -1;grid-row:2;gap:6px;margin:0;align-self:stretch}.chip{height:42px;font-size:12px;padding:0 2px}#actionBtn{grid-column:1 / -1;grid-row:3;min-height:61px;font-size:23px;padding:8px 12px}#actionBtn .sub{font-size:12px}#sidePanel{margin:0 4px;border-radius:16px}#sideHead .t{font-size:13px}.playerColumns{grid-template-columns:1fr 70px 70px;font-size:9px}.prow{grid-template-columns:28px minmax(0,1fr) 65px 65px;min-height:44px}.prow .nm,.prow .bt,.prow .st{font-size:13px}.prow img{width:26px;height:26px}#ticker{font-size:11px}}
+@media(max-width:430px){#app{padding-inline:8px;gap:12px}#topbar{padding:9px 8px;gap:6px}#brand .word{font-size:22px}#brand .brandSub{font-size:7px;letter-spacing:1.5px;gap:5px}.brandSub .avIcon{width:13px!important;height:13px!important}#topbar .icon-btn{width:40px;height:40px}#balance{padding:6px;gap:5px}#balanceNum{font-size:15px}#balance .panelLabel{font-size:7px}#balance .coin{display:none}#installBtn{order:9}.instrumentFace{width:min(92vw,370px)}#betPanel{padding-inline:9px;gap:7px}#chips{gap:4px}.chip{font-size:11px}.instrumentLabel{letter-spacing:1.3px}}
+@media(prefers-reduced-motion:reduce){#mult,#actionBtn,.prow{animation:none!important;transition:none!important}}

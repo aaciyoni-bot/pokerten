@@ -1,7 +1,7 @@
 /* =====================================================================
    BOOT
    ===================================================================== */
-$("#soundBtn").textContent = muted ? "🔇" : "🔊";
+updateSoundOutput();
 $("#balanceNum").textContent = "0";
 renderHistory();
 setBetValue(100);

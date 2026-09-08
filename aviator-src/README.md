@@ -24,6 +24,12 @@
 | `live/module.html` | ייבוא Firebase v10 + חשיפת `window.avFB` (auth אנונימי, firestore, callable helper) |
 | `live/extra.css` | סגנונות של הכניסה, הצ'אט, לוח המנהל, תג ההוגנות, תג "עצרת בזמן", תג הבקרה |
 | `live/extra.html` | ה־DOM של מסך הכניסה, הצ'אט ולוח המנהל |
+| `live/ux.css` | שיפורי קריאות, פקדים וצ׳אט במחשב ובנייד; משולב בתוך הלקוח בזמן הבנייה |
+| `live/ux.js` | שליחת הודעות עם אישור, שמירת טיוטה בכישלון, מיקוד מקלדת ורינדור בטוח |
+| `live/audio.js` | מנוע השמע של הלקוח החי, כולל השתקת כל הצלילים וחידוש שמע לאחר חסימה; נערך בנפרד ממנוע השמע בסולו |
+| `live/cockpit-layout.js`, `live/cockpit.css`, `live/cockpit.js` | עיצוב תא הטייס: סידור הפקדים והגרף סביב המד העגול; משתמש באותם רכיבי משחק ובאותו מכפיל חי |
+| `live/assets/` | תמונות תא הטייס והמד; סקריפט Vercel מוריד אותן מהקומיט הנעוץ ומגיש אותן מאותו אתר |
+| `live/icons.json` | אייקוני Bootstrap Icons ‏1.13.1 מקוריים; פרטי הרישיון ב־`live/ASSETS.md` |
 | `live/build-live.js` | **המרכיב** — מחבר את הקבצים לעיל לתוך `aviator-live.html` בשורש הרֵפו |
 | `live/mock-fb.js` + `live/livetest.js` | בדיקת קצה-לקצה מול Firebase מדומה (Playwright) לפני פרסום |
 
@@ -53,15 +59,19 @@ GOD (5 לחיצות על הלוגו + קוד מנהל). אין GOD MODE במשח
 ## איך בונים מחדש את הלקוח החי
 
 ```bash
-# מתוך תיקייה שמכילה את aviator-src/live/ ואת aviator-live.html:
-cd aviator-src/live
-node build-live.js        # כותב ../../aviator-live.html
-node --check ../../aviator-live.html  # (אופציונלי) בדיקת תחביר על התסריט המחולץ
+# משורש הרֵפו:
+node aviator-src/live/build-live.js
+node --check aviator-src/live/live-script-check.js
+node --test aviator-ux.test.cjs
 ```
 
-עורכים אך ורק את `main1.js` / `main2.js` / `extra.css` / `extra.html` / `module.html` —
+עורכים את קובצי המקור ב־`aviator-src/live/`, כולל `ux.css`, `ux.js` ו־`audio.js` —
 ואז מריצים `build-live.js` מחדש. **לעולם לא עורכים את `aviator-live.html` ישירות**, כי
 הבנייה הבאה תדרוס את השינוי.
+
+קוד הצ׳אט וסגנונות ה־UI נכללים בתוך קובץ ה־HTML שנוצר; אין צורך להעלות קובצי
+JavaScript או CSS נוספים ל־Vercel. בדיקות Node מאמתות את התנהגות הצ׳אט והשמע
+ושבנייה מקובצי המקור מפיקה בדיוק את הלקוח השמור. הן אינן בדיקת תצוגה בדפדפן.
 
 בדיקת קצה-לקצה לפני פרסום (דורש Playwright + chromium):
 ```bash

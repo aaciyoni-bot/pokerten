@@ -1,6 +1,6 @@
 /* Assemble aviator-live.html (the multiplayer client) from the solo
-   aviator.html design + the live/ part files. One-shot scaffold; the
-   generated file is committed to the repo and edited there afterwards. */
+   aviator.html design + the live/ part files. Edit these sources, then
+   rebuild; never edit the generated client directly. */
 const fs = require('fs');
 const path = require('path');
 /* repo root = two levels up from aviator-src/live/ (overridable via env) */
@@ -19,22 +19,29 @@ const cut = (hay, from, to, label) => {
 
 /* --- head + css --- */
 let head = src.slice(0, src.indexOf('</style>'));
-head += read(P + '/extra.css') + '\n#backBtn{display:none}\n</style>\n</head>\n<body>\n';
+const icons = JSON.parse(read(P + '/icons.json'));
+const iconCSS = ':root{' + Object.entries(icons).map(([name, svg]) =>
+  '--icon-' + name + ':url("data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64') + '")'
+).join(';') + '}';
+head += read(P + '/extra.css') + '\n' + read(P + '/ux.css') + '\n' + iconCSS + '\n' + read(P + '/cockpit.css') + '\n#backBtn{display:none}\n</style>\n</head>\n<body>\n';
 
 /* --- body html --- */
 let body = cut(src, '<div id="splash">', '<script type="module">', 'body');
 body = body.replace('<button class="icon-btn" id="soundBtn"',
-  '<button class="icon-btn badge" id="chatBtn" aria-label="Chat">💬</button>\n    ' +
+  '<button class="icon-btn badge" id="chatBtn" aria-label="Chat" aria-haspopup="dialog" aria-controls="chatCard" aria-expanded="false">💬</button>\n    ' +
   '<button class="icon-btn" id="adminBtn" hidden aria-label="Admin dashboard">⚙️</button>\n    ' +
   '<button class="icon-btn" id="soundBtn"');
 body = body.replace('<div id="godPill" hidden>⚡ crash @ <b id="godVal">—</b></div>',
   '<div id="fairPill" hidden></div>');
 body = body.replace('<div id="iosModal">', read(P + '/extra.html') + '\n<div id="iosModal">');
+body = body.replace('id="minus"', 'id="minus" aria-label="Decrease bet amount"')
+           .replace('id="plus"', 'id="plus" aria-label="Increase bet amount"');
+body = require('./cockpit-layout.js')(body);
 
 /* --- reusable script sections from the solo game --- */
 const js = cut(src, '"use strict";', '</script>\n</body>', 'main script');
-const sound  = cut(js, '/* =====================================================================\n   SOUND ENGINE',
-                       '/* =====================================================================\n   BOTS', 'sound');
+// The live sound engine is maintained here independently of the solo game.
+const sound = read(P + '/audio.js');
 const canvas = cut(js, '/* =====================================================================\n   CANVAS',
                        '/* =====================================================================\n   MAIN LOOP', 'canvas');
 const pwa    = cut(js, '/* =====================================================================\n   APP INSTALL',
@@ -44,9 +51,11 @@ const patch = s => s.replace(/performance\.now\(\)/g, 'eNow()');
 
 const script = [
   read(P + '/main1.js'),
+  read(P + '/ux.js'),
   patch(sound),
   patch(canvas),
   read(P + '/main2.js'),
+  read(P + '/cockpit.js'),
   patch(pwa),
   read(P + '/main3.js'),
 ].join('\n');

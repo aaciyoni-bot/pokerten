@@ -151,9 +151,7 @@ const gatherBetsToPots = (gs, playersObj) => {
   Object.values(playersObj).forEach((p) => p.bet = 0);
 };
 
-/* Spin & Cash wheel — index.html:2273-2299. Owner rules: the ×100 jackpot is
-   a display-only lure that never lands; prize rounds DOWN; keep the weighted
-   average multiplier < 3 so the house never loses. */
+/* Spin & Cash payouts; the visible ring includes every possible result. */
 const SPIN_WHEEL = [
   {mult: 2, weight: 720},
   {mult: 3, weight: 200},
@@ -163,7 +161,7 @@ const SPIN_WHEEL = [
 ];
 // The client wheel graphic's segment ring (index.html:2714) — any mult the
 // server writes MUST appear in this list or the wheel animation breaks.
-const SPIN_SEGS = [2, 3, 100, 2, 5, 3, 10, 2, 3, 20, 4, 3];
+const SPIN_SEGS = [2, 3, 5, 2, 10, 3, 2, 5, 3, 25, 2, 3];
 const spinDrawMult = (rnd) => {
   const tot = SPIN_WHEEL.reduce((s, f) => s + f.weight, 0);
   let r = (rnd == null ? Math.random() : rnd) * tot;

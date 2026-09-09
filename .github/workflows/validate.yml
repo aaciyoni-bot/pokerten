@@ -24,6 +24,8 @@ jobs:
           npm ci --prefix functions --ignore-scripts
       - name: Check mandatory game invariants
         run: node predeploy-check.js
+      - name: Verify generated poker worker matches client policy
+        run: node scripts/build-poker-worker.cjs --check
       - name: Check actual client and server bot decisions
         run: node tests/ui/bot-policy.test.cjs
       - name: Check game engine

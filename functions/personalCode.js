@@ -40,6 +40,15 @@ function currentUid(request) {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'צריך להתחבר לחשבון קודם.');
   return request.auth.uid;
 }
+// Report a bounded operational reason without exposing provider messages,
+// service-account details or credentials through the public health endpoint.
+function signingFailureReason(error) {
+  const message = String(error?.message || '');
+  if (/SERVICE_DISABLED|has not been used|API.{0,100}(disabled|not enabled)/i.test(message)) return 'signing-api-disabled';
+  if (/signBlob|iam\.serviceAccounts|PERMISSION_DENIED|permission.*denied/i.test(message) || error?.code === 'auth/insufficient-permission') return 'signing-permission';
+  if (/determine service account|invalid credential|metadata/i.test(message)) return 'signing-configuration';
+  return 'signing-unavailable';
+}
 // Provider-independent identity. The reverse claim and the UID mapping are
 // written atomically; neither a phone number nor a client-supplied ID is used.
 async function ensurePlayerId(db, uid, profile = null, randomId = () => 'P' + crypto.randomInt(100000000, 1000000000)) {
@@ -100,8 +109,9 @@ exports.pkPinStatus = onCall(options, async request => {
     // is discarded and never returned; it creates no Firebase user.
     await getAuth().createCustomToken('pk-readiness-probe');
   } catch (error) {
-    console.warn('Personal-code signing unavailable', {code: error.code || 'signing-failed'});
-    return {available: false};
+    const reason = signingFailureReason(error);
+    console.warn('Personal-code signing unavailable', {reason});
+    return {available: false, reason};
   }
   if (!request.auth?.uid) return {available: true};
   const db = getFirestore();

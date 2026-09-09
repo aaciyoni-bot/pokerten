@@ -41,3 +41,17 @@ test('enrollment rejects anonymous sessions, stale authentication and weak codes
  await assert.rejects(api.pkPinEnroll({auth:{uid:'u',token:{auth_time:1}},data:{pin:'83492716'}}),e=>e.code==='failed-precondition');
  assert.throws(()=>api._test.validatePin('1234'),e=>e.code==='invalid-argument');
 });
+test('readiness never returns a token or creates an account, and signing failures remain closed',async()=>{
+ const {api,auth,users,data}=fixture();
+ const ready=await api.pkPinStatus({data:{}});assert.equal(ready.available,true);assert.deepEqual(Object.keys(ready),['available']);
+ for(const [message,reason] of [
+  ['Permission iam.serviceAccounts.signBlob denied for PRIVATE_ACCOUNT','signing-permission'],
+  ['IAM Service Account Credentials API has not been used or is disabled: PRIVATE_PROJECT','signing-api-disabled'],
+  ['Failed to determine service account ID: PRIVATE_ACCOUNT','signing-configuration'],
+  ['Unexpected PRIVATE_SECRET','signing-unavailable']
+ ]){
+  auth.createCustomToken=async()=>{throw Error(message);};
+  const failed=await api.pkPinStatus({data:{}});assert.equal(failed.available,false);assert.equal(failed.reason,reason);assert.equal(JSON.stringify(failed).includes('PRIVATE'),false);
+ }
+ assert.equal(users.size,0);assert.equal(data.size,0);
+});

@@ -47,6 +47,10 @@ jobs:
             method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({data: {}})
           });
           const result = await response.json();
-          if (!response.ok || result.result?.available !== true) throw new Error('Personal-code signing is unavailable');
+          if (!response.ok || result.result?.available !== true) {
+            const reasons = ['signing-api-disabled', 'signing-permission', 'signing-configuration', 'signing-unavailable'];
+            const reason = reasons.includes(result.result?.reason) ? result.result.reason : 'readiness-request-failed';
+            throw new Error('Personal-code signing is unavailable: ' + reason);
+          }
           console.log('Personal-code token signing verified; no user account was created.');
           JS

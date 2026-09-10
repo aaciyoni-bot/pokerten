@@ -1044,7 +1044,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInAnonymously, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, linkWithPopup, reauthenticateWithPopup, reauthenticateWithCredential, signInWithCustomToken, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
@@ -1067,38 +1067,28 @@
             .catch(() => setPersistence(_auth, browserLocalPersistence))
             .catch(() => {});
         window.fb.signInAnonymously = async (a) => { await _persist; return signInAnonymously(a || _auth); };
-        // ---- verified phone sign-in (SMS one-time code) --------------------
-        // Firebase insists on a reCAPTCHA before it will send an SMS; invisible
-        // means the player never sees it unless Google decides the traffic is
-        // suspicious. The verifier is built once and reused: building a second
-        // one over the same container throws.
-        window.fb.phoneSend = async (e164) => {
-            await _persist;
-            if (!document.getElementById('pt-recaptcha')) {
-                const el = document.createElement('div');
-                el.id = 'pt-recaptcha';
-                el.style.display = 'none';
-                document.body.appendChild(el);
-            }
-            if (!window.__ptRecap) window.__ptRecap = new RecaptchaVerifier(_auth, 'pt-recaptcha', { size: 'invisible' });
-            window.__ptConfirm = await signInWithPhoneNumber(_auth, e164, window.__ptRecap);
-            return true;
-        };
-        window.fb.phoneVerify = async (code) => {
-            if (!window.__ptConfirm) throw Object.assign(new Error('no pending code'), { code: 'auth/no-pending-code' });
-            return window.__ptConfirm.confirm(String(code || '').trim());
-        };
-        // A used or failed verifier cannot send again — tear it down so the
-        // next attempt starts clean instead of failing silently.
-        window.fb.phoneReset = () => {
-            try { if (window.__ptRecap) window.__ptRecap.clear(); } catch (e) {}
-            const el = document.getElementById('pt-recaptcha');
-            if (el && el.parentNode) el.parentNode.removeChild(el);
-            window.__ptRecap = null;
-            window.__ptConfirm = null;
-        };
         const _fx = getFunctions(app);
         window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
+        window.fb.customSignIn = async token => { await _persist; return signInWithCustomToken(_auth, token); };
+        // Keep the signed-in UID when attaching Google to an existing phone account.
+        window.fb.reauthPlayerWithGoogle = async () => {
+            const player = _auth.currentUser;
+            if (!player) throw Object.assign(new Error('יש להיכנס לחשבון השחקן הקיים.'), {code:'auth/no-current-user'});
+            const uid = player.uid;
+            const provider = new GoogleAuthProvider();
+            provider.setCustomParameters({prompt:'select_account'});
+            if (player.providerData.some(item => item.providerId === 'google.com')) {
+                await reauthenticateWithPopup(player, provider);
+            } else {
+                const linked = await linkWithPopup(player, provider);
+                const credential = GoogleAuthProvider.credentialFromResult(linked);
+                if (!credential) throw new Error('האימות לא הושלם. נסה שוב.');
+                await reauthenticateWithCredential(player, credential);
+            }
+            if (_auth.currentUser?.uid !== uid) throw new Error('חשבון השחקן השתנה. יש להיכנס מחדש.');
+            await player.getIdToken(true);
+            return {uid};
+        };
         // Robust Google sign-in: popup FIRST on every device. signInWithRedirect
         // breaks on modern mobile browsers when authDomain (…firebaseapp.com)
         // differs from the app origin — Chrome/Safari storage partitioning drops
@@ -4042,57 +4032,14 @@ function App() {
     return () => unsub();
   }, [fbReady, activeClub?.id]);
   const fetchOrInitUser = async user => {
-    const ref = window.fb.doc(window.fb.db, "users", user.uid);
-    const snap = await window.fb.getDoc(ref);
-    if (snap.exists()) {
-      setDbUser({
-        uid: user.uid,
-        ...snap.data()
-      });
-    } else {
-      const email = (user.email || '').toLowerCase();
-      const isSuper = email === SUPER_ADMIN_EMAIL;
-      const isGod = GOD_EMAILS.includes(email);
-      // A guest signed in anonymously: no Google name, no email. The name and
-      // number typed on the login screen are the ONLY identity the club owner
-      // will have when the join request lands, so the name becomes the
-      // username and the number becomes the player ID — the number the owner
-      // approves by, and the one the guest can never change afterwards.
-      // A verified phone is a real identity: the number was proved by SMS
-      // before this account existed. Only an anonymous session with neither an
-      // email nor a number is a guest.
-      const phone = (user.phoneNumber || '').trim();
-      const isGuest = !phone && (!!user.isAnonymous || !email);
-      const pid = genPlayerId();
-      const guestName = (window.__guestName || '').trim();
-      const guestNumber = phone || (window.__guestNumber || '').trim();
-      const newUser = {
-        username: guestName || (isGuest ? 'אורח ' + pid.slice(0, 3) : user.displayName || 'Player'),
-        email: email,
-        googleName: user.displayName || '',
-        role: isSuper ? ROLES.SUPER_ADMIN : ROLES.PLAYER,
-        status: isSuper || isGod ? 'approved' : 'pending',
-        playerId: guestNumber || pid,
-        balance: isSuper ? 10000000 : 0,
-        clubProfits: 0,
-        isBot: false,
-        isGuest: isGuest,
-        phone: phone,
-        phoneVerified: !!phone,
-        managedGames: [],
-        stats: {
-          gamesPlayed: 0,
-          gamesWon: 0,
-          totalProfit: 0
-        }
-      };
-      window.__guestName = '';
-      window.__guestNumber = '';
-      await window.fb.setDoc(ref, newUser);
-      setDbUser({
-        uid: user.uid,
-        ...newUser
-      });
+    try {
+      await window.fb.fx('pkEnsurePlayer', {});
+      const snapshot = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', user.uid));
+      if (!snapshot.exists()) throw new Error('Profile unavailable');
+      setDbUser({ ...snapshot.data(), uid: user.uid });
+    } catch (error) {
+      showToast('לא הצלחנו לטעון את החשבון. נסה להיכנס שוב; היתרה שלך לא שונתה.', 'error');
+      setCurrentView('auth');
     }
   };
   useEffect(() => {
@@ -4328,13 +4275,6 @@ function App() {
           uid: d.id,
           ...data
         });
-        if (!data.playerId) {
-          try {
-            window.fb.updateDoc(d.ref, {
-              playerId: genPlayerId()
-            });
-          } catch (e) {}
-        }
         if (!data.googleName && data.username) {
           try {
             window.fb.updateDoc(d.ref, {
@@ -4862,282 +4802,113 @@ function InstallBanner({
     className: "mt-5 text-slate-500 hover:text-white underline text-sm font-bold"
   }, "Close"))), document.body));
 }
-function AuthView() {
-  // Guest sign-in: a name and a number, nothing else. The pair rides to
-  // fetchOrInitUser on window, because an anonymous sign-in hands back a uid
-  // and nothing else — this is the only moment the account can be named.
-  // Sign-in by verified phone: the number is proved by an SMS code before an
-  // account exists at all, so the number the owner approves is a number that
-  // is really the player's. 'idle' -> 'phone' -> 'code'.
-  const [googleBusy,setGoogleBusy]=useState(false);
-  const googleLogin=async()=>{if(googleBusy)return;setGoogleBusy(true);setGErr('');try{await window.fb.signIn();}catch(e){setGErr('ההתחברות לא הושלמה. נסה שוב או היכנס עם הטלפון.');}finally{setGoogleBusy(false);}};
-  const [step, setStep] = useState('idle');
-  const [gName, setGName] = useState('');
-  const [gNum, setGNum] = useState('');
-  const [gCode, setGCode] = useState('');
-  const [gErr, setGErr] = useState('');
-  const [gBusy, setGBusy] = useState(false);
-  const [sentAt, setSentAt] = useState(0);
-  const [now, setNow] = useState(Date.now());
+function PersonalCodeForm({ account = false }) {
+  const [mode, setMode] = useState('login');
+  const [loginId, setLoginId] = useState(() => { try { return localStorage.getItem('pkLoginId') || ''; } catch (_) { return ''; } });
+  const [name, setName] = useState('');
+  const [pin, setPin] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [available, setAvailable] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [savedId, setSavedId] = useState('');
   useEffect(() => {
-    if (step !== 'code') return;
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [step]);
-  const waitLeft = Math.max(0, 45 - Math.floor((now - sentAt) / 1000));
-  // Israeli numbers are typed as 05X-XXXXXXX; Firebase wants E.164. A number
-  // typed with a leading + is passed through, so a player abroad still works.
-  const toE164 = raw => {
-    const t = String(raw || '').trim().replace(/[^0-9+]/g, '');
-    if (t.startsWith('+')) return t;
-    const d = t.replace(/\D/g, '');
-    if (d.startsWith('972')) return '+' + d;
-    if (d.startsWith('0')) return '+972' + d.slice(1);
-    return '+972' + d;
-  };
-  const smsError = e => {
-    const c = (e && e.code) || '';
-    if (c === 'auth/invalid-phone-number') return 'מספר לא תקין';
-    if (c === 'auth/too-many-requests') return 'יותר מדי ניסיונות — נסה שוב בעוד כמה דקות';
-    if (c === 'auth/invalid-verification-code') return 'הקוד שגוי — בדוק שוב';
-    if (c === 'auth/code-expired') return 'הקוד פג תוקף — שלח קוד חדש';
-    if (c === 'auth/quota-exceeded') return 'מכסת ה-SMS נגמרה להיום';
-    if (c === 'auth/operation-not-allowed') return 'כניסה בטלפון כבויה — יש להפעיל Phone ב-Firebase Console';
-    if (c === 'auth/captcha-check-failed' || c === 'auth/invalid-app-credential') return 'אימות הדפדפן נכשל — רענן את הדף ונסה שוב';
-    return 'שליחה נכשלה, נסה שוב';
-  };
-  const doSendCode = async () => {
-    const name = gName.trim();
-    const e164 = toE164(gNum);
-    if (name.length < 2) return setGErr('צריך שם — לפחות 2 תווים');
-    if (!/^\+\d{9,15}$/.test(e164)) return setGErr('מספר לא תקין — לדוגמה 0501234567');
-    setGErr('');
-    setGBusy(true);
+    let active = true;
+    if (!window.fb.fx) return;
+    window.fb.fx('pkPinStatus', {}).then(result => {
+      if (!active) return;
+      setAvailable(!!result.available);
+      if (!result.available) setError('הכניסה בקוד אישי עדיין אינה זמינה. אפשר להיכנס עם Google.');
+      if (account && result.playerId) { setSavedId(result.playerId); setLoginId(result.playerId); }
+    }).catch(() => { if (active) setError('הכניסה בקוד אישי אינה זמינה כרגע. אפשר להיכנס עם Google .'); });
+    return () => { active = false; };
+  }, [account]);
+  const verifyGoogle = async () => {
+    if (busy) return;
+    setBusy(true); setError(''); setNotice('');
     try {
-      await window.fb.phoneSend(e164);
-      setSentAt(Date.now());
-      setNow(Date.now());
-      setGCode('');
-      setStep('code');
-    } catch (e) {
-      try { window.fb.phoneReset(); } catch (e2) {}
-      setGErr(smsError(e));
-    }
-    setGBusy(false);
+      await window.fb.reauthPlayerWithGoogle();
+      setNotice('האימות הושלם בחשבון הנוכחי. עכשיו אפשר לשמור קוד אישי.');
+    } catch(e) {
+      setError(/credential-already-in-use|account-exists-with-different-credential/.test(e?.code||'')
+        ? 'חשבון Google הזה שייך לשחקן אחר. בחר חשבון Google פנוי או פנה למנהל לשחזור גישה.'
+        : /popup-closed|cancelled-popup/.test(e?.code||'') ? 'האימות בוטל. אפשר לנסות שוב.' : 'האימות לא הושלם. נסה שוב או פנה למנהל.');
+    } finally { setBusy(false); }
   };
-  // `typed` lets the field submit the moment the sixth digit lands — whether
-  // the player typed it or the keyboard filled it in from the SMS — without
-  // waiting for the state round-trip.
-  const doVerify = async typed => {
-    const code = String(typed === undefined ? gCode : typed).trim();
-    if (code.length < 6) return setGErr('צריך את 6 הספרות מה-SMS');
-    setGErr('');
-    setGBusy(true);
-    // The name rides on window: a phone sign-in hands back a uid and a number,
-    // and this is the only moment the account can be named.
-    window.__guestName = gName.trim();
-    window.__guestNumber = toE164(gNum);
+  const submit = async event => {
+    event.preventDefault();
+    if (busy || !available) return;
+    setError(''); setNotice('');
+    if (!/^\d{8,12}$/.test(pin)) return setError('בחר קוד של 8–12 ספרות.');
+    if ((account || mode === 'register') && pin !== confirm) return setError('שני הקודים אינם זהים.');
+    if (!account && mode === 'login' && !/^P\d{9}$/.test(loginId)) return setError('יש להזין קוד שחקן שמתחיל באות P וממשיך ב־9 ספרות.');
+    setBusy(true);
     try {
-      await window.fb.phoneVerify(code);
-      // success: onAuthStateChanged takes over and this screen unmounts
+      const result = await window.fb.fx(account ? 'pkPinEnroll' : mode === 'register' ? 'pkPinRegister' : 'pkPinLogin', account ? {pin} : mode === 'register' ? {name: name.trim(), pin} : {loginId, pin});
+      try { localStorage.setItem('pkLoginId', result.loginId); } catch (_) {}
+      setLoginId(result.loginId); setSavedId(result.loginId); setPin(''); setConfirm('');
+      if (account) setNotice('הקוד נשמר. שמור את קוד השחקן שמופיע כאן לפעם הבאה.');
+      else await window.fb.customSignIn(result.token);
     } catch (e) {
-      window.__guestName = '';
-      window.__guestNumber = '';
-      setGBusy(false);
-      setGErr(smsError(e));
-    }
+      const code = e?.code || '';
+      setError(/unauthenticated/.test(code) ? 'קוד השחקן או הקוד שגויים.' : /resource-exhausted/.test(code) ? 'יותר מדי ניסיונות. נסה שוב בעוד 15 דקות.' : /invalid-argument|failed-precondition/.test(code) ? e.message : 'הפעולה לא הושלמה. נסה שוב או היכנס עם Google.');
+    } finally { setBusy(false); }
   };
-  const inputCls = "w-full bg-slate-950 border border-white/12 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-gold-400/60 text-[15px]";
-  return React.createElement("div", {
-    className: "auth-screen auth-poker auth-shell h-full w-full flex flex-col items-center justify-center p-4 relative",
-    style: {
-      background: "linear-gradient(rgba(7,9,15,0.72), rgba(7,9,15,0.86)), url('assets/login-bg.jpg') center / cover no-repeat, #07090F"
-    }
-  }, React.createElement("div", {
-    className: "auth-card text-center relative z-10 w-full"
-  }, React.createElement("div", {
-    className: "auth-mark",
-    style: {
-      background: 'var(--pt-raised)',
-      border: '1px solid rgba(213,179,107,0.35)',
-      boxShadow: 'var(--pt-shadow)'
-    }
-  }, React.createElement(SuitGlyph, {
-    s: '♠',
-    color: '#D5B36B',
-    size: "30px"
-  })), React.createElement("h2", {
-    className: "auth-logo",
-    style: {
-      fontWeight: 700
-    }
-  }, React.createElement("span", {
-    className: "auth-wordmark"
-  }, "POKERTEN")), React.createElement("p", {
-    className: "auth-kicker",
-    style: {
-      color: 'var(--pt-text-2)',
-      fontWeight: 500
-    }
-  }, "המועדון שלך. השולחן שלך."), React.createElement("h1", {className:"auth-title"}, "השולחן מחכה לך."), React.createElement("p",{className:"auth-intro"},"היכנס לחשבון והצטרף למשחק."), React.createElement("button", {
-    onClick: googleLogin,
-    disabled:googleBusy||gBusy,
-    className: "w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 py-4 px-6 rounded-xl shadow-xl flex items-center justify-center gap-3",
-    style: {
-      fontWeight: 600
-    }
-  }, React.createElement("i", {
-    className: "fa-brands fa-google text-blue-500 text-xl"
-  }), googleBusy ? "מתחבר…" : "כניסה עם Google"), step==='idle'&&gErr&&React.createElement("p",{role:"alert",className:"auth-error"},gErr), React.createElement("div", {
-    className: "flex items-center gap-3 my-5"
-  }, React.createElement("div", {
-    className: "flex-1 h-px bg-white/10"
-  }), React.createElement("span", {
-    className: "text-[11px] font-bold tracking-widest",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "או"), React.createElement("div", {
-    className: "flex-1 h-px bg-white/10"
-  })), step === 'idle' ? React.createElement("button", {
-    onClick: () => setStep('phone'),
-    className: "w-full bg-slate-900/80 hover:bg-slate-800 border border-gold-400/30 text-gold-400 py-3.5 px-6 rounded-xl font-black text-[15px] transition-transform hover:scale-[1.02]"
-  }, "\uD83D\uDCF1 כניסה עם מספר טלפון") : step === 'phone' ? React.createElement("div", {
-    dir: "rtl",
-    className: "text-right space-y-2.5"
-  }, React.createElement("input", {
-    value: gName,
-    onChange: e => {
-      setGName(e.target.value);
-      setGErr('');
-    },
-    maxLength: 20,
-    placeholder: "השם שלך",
-    "aria-label":"השם שלך",
-    autoComplete:"nickname",
-    className: inputCls
-  }), React.createElement("input", {
-    value: gNum,
-    onChange: e => {
-      setGNum(e.target.value.replace(/[^0-9+]/g, ''));
-      setGErr('');
-    },
-    inputMode: "tel",
-    autoComplete: "tel",
-    maxLength: 16,
-    placeholder: "05X-XXXXXXX",
-    "aria-label":"מספר טלפון",
-    className: inputCls,
-    dir: "ltr"
-  }), React.createElement("p", {
-    className: "text-[11px] leading-relaxed font-bold",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "נשלח קוד ב-SMS. המספר המאומת הוא מספר השחקן שלך — בעל הקלאב מאשר לפיו, ואי אפשר לשנות אותו אחר-כך."), gErr && React.createElement("p", {
-    className: "text-[12px] font-bold text-rose-400"
-  }, gErr), React.createElement("button", {
-    onClick: doSendCode,
-    disabled: gBusy,
-    className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-60 text-white py-3.5 rounded-xl font-black text-[15px] shadow-lg"
-  }, gBusy ? "שולח..." : "שלח לי קוד"), React.createElement("button", {
-    onClick: () => {
-      setStep('idle');
-      setGErr('');
-    },
-    className: "w-full text-[12px] font-bold underline",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "חזרה")) : React.createElement("div", {
-    dir: "rtl",
-    className: "text-right space-y-2.5"
-  }, React.createElement("p", {
-    className: "text-[12px] font-bold",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "שלחנו קוד בן 6 ספרות אל ", React.createElement("span", {
-    dir: "ltr",
-    className: "text-gold-400"
-  }, toE164(gNum))), React.createElement("input", {
-    value: gCode,
-    autoFocus: true,
-    onChange: e => {
-      const v = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
-      setGCode(v);
-      setGErr('');
-      // Six digits is the whole code — there is nothing left to decide, so
-      // don't make him hunt for a button. This is also what fires when the
-      // keyboard fills the code in from the SMS: one tap on the suggestion
-      // and he is in.
-      if (v.length === 6 && !gBusy) doVerify(v);
-    },
-    inputMode: "numeric",
-    autoComplete: "one-time-code",
-    maxLength: 6,
-    placeholder: "------",
-    "aria-label":"קוד אימות מההודעה",
-    className: inputCls + " text-center tracking-[0.6em] text-xl",
-    dir: "ltr"
-  }), gErr && React.createElement("p", {
-    className: "text-[12px] font-bold text-rose-400"
-  }, gErr), React.createElement("button", {
-    onClick: () => doVerify(),
-    disabled: gBusy || gCode.length < 6,
-    className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-60 text-white py-3.5 rounded-xl font-black text-[15px] shadow-lg"
-  }, gBusy ? "מאמת..." : "אימות וכניסה"), React.createElement("button", {
-    onClick: () => {
-      try { window.fb.phoneReset(); } catch (e) {}
-      setGErr('');
-      doSendCode();
-    },
-    disabled: gBusy || waitLeft > 0,
-    className: "w-full text-[12px] font-bold underline disabled:opacity-50",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, waitLeft > 0 ? "שליחה חוזרת בעוד " + waitLeft : "שלח קוד שוב"), React.createElement("button", {
-    onClick: () => {
-      try { window.fb.phoneReset(); } catch (e) {}
-      setGCode('');
-      setGErr('');
-      setStep('phone');
-    },
-    className: "w-full text-[12px] font-bold underline",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "שינוי מספר")), React.createElement(InstallBanner, {
-    variant: "auth"
-  })), React.createElement("div", {
-    className: "auth-footer"
-  }, React.createElement("div", {
-    className: "flex items-center gap-2 px-4 py-2 rounded-full border border-gold-400/25 bg-slate-950/60"
-  }, React.createElement("svg", {
-    viewBox: "0 0 24 24",
-    style: {
-      width: '15px',
-      height: '15px'
-    }
-  }, React.createElement("path", {
-    d: "M12 2l8 3v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5l8-3z",
-    fill: "none",
-    stroke: "#e3ae4e",
-    strokeWidth: "1.6"
-  }), React.createElement("path", {
-    d: "M8.5 12l2.4 2.4L15.5 9.8",
-    fill: "none",
-    stroke: "#e3ae4e",
-    strokeWidth: "1.8",
-    strokeLinecap: "round",
-    strokeLinejoin: "round"
-  })), React.createElement("span", {
-    className: "text-[10px] text-gold-400/90 font-bold tracking-[0.18em] uppercase"
-  }, "POKERTEN · משחקי קלאב")), React.createElement("span", {
-    className: "text-[8px] text-slate-600 font-bold tracking-[0.3em] uppercase"
-  }, "Powered by ORIZIS TECHNOLOGY")));
+  const field = (label, value, setter, extra = {}) => React.createElement('label', {className:'personal-code-field'},
+    React.createElement('span', null, label), React.createElement('input', {
+      value, onChange:e=>setter(e.target.value), 'aria-label':label, required:true, disabled:busy, ...extra
+    }));
+  return React.createElement('section', {className:'personal-code', dir:'rtl'},
+    React.createElement('h2', null, account ? 'הגדרת קוד אישי' : mode === 'register' ? 'פתיחת חשבון עם קוד אישי' : 'כניסה עם קוד אישי'),
+    account && savedId && React.createElement('div', {className:'personal-code-id'},
+      React.createElement('span', null, 'קוד השחקן שלך'), React.createElement('strong', {dir:'ltr'}, savedId),
+      React.createElement('button', {type:'button', onClick:async()=>{try{await navigator.clipboard.writeText(savedId);setNotice('קוד השחקן הועתק.');}catch(_){setNotice('אפשר לבחור ולהעתיק את המספר שמופיע כאן.');}}}, 'העתקה')),
+    account && React.createElement('div',{className:'personal-code-verify'},
+      React.createElement('p',null,'נכנסת בעבר עם SMS, או שהאימות פג? אפשר לחבר Google לחשבון השחקן הנוכחי ולאמת אותו לפני שמירת הקוד.'),
+      React.createElement('button',{type:'button',onClick:verifyGoogle,disabled:busy},'אימות עם Google לחשבון הנוכחי')),
+    !account && React.createElement('div', {className:'personal-code-tabs'}, ['login','register'].map(value=>React.createElement('button', {
+      key:value, type:'button', disabled:busy, 'aria-pressed':mode===value,
+      onClick:()=>{setMode(value);setError('');setPin('');setConfirm('');}
+    }, value==='login'?'כבר יש לי קוד':'חשבון חדש'))),
+    React.createElement('form', {onSubmit:submit},
+      !account && mode==='login' && field('קוד שחקן', loginId, value=>setLoginId(value.toUpperCase().replace(/[^P0-9]/g,'').slice(0,10)), {autoComplete:'username', autoCapitalize:'characters', placeholder:'P123456789', maxLength:10, dir:'ltr'}),
+      !account && mode==='register' && field('השם שלך',name,setName,{autoComplete:'nickname',minLength:2,maxLength:20}),
+      field(account?'קוד אישי חדש':'קוד אישי',pin,value=>setPin(value.replace(/\D/g,'').slice(0,12)),{type:'password',inputMode:'numeric',autoComplete:account||mode==='register'?'new-password':'current-password',minLength:8,maxLength:12,dir:'ltr'}),
+      (account||mode==='register') && field('הקלד שוב את הקוד',confirm,value=>setConfirm(value.replace(/\D/g,'').slice(0,12)),{type:'password',inputMode:'numeric',autoComplete:'new-password',minLength:8,maxLength:12,dir:'ltr'}),
+      error && React.createElement('p',{role:'alert',className:'personal-code-error'},error),
+      notice && React.createElement('p',{role:'status',className:'personal-code-notice'},notice),
+      React.createElement('button',{type:'submit',className:'personal-code-submit',disabled:busy||!available},busy?'רק רגע…':account?'שמירת הקוד':mode==='register'?'יצירת החשבון':'כניסה לשולחנות')),
+    React.createElement('p',{className:'personal-code-help'},account?'הקוד שייך לחשבון הנוכחי. קוד השחקן, הקלאבים והיתרה שלך נשארים איתך.':mode==='register'?'כבר שיחקת כאן? היכנס לחשבון הקיים והגדר קוד בפרופיל. חשבון חדש אינו מעביר יתרה מחשבון קודם.':'עוד לא הגדרת קוד? היכנס עם Google , ובחר ״הגדרת קוד אישי״ בפרופיל.'));
 }
+
+function AuthView() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const googleLogin = async () => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await window.fb.signIn(); }
+    catch (_) { setError('ההתחברות לא הושלמה. נסה שוב או היכנס עם קוד שחקן וקוד אישי.'); }
+    finally { setBusy(false); }
+  };
+  return React.createElement('div', {
+    className:'auth-screen auth-poker auth-shell h-full w-full flex flex-col items-center p-4 relative',
+    style:{background:"linear-gradient(rgba(7,9,15,0.72), rgba(7,9,15,0.86)), url('assets/login-bg.jpg') center / cover no-repeat, #07090F"}
+  }, React.createElement('div',{className:'auth-card text-center relative z-10 w-full'},
+    React.createElement('h2',{className:'auth-logo'},React.createElement('span',{className:'auth-wordmark'},'POKERTEN')),
+    React.createElement('p',{className:'auth-kicker'},'המועדון שלך. השולחן שלך.'),
+    React.createElement('h1',{className:'auth-title'},'השולחן מחכה לך.'),
+    React.createElement(PersonalCodeForm),
+    React.createElement('button',{onClick:googleLogin,disabled:busy,className:'w-full bg-white text-slate-900 py-4 px-6 rounded-xl flex items-center justify-center gap-3 font-bold'},
+      React.createElement('i',{className:'fa-brands fa-google text-blue-500'}),busy?'מתחבר…':'כניסה עם Google'),
+    error && React.createElement('p',{role:'alert',className:'auth-error'},error),
+    React.createElement('p',{className:'personal-code-help',dir:'rtl'},'לכל חשבון קוד שחקן קבוע וייחודי. אפשר להגדיר קוד אישי גם אחרי כניסה עם Google.'),
+    React.createElement('p',{className:'personal-code-help',dir:'rtl'},'נכנסת בעבר עם SMS? אם החשבון פתוח במכשיר אחר, אמת בו את החשבון עם Google דרך הפרופיל והגדר קוד אישי. אחרת יש לפנות למנהל לשחזור גישה לאותו חשבון.'),
+    React.createElement(InstallBanner,{variant:'auth'})),
+    React.createElement('div',{className:'auth-footer'},'POKERTEN · Powered by ORIZIS TECHNOLOGY'));
+}
+
 function LeadersView({
   user,
   showToast
@@ -6364,7 +6135,7 @@ function ProfileView({
     className: "club-surface scrollable-content aurora-bg p-4 sm:p-8"
   }, React.createElement("div", {
     className: "max-w-4xl mx-auto animate-fade-in relative z-10"
-  }, React.createElement("div", {
+  }, React.createElement(PersonalCodeForm, { account: true }), React.createElement("div", {
     className: "glass-panel p-8 rounded-3xl text-center mb-6"
   }, React.createElement("img", {
     src: avatarUrl(user),

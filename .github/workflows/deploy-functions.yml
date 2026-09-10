@@ -14,6 +14,7 @@ jobs:
   deploy:
     if: github.ref == 'refs/heads/claude/gambling-game-graph-08c7yw'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,3 +37,5 @@ jobs:
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: firebase deploy --only functions:avJoin,functions:avTick,functions:avCancelBet,functions:avCashout,functions:avPeek,functions:avCredit --project pokerten --non-interactive
+      - name: Verify exact live chip settlement through the Firebase API
+        run: node functions/test/aviatorLiveProbe.cjs --confirm-play-money-production

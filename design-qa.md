@@ -25,3 +25,6 @@ The tool explicitly forbids indirect execution, alternate browser surfaces and w
 - Mirror server code safely in all deployment branches, execute scoped Firebase deployment, publish the pinned Vercel client, verify the production SHA.
 
 New changes have NOT been deployed to production while these gates remain blocked.
+
+## Subsequent release instruction — 2026-09-10
+After the blocked browser check and the lack of live verification were disclosed, the user explicitly requested: "תאמת ותפרסם" (verify and publish). The release now includes an owner-triggered authenticated Firebase API probe after scoped function deployment, checking actual manual and automatic play-chip settlement and retry accounting. This report still records browser QA as blocked; neither the instruction nor an API result is recorded as a passed browser/design comparison. Production results must be recorded after the workflow and Vercel deployment actually complete.

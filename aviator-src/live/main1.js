@@ -26,29 +26,17 @@ const store = {
 let muted = store.get("pt_av_muted", false);
 let history = [];
 
-/* ---------------- Server clock ----------------
-   Every callable answers with serverNow. NTP-style: serverNow was stamped
-   about half a round-trip before we read it, so offset = sn - now + rtt/2,
-   and we keep the measurement with the lowest rtt (least network noise)
-   rather than smoothing good samples together with bad ones. */
-/* stamped with the deploy commit by the build step */
+/* Server clock is for the countdown only. Flight values require a signed quote. */
 const AV_BUILD = "dev";
-
 let clockOffset = 0, coBestRtt = Infinity, coAt = 0;
-function noteServerNow(sn, rtt){
-  if (!sn) return;
+function noteServerNow(sn, rtt, receivedAt){
+  if (!Number.isFinite(sn) || !Number.isFinite(receivedAt)) return;
   const now = Date.now();
-  if (now - coAt > 90000) coBestRtt = Infinity;   // stale — let a fresh sample win
-  if (rtt == null) rtt = 800;
-  if (coAt && rtt > coBestRtt * 1.4) return;      // noisier than what we have
-  coBestRtt = Math.min(coBestRtt, rtt);
-  /* sn is stamped when the reply leaves the server; add back half the
-     round-trip so the display sits on the server's clock in real time,
-     not a full downlink-leg behind it. Payment is exact-WYSIWYG on the
-     server now, so a small lead is harmless — you're paid the number you
-     saw regardless. Cap the correction so a cold-start outlier can't
-     fling the clock far ahead. */
-  clockOffset = sn - now + Math.min(rtt / 2, 300);
+  const networkRtt = Math.max(0, rtt - Math.max(0, sn - receivedAt));
+  if (now - coAt > 90000) coBestRtt = Infinity;
+  if (coAt && networkRtt > coBestRtt * 1.4) return;
+  coBestRtt = Math.min(coBestRtt, networkRtt);
+  clockOffset = sn - now + networkRtt / 2;
   coAt = now;
 }
 const eNow = () => Date.now() + clockOffset;
@@ -67,9 +55,32 @@ const S = {
   roundId: null,
   crashPoint: null,          // revealed only after the crash
   hash: "",
-  mult: 1,
+  mult: 1, cents: 100, protocol: 0,
+  quote: null, quoteAt: 0, confirmedCents: 100,
   queued: 0,
   lastTickSec: -1, lastWholeMult: 1,
 };
 function multAt(ms){ return Math.exp(GROWTH_K * ms / 1000); }
 function timeForMult(m){ return Math.log(m) / GROWTH_K * 1000; }
+const toCents = m => Math.floor(Number(m) * 100 + 1e-8);
+const chipPayout = (amount, cents) => Number(BigInt(amount) * BigInt(cents) / 100n);
+const newRequestId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, "0")).join("");
+function quoteFresh(){
+  return navigator.onLine !== false && document.visibilityState === "visible" &&
+    S.quote && performance.now() - S.quoteAt < 1500;
+}
+function acceptQuote(q, ageMs = 0){
+  if (!q || ageMs >= 1500 || S.phase !== "flying" || q.roundId !== S.roundId ||
+      !Number.isSafeInteger(q.maxCents) || q.maxCents < S.confirmedCents ||
+      !Number.isSafeInteger(q.issuedAt) || (S.quote && q.issuedAt <= S.quote.issuedAt)) return;
+  const wasFresh = quoteFresh();
+  S.quote = q; S.quoteAt = performance.now() - Math.max(0, ageMs); S.confirmedCents = q.maxCents;
+  if (!wasFresh) updateAction();
+}
+function renderFlightValue(){
+  // Smooth toward the most recent confirmed ceiling; never extrapolate beyond it.
+  if (!quoteFresh()) return;
+  const gap = S.confirmedCents - S.cents;
+  S.cents = Math.min(S.confirmedCents, S.cents + Math.max(0, Math.ceil(gap / 5)));
+  S.mult = S.cents / 100;
+}

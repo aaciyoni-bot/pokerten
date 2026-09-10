@@ -54,7 +54,7 @@ function transform(out) {
 
   fs.mkdirSync('public', { recursive: true });
   fs.mkdirSync('public/cockpit', { recursive: true });
-  for (const file of ['cockpit.webp', 'multiplier-dial.webp']) {
+  for (const file of ['cockpit.webp', 'flight-jet.webp']) {
     const response = await fetch(RAW + 'aviator-src/live/assets/' + file);
     if (!response.ok) throw new Error('Missing cockpit asset: ' + file + ' -> ' + response.status);
     fs.writeFileSync('public/cockpit/' + file, Buffer.from(await response.arrayBuffer()));

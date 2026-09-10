@@ -9,8 +9,8 @@ module.exports = function cockpitLayout(body) {
   }
   const history = '<div id="history" aria-label="Round history"></div>';
   replaceOnce(history, '');
-  replaceOnce('<div id="balance">', '<div class="historyGroup"><span class="panelLabel">PREVIOUS ROUNDS</span>' + history + '</div><div id="balance">');
-  replaceOnce('<span class="word">AVIATORIZIS</span>', '<span class="word">AVIATORIZIS</span><span class="brandSub"><i class="avIcon planeIcon" aria-hidden="true"></i> CAPTAIN’S PANEL</span>');
+  replaceOnce('</header>', '</header><aside class="historyGroup" aria-label="Previous rounds"><span class="panelLabel">RECENT</span>' + history + '</aside>');
+  replaceOnce('<span class="word">AVIATORIZIS</span>', '<span class="word">AVIATORIZIS</span><span class="brandSub"><i class="avIcon planeIcon" aria-hidden="true"></i> FLIGHT DECK</span>');
   replaceOnce('<span id="balanceNum">0</span>', '<span class="balanceReadout"><span id="balanceNum">0</span><span class="panelLabel">PLAY CHIPS</span></span>');
   replaceOnce('</header>', '</header><div class="cockpitHorizon" aria-hidden="true"></div>');
 
@@ -20,10 +20,10 @@ module.exports = function cockpitLayout(body) {
   const center = body.slice(from, to);
   body = body.slice(0, from) + body.slice(to);
   const instrument = '<section id="flightInstrument" aria-label="Live flight multiplier">' +
-    '<div class="instrumentFace"><p class="instrumentLabel">LIVE MULTIPLIER</p>' + center +
-    '<p class="instrumentBoot">CONNECTING…</p><i class="avIcon planeIcon instrumentPlane" aria-hidden="true"></i>' +
-    '<p class="instrumentCaption">AVIATORIZIS · LIVE</p></div></section>';
-  replaceOnce('  <section id="betPanel">', instrument + '\n  <section id="betPanel" aria-label="Flight controls">');
+    '<div class="instrumentFace">' + center +
+    '<p class="instrumentBoot">CONNECTING…</p><p id="flightStatus" class="instrumentCaption" role="status">FLIGHT DECK</p></div></section>';
+  replaceOnce('      <div id="winToast">', instrument + '\n      <div id="winToast">');
+  replaceOnce('  <section id="betPanel">', '<section id="betPanel" aria-label="Flight controls">');
   replaceOnce('<section id="stage">', '<section id="stage" aria-label="Live flight graph"><div class="chartHeading"><i class="avIcon planeIcon" aria-hidden="true"></i><span>LIVE FLIGHT</span></div>');
   replaceOnce('<div id="amountBox">', '<div class="amountControl"><label class="panelLabel" for="betInput">BET AMOUNT</label><div id="amountBox">');
   replaceOnce('      <div id="autoBox">', '      </div><div id="autoBox">');

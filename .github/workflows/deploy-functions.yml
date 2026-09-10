@@ -1,39 +1,43 @@
-name: Deploy Firebase Functions
-
-# Auto-deploys Cloud Functions on any push that touches functions/
-# Requires a repo secret named FIREBASE_TOKEN (from `firebase login:ci`)
+name: Deploy AVIATOR functions
 
 on:
   push:
-    branches:
-      - main
-      - claude/pokerten-v1
-      - claude/gambling-game-graph-08c7yw
-    paths:
-      - 'functions/**'
-      - 'firebase.json'
-      - '.firebaserc'
+    branches: [claude/gambling-game-graph-08c7yw]
+    paths: ['functions/aviator.js', 'functions/aviatorCore.js']
   workflow_dispatch: {}
+
+concurrency:
+  group: aviator-functions-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    if: github.ref == 'refs/heads/claude/gambling-game-graph-08c7yw'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
+      - name: Verify source build and timing regressions
+        run: |
+          node aviator-src/live/build-live.js
+          git diff --exit-code -- aviator-live.html
+          node --test functions/aviator.test.js aviator-src/live/timing.test.cjs aviator-ux.test.cjs
       - name: Install function dependencies
-        run: npm --prefix functions install
-
+        run: npm ci --prefix functions
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
-
-      - name: Deploy functions
+      - name: Require IDs on new bets before upgrading exits
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: firebase deploy --only functions --project pokerten --non-interactive --force
+        run: firebase deploy --only functions:avBet --project pokerten --non-interactive
+      - name: Deploy only compatible AVIATOR functions
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: firebase deploy --only functions:avJoin,functions:avTick,functions:avCancelBet,functions:avCashout,functions:avPeek,functions:avCredit --project pokerten --non-interactive
+      - name: Verify exact live chip settlement through the Firebase API
+        run: node functions/test/aviatorLiveProbe.cjs --confirm-play-money-production

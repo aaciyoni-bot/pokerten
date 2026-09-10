@@ -37,13 +37,37 @@ body = body.replace('<div id="iosModal">', read(P + '/extra.html') + '\n<div id=
 body = body.replace('id="minus"', 'id="minus" aria-label="Decrease bet amount"')
            .replace('id="plus"', 'id="plus" aria-label="Increase bet amount"');
 body = require('./cockpit-layout.js')(body);
+body = body.replace('<button id="actionBtn" class="bet">Place bet</button>',
+  '<button id="actionBtn" class="bet">Place bet</button>' +
+  '<div id="syncStatus" role="status" dir="rtl">מתחבר לבקרת הטיסה…</div>' +
+  '<div class="flightNote" dir="rtl">משיכה ידנית נספרת כשהבקשה מגיעה לשרת. יעד אוטומטי נשמר מראש.</div>');
+
 
 /* --- reusable script sections from the solo game --- */
 const js = cut(src, '"use strict";', '</script>\n</body>', 'main script');
 // The live sound engine is maintained here independently of the solo game.
 const sound = read(P + '/audio.js');
-const canvas = cut(js, '/* =====================================================================\n   CANVAS',
+let canvas = cut(js, '/* =====================================================================\n   CANVAS',
                        '/* =====================================================================\n   MAIN LOOP', 'canvas');
+const graphClock = 'const t = (now - S.phaseAt) / 1000;';
+if (!canvas.includes(graphClock)) throw new Error('Missing graph clock anchor');
+canvas = canvas.replace(graphClock,
+  'const t = flying ? timeForMult(S.mult) / 1000 : (now - S.phaseAt) / 1000;');
+// A late join/reconnect can jump beyond the previous horizontal scale. Keep
+// the confirmed endpoint visible while easing only the spare space around it.
+const graphScale = 'view.xMax += (tx - view.xMax) * 0.075;';
+if (!canvas.includes(graphScale)) throw new Error('Missing graph scale anchor');
+canvas = canvas.replace(graphScale,
+  'view.xMax = Math.max(shownT, view.xMax + (tx - view.xMax) * 0.075);');
+// Keep the graph's data-driven world map local and cache its raster layer.
+canvas = canvas.replace(cut(canvas, '/* world map far below', 'const particles =', 'map loader'), '');
+canvas = canvas.replace(cut(canvas, '  /* --- world map drifting far below --- */', '  /* --- dust parallax --- */', 'map drawing'), '  drawWorldMap();\n\n');
+const cometStart = canvas.indexOf('    /* --- comet head --- */');
+const cometEnd = canvas.indexOf('\n  } else {\n    // waiting:', cometStart);
+if (cometStart < 0 || cometEnd < cometStart) throw new Error('Missing flight-head anchor');
+canvas = canvas.slice(0, cometStart) + '    if (!crashed) drawFlightJet(headX, headY);' + canvas.slice(cometEnd);
+const visuals = read(P + '/flight-visuals.js').replace('/*__WORLD_LAND__*/ []', read(P + '/assets/world-110m.json').trim());
+
 const pwa    = cut(js, '/* =====================================================================\n   APP INSTALL',
                        '/* keep the screen awake', 'pwa')
              + cut(js, '/* keep the screen awake', '/* persist chips */', 'wakelock');
@@ -53,6 +77,7 @@ const script = [
   read(P + '/main1.js'),
   read(P + '/ux.js'),
   patch(sound),
+  visuals,
   patch(canvas),
   read(P + '/main2.js'),
   read(P + '/cockpit.js'),

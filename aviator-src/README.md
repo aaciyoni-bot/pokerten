@@ -125,3 +125,66 @@ Vercel לא בנוי מהרֵפו — כל פרסום הוא העלאת קבצי
 - במשחק החי אף אחד (גם לא המנהל) לא רואה את נקודת הקראש מראש ומהמר באותו סיבוב:
   `avPeek` נועל כל סיבוב שנצפה ל"צפייה בלבד" עבור אותו משתמש.
 - תשלום היציאה = בדיוק המספר שהוצג על מסך השחקן (מוגבל רק בנקודת הקראש).
+
+## Timing protocol 2
+
+The graph and central instrument use integer hundredths, capped at the latest
+server-confirmed, player-bound signed quote. Network silence freezes the value
+and disables manual cashout after the freshness window; it never extrapolates
+past an unknown crash. A manual exit is valid only if the request reaches the
+function before the crash. Stored automatic targets are settled by the server,
+including when a player disconnects. No zero-latency network guarantee is made.
+
+Bet, cancellation and cashout requests include round and request IDs. Successful
+retries return the recorded result without moving chips again. Arrival time is
+captured before the transaction, so a timely request waiting behind settlement
+can correct the same archived bet once. The live supervisor view ignores stale
+responses and retains the watch-only restriction for a round already viewed.
+
+Validation: `node --test functions/aviator.test.js` (in-memory Firestore dependency
+fixture, no production writes), then `node aviator-src/live/build-live.js` and
+`node --check aviator-src/live/live-script-check.js`. `functions/test/preview.js`
+serves the real client against the same isolated handlers for browser QA.
+
+Deployment requires the client and server changes together. Deploy the client
+preview first; it waits for protocol 2 rather than sending legacy actions. Keep
+the backend changes in main as well as the Aviator branch, since both can deploy
+to the shared Firebase project. Do not deploy unrelated poker functions from an
+outdated Aviator branch. Roll back client and server together if needed.
+
+
+## עדכון משולב: תזמון ותא טייס רחב
+
+המקור כולל כעת מחיר שרת חתום, מאיות מכפיל ותשלום בצ׳יפים שלמים. המספר והגרף נעצרים כאשר הנתון מתיישן; אין המשך אקסטרפולציה. בלחיצה מוצג המספר שנשלח, ורק אישור השרת מציג הצלחה. זמן תגובת `avTick` וזמן אישור המשיכה מוצגים במילישניות ונמדדים במכשיר; הם אינם הבטחה לזמן הגעה קבוע.
+
+משיכה ידנית מתקבלת רק כאשר הבקשה מגיעה לפונקציה לפני נקודת העצירה, עם מחיר חתום תקף. השוויון שייך לעצירה. יעד אוטומטי שכבר הופעל קודם להגעה קובע את המחיר. בקשה ידנית שהגיעה לפני היעד נשארת ידנית גם אם עסקת הזיכוי האוטומטי השיגה את נעילת מסד הנתונים קודם. זיכוי קודם מתוקן בדלתא מתועדת, ללא זיכוי כפול.
+
+45 בדיקות מקומיות: `node --test functions/aviator.test.js aviator-src/live/timing.test.cjs aviator-ux.test.cjs`.
+`npm run dev -- --port 4173` מפעיל שרת בדיקה מבודד עם Firestore בזיכרון; הוא אינו מתחבר ליתרות הייצור. `/review.html` מכיל iframe ברוחב 390 פיקסלים לבדיקת CSS מובייל אמיתי. אין לכלול את שרת הבדיקה בפריסת Vercel.
+
+### סדר פריסה
+
+1. להשלים בדיקת דפדפן לגרסת הבדיקה; סטטוס מפורט ב־`design-qa.md`.
+2. לשמור את `functions/aviator.js` ואת `functions/aviatorCore.js` גם ב־`main` וב־`claude/pokerten-v1`, עם תיקון workflow מתאים וללא דריסת קוד פוקר. לא למזג ענף AVIATOR ישן במלואו ל־main.
+3. workflow ענף AVIATOR פורס רק את שבע פונקציות AVIATOR. הוא פורס קודם `avBet` המחייב מזהי פעולה ומסמן הימורים חדשים `protocol:2`, ואז את יתר הפונקציות. אין `--force` ואין פריסה של פונקציות פוקר.
+4. בהימורים קיימים בלבד, שנוצרו לפני protocol 2, השרת מאפשר משיכה/ביטול בפורמט הישן. אי אפשר להוריד הימור חדש לפורמט הישן. לקוח ישן נדרש לרענן לפני הימור חדש. בקרת המנהל הישנה נדרשת לרענן גם היא כדי לשלוח מזהה סיבוב.
+5. לאחר אימות פריסת הפונקציות, לפרוס Vercel ידנית עם SHA מלא נעוץ לפי הכלים ב־`aviator-src/vercel/`. דחיפת GitHub אינה מפרסמת את הלקוח.
+6. לאמת `/version.json`, מסך מחשב ומובייל, ולפחות משיכה אחת של אסימוני בדיקה. `/api/timing` נשאר 404 ללא שאילתות Firebase.
+
+ההסתברויות, יתרון הבית, קוד המנהל וקוד הפוקר לא שונו. יעד האוטומטי העליון בשרת נשמר 1000x. יעד אוטומטי בניתוק מתחשבּן בשרת עם קידום הסיבוב, גם אם הלקוח של אותו שחקן אינו מחובר.
+
+
+### מפת עולם ומטוס
+מפת העולם מוטמעת בלקוח מקובץ המקור `aviator-src/live/assets/world-110m.json`, ונצבעת לשכבה בזיכרון רק כשהמידות משתנות. כך היא אינה נעלמת עקב כשל בבקשת רשת ואינה מחושבת מחדש בכל פריים. המטוס הריאליסטי הוא קובץ WebP קטן שנטען פעם אחת. מיקומו נגזר מאותו מכפיל מוצג ומאושר של הגרף. גרפיקת הטיסה נמצאת ב־`aviator-src/live/flight-visuals.js`; ב־Vercel מפורסמים `cockpit.webp` ו־`flight-jet.webp`.
+
+בקשות מחיר במהלך טיסה קוראות את מצב הסיבוב והמנוע ללא עסקת כתיבה, ובודקות שוב את הזמן ואת התאמת הסיבוב לאחר הקריאה. כך הן אינן מחזיקות נעילות עסקה הדרושות למשיכה. מעברי סיבוב והתחשבנות נשארים בעסקה מוסמכת.
+
+### בדיקת התאמת הגרף והמשיכה — 10.9.2026
+תוקן פער שבו הצטרפות לטיסה מתקדמת משאירה את קנה המידה האופקי מאחור: קצה הקו יכול היה להסתיים מתחת למטוס ולמספר המרכזי. כעת קנה המידה מכיל תמיד את נקודת הזמן המאושרת, ורק המרווח סביבה משתנה בהדרגה.
+
+נוספו בדיקות המחברות את פונקציות התצוגה והמשיכה מהלקוח שנבנה למנוע השרת, עם תלויות DOM/Canvas ו־Firestore מדומות בזיכרון. הן בודקות מספר מוצג → מטען שנשלח → התחשבנות → תשובה: הגעה לפני עצירה ותשובה אחריה, הגעה מאוחרת שנדחית, אובדן תשובה וניסיון חוזר ללא זיכוי כפול, ויעד אוטומטי שמסומן במפורש. אלו אינן בדיקות דפדפן ואינן מדידת השהיה ברשת הייצור; חסימת הדפדפן עדיין מתועדת ב־`design-qa.md`.
+
+### אימות שרת חי בזמן פרסום
+לאחר פריסת שבע פונקציות AVIATOR, ה־workflow מפעיל `node functions/test/aviatorLiveProbe.cjs --confirm-play-money-production`. הבדיקה משתמשת בכניסת אורח זמנית משלה ובאסימוני המשחק בלבד. היא בודקת משיכה ידנית, מחיר מדויק במאיות, זיכוי בצ׳יפים שלמים, ניסיונות חוזרים ללא חיוב או זיכוי כפולים ומשיכה אוטומטית ללא שליחת פקודת משיכה מהלקוח. היתרה וההימור נקראים ב־Firestore עם הרשאת אותו אורח. חשבון ההתחברות הזמני נמחק בסיום; רישומי המשחק נשמרים להתחשבנות.
+
+הבדיקה מפיקה קבלה מסכמת וזמני תגובה מה־runner ב־GitHub Actions, ללא אסימוני התחברות או קוד מנהל בלוג. אלו אינם זמני ההשהיה במכשיר השחקן ואינם בדיקת דפדפן. בדיקת ה־API אינה פותחת את `/api/timing`, שנשאר סגור.

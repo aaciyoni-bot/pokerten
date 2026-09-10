@@ -17,11 +17,16 @@ function setup({time=10000, phase='flying', phaseAt=0, crash=10, autoAt=null, ro
   const snap = (ref, value=data.get(ref.path)) => ({ref,exists:value!==undefined,data:()=>structuredClone(value)});
   const db = {
     doc:path=>({path,get:async()=>snap({path})}),
+    getAll:async(...refs)=>refs.map(ref=>snap(ref)),
     collection:path=>({doc:()=>({path:path+'/generated-'+(++seq)}),where:(key,op,value)=>({collection:path,key,value})}),
     runTransaction:async fn=>{
       if (beforeTransaction){ const hook=beforeTransaction; beforeTransaction=null; await hook(); }
       const writes=[];
       const tx={
+        getAll:async(...refs)=>{
+          assert.equal(writes.length,0,'Firestore reads must precede writes');
+          return refs.map(ref=>snap(ref));
+        },
         get:async ref=>{
           assert.equal(writes.length,0,'Firestore reads must precede writes');
           if(ref.collection) return {docs:[...data].filter(([k,v])=>k.startsWith(ref.collection+'/')&&v[ref.key]===ref.value).map(([path,v])=>snap({path},v))};

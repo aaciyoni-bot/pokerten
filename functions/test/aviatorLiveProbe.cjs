@@ -74,8 +74,7 @@ async function place(autoAt, previousRound) {
   assert.equal((await ownDocument('aviatorPlayers', uid)).balance, before - 101, 'Bet retry must debit once');
   return {roundId, before};
 }
-async function checkManual() {
-  let previousRound;
+async function checkManual(previousRound) {
   for (let attempt = 0; attempt < 4; attempt++) {
     const {roundId, before} = await place(null, previousRound);
     previousRound = roundId;
@@ -108,6 +107,7 @@ async function checkManual() {
     assert.equal((await ownDocument('aviatorPlayers', uid)).balance, before - 101 + expected, 'Cashout retry paid twice');
     receipts.push({kind:'manual', seenCents, paidCents:seenCents, chips:expected,
       cashoutRttMs:result.measuredRtt, serverProcessingMs:result.serverNow-result.serverReceivedAt,
+      serverTiming:result.serverTiming,
       quoteRttMs:tick.measuredRtt, duplicateCredit:false});
     return roundId;
   }
@@ -140,7 +140,8 @@ async function main() {
     idToken = account.idToken;uid = account.localId;
     assert(idToken && uid, 'Anonymous verification sign-in failed');
     await call('avJoin', {name:'AVIATOR release check'});
-    const manualRound = await checkManual();
+    let manualRound;
+    for (let sample = 0; sample < 3; sample++) manualRound = await checkManual(manualRound);
     await checkAutomatic(manualRound);
     const ticks = timings.filter(r=>r.name==='avTick').map(r=>r.rtt).sort((a,b)=>a-b);
     console.log(JSON.stringify({verification:'passed', transport:'Firebase callable API',

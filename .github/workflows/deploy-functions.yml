@@ -10,6 +10,8 @@ on:
       - claude/pokerten-v1
     paths:
       - 'functions/**'
+      - '!functions/aviator*'
+      - '!functions/test/aviator*'
       - 'firebase.json'
       - '.firebaserc'
   workflow_dispatch: {}
@@ -32,7 +34,16 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
-      - name: Deploy functions
+      - name: Select poker functions only
+        id: targets
+        run: |
+          node - <<'JS' >> "$GITHUB_OUTPUT"
+          const aviator = new Set(['avJoin','avTick','avBet','avCancelBet','avCashout','avPeek','avCredit']);
+          const names = Object.keys(require('./functions')).filter(name => !aviator.has(name));
+          if (!names.length) throw new Error('No poker function exports found');
+          console.log('only=' + names.map(name => 'functions:' + name).join(','));
+          JS
+      - name: Deploy poker functions without changing AVIATOR
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: firebase deploy --only functions --project pokerten --non-interactive --force
+        run: firebase deploy --only "${{ steps.targets.outputs.only }}" --project pokerten --non-interactive

@@ -180,11 +180,10 @@ exports.avTick = onCall(AV_OPTS, async (request) => {
   // Read-only price requests must not hold transaction locks needed by cashout.
   // Revalidate time AND the state/engine round pair after both reads; transitions
   // and settlement still go through the authoritative transaction below.
-  const observed = await stateRef().get();
+  const [observed, observedEngine] = await adb.getAll(stateRef(), engineRef());
   const flying = observed.exists && observed.data();
   if (flying && flying.phase === "flying") {
-    const engineSnap = await engineRef().get();
-    const engine = engineSnap.exists && engineSnap.data();
+    const engine = observedEngine.exists && observedEngine.data();
     const issuedAt = Date.now(), startedAt = flying.startedAt ?? flying.phaseAt;
     if (engine && engine.roundId === flying.roundId && issuedAt >= startedAt &&
         issuedAt < startedAt + timeForMult(engine.crashPoint)) {
@@ -339,11 +338,17 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
   const seenCents = legacy ? Core.toCents(request.data && request.data.seen) : request.data.seenCents;
   const quote = request.data && request.data.quote;
   const pRef = adb.doc(`aviatorPlayers/${uid}`), rRef = requestRef(uid, requestId);
+  const bRef = adb.doc(`aviatorBets/${roundId}_${uid}`);
+  let attempts = 0, readMs = 0;
   const out = await adb.runTransaction(async (tx) => {
-    const cached = priorResult(await tx.get(rRef), "cashout", roundId);
+    attempts++;
+    const readStartedAt = Date.now();
+    // One snapshot read RPC instead of three sequential network round trips.
+    // All documents remain in the transaction, including the round/engine pair.
+    const [rSnap, bSnap, sSnap, eSnap] = await tx.getAll(rRef, bRef, stateRef(), engineRef());
+    readMs = Date.now() - readStartedAt;
+    const cached = priorResult(rSnap, "cashout", roundId);
     if (cached) return cached;
-    const bRef = adb.doc(`aviatorBets/${roundId}_${uid}`);
-    const [bSnap, sSnap] = await Promise.all([tx.get(bRef), tx.get(stateRef())]);
     if (!bSnap.exists) throw new HttpsError("failed-precondition", "אין הימור בסיבוב המבוקש");
     const b = bSnap.data();
     if (legacy && b.protocol === 2) throw new HttpsError("failed-precondition", "המשחק עודכן — יש לרענן את העמוד");
@@ -355,7 +360,6 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
     let round, archived = false;
     const s = sSnap.exists && sSnap.data();
     if (s && s.roundId === roundId && s.phase === "flying") {
-      const eSnap = await tx.get(engineRef());
       const e = eSnap.data();
       if (!e || e.roundId !== roundId) throw new HttpsError("unavailable", "מסנכרן את הסיבוב");
       round = {...e, startedAt: s.startedAt ?? s.phaseAt};
@@ -392,7 +396,8 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
     remember(tx, rRef, "cashout", roundId, result, receivedAt);
     return result;
   });
-  return {...out, serverReceivedAt: receivedAt, serverNow: Date.now()};
+  return {...out, serverReceivedAt: receivedAt, serverNow: Date.now(),
+    serverTiming: {attempts, readMs}};
 });
 
 /* -------------------------------------------------------------------------

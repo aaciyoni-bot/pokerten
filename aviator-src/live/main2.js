@@ -281,6 +281,7 @@ function renderPlayers(){
 }
 
 function updateAction(){
+  updateFlightStatus();
   const btn = $("#actionBtn");
   btn.disabled = false;
   if (!joined){
@@ -324,7 +325,7 @@ function updateAction(){
         btn.className = "wait"; btn.textContent = "ממתין לנתון עדכני…"; btn.disabled = true; return;
       }
       btn.className = "cash";
-      btn.innerHTML = `<span>Cash out<br><span class="sub" id="cashAmt"></span></span>`;
+      btn.innerHTML = `<span>Cash out<br><span class="sub" id="cashAmt">${(S.cents / 100).toFixed(2)}x · ${fmt(chipPayout(myBet.amount, S.cents))} chips</span></span>`;
     } else if (myBet && myBet.cashedAt){
       btn.className = "confirmed"; btn.disabled = true;
       btn.textContent = `${myBet.auto ? "AUTO CASH OUT" : "CASH OUT"} CONFIRMED · ${myBet.cashedAt.toFixed(2)}x`;
@@ -468,6 +469,13 @@ function onWaiting(){
   supPeek();                       // supervisor: reveal the fresh round
 }
 function onFlying(){
+  // A phase event may precede the next animation frame (or resume a hidden tab).
+  // Paint this round's price before revealing the readout or accepting an exit.
+  const m = $("#mult");
+  m.textContent = (S.cents / 100).toFixed(2) + "x";
+  m.className = "";
+  $("#crashTag").classList.remove("on");
+  $("#safeTag").classList.remove("on");
   $("#countdown").hidden = true;
   $("#flightNums").hidden = false;
   toneStart();

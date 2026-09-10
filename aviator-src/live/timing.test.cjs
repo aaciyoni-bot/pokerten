@@ -26,6 +26,20 @@ test('client ignores old-round and lower-phase states', () => {
   assert.equal(ctx.S.roundId,'r2');assert.equal(ctx.S.phase,'crashed');
 });
 
+test('takeoff cannot expose the previous round price before the first animation frame', () => {
+  const els={'#mult':{textContent:'7.19x',className:'dead'}};
+  const el=id=>els[id]||(els[id]={classList:{remove(){}}});
+  let exposed;
+  Object.defineProperty(el('#flightNums'),'hidden',{set(hidden){
+    if(!hidden) exposed=el('#mult').textContent;
+  }});
+  const ctx={S:{cents:100,mult:1},$:el,toneStart(){},play(){},updateAction(){}};
+  vm.runInNewContext(extract('function onFlying(){','function onCrashed(){'),ctx);
+  ctx.onFlying();
+  assert.equal(exposed,'1.00x');
+  assert.equal(el('#mult').className,'');
+});
+
 test('pending cashout feedback is immediate and failures are visible', async () => {
   let reject,ui=0,errors=0;
   const ctx={performance,cashing:false,joined:true,pendingCash:null,myBet:{amount:100},

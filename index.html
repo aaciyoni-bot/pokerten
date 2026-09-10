@@ -1142,7 +1142,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 @media(max-width:600px){.accounting-entry{align-items:flex-start;flex-direction:column;padding:20px;gap:16px}.accounting-entry strong{font-size:20px}.accounting-entry small{font-size:13px}.club-admin td,.club-admin th{padding:10px}.admin-shortcuts{gap:8px;padding:10px}.admin-shortcuts a{flex:1;text-align:center;font-size:12px;padding:9px}}
 
 </style>
-<link rel="stylesheet" href="assets/css/club-ui.css?v=1">
+<link rel="stylesheet" href="assets/css/club-ui.css?v=2">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=1">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1203,6 +1204,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     </script>
 
     <script src="assets/js/club-ui.js?v=1"></script>
+    <script src="assets/js/poker-runtime.js?v=258"></script>
 <script>
 const {
   useState,
@@ -1549,6 +1551,7 @@ const SFX_FILES = {
   flip: ['card_flip_1', 'card_flip_2', 'card_flip_3'],
   chip: ['chips_slide_1', 'chips_slide_2', 'chips_slide_3'],
   chip1: ['chip_single_1', 'chip_single_2'],
+  roulette: ['roulette_roll', 'roulette_tick'],
   check: ['check_knock'],
   fold: ['fold_toss_1', 'fold_toss_2'],
   tick: ['timer_tick_1', 'timer_tick_2'],
@@ -1614,7 +1617,7 @@ setTimeout(() => {
     sfxLoad();
   } catch (e) {}
 }, 2500);
-const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0) => {
+const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0, scope = null) => {
   if (window.__pkMuted || window.__pkVolume === 0 || document.hidden) return false;
   const ctx = sfxCtx();
   const b = SFX.buf[name];
@@ -1652,6 +1655,7 @@ const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0) => {
     tail.connect(SFX.bus);
     const t0 = ctx.currentTime + when;
     src.start(t0);
+    if (scope) scope.push(src);
     if (maxDur > 0) {
       // trim long samples: hold, then quick fade so the cut isn't a click
       const fadeAt = t0 + Math.max(0.05, maxDur - 0.2);
@@ -2795,20 +2799,16 @@ const bestScoreNow = (hole, board, gameType) => {
   return Object.values(counts).some(v => v >= 2) ? 1000001 : 1;
 };
 
-/* ================= Spin & Cash prize wheel (client-side) =================
-   Owner rules: house never loses; prize = entry × multiplier; ×100 is shown
-   on the wheel as a lure but NEVER lands; non-round prizes rounded DOWN, the
-   house keeps the remainder. Edit SPIN_WHEEL weights to retune the edge —
-   just keep the weighted-average multiplier < 3 so the house never loses. */
+/* Spin & Cash: show only prizes supported by the actual draw. */
 const SPIN_WHEEL = [
   { mult: 2, weight: 720 },
   { mult: 3, weight: 200 },
   { mult: 5, weight: 50 },
   { mult: 10, weight: 25 },
   { mult: 25, weight: 5 }
-  // ×100 intentionally absent from the draw — display-only jackpot lure.
+
 ];
-const SPIN_DISPLAY_MULTS = [2, 3, 5, 10, 25, 100]; // what the wheel shows
+const SPIN_DISPLAY_MULTS = SPIN_WHEEL.map(entry => entry.mult);
 const spinExpectedMult = () => {
   const tot = SPIN_WHEEL.reduce((s, f) => s + f.weight, 0);
   return SPIN_WHEEL.reduce((s, f) => s + f.mult * f.weight, 0) / tot;
@@ -3485,7 +3485,7 @@ const PlayerPeek = ({
     className: "w-full mt-2.5 bg-rose-950/60 hover:bg-rose-800 border border-rose-500/40 text-rose-300 hover:text-white py-2 rounded-xl font-black text-[11px]"
   }, "🚪 Remove from table"));
 };
-const SPIN_SEGS = [2, 3, 100, 2, 5, 3, 10, 2, 3, 20, 4, 3];
+const SPIN_SEGS = [2, 3, 5, 2, 10, 3, 2, 5, 3, 25, 2, 3];
 const SEG_COL = {
   2: '#334155',
   3: '#0f766e',
@@ -3493,189 +3493,42 @@ const SEG_COL = {
   5: '#b45309',
   10: '#be185d',
   20: '#b91c1c',
+  25: '#d5b36b',
   100: '#eab308'
 };
-const SpinWheel = ({
-  mult,
-  near,
-  prize,
-  buyIn
-}) => {
-  const [go, setGo] = React.useState(false);
-  const [done, setDone] = React.useState(false);
+const SpinWheel = ({mult, prize, buyIn}) => {
+  const segments = React.useMemo(() => SPIN_SEGS.includes(mult) ? SPIN_SEGS : Number.isFinite(mult) && mult >= 2 ? [...SPIN_SEGS.slice(0,-1),mult] : SPIN_SEGS,[mult]);
   const target = React.useMemo(() => {
-    const idxs = SPIN_SEGS.map((m, i2) => m === mult ? i2 : -1).filter(i2 => i2 >= 0);
-    if (near) return SPIN_SEGS[1] === mult ? 1 : SPIN_SEGS[3] === mult ? 3 : idxs[0];
-    const pool = idxs.filter(i2 => i2 !== 1 && i2 !== 3);
-    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : idxs[0];
-  }, []);
-  React.useEffect(() => {
-    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
-    // roulette clicks: one tick per peg, spaced by inverting the ease-out curve,
-    // so the clicking naturally slows down with the ball
-    try {
-      const segA = 360 / SPIN_SEGS.length;
-      const fRot = 6 * 360 + (target * segA + segA / 2);
-      const pegs = Math.min(90, Math.floor(fRot / segA));
-      for (let k = 1; k <= pegs; k++) {
-        const tt = 6.5 * (1 - Math.cbrt(1 - k * segA / fRot));
-        sfxPlay('chip_single_1', tt, 0.13 + 0.12 * (k / pegs));
-      }
-    } catch (e) {}
-    const tm = setTimeout(() => {
-      setDone(true);
-      try {
-        playSnd('win', 4);
-        if (navigator.vibrate) navigator.vibrate([60, 40, 120]);
-      } catch (e) {}
-    }, 6600);
-    return () => {
-      cancelAnimationFrame(r);
-      clearTimeout(tm);
-    };
-  }, []);
-  const n = SPIN_SEGS.length,
-    segAng = 360 / n;
-  const grad = SPIN_SEGS.map((m, i2) => `${SEG_COL[m]} ${i2 * segAng}deg ${(i2 + 1) * segAng}deg`).join(', ');
-  const finalRot = 6 * 360 + (target * segAng + segAng / 2);
-  return React.createElement("div", {
-    className: "fixed inset-0 z-[400] flex flex-col items-center justify-center",
-    dir: "ltr",
-    style: {
-      background: 'radial-gradient(ellipse at 50% 30%, rgba(60,16,40,0.97), rgba(2,6,15,0.99) 70%)'
-    }
-  }, React.createElement("div", {
-    className: "font-black text-2xl mb-5 tracking-[0.3em]",
-    style: {
-      background: 'linear-gradient(100deg,#8a6a25,#fde68a 30%,#f5c860 50%,#fde68a 70%,#8a6a25)',
-      WebkitBackgroundClip: 'text',
-      backgroundClip: 'text',
-      color: 'transparent',
-      textShadow: 'none'
-    }
-  }, "SPIN & CASH"), React.createElement("div", {
-    className: "relative",
-    style: {
-      width: '320px',
-      height: '320px'
-    }
-  }, React.createElement("div", {
-    className: "absolute inset-0 rounded-full",
-    style: {
-      background: 'conic-gradient(#7a5a1c, #e8c96a, #8a6a25, #f3dc9a, #7a5a1c, #e8c96a, #8a6a25)',
-      boxShadow: '0 18px 60px rgba(0,0,0,0.8), 0 0 70px rgba(245,200,96,0.22), inset 0 2px 6px rgba(255,255,255,0.35)'
-    }
-  }), React.createElement("div", {
-    className: "absolute inset-[7px] rounded-full",
-    style: {
-      background: 'repeating-conic-gradient(rgba(255,244,200,0.95) 0 2deg, rgba(90,60,15,0.9) 2deg 30deg)',
-      maskImage: 'radial-gradient(circle, transparent 62%, black 63%)',
-      WebkitMaskImage: 'radial-gradient(circle, transparent 62%, black 63%)'
-    }
-  }), React.createElement("div", {
-    className: "absolute inset-[18px] rounded-full overflow-hidden",
-    style: {
-      background: `conic-gradient(${grad})`,
-      boxShadow: 'inset 0 0 35px rgba(0,0,0,0.75)'
-    }
-  }, React.createElement("div", {
-    className: "absolute inset-0",
-    style: {
-      background: `repeating-conic-gradient(rgba(245,220,150,0.9) 0 0.7deg, transparent 0.7deg ${segAng}deg)`
-    }
-  }), React.createElement("div", {
-    className: "absolute inset-0",
-    style: {
-      background: 'radial-gradient(circle, transparent 55%, rgba(0,0,0,0.35) 100%)'
-    }
-  })), done && React.createElement("div", {
-    // winning wedge lights up so the eye lands on the result, not the ball
-    className: "absolute inset-[18px] rounded-full pointer-events-none animate-pulse",
-    style: {
-      background: `conic-gradient(transparent ${target * segAng}deg, rgba(255,255,255,0.34) ${target * segAng}deg ${(target + 1) * segAng}deg, transparent ${(target + 1) * segAng}deg)`,
-      mixBlendMode: 'screen'
-    }
-  }), done && React.createElement("div", {
-    className: "absolute inset-0 pointer-events-none"
-  }, Array.from({
-    length: 18
-  }, (_, ci) => React.createElement("div", {
-    key: ci,
-    className: "spin-confetti",
-    style: {
-      '--ca': ci * 20 + 'deg',
-      animationDelay: ci % 6 * 0.05 + 's',
-      background: ci % 3 === 0 ? '#f5c860' : ci % 3 === 1 ? '#fde68a' : '#e879f9'
-    }
-  }))), SPIN_SEGS.map((m, i2) => {
-    const amt = formatShort(m * (buyIn || 50));
-    return React.createElement("div", {
-      key: i2,
-      className: "absolute left-1/2 top-1/2 font-black",
-      style: {
-        transform: `rotate(${i2 * segAng + segAng / 2}deg) translateY(-120px) translateX(-50%)`,
-        transformOrigin: '0 0',
-        fontSize: amt.length > 4 ? '11px' : amt.length > 3 ? '12px' : '14px',
-        color: m === 100 ? '#fff3bf' : '#f8fafc',
-        textShadow: '0 2px 4px rgba(0,0,0,0.95)',
-        letterSpacing: '0.01em'
-      }
-    }, amt);
-  }), React.createElement("div", {
-    className: "absolute inset-[104px] rounded-full flex items-center justify-center",
-    style: {
-      background: 'radial-gradient(circle at 35% 30%, #fde68a, #b8862b 45%, #6b4d16)',
-      boxShadow: '0 4px 14px rgba(0,0,0,0.7), inset 0 -3px 8px rgba(0,0,0,0.45)'
-    }
-  }, React.createElement("div", {
-    className: "w-[78px] h-[78px] rounded-full bg-slate-950/95 border border-amber-300/40 flex items-center justify-center"
-  }, React.createElement("span", {
-    className: `font-black ${done ? 'text-amber-300 animate-pop-in' : 'text-slate-600'}`,
-    style: {
-      fontSize: done ? String(prize).length > 4 ? '20px' : '26px' : '24px'
-    }
-  }, done ? formatShort(prize) : '?'))), React.createElement("div", {
-    className: "absolute left-1/2 -translate-x-1/2 -top-1 z-10",
-    style: {
-      width: 0,
-      height: 0,
-      borderLeft: '11px solid transparent',
-      borderRight: '11px solid transparent',
-      borderTop: '18px solid #fde68a',
-      filter: 'drop-shadow(0 3px 4px rgba(0,0,0,0.7))'
-    }
-  }), React.createElement("div", {
-    className: "absolute inset-0",
-    style: {
-      transform: `rotate(${go ? finalRot : 0}deg)`,
-      transition: go ? 'transform 6.5s cubic-bezier(0.13, 0.82, 0.16, 1)' : 'none'
-    }
-  }, React.createElement("div", {
-    className: "absolute left-1/2 -translate-x-1/2",
-    style: {
-      top: '26px',
-      width: '18px',
-      height: '18px',
-      borderRadius: '50%',
-      background: 'radial-gradient(circle at 35% 28%, #ffffff, #d7dde6 60%, #7c8794)',
-      boxShadow: '0 3px 8px rgba(0,0,0,0.8), 0 0 10px rgba(255,255,255,0.35)'
-    }
-  }))), React.createElement("div", {
-    className: `mt-6 text-center transition-all duration-700 ${done ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`
-  }, React.createElement("div", {
-    className: "text-[11px] font-black text-amber-200/70 tracking-[0.35em] uppercase"
-  }, "The table plays for"), React.createElement("div", {
-    className: "text-5xl font-black mt-1",
-    style: {
-      background: 'linear-gradient(180deg,#fff7d6,#f5c860 55%,#a87e22)',
-      WebkitBackgroundClip: 'text',
-      backgroundClip: 'text',
-      color: 'transparent'
-    },
-    dir: "ltr"
-  }, formatShort(prize)), React.createElement("div", {
-    className: "text-slate-400 text-xs font-bold mt-2"
-  }, "Winner takes all · good luck 🍀")));
+    const choices=segments.map((value,index)=>value===mult?index:-1).filter(index=>index>=0);
+    return choices.length ? choices[Math.floor(Math.random()*choices.length)] : null;
+  },[mult,segments]);
+  const [go,setGo]=React.useState(false),[done,setDone]=React.useState(false);
+  const angle=360/segments.length;
+  const rotation=6*360+(360-((target??0)*angle+angle/2));
+  React.useEffect(()=>{
+    if(target===null)return;
+    setGo(false);setDone(false);
+    let frame=0;const sources=[];
+    const first=requestAnimationFrame(()=>{frame=requestAnimationFrame(()=>{
+      setGo(true);
+      sfxPlay('roulette_roll',0,.65,1,6.5,sources);
+      window.PokerRuntime.spinTickTimes(rotation,segments.length,6.5).forEach((time,i,ticks)=>sfxPlay('roulette_tick',time,.35+.22*i/ticks.length,.95+.05*i/ticks.length,0,sources));
+    });});
+    const timer=setTimeout(()=>{setDone(true);try{playSnd('win',2);if(navigator.vibrate)navigator.vibrate([35,50,70]);}catch(_){}},6650);
+    return()=>{cancelAnimationFrame(first);cancelAnimationFrame(frame);clearTimeout(timer);sources.forEach(source=>{try{source.stop();}catch(_){}});};
+  },[target,rotation,segments.length]);
+  if(target===null)return React.createElement('div',{className:'spin-cash-scene',role:'status'},'Waiting for the prize result…');
+  return React.createElement('div',{className:'spin-cash-scene',dir:'ltr',role:'dialog','aria-label':'Spin and Cash prize draw'},
+    React.createElement('header',{className:'spin-cash-heading'},React.createElement('span',null,'POKERTEN'),React.createElement('h1',null,'SPIN & CASH'),React.createElement('p',null,done?'Your prize pool is ready':'The table is ready. Let it spin.')),
+    React.createElement('div',{className:'spin-cash-wheel-frame','aria-hidden':'true'},
+      React.createElement('i',{className:'fa-solid fa-caret-down spin-cash-pointer'}),
+      React.createElement('div',{className:'spin-cash-rotor',style:{transform:`rotate(${go?rotation:0}deg)`}},
+        React.createElement('img',{src:'assets/design/spin-cash-wheel.webp',alt:'',draggable:false}),
+        segments.map((m,i)=>React.createElement('div',{key:i,className:'spin-cash-label'+(done&&i===target?' is-winner':''),style:{'--segment-angle':`${i*angle+angle/2}deg`,left:`${50+32*Math.sin((i*angle+angle/2)*Math.PI/180)}%`,top:`${50-32*Math.cos((i*angle+angle/2)*Math.PI/180)}%`}},React.createElement('strong',null,'×'+m),React.createElement('small',null,formatShort(spinPrize(buyIn||50,m))))))),
+    React.createElement('div',{className:'spin-cash-result',role:'status','aria-live':'polite'},
+      React.createElement('span',null,done?'PRIZE POOL':'SPINNING'),
+      React.createElement('strong',null,done?formatMoney(prize):'…'),
+      React.createElement('p',null,done?'Winner takes all · ×'+mult:'Good luck at the table')));
 };
 const PodiumScreen = ({
   place,
@@ -3837,6 +3690,7 @@ const CountNum = ({
   });
   React.useEffect(() => {
     const st = ref.current;
+    if (value === null || disp === null) { cancelAnimationFrame(st.raf); st.to = value; setDisp(value); return; }
     if (value === st.to && disp === value) return;
     const from = disp,
       t0 = performance.now();
@@ -3851,7 +3705,7 @@ const CountNum = ({
     st.raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(st.raf);
   }, [value]);
-  return (fmt || (x => x))(disp);
+  return (fmt || (x => x))(value === null ? null : disp);
 };
 const BetCollect = ({
   unit,
@@ -6209,10 +6063,11 @@ function ClubsView({
       }, React.createElement("i", {
         className: "fa-solid fa-users"
       }), members > 0 ? members : '\u2014'), React.createElement("span", {
-        className: "cl-stat"
-      }, React.createElement("i", {
-        className: "fa-solid fa-coins"
-      }), formatShort((m && m.balance) || 0))), d.kind === 'pending' ? React.createElement("div", {
+        className: "cl-stat cl-balance",
+        title: m && Number.isFinite(m.balance) ? m.balance.toLocaleString() : 'Balance unavailable'
+      }, React.createElement('span', { className: 'cl-balance-label' }, 'YOUR BALANCE'), React.createElement('span', {
+        className: 'cl-balance-amount'
+      }, m && Number.isFinite(m.balance) ? formatShort(m.balance) : '—'))), d.kind === 'pending' ? React.createElement("div", {
         className: "cl-cta cl-cta-wait"
       }, React.createElement("i", {
         className: "fa-solid fa-hourglass-half mr-1.5"
@@ -10975,7 +10830,7 @@ function PokerCreateView({
     className: "accent-amber-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-white text-sm font-bold"
-  }, "3 players · the wheel picks the prize (×2–×20, jackpot on display) · winner takes all · no rake")), s.spinMode && React.createElement("div", {
+  }, "3 players · the wheel picks the prize (×2–×25) · winner takes all · no rake")), s.spinMode && React.createElement("div", {
     className: "grid grid-cols-2 gap-2 mt-2"
   }, React.createElement("div", null, React.createElement("div", {
     className: "text-[10px] text-slate-400 font-black mb-1"
@@ -11107,7 +10962,7 @@ function PokerCreateView({
         React.createElement("option", { value: 240 }, "4 min")
       )
     )),
-    React.createElement("div", { className: "text-center text-amber-300/80 text-[11px] font-black mb-4", dir: "ltr" }, `Top prize on the wheel: ${formatShort((Number(sf.buy) || 50) * 100)}`),
+    React.createElement("div", { className: "text-center text-amber-300/80 text-[11px] font-black mb-4", dir: "ltr" }, `Top prize on the wheel: ${formatShort((Number(sf.buy) || 50) * Math.max(...SPIN_DISPLAY_MULTS))}`),
     React.createElement("button", { onClick: createSpin, className: "w-full bg-gradient-to-b from-fuchsia-600 to-amber-600 hover:from-fuchsia-500 text-white py-3.5 rounded-2xl font-black text-lg shadow-lg mb-2" }, "🎡 Open Spin & Cash"),
     React.createElement("button", { onClick: () => setSpinOpen(false), className: "w-full text-slate-400 hover:text-white text-sm font-bold" }, "Cancel")
   )), document.body))));
@@ -11121,8 +10976,16 @@ function PokerTable({
   showToast,
   headless
 }) {
+  const oddsWorkerRef = useRef(null);
+  const botWorkerRef = useRef(null);
+  if (!oddsWorkerRef.current) oddsWorkerRef.current = window.PokerRuntime.createWorkerClient(window.Worker);
+  if (!botWorkerRef.current) botWorkerRef.current = window.PokerRuntime.createWorkerClient(window.Worker);
+  useEffect(() => () => { oddsWorkerRef.current.close(); botWorkerRef.current.close(); }, []);
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [tableError, setTableError] = useState('');
+  const [connectionRetry, setConnectionRetry] = useState(0);
+
   const [godView, setGodView] = useState(false);
   const [rabbit, setRabbit] = useState([]);
   const [betFx, setBetFx] = useState([]);
@@ -11403,7 +11266,7 @@ function PokerTable({
   // Now the first seated human who is actually online (heartbeat within 20s)
   // drives as well. Two drivers at once are harmless: saveGame drops the
   // stale write. Nobody online means nobody is waiting.
-  const onlineHumans = Object.values(players).filter(p => !p.isBot && (p.uid === user.uid || p.lastSeen && Date.now() - p.lastSeen < 20000)).sort((a, b) => (a.seatIndex || 0) - (b.seatIndex || 0));
+  const onlineHumans = Object.entries(players).map(([uid, p]) => ({ ...p, uid })).filter(p => !p.isBot && (p.uid === user.uid || p.lastSeen && Date.now() - p.lastSeen < 20000)).sort((a, b) => (a.seatIndex || 0) - (b.seatIndex || 0));
   const iDrive = isSuperAdmin || (onlineHumans[0] && onlineHumans[0].uid === user.uid);
   const myPlayer = players[user.uid];
   const isSeated = !!myPlayer;
@@ -11423,14 +11286,9 @@ function PokerTable({
       playSnd('turn');
     }
   }, [isMyTurn, gs.activeTurnUid, gs.turnStartedAt]);
-  const clonePlayers = pl => {
-    const o = {};
-    Object.entries(pl || {}).forEach(([k, v]) => o[k] = {
-      ...v,
-      cards: [...(v.cards || [])]
-    });
-    return o;
-  };
+  const playerCopiesRef = useRef(null);
+  if (!playerCopiesRef.current) playerCopiesRef.current = window.PokerRuntime.createPlayerCopies();
+  const clonePlayers = pl => playerCopiesRef.current.clone(pl);
   const saveGame = async (g, pl, extra = {}) => {
     // Optimistic-concurrency guard. Every save carries the sequence number of
     // the snapshot it was computed from; if the table doc moved on since (a
@@ -11441,6 +11299,7 @@ function PokerTable({
     const gOut = {
       ...g
     };
+    let savedPlayers;
     try {
       await window.fb.runTransaction(window.fb.db, async trx => {
         const s = await trx.get(tblRef());
@@ -11448,6 +11307,7 @@ function PokerTable({
         const d0 = s.data();
         const cur = Number((d0.gameState || {}).__seq) || 0;
         if (cur !== base) throw 'stale';
+        savedPlayers = playerCopiesRef.current.merge(d0.players || {}, pl);
         gOut.__seq = cur + 1;
         // chip-conservation sensor: total chips on the table must not change
         // except for rake leaving at showdown or approved top-ups entering.
@@ -11486,37 +11346,60 @@ function PokerTable({
         } catch (e2) {}
         trx.update(tblRef(), {
           gameState: gOut,
-          players: pl,
+          players: savedPlayers,
           ...extra
         });
       });
       // chained flows (save → advancePhase timer with the same object) must
       // keep matching the doc, so bump the caller's copy in place
       g.__seq = gOut.__seq;
-    } catch (e) {}
+      playerCopiesRef.current.committed(pl, savedPlayers);
+      return true;
+    } catch (e) {
+      const reason = e?.message || String(e);
+      console.warn('Poker save rejected', { tableId: tableDocId, reason });
+      if (g.activeTurnUid === user.uid || tableRef.current?.gameState?.activeTurnUid === user.uid) {
+        actedTurnRef.current = null;
+        setActing(false);
+        showToast(reason === 'stale' || reason === 'stale-players' ? 'The table updated. Please try your action again.' : 'Action was not saved. Check your connection and try again.', 'error');
+      }
+      return false;
+    }
   };
   useEffect(() => {
     if (!tableDocId) return;
-    const unsub = window.fb.onSnapshot(tblRef(), d => {
+    setTableError('');
+    let received = false;
+    const timeout = setTimeout(() => {
+      if (!received) setTableError('The table is taking too long to connect. Retry to reconnect.');
+    }, 12000);
+    const unsub = window.fb.onSnapshot(tblRef(), { includeMetadataChanges: true }, d => {
+      received = true;
+      clearTimeout(timeout);
       if (d.exists()) {
-        const t = {
-          id: d.id,
-          ...d.data()
-        };
+        const t = { id: d.id, ...d.data() };
+        // The document key is the seat identity, including older malformed seats.
+        // Preserve the server snapshot exactly for optimistic concurrency checks.
         tableRef.current = t;
         setTableState(t);
+        setTableError(d.metadata?.fromCache ? 'Reconnecting — showing the last saved table.' : '');
         setLoading(false);
-      } else {
-        showToast("The table closed", "error");
+      } else if (!d.metadata?.fromCache) {
+        showToast('The table closed', 'error');
         onLeave();
-      }
+      } else setTableError('Waiting for the table to reconnect.');
+    }, error => {
+      clearTimeout(timeout);
+      setTableError('Connection to the table failed. Retry to reconnect.');
+      console.warn('Poker subscription failed', { tableId: tableDocId, code: error.code });
     });
     return () => {
+      clearTimeout(timeout);
       unsub();
       clearTimeout(advanceRef.current);
       clearTimeout(nextHandRef.current);
     };
-  }, [tableDocId]);
+  }, [tableDocId, connectionRetry]);
   useEffect(() => {
     if (!tableState) return;
     const left = (tableState.leftStacks || {})[user.uid];
@@ -11691,10 +11574,10 @@ function PokerTable({
         f: q.status === 'folded'
       }))
     });
-    await saveGame(g, pl, {
+    if (!(await saveGame(g, pl, {
       history: [...(histT && histT.history || []), histEntry].slice(-100),
       ...tourExtra
-    });
+    }))) return;
     distributeRake(rake, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
     // Rake per player, for the reports. The share is over EVERY player dealt
     // into the hand, not just the humans: the rake came out of a pot that bot
@@ -11849,10 +11732,10 @@ function PokerTable({
         w: winnerNames.has(q.name), f: q.status === 'folded'
       }))
     });
-    await saveGame(g, pl, {
+    if (!(await saveGame(g, pl, {
       history: [...(histT && histT.history || []), histEntry].slice(-100),
       ...tourExtra
-    });
+    }))) return;
     distributeRake(rakeTotal, Object.values(pl).filter(q => (q.cards || []).length).map(q => q.uid));
     // Record rake per human player for the reports (split among players dealt in).
     const dealtAll2 = Object.values(pl).filter(q => (q.cards || []).length);
@@ -11889,7 +11772,7 @@ function PokerTable({
         g.phase = 'discard';
         g.activeTurnUid = null;
         g.turnStartedAt = Date.now();
-        await saveGame(g, pl);
+        if (!(await saveGame(g, pl))) return;
         return;
       }
       g.phase = 'flop';
@@ -11911,14 +11794,14 @@ function PokerTable({
     if (actors.length < 2) {
       g.allInReveal = true;
       g.activeTurnUid = null;
-      await saveGame(g, pl);
+      if (!(await saveGame(g, pl))) return;
       clearTimeout(advanceRef.current);
       advanceRef.current = setTimeout(() => advancePhase(g, pl), 1500);
       return;
     }
     g.activeTurnUid = firstAfterDealer(g, pl);
     g.turnStartedAt = Date.now();
-    await saveGame(g, pl);
+    if (!(await saveGame(g, pl))) return;
   };
   const performAction = async (actorUid, type, targetBet, autoTimeout) => {
     if (setts.serverEngine) {
@@ -12018,12 +11901,12 @@ function PokerTable({
     if (next) {
       g.activeTurnUid = next.uid;
       g.turnStartedAt = Date.now();
-      await saveGame(g, pl);
+      if (!(await saveGame(g, pl))) return;
     } else {
       g.activeTurnUid = null;
       const actorsLeft = actives.filter(q => q.stack > 0);
       if (actives.length > 1 && actorsLeft.length < 2) g.allInReveal = true;
-      await saveGame(g, pl);
+      if (!(await saveGame(g, pl))) return;
       clearTimeout(advanceRef.current);
       advanceRef.current = setTimeout(() => advancePhase(g, pl), 1300);
     }
@@ -12054,11 +11937,11 @@ function PokerTable({
     if (actives.length < 2) {
       // not enough live players for a hand — park the table; the busted sweep
       // and the orchestrator take it from here
-      await saveGame({
+      if (!(await saveGame({
         ...gBase,
         phase: 'waiting',
         activeTurnUid: null
-      }, pl);
+      }, pl))) return;
       return;
     }
     const n = GAME_CARDS[gameType] || 2;
@@ -12149,7 +12032,7 @@ function PokerTable({
       allInReveal: false,
       tourLevel: lvl
     };
-    await saveGame(g, pl);
+    if (!(await saveGame(g, pl))) return;
   };
   const startHand = async (forceClient) => {
     // Tournament break gate — ONE shared clock for every table. A hand that is
@@ -12216,13 +12099,13 @@ function PokerTable({
       });
       const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
       if (actives.length < 2) {
-        await saveGame({
+        if (!(await saveGame({
           ...g0,
           phase: 'waiting',
           activeTurnUid: null,
           board: [],
           pots: []
-        }, pl);
+        }, pl))) return;
         return;
       }
       const uids = actives.map(p => p.uid);
@@ -12256,7 +12139,7 @@ function PokerTable({
         g.phase = 'dc_selection';
         g.activeTurnUid = null;
         g.turnStartedAt = Date.now();
-        await saveGame(g, pl);
+        if (!(await saveGame(g, pl))) return;
       } else {
         await executeDeal(g, pl, setts.isDealerChoice ? g.currentGameType || setts.baseGameType : setts.baseGameType);
       }
@@ -12350,7 +12233,7 @@ function PokerTable({
       const actors = Object.values(pl).filter(q => q.status === 'active' && q.stack > 0);
       if (actors.length < 2) {
         g.activeTurnUid = null;
-        await saveGame(g, pl);
+        if (!(await saveGame(g, pl))) return;
         clearTimeout(advanceRef.current);
         advanceRef.current = setTimeout(() => advancePhase(g, pl), 1400);
         return;
@@ -12358,7 +12241,7 @@ function PokerTable({
       g.activeTurnUid = firstAfterDealer(g, pl);
       g.turnStartedAt = Date.now();
     }
-    await saveGame(g, pl);
+    if (!(await saveGame(g, pl))) return;
   };
   const handleSit = async () => {
     if (tableState?.tournament) return showToast("Tournament table - join via registration in the lobby", "error");
@@ -13010,14 +12893,15 @@ function PokerTable({
     if (cur && Object.keys(cur.players || {}).length >= ((cur.settings || {}).maxPlayers || 6)) spawnTwinTable(cur, true);
   };
   useEffect(() => {
-    if (!iDrive || !tableState || !gs.phase) return;
+    if (srvEngine || !iDrive || !tableState || !gs.phase) return;
     const actor0 = players[gs.activeTurnUid];
     if (BETTING.includes(gs.phase) && gs.activeTurnUid && actor0 && (actor0.isBot || tableState.tournamentId && actor0.sitOut)) {
       const uid = gs.activeTurnUid;
       // sit-out humans are skipped almost instantly (no dead time at the
       // table); bots "think" for a human-looking, varied moment.
       const delay = actor0.isBot ? 1300 + Math.random() * 2400 : 700;
-      const tm = setTimeout(() => {
+      let cancelled = false;
+      const tm = setTimeout(async () => {
         const t = tableRef.current;
         if (!t) return;
         const g = t.gameState;
@@ -13030,12 +12914,13 @@ function PokerTable({
           performAction(uid, toCall > 0 ? 'fold' : 'call');
           return;
         }
-        const mv = botPokerMove(g, t, b) || {
+        const mv = await botWorkerRef.current.request('bot', [g, t, b]) || {
           type: toCall > 0 ? 'fold' : 'call'
         };
+        if (cancelled || tableRef.current?.gameState?.activeTurnUid !== uid || tableRef.current?.gameState?.turnStartedAt !== g.turnStartedAt) return;
         if (mv.type === 'raise' && mv.amt > (b.bet || 0) + 0.001 && mv.amt > g.highestBet) performAction(uid, 'raise', round2(mv.amt));else performAction(uid, mv.type === 'raise' ? 'call' : mv.type);
       }, delay);
-      return () => clearTimeout(tm);
+      return () => { cancelled = true; clearTimeout(tm); botWorkerRef.current.close(); };
     }
     if (gs.phase === 'discard') {
       const iv = setInterval(() => {
@@ -13056,7 +12941,7 @@ function PokerTable({
       }, 2200);
       return () => clearTimeout(tm);
     }
-  }, [gs.activeTurnUid, gs.phase, gs.turnStartedAt, iDrive]);
+  }, [gs.activeTurnUid, gs.phase, gs.turnStartedAt, iDrive, srvEngine]);
   // Bot table talk: one line every 10-15 hands, and usually an answer from a
   // different bot a few seconds later, so the table sounds like people.
   const talkRef = useRef({
@@ -13205,7 +13090,7 @@ function PokerTable({
   const [bustLeft, setBustLeft] = useState(300);
   const [skin, setSkin] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('pkSkin') || '{}') || {};
+      return { ...(JSON.parse(localStorage.getItem('pkSkin') || '{}') || {}), deck4: window.__pkDeck4 };
     } catch (e) {
       return {};
     }
@@ -13434,12 +13319,12 @@ function PokerTable({
             if (actives.length === 0) {
               g2.phase = 'waiting';
               g2.activeTurnUid = null;
-              await saveGame(g2, pl);
+              if (!(await saveGame(g2, pl))) return;
               return;
             }
             g2.activeTurnUid = firstAfterDealer(g2, pl);
             g2.turnStartedAt = Date.now();
-            await saveGame(g2, pl);
+            if (!(await saveGame(g2, pl))) return;
             return;
           }
           const isSitSkip = t.tournamentId && actor.sitOut && actor.status === 'active';
@@ -13514,25 +13399,28 @@ function PokerTable({
     if (nR.prev === 3 && n === 2) nR.hold = true;else if (n === 0 || n > nR.prev) nR.hold = false;
     nR.prev = n;
   }
+  const cardsKey = JSON.stringify(myCards);
+  const boardKey = JSON.stringify(gs.board || []);
+  const revealHands = Object.values(players).filter(p => p.status === 'active' && (p.cards || []).length > 0).map(p => ({ uid: p.uid, cards: p.cards }));
+  const revealKey = JSON.stringify(revealHands);
   const myHand = useMemo(() => {
     if (!myPlayer || !myCards.length) return null;
     return handName(bestScoreNow(myCards, gs.board || [], gs.currentGameType));
-  }, [myCards.length, (gs.board || []).length, gs.phase]);
-  const myEquity = useMemo(() => {
-    if (!myPlayer || myPlayer.status !== 'active' || !myCards.length) return null;
-    if (gs.allInReveal || !['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase)) return null;
-    if (activesOppCount < 1) return null;
-    return simMyEquity(myCards, gs.board || [], activesOppCount, gs.currentGameType);
-  }, [myCards.length, (gs.board || []).length, gs.phase, activesOppCount, gs.allInReveal]);
-  const realEq = useMemo(() => {
-    if (!gs.allInReveal && gs.phase !== 'showdown') return null;
-    const hands = Object.values(players).filter(p => p.status === 'active' && (p.cards || []).length > 0).map(p => ({
-      uid: p.uid,
-      cards: p.cards
-    }));
-    if (hands.length < 2) return null;
-    return simRealEquity(hands, gs.board || [], gs.currentGameType);
-  }, [gs.allInReveal, (gs.board || []).length, gs.phase]);
+  }, [cardsKey, boardKey, gs.currentGameType]);
+  const [equityResult, setEquityResult] = useState({key: '', mine: null, real: null});
+  const equityKey = JSON.stringify([cardsKey, boardKey, revealKey, gs.currentGameType, gs.phase, !!gs.allInReveal, activesOppCount, myPlayer?.status]);
+  useEffect(() => {
+    let active = true;
+    const reveal = gs.allInReveal || gs.phase === 'showdown';
+    const canMine = !headless && !reveal && myPlayer?.status === 'active' && myCards.length && activesOppCount > 0 && ['preflop','discard','flop','turn','river'].includes(gs.phase);
+    const canReal = !headless && reveal && revealHands.length >= 2;
+    if (canMine || canReal) oddsWorkerRef.current.request(canMine ? 'mine' : 'real', canMine ? [myCards, gs.board || [], activesOppCount, gs.currentGameType] : [revealHands, gs.board || [], gs.currentGameType]).then(value => {
+      if (active) setEquityResult({ key: equityKey, mine: canMine ? value : null, real: canReal ? value : null });
+    });
+    return () => { active = false; oddsWorkerRef.current.close(); };
+  }, [equityKey, headless]);
+  const myEquity = equityResult.key === equityKey ? equityResult.mine : null;
+  const realEq = equityResult.key === equityKey ? equityResult.real : null;
   const prevSnd = useRef({
     board: 0,
     phase: '',
@@ -13587,11 +13475,11 @@ function PokerTable({
     ps.turnMine = mine;
     ps.chatLen = cl;
   }, [tableState]);
-  if (loading || !tableState) return React.createElement("div", {
-    className: "h-full flex items-center justify-center text-amber-500"
-  }, React.createElement("i", {
-    className: "fa-solid fa-spinner fa-spin text-3xl"
-  }));
+  if (loading || !tableState) return React.createElement('div', {
+    className: 'h-full flex flex-col gap-4 items-center justify-center p-6 text-amber-300', role: 'status'
+  }, tableError || 'Connecting to your table…', tableError && React.createElement('button', {
+    className: 'px-6 py-3 rounded-xl bg-amber-400 text-slate-950 font-bold', onClick: () => setConnectionRetry(n => n + 1)
+  }, 'Retry connection'), React.createElement('button', { className: 'text-slate-300 underline', onClick: onLeave }, 'Back to lobby'));
   const dealDelay = (uid, ci) => {
     const dd = dealAnimRef.current;
     if (!dd || dd.order[uid] == null) return ci * 45;
@@ -13835,12 +13723,14 @@ function PokerTable({
   const needRebuy = false;
   const eligibleCount = Object.values(players).filter(p => p.stack > 0).length;
   return React.createElement("div", {
-    className: "h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative",
+    className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative",
     dir: "ltr",
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
     }
-  }, skinOpen && ReactDOM.createPortal(React.createElement("div", {
+  }, tableError && React.createElement('div', { className: 'poker-connection-status', role: 'status' }, tableError,
+    React.createElement('button', { onClick: () => setConnectionRetry(n => n + 1) }, 'Retry')),
+  skinOpen && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[500] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setSkinOpen(false)
@@ -13849,25 +13739,9 @@ function PokerTable({
     className: "glass-panel rounded-3xl p-5 w-full max-w-sm animate-pop-in border border-white/10"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white mb-1"
-  }, "🎨 My table look"), React.createElement("p", {
+  }, "Cards & preferences"), React.createElement("p", {
     className: "text-[11px] text-slate-400 font-bold mb-3"
-  }, "Only YOU see this — every player picks their own look."), React.createElement("div", {
-    className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5"
-  }, "Felt color"), React.createElement("div", {
-    className: "flex gap-2 mb-4 flex-wrap"
-  }, [['auto', null], ['green', '#2f7d4d'], ['blue', '#2e6089'], ['red', '#8a3131'], ['purple', '#5b3a86'], ['gold', '#a08326'], ['slate', '#4a5568']].map(([k, col]) => React.createElement("button", {
-    key: k,
-    onClick: () => saveSkin({
-      ...skin,
-      felt: k === 'auto' ? null : k
-    }),
-    className: `w-10 h-10 rounded-full border-2 ${(skin.felt || 'auto') === k ? 'border-amber-400 scale-110' : 'border-white/20'} flex items-center justify-center text-[7px] font-black text-white transition-transform`,
-    style: col ? {
-      background: `radial-gradient(circle at 35% 30%, ${col}, #0a0f1a)`
-    } : {
-      background: 'conic-gradient(#2f7d4d, #2e6089, #a08326, #2f7d4d)'
-    }
-  }, k === 'auto' ? 'AUTO' : ''))), React.createElement("label", {
+  }, "Only YOU see this — every player picks their own look."), React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer bg-slate-900/70 border border-gold-400/25 rounded-xl p-3 mb-4"
   }, React.createElement("input", {
     type: "checkbox",
@@ -14159,14 +14033,12 @@ function PokerTable({
       };
     })()
   }, React.createElement("div", {
-    className: "pt-wrap"
-  }, React.createElement("div", {
-    className: "pt-felt3d hidden lg:block"
-  }), React.createElement("div", {
-    className: "pt-fsvg lg:hidden",
-    dangerouslySetInnerHTML: {
-      __html: PT_FELT_SVG
-    }
+    className: "pt-wrap approved-poker-table"
+  }, React.createElement("img", {
+    className: "approved-poker-material",
+    src: "assets/design/poker-table-portrait.webp",
+    alt: "",
+    draggable: false
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "absolute inset-0 pointer-events-none z-[6]",
     style: {
@@ -14397,14 +14269,14 @@ function PokerTable({
       key: p.uid,
       // a talking player's whole seat lifts above the bet stacks (z-35) —
       // the bubble's own z is trapped inside the seat's stacking context
-      className: "absolute " + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
+      className: "poker-seat " + (isMe ? "poker-seat-hero " : "") + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       style: isMe ? {
         left: '50%',
         // Anchored in pixels on the phone so the fixed-height action bar can
         // never cover his stack (see .pt-hero — on a landscape/desktop window
         // the action bar sits BELOW the table, so there he takes the ring's
         // bottom seat like everyone else, instead of floating mid-felt).
-        bottom: 'var(--heroBottom, clamp(84px, calc(var(--vhpx, 900px) * 0.1667), 150px))',
+        bottom: '12px',
         transform: 'translateX(-50%)'
       } : {
         ...seatPos(i),
@@ -14412,21 +14284,7 @@ function PokerTable({
       }
     }, isTurn && React.createElement("div", {
       className: "player-spotlight"
-    }), p.actionText && React.createElement("div", {
-      className: `action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
-      style: isMe ? {} : farPod ? {
-        top: 'auto',
-        bottom: '-18px',
-        left: '50%',
-        right: 'auto',
-        transform: 'translateX(-50%)'
-      } : {
-        top: '-12px',
-        left: '50%',
-        right: 'auto',
-        transform: 'translateX(-50%)'
-      }
-    }, p.actionText), React.createElement("div", {
+    }), React.createElement("div", {
       className: `relative flex flex-col items-center ${folded ? isMe ? 'opacity-75' : 'opacity-40 grayscale' : ''} ${p.sitOut ? 'opacity-50' : ''}`
     }, ch.bubbles[p.uid] && React.createElement("div", {
       className: "chat-bubble" + (fanBelow ? ' chat-bubble-below' : '')
@@ -14467,12 +14325,12 @@ function PokerTable({
       className: "gift-fx"
     }, g.giftE)), showCards && (isMe || !fanBelow) && (() => {
       const nC = dispCards.length;
-      const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
+      const doFan = hidden && !isMe && nC >= 3;
       const midC = (nC - 1) / 2;
       const ovl = isMe ? nC >= 5 ? -28 : -32 : hidden ? nC >= 5 ? -13 : -11 : nC >= 5 ? -22 : -18;
       const ang = isMe ? nC >= 5 ? 5 : 6 : nC >= 5 ? 6 : 7;
       return React.createElement("div", {
-        className: `flex ${isMe ? 'mb-[-8px]' : 'mb-[-10px]'} z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
+        className: `poker-hole-cards ${!hidden && !isMe ? 'poker-revealed-hand' : ''} flex z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
         style: {
           transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)`
         },
@@ -14562,7 +14420,7 @@ function PokerTable({
     }))), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
       className: "absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30"
     }, "DC"), React.createElement("div", {
-      className: "mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
+      className: "poker-player-info mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
       style: {
         // far pods slimmer (spec: 72px far / 88px near = 0.24T);
         // centered under the avatar (GG) — no inward shift, bets clear it
@@ -14575,16 +14433,30 @@ function PokerTable({
       className: "text-gold-400 font-black text-[12px] leading-tight",
       dir: "ltr"
     }, React.createElement(CountNum, {
-      value: p.stack || 0,
-      fmt: formatShort
-    }))), showCards && !isMe && fanBelow && (() => {
+      value: window.PokerRuntime.visibleStack(p.stack),
+      fmt: value => value === null ? '—' : formatShort(value)
+    })), p.actionText && React.createElement("div", {
+      className: `poker-seat-action action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
+      style: isMe ? {} : farPod ? {
+        top: 'auto',
+        bottom: '-18px',
+        left: '50%',
+        right: 'auto',
+        transform: 'translateX(-50%)'
+      } : {
+        top: '-12px',
+        left: '50%',
+        right: 'auto',
+        transform: 'translateX(-50%)'
+      }
+    }, p.actionText)), showCards && !isMe && fanBelow && (() => {
       const nC = dispCards.length;
-      const doFan = nC >= 3;
+      const doFan = hidden && nC >= 3;
       const midC = (nC - 1) / 2;
       const ovl = nC >= 5 ? -18 : nC === 4 ? -15 : -11;
       const ang = nC >= 5 ? 6 : 7;
       return React.createElement("div", {
-        className: `flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
+        className: `poker-hole-cards ${!hidden ? 'poker-revealed-hand' : ''} flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
         style: {
           transform: `translateX(${Math.round(inX * 12)}px)`
         },
@@ -14746,12 +14618,9 @@ function PokerTable({
   }), players[gs.dcUid]?.name, " is picking the next game...")), gs.phase === 'waiting' && isSeated && React.createElement("div", {
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
-    className: "absolute bottom-0 left-0 right-0 z-[70] bg-gradient-to-t from-black/95 via-black/70 to-transparent px-2 pt-2 pb-[max(5px,env(safe-area-inset-bottom))] min-h-[64px] flex flex-col justify-center"
+    className: "poker-action-dock"
   }, isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
-    className: "absolute left-2 mb-1.5 flex gap-1.5 z-40 pointer-events-none",
-    style: {
-      bottom: isMyTurn ? 'calc(100% + 70px)' : '100%'
-    }
+    className: "poker-hand-status"
   }, !gs.allInReveal && myHand && React.createElement("span", {
     className: "bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg"
   }, myHand), !gs.allInReveal && myEquity !== null && React.createElement("span", {
@@ -14761,7 +14630,7 @@ function PokerTable({
     className: "bg-amber-900/80 border border-amber-500/50 text-amber-300 text-[11px] font-black px-3 py-1 rounded-lg animate-pulse",
     dir: "ltr"
   }, "ALL-IN · ", realEq[user.uid], "%")), isMyTurn && React.createElement("div", {
-    className: "absolute bottom-full left-1 right-1 mb-2 z-40"
+    className: "poker-action-buttons"
   }, (() => {
     const minRaiseTo = Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet);
     const allInTo = round2((myPlayer?.bet || 0) + (myPlayer?.stack || 0));

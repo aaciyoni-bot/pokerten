@@ -53,6 +53,12 @@ const graphClock = 'const t = (now - S.phaseAt) / 1000;';
 if (!canvas.includes(graphClock)) throw new Error('Missing graph clock anchor');
 canvas = canvas.replace(graphClock,
   'const t = flying ? timeForMult(S.mult) / 1000 : (now - S.phaseAt) / 1000;');
+// A late join/reconnect can jump beyond the previous horizontal scale. Keep
+// the confirmed endpoint visible while easing only the spare space around it.
+const graphScale = 'view.xMax += (tx - view.xMax) * 0.075;';
+if (!canvas.includes(graphScale)) throw new Error('Missing graph scale anchor');
+canvas = canvas.replace(graphScale,
+  'view.xMax = Math.max(shownT, view.xMax + (tx - view.xMax) * 0.075);');
 // Keep the graph's data-driven world map local and cache its raster layer.
 canvas = canvas.replace(cut(canvas, '/* world map far below', 'const particles =', 'map loader'), '');
 canvas = canvas.replace(cut(canvas, '  /* --- world map drifting far below --- */', '  /* --- dust parallax --- */', 'map drawing'), '  drawWorldMap();\n\n');

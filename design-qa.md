@@ -7,14 +7,16 @@ Selected reference: other agent's cockpit concept `exec-51b20e6e-0991-4cca-833c-
 
 ## Actual verification
 - Live a9fa238 opened in the supported cloud browser; Take off and game DOM were inspected. This is the previous production build, not verification of the new changes.
-- 40 automated regressions passed: core integer pricing, quote authentication/expiry, exact cashout, delayed settlement including automatic/manual ordering, retries, round rollover, disconnect freeze, 1.00x, exact crash boundary, rounding, legacy rollout, solo/live GOD, chat and audio mute.
+- 45 automated regressions passed: core integer pricing, quote authentication/expiry, exact cashout, delayed settlement including automatic/manual ordering, retries, round rollover, disconnect freeze, 1.00x, exact crash boundary, rounding, legacy rollout, solo/live GOD, chat and audio mute.
+- On 2026-09-10 a generated-client graph regression reproduced an endpoint mismatch after joining an advanced flight: the eased horizontal scale truncated the curve before the plane/readout value. The source builder now keeps the authoritative endpoint within the scale. The failing regression passes after the fix.
+- Four additional client/server integration tests use actual generated frame/cashout functions and actual server handlers with in-memory dependencies. They cover displayed/sent/paid equality with delayed settlement and acknowledgement, rejection of late arrival, lost-response retry without duplicate credit, and explicit automatic-target outcome. This is not real browser, network or Firestore load testing.
 - Generated client rebuilt byte-for-byte from source and script syntax checked.
 - No POKERTEN engine, odds, house edge, owner credential, Firestore rules or public diagnostic access changed.
 
 ## Blocking browser evidence
 On 2026-09-08 the supported browser rejected navigation to `http://terminal.local:4173/`:
 “A saved user permission setting blocks this action. Cloud browser cannot access http://terminal.local:4173 because the user has a saved preference that blocks it.”
-The tool explicitly forbids indirect execution, alternate browser surfaces and workarounds. No alternative browser or alternate-host preview was used to bypass this. The preview server is running, but this is not browser verification.
+The tool explicitly forbids indirect execution, alternate browser surfaces and workarounds. No alternative browser or alternate-host preview was used to bypass this. A fresh user screenshot showing Always allow and a subsequent user-confirmed permission reset both still resulted in the same supported-browser rejection on 2026-09-09. The preview was stopped. Browser verification has not occurred, and the user's timing-priority message did not waive this release gate.
 
 ## Remaining release gates
 - Capture the new desktop screen and mobile iframe, compare with the selected reference, fix any clipping/contrast/spacing defects.

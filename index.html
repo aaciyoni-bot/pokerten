@@ -1144,7 +1144,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=2">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=3">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=4">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -6008,11 +6008,18 @@ function ClubsView({
       className: "flex flex-col"
     }, React.createElement("div", {
       className: "cl-deck",
+      "aria-label": "Your clubs",
+      dir: "ltr",
       ref: deckRef,
       onScroll: e => {
         const el = e.currentTarget;
-        const w = el.firstChild ? el.firstChild.offsetWidth + 14 : 1;
-        const ix = Math.round(el.scrollLeft / w);
+        const center = el.getBoundingClientRect().left + el.clientWidth / 2;
+        let ix = 0, distance = Infinity;
+        [...el.children].forEach((card, i) => {
+          const r = card.getBoundingClientRect();
+          const d = Math.abs(r.left + r.width / 2 - center);
+          if (d < distance) { ix = i; distance = d; }
+        });
         if (ix !== slide) setSlide(ix);
       }
     }, deck.map((d, ix) => {
@@ -6042,7 +6049,7 @@ function ClubsView({
         className: "cl-art"
       }, c.logo ? React.createElement("img", {
         src: c.logo,
-        alt: ""
+        alt: c.name || 'Club logo'
       }) : React.createElement("span", {
         className: "cl-art-letter"
       }, (c.name || '?').trim().charAt(0)), isOwner && React.createElement("span", {
@@ -6088,8 +6095,11 @@ function ClubsView({
       onClick: () => {
         const el = deckRef.current;
         if (!el || !el.firstChild) return;
-        el.scrollTo({ left: ix * (el.firstChild.offsetWidth + 14), behavior: 'smooth' });
+        const card = el.children[ix];
+        if (card) el.scrollTo({ left: card.offsetLeft - (el.clientWidth - card.offsetWidth) / 2, behavior: 'smooth' });
       },
+      "aria-label": d.kind === 'create' ? 'Show Create Club' : `Show ${d.c.name}`,
+      "aria-current": ix === slide ? 'true' : undefined,
       className: `cl-dot ${ix === slide ? 'cl-dot-on' : ''} ${d.kind === 'create' ? 'cl-dot-plus' : ''}`
     }, d.kind === 'create' ? '+' : ''))));
   })(), joinFor && ReactDOM.createPortal(React.createElement("div", {
@@ -14285,6 +14295,7 @@ function PokerTable({
         transform: 'translateX(-50%)'
       } : {
         ...seatPos(i),
+        '--poker-reveal-shift': seatXv < 25 ? '7px' : seatXv > 75 ? '-7px' : '0px',
         transform: 'translate(-50%, -50%)' + (podScale < 1 ? ` scale(${podScale.toFixed(2)})` : '')
       }
     }, isTurn && React.createElement("div", {

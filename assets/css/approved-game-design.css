@@ -128,3 +128,41 @@ body.poker-theme .club-account-dialog .club-eyebrow{color:#e8c879}
 .poker-room .poker-board-secondary>span:first-child{right:auto;left:50%;top:-11px;transform:translateX(-50%);font-size:7px;line-height:8px;padding:0 3px}
 .poker-room .card-back{border:1px solid var(--cbEdge,#eeefef);border-radius:4px;background:repeating-linear-gradient(45deg,var(--cbLine,#80848b) 0 1px,transparent 1px 4px),repeating-linear-gradient(-45deg,var(--cbLine,#80848b) 0 1px,transparent 1px 4px),linear-gradient(160deg,var(--cbA,#ecedef),var(--cbC,#bdc0c4));box-shadow:0 2px 4px #0007,inset 0 0 0 2px #fff7}
 .poker-room .card-back:after{display:none}.poker-room .card-back:before{inset:3px;border-radius:1px;border-color:#fffa}
+
+/* Face-up opponents open enough to expose every upper-left rank and suit. */
+.poker-room .poker-opponent-fan.poker-revealed-hand{--poker-fan-width:clamp(25px,7cqw,36px);--poker-fan-overlap:-0.42;top:-18px!important;translate:var(--poker-reveal-shift,0px) 0}
+/* Supplied club reference: large square artwork, centred name/ID, swipeable
+   cards on a phone. Preserve the entire uploaded logo without cropping it. */
+body.poker-theme .cl-card{padding:18px;border-radius:24px}
+body.poker-theme .cl-art{height:auto;aspect-ratio:1;border-radius:18px;flex-shrink:0}
+body.poker-theme .cl-art img{object-fit:contain}
+body.poker-theme .cl-art-letter{font-size:64px}
+body.poker-theme .cl-name{font-size:22px;white-space:normal;line-height:1.2;min-height:1.2em;overflow-wrap:anywhere}
+body.poker-theme .cl-id{font-size:13px;margin-top:7px}
+body.poker-theme .cl-create-cap{font-size:16px;padding:0 14px;line-height:1.4}
+body.poker-theme .cl-art-create>svg{width:64px!important;height:64px!important}
+body.poker-theme .cl-card-create .cl-cta{margin-top:18px;min-height:48px}
+body.poker-theme .cl-stats{grid-template-columns:minmax(0,.65fr) minmax(0,1.35fr);align-items:stretch;margin:14px 0}
+body.poker-theme .cl-balance{padding:8px!important}.cl-balance-label{letter-spacing:.04em}
+body.poker-theme .cl-cta{min-height:44px;border-radius:12px;font-size:15px}
+@media(min-width:700px){body.poker-theme .cl-deck{grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;padding:24px 0}}
+@media(max-width:699px){
+ body.poker-theme .cl-page{padding:16px 0!important}
+ body.poker-theme .cl-page>.max-w-2xl>div:not(:has(>.cl-deck)){margin-left:16px;margin-right:16px}
+ body.poker-theme .cl-deck{--club-card-width:min(64vw,330px);position:relative;display:flex;gap:24px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:calc((100% - var(--club-card-width))/2);padding:26px calc((100% - var(--club-card-width))/2) 16px;overscroll-behavior-x:contain}
+ body.poker-theme .cl-card{flex:0 0 var(--club-card-width);min-width:0;scroll-snap-align:center;box-sizing:border-box;padding:16px;border-radius:24px}
+ body.poker-theme .cl-name{font-size:20px}
+ body.poker-theme .cl-art{border-radius:16px}
+ body.poker-theme .cl-dots{display:flex!important;gap:6px;margin:0 0 24px;min-height:30px;flex-wrap:wrap;justify-content:center}
+ body.poker-theme .cl-dots button{position:relative;min-height:30px;min-width:24px;width:24px;height:30px;background:transparent;border:0;color:transparent;font-size:0;box-shadow:none}
+ body.poker-theme .cl-dot:after{content:'';position:absolute;width:6px;height:6px;border-radius:10px;background:#64748b;left:50%;top:50%;transform:translate(-50%,-50%)}
+ body.poker-theme .cl-dot-on:after{width:18px;background:#e8c879}
+ body.poker-theme .cl-dot-plus:after{content:'+';width:12px;height:12px;font-size:12px;line-height:12px;color:#0b1119;background:#e8c879}
+ body.poker-theme .cl-banner{max-height:none;border-radius:14px;margin-top:12px}
+}
+/* Two boards leave extra side clearance for opened six-card opponent hands. */
+.poker-room .poker-community.has-second-board{width:40%}
+@container poker-stage (max-height:520px){
+ .poker-room .poker-opponent-fan.poker-revealed-hand{--poker-fan-width:22px;translate:0 0}
+ .poker-room .poker-community:not(.has-second-board){width:46%}
+}

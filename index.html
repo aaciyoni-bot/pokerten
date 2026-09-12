@@ -1421,7 +1421,13 @@ const botDisplayName = (usedNames, usedKeys) => {
   return pick(BOT_NAME_NUM) + ' ' + Math.floor(Math.random() * 9999);
 };
 const BOT_NAMES = BOT_NAMES_PK;
-const isGodUser = u => u && GOD_EMAILS.includes((u.email || '').toLowerCase().trim());
+// Privileges come only from the signed-in, verified Firebase identity.
+// Firestore profile emails, roles, memberships and local preferences are untrusted.
+const isGodUser = u => {
+  const authUser = window.fb?.auth?.currentUser;
+  return !!(u && authUser && u.uid === authUser.uid && authUser.emailVerified === true &&
+    GOD_EMAILS.includes(String(authUser.email || '').toLowerCase().trim()));
+};
 const canManageGame = (u, gameId) => {
   if (!u) return false;
   if ([ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(u.role)) return true;
@@ -4052,13 +4058,13 @@ function App() {
     const snap = await window.fb.getDoc(ref);
     if (snap.exists()) {
       setDbUser({
-        uid: user.uid,
-        ...snap.data()
+        ...snap.data(),
+        uid: user.uid
       });
     } else {
       const email = (user.email || '').toLowerCase();
       const isSuper = email === SUPER_ADMIN_EMAIL;
-      const isGod = GOD_EMAILS.includes(email);
+      const isGod = user.emailVerified === true && GOD_EMAILS.includes(email);
       // A guest signed in anonymously: no Google name, no email. The name and
       // number typed on the login screen are the ONLY identity the club owner
       // will have when the join request lands, so the name becomes the
@@ -11004,7 +11010,9 @@ function PokerTable({
   const [handOrder, setHandOrder] = useState(() => {
     try { return localStorage.getItem('pkHandOrder') || 'rank'; } catch (_) { return 'rank'; }
   });
-  const [godView, setGodView] = useState(false);
+  const [godViewRequested, setGodView] = useState(false);
+  const godView = godViewRequested && isGodUser(user);
+  useEffect(() => setGodView(false), [user.uid]);
   const [rabbit, setRabbit] = useState([]);
   const [betFx, setBetFx] = useState([]);
   const [discFx, setDiscFx] = useState(null);
@@ -11231,21 +11239,25 @@ function PokerTable({
   }, [tableState?.gameState?.phase]);
   const godPhaseKey = (tableState?.gameState?.phase || '') + ':' + (tableState?.gameState?.board || []).length;
   useEffect(() => {
-    if (!srvEngine || !godView) {
+    if (!srvEngine || !godView || !isGodUser(user)) {
       setGodHands({});
       setGodFinal([]);
       return;
     }
+    let cancelled = false;
     window.fb.fx('godPeek', {
       tableId: tableDocId
     }).then(r => {
+      if (cancelled || !isGodUser(user)) return;
       setGodHands(r && r.hands || {});
       setGodFinal(r && r.finalBoard || []);
     }).catch(() => {
+      if (cancelled) return;
       setGodHands({});
       setGodFinal([]);
     });
-  }, [srvEngine, godView, godPhaseKey, tableDocId]);
+    return () => { cancelled = true; };
+  }, [srvEngine, godView, godPhaseKey, tableDocId, user.uid]);
   const [spectate, setSpectate] = useState(false);
   const [buyAmt, setBuyAmt] = useState(0);
   const [raiseAmt, setRaiseAmt] = useState(0);
@@ -11615,6 +11627,8 @@ function PokerTable({
   };
   const runShowdown = async (g, pl) => {
     const actives = Object.values(pl).filter(p => p.status === 'active');
+    const mustRevealAll = !!g.allInReveal || actives.some(p => p.stack === 0);
+    const riverAggressor = [...(g.acts || [])].reverse().find(a => a.s === 'river' && ['raise', 'allin'].includes(a.a))?.u;
     const scores = {};
     actives.forEach(p => {
       const isOmaha = (g.currentGameType || '').startsWith('Omaha');
@@ -11706,7 +11720,11 @@ function PokerTable({
         q.bustedAt = Date.now();
       }
     });
-    const winnersUids = Object.values(pl).filter(q => winnerNames.has(q.name)).map(q => q.uid);
+    const winnersUids = Object.keys(awardMap);
+    g.allInReveal = mustRevealAll;
+    actives.forEach(q => {
+      q.mucked = !(mustRevealAll || winnersUids.includes(q.uid) || q.reveal || q.uid === riverAggressor);
+    });
     const tourExtra = applyTourFlow(pl, winnersUids);
     const histT = tableRef.current;
     const hCode2 = handCode();
@@ -11723,7 +11741,7 @@ function PokerTable({
         // a player who went broke at this showdown was all-in through it — his
         // cards were on the table, and the history must show them (busting
         // is marked before this row is built, so 'active' alone lost them)
-        c: q.status === 'active' || q.status === 'busted' || q.reveal ? q.cards : null,
+        c: !q.mucked && (q.status === 'active' || q.status === 'busted') || q.reveal ? q.cards : null,
         cc: (q.cards || []).length,
         w: winnerNames.has(q.name),
         f: q.status === 'folded'
@@ -11745,7 +11763,7 @@ function PokerTable({
       rake: rakeTotal,
       acts: g.acts || [],
       ps: Object.values(pl).filter(q => (q.cards || []).length).map(q => ({
-        uid: q.uid, n: q.name, bot: !!q.isBot, seat: q.seatIndex, c: q.cards || [],
+        uid: q.uid, n: q.name, bot: !!q.isBot, seat: q.seatIndex, c: !q.mucked && q.status !== 'folded' || q.reveal ? q.cards || [] : [],
         start: round2((q.stack || 0) + (q.bet || 0)),
         w: winnerNames.has(q.name), f: q.status === 'folded'
       }))
@@ -12113,6 +12131,7 @@ function PokerTable({
         p.actionText = '';
         p.hasActed = false;
         p.reveal = false;
+        p.mucked = false;
         p.status = p.stack > 0 ? p.sitOut && !t.tournamentId ? 'sitout' : 'active' : ['busted', 'out'].includes(p.status) ? p.status : 'sitout';
       });
       const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
@@ -14251,7 +14270,7 @@ function PokerTable({
     const farPod = !isMe && seatYv <= 22;
     const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
     const inX = -(seatXv - 50) / 50;
-    let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && (p.status === 'active' || p.status === 'busted')) && !(gs.allInReveal && p.status === 'active');
+    let hidden = !godView && !isMe && !p.reveal && !(gs.phase === 'showdown' && !gs.earlyWin && !p.mucked && (p.status === 'active' || p.status === 'busted')) && !(gs.allInReveal && p.status === 'active');
     let dispCards = p.cards || [];
     if (srvEngine) {
       if (isMe) {
@@ -14508,10 +14527,10 @@ function PokerTable({
         size: hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))));
-    })(), React.createElement("div", { className: "poker-result-meta" }, (gs.allInReveal || gs.phase === 'showdown') && realEq && realEq[p.uid] !== undefined && p.status === 'active' && React.createElement("div", {
+    })(), React.createElement("div", { className: "poker-result-meta" }, !hidden && (gs.allInReveal || gs.phase === 'showdown') && realEq && realEq[p.uid] !== undefined && p.status === 'active' && React.createElement("div", {
       className: "mt-1 z-30 bg-amber-900/90 border border-amber-500/50 text-amber-300 text-[11px] font-black px-2.5 py-0.5 rounded-md animate-pop-in",
       dir: "ltr"
-    }, realEq[p.uid], "%"), (gs.allInReveal || gs.phase === 'showdown') && p.status === 'active' && (gs.board || []).length >= 3 && (isMe ? myCards : p.cards || []).length > 0 && React.createElement("div", {
+    }, realEq[p.uid], "%"), !hidden && (gs.allInReveal || gs.phase === 'showdown') && ['active', 'busted', 'out'].includes(p.status) && (gs.board || []).length >= 3 && (isMe ? myCards : p.cards || []).length > 0 && React.createElement("div", {
       className: "poker-hand-name mt-0.5 z-30 bg-slate-950/95 border border-amber-400/50 text-amber-100 text-[10px] font-black px-2 py-0.5 rounded-md whitespace-nowrap"
     }, handName(bestScoreNow(isMe ? myCards : p.cards, gs.board || [], gs.currentGameType))))));
   }), (() => {
@@ -15326,7 +15345,7 @@ function PokerTable({
     },
     title: tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave',
     className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-rose-500/40 bg-slate-900/90 text-rose-300 hover:bg-rose-800 hover:text-white shadow-xl text-lg"
-  }, ...menuTile("🚪", tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave'))))), document.body), gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
+  }, ...menuTile("🚪", tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave'))))), document.body), gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
     onClick: async () => {
       try {
         if (srvEngine) {
@@ -15335,15 +15354,16 @@ function PokerTable({
           });
         } else {
           await window.fb.updateDoc(tblRef(), {
-            [`players.${user.uid}.reveal`]: true
+            [`players.${user.uid}.reveal`]: true,
+            [`players.${user.uid}.mucked`]: false
           });
         }
       } catch (e) {}
     },
     title: "Show your cards to the table",
-    className: "px-3 h-11 rounded-2xl border border-sky-400/50 bg-sky-600/20 text-sky-200 shadow-xl text-xs font-black animate-pulse"
+    className: "poker-show-hand px-3 h-11 rounded-2xl border border-sky-400/50 bg-sky-600/20 text-sky-200 shadow-xl text-xs font-black animate-pulse"
   }, "SHOW 🃏"), gs.phase === 'showdown' && myPlayer?.reveal && React.createElement("div", {
-    className: "px-3 h-11 rounded-2xl border border-emerald-400/60 bg-emerald-600/25 text-emerald-200 shadow-xl text-xs font-black flex items-center gap-1.5 animate-pop-in"
+    className: "poker-show-hand px-3 h-11 rounded-2xl border border-emerald-400/60 bg-emerald-600/25 text-emerald-200 shadow-xl text-xs font-black flex items-center gap-1.5 animate-pop-in"
   }, "✓ SHOWN — the table sees your cards")), canShowBuyIn && setts.spinMode && !tableState.spin ? React.createElement("div", {
     className: "absolute inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
@@ -15527,7 +15547,9 @@ function DurakTable({
 }) {
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [godView, setGodView] = useState(false);
+  const [godViewRequested, setGodView] = useState(false);
+  const godView = godViewRequested && isGodUser(user);
+  useEffect(() => setGodView(false), [user.uid]);
   const [timeLeft, setTimeLeft] = useState(DURAK_TIME);
   const [resHide, setResHide] = useState(false);
   useEffect(() => {
@@ -17351,7 +17373,9 @@ function OFCTable({
   const [stage, setStage] = useState({});
   const [selCard, setSelCard] = useState(null);
   const [errMsg, setErrMsg] = useState('');
-  const [godView, setGodView] = useState(false);
+  const [godViewRequested, setGodView] = useState(false);
+  const godView = godViewRequested && isGodUser(user);
+  useEffect(() => setGodView(false), [user.uid]);
   const [showSeen, setShowSeen] = useState(false);
   const tableRef = useRef(null);
   const settlingRef = useRef(false);

@@ -46,6 +46,11 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
    assert.match(doc.querySelector('.poker-seat-hero .poker-hand-name').textContent,/Straight Flush/i);
    assert.equal(doc.querySelector('.poker-seat-winner .card-mucked'),null,'winning cards never fade into the muck');
  }
+ current.players.other.mucked=true;
+ await React.act(async()=>tableNext(snapshot()));
+ assert.equal(doc.querySelector('.poker-seat:not(.poker-seat-hero) .poker-opponent-fan').querySelectorAll('.card-face').length,0,'mucked loser cards stay hidden');
+ assert.equal(doc.querySelector('.poker-seat:not(.poker-seat-hero) .poker-hand-name'),null,'mucked hand strength stays hidden too');
+ current.players.other.mucked=false;
  privateHand=current.players.me.cards;
  current.players.me.cardCount=6;current.players.me.cards=[];current.settings.serverEngine=true;
  await React.act(async()=>tableNext(snapshot()));

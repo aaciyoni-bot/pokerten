@@ -10,6 +10,7 @@ on:
       - claude/pokerten-v1
     paths:
       - 'functions/**'
+      - '.github/workflows/deploy-functions.yml'
       - '!functions/aviator*'
       - '!functions/test/aviator*'
       - 'firebase.json'
@@ -42,7 +43,9 @@ jobs:
         run: |
           node - <<'JS' >> "$GITHUB_OUTPUT"
           const aviator = new Set(['avJoin','avTick','avBet','avCancelBet','avCashout','avPeek','avCredit']);
-          const names = Object.keys(require('./functions')).filter(name => !aviator.has(name));
+          const names = Object.entries(require('./functions'))
+            .filter(([name, value]) => !aviator.has(name) && typeof value === 'function' && (value.__endpoint || value.__trigger))
+            .map(([name]) => name);
           if (!names.length) throw new Error('No poker function exports found');
           console.log('only=' + names.map(name => 'functions:' + name).join(','));
           JS

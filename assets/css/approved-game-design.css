@@ -1,10 +1,42 @@
 /* Selected Poker reference adapted to a portrait playfield. */
-.poker-room{background:#070e17!important}.poker-room .pt-stage{background:#080f17;padding:0!important}.poker-room .poker-table{max-width:500px!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+.poker-room{background:#070e17!important}.poker-room .pt-stage{background:#080f17;padding:0!important;container-type:size;container-name:poker-stage}
+/* This portrait artwork must never inherit the old 1.85:1 landscape table.
+   Fit the available stage height, including on desktop and short windows. */
+.poker-room .poker-table{width:100%;max-width:500px!important;height:100%!important;max-height:none!important;aspect-ratio:auto!important;margin:0 auto;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+@media(min-width:640px){.poker-room .poker-table{width:min(100%,66.667cqh);max-width:none!important}}
+.poker-room .poker-table{container-type:inline-size}
+/* ClubGG reference: 5:7 faces, one upper index and a large lower suit.
+   Scope the deck to poker; other games keep their existing card presentation. */
+.poker-card-symbol{display:none}
+.poker-room .card-face{container-type:inline-size;aspect-ratio:5/7;height:auto!important;min-height:0;border-radius:6px;background:#f5f5f2!important}
+.poker-room .card-face[data-card-size="lg"]{width:clamp(40px,10.8cqw,78px)!important}
+.poker-room .card-face[data-card-size="xl"]{width:clamp(46px,12.5cqw,88px)!important}
+.poker-room .card-face[data-card-size="md"]{width:clamp(30px,9cqw,64px)!important}
+.poker-room .card-face[data-card-size="sm"]{width:clamp(26px,7.5cqw,48px)!important}
+.poker-room .card-face[data-card-size="xs"]{width:clamp(20px,5cqw,34px)!important}
+.poker-room .poker-card-index--reverse{display:none}
+.poker-room .poker-card-index>span:first-child{font-family:'Roboto Condensed','Arial Narrow',Arial,sans-serif!important;font-size:47cqw!important;font-weight:700!important;letter-spacing:-.025em!important}
+.poker-room .poker-card-index svg{width:33cqw!important;height:33cqw!important;filter:none!important}
+.poker-room .poker-card-symbol{display:flex;position:absolute;right:5%;bottom:6%;pointer-events:none}
+.poker-room .poker-card-symbol svg{width:64cqw!important;height:64cqw!important;filter:none!important}
+.poker-room .poker-revealed-hand .card-face{width:clamp(24px,6.4cqw,42px)!important}
+/* Opponents keep one compact fan even when their cards turn face-up. */
+.poker-room .poker-opponent-fan{--poker-fan-width:clamp(25px,7.2cqw,44px);display:flex!important;flex-wrap:nowrap;gap:0!important}
+.poker-room .poker-opponent-fan .card-face,.poker-room .poker-opponent-fan .card-back{width:var(--poker-fan-width)!important;height:auto!important;aspect-ratio:5/7}
 .poker-room .approved-poker-table{position:absolute;inset:0;overflow:hidden;pointer-events:none;transform:none!important;perspective:none!important}
 .approved-poker-material{width:100%;height:100%;object-fit:fill;display:block;filter:none!important}
 .poker-room .poker-player-info,.poker-room .poker-seat-info,.poker-room .poker-hero-info{background:#09121df2!important;border:1px solid #73808b!important;box-shadow:0 3px 8px #0009!important;border-radius:10px!important;color:#f7f5ee}
 .poker-room .player-pod{border-color:#b59e71!important;box-shadow:0 0 0 2px #111d2a,0 3px 8px #0008!important}.poker-room .player-pod.active-glow{border-color:#32d8ee!important;box-shadow:0 0 16px #16cfeb66!important}
 .poker-room .poker-action-dock{background:#09131f!important;border-top:1px solid #3a4a5a;box-shadow:0 -6px 20px #0004;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+/* Fixed rows exist during waiting, CHECK, CALL and showdown alike. Conditional
+   React children may appear/disappear without taking height from the stage. */
+.poker-room .poker-action-dock{box-sizing:border-box;display:grid;grid-template-rows:24px 52px 36px;gap:6px;flex:0 0 calc(133px + max(10px,env(safe-area-inset-bottom)));height:calc(133px + max(10px,env(safe-area-inset-bottom)));padding-top:8px;align-content:start}
+.poker-room .poker-hand-status{grid-row:1;flex-wrap:nowrap;align-items:center;min-width:0;overflow:hidden}
+.poker-room .poker-action-buttons{grid-row:2;width:100%;max-width:580px;margin:0 auto}
+.poker-room .poker-action-buttons>div{max-width:none}
+.poker-room .poker-action-meta{grid-row:3;width:100%;max-width:580px;margin:0 auto;min-width:0}
+.poker-room .poker-action-dock>.poker-spectator-seat{grid-row:2;justify-self:center;margin:0}
+.poker-room .poker-action-buttons>div>.grid>button{height:52px}
 .poker-room .poker-action-buttons button{border-radius:11px!important;border-width:1px!important;min-height:48px;font-size:15px;box-shadow:inset 0 1px 0 #ffffff26,0 4px 9px #0005!important}
 .poker-room .poker-action-buttons .btn-fold{background:#981c29!important;border-color:#e54d56!important;color:white!important}.poker-room .poker-action-buttons .btn-check,.poker-room .poker-action-buttons .btn-call{background:#182839!important;border-color:#7e94ab!important;color:white!important}.poker-room .poker-action-buttons .btn-raise{background:#d6ad60!important;border-color:#ffe3a1!important;color:#241a0b!important}
 .spin-cash-scene{position:fixed;inset:0;z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(16px,3dvh,32px);padding:24px 16px max(24px,env(safe-area-inset-bottom));overflow:auto;background:#070d16;color:#f7edda;font-family:Heebo,Arial,sans-serif}
@@ -16,3 +48,83 @@
 .spin-cash-label>strong,.spin-cash-label>small{display:block;text-shadow:0 2px 3px #000}.spin-cash-label>strong{font-size:clamp(15px,4vw,23px);font-weight:800}.spin-cash-label>small{font-size:clamp(9px,2.4vw,12px);margin-top:3px;color:#c7b98e}.spin-cash-label.is-winner{color:#fff5c2}
 .spin-cash-result{width:min(86vw,340px);text-align:center;min-height:98px;padding:15px 24px;background:#111d28;border:1px solid #695c3f;border-radius:16px}.spin-cash-result>span{color:#b5a47e;font-size:11px;font-weight:700;letter-spacing:2px}.spin-cash-result>strong{display:block;font-size:clamp(30px,8vw,42px);color:#f5d48e;line-height:1.3;font-variant-numeric:tabular-nums}.spin-cash-result p{color:#a8b8c4;font-size:12px;margin:4px 0}
 @media(prefers-reduced-motion:reduce){.spin-cash-rotor{transition-duration:.01ms}.spin-cash-wheel-frame{filter:none}}
+
+/* A reserved centre lane prevents either board from entering a player's seat. */
+.poker-room .poker-community{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);width:52%;display:flex;flex-direction:column;gap:14px;z-index:30;pointer-events:none}
+.poker-room .poker-board{position:relative;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;align-items:start;min-width:0}
+.poker-room .poker-board-primary{order:0}.poker-room .poker-board-secondary{order:1}
+.poker-room .poker-board .card-face{width:100%!important;max-width:none}
+.poker-room .poker-board>div,.poker-room .poker-board>span{min-width:0;width:100%}
+.poker-room .poker-board-secondary>span:first-child{position:absolute;right:calc(100% + 4px);top:50%;transform:translateY(-50%);width:auto}
+.poker-room .poker-total-pot{bottom:calc(100% + 10px);top:auto;transform:translateX(-50%);white-space:nowrap;width:max-content;max-width:100%;padding:3px 12px}
+.poker-room .poker-opponent-fan.is-hidden{--poker-fan-overlap:-0.8;--poker-fan-width:clamp(24px,6.8cqw,40px)}
+.poker-room .poker-table-caption{top:71%;width:48%}
+.poker-room .poker-table-caption .text-\[13px\]{font-size:10px}
+.poker-room .poker-table-caption .tracking-\[0\.22em\]{font-size:16px!important}
+.poker-room .poker-hand-name{max-width:106px;overflow:hidden;text-overflow:ellipsis;font-size:9px}
+
+.poker-room .poker-own-fan{--poker-fan-width:clamp(38px,11.5cqw,64px);--poker-fan-overlap:-0.44;gap:0!important;position:relative;z-index:20}
+.poker-room .poker-own-fan .card-face{width:var(--poker-fan-width)!important}
+.poker-room .poker-seat:not(.poker-seat-hero) .poker-opponent-fan{position:absolute;top:0;margin-top:0;transform:none!important;z-index:20}
+.poker-room .poker-player-info{position:relative;z-index:25}
+.poker-room .poker-seat-hero .player-pod{margin-top:-24px}
+
+.poker-room .player-pod.winner-glow{border-color:#ffe295!important;box-shadow:0 0 0 2px #f5c860,0 0 20px #eabd5570!important}
+.poker-room .poker-seat-winner .poker-player-info{border-color:#f5c860!important;box-shadow:0 0 12px #eabd5540!important}
+.poker-room .poker-seat-winner .poker-hand-name{color:#ffe8a8;border-color:#f5c860}
+/* Club entry and reports share the quiet black/gold poker palette. */
+body.poker-theme .club-surface{background:#101113!important}
+body.poker-theme .cl-page>.max-w-2xl{max-width:1080px;width:100%}
+body.poker-theme .cl-deck{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+body.poker-theme .cl-card{background:#1c1e21;border-color:#3a3c40;padding:12px;border-radius:12px;box-shadow:0 4px 12px #0004}
+body.poker-theme .cl-art{height:100px;background:#151719;border-color:#625437}
+body.poker-theme .cl-name{font-size:16px;line-height:1.4;margin-top:10px}
+body.poker-theme .cl-id{font-size:11px;margin-top:4px}
+body.poker-theme .cl-stats{gap:6px;margin:10px 0}
+body.poker-theme .cl-stat{font-size:12px;padding:7px 3px}
+body.poker-theme .cl-cta{font-size:14px;min-height:44px;box-shadow:none}
+body.poker-theme .cl-create-cap{font-size:12px}
+body.poker-theme .cl-banner{max-height:170px}
+body.poker-theme .club-admin{background:#101113!important;color:#edf0f3!important;--club-accent:#e8c879;--club-action:#8a641c}
+body.poker-theme .club-admin :is(.glass-panel,.stat-tile,.club-player-card,.club-account-card,.club-report-details){background:#1c1e21!important;border-color:#3a3c40!important;color:#edf0f3!important;box-shadow:none!important}
+body.poker-theme .club-admin :is(h1,h2,h3,h4,.text-white,.text-slate-100,.text-slate-200,.text-slate-300){color:#edf0f3!important}
+body.poker-theme .club-admin :is(.text-slate-400,.text-slate-500,.text-slate-600){color:#abb2bd!important}
+body.poker-theme .club-admin :is([class*="text-emerald-"],[class*="text-green-"],.club-positive){color:#69dca5!important}
+body.poker-theme .club-admin :is([class*="text-rose-"],[class*="text-red-"],.club-negative){color:#ff8998!important}
+body.poker-theme .club-admin :is([class*="text-amber-"],[class*="text-gold-"]){color:#efd18c!important}
+body.poker-theme .club-admin :is([class*="text-purple-"],[class*="text-fuchsia-"]){color:#d0b3f4!important}
+body.poker-theme .club-admin :is([class*="bg-slate-9"],[class*="bg-slate-8"]){background:#17191c!important;border-color:#3b3e44!important}
+body.poker-theme .club-admin [class*="bg-gradient-"]{background-color:#24272c!important;border-color:#42464c!important}
+body.poker-theme .club-admin button[class*="bg-gradient-"]{background:#80612b!important;color:white!important}
+body.poker-theme .club-admin input:not([type="checkbox"]):not([type="range"]),body.poker-theme .club-admin select{background:#17191c!important;border-color:#4c5158!important;color:#edf0f3!important}
+body.poker-theme .club-admin th{background:#25282d;color:#b6bec8!important}
+body.poker-theme .club-admin td{border-color:#34383e!important}
+body.poker-theme .club-admin :is(.admin-quick-nav,.club-admin-nav){background:#1c1e21;border-color:#3a3c40}
+body.poker-theme .club-admin :is(.admin-quick-nav,.club-admin-nav) a{background:#292c31;color:#efcf88}
+body.poker-theme .club-admin .accounting-entry{background:#29261e!important;border:1px solid #6e5c39!important}
+body.poker-theme .club-admin :is(.club-account-identity small,.club-account-result small,.club-account-numbers small,.club-account-agent,.club-report-details>summary){color:#aeb7c2}
+body.poker-theme .club-admin :is(.club-account-result,.club-account-agent){border-color:#3b3f46}
+body.poker-theme .club-admin .club-avatar{background:#30343a;color:#efcf88}
+body.poker-theme .club-admin .club-empty{background:#1c1e21;color:#abb2bd}
+body.poker-theme .club-admin .club-pagination button{background:#25282d;color:#edf0f3;border-color:#4c5158}
+body.poker-theme .club-account-dialog{background:#15171a;color:#edf0f3}
+body.poker-theme .club-account-dialog :is(.club-profile-facts>div,.club-dialog-close){background:#25282d;border-color:#4c5158;color:#edf0f3}
+body.poker-theme .club-account-dialog :is(.club-profile-facts dt,.club-explainer,.club-game-entry small){color:#b0b9c5}
+body.poker-theme .club-account-dialog .club-eyebrow{color:#e8c879}
+@media(min-width:700px){body.poker-theme .cl-deck{grid-template-columns:repeat(3,minmax(0,1fr))}body.poker-theme .cl-art{height:130px}}
+@media(min-width:1050px){body.poker-theme .cl-deck{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+.poker-room .poker-result-meta{display:flex;align-items:center;justify-content:center;gap:3px;grid-column:1/-1;max-width:110px;margin-top:3px}
+.poker-room .poker-result-meta:empty{display:none}
+.poker-room .poker-result-meta>div{margin:0;padding:2px 3px;font-size:9px;line-height:12px;white-space:nowrap}
+@container poker-stage (max-height:520px){
+ .poker-room .poker-seat:not(.poker-seat-hero){scale:.82}
+ .poker-room .poker-community{width:50%;gap:14px}
+ .poker-room .poker-own-fan{--poker-fan-width:36px}
+ .poker-room .poker-table-caption{display:none}
+ .poker-room .poker-table-caption .tracking-\[0\.22em\]{font-size:12px!important}
+}
+
+.poker-room .poker-board-secondary>span:first-child{right:auto;left:50%;top:-11px;transform:translateX(-50%);font-size:7px;line-height:8px;padding:0 3px}
+.poker-room .card-back{border:1px solid var(--cbEdge,#eeefef);border-radius:4px;background:repeating-linear-gradient(45deg,var(--cbLine,#80848b) 0 1px,transparent 1px 4px),repeating-linear-gradient(-45deg,var(--cbLine,#80848b) 0 1px,transparent 1px 4px),linear-gradient(160deg,var(--cbA,#ecedef),var(--cbC,#bdc0c4));box-shadow:0 2px 4px #0007,inset 0 0 0 2px #fff7}
+.poker-room .card-back:after{display:none}.poker-room .card-back:before{inset:3px;border-radius:1px;border-color:#fffa}

@@ -39,6 +39,19 @@
       }
     };
   }
+  // Return original indices: sorting is a local preference and must never
+  // change deal state or the index submitted for a Pineapple discard.
+  function handDisplayOrder(cards, mode = 'rank') {
+    const ranks = { A:14, K:13, Q:12, J:11, T:10 };
+    const suits = { '♥':0, '♦':1, '♣':2, '♠':3 };
+    const rank = c => ranks[c.val] || Number(c.val) || 0;
+    const suit = c => suits[c.suit] ?? 4;
+    const order = (cards || []).map((_, i) => i);
+    if (mode === 'dealt') return order;
+    return order.sort((a, b) =>
+      (mode === 'suit' ? suit(cards[a]) - suit(cards[b]) : 0) ||
+      rank(cards[b]) - rank(cards[a]) || suit(cards[a]) - suit(cards[b]) || a - b);
+  }
   function deckFour(storage) {
     try { return storage.getItem('pkDeck4') === '1'; } catch (_) { return false; }
   }
@@ -90,7 +103,7 @@
     }
     return times;
   }
-  const api = { createPlayerCopies, deckFour, visibleStack, createWorkerClient, spinTickTimes };
+  const api = { handDisplayOrder, createPlayerCopies, deckFour, visibleStack, createWorkerClient, spinTickTimes };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PokerRuntime = api;
 })(typeof window !== 'undefined' ? window : globalThis);

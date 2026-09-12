@@ -20,6 +20,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;800;900&family=Rubik:wght@400;500;700;900&family=Frank+Ruhl+Libre:wght@700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1143,7 +1144,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=2">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=1">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=3">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1204,7 +1205,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     </script>
 
     <script src="assets/js/club-ui.js?v=1"></script>
-    <script src="assets/js/poker-runtime.js?v=258"></script>
+    <script src="assets/js/poker-runtime.js?v=259"></script>
 <script>
 const {
   useState,
@@ -3198,6 +3199,8 @@ const PCard = ({
   const isCourt = false; // court frame removed — clean cards, no 'card-in-card' look
   return React.createElement("div", {
     className: `${D.w} card-face relative overflow-hidden`,
+    "data-card-size": size || 'md',
+    "data-winning-card": hl ? "true" : undefined,
     style: {
       height: D.h,
       // winning-combination highlight at showdown: gold ring + slight lift
@@ -3208,7 +3211,7 @@ const PCard = ({
     },
     dir: "ltr"
   }, React.createElement("div", {
-    className: "absolute flex flex-col items-center",
+    className: "poker-card-index absolute flex flex-col items-center",
     style: {
       top: '5%',
       left: '8%',
@@ -3234,7 +3237,7 @@ const PCard = ({
     size: D.suit
   }))), React.createElement("div", {
     // mirrored second index so fanned/rotated cards stay readable (standard deck)
-    className: "absolute flex flex-col items-center",
+    className: "poker-card-index--reverse absolute flex flex-col items-center",
     style: {
       bottom: '5%',
       right: '8%',
@@ -3259,7 +3262,10 @@ const PCard = ({
     color: deck4 ? col : undefined,
     grad: gradOn,
     size: `calc(${D.suit} * 0.62)`
-  }))), showBig && (isCourt ? React.createElement("div", {
+  }))), React.createElement("div", {
+    className: "poker-card-symbol",
+    "aria-hidden": true
+  }, React.createElement(SuitGlyph, {s:card.suit,color:deck4?col:(isRed?'#ba1720':'#141414'),size:D.big})), showBig && (isCourt ? React.createElement("div", {
     // court cards: ornamental framed panel instead of a bare letter
     className: "absolute flex flex-col items-center justify-center pointer-events-none",
     style: {
@@ -10985,7 +10991,9 @@ function PokerTable({
   const [loading, setLoading] = useState(true);
   const [tableError, setTableError] = useState('');
   const [connectionRetry, setConnectionRetry] = useState(0);
-
+  const [handOrder, setHandOrder] = useState(() => {
+    try { return localStorage.getItem('pkHandOrder') || 'rank'; } catch (_) { return 'rank'; }
+  });
   const [godView, setGodView] = useState(false);
   const [rabbit, setRabbit] = useState([]);
   const [betFx, setBetFx] = useState([]);
@@ -13493,7 +13501,7 @@ function PokerTable({
   // gs.handN comes from the deal itself; the dealAnimRef.t0 fallback covers
   // server-engine tables until their first counted hand.
   const handKey = gs.handN || (dealAnimRef.current || {}).t0 || 0;
-  const muckCls = gs.phase === 'showdown' ? ' card-mucked' : '';
+  // Losing hands may fade; the winning hand must remain readable.
   // the table menu: every tile carries a word, not just a glyph
   const menuTile = (icon, label) => [React.createElement("span", {
     key: 'i',
@@ -13514,12 +13522,13 @@ function PokerTable({
       const isOmaha = (gs.currentGameType || '').startsWith('Omaha');
       const set = new Set();
       Object.values(players).forEach(p => {
-        if (!names.has(p.name) || !(p.cards || []).length) return;
-        if (!(p.status === 'active' || p.reveal)) return;
+        const holeCards = p.uid === user.uid ? myCards : p.cards || [];
+        if (!names.has(p.name) || !holeCards.length) return;
+        if (!(p.status === 'active' || p.status === 'busted' || p.reveal)) return;
         let best = -1,
           bestCards = null;
         if (isOmaha) {
-          getCombinations(p.cards, 2).forEach(hc => getCombinations(gs.board, 3).forEach(bc => {
+          getCombinations(holeCards, 2).forEach(hc => getCombinations(gs.board, 3).forEach(bc => {
             const s = evaluate5Cards([...hc, ...bc]);
             if (s > best) {
               best = s;
@@ -13527,7 +13536,7 @@ function PokerTable({
             }
           }));
         } else {
-          getCombinations([...p.cards, ...gs.board], 5).forEach(c5 => {
+          getCombinations([...holeCards, ...gs.board], 5).forEach(c5 => {
             const s = evaluate5Cards(c5);
             if (s > best) {
               best = s;
@@ -13555,13 +13564,13 @@ function PokerTable({
     // Rings are per TABLE CAPACITY (physical seats), not per seated count —
     // vacant slots render as small "sit here" discs, exactly like ClubGG.
     2: [[50, 74], [50, 15]],
-    3: [[50, 74], [11, 45], [89, 45]],
-    4: [[50, 74], [11, 45], [50, 15], [89, 45]],
+    3: [[50, 74], [13, 45], [87, 45]],
+    4: [[50, 74], [13, 45], [50, 15], [87, 45]],
     5: [[50, 74], [13, 63], [30, 16], [70, 16], [87, 63]],
-    6: [[50, 74], [12, 63], [12, 31], [50, 15], [88, 31], [88, 63]],
-    7: [[50, 74], [14, 67], [9, 42], [30, 16], [70, 16], [91, 42], [86, 67]],
-    8: [[50, 74], [14, 67], [9, 42], [14, 23], [50, 15], [86, 23], [91, 42], [86, 67]],
-    9: [[50, 74], [15, 69], [8, 48], [13, 26], [33, 15], [67, 15], [87, 26], [92, 48], [85, 69]]
+    6: [[50, 74], [12, 68], [12, 27], [50, 12], [88, 27], [88, 68]],
+    7: [[50, 74], [14, 67], [13, 43], [30, 16], [70, 16], [87, 43], [86, 67]],
+    8: [[50, 74], [14, 67], [13, 43], [14, 23], [50, 15], [86, 23], [87, 43], [86, 67]],
+    9: [[50, 74], [15, 69], [13, 48], [13, 26], [33, 15], [67, 15], [87, 26], [87, 48], [85, 69]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -13613,34 +13622,20 @@ function PokerTable({
     };
   };
   const betPos = i => {
-    // ONE rule, every seat: the bet sits on the straight line from the seat
-    // toward the pot pill (50,40) — with clamps so it never covers the top
-    // nameplates, the board row (49-58%), or the hero's cards.
+    // Keep bet labels in lanes above and below the community cards. The
+    // amount label extends above its chip pile, so both need clearance.
     const [sx, sy] = seatXY(i);
     let L, T;
-    if (sy < 13) {
-      // top-center seats: bet under their own cards (0.6 keeps the two
-      // top-center bet spots apart instead of colliding at 50%)
+    if (sy < 34) {
       L = sx + (50 - sx) * 0.6;
-      T = sy + 8;
-    } else if (sy < 34) {
-      // upper corners: inward, between the pot pill and the board (7, not 9 —
-      // the chip graphic hangs below the amount pill and was clipping the
-      // board's top edge)
-      L = sx + (50 - sx) * 0.6;
-      T = sy + 9;
+      T = sy < 20 ? 28 : 37;
     } else if (sy <= 71) {
-      // equator + lower flanks share one narrow lane between the board's
-      // bottom edge (~50%) and the hero's bet (57%), so they fan out
-      // horizontally instead: the equator seats stay wide, the lower flanks
-      // come further in. Two rows, never on top of each other.
       const inward = sy < 60 ? 0.36 : 0.55;
       L = sx + (50 - sx) * inward;
-      T = sy < 60 ? 52 : 54;
+      T = sy < 60 ? 61 : 66;
     } else {
-      // hero: straight above his own cards, clear of the board row
       L = 50;
-      T = 57;
+      T = 68;
     }
     return {
       left: `${round2(L)}%`,
@@ -13781,7 +13776,19 @@ function PokerTable({
       saveSkin({ ...skin, deck4: val });
     },
     className: `flex-1 py-2.5 rounded-lg border-2 text-xs font-black transition-transform ${!!skin.deck4 === val ? 'border-amber-400 bg-amber-500/15 text-white' : 'border-white/20 text-slate-400'}`
-  }, label))), React.createElement("button", {
+  }, label))), React.createElement("label", {
+    className: "block text-xs font-bold text-slate-300 mb-4"
+  }, "Your hand order", React.createElement("select", {
+    "aria-label": "Your hand order",
+    value: handOrder,
+    onChange: e => {
+      setHandOrder(e.target.value);
+      try { localStorage.setItem('pkHandOrder', e.target.value); } catch (_) {}
+    },
+    className: "block w-full mt-2 p-2.5 rounded-lg bg-slate-900 border border-white/20 text-white"
+  }, React.createElement("option", { value: "rank" }, "High to low"),
+     React.createElement("option", { value: "suit" }, "By suit"),
+     React.createElement("option", { value: "dealt" }, "As dealt"))), React.createElement("button", {
     onClick: () => setSkinOpen(false),
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm"
   }, "Done"))), document.body), buyinEdit && ReactDOM.createPortal(React.createElement("div", {
@@ -14053,15 +14060,12 @@ function PokerTable({
   }, "FINAL TABLE"), (gs.bombPot || gs.aof) && gs.phase !== 'waiting' && React.createElement("div", {
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
-  }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
-    className: "absolute left-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
+  }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), React.createElement("div", {
+    className: "poker-community" + ((gs.board2 || []).length ? " has-second-board" : ""),
+    "aria-label": "Community cards"
+  }, totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
+    className: "poker-total-pot absolute left-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
     style: {
-      // The board row is centred at 46% and is a FIXED 70px tall, so a
-      // percentage put the pill on top of the cards as soon as the window got
-      // short (every desktop size). Hang the pill's bottom 10px above the
-      // board's top edge instead — true at any viewport.
-      top: 'calc(46% - 45px)',
-      transform: 'translate(-50%, -100%)',
       background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.22) 60%, rgba(0,0,0,0) 100%)',
       textShadow: '0 1px 3px rgba(0,0,0,0.85)'
     },
@@ -14092,7 +14096,7 @@ function PokerTable({
     }
     return formatShort(setts.blinds) + '/' + formatShort(BB);
   })())), (gs.board2 || []).length > 0 && React.createElement("div", {
-    className: "absolute left-1/2 top-[54%] -translate-x-1/2 flex gap-1 items-center z-30",
+    className: "poker-board poker-board-secondary z-30",
     dir: "ltr"
   }, React.createElement("span", {
     className: "text-[8px] font-black text-gold-400 bg-slate-950/85 rounded px-1 py-0.5"
@@ -14106,7 +14110,7 @@ function PokerTable({
     card: c,
     size: "sm"
   })))), React.createElement("div", {
-    className: "absolute left-1/2 top-[46%] -translate-x-1/2 -translate-y-1/2 flex gap-1.5 z-30",
+    className: "poker-board poker-board-primary z-30",
     dir: "ltr"
   }, gs.phase !== 'waiting' && playersCount > 0 && (gs.board || []).map((c, i) => React.createElement("span", {
     key: i,
@@ -14130,10 +14134,10 @@ function PokerTable({
     key: 'ph' + i,
     className: "w-11 sm:w-12 opacity-0",
     style: {
-      height: '4.4rem'
+      aspectRatio: '5 / 7'
     }
-  }))), React.createElement("div", {
-    className: "absolute left-1/2 top-[21%] -translate-x-1/2 text-center z-10 pointer-events-none w-[80%] opacity-70"
+  })))), React.createElement("div", {
+    className: "poker-table-caption absolute left-1/2 -translate-x-1/2 text-center z-10 pointer-events-none opacity-70"
   }, tour && tour.final && React.createElement("div", {
     className: "font-black text-transparent bg-clip-text mb-1",
     dir: "ltr",
@@ -14265,11 +14269,12 @@ function PokerTable({
     const folded = p.status === 'folded';
     const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
     const isWinner = gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name);
+    const muckCls = gs.phase === 'showdown' && !isWinner ? ' card-mucked' : '';
     return React.createElement("div", {
       key: p.uid,
       // a talking player's whole seat lifts above the bet stacks (z-35) —
       // the bubble's own z is trapped inside the seat's stacking context
-      className: "poker-seat " + (isMe ? "poker-seat-hero " : "") + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
+      className: "poker-seat " + (isWinner ? "poker-seat-winner " : "") + (isMe ? "poker-seat-hero " : "") + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       style: isMe ? {
         left: '50%',
         // Anchored in pixels on the phone so the fixed-height action bar can
@@ -14325,17 +14330,17 @@ function PokerTable({
       className: "gift-fx"
     }, g.giftE)), showCards && (isMe || !fanBelow) && (() => {
       const nC = dispCards.length;
-      const doFan = hidden && !isMe && nC >= 3;
+      const doFan = nC >= 3 && !(isMe && gs.phase === 'discard');
       const midC = (nC - 1) / 2;
-      const ovl = isMe ? nC >= 5 ? -28 : -32 : hidden ? nC >= 5 ? -13 : -11 : nC >= 5 ? -22 : -18;
-      const ang = isMe ? nC >= 5 ? 5 : 6 : nC >= 5 ? 6 : 7;
+      const ovl = 'calc(var(--poker-fan-width, 32px) * var(--poker-fan-overlap, -0.68))';
+      const ang = hidden ? 3 : nC >= 5 ? 5 : 7;
       return React.createElement("div", {
-        className: `poker-hole-cards ${!hidden && !isMe ? 'poker-revealed-hand' : ''} flex z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
+        className: `poker-hole-cards ${!isMe ? 'poker-opponent-fan' + (hidden ? ' is-hidden' : '') : 'poker-own-fan'} ${!hidden && !isMe ? 'poker-revealed-hand' : ''} flex z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
         style: {
-          transform: `translateX(${Math.round(inX * (hidden ? 48 : 30))}px)`
+          transform: `translateX(${Math.round(inX * 8)}px)`
         },
         dir: "ltr"
-      }, dispCards.map((c, ci) => isMe && gs.phase === 'discard' && dispCards.length === 3 ? discHide === ci ? React.createElement("div", {
+      }, (isMe ? window.PokerRuntime.handDisplayOrder(dispCards, handOrder) : dispCards.map((_, i) => i)).map((ci, displayIndex) => { const c = dispCards[ci]; return isMe && gs.phase === 'discard' && dispCards.length === 3 ? discHide === ci ? React.createElement("div", {
         key: ci,
         className: "w-2"
       }) : React.createElement("div", {
@@ -14361,10 +14366,10 @@ function PokerTable({
         key: `h${handKey}:${ci}${sdReveal ? ':sd' : ''}`,
         className: "inline-block",
         style: {
-          marginLeft: ci === 0 ? 0 : ovl,
-          transform: `rotate(${(ci - midC) * ang}deg) translateY(${Math.abs(ci - midC) * (isMe ? 3.5 : 2.5)}px)`,
+          marginLeft: displayIndex === 0 ? 0 : ovl,
+          transform: `rotate(${(displayIndex - midC) * (isMe ? 4 : ang)}deg) translateY(${Math.abs(displayIndex - midC) * 2}px)`,
           transformOrigin: '50% 115%',
-          zIndex: ci
+          zIndex: displayIndex
         }
       }, React.createElement("span", {
         className: (isMe && noRedealRef.current.hold ? '' : 'card-reveal') + muckCls,
@@ -14387,7 +14392,7 @@ function PokerTable({
         hidden: hidden,
         size: isMe ? nC > 4 ? 'md' : 'lg' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
-      }))));
+      })); }));
     })(), React.createElement("div", {
       onClick: e => {
         e.stopPropagation();
@@ -14451,12 +14456,12 @@ function PokerTable({
       }
     }, p.actionText)), showCards && !isMe && fanBelow && (() => {
       const nC = dispCards.length;
-      const doFan = hidden && nC >= 3;
+      const doFan = nC >= 3;
       const midC = (nC - 1) / 2;
-      const ovl = nC >= 5 ? -18 : nC === 4 ? -15 : -11;
-      const ang = nC >= 5 ? 6 : 7;
+      const ovl = 'calc(var(--poker-fan-width, 32px) * var(--poker-fan-overlap, -0.68))';
+      const ang = hidden ? 3 : nC >= 5 ? 5 : 7;
       return React.createElement("div", {
-        className: `poker-hole-cards ${!hidden ? 'poker-revealed-hand' : ''} flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
+        className: `poker-hole-cards poker-opponent-fan ${hidden ? 'is-hidden' : ''} ${!hidden ? 'poker-revealed-hand' : ''} flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
         style: {
           transform: `translateX(${Math.round(inX * 12)}px)`
         },
@@ -14492,12 +14497,12 @@ function PokerTable({
         size: hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))));
-    })(), (gs.allInReveal || gs.phase === 'showdown') && realEq && realEq[p.uid] !== undefined && p.status === 'active' && React.createElement("div", {
+    })(), React.createElement("div", { className: "poker-result-meta" }, (gs.allInReveal || gs.phase === 'showdown') && realEq && realEq[p.uid] !== undefined && p.status === 'active' && React.createElement("div", {
       className: "mt-1 z-30 bg-amber-900/90 border border-amber-500/50 text-amber-300 text-[11px] font-black px-2.5 py-0.5 rounded-md animate-pop-in",
       dir: "ltr"
     }, realEq[p.uid], "%"), (gs.allInReveal || gs.phase === 'showdown') && p.status === 'active' && (gs.board || []).length >= 3 && (isMe ? myCards : p.cards || []).length > 0 && React.createElement("div", {
-      className: "mt-0.5 z-30 bg-slate-950/95 border border-amber-400/50 text-amber-100 text-[10px] font-black px-2 py-0.5 rounded-md whitespace-nowrap"
-    }, handName(bestScoreNow(isMe ? myCards : p.cards, gs.board || [], gs.currentGameType)))));
+      className: "poker-hand-name mt-0.5 z-30 bg-slate-950/95 border border-amber-400/50 text-amber-100 text-[10px] font-black px-2 py-0.5 rounded-md whitespace-nowrap"
+    }, handName(bestScoreNow(isMe ? myCards : p.cards, gs.board || [], gs.currentGameType))))));
   }), (() => {
     const now = {};
     displayList.forEach((p, i) => {
@@ -14518,7 +14523,7 @@ function PokerTable({
     const bl = Math.max(1, Math.hypot(bdx, bdy));
     return React.createElement("div", {
       key: 'bet' + p.uid + ':' + p.bet,
-      className: "absolute z-[35] bet-fly",
+      className: "poker-bet absolute z-[35] bet-fly",
       style: {
         ...bp,
         '--bfx': `${Math.round(bdx / bl * 52)}px`,
@@ -14758,9 +14763,9 @@ function PokerTable({
       className: "block text-[11px] opacity-90"
     }, raiseOpen ? '▼ close' : '▲'))));
   })()), gs.phase === 'discard' && isSeated && myCards.length === 3 ? React.createElement("div", {
-    className: "text-center text-amber-300 font-black text-sm animate-pulse"
+    className: "poker-action-meta text-center text-amber-300 font-black text-sm animate-pulse"
   }, "🍍 Tap a top card to discard it") : React.createElement("div", {
-    className: "flex items-center gap-2"
+    className: "poker-action-meta flex items-center gap-2"
   }, React.createElement("button", {
     onClick: () => ch.setChatOpen(!ch.chatOpen),
     title: "Table chat",
@@ -14777,7 +14782,7 @@ function PokerTable({
     className: "w-9 shrink-0"
   })), spectate && !isSeated && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
     onClick: () => setSpectate(false),
-    className: "mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg"
+    className: "poker-spectator-seat mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg"
   }, "Take a seat 🪑")), tour && (() => {
     const tc = tourClock(tour);
     const lvl = tc.lvl;

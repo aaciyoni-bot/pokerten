@@ -29,7 +29,9 @@ const createFlightStream = require("./aviatorStream");
 
 const adb = getFirestore();
 
-const AV_OPTS = {region: "us-central1"};
+// eur3 Firestore is in Europe. Retain the old region for installed clients
+// while new clients use the colocated endpoint; no destructive migration.
+const AV_OPTS = {region: ["us-central1", "europe-west1"]};
 const ADMIN_EMAIL = "aaci.yoni@gmail.com";
 
 const GROWTH_K = 0.132;             // m(t) = e^(k·t) — must match the client
@@ -253,8 +255,8 @@ exports.avTick = onCall(AV_OPTS, async request => {
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
   return advanceRound(uid);
 });
-exports.avStream = onRequest({...AV_OPTS, cors:true, timeoutSeconds:120,
-  minInstances:1, concurrency:80}, createFlightStream({db:adb,
+exports.avStream = onRequest({region:"europe-west1", cors:true, timeoutSeconds:120,
+  concurrency:80}, createFlightStream({db:adb,
   verifyIdToken:token=>getAuth().verifyIdToken(token), advance:advanceRound}));
 
 /* -------------------------------------------------------------------------
@@ -336,11 +338,15 @@ exports.avCancelBet = onCall(AV_OPTS, async (request) => {
  * SERVER clock, so a hacked client gains nothing; latency is part of the
  * game exactly like in the real thing.
  * ---------------------------------------------------------------------- */
-exports.avCashout = onCall({...AV_OPTS, minInstances:1}, async (request) => {
+exports.avCashout = onCall(AV_OPTS, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
   // Fixed at entry, not recalculated when Firestore retries or waits for locks.
   const receivedAt = Date.now();
+  // An authenticated no-op prewarms the exact cashout service during boarding.
+  // It never reads a bet, reveals a quote, or changes a wallet.
+  if (request.data && request.data.warmup === true)
+    return {ready:true, serverReceivedAt:receivedAt, serverNow:Date.now()};
   const {roundId, requestId, legacy} = await exitIds(request, "cashout");
   const seenCents = legacy ? Core.toCents(request.data && request.data.seen) : request.data.seenCents;
   const quote = request.data && request.data.quote;

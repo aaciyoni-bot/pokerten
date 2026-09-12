@@ -1075,7 +1075,7 @@ body{overflow-y:auto;background:#080e14 url("aviator-src/live/assets/cockpit.web
   });
   const auth = getAuth(app);
   const db = getFirestore(app);
-  const fxs = getFunctions(app, "us-central1");
+  const fxs = getFunctions(app, "europe-west1");
   window.avFB = {
     auth, db, signInAnonymously, onAuthStateChanged, signOut,
     doc, onSnapshot, collection, query, where, orderBy, limit, addDoc, getDocs,
@@ -2198,6 +2198,7 @@ function onWaiting(){
   S.mult = 1;
   /* safe moment for a self-update: round is fresh, no bet is down yet */
   if (newBuildLive && !myBet && !S.queued){ location.reload(); return; }
+  FX("avCashout", {warmup:true}).catch(()=>{});
   S.lastTickSec = -1; S.lastWholeMult = 1; S.radioDone = false;
   beltChime();
   particles.length = 0;
@@ -2360,6 +2361,7 @@ async function join(){
     setBalance(r.balance);
     setBetValue(Math.max(100, niceAmount(r.balance * 0.01)));
     joined = true;
+    FX("avCashout", {warmup:true}).catch(()=>{});
     subscribeAll();
     maybeTick(true);
     updateAction();
@@ -2660,7 +2662,7 @@ async function connectFlightStream(){
   try {
     const token=await user.getIdToken();
     if (controller.signal.aborted) return;
-    const response=await fetch('https://us-central1-pokerten.cloudfunctions.net/avStream', {
+    const response=await fetch('https://europe-west1-pokerten.cloudfunctions.net/avStream', {
       headers:{Authorization:'Bearer '+token}, signal:controller.signal, cache:'no-store'
     });
     if (!response.ok || !response.body) throw Error('Flight stream unavailable');

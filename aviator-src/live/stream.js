@@ -28,7 +28,7 @@ async function connectFlightStream(){
   try {
     const token=await user.getIdToken();
     if (controller.signal.aborted) return;
-    const response=await fetch('https://us-central1-pokerten.cloudfunctions.net/avStream', {
+    const response=await fetch('https://europe-west1-pokerten.cloudfunctions.net/avStream', {
       headers:{Authorization:'Bearer '+token}, signal:controller.signal, cache:'no-store'
     });
     if (!response.ok || !response.body) throw Error('Flight stream unavailable');

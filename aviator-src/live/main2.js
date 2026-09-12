@@ -452,6 +452,7 @@ function onWaiting(){
   S.mult = 1;
   /* safe moment for a self-update: round is fresh, no bet is down yet */
   if (newBuildLive && !myBet && !S.queued){ location.reload(); return; }
+  FX("avCashout", {warmup:true}).catch(()=>{});
   S.lastTickSec = -1; S.lastWholeMult = 1; S.radioDone = false;
   beltChime();
   particles.length = 0;
@@ -614,6 +615,7 @@ async function join(){
     setBalance(r.balance);
     setBetValue(Math.max(100, niceAmount(r.balance * 0.01)));
     joined = true;
+    FX("avCashout", {warmup:true}).catch(()=>{});
     subscribeAll();
     maybeTick(true);
     updateAction();

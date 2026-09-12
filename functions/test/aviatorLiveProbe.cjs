@@ -13,7 +13,7 @@ const root = path.resolve(__dirname, '../..');
 const config = fs.readFileSync(path.join(root, 'aviator-src/live/module.html'), 'utf8');
 const key = config.match(/apiKey:\s*"([^"]+)"/)?.[1];
 assert(key, 'Public Firebase client configuration is missing');
-const base = 'https://us-central1-pokerten.cloudfunctions.net/';
+const base = 'https://europe-west1-pokerten.cloudfunctions.net/';
 const deadline = Date.now() + 240000;
 const receipts = [], timings = [];
 let idToken, uid;

@@ -19,6 +19,24 @@ test('client rendering never exceeds a server-confirmed ceiling during silence',
   assert.equal(ctx.S.mult,2.4);
 });
 
+test('slow animation frames do not ease or lag behind an already approved price', () => {
+  const ctx={S:{confirmedCents:1187,cents:714,mult:7.14},quoteFresh:()=>true};
+  vm.runInNewContext(extract('function renderFlightValue(){','/* Shared chat behaviour'),ctx);
+  ctx.renderFlightValue();
+  assert.equal(ctx.S.cents,1187);assert.equal(ctx.S.mult,11.87);
+});
+
+test('incoming prices repaint the readout and curve without an animation frame', () => {
+  const {f,element,graph}=flightClient();
+  f.lastPaintAt=-1000;
+  vm.runInContext(extract('function paintConfirmedPrice(){','function receiveFlightPacket'),f);
+  f.acceptQuote(quote(714,10000));
+  f.paintConfirmedPrice();
+  assert.equal(element('#mult').textContent,'7.14x');
+  assert.equal(graph().plane.y,7.14);
+  assert(Math.abs(graph().end.y-7.14)<1e-10);
+});
+
 test('client ignores old-round and lower-phase states', () => {
   const ctx={S:{roundId:'r2',phase:'crashed'},GROWTH_K:0.132};
   vm.runInNewContext(extract('function applyState(s){','/* =====================================================================\n   SUBSCRIPTIONS'),ctx);

@@ -78,9 +78,9 @@ function acceptQuote(q, ageMs = 0){
   if (!wasFresh) updateAction();
 }
 function renderFlightValue(){
-  // Smooth toward the most recent confirmed ceiling; never extrapolate beyond it.
+  // A confirmed price is already in the past. Easing it over animation frames
+  // adds seconds of lag on a busy/throttled device and changes the click price.
   if (!quoteFresh()) return;
-  const gap = S.confirmedCents - S.cents;
-  S.cents = Math.min(S.confirmedCents, S.cents + Math.max(0, Math.ceil(gap / 5)));
+  S.cents = S.confirmedCents;
   S.mult = S.cents / 100;
 }

@@ -17,6 +17,22 @@ const base = 'https://us-central1-pokerten.cloudfunctions.net/';
 const deadline = Date.now() + 240000;
 const receipts = [], timings = [];
 let idToken, uid;
+const streamed=[],streamController=new AbortController();
+let streamTask;
+async function observeStream() {
+  while (!streamController.signal.aborted && Date.now()<deadline) {
+    const response=await fetch(base+'avStream',{headers:{Authorization:'Bearer '+idToken},signal:streamController.signal});
+    assert.equal(response.status,200,'Authoritative stream is unavailable');
+    const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+    try {
+      while (!streamController.signal.aborted) {
+        const {done,value}=await reader.read();if(done)break;
+        buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop();
+        for(const line of lines)if(line){const packet=JSON.parse(line);streamed.push({...packet,receivedAt:Date.now()});}
+      }
+    } finally {await reader.cancel().catch(()=>{});}
+  }
+}
 const pause = () => new Promise(resolve => setTimeout(resolve, 250));
 const requestId = () => randomUUID().replaceAll('-', '');
 
@@ -140,15 +156,32 @@ async function main() {
     idToken = account.idToken;uid = account.localId;
     assert(idToken && uid, 'Anonymous verification sign-in failed');
     await call('avJoin', {name:'AVIATOR release check'});
+    streamTask=observeStream().catch(error=>{if(!streamController.signal.aborted)throw error;});
+    streamTask.catch(()=>{});
     let manualRound;
     for (let sample = 0; sample < 3; sample++) manualRound = await checkManual(manualRound);
     await checkAutomatic(manualRound);
     const ticks = timings.filter(r=>r.name==='avTick').map(r=>r.rtt).sort((a,b)=>a-b);
-    console.log(JSON.stringify({verification:'passed', transport:'Firebase callable API',
+    streamController.abort();await streamTask;
+    const prices=streamed.filter(p=>p.quote),gaps=[];
+    for(let i=1;i<prices.length;i++)if(prices[i].quote.roundId===prices[i-1].quote.roundId)
+      gaps.push(prices[i].receivedAt-prices[i-1].receivedAt);
+    gaps.sort((a,b)=>a-b);
+    assert(prices.length>30,'Continuous price delivery was not observed');
+    assert(gaps[Math.floor(gaps.length/2)]<150,'The stream is buffered or too slow');
+    const stops=streamed.filter(p=>p.state?.phase==='crashed');
+    assert(stops.length>0,'A live stop announcement was not observed');
+    console.log(JSON.stringify({verification:'passed',
+      stream:{pricePackets:prices.length,intervalMedianMs:gaps[Math.floor(gaps.length/2)],
+        intervalP95Ms:gaps[Math.floor(gaps.length*.95)],
+        stops:stops.map(p=>({roundId:p.state.roundId,crash:p.state.crashPoint,
+          serverAnnouncementDelayMs:Math.round(p.serverNow-p.state.phaseAt)}))}, transport:'Firebase callable API',
       measurementOrigin:'GitHub Actions runner; not the player device', browserTested:false,
       receipts, tickSamples:ticks.length, tickMedianMs:ticks[Math.floor(ticks.length/2)],
       tickP95Ms:ticks[Math.min(ticks.length-1,Math.ceil(ticks.length*0.95)-1)]}, null, 2));
   } finally {
+    streamController.abort();
+    if (streamTask) await streamTask.catch(()=>{});
     if (idToken) {
       try { await auth('delete', {idToken}); }
       catch { console.warn('Temporary verification login cleanup failed; no credentials are printed.'); }

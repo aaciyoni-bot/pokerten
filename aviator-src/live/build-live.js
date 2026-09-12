@@ -28,6 +28,7 @@ head += read(P + '/extra.css') + '\n' + read(P + '/ux.css') + '\n' + iconCSS + '
 /* --- body html --- */
 let body = cut(src, '<div id="splash">', '<script type="module">', 'body');
 body = body.replace('<button class="icon-btn" id="soundBtn"',
+  '<button class="icon-btn" id="chipsBtn" aria-label="הצ׳יפים שלי" title="הצ׳יפים שלי">＋</button>\n' +
   '<button class="icon-btn badge" id="chatBtn" aria-label="Chat" aria-haspopup="dialog" aria-controls="chatCard" aria-expanded="false">💬</button>\n    ' +
   '<button class="icon-btn" id="adminBtn" hidden aria-label="Admin dashboard">⚙️</button>\n    ' +
   '<button class="icon-btn" id="soundBtn"');
@@ -81,6 +82,8 @@ const script = [
   patch(canvas),
   read(P + '/main2.js'),
   read(P + '/cockpit.js'),
+  read(P + '/stream.js'),
+  read(P + '/chips.js'),
   patch(pwa),
   read(P + '/main3.js'),
 ].join('\n');

@@ -221,7 +221,7 @@ function updateSyncStatus(){
   const stale = S.phase === "flying" && !quoteFresh();
   const label = S.protocol !== 2 ? "מסנכרן את גרסת המשחק…" :
     offline ? "אין חיבור — המכפיל מושהה" : stale ? "הנתונים מתעכבים — המכפיל מושהה" :
-    `מחובר לבקרת הטיסה${tickRtt === null ? "" : ` · ${tickRtt}ms`}`;
+    (streamFresh() ? "עדכון חי רציף" : `מחובר לבקרת הטיסה${tickRtt === null ? "" : ` · ${tickRtt}ms`}`);
   if (label !== lastSyncLabel){
     lastSyncLabel = label; $("#syncStatus").textContent = label;
     $("#syncStatus").classList.toggle("stale", stale); updateAction();
@@ -229,14 +229,15 @@ function updateSyncStatus(){
 }
 function maybeTick(force){
   const now = Date.now();
-  if (!joined || tickPending || document.visibilityState !== "visible") return;
-  if (!force && now - lastTickAt < (S.phase === "flying" ? 100 : 400)) return;
+  if (!joined || tickPending || document.visibilityState !== "visible" || (!force && streamFresh())) return;
+  if (!force && now - lastTickAt < (S.phase === "flying" ? 200 : 400)) return;
   lastTickAt = now; tickPending = true;
   const sentAt = performance.now();
   FX("avTick", {}).then(r => {
     if (r.state) applyState(r.state);
     tickRtt = Math.round(performance.now() - sentAt);
     acceptQuote(r.quote, tickRtt);
+    paintConfirmedPrice();
   }).catch(() => {}).finally(() => { tickPending = false; updateSyncStatus(); });
 }
 
@@ -312,7 +313,7 @@ function updateAction(){
     if (myBet){ btn.className = "cancel"; btn.innerHTML = `<span>Bet placed: ${fmt(myBet.amount)}<br><span class="sub">tap to cancel</span></span>`; }
     else if (balance < MIN_BET){
       btn.className = "wait";
-      btn.innerHTML = `<span>אין צ'יפים<br><span class="sub">בקש הטענה מהמנהל — בינתיים אפשר לצפות</span></span>`;
+      btn.innerHTML = `<span>אין צ'יפים<br><span class="sub">לחץ על ＋ ליד היתרה לטעינה באישור מנהל</span></span>`;
       btn.disabled = true;
     }
     else {
@@ -333,7 +334,7 @@ function updateAction(){
       btn.className = "cancel"; btn.innerHTML = `Queued ${fmt(S.queued)} · cancel`;
     } else if (balance < MIN_BET){
       btn.className = "wait";
-      btn.innerHTML = `<span>אין צ'יפים<br><span class="sub">בקש הטענה מהמנהל — בינתיים אפשר לצפות</span></span>`;
+      btn.innerHTML = `<span>אין צ'יפים<br><span class="sub">לחץ על ＋ ליד היתרה לטעינה באישור מנהל</span></span>`;
       btn.disabled = true;
     } else {
       btn.className = "bet"; btn.innerHTML = `<span>Bet next round</span>`;
@@ -777,6 +778,7 @@ function frame(){
   updateFlightStatus();
   updateCockpit(now);
   draw(now);
+  lastPaintAt = performance.now();
   requestAnimationFrame(frame);
 }
 

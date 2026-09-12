@@ -20,10 +20,12 @@
  * deadline passed — no always-on process, rounds simply pause when the
  * room is empty.
  */
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {onCall, onRequest, HttpsError} = require("firebase-functions/v2/https");
 const {getFirestore, FieldValue} = require("firebase-admin/firestore");
 const crypto = require("crypto");
 const Core = require("./aviatorCore");
+const {getAuth} = require("firebase-admin/auth");
+const createFlightStream = require("./aviatorStream");
 
 const adb = getFirestore();
 
@@ -173,9 +175,7 @@ exports.avJoin = onCall(AV_OPTS, async (request) => {
  * avTick — advance the shared round when its deadline passed.
  * Any client may call it; the transaction makes duplicates harmless.
  * ---------------------------------------------------------------------- */
-exports.avTick = onCall(AV_OPTS, async (request) => {
-  const uid = request.auth && request.auth.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
+async function advanceRound(uid) {
   const serverReceivedAt = Date.now();
   // Read-only price requests must not hold transaction locks needed by cashout.
   // Revalidate time AND the state/engine round pair after both reads; transitions
@@ -247,7 +247,15 @@ exports.avTick = onCall(AV_OPTS, async (request) => {
     return {state: s};
   });
   return {...out, serverReceivedAt, serverNow: Date.now()};
+}
+exports.avTick = onCall(AV_OPTS, async request => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
+  return advanceRound(uid);
 });
+exports.avStream = onRequest({...AV_OPTS, cors:true, timeoutSeconds:120,
+  minInstances:1, concurrency:80}, createFlightStream({db:adb,
+  verifyIdToken:token=>getAuth().verifyIdToken(token), advance:advanceRound}));
 
 /* -------------------------------------------------------------------------
  * avBet / avCancelBet — betting window only. Balance is debited here and
@@ -267,19 +275,18 @@ exports.avBet = onCall(AV_OPTS, async (request) => {
   const autoAt = rawAuto ? round2(rawAuto) : null;
   const pRef = adb.doc(`aviatorPlayers/${uid}`), rRef = requestRef(uid, requestId);
   const out = await adb.runTransaction(async (tx) => {
-    const cached = priorResult(await tx.get(rRef), "bet", roundId);
+    const bRef = adb.doc(`aviatorBets/${roundId}_${uid}`);
+    const [rSnap, sSnap, pSnap, peek, bSnap] = await tx.getAll(rRef, stateRef(), pRef,
+      adb.doc(`aviatorPeeks/${roundId}_${uid}`), bRef);
+    const cached = priorResult(rSnap, "bet", roundId);
     if (cached) return cached;
-    const [sSnap, pSnap] = await Promise.all([tx.get(stateRef()), tx.get(pRef)]);
     if (!sSnap.exists || !pSnap.exists) throw new HttpsError("failed-precondition", "אין חדר פעיל");
     const s = sSnap.data(); sameRound(s, roundId);
     if (s.phase !== "waiting" || receivedAt >= s.phaseAt + s.waitMs || Date.now() >= s.phaseAt + s.waitMs) {
       throw new HttpsError("failed-precondition", "חלון ההימורים סגור");
     }
     const p = pSnap.data();
-    const peek = await tx.get(adb.doc(`aviatorPeeks/${roundId}_${uid}`));
     if (peek.exists) throw new HttpsError("failed-precondition", "מצב בקרה פעיל — בסיבוב שנצפה אפשר רק לצפות");
-    const bRef = adb.doc(`aviatorBets/${roundId}_${uid}`);
-    const bSnap = await tx.get(bRef);
     const prior = bSnap.exists && !bSnap.data().cashedAt && !bSnap.data().lost ? bSnap.data().amount : 0;
     if (amount > p.balance + prior) throw new HttpsError("failed-precondition", "אין מספיק צ׳יפים");
     const bet = {uid, roundId, protocol:2, amount, autoAt, name: p.name || "Pilot", photo: p.photo || "",
@@ -329,7 +336,7 @@ exports.avCancelBet = onCall(AV_OPTS, async (request) => {
  * SERVER clock, so a hacked client gains nothing; latency is part of the
  * game exactly like in the real thing.
  * ---------------------------------------------------------------------- */
-exports.avCashout = onCall(AV_OPTS, async (request) => {
+exports.avCashout = onCall({...AV_OPTS, minInstances:1}, async (request) => {
   const uid = request.auth && request.auth.uid;
   if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
   // Fixed at entry, not recalculated when Firestore retries or waits for locks.
@@ -359,10 +366,10 @@ exports.avCashout = onCall(AV_OPTS, async (request) => {
     }
     let round, archived = false;
     const s = sSnap.exists && sSnap.data();
-    if (s && s.roundId === roundId && s.phase === "flying") {
+    if (s && s.roundId === roundId && (s.phase === "flying" || s.phase === "waiting")) {
       const e = eSnap.data();
       if (!e || e.roundId !== roundId) throw new HttpsError("unavailable", "מסנכרן את הסיבוב");
-      round = {...e, startedAt: s.startedAt ?? s.phaseAt};
+      round = {...e, startedAt: s.startedAt ?? (s.phase === "waiting" ? s.phaseAt + s.waitMs : s.phaseAt)};
     } else {
       const oldSnap = await tx.get(adb.doc(`aviatorRounds/${roundId}`));
       if (!oldSnap.exists) throw new HttpsError("failed-precondition", "אין טיסה פעילה בסיבוב המבוקש");
@@ -458,13 +465,22 @@ exports.avCredit = onCall(AV_OPTS, async (request) => {
     throw new HttpsError("invalid-argument", "uid וסכום נדרשים");
   }
   const pRef = adb.doc(`aviatorPlayers/${target}`);
+  const id = request.data.requestId;
+  if (id !== undefined && !/^[a-zA-Z0-9_-]{8,80}$/.test(id)) {
+    throw new HttpsError("invalid-argument", "מזהה בקשה לא תקין");
+  }
+  const rRef = id ? requestRef(request.auth.uid, id) : null;
   const out = await adb.runTransaction(async (tx) => {
-    const pSnap = await tx.get(pRef);
+    const [pSnap, rSnap] = rRef ? await tx.getAll(pRef,rRef) : [await tx.get(pRef)];
+    const cached = rSnap && priorResult(rSnap,"credit",target);
+    if (cached) return cached;
     if (!pSnap.exists) throw new HttpsError("not-found", "שחקן לא נמצא");
     const newBal = Math.max(0, (pSnap.data().balance || 0) + amount);
     tx.update(pRef, {balance: newBal});
-    ledger(tx, {uid: target, type: "admin_credit", amount, by: request.auth.uid});
-    return {balance: newBal};
+    ledger(tx, {uid: target, type: "admin_credit", amount:newBal-(pSnap.data().balance || 0), by: request.auth.uid});
+    const result = {balance:newBal};
+    if (rRef) remember(tx,rRef,"credit",target,result,Date.now());
+    return result;
   });
   return {...out, serverNow: Date.now()};
 });

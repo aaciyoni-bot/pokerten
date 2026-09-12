@@ -15,3 +15,14 @@ test('worker failures release pending decisions instead of freezing the UI',asyn
  const next=client.request('mine',[]);instance.onmessage({data:{id:instance.data.id,value:73}});assert.equal(await next,73);client.close();assert.equal(await createWorkerClient(null).request('mine',[]),null);
 });
 test('roulette click times follow the visual easing and slow down to the result',()=>{const {spinTickTimes}=require('../assets/js/poker-runtime');const times=spinTickTimes(2355,12,6.5);assert.equal(times.length,78);assert.ok(times.every((t,i)=>t>0&&t<6.5&&(!i||t>times[i-1])));assert.ok(times.at(-1)-times.at(-2)>times[1]-times[0]);});
+
+test('hand display sorting preserves deal indices for discard actions', () => {
+  const { handDisplayOrder } = require('../assets/js/poker-runtime');
+  const cards = [{val:'2',suit:'♠'},{val:'K',suit:'♦'},{val:'A',suit:'♥'},{val:'Q',suit:'♥'},{val:'A',suit:'♣'},{val:'10',suit:'♦'}];
+  const before = JSON.stringify(cards);
+  assert.deepEqual(handDisplayOrder(cards), [2,4,1,3,5,0]);
+  assert.deepEqual(handDisplayOrder(cards,'suit'), [2,3,1,5,4,0]);
+  assert.deepEqual(handDisplayOrder(cards,'dealt'), [0,1,2,3,4,5]);
+  assert.equal(JSON.stringify(cards), before);
+  assert.equal(cards[handDisplayOrder(cards)[0]].val, 'A');
+});

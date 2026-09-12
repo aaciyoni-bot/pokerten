@@ -51,8 +51,10 @@ function setup({time=10000, phase='flying', phaseAt=0, crash=10, autoAt=null, ro
   class HttpsError extends Error {constructor(code,message){super(message);this.code=code;}}
   class Clock extends Date {static now(){return now;}}
   const ctx={exports:{},Date:Clock,require:id=>{
-    if(id==='firebase-functions/v2/https')return{onCall:(_,fn)=>fn,HttpsError};
+    if(id==='firebase-functions/v2/https')return{onCall:(_,fn)=>fn,onRequest:(_,fn)=>fn,HttpsError};
     if(id==='firebase-admin/firestore')return{getFirestore:()=>db,FieldValue:{increment:value=>({increment:value})}};
+    if(id==='firebase-admin/auth')return{getAuth:()=>({})};
+    if(id==='./aviatorStream')return()=>()=>{};
     if(id==='crypto')return crypto;
     if(id==='./aviatorCore')return Core;
     throw Error('Unexpected module '+id);

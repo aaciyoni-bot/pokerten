@@ -57,5 +57,22 @@ function cashoutPrice({receivedAt, startedAt, crashPoint, autoAt, seenCents}) {
   return {cents: seenCents, auto: false};
 }
 
+// The server may announce a phase before its accounting transaction commits.
+// Only past/current values leave the server; the future crash remains secret.
+function flightPacket(state, engine, uid, now) {
+  if (!state || !engine || state.roundId !== engine.roundId) return null;
+  let s = {...state, protocol:2};
+  const startedAt = s.startedAt ?? (s.phase === 'waiting' ? s.phaseAt + s.waitMs : s.phaseAt);
+  if (s.phase === 'waiting' && now >= startedAt) s = {...s, phase:'flying', phaseAt:startedAt, startedAt};
+  if (s.phase === 'flying') {
+    const crashAt = startedAt + timeForMult(engine.crashPoint);
+    if (now >= crashAt) return {state:{...s, phase:'crashed', phaseAt:crashAt,
+      startedAt, crashPoint:engine.crashPoint, seed:engine.seed}, serverNow:now};
+    return {state:s, quote:makeQuote(engine.seed, uid, s.roundId,
+      Math.min(centsAt(now-startedAt), toCents(engine.crashPoint)-1), now), serverNow:now};
+  }
+  return {state:s, serverNow:now};
+}
+
 module.exports = {GROWTH_K, MAX_CENTS, QUOTE_TTL_MS, toCents, multAt, timeForMult,
-  centsAt, payout, makeQuote, validQuote, cashoutPrice};
+  centsAt, payout, makeQuote, validQuote, cashoutPrice, flightPacket};

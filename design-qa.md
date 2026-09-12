@@ -1,6 +1,8 @@
 # AVIATORIZIS unified timing and flight-deck review
 
-final result: production API verified; desktop reviewed; mobile visual QA pending
+final result: production client d8ba4ea published; live browser cashout and wallet verified; desktop/mobile reviewed
+
+Current release evidence: [2026-09-12 verified production report](aviator-src/RELEASE-2026-09-12.md). Earlier blocked local-preview notes below are historical; the authorized public Vercel preview and production browser checks subsequently succeeded.
 
 ## Reference and implementation
 Selected reference: other agent's cockpit concept `exec-51b20e6e-0991-4cca-833c-eed4cef620ff.png`, inspected at 1536×1024. Wide central flight display, narrow recent-round rail, player panel, central green cashout, dark aircraft housing and twilight windshield. Implemented in source files with a new 89,848-byte WebP plate. All labels, values and controls remain actual DOM elements; original game IDs are preserved. Responsive breakpoint 760px; 390px iframe fixture available. Latest user steering adds an embedded Natural Earth world map and a realistic generated jet sprite, replacing the comet head. Map geometry is rasterized only on resize; both visual layers use the authoritative graph endpoint. These additions also await browser QA.

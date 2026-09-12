@@ -64,5 +64,7 @@ function transform(out) {
   fs.writeFileSync('public/version.json', JSON.stringify({ v: V }));
   fs.copyFileSync('manifest.json', 'public/manifest.json');
   fs.copyFileSync('sw.js', 'public/sw.js');
+  // Optional preview-only viewport fixture; production uploads omit this file.
+  if (fs.existsSync('mobile-check.html')) fs.copyFileSync('mobile-check.html', 'public/mobile-check.html');
   console.log('built live:', live.length, 'solo:', solo.length, 'version:', V);
 })().catch(e => { console.error(e); process.exit(1); });

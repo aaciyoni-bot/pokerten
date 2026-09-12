@@ -22,6 +22,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Scope the AVIATOR deployment to changed services
+        id: scope
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          node - <<'JS' >> "$GITHUB_OUTPUT"
+          const {execFileSync}=require('node:child_process');
+          let streamOnly=false;
+          if (/^[a-f0-9]{40}$/.test(process.env.BEFORE_SHA || '') && !/^0+$/.test(process.env.BEFORE_SHA)) {
+            const changed=execFileSync('git',['diff','--name-only',process.env.BEFORE_SHA,'HEAD'],{encoding:'utf8'}).trim().split('\n');
+            streamOnly=changed.includes('functions/aviatorStream.js') &&
+              !changed.includes('functions/aviator.js') && !changed.includes('functions/aviatorCore.js');
+          }
+          console.log('stream_only='+streamOnly);
+          console.log('targets='+ (streamOnly ? 'functions:avStream' :
+            'functions:avJoin,functions:avTick,functions:avCancelBet,functions:avCashout,functions:avPeek,functions:avCredit,functions:avStream'));
+          JS
       - name: Verify source build and timing regressions
         run: |
           node aviator-src/live/build-live.js
@@ -37,12 +54,13 @@ jobs:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: firebase firestore:databases:list --project pokerten --json
       - name: Require IDs on new bets before upgrading exits
+        if: steps.scope.outputs.stream_only != 'true'
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: firebase deploy --only functions:avBet --project pokerten --non-interactive
       - name: Deploy only compatible AVIATOR functions
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: firebase deploy --only functions:avJoin,functions:avTick,functions:avCancelBet,functions:avCashout,functions:avPeek,functions:avCredit,functions:avStream --project pokerten --non-interactive
+        run: firebase deploy --only "${{ steps.scope.outputs.targets }}" --project pokerten --non-interactive
       - name: Verify exact live chip settlement through the Firebase API
         run: node functions/test/aviatorLiveProbe.cjs --confirm-play-money-production

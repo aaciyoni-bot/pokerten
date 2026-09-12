@@ -47,7 +47,7 @@ test('stream sends 20 prices/sec and stops on time while settlement remains bloc
   await stream({method:'GET',headers:{authorization:'Bearer fixture'}},response);
   const crash=packets.find(p=>p.state?.phase==='crashed');
   const expected=7000+Core.timeForMult(1.2);
-  assert(crash.at-expected>=0 && crash.at-expected<=50);
+  assert(crash.at-expected>=0 && crash.at-expected<=1);
   assert(crash.at<9000,'announcement must precede settlement');
   const prices=packets.filter(p=>p.quote);
   assert(prices.length>=27);

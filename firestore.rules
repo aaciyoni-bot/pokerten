@@ -7,30 +7,21 @@ service cloud.firestore {
     // club owner to approve them. Both land here as request.auth != null.
     function signedIn() { return request.auth != null; }
 
-    // Game / agent logs — append-only for players: create + read allowed, no edits.
-    // Delete is reserved for the club's owner (GENERAL RESET) and the super admin;
-    // regular players can never touch history.
+    // Incident containment: authenticated does not mean authorized. Poker
+    // wallets, game state, grants and financial records are no longer writable
+    // by players. The Admin SDK remains the only game-state writer.
     function superAdmin() {
-      return signedIn() && request.auth.token.email == 'aaci.yoni@gmail.com';
+      return signedIn() && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('email', '') == 'aaci.yoni@gmail.com';
     }
     function clubOwnerOf(cid) {
       return signedIn() && request.auth.uid == get(/databases/$(database)/documents/clubs/$(cid)).data.ownerUid;
     }
-    match /gameLog/{id}   { allow read, create: if signedIn(); allow update: if false;
-                            allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
-    match /agentLog/{id}  { allow read, create: if signedIn(); allow update: if false;
-                            allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
+    match /gameLog/{id} { allow read: if signedIn(); allow create: if superAdmin(); allow update, delete: if false; }
+    match /agentLog/{id} { allow read: if superAdmin() || clubOwnerOf(resource.data.clubId); allow create: if superAdmin(); allow update, delete: if false; }
 
-    // Core data — every access (read/write/delete) requires a signed-in account.
-    // Blocks unauthenticated access from the internet without breaking any app
-    // action. NOTE: a guest account is authenticated, so it clears this bar the
-    // same as a Google account does — approval by the club owner, not the rules,
-    // is what gates a guest out of a club.
-    // NOTE (roadmap): this is the safe baseline for the current client-side engine.
-    // Field-level hardening (deny direct writes to balance/stack/cards/deck/rank, and
-    // keep hole cards out of the shared doc) lands with the server-authoritative rework.
-    // Registered player codes are issued and retained by the server. Legacy
-    // records remain readable; their UID is retained when they receive a code.
+    // Existing canonical identities are preserved. Self-service profile edits
+    // cannot change balances, roles, approval, agent percentages or identities.
     function registeredPlayer(uid) {
       return exists(/databases/$(database)/documents/_pkPlayerAccounts/$(uid));
     }
@@ -39,20 +30,27 @@ service cloud.firestore {
     }
     match /users/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && canonicalPlayer(id, request.resource.data)
-        && (!('playerId' in request.resource.data) || !request.resource.data.playerId.matches('^P[0-9]{9}$'));
-      allow update: if signedIn() && canonicalPlayer(id, request.resource.data);
-      allow delete: if signedIn() && (!registeredPlayer(id) || superAdmin());
+      allow create: if signedIn() && canonicalPlayer(id, request.resource.data) && (
+        superAdmin() || (request.auth.uid == id
+          && request.resource.data.keys().hasOnly(['username','email','googleName','role','status','playerId','balance','clubProfits','isBot','isGuest','phone','phoneVerified','managedGames','stats','photo','avatarSeed'])
+          && request.resource.data.role == 'player'
+          && request.resource.data.status == 'pending'
+          && request.resource.data.balance == 0
+          && request.resource.data.clubProfits == 0
+          && request.resource.data.isBot == false
+          && request.resource.data.managedGames.size() == 0
+          && request.resource.data.stats == {'gamesPlayed':0,'gamesWon':0,'totalProfit':0}
+          && request.resource.data.email == request.auth.token.get('email', '')
+          && !request.resource.data.playerId.matches('^P[0-9]{9}$')));
+      allow update: if signedIn() && canonicalPlayer(id, request.resource.data) && (
+        superAdmin() || (request.auth.uid == id
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['username','photo','avatarSeed','lastSeen','lastLoginAt','lastActiveAt','online'])));
+      allow delete: if false;
     }
-
-    // Memberships hold player balances. The client engine needs open writes
-    // (wins are paid from players' browsers) — no blocking here by owner's
-    // choice: monitoring only, via the watchBalances Cloud Function, which
-    // records every 500+ balance jump in securityAlerts. Real write-lockdown
-    // arrives with the server-authoritative engine.
     match /memberships/{id} {
-      allow read, delete: if signedIn();
-      allow create, update: if signedIn() && canonicalPlayer(request.resource.data.uid, request.resource.data);
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || superAdmin() || clubOwnerOf(resource.data.clubId));
+      allow create, update: if superAdmin() && canonicalPlayer(request.resource.data.uid, request.resource.data);
+      allow delete: if false;
     }
 
     match /_pkPlayerAccounts/{id} { allow read, write: if false; }
@@ -65,24 +63,22 @@ service cloud.firestore {
     // these rules). The club owner / super admin can read and clear them;
     // players can't see they exist.
     match /securityAlerts/{id} {
-      allow read, delete: if superAdmin() || clubOwnerOf(resource.data.clubId);
+      allow read: if superAdmin() || clubOwnerOf(resource.data.clubId);
+      allow delete: if false;
       allow create, update: if false;
     }
 
-    // Hand records — one document per hand, written once and never edited.
-    // This is what a session review reads: the board, everyone's cards, and
-    // every action. Append-only for players; the club owner can clear them
-    // with the general reset.
-    match /hands/{id}     { allow read, create: if signedIn(); allow update: if false;
-                            allow delete: if superAdmin() || clubOwnerOf(resource.data.clubId); }
-
-    match /tables/{id}       { allow read, write: if signedIn(); }
+    // Preserve evidence; legacy hands/tables contain hidden cards in shared
+    // documents. Only the verified incident administrator may read them while
+    // the server-authoritative migration and balance audit are pending.
+    match /hands/{id} { allow read: if superAdmin(); allow write: if false; }
+    match /tables/{id} { allow read: if superAdmin(); allow write: if false; }
 
     // Server-engine private data: a player may read ONLY their own hole cards.
     // The deck/engine doc (_engine) and everyone else's cards are server-only.
     // No client ever writes here — only Cloud Functions (admin SDK bypasses rules).
     match /tables/{id}/priv/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if signedIn() && uid != "_engine" && request.auth.uid == uid;
       allow write: if false;
     }
 
@@ -118,9 +114,9 @@ service cloud.firestore {
         && request.resource.data.text.size() <= 140;
       allow update, delete: if false;
     }
-    match /clubs/{id}        { allow read, write: if signedIn(); }
-    match /tournaments/{id}  { allow read, write: if signedIn(); }
-    match /broadcasts/{id}   { allow read, write: if signedIn(); }
+    match /clubs/{id} { allow read: if signedIn(); allow create, update: if superAdmin(); allow delete: if false; }
+    match /tournaments/{id} { allow read: if signedIn(); allow write: if false; }
+    match /broadcasts/{id} { allow read: if signedIn(); allow write: if superAdmin(); }
 
     // ═══ Gadud 1895 — "ירוק בעיניים" daily ammo counter (greeneyes app) ═══
     // Identity by personal number. Every user signs in with an invisible

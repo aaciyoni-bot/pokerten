@@ -54,6 +54,18 @@ jobs:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: firebase deploy --only "${{ steps.targets.outputs.only }}" --project pokerten --non-interactive
 
+      - name: Verify enforced poker security pause
+        run: |
+          node --input-type=module <<'JS'
+          const {POKER_SECURITY_PAUSED} = await import('./functions/pokerSecurity.js').then(m => m.default);
+          const response = await fetch('https://us-central1-pokerten.cloudfunctions.net/pkSecurityStatus', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:{}})
+          });
+          const body = await response.json();
+          if (!response.ok || body.result?.available !== !POKER_SECURITY_PAUSED) throw new Error('Poker security readiness does not match this release');
+          console.log('Poker security state verified: ' + (POKER_SECURITY_PAUSED ? 'paused' : 'available'));
+          JS
+
       - name: Verify personal-code signing before publishing its login UI
         run: |
           node --input-type=module <<'JS'

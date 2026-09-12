@@ -65,9 +65,48 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  assert.equal(firstCard.querySelector('.poker-card-index>span').textContent,'A');
  await React.act(async()=>firstCard.click());
  assert.deepEqual(fxCalls.find(c=>c.name==='pkDiscard').args.index,1,'sorted Pineapple discard uses the original deal index');
+ // CALL was accepted, but the old number tween and chip travel finished after
+ // the turn changed. Freeze animation frames: money and turn must still agree.
+ const originalRaf=w.requestAnimationFrame;
+ w.requestAnimationFrame=()=>0;
+ for(const serverEngine of [false,true]) {
+   current=structuredClone(saved);current.settings.serverEngine=serverEngine;
+   if(serverEngine){privateHand=cards;current.players.me.cardCount=6;current.players.me.cards=[];}
+   await React.act(async()=>tableNext(snapshot()));
+   assert.equal(doc.querySelector('.poker-pot-amount').textContent,'10');
+   assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'100');
+   current.players.me.stack=90;current.players.me.bet=10;current.players.me.actionText='Call';
+   current.gameState.activeTurnUid='other';current.gameState.turnStartedAt++;
+   await React.act(async()=>tableNext(snapshot()));
+   assert.ok(doc.querySelector('.poker-seat:not(.poker-seat-hero) .active-glow'),'next turn already displayed');
+   assert.equal(doc.querySelector('.poker-pot-amount').textContent,'20','CALL is already included in total pot');
+   assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'90','stack is final before any animation frame');
+   const bet=doc.querySelector('.poker-bet[data-player-uid="me"]');
+   assert.ok(bet.querySelector('.casino-chip'),'CALL chips are already placed');
+   assert.equal(bet.classList.contains('bet-fly'),false,'CALL does not fly in after the next turn');
+   assert.equal(bet.style.transform,'translate(-50%, -50%)');
+   // Moving street bets into the central pot is display bookkeeping, not a
+   // second debit. There must be no delayed collection over the new turn.
+   current.players.me.bet=0;current.players.other.bet=0;
+   current.gameState.phase='flop';current.gameState.pots=[{amount:20}];current.gameState.highestBet=0;
+   current.gameState.board=cards.slice(2,5);current.gameState.turnStartedAt++;
+   await React.act(async()=>tableNext(snapshot()));
+   assert.equal(doc.querySelector('.poker-pot-amount').textContent,'20');
+   assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'90');
+   assert.equal(doc.querySelectorAll('.poker-bet').length,0);
+   assert.equal(doc.querySelectorAll('.poker-bet-collection').length,0);
+   assert.ok(doc.querySelector('.poker-total-pot .casino-chip'),'central chips are present immediately');
+   // An all-in zero is genuine and must not count down after the next turn.
+   current.players.me.stack=0;current.players.me.bet=90;current.players.me.actionText='All-in';
+   current.gameState.highestBet=90;current.gameState.turnStartedAt++;
+   await React.act(async()=>tableNext(snapshot()));
+   assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'0');
+   assert.equal(doc.querySelector('.poker-pot-amount').textContent,'110');
+ }
+ w.requestAnimationFrame=originalRaf;
  current=structuredClone(saved);await React.act(async()=>tableNext(snapshot()));
  const call=[...dock.querySelectorAll('button')].find(b=>b.textContent.includes('CALL'));assert.ok(call);current.players.me.stack=150;
  await React.act(async()=>call.click());assert.equal(writes.length,0);assert.equal(current.players.me.stack,150);assert.ok(messages.some(m=>m.includes('table updated')));
  await React.act(async()=>tableFail({code:'permission-denied'}));assert.ok(doc.querySelector('.poker-connection-status'));assert.ok(doc.querySelector('.poker-seat-hero'));assert.equal(doc.querySelector('.poker-seat-hero .poker-player-info').textContent.includes('100'),true);
- await React.act(async()=>root.unmount());w.close();console.log('PASS: readable own Omaha6 fan, NLH/Omaha winning cards and names, private server hands, compact hidden/revealed opponent fans, separate action dock, protected top-up and recoverable snapshot failure');
+ await React.act(async()=>root.unmount());w.close();console.log('PASS: readable cards and winners, fixed action dock, chip/pot/turn synchronization before animation frames, protected top-up and recoverable snapshot failure');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});

@@ -390,13 +390,8 @@
         .toast-leave { animation: toastOut 0.28s ease-in both; }
         @media (prefers-reduced-motion: reduce) { .view-anim, .toast-leave { animation-duration: 0.01s; } }
 
-        /* A bet flies IN from the player toward its spot (no more teleporting) */
-        @keyframes betFly {
-            from { transform: translate(-50%,-50%) translate(var(--bfx, 0px), var(--bfy, 0px)) scale(0.72); opacity: 0.25; }
-            to { transform: translate(-50%,-50%); opacity: 1; }
-        }
-        .bet-fly { animation: betFly 0.30s cubic-bezier(0.2,0.8,0.2,1) both; }
-        @media (prefers-reduced-motion: reduce) { .bet-fly { animation-duration: 0.01s; } }
+        /* Accepted bets are fully visible in the same frame as the new turn.
+           Moving/fading their amount made a completed CALL look unfinished. */
 
         /* Table top toolbar: one fixed-height row that scrolls sideways instead of
            wrapping over the center labels (the ניהול/GPS overlap on narrow phones) */
@@ -3737,7 +3732,7 @@ const BetCollect = ({
     };
   }, []);
   return React.createElement("div", {
-    className: "absolute z-[36] pointer-events-none",
+    className: "poker-bet-collection absolute z-[36] pointer-events-none",
     style: {
       left: go ? to.left : from.left,
       top: go ? to.top : from.top,
@@ -11090,7 +11085,9 @@ function PokerTable({
       });
     });
     L.prev = L.now;
-    if (fx.length) {
+    // Once another player has the turn, the accepted chips must already be
+    // settled. Collection travel is only decorative between active turns.
+    if (fx.length && !tableState?.gameState?.activeTurnUid) {
       setBetFx(cur => [...cur, ...fx]);
       const ids = fx.map(f => f.id);
       setTimeout(() => setBetFx(cur => cur.filter(f => !ids.includes(f.id))), 750);
@@ -14110,11 +14107,8 @@ function PokerTable({
     showLabel: false,
     unit: chipUnit
   })), React.createElement("div", {
-    className: "text-[14px] font-black text-amber-300 leading-tight"
-  }, React.createElement(CountNum, {
-    value: totalPot,
-    fmt: formatShort
-  }))), React.createElement("div", {
+    className: "poker-pot-amount text-[14px] font-black text-amber-300 leading-tight"
+  }, formatShort(totalPot))), React.createElement("div", {
     className: "sm:hidden text-[8px] font-bold text-slate-400 leading-tight",
     dir: "ltr"
   }, variantLabel(gs.currentGameType || setts.baseGameType, setts), " · ", (() => {
@@ -14465,12 +14459,9 @@ function PokerTable({
       className: "text-[10px] font-bold text-white truncate leading-tight",
       title: isMe ? 'You' : p.name
     }, isMe ? 'You' : (p.name || '').length > 11 ? (p.name || '').slice(0, 10) + '…' : p.name), React.createElement("div", {
-      className: "text-gold-400 font-black text-[12px] leading-tight",
+      className: "poker-stack-amount text-gold-400 font-black text-[12px] leading-tight",
       dir: "ltr"
-    }, React.createElement(CountNum, {
-      value: window.PokerRuntime.visibleStack(p.stack),
-      fmt: value => value === null ? '—' : formatShort(value)
-    })), p.actionText && React.createElement("div", {
+    }, window.PokerRuntime.visibleStack(p.stack) === null ? '—' : formatShort(p.stack)), p.actionText && React.createElement("div", {
       className: `poker-seat-action action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
       style: isMe ? {} : farPod ? {
         top: 'auto',
@@ -14545,19 +14536,14 @@ function PokerTable({
     return null;
   })(), displayList.map((p, i) => {
     if (!((p.bet || 0) > 0)) return null;
-    // fly-in vector: from the seat toward the bet spot (short, eased)
-    const [bsx, bsy] = seatXY(i);
     const bp = betPos(i);
-    const bdx = bsx - parseFloat(bp.left),
-      bdy = bsy - parseFloat(bp.top);
-    const bl = Math.max(1, Math.hypot(bdx, bdy));
     return React.createElement("div", {
-      key: 'bet' + p.uid + ':' + p.bet,
-      className: "poker-bet absolute z-[35] bet-fly",
+      key: 'bet' + p.uid,
+      className: "poker-bet absolute z-[35]",
+      "data-player-uid": p.uid,
       style: {
         ...bp,
-        '--bfx': `${Math.round(bdx / bl * 52)}px`,
-        '--bfy': `${Math.round(bdy / bl * 52)}px`
+        transform: 'translate(-50%, -50%)'
       }
     }, React.createElement(CasinoChipStack, {
       amount: p.bet,
@@ -14567,7 +14553,7 @@ function PokerTable({
   }), discFx && React.createElement(DiscardFly, {
     key: discFx.id,
     card: discFx.card
-  }), betFx.map((fx, fxi) => React.createElement(BetCollect, {
+  }), !gs.activeTurnUid && betFx.map((fx, fxi) => React.createElement(BetCollect, {
     unit: chipUnit,
     key: fx.id,
     from: fx.from,

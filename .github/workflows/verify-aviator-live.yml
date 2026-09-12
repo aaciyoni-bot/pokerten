@@ -1,0 +1,27 @@
+name: Verify live AVIATOR timing
+on:
+  push:
+    branches: [claude/gambling-game-graph-08c7yw]
+    paths: ['functions/test/aviatorLiveProbe.cjs', '.github/workflows/verify-aviator-live.yml']
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/claude/gambling-game-graph-08c7yw'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify exact source build and regression cases
+        run: |
+          node aviator-src/live/build-live.js
+          git diff --exit-code -- aviator-live.html
+          node --test functions/aviator.test.js functions/aviatorStream.test.js aviator-src/live/timing.test.cjs aviator-ux.test.cjs
+      - name: Verify current European stream and exact play-chip receipts
+        run: node functions/test/aviatorLiveProbe.cjs --confirm-play-money-production

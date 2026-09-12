@@ -21412,7 +21412,16 @@ function TourDrivers({
   })));
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(React.createElement(App, null));
+// Containment screen only. Firestore rules and server callables enforce the
+// pause even when this UI is removed, modified, or an old cached bundle is used.
+root.render(React.createElement("main", {
+  dir:"rtl", style:{minHeight:"100dvh",display:"grid",placeItems:"center",padding:"24px",background:"#0b1412",color:"#f6f4ec",fontFamily:"Arial,sans-serif"}
+}, React.createElement("section",{role:"status","data-security-maintenance":"2026-09-12",style:{width:"100%",maxWidth:"520px",textAlign:"center"}},
+  React.createElement("div",{dir:"ltr",style:{fontSize:"30px",fontWeight:900,color:"#d5b96f",letterSpacing:"2px",marginBottom:"32px"}},"POKERTEN"),
+  React.createElement("h1",{style:{fontSize:"28px",marginBottom:"18px"}},"תחזוקת אבטחה"),
+  React.createElement("p",{style:{fontSize:"18px",lineHeight:1.8}},"פעולות המשחק, הטעינה והמשיכה מושהות זמנית לצורך בדיקת יתרות והרשאות."),
+  React.createElement("p",{style:{fontSize:"15px",lineHeight:1.8,color:"#afc0b9",marginTop:"20px"}},"נתוני החשבונות והשולחנות נשמרים לבדיקה. נעדכן כאשר ניתן יהיה לחזור לשחק.")
+)));
 </script>
 </body>
 </html>

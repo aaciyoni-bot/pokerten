@@ -200,28 +200,16 @@ exports.claimWeeklyScratch = onCall(async (request) => {
  * are AGGREGATED per player per day (one doc, running count/total) — the
  * owner sees "player X: 7 jumps, +12,400 today" instead of a flooded panel.
  *
- * It also REVERTS the one shape that can only be tampering: a player raising
- * their OWN balance with nothing to show for it. Firestore rules cannot close
- * this — the client engine pays wins from players' browsers, so membership
- * writes have to stay open — but every legitimate self-credit in the app
- * touches a bookkeeping field alongside the balance:
- *
- *   cash-out / seat refund / registration rollback -> lastRefundAt
- *   pot or tournament win .......................... stats
- *   wheel / scratch card ........................... lastBonusAt, lastScratchAt,
- *                                                    bonusTotal, bonusOpen
- *   rake to the club / agent cut ................... clubProfits, agentProfits
- *
- * A bare {balance: bigger} poke from a browser console carries none of them,
- * and is put straight back. Only SELF-writes are reverted: credits written by
- * another player's client are how the engine pays everyone, so those stay
- * alert-only. Set `guardRevert: false` on the club doc to fall back to
- * alert-only if a legitimate path is ever caught.
+ * This is legacy detection and a best-effort revert, NOT authorization.
+ * Receipt fields are client-controlled and cannot prove that a credit is valid.
+ * The incident containment rules now deny player balance writes before commit;
+ * server-authoritative transactions must remain the money authority.
+ * Keep the historical alert format for incident review. Do not reopen writes
+ * on the assumption that this asynchronous trigger can prevent tampering.
  */
 const ALERT_MIN_JUMP = 500;
 const REVERT_MIN_JUMP = 100;
-// Changing any of these alongside the balance proves the credit came from real
-// game bookkeeping rather than a hand-written balance.
+// Heuristic labels for legacy alerts only. They are not trusted receipts.
 const RECEIPT_FIELDS = ["lastRefundAt", "stats", "bonusTotal", "bonusOpen",
   "lastBonusAt", "lastScratchAt", "clubProfits", "agentProfits", "spinPaid"];
 const changed = (a, b, k) => JSON.stringify((a || {})[k] === undefined ? null : a[k]) !==

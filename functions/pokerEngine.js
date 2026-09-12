@@ -946,6 +946,7 @@ const tRef = (id) => db().collection("tables").doc(id);
 const privRef = (id, sub) => tRef(id).collection("priv").doc(sub);
 
 async function loadState(tx, id, opts) {
+  require("./pokerSecurity").requirePokerAvailable();
   const snap = await tx.get(tRef(id));
   if (!snap.exists) throw new HttpsError("not-found", "Table not found");
   const t = snap.data();
@@ -1288,9 +1289,16 @@ const reqTableId = (request) => {
   return id;
 };
 
+// Public readiness contains no identity, balances, cards or admin capabilities.
+exports.pkSecurityStatus = onCall(CALL_OPTS, async () => ({
+  available: !require("./pokerSecurity").POKER_SECURITY_PAUSED,
+  reason: require("./pokerSecurity").POKER_SECURITY_PAUSED ? "security-review" : null
+}));
+
 // pkDeal — protocol §3.1. Must finish well under the client's 7s race.
 exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
   const uid = authedUid(request);
+  require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   let S = null;
   await db().runTransaction(async (tx) => {
@@ -1317,6 +1325,7 @@ exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
 // pkAct — protocol §3.2. amount is the TARGET TOTAL bet for the street.
 exports.pkAct = onCall(CALL_OPTS, async (request) => {
   const uid = authedUid(request);
+  require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const {action, amount, auto} = request.data || {};
   if (!["fold", "call", "raise"].includes(action)) throw new HttpsError("invalid-argument", "Unknown action");
@@ -1333,12 +1342,14 @@ exports.pkAct = onCall(CALL_OPTS, async (request) => {
 // pkTick — protocol §3.3. Called by every viewer; cheap + idempotent.
 exports.pkTick = onCall(CALL_OPTS, async (request) => {
   authedUid(request);
+  require("./pokerSecurity").requirePokerAvailable();
   return await tickTable(reqTableId(request));
 });
 
 // pkLeave — protocol §3.4. Self stand-up, or admin kick with targetUid.
 exports.pkLeave = onCall(CALL_OPTS, async (request) => {
   const uid = authedUid(request);
+  require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const target = (request.data || {}).targetUid || uid;
   let S = null;
@@ -1368,6 +1379,7 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
 // pkRit — protocol §3.5.
 exports.pkRit = onCall(CALL_OPTS, async (request) => {
   const uid = authedUid(request);
+  require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const agree = !!(request.data || {}).agree;
   await db().runTransaction(async (tx) => {
@@ -1385,6 +1397,7 @@ exports.pkRit = onCall(CALL_OPTS, async (request) => {
 // pkReveal — protocol §3.6: publish my mucked cards on the felt.
 exports.pkReveal = onCall(CALL_OPTS, async (request) => {
   const uid = authedUid(request);
+  require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   await db().runTransaction(async (tx) => {
     const S = await loadState(tx, id);
@@ -1403,6 +1416,7 @@ exports.pkReveal = onCall(CALL_OPTS, async (request) => {
 // pkPickGame — protocol §3.7. Errors must mention "your pick"/"dc_selection".
 exports.pkPickGame = onCall(CALL_OPTS, async (request) => {
   const uid = authedUid(request);
+  require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const gameType = (request.data || {}).gameType;
   if (!C.GAME_CARDS[gameType]) throw new HttpsError("invalid-argument", "Unknown game type");
@@ -1421,6 +1435,7 @@ exports.pkPickGame = onCall(CALL_OPTS, async (request) => {
 // pkDiscard — protocol §3.8. index is a position in MY priv cards array.
 exports.pkDiscard = onCall(CALL_OPTS, async (request) => {
   const uid = authedUid(request);
+  require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const index = Number((request.data || {}).index);
   let S = null;
@@ -1503,6 +1518,7 @@ exports.admFixGameLog = onCall(CALL_OPTS, async (request) => {
 // seeder), so play begins the moment players are looking at it.
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 exports.tourAutoStart = onSchedule("every 1 minutes", async () => {
+  if (require("./pokerSecurity").POKER_SECURITY_PAUSED) return;
   const now = Date.now();
   const snap = await db().collection("tournaments").where("status", "==", "reg").get();
   for (const d of snap.docs) {
@@ -1549,6 +1565,7 @@ const DRIVE_MAX_TABLES = 12;     // a hard ceiling: a runaway must not bill
 exports.tableAutoDrive = onSchedule(
     {schedule: "every 1 minutes", timeoutSeconds: 120, memory: "512MiB", region: "us-central1"},
     async () => {
+      if (require("./pokerSecurity").POKER_SECURITY_PAUSED) return;
       const started = Date.now();
       const snap = await db().collection("tables")
           .where("settings.serverEngine", "==", true).get();

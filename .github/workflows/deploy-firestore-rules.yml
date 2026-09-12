@@ -14,7 +14,10 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  verify:
+    uses: ./.github/workflows/security-rules.yml
   deploy-rules:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

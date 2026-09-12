@@ -49,7 +49,11 @@ module.exports = function createFlightStream({db, verifyIdToken, advance,
         if (!res.write(JSON.stringify(message)+'\n')) break;
         if (s.phase !== room.state.phase ||
             (s.phase==='crashed' && time>=s.phaseAt+s.crashHold)) advanceRoom(pilot.uid);
-        await pause(s.phase==='flying'?50:100);
+        // Wake at the actual phase deadline, not at the next 50/100 ms slot.
+        // The crash deadline stays entirely on the server.
+        const boundary=s.phase==='waiting' ? s.phaseAt+s.waitMs :
+          s.phase==='flying' ? s.phaseAt+Core.timeForMult(room.engine.crashPoint) : Infinity;
+        await pause(Math.max(1,Math.min(s.phase==='flying'?50:100,Math.ceil(boundary-now()))));
       }
     } catch { /* Disconnect: the client freezes and reconnects with backoff. */ }
     finally {

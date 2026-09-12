@@ -28,7 +28,7 @@ const db = () => (_db = _db || getFirestore());
 // index.html:1048-1049 — keep in sync with the client list.
 const GOD_EMAILS = ["aaci.yoni@gmail.com", "info.bagso@gmail.com", "avi057278@gmail.com", "khnby749@gmail.com", "bykhn3234@gmail.com", "easymarcelos@gmail.com"];
 const SUPER_ADMIN_EMAIL = "aaci.yoni@gmail.com";
-const isGodEmail = (e) => GOD_EMAILS.includes(String(e || "").toLowerCase().trim());
+const isGodAuth = (auth) => !!(auth && auth.uid && auth.token && auth.token.email_verified === true && GOD_EMAILS.includes(String(auth.token.email || "").toLowerCase().trim()));
 
 const BETTING = ["preflop", "flop", "turn", "river"]; // index.html:8951
 const rnd = () => crypto.randomInt(0, 1000000) / 1000000; // CSPRNG in [0,1)
@@ -105,6 +105,7 @@ function startHand(S, forcedGameType) {
     p.actionText = "";
     p.hasActed = false;
     p.reveal = false;
+    p.mucked = false;
     p.status = p.stack > 0 ?
       (p.sitOut && !S.table.tournamentId ? "sitout" : "active") :
       (["busted", "out"].includes(p.status) ? p.status : "sitout");
@@ -244,6 +245,7 @@ function executeDeal(S, gameType) {
   g.highestBet = high;
   g.minRaise = minR;
   g.phase = "preflop";
+  g.lastRiverAggressorUid = null;
   g.handN = (Number(g.handN) || 0) + 1; // hand counter — client keys the deal animation off it
   g.activeTurnUid = firstUid;
   g.turnStartedAt = S.now;
@@ -298,6 +300,7 @@ function applyAction(S, actorUid, action, amount, auto) {
     p.stack = round2(p.stack - add);
     p.bet = target;
     if (target > g.highestBet) {
+      if (g.phase === "river") g.lastRiverAggressorUid = actorUid;
       g.minRaise = Math.max(g.minRaise, round2(target - g.highestBet));
       g.highestBet = target;
       Object.values(pl).forEach((q) => {
@@ -517,7 +520,7 @@ function finishEarlyWin(S, winnerUid) {
 function runShowdown(S) {
   const g = S.gameState;
   const pl = S.players;
-  revealActiveHands(S);
+  const mustRevealAll = !!g.allInReveal || activesOf(pl).some(p => p.stack === 0);
   const rakeFrac = (Number(S.settings.rakePercent) || 0) / 100;
   const scoreOn = (board) => {
     const scores = {};
@@ -591,6 +594,13 @@ function runShowdown(S) {
   g.lastWinAmount = winTotal;
   g.lastWinners = [...winnerUids].map((uid) => pl[uid].name).join(", ");
   g.showdownAt = S.now;
+  g.allInReveal = mustRevealAll;
+  // A called river aggressor must table first. Other losing hands auto-muck;
+  // pkReveal lets their owners voluntarily show after seeing the result.
+  activesOf(pl).forEach(p => {
+    p.mucked = !(mustRevealAll || winnerUids.has(p.uid) || p.reveal || p.uid === g.lastRiverAggressorUid);
+    p.cards = p.mucked ? [] : [...(S.priv[p.uid] || [])];
+  });
   settleAfterHand(S, rakeTotal, winnerUids);
 }
 
@@ -1285,7 +1295,7 @@ exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
   let S = null;
   await db().runTransaction(async (tx) => {
     S = await loadState(tx, id, {withCards: true});
-    const god = isGodEmail(request.auth.token && request.auth.token.email);
+    const god = isGodAuth(request.auth);
     if (!S.players[uid] && !god) throw new HttpsError("permission-denied", "You are not seated at this table");
     const phase = S.gameState.phase || "waiting";
     if (!["waiting", "showdown"].includes(phase)) {
@@ -1335,7 +1345,7 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
   await db().runTransaction(async (tx) => {
     S = await loadState(tx, id, {withCards: true});
     if (target !== uid) {
-      const god = isGodEmail(request.auth.token && request.auth.token.email);
+      const god = isGodAuth(request.auth);
       const clubSnap = await tx.get(db().doc(`clubs/${S.table.clubId}`));
       const owner = clubSnap.exists && clubSnap.data().ownerUid === uid;
       if (!god && !owner) throw new HttpsError("permission-denied", "Not allowed");
@@ -1380,12 +1390,12 @@ exports.pkReveal = onCall(CALL_OPTS, async (request) => {
     const S = await loadState(tx, id);
     const p = S.players[uid];
     if (!p || S.gameState.phase !== "showdown") throw new HttpsError("failed-precondition", "Nothing to reveal now");
-    const okState = p.status === "folded" || (S.gameState.earlyWin && p.status === "active");
+    const okState = p.mucked === true || p.status === "folded" || (S.gameState.earlyWin && p.status === "active");
     if (!okState || p.reveal) return;
     const cs = await tx.get(privRef(id, uid));
     const cards = cs.exists ? (cs.data().cards || []) : [];
     if (!cards.length) return;
-    tx.update(tRef(id), {[`players.${uid}.reveal`]: true, [`players.${uid}.cards`]: cards});
+    tx.update(tRef(id), {[`players.${uid}.reveal`]: true, [`players.${uid}.mucked`]: false, [`players.${uid}.cards`]: cards});
   });
   return {ok: true};
 });
@@ -1426,7 +1436,7 @@ exports.pkDiscard = onCall(CALL_OPTS, async (request) => {
 // godPeek — protocol §3.9. GOD accounts only: all hands + the coming runout.
 exports.godPeek = onCall(CALL_OPTS, async (request) => {
   authedUid(request);
-  if (!isGodEmail(request.auth.token && request.auth.token.email)) {
+  if (!isGodAuth(request.auth)) {
     throw new HttpsError("permission-denied", "Not allowed");
   }
   const id = reqTableId(request);
@@ -1464,7 +1474,7 @@ exports.admFixGameLog = onCall(CALL_OPTS, async (request) => {
   const email = request.auth.token && request.auth.token.email;
   const clubId = (request.data || {}).clubId;
   if (!clubId) throw new HttpsError("invalid-argument", "Missing clubId");
-  if (!isGodEmail(email) && String(email || "").toLowerCase() !== SUPER_ADMIN_EMAIL) {
+  if (!isGodAuth(request.auth)) {
     const clubSnap = await db().doc(`clubs/${clubId}`).get();
     if (!clubSnap.exists || clubSnap.data().ownerUid !== uid) {
       throw new HttpsError("permission-denied", "Owner only");

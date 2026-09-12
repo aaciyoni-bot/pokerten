@@ -38,7 +38,11 @@ const requestId = () => randomUUID().replaceAll('-', '');
 
 async function json(url, options = {}) {
   const response = await fetch(url, {...options, signal:AbortSignal.timeout(15000)});
-  const body = await response.json();
+  const raw = await response.text();
+  let body;
+  try {body=JSON.parse(raw);} catch {
+    throw new Error('Non-JSON response '+response.status+' from '+new URL(url).hostname+new URL(url).pathname);
+  }
   if (!response.ok || body.error) {
     const status = body.error?.status || response.status;
     throw Object.assign(new Error('Live API request failed: ' + status), {status});
@@ -150,8 +154,25 @@ async function checkAutomatic(previousRound) {
   }
   throw new Error('Four natural early crashes prevented automatic-target verification');
 }
+async function waitForEndpoints() {
+  const until=Date.now()+90000;
+  const names=['avJoin','avBet','avTick','avCashout'];
+  while(Date.now()<until) {
+    const ready=await Promise.all(names.map(async name=>{
+      try {
+        const r=await fetch(base+name,{method:'POST',headers:{'Content-Type':'application/json'},
+          body:'{"data":{}}',signal:AbortSignal.timeout(5000)});
+        const body=await r.json();return r.status===401 && body.error?.status==='UNAUTHENTICATED';
+      }catch{return false;}
+    }));
+    if(ready.every(Boolean))return;
+    await new Promise(resolve=>setTimeout(resolve,2000));
+  }
+  throw new Error('New regional endpoints did not become ready');
+}
 async function main() {
   try {
+    await waitForEndpoints();
     const account = await auth('signUp', {returnSecureToken:true});
     idToken = account.idToken;uid = account.localId;
     assert(idToken && uid, 'Anonymous verification sign-in failed');

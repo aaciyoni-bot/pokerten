@@ -423,3 +423,6 @@ exports.guardTables = onDocumentWrittenWithAuthContext("tables/{tableId}",
         }, {merge: true});
       });
     });
+
+Object.assign(exports,require("./pokerAccess"));
+exports.pkTournament=require("./pokerTournaments").pkTournament;

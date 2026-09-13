@@ -124,7 +124,7 @@ function startHand(S, forcedGameType) {
     p.reveal = false;
     p.mucked = false;
     p.status = p.stack > 0 ?
-      (p.sitOut && !S.table.tournamentId ? "sitout" : "active") :
+      (p.sitOut && !S.table.tournamentId && !S.settings.spinMode ? "sitout" : "active") :
       (["busted", "out"].includes(p.status) ? p.status : "sitout");
   });
   S.players = pl;
@@ -1116,7 +1116,7 @@ async function tickTable(id, testNow) {
     }
 
     // --- Next hand from waiting / showdown ---
-    const eligible = Object.values(pl).filter((p) => p.stack > 0 && (S.tor || !p.sitOut) && !["busted", "out"].includes(p.status));
+    const eligible = Object.values(pl).filter((p) => (p.stack > 0 || !S.tor && p.pendingTopUp > 0) && (S.tor || S.settings.spinMode || !p.sitOut) && p.status!=="out" && (p.status!=="busted" || !S.tor && p.pendingTopUp>0));
     const activeSpin=extraTop.spin||S.raw.spin;
     const spinGate = tournamentReady(S) && (S.settings.spinMode ? activeSpin && !activeSpin.fundingPending && now >= (extraTop.spinStartAt||S.raw.spinStartAt||Infinity) && !S.raw.spinDone && !extraTop.spinDone : true);
     if (g.phase === "waiting" && eligible.length >= 2 && spinGate) {
@@ -1286,7 +1286,7 @@ exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
 });
 
 // pkAct — protocol §3.2. amount is the TARGET TOTAL bet for the street.
-exports.pkAct = onCall(CALL_OPTS, async (request) => {
+exports.pkAct = onCall({...CALL_OPTS,minInstances:1}, async (request) => {
   const uid = authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
@@ -1313,9 +1313,9 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const target = (request.data || {}).targetUid || uid;
-  let S = null;
+  let S = null,notice=false;
   await db().runTransaction(async (tx) => {
-    S = await loadState(tx, id, {withCards: true});
+    notice=false;S = await loadState(tx, id, {withCards: true});
     if (target !== uid) {
       const god = isGodAuth(request.auth);
       const clubSnap = await tx.get(db().doc(`clubs/${S.table.clubId}`));
@@ -1327,15 +1327,17 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
       S = null;
       return; // already gone — success
     }
+    const noticeMs=(S.settings.leaveNoticeMins||0)*60000,otherHumans=Object.values(S.players).some(q=>q.uid!==uid&&!q.isBot),profitBB=((p.stack||0)+(p.bet||0)-(p.buyTotal||0))/(S.settings.blinds*2);
+    if(target===uid&&!S.tor&&!S.settings.spinMode&&noticeMs&&otherHumans&&(!(S.settings.leaveNoticeBB>0)||profitBB>=S.settings.leaveNoticeBB)){if(!p.leavingAt)p.leavingAt=S.now+noticeMs;if(S.now<p.leavingAt){notice=true;await commitState(tx,S);return;}}
     const inHand=!A.idle(S.raw);
-    if(S.tor){p.sitOut=true;p.sitOutAt=S.now;p.lastSeen=S.now;}
+    if(S.tor||S.settings.spinMode&&S.raw.spin&&!S.raw.spinDone){p.sitOut=true;p.sitOutAt=S.now;p.lastSeen=S.now;}
     else if(inHand){p.leaveReq=S.now;p.sitOutNext=true;}
     else removeSeat(S,target,false);
     await commitState(tx, S);
     if(!inHand&&!S.tor)tx.set(privRef(id, target), {cards: []});
   });
   if (S) await runEffects(S);
-  return {ok: true};
+  return {ok: true,notice};
 });
 
 // pkRit — protocol §3.5.

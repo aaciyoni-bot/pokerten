@@ -1,7 +1,7 @@
 "use strict";
 const {test,before,after}=require("node:test"),assert=require("node:assert/strict"),fs=require("node:fs");
 const {initializeTestEnvironment,assertFails,assertSucceeds}=require("@firebase/rules-unit-testing");
-const {doc,setDoc,updateDoc,getDoc,deleteDoc,writeBatch}=require("firebase/firestore");
+const {doc,setDoc,updateDoc,getDoc,deleteDoc,writeBatch,getDocs,query,collection,where}=require("firebase/firestore");
 let env;
 before(async()=>{
  env=await initializeTestEnvironment({projectId:"demo-pokerten-security",firestore:{rules:fs.readFileSync(require.resolve("../../firestore.rules"),"utf8")}});
@@ -14,6 +14,9 @@ before(async()=>{
    "memberships/other_club":{uid:"other",clubId:"club",balance:200,role:"player"},
    "tables/table":{clubId:"club",settings:{serverEngine:false},players:{player:{uid:"player",stack:100}},gameState:{deck:["secret"]}},
    "tables/table/priv/player":{cards:["A"]},"tables/table/priv/other":{cards:["K"]},
+   "tables/protected":{authorityVersion:2,type:"poker",clubId:"club",settings:{serverEngine:true},players:{player:{stack:100,cards:[],cardCount:2}},gameState:{board:[]}},
+   "tables/protected/priv/_engine":{deck:["secret"]},"tables/protected/priv/other":{cards:["secret"]},
+   "memberships/player_other_club":{uid:"player_other",clubId:"club",balance:50},
    "tournaments/tour":{clubId:"club",prizePool:100,players:{player:{rank:2}}},
    "gameLog/log":{clubId:"club",uid:"player",profit:0},
    "securityAlerts/incident":{clubId:"club",uid:"player",delta:10000}
@@ -64,4 +67,23 @@ test("trusted backend remains capable of atomic ledger writes",async()=>{
 
 test("incident evidence cannot be erased by a player or a legacy club owner",async()=>{
  for(const uid of ["player","owner"])await assertFails(deleteDoc(doc(env.authenticatedContext(uid).firestore(),"securityAlerts/incident")));
+});
+test('approved members can query protected tables of their club without gaining any write or private-card access',async()=>{
+ const db=player();await assertSucceeds(getDoc(doc(db,'tables/protected')));
+ await assertSucceeds(getDocs(query(collection(db,'tables'),where('authorityVersion','==',2),where('clubId','==','club'))));
+ await assertFails(getDocs(collection(db,'tables')));
+ for(const ctx of [env.unauthenticatedContext(),env.authenticatedContext('stranger')])await assertFails(getDoc(doc(ctx.firestore(),'tables/protected')));
+ for(const patch of [{'players.player.stack':10000},{authorityVersion:1},{'settings.serverEngine':false},{'players.player.reveal':true}])await assertFails(updateDoc(doc(db,'tables/protected'),patch));
+ await assertFails(getDoc(doc(db,'tables/protected/priv/_engine')));await assertFails(getDoc(doc(db,'tables/protected/priv/other')));
+});
+test('membership existence check cannot disclose another user with a matching uid prefix',async()=>{
+ await assertSucceeds(getDoc(doc(player(),'memberships/player_missing')));
+ await assertFails(getDoc(doc(player(),'memberships/player_other_club')));
+});
+test('other application rule blocks remain byte-for-byte unchanged by poker recovery',()=>{
+ const hash=s=>require('node:crypto').createHash('sha256').update(s).digest('hex'),current=fs.readFileSync(require.resolve('../../firestore.rules'),'utf8');
+ const aviator=current.slice(current.indexOf('    // ═══ AVIATORIZIS'),current.indexOf('    match /clubs/{id}'));
+ const others=current.slice(current.indexOf('    // ═══ Gadud'));
+ assert.equal(hash(aviator),'fe9832de8a7a9250f5d8af316d494b8200d9bcf0512b9a2761a2ad0a92f07674');
+ assert.equal(hash(others),'ea381621c7e0c4bb6ad951684253172322decd04eedbe0bc23f0c3cc06fe74ac');
 });

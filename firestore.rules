@@ -49,6 +49,7 @@ service cloud.firestore {
     }
     match /memberships/{id} {
       allow read: if signedIn() && (resource.data.uid == request.auth.uid || superAdmin() || clubOwnerOf(resource.data.clubId));
+      allow get: if signedIn() && !exists(/databases/$(database)/documents/memberships/$(id)) && id.matches(request.auth.uid + '_.*');
       allow create, update: if superAdmin() && canonicalPlayer(request.resource.data.uid, request.resource.data);
       allow delete: if false;
     }
@@ -72,7 +73,7 @@ service cloud.firestore {
     // documents. Only the verified incident administrator may read them while
     // the server-authoritative migration and balance audit are pending.
     match /hands/{id} { allow read: if superAdmin(); allow write: if false; }
-    match /tables/{id} { allow read: if superAdmin(); allow write: if false; }
+    match /tables/{id} { allow read: if superAdmin() || (signedIn() && resource.data.authorityVersion == 2 && get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + resource.data.clubId)).data.status == 'approved'); allow write: if false; }
 
     // Server-engine private data: a player may read ONLY their own hole cards.
     // The deck/engine doc (_engine) and everyone else's cards are server-only.

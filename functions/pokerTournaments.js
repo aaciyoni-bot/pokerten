@@ -2,6 +2,7 @@
 const crypto=require('node:crypto'),{onCall}=require('firebase-functions/v2/https'),{getFirestore}=require('firebase-admin/firestore');
 const A=require('./pokerAuthority'),T=require('./pokerTournamentCore'),C=require('./pokerCore'),{prepareLedger}=require('./pokerLedger');
 const {key,cash,number,fail,payee}=A;
+const {botName,renameGenericBots}=require('./botNames');
 const all=t=>Object.values(t.players||{}),price=t=>cash(t.buyIn+t.fee+(t.bountyFree?0:t.bounty));
 const clock=(t,now=Date.now())=>T.clock(t,t.structure,now);
 async function tables(tx,db,id){const q=await tx.get(db.collection('tables').where('tournamentId','==',id));return q.docs.map(d=>({...d.data(),docId:d.id}));}
@@ -24,7 +25,7 @@ function tableDoc(t,players,now){return{authorityVersion:2,type:'poker',clubId:t
 function docOf(t){const {id,...doc}=t;return doc;}
 function funding(t,effects,p){const cost=price(t);if(t.bountyFree&&t.bountyBudgetRemaining<t.bounty)fail('failed-precondition','Club bounty reserve needs funding');if(cost)effects.push({type:'credit',uid:payee(p),amount:-cost});p.paid=cash((p.paid||0)+cost);p.bountyValue=t.bounty;t.prizePool=cash(t.prizePool+t.buyIn);t.feeTotal=cash(t.feeTotal+t.fee);t.bountyPool=cash(t.bountyPool+t.bounty);if(t.bountyFree)t.bountyBudgetRemaining=cash(t.bountyBudgetRemaining-t.bounty);}
 function addBots(t,ownerUid,effects){
- const missing=t.maxPlayers-all(t).filter(p=>!p.out).length;for(let i=0,n=0;n<missing;i++){const uid='bot_'+t.id+'_'+i;if(t.players[uid])continue;n++;const p={uid,name:'Bot '+(i+1),isBot:true,fundingUid:ownerUid,botStyle:['tight','balanced','aggressive'][i%3],out:false,rank:null,bounties:0,bountyWon:0,paid:0,rebuys:0,reentries:0,addon:false};funding(t,effects,p);t.players[uid]=p;t.entryCount++;}
+ const missing=t.maxPlayers-all(t).filter(p=>!p.out).length;for(let i=0,n=0;n<missing;i++){const uid='bot_'+t.id+'_'+i;if(t.players[uid])continue;n++;const p={uid,name:botName(uid,all(t).map(p=>p.name)),isBot:true,fundingUid:ownerUid,botStyle:['tight','balanced','aggressive'][i%3],out:false,rank:null,bounties:0,bountyWon:0,paid:0,rebuys:0,reentries:0,addon:false};funding(t,effects,p);t.players[uid]=p;t.entryCount++;}
 }
 function start(tx,db,t,now){
  const entrants=all(t).filter(p=>!p.out);if(entrants.length<t.minPlayers)fail('failed-precondition','Not enough registered players');for(let i=entrants.length-1;i>0;i--){const j=crypto.randomInt(i+1);[entrants[i],entrants[j]]=[entrants[j],entrants[i]];}
@@ -42,11 +43,13 @@ async function final(tx,db,t,rows,champion,now){
 async function tickTournament(id,now=Date.now()){
  const db=getFirestore(),ref=db.doc('tournaments/'+key(id));return db.runTransaction(async tx=>{
   const snap=await tx.get(ref);if(!snap.exists)return{};const t={...snap.data(),id};if(t.authorityVersion!==2)return{};const effects=[];
+  const namesChanged=renameGenericBots(t.players);
   if(t.status==='reg'){
-   if(now<t.startAt)return{};if(t.botFill){const c=await tx.get(db.doc('clubs/'+t.clubId));if(!c.exists||!c.data().ownerUid)fail('failed-precondition','Bot sponsor missing');addBots(t,c.data().ownerUid,effects);}if(all(t).length<t.minPlayers)return{};
+   if(now<t.startAt){if(namesChanged)tx.set(ref,docOf(t));return{};}if(t.botFill){const c=await tx.get(db.doc('clubs/'+t.clubId));if(!c.exists||!c.data().ownerUid)fail('failed-precondition','Bot sponsor missing');addBots(t,c.data().ownerUid,effects);}if(all(t).length<t.minPlayers){if(namesChanged)tx.set(ref,docOf(t));return{};}
    const write=await prepareLedger(db,tx,t.clubId,effects,'tournament:'+id,now);write();start(tx,db,t,now);tx.set(ref,docOf(t));return{started:true};
   }
-  if(t.status!=='running')return{};const rows=await tables(tx,db,id),banks=new Map();let changed=false;
+  if(t.status!=='running')return{};const rows=await tables(tx,db,id),banks=new Map();let changed=namesChanged;
+  for(const row of rows)if(renameGenericBots(row.players,t.players)){row.changed=true;changed=true;}
   for(const row of rows){if(!T.idle(row))continue;for(const p of Object.values(row.players||{})){
    const e=t.players[p.uid];if(!e||e.out||p.stack!==0||p.status!=='busted'||!p.bustedAt)continue;
    if(p.isBot&&now-p.bustedAt>=3000&&canRebuy(t,e,now)){

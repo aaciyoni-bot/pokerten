@@ -57,6 +57,26 @@ test('cancelling registration returns funded bot entries, guaranteed prize and u
  const b=await bank(owner),r=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Cancel checks',buyIn:10,fee:1,bounty:5,bountyFree:true,bountyBudgetRemaining:100,addedPrize:50,maxPlayers:4,startAt:Date.now()+600000}}),id=r.tournamentId;
  await call('pkTournament',owner,{op:'fillbots',tournamentId:id});assert.equal(await bank(owner),b-194);await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),b);await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),b);
 });
+test('cash and tournament bots get real display names and existing generic names refresh without changing identity',async()=>{
+ const names=require('../../functions/botNames'),r=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:100,blinds:1},botCount:1});
+ let t=await get('tables/'+r.tableId);const id=Object.keys(t.players)[0],p=t.players[id];assert.equal(names.generic(p.name),false);
+ await db.doc('tables/'+r.tableId).update({['players.'+id+'.name']:'BOT 1'});const b=await bank(owner);await Engine.__engineInternals.tickTable(r.tableId,Date.now());t=await get('tables/'+r.tableId);
+ assert.equal(names.generic(t.players[id].name),false);assert.equal(t.players[id].stack,p.stack);assert.equal(t.players[id].fundingUid,p.fundingUid);assert.equal(await bank(owner),b);
+ const c=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Name checks',maxPlayers:6,buyIn:0,startAt:Date.now()+600000}});
+ await call('pkTournament',owner,{op:'fillbots',tournamentId:c.tournamentId});let tor=await get('tournaments/'+c.tournamentId);assert.equal(new Set(Object.values(tor.players).map(p=>p.name)).size,6);assert.ok(Object.values(tor.players).every(p=>!names.generic(p.name)));
+ const bid=Object.keys(tor.players)[0];await db.doc('tournaments/'+c.tournamentId).update({['players.'+bid+'.name']:'Bot 1'});await Tours.tickTournament(c.tournamentId);tor=await get('tournaments/'+c.tournamentId);assert.equal(names.generic(tor.players[bid].name),false);assert.equal(tor.status,'reg');
+});
+test('tournament settlement pays exactly the configured number of prize places and never pays twice',async()=>{
+ for(const [mode,payouts,paidPct,expected]of [['three',[50,30,20],0,3],['two',[70,30],0,2],['percent',[100],40,2]]){
+  const c=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Payout '+mode,maxPlayers:5,tableSize:5,buyIn:10,payouts,paidPct,startAt:Date.now()+600000}}),id=c.tournamentId;
+  await call('pkTournament',owner,{op:'fillbots',tournamentId:id});await call('pkTournament',owner,{op:'start',tournamentId:id});const [row]=await rows(id),ids=Object.keys(row.players),roster={...(await get('tournaments/'+id)).players};
+  // Feed the final settled hand into the actual server orchestrator.
+  for(let i=0;i<ids.length;i++){const uid=ids[i];Object.assign(row.players[uid],{stack:i===0?50000:0,bet:0,status:i===0?'active':'out'});Object.assign(roster[uid],{out:i!==0,rank:i===0?null:i+1});}
+  await db.doc('tables/'+row.docId).update({players:row.players});await db.doc('tournaments/'+id).update({players:roster});const b=await bank(owner);await Tours.tickTournament(id);const done=await get('tournaments/'+id);
+  assert.equal(done.status,'done');assert.equal(done.results.filter(p=>p.prize>0).length,expected);assert.equal(done.results.reduce((n,p)=>n+p.prize,0),50);assert.equal(await bank(owner),b+50);
+  await Tours.tickTournament(id);assert.equal(await bank(owner),b+50);
+ }
+});
 test('pure planner preserves stacks, defers busy-table moves and rejects duplicate/missing/zero live seats',()=>{
  const player=(uid,i)=>({uid,seatIndex:i,stack:100,bet:0,status:'active'}),t={id:'t',status:'running',tableSize:6,players:Object.fromEntries(['a','b','c','d'].map(uid=>[uid,{uid,out:false}]))};
  const make=(id,uids)=>({docId:id,tournamentId:'t',tournament:{},gameState:{phase:'waiting',pots:[]},players:Object.fromEntries(uids.map((u,i)=>[u,player(u,i)]))});

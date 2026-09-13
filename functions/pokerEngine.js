@@ -23,6 +23,7 @@ const C = require("./pokerCore");
 const round2 = C.round2;
 const A = require('./pokerAuthority');
 const Tours = require('./pokerTournaments');
+const {renameGenericBots} = require('./botNames');
 const {prepareLedger} = require('./pokerLedger');
 
 let _db = null;
@@ -1001,6 +1002,7 @@ async function loadState(tx, id, opts) {
     });
   }
   S._deckBefore=JSON.stringify(S.deck);S._privBefore=JSON.stringify(S.priv);
+  S.namesChanged=renameGenericBots(S.players,S.tor?.players);
   return S;
 }
 
@@ -1053,7 +1055,7 @@ async function tickTable(id, testNow) {
     const pl = S.players;
     const now = S.now;
     const extraTop = {};
-    let dirty = false;
+    let dirty = S.namesChanged;
 
     // --- Spin arming: table full, wheel not spun yet (protocol §5) ---
     if (S.settings.spinMode && !S.raw.spin && Object.keys(pl).length >= (Number(S.settings.maxPlayers) || 3)) {

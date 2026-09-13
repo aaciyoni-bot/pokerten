@@ -4,6 +4,7 @@ const {onCall}=require('firebase-functions/v2/https');
 const A=require('./pokerAuthority'),C=require('./pokerCore'),{prepareLedger}=require('./pokerLedger');
 const {key,fail,cash,number,root,owner,member,command,capacity}=A;
 const opts={region:'us-central1'};
+const {botName}=require('./botNames');
 const available=()=>require('./pokerSecurity').requirePokerAvailable();
 function tableSettings(raw={}){
  const s={};for(const [k,min,max,def]of [['blinds',.01,100000,.5],['minBuyIn',.01,10000000,40],['maxBuyIn',.01,10000000,200],['minBuyInBB',0,100000,0],['maxBuyInBB',0,100000,0],['maxPlayers',2,9,6],['autoStart',2,9,2],['actionTime',10,120,30],['rakePercent',0,20,0],['rakeCap',0,100000,0],['ante',0,100000,0],['bombEvery',0,1000,0],['bombAnte',0,100,2],['leaveNoticeMins',0,120,0],['leaveNoticeBB',0,100000,0],['spinBuyIn',.01,100000,50],['spinStack',10,10000000,1000],['spinLevelSec',30,3600,180]])s[k]=number(raw[k],def,min,max);
@@ -18,7 +19,7 @@ exports.pkTableCreate=onCall(opts,async r=>{available();return command(r,'table-
  const id='secure_'+crypto.createHash('sha256').update(uid+':'+r.data.requestId).digest('hex').slice(0,28),ref=db.doc('tables/'+id),old=await tx.get(ref);if(old.exists)return{ok:true,tableId:id};
  const players={},cost=s.spinMode?s.spinBuyIn:Math.min(s.maxBuyIn,Math.max(s.minBuyIn,100*s.blinds*2));
  const write=await prepareLedger(db,tx,cid,n?[{type:'credit',uid:club.ownerUid,amount:-cash(n*cost)}]:[],id,now);
- for(let i=0;i<n;i++){const bid='bot_'+id+'_'+i;players[bid]={uid:bid,name:'Bot '+(i+1),isBot:true,fundingUid:club.ownerUid,botStyle:['tight','balanced','aggressive'][i%3],seatIndex:i,stack:s.spinMode?s.spinStack:cost,buyTotal:s.spinMode?0:cost,spinPaid:s.spinMode?cost:0,bet:0,status:'active',cards:[],cardCount:0};}
+ for(let i=0;i<n;i++){const bid='bot_'+id+'_'+i;players[bid]={uid:bid,name:botName(bid,Object.values(players).map(p=>p.name)),isBot:true,fundingUid:club.ownerUid,botStyle:['tight','balanced','aggressive'][i%3],seatIndex:i,stack:s.spinMode?s.spinStack:cost,buyTotal:s.spinMode?0:cost,spinPaid:s.spinMode?cost:0,bet:0,status:'active',cards:[],cardCount:0};}
  write();tx.set(ref,{authorityVersion:2,type:'poker',clubId:cid,createdBy:uid,createdAt:now,settings:s,players,chat:[],leftStacks:{},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:s.blinds*2,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}});return{ok:true,tableId:id};
 });});
 exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(tx,db,uid,now)=>{
@@ -27,7 +28,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
  const us=await tx.get(db.doc('users/'+uid)),profile=us.exists?us.data():{},op=r.data.op,pl=t.players||{},p=pl[uid],idle=A.idle(t),patch={},effects=[];let result={ok:true};
  if(t.tournamentId&&['join','topup','rebuy','addbot'].includes(op))fail('failed-precondition','Use tournament registration');
  if(op==='join'||op==='addbot'){
-  let who=uid,funding=uid,name=profile.username||'Player';if(op==='addbot'){const c=await owner(tx,db,cid,r);funding=key(c.ownerUid);who='bot_'+crypto.createHash('sha256').update(uid+r.data.requestId).digest('hex').slice(0,24);name='Bot '+(Object.keys(pl).length+1);}
+  let who=uid,funding=uid,name=profile.username||'Player';if(op==='addbot'){const c=await owner(tx,db,cid,r);funding=key(c.ownerUid);who='bot_'+crypto.createHash('sha256').update(uid+r.data.requestId).digest('hex').slice(0,24);name=botName(who,Object.values(pl).map(p=>p.name));}
   if(pl[who])return result;if(op==='join'&&r.data.fromWaitlist&&t.waitlist?.[0]?.uid!==uid)fail('failed-precondition','Waiting list changed');const cap=capacity(s),taken=new Set(Object.values(pl).map(p=>p.seatIndex));if(Object.keys(pl).length>=cap||s.spinMode&&t.spin)fail('failed-precondition','Table is full or Spin started');
   let seat=Number.isInteger(r.data.seatIndex)&&r.data.seatIndex>=0&&r.data.seatIndex<cap&&!taken.has(r.data.seatIndex)?r.data.seatIndex:0;while(taken.has(seat)&&seat<cap)seat++;if(seat>=cap)fail('failed-precondition','No seat available');
   const min=s.minBuyIn??40*s.blinds*2,max=s.maxBuyIn??200*s.blinds*2,buy=s.spinMode?s.spinBuyIn:op==='addbot'?Math.min(max,Math.max(min,100*s.blinds*2)):number(r.data.amount,NaN,min,max);

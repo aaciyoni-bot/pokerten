@@ -1,0 +1,29 @@
+name: Repair personal-code signing permission
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/repair-pin-signing.cjs'
+      - '.github/workflows/repair-pin-signing.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pokerten-pin-signing-permission
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --prefix "$RUNNER_TEMP/pin-cli" --no-audit --no-fund firebase-tools@13.35.1
+      - name: Verify policy preservation
+        run: node --test tests/pin-signing-repair.test.cjs
+      - name: Grant runtime accounts self-signing and verify PIN readiness
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: NODE_PATH="$RUNNER_TEMP/pin-cli/node_modules" node scripts/repair-pin-signing.cjs

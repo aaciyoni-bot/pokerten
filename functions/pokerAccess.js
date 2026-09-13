@@ -43,7 +43,10 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
    if(s.spinMode)fail('failed-precondition','Spin does not allow top-ups');const add=number(r.data.amount,NaN,.01,10000000),max=s.maxBuyIn??200*s.blinds*2;if(cash(p.stack+(p.bet||0)+(p.pendingTopUp||0)+add)>max)fail('invalid-argument','Buy-in limit exceeded');if(op==='rebuy'&&(!idle||p.stack>0))fail('failed-precondition','Wait until the hand ends');
    effects.push({type:'credit',uid,amount:-add});result.queued=!idle;patch[`players.${uid}.${idle?'stack':'pendingTopUp'}`]=cash((idle?p.stack:p.pendingTopUp||0)+add);patch[`players.${uid}.buyTotal`]=cash((p.buyTotal||0)+add);if(idle){patch[`players.${uid}.status`]='waiting';patch[`players.${uid}.sitOut`]=false;}
   }else if(op==='heartbeat')patch[`players.${uid}.lastSeen`]=now;
-  else if(op==='leave-request'||op==='cancel-leave')patch[`players.${uid}.leaveReq`]=op==='leave-request'?now:null;
+  else if(op==='leave-request')patch[`players.${uid}.leaveReq`]=now;
+  else if(op==='cancel-leave'){patch[`players.${uid}.leaveReq`]=null;patch[`players.${uid}.leavingAt`]=null;patch[`players.${uid}.sitOutNext`]=false;}
+  else if(op==='straddle'){if(!s.straddle||t.tournamentId||s.spinMode)fail('failed-precondition','Straddle unavailable');patch[`players.${uid}.straddleNext`]=r.data.enabled===true;}
+  else if(op==='pause'){patch[`players.${uid}.${idle?'sitOut':'sitOutNext'}`]=true;patch[`players.${uid}.sitOutAt`]=now;}
   else if(op==='return'||op==='sitout'&&(p.sitOut||p.sitOutNext))Object.assign(patch,{[`players.${uid}.sitOut`]:false,[`players.${uid}.sitOutNext`]:false,[`players.${uid}.missed`]:0});
   else if(op==='sitout'){patch[`players.${uid}.${idle?'sitOut':'sitOutNext'}`]=true;patch[`players.${uid}.sitOutAt`]=now;}
   else fail('invalid-argument','Unknown seat operation');
@@ -71,6 +74,19 @@ exports.pkClubMember=onCall(opts,async r=>command(r,'club-member',async(tx,db,ui
 }));
 exports.pkTableManage=onCall(opts,async r=>command(r,'table-manage',async(tx,db,uid)=>{
  const ref=db.doc('tables/'+key(r.data.tableId)),snap=await tx.get(ref);if(!snap.exists)fail('not-found','Table missing');const t=snap.data();await owner(tx,db,t.clubId||'main',r);if(t.authorityVersion!==2)fail('failed-precondition','Protected tables only');
- if(r.data.op==='mute')tx.update(ref,{chatMuted:r.data.muted===true});else if(r.data.op==='limits'&&!t.tournamentId){const min=number(r.data.min,NaN,.01,10000000),max=number(r.data.max,NaN,min,10000000);tx.update(ref,{'settings.minBuyIn':min,'settings.maxBuyIn':max});}else fail('invalid-argument','Unknown table operation');return{ok:true};
+ if(r.data.op==='mute')tx.update(ref,{chatMuted:r.data.muted===true});else if(r.data.op==='limits'&&!t.tournamentId){const min=number(r.data.min,NaN,.01,10000000),max=number(r.data.max,NaN,min,10000000);tx.update(ref,{'settings.minBuyIn':min,'settings.maxBuyIn':max});}else if(r.data.op==='spin'&&t.settings.spinMode&&!t.spin&&!Object.keys(t.players||{}).length){const entry=number(r.data.entry,NaN,.01,100000),stack=number(r.data.stack,NaN,10,10000000),sb=number(r.data.sb,NaN,.01,100000);tx.update(ref,{'settings.spinBuyIn':entry,'settings.minBuyIn':entry,'settings.maxBuyIn':entry,'settings.spinStack':stack,'settings.blinds':sb});}else fail('invalid-argument','Unknown table operation');return{ok:true};
 }));
 exports.__accessInternals={tableSettings};
+exports.pkClubSettings=onCall(opts,async r=>command(r,'club-settings',async(tx,db,uid,now)=>{
+ const cid=key(r.data.clubId);await owner(tx,db,cid,r);const raw=r.data.patch||{},patch={};
+ for(const k of Object.keys(raw))if(!['name','logo','rakePct','closedWeeks'].includes(k))fail('invalid-argument','Unsupported club setting');
+ if('name'in raw){patch.name=String(raw.name||'').trim();if(patch.name.length<2||patch.name.length>30)fail('invalid-argument','Club name must be 2–30 characters');}
+ if('logo'in raw){const logo=raw.logo;if(logo!==null&&(typeof logo!=='string'||logo.length>80000||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logo)))fail('invalid-argument','Invalid club logo');patch.logo=logo;}
+ if('rakePct'in raw)patch.rakePct=number(raw.rakePct,NaN,0,20);
+ if('closedWeeks'in raw){if(!raw.closedWeeks||Array.isArray(raw.closedWeeks)||typeof raw.closedWeeks!=='object'||JSON.stringify(raw.closedWeeks).length>100000)fail('invalid-argument','Invalid settlement report');patch.closedWeeks=raw.closedWeeks;}
+ if(!Object.keys(patch).length)fail('invalid-argument','No settings supplied');tx.update(db.doc('clubs/'+cid),patch);tx.set(db.collection('_pkAudit').doc(),{clubId:cid,uid,at:now,action:'club-settings',fields:Object.keys(patch)});return{ok:true};
+}));
+exports.pkSettlementNote=onCall(opts,async r=>command(r,'settlement-note',async(tx,db,uid,now)=>{
+ const cid=key(r.data.clubId);await owner(tx,db,cid,r);const target=key(r.data.targetUid),m=await tx.get(db.doc(`memberships/${target}_${cid}`));if(!m.exists)fail('not-found','Member missing');const note=String(r.data.note||'').trim();if(!note||note.length>120)fail('invalid-argument','A note is required');const amount=number(r.data.amount,NaN,-10000000,10000000);
+ const entry={uid:target,username:m.data().username||'Player',clubId:cid,game:'adjust',profit:amount,rake:0,tableId:'',at:now,by:uid,note};tx.set(db.collection('gameLog').doc(),entry);return{ok:true,entry};
+}));

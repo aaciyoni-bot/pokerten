@@ -1179,7 +1179,7 @@ async function tickTable(id, testNow) {
           dirty = true;
         } else if (!actor.isBot) {
           const gone = actor.lastSeen && now - actor.lastSeen > 20000;
-          const limit = gone ? 9000 : ((Number(S.settings.actionTime) || 30) + 22) * 1000;
+          const limit = actor.sitOut ? 1500 : gone ? 9000 : (Number(S.settings.actionTime) || 30) * 1000 + 1000;
           if (stuck > limit) {
             const toCall = round2(Math.max(0, g.highestBet - (actor.bet || 0)));
             applyAction(S, actor.uid, toCall > 0 ? "fold" : "call", undefined, true);
@@ -1224,16 +1224,12 @@ function removeSeat(S, uid, inHand) {
       g.turnStartedAt = S.now;
     } else g.activeTurnUid = null;
   }
-  if (credit > 0) {
-    S.effects.push({type: "credit", uid:A.payee(p), amount: credit});
-    if (!S.settings.spinMode && !p.isBot) {
-      S.effects.push({type: "gameLog", entries: [{uid, username: p.name, profit: round2(stack - (p.buyTotal || stack)), rake: 0}]});
-      if (stack > 0) {
-        S.leftWrites = S.leftWrites || {};
-        S.leftWrites[uid] = {amount: stack, at: S.now}; // 12h re-entry floor (index.html:10228)
-      }
-    }
+  if(credit>0)S.effects.push({type:'credit',uid:A.payee(p),amount:credit});
+  if(!S.settings.spinMode&&!p.isBot){
+    S.effects.push({type:'gameLog',entries:[{uid,username:p.name,profit:round2(credit-(p.buyTotal??stack)),rake:0}]});
+    if(stack>0){S.leftWrites=S.leftWrites||{};S.leftWrites[uid]={amount:stack,at:S.now};}
   }
+
 }
 
 /* ============================ callables ============================ */

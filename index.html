@@ -1094,7 +1094,7 @@
             window.__ptConfirm = null;
         };
         const _fx = getFunctions(app);
-        window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
+        window.fb.fx = (name, data) => httpsCallable(_fx, name,{timeout:20000})(data).then(r => r.data);
         // Robust Google sign-in: popup FIRST on every device. signInWithRedirect
         // breaks on modern mobile browsers when authDomain (…firebaseapp.com)
         // differs from the app origin — Chrome/Safari storage partitioning drops
@@ -4225,14 +4225,15 @@ function App() {
   };
   useEffect(() => {
     if (!fbReady || !dbUser?.uid) return;
-    const unsubT = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tables"),window.fb.where("authorityVersion","==",2)), s => {
+    if(!activeClub){setTablesDB([]);setToursDB([]);setTablesLoaded(true);return;}
+    const unsubT = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tables"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {
       setTablesDB(s.docs.map(d => ({
         docId: d.id,
         ...d.data()
       })));
       setTablesLoaded(true);
     });
-    const unsubTours = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournaments"),window.fb.where("authorityVersion","==",2)), s => {
+    const unsubTours = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournaments"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {
       setToursDB(s.docs.map(d => ({
         id: d.id,
         ...d.data()
@@ -4267,7 +4268,7 @@ function App() {
       unsubTours();
       unsubU();
     };
-  }, [fbReady, dbUser?.uid]);
+  }, [fbReady, dbUser?.uid,activeClub?.id]);
   useEffect(() => {
     if (!fbReady || !dbUser) return;
     const iv = setInterval(() => {
@@ -8225,7 +8226,7 @@ function SettlementSection({
           by: user.username,
           note: eb.note.trim().slice(0, 120)
         };
-        await window.fb.addDoc(window.fb.collection(window.fb.db, "gameLog"), entry);
+        await pokerCommand('pkSettlementNote',{clubId:CLUB_ID,targetUid:eb.p.uid,amount:delta,note:entry.note});
         setGLog(prev => [...(prev || []), entry]);
         showToastG(`Result corrected (${delta > 0 ? '+' : ''}${formatMoney(delta)})`, "success");
       } catch (e) {
@@ -8237,9 +8238,7 @@ function SettlementSection({
       if (isNaN(pct)) return showToastG("Invalid %", "error");
       setBusy(true);
       try {
-        await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", eb.p.id), {
-          agentPct: pct
-        });
+        await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:eb.p.uid,op:'role',role:eb.p.role||'player',agentUid:eb.p.agentUid||'',agentPct:pct,managedGames:eb.p.managedGames||[]});
         setMems(prev => prev.map(m => m.id === eb.p.id ? {
           ...m,
           agentPct: pct
@@ -8271,11 +8270,9 @@ function SettlementSection({
           paid
         }
       };
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+      await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
         closedWeeks: upd
-      }, {
-        merge: true
-      });
+      }});
       setClosed(upd);
       if (window.__club) window.__club.closedWeeks = upd;
     } catch (e) {
@@ -8286,9 +8283,7 @@ function SettlementSection({
     if (!isOwnerView || weekLocked) return;
     setBusy(true);
     try {
-      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", p.id), {
-        agentUid: agentUid || null
-      });
+      await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:p.uid,op:'role',role:p.role||'player',agentUid:agentUid||'',agentPct:Number(p.agentPct)||0,managedGames:p.managedGames||[]});
       setMems(prev => prev.map(m => m.id === p.id ? {
         ...m,
         agentUid: agentUid || null
@@ -8325,11 +8320,9 @@ function SettlementSection({
         ...(closed || {}),
         [String(start)]: rec
       };
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+      await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
         closedWeeks: upd
-      }, {
-        merge: true
-      });
+      }});
       setClosed(upd);
       if (window.__club) window.__club.closedWeeks = upd;
       showToastG(`${cycLabel} closed & locked`, "success");
@@ -8887,9 +8880,9 @@ function BackofficeView({
         const dataUrl = cv.toDataURL('image/jpeg', 0.85);
         if (dataUrl.length > 60000) return showToast("Image too complex — try a simpler one", "error");
         try {
-          await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+          await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
             logo: dataUrl
-          });
+          }});
           showToast("Club logo updated! 🖼️", "success");
         } catch (err) {
           showToast("Error saving logo", "error");
@@ -8982,7 +8975,7 @@ function BackofficeView({
     if (!isOwner) return;
     (async () => {
       try {
-        const ts = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("clubId", "==", CLUB_ID)));
+        const ts = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("clubId", "==", CLUB_ID),window.fb.where("authorityVersion","==",2)));
         let onT = 0;
         ts.docs.forEach(d => {
           const t = d.data() || {};
@@ -9059,11 +9052,9 @@ showToast('Balances and tournament records are preserved. Use individual transfe
     const pct = parseFloat(rakeDraft);
     if (isNaN(pct) || pct < 0 || pct > 20) return showToast("Invalid rake percentage (0-20)", "error");
     try {
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+      await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
         rakePct: pct
-      }, {
-        merge: true
-      });
+      }});
       showToast(`Rake updated to ${pct}%`, "success");
     } catch (e) {
       showToast("Error saving settings", "error");
@@ -9562,9 +9553,9 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       const nm = clubNameDraft.trim();
       if (nm.length < 2) return showToast("Name must be 2 to 30 characters", "error");
       try {
-        await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+        await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
           name: nm
-        });
+        }});
         setClubNameDraft('');
         showToast("Club name updated!", "success");
       } catch (e) {
@@ -9592,9 +9583,9 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   })), clubSettings?.logo && React.createElement("button", {
     onClick: async () => {
       try {
-        await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+        await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
           logo: null
-        });
+        }});
         showToast("Logo removed", "info");
       } catch (err) {}
     },
@@ -10741,7 +10732,7 @@ function PokerTable({
     const torId = tableRef.current?.tournamentId;
     if (!torId) return;
     try {
-      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId),window.fb.where("authorityVersion","==",2)))]);
+      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",CLUB_ID)))]);
       const torPl = tSnap.exists() ? tSnap.data().players || {} : {};
       // Read the stack by the players-map KEY, not by a uid field inside the
       // seat: a seat written without `uid` used to be skipped entirely, and
@@ -11684,7 +11675,7 @@ try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){s
 try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'rebuy',amount:Math.min(Math.max(Number(buyAmt),minBuy),maxBuy)});showToast("Rebuy accepted.",'success');}catch(e){showToast(e.message||String(e),'error');}
 };
   const handleStandUp = async forceNow => {
-const t=tableRef.current;if(!t?.players?.[user.uid])return onLeave();try{const r=await window.fb.fx('pkLeave',{tableId:tableDocId});if(r.notice){showToast('Leaving notice is active. Your seat stays until it ends.','info');return;}if(!t.tournamentId&&!['waiting','showdown'].includes(t.gameState.phase)){leaveArmedRef.current=true;showToast('Leaving after this hand.','info');}else onLeave();}catch(e){showToast(e.message||String(e),'error');}
+const t=tableRef.current;if(!t?.players?.[user.uid])return onLeave();if(!t.tournamentId&&(t.players[user.uid].leaveReq||t.players[user.uid].leavingAt)&&!forceNow){await pokerCommand('pkSeat',{tableId:tableDocId,op:'cancel-leave'});showToast('Leaving cancelled.','info');return;}try{const r=await window.fb.fx('pkLeave',{tableId:tableDocId});if(r.notice){showToast('Leaving notice is active. Your seat stays until it ends.','info');return;}if(!t.tournamentId&&!['waiting','showdown'].includes(t.gameState.phase)){leaveArmedRef.current=true;showToast('Leaving after this hand.','info');}else onLeave();}catch(e){showToast(e.message||String(e),'error');}
 };
   const handleAddBot = async () => {
 try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'addbot'});showToast("Bot seated.",'success');}catch(e){showToast(e.message||String(e),'error');}
@@ -11747,6 +11738,7 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'addbot'});showToast("Bot
     saidPhase: ''
   });
   const botSay = async (bot, text, emoji) => {
+    if(srvEngine)return;
     const t = tableRef.current;
     if (!t || !bot) return;
     try {
@@ -13834,9 +13826,7 @@ try{await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.current?
     onClick: async () => {
       setToolsOpen(false);
       try {
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.straddleNext`]: !myPlayer?.straddleNext
-        });
+        await pokerCommand('pkSeat',{tableId:tableDocId,op:'straddle',enabled:!myPlayer?.straddleNext});
       } catch (e) {}
     },
     title: "Straddle when eligible (2×BB blind — you act last preflop)",
@@ -13903,12 +13893,7 @@ try{await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.current?
       try {
         if (isSeated) {
           const midHand = !['waiting', 'showdown'].includes(gs.phase);
-          await window.fb.updateDoc(tblRef(), midHand ? {
-            [`players.${user.uid}.sitOutNext`]: true
-          } : {
-            [`players.${user.uid}.sitOut`]: true,
-            [`players.${user.uid}.sitAuto`]: false
-          });
+          await pokerCommand('pkSeat',{tableId:tableDocId,op:'pause'});
         }
       } catch (e) {}
       onManage();
@@ -13918,7 +13903,7 @@ try{await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.current?
   }, ...menuTile("📊", "Manage")), React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
-      if (tableState?.tournament || !isSeated) onLeave();else handleStandUp();
+      if (!isSeated) onLeave();else handleStandUp();
     },
     title: tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave',
     className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-rose-500/40 bg-slate-900/90 text-rose-300 hover:bg-rose-800 hover:text-white shadow-xl text-lg"
@@ -13987,17 +13972,7 @@ try{await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.current?
         stack = Number(spinEdit.stack);
       if (!(sb > 0) || !(entry > 0) || !(stack > 0)) return;
       try {
-        await window.fb.updateDoc(tblRef(), {
-          'settings.blinds': sb,
-          'settings.spinBuyIn': entry,
-          'settings.spinStack': stack,
-          // the lobby's BUY-IN column reads minBuyIn — keep it in step with
-          // the entry price or the row keeps advertising the old number
-          'settings.minBuyIn': entry,
-          'settings.maxBuyIn': entry,
-          'settings.minBuyInBB': 0,
-          'settings.maxBuyInBB': 0
-        });
+        await pokerCommand('pkTableManage',{tableId:tableDocId,op:'spin',entry,stack,sb});
         setSpinEdit(null);
         showToast('Spin updated: entry ' + formatMoney(entry) + ' · blinds ' + formatShort(sb) + '/' + formatShort(sb * 2), 'success');
       } catch (e) {
@@ -18537,7 +18512,7 @@ function TournamentsTab({
     setStandFor(tor.id);
     setStandData(null);
     try {
-      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(tRef(tor.id)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", tor.id)))]);
+      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(tRef(tor.id)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", tor.id),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",CLUB_ID)))]);
       const torD = tSnap.exists() ? tSnap.data() : {};
       const torPl = torD.players || {};
       // Finished tournament: the FULL final table of every participant by
@@ -19792,7 +19767,7 @@ if(tor.game==='poker')return showToast('Completed tournaments remain in the hist
     }, "Tournament full · ", alive, "/", tor.maxPlayers || 36)), tor.status === 'reg' && me && React.createElement("button", {
       onClick: () => tourUnregister(tor, user, showToast),
       className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-2.5 rounded-xl font-bold text-sm border border-white/10"
-    }, "Registered ✓ · Unregister"), tor.status === 'running' && !me && tourLateRegOpen(tor) && (alive < (tor.maxPlayers || 36) ? React.createElement("button", {
+    }, "Registered ✓ · Unregister"), tor.status === 'running' && (!me || me.out && tor.reentry && (me.reentries||0)<tor.maxReentries) && tourLateRegOpen(tor) && (alive < (tor.maxPlayers || 36) ? React.createElement("button", {
       onClick: () => tourRegister(tor, user, showToast),
       className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg"
     }, "Late register (", formatMoney(tourEntryOf(tor)), ")") : React.createElement("span", {
@@ -19945,16 +19920,13 @@ function TourDrivers({
   })));
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
-// Containment screen only. Firestore rules and server callables enforce the
-// pause even when this UI is removed, modified, or an old cached bundle is used.
-root.render(React.createElement("main", {
-  dir:"rtl", style:{minHeight:"100dvh",display:"grid",placeItems:"center",padding:"24px",background:"#0b1412",color:"#f6f4ec",fontFamily:"Arial,sans-serif"}
-}, React.createElement("section",{role:"status","data-security-maintenance":"2026-09-12",style:{width:"100%",maxWidth:"520px",textAlign:"center"}},
-  React.createElement("div",{dir:"ltr",style:{fontSize:"30px",fontWeight:900,color:"#d5b96f",letterSpacing:"2px",marginBottom:"32px"}},"POKERTEN"),
-  React.createElement("h1",{style:{fontSize:"28px",marginBottom:"18px"}},"תחזוקת אבטחה"),
-  React.createElement("p",{style:{fontSize:"18px",lineHeight:1.8}},"פעולות המשחק, הטעינה והמשיכה מושהות זמנית לצורך בדיקת יתרות והרשאות."),
-  React.createElement("p",{style:{fontSize:"15px",lineHeight:1.8,color:"#afc0b9",marginTop:"20px"}},"נתוני החשבונות והשולחנות נשמרים לבדיקה. נעדכן כאשר ניתן יהיה לחזור לשחק.")
-)));
+function PokerLaunch(){
+ const[ready,setReady]=useState(false),[message,setMessage]=useState('מתחבר למשחק…');
+ useEffect(()=>{let stopped=false,inFlight=false;const check=async()=>{if(stopped||inFlight||!window.fb?.fx)return;inFlight=true;try{const state=await window.fb.fx('pkSecurityStatus',{});if(!stopped){setReady(state.available===true);setMessage(state.available?'':'העדכון עדיין בהתקנה. המשחק ייפתח אוטומטית כשהשרת מוכן.');}}catch(e){if(!stopped)setMessage('לא ניתן להתחבר כרגע. מנסה שוב…');}finally{inFlight=false;}};check();window.addEventListener('firebase-ready',check);const iv=setInterval(check,5000);return()=>{stopped=true;clearInterval(iv);window.removeEventListener('firebase-ready',check);};},[]);
+ if(ready)return React.createElement(App);
+ return React.createElement('main',{dir:'rtl',style:{minHeight:'100dvh',display:'grid',placeItems:'center',padding:24,background:'#0b1412',color:'#f6f4ec',fontFamily:'Arial,sans-serif'}},React.createElement('section',{role:'status',style:{maxWidth:520,textAlign:'center'}},React.createElement('h1',{dir:'ltr',style:{color:'#d5b96f',fontSize:30}},'POKERTEN'),React.createElement('p',null,message)));
+}
+root.render(React.createElement(PokerLaunch));
 </script>
 </body>
 </html>

@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;
-w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.PokerRuntime=require('../../assets/js/poker-runtime');
+w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');
 const cards=['A','K','Q','J','10','9'].map((val,i)=>({id:'c'+i,val,suit:['♠','♥','♦','♣'][i%4]}));
 let current={settings:{serverEngine:false,maxPlayers:6,baseGameType:'Omaha6',actionTime:30,blinds:5},gameState:{__seq:1,phase:'preflop',activeTurnUid:'me',turnStartedAt:Date.now(),highestBet:10,minRaise:10,board:[],pots:[],currentGameType:'Omaha6',handN:1},players:{me:{uid:'me',name:'Me',stack:100,bet:0,cards,status:'active',seatIndex:0,lastSeen:Date.now()},other:{uid:'other',name:'Other',stack:200,bet:10,cards:[],status:'active',seatIndex:1,lastSeen:Date.now(),actionText:'Check'}}};
 let privateHand=[],fxCalls=[];
@@ -106,7 +106,7 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  w.requestAnimationFrame=originalRaf;
  current=structuredClone(saved);await React.act(async()=>tableNext(snapshot()));
  const call=[...dock.querySelectorAll('button')].find(b=>b.textContent.includes('CALL'));assert.ok(call);current.players.me.stack=150;
- await React.act(async()=>call.click());assert.equal(writes.length,0);assert.equal(current.players.me.stack,150);assert.ok(messages.some(m=>m.includes('table updated')));
+ await React.act(async()=>call.click());assert.equal(writes.length,0);assert.equal(current.players.me.stack,150);const action=fxCalls.findLast(c=>c.name==='pkAct');assert.ok(action);assert.ok(action.args.requestId.length>=16);assert.equal(action.args.expectedTurn.turnStartedAt,saved.gameState.turnStartedAt);assert.equal(action.args.expectedTurn.highestBet,10);
  await React.act(async()=>tableFail({code:'permission-denied'}));assert.ok(doc.querySelector('.poker-connection-status'));assert.ok(doc.querySelector('.poker-seat-hero'));assert.equal(doc.querySelector('.poker-seat-hero .poker-player-info').textContent.includes('100'),true);
  await React.act(async()=>root.unmount());w.close();console.log('PASS: readable cards and winners, fixed action dock, chip/pot/turn synchronization before animation frames, protected top-up and recoverable snapshot failure');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});

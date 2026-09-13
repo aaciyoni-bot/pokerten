@@ -54,10 +54,9 @@ check('spin still reads server-dealt cards',
   'spin/showdown card path must keep the srvEngine?priv:client branch');
 
 // 5) ACTIONS ROUTE FOR BOTH MODES (server via pkAct, else client engine).
-check('performAction has server AND client branches',
-  /const performAction = async[\s\S]{0,400}?if \(setts\.serverEngine\)/.test(bundle) &&
-  /fx\('pkAct'/.test(bundle),
-  'performAction must keep both the server (pkAct) and client fallback paths');
+check('CALL uses an idempotency key and a server-validated turn',
+ /pokerCommand\('pkAct'/.test(bundle) && /expectedTurn:/.test(bundle) && /requestId:crypto.randomUUID/.test(bundle),
+ 'Actions must use the server with a receipt and expected turn');
 
 // 6) pkTick must not early-return on a value read from a lagging ref (that froze hands).
 const tickBlock = (bundle.match(/if \(!srvEngine\) return;\s*const iv = setInterval\(\(\) => \{[\s\S]{0,300}?fx\('pkTick'/g) || [])[0] || '';
@@ -134,14 +133,12 @@ check('guard force-acts a stuck or disconnected player (fold/call)',
 
 // 13) ANTI-FREEZE: server-engine deal has a bounded timeout + failover to client.
 //    If pkDeal hangs, the table must flip to the proven client engine, not wait.
-check('deal has a bounded timeout and fails over to the client engine',
-  /pkDeal timeout/.test(bundle) && /pkDeal failed[\s\S]{0,500}?'settings\.serverEngine': false/.test(bundle),
-  'startHand must race pkDeal against a timeout and set settings.serverEngine=false on failure');
-
-// 14) STABILITY: new cash tables and tournaments default to the client engine.
-check('new cash tables default to the client engine (serverEngine:false)',
-  /serverEngine: false, \/\/ new cash tables/.test(bundle),
-  'the cash-table create default must stay serverEngine:false until the server engine is proven');
+check('deal cannot fall back to client-authored game state',
+ /fx\('pkDeal'/.test(bundle) && !/'settings\.serverEngine': false/.test(bundle),
+ 'Never reopen client dealing after a network error');
+check('new cash tables always use server authority',
+ /pokerCommand\('pkTableCreate'/.test(bundle) && /s\.serverEngine=true/.test(fs.readFileSync(path.join(__dirname,'functions/pokerAccess.js'),'utf8')),
+ 'Table creation must force server authority');
 
 // 15) CHIP INTEGRITY: tournament pots are NEVER raked. Rake on tournament
 //     chips destroys the prize-pool chip count hand after hand (the 270k→50k
@@ -161,9 +158,9 @@ check('0-chip seats are busted at deal time, never dealt',
 // 17) CHIP INTEGRITY: saveGame is seq-guarded. Without the optimistic-
 //     concurrency check a stale client (phone waking from background) can
 //     overwrite a fresher hand — erasing pot awards (players left at 0).
-check('saveGame carries the __seq optimistic-concurrency guard',
-  /const base = Number\(g\.__seq\) \|\| 0;[\s\S]{0,600}?if \(cur !== base\) throw 'stale';/.test(bundle),
-  'saveGame must run in a transaction and abort when gameState.__seq moved on');
+check('legacy saveGame cannot overwrite server state',
+ /throw new Error\('Game state is managed by the server'\)/.test(bundle) && /e\.turnStartedAt!==g\.turnStartedAt/.test(fs.readFileSync(path.join(__dirname,'functions/pokerEngine.js'),'utf8')),
+ 'Reject all legacy writes and stale actions');
 
 // 18) TOURNAMENT INTEGRITY: the zombie reconciler exists. Without it, a
 //     clobbered bust report leaves players 'alive with 0' in the standings

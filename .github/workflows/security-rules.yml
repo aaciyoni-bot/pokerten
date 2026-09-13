@@ -21,4 +21,7 @@ jobs:
           distribution: temurin
           java-version: '17'
       - run: npm ci --prefix tests/security --ignore-scripts
+      - run: npm ci --prefix functions --ignore-scripts
       - run: npm test --prefix tests/security
+      - name: Check server-authoritative cash and tournament lifecycle
+        run: tests/security/node_modules/.bin/firebase emulators:exec --config firebase.security.json --project demo-pokerten-security --only firestore 'node --test tests/security/poker-server.test.cjs'

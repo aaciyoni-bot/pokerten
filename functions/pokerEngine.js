@@ -4,7 +4,7 @@
  * The server deals, counts and pays; clients only send requests and render.
  * Protocol + behavior are a faithful port of the client engine in index.html
  * (line refs per block). Tournaments stay on the client engine for now
- * (index.html:15633 hardcodes serverEngine:false for them) and are rejected.
+ * are coordinated by pokerTournaments.js in the same transaction as settlement.
  *
  * State layout:
  *   tables/{id}                 — public doc (no deck, no live hole cards)
@@ -21,6 +21,9 @@ const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {getFirestore} = require("firebase-admin/firestore");
 const C = require("./pokerCore");
 const round2 = C.round2;
+const A = require('./pokerAuthority');
+const Tours = require('./pokerTournaments');
+const {prepareLedger} = require('./pokerLedger');
 
 let _db = null;
 const db = () => (_db = _db || getFirestore());
@@ -72,6 +75,10 @@ function spinLevel(S) {
   return Math.min(12, Math.max(0, Math.floor((S.now - S.table.spinStartAt) / per)));
 }
 function blindsOf(S) {
+  if (S.tor) {
+    if (BETTING.includes(S.gameState.phase) && S.gameState.handBB) return {sb:S.gameState.handSB,bb:S.gameState.handBB};
+    const row=Tours.clock(S.tor,S.now).row;return {sb:row.sb,bb:row.bb};
+  }
   const base = Number(S.settings.blinds) || 0.5;
   const sb = S.settings.spinMode ? round2(base * Math.pow(2, spinLevel(S))) : base;
   return {sb, bb: round2(sb * 2)};
@@ -88,10 +95,20 @@ function firstAfterDealer(S) {
 }
 
 // startHand port — index.html:9494-9563. Returns 'dealt'|'dc'|'waiting'.
+function tournamentReady(S) {
+  return !S.tor || S.tor.status==='running' && !S.raw.tournament?.finished && !(S.raw.tournament?.balanceHoldUntil>S.now) && !Tours.clock(S.tor,S.now).inBreak;
+}
 function startHand(S, forcedGameType) {
+  if (!tournamentReady(S)) return 'waiting';
   const g0 = S.gameState || {};
   const pl = clonePlayers(S.players);
   Object.values(pl).forEach((p) => {
+    if (!S.tor && p.pendingTopUp>0) {
+      const max=S.settings.maxBuyIn || (S.settings.maxBuyInBB||200)*blindsOf(S).bb;
+      const add=Math.min(p.pendingTopUp,Math.max(0,round2(max-p.stack))),refund=round2(p.pendingTopUp-add);
+      p.stack=round2(p.stack+add);p.pendingTopUp=0;
+      if(refund){p.buyTotal=round2((p.buyTotal||0)-refund);S.effects.push({type:'credit',uid:A.payee(p),amount:refund});}
+    }
     if (p.sitOutNext) {
       p.sitOut = true;
       p.sitOutAt = S.now;
@@ -107,7 +124,7 @@ function startHand(S, forcedGameType) {
     p.reveal = false;
     p.mucked = false;
     p.status = p.stack > 0 ?
-      (p.sitOut && !S.table.tournamentId ? "sitout" : "active") :
+      (p.sitOut && !S.table.tournamentId && !S.settings.spinMode ? "sitout" : "active") :
       (["busted", "out"].includes(p.status) ? p.status : "sitout");
   });
   S.players = pl;
@@ -149,15 +166,6 @@ function startHand(S, forcedGameType) {
 function executeDeal(S, gameType) {
   const pl = S.players;
   const {sb: sbAmt, bb: bbAmt} = blindsOf(S);
-  // pending top-ups first (index.html:9385-9392)
-  const maxBuy = Math.max(Number(S.settings.maxBuyIn) || 0, (Number(S.settings.maxBuyInBB) || 0) * bbAmt);
-  Object.values(pl).forEach((p) => {
-    if (["busted", "out"].includes(p.status) || !(p.pendingTopUp > 0)) return;
-    const room = maxBuy > 0 ? Math.max(0, round2(maxBuy - p.stack)) : round2(p.pendingTopUp);
-    const add = Math.min(round2(p.pendingTopUp), room);
-    p.stack = round2(p.stack + add);
-    p.pendingTopUp = 0;
-  });
   const actives = activesOf(pl);
   const deck = shuffledDeck();
   const n = C.GAME_CARDS[gameType] || 2;
@@ -176,15 +184,19 @@ function executeDeal(S, gameType) {
   const aofOn = aofN > 0 && S.table.handCount % aofN === 0;
   // antes (index.html:9411-9416); bomb pot uses bombAnte×BB from everyone instead
   const anteAmt = bombOn ? round2((Number(S.settings.bombAnte) || 2) * bbAmt) : round2(Number(S.settings.ante) || 0);
+  const tourRow=S.tor?Tours.clock(S.tor,S.now).row:null;
+  const actualAnte=S.tor?(S.tor.anteType==='each'?tourRow.ante:0):anteAmt;
   let anteTotal = 0;
-  if (anteAmt > 0) {
+  if (actualAnte > 0) {
     actives.forEach((p) => {
-      const pay = Math.min(anteAmt, p.stack);
+      const pay = Math.min(actualAnte, p.stack);
       p.stack = round2(p.stack - pay);
       anteTotal = round2(anteTotal + pay);
     });
   }
   const g = S.gameState;
+  g.handSB=sbAmt;g.handBB=bbAmt;
+  g.handStartStacks=Object.fromEntries(actives.map(p=>[p.uid,round2(p.stack+(S.tor&&S.tor.anteType==='each'?Math.min(tourRow.ante,S.raw.players[p.uid]?.stack||0):0))]));
   g.currentGameType = gameType;
   g.board = [];
   g.pots = anteTotal > 0 ? [{amount: anteTotal, eligible: actives.map((p) => p.uid)}] : [];
@@ -233,6 +245,7 @@ function executeDeal(S, gameType) {
   };
   post(sbP, sbAmt, "SB");
   post(bbP, bbAmt, "BB");
+  if(S.tor&&S.tor.anteType==='bb'&&tourRow.ante>0){const pay=Math.min(bbP.stack,tourRow.ante);bbP.stack=round2(bbP.stack-pay);if(pay)g.pots.push({amount:pay,eligible:actives.map(p=>p.uid)});}
   let high = bbAmt;
   let minR = bbAmt;
   let firstUid = actives[utgIdx].uid;
@@ -250,6 +263,7 @@ function executeDeal(S, gameType) {
   g.activeTurnUid = firstUid;
   g.turnStartedAt = S.now;
   S.deck = deck;
+  if(!pl[firstUid] || pl[firstUid].stack<=0)afterAction(S,firstUid);
 }
 
 function firstAfterDealerIn(pl, g) {
@@ -380,7 +394,7 @@ function advancePhase(S) {
   const pl = S.players;
   C.gatherBetsToPots(g, pl);
   g.highestBet = 0;
-  g.minRaise = bbOf(S.settings);
+  g.minRaise = g.handBB || bbOf(S.settings);
   Object.values(pl).forEach((p) => {
     if (p.status === "active") {
       p.hasActed = false;
@@ -486,7 +500,7 @@ function finishEarlyWin(S, winnerUid) {
   }
   C.gatherBetsToPots(g, pl);
   const pot = round2((g.pots || []).reduce((s, x) => s + x.amount, 0));
-  const rakeFrac = (Number(S.settings.rakePercent) || 0) / 100;
+  const rakeFrac = S.table.tournamentId ? 0 : (Number(S.settings.rakePercent) || 0) / 100;
   const rake = (g.board || []).length > 0 ? round2(pot * rakeFrac) : 0; // no rake preflop
   w.stack = round2(w.stack + pot - rake);
   w.actionText = "WINNER";
@@ -521,7 +535,7 @@ function runShowdown(S) {
   const g = S.gameState;
   const pl = S.players;
   const mustRevealAll = !!g.allInReveal || activesOf(pl).some(p => p.stack === 0);
-  const rakeFrac = (Number(S.settings.rakePercent) || 0) / 100;
+  const rakeFrac = S.table.tournamentId ? 0 : (Number(S.settings.rakePercent) || 0) / 100;
   const scoreOn = (board) => {
     const scores = {};
     activesOf(pl).forEach((p) => {
@@ -569,8 +583,11 @@ function runShowdown(S) {
           winners = [uid];
         } else if (sc === best) winners.push(uid);
       });
-      const share = Math.floor(part / winners.length * 100) / 100; // floor to the cent (client parity)
-      winners.forEach((uid) => {
+      const cents=Math.round(part*100),base=Math.floor(cents/winners.length),remainder=cents-base*winners.length;
+      S.knockoutWinners ||= {};
+      for(const eligible of potObj.eligible)S.knockoutWinners[eligible]=winners;
+      winners.forEach((uid,i) => {
+        const share=(base+(i<remainder?1:0))/100;
         pl[uid].stack = round2(pl[uid].stack + share);
         pl[uid].actionText = "WINNER";
         winnerUids.add(uid);
@@ -607,6 +624,7 @@ function runShowdown(S) {
 // Shared post-hand bookkeeping: busts, history, rake + gameLog effects.
 // index.html:9096-9130 / :9192-9226.
 function settleAfterHand(S, rake, winnerUids) {
+  S.settledWinners = winnerUids;
   const g = S.gameState;
   const pl = S.players;
   Object.values(pl).forEach((p) => {
@@ -825,7 +843,7 @@ function handBody(cards, board, gameType) {
     });
     return {made, outs};
   } catch (e) {
-    return {made: 3, outs: 0};
+    return {made: 0, outs: 0};
   }
 }
 
@@ -833,7 +851,7 @@ function botAction(S, uid) {
   const g = S.gameState;
   const b = S.players[uid];
   const cards = (S.priv && S.priv[uid]) || b.cards || [];
-  const bb = (Number(S.settings.blinds) || 0.5) * 2;
+  const bb = g.handBB || blindsOf(S).bb;
   const toCall = round2(Math.max(0, g.highestBet - (b.bet || 0)));
   const stack = b.stack || 0;
   const potNow = round2((g.pots || []).reduce((s, p) => s + (p.amount || 0), 0) +
@@ -842,8 +860,14 @@ function botAction(S, uid) {
   const snap = (x) => Math.max(bb, Math.round(x / bb) * bb);
   const raiseTo = (x) => round2(Math.min(Math.max(snap(x), round2(g.highestBet + (g.minRaise || bb))),
       round2(stack + (b.bet || 0))));
-  const r = rnd();
-
+  const style=b.botStyle||['tight','balanced','aggressive'][Array.from(uid).reduce((n,c)=>n+c.charCodeAt(0),0)%3];
+  const r=Math.min(.999,rnd()/(style==='aggressive'?1.35:style==='tight'?.75:1));
+  const callCost=Math.min(toCall,stack),actualOdds=callCost>0?callCost/(potNow+callCost):0;
+  if(cards.length && toCall>0 && actualOdds<=.025){
+    if(g.phase==='preflop')return{action:'call'};
+    const cheapEquity=equityOf(cards,g.board||[],Math.min(3,oppN),g.currentGameType||'NLH',rangeFacing(callCost,potNow,bb));
+    if(cheapEquity!=null&&cheapEquity>=actualOdds)return{action:'call'};
+  }
   if (g.phase === "preflop") {
     // with a blind or less behind, folding is never right
     if (toCall > 0 && stack <= bb * 1.5) return {action: "call"};
@@ -873,8 +897,9 @@ function botAction(S, uid) {
   const gt = g.currentGameType || "NLH";
   const rng = rangeFacing(toCall, potNow, bb);
   const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), gt, rng);
-  const eq = eqRaw == null ? 0.35 : eqRaw; // unknown hand: never gamble on it
-  const potOdds = toCall > 0 ? toCall / (potNow + toCall) : 0;
+  if(eqRaw==null)return{action:toCall>0?'fold':'call'};
+  const eq=eqRaw;
+  const potOdds=actualOdds;
   const committed = potNow > 0 && stack <= potNow * 0.6;
   const body = handBody(cards, g.board || [], gt);
   const hasBody = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
@@ -882,7 +907,7 @@ function botAction(S, uid) {
   // The god guard only exists on a table where every seat is a bot. One real
   // player sits down and it is off for the whole table, permanently.
   const botsOnly = Object.values(S.players).every((p) => p.isBot);
-  const guardOn = botsOnly && S.settings.botGodGuard !== false;
+  const guardOn = botsOnly && S.settings.demoOnly===true && S.settings.botGodGuard===true && (!S.tor || S.tor.demoOnly===true && Object.values(S.tor.players).every(p=>p.isBot));
   let godSeen = null;
   const godOK = () => {
     if (!guardOn) return true;
@@ -947,12 +972,15 @@ const privRef = (id, sub) => tRef(id).collection("priv").doc(sub);
 
 async function loadState(tx, id, opts) {
   require("./pokerSecurity").requirePokerAvailable();
+  A.key(id);
   const snap = await tx.get(tRef(id));
   if (!snap.exists) throw new HttpsError("not-found", "Table not found");
   const t = snap.data();
-  if (t.tournamentId) throw new HttpsError("failed-precondition", "Tournament tables run on the client engine");
+  if(t.authorityVersion!==2 || !t.settings?.serverEngine)throw new HttpsError('failed-precondition','Open a protected table from the lobby');
+  let tor=null;
+  if(t.tournamentId){const ts=await tx.get(db().doc('tournaments/'+A.key(t.tournamentId)));if(!ts.exists||ts.data().authorityVersion!==2||ts.data().clubId!==(t.clubId||'main'))throw new HttpsError('failed-precondition','Tournament authority missing');tor={...ts.data(),id:t.tournamentId};}
   const S = {
-    id,
+    id, tor,
     settings: t.settings || {},
     players: clonePlayers(t.players || {}),
     gameState: {...(t.gameState || {})},
@@ -960,22 +988,28 @@ async function loadState(tx, id, opts) {
     raw: t,
     priv: {},
     deck: null,
-    now: Date.now(),
+    now: Math.max(Date.now(),(t.gameState?.turnStartedAt||0)+1),
     effects: [],
   };
   if (opts && opts.withCards) {
     const engSnap = await tx.get(privRef(id, "_engine"));
     S.deck = engSnap.exists ? (engSnap.data().deck || []) : [];
     const uids = Object.keys(S.players).filter((uid) => (S.players[uid].cardCount || 0) > 0);
-    const snaps = await Promise.all(uids.map((uid) => tx.get(privRef(id, uid))));
+    const snaps = uids.length ? await tx.getAll(...uids.map(uid=>privRef(id,uid))) : [];
     snaps.forEach((s, i) => {
       S.priv[uids[i]] = s.exists ? (s.data().cards || []) : [];
     });
   }
+  S._deckBefore=JSON.stringify(S.deck);S._privBefore=JSON.stringify(S.priv);
   return S;
 }
 
-function commitState(tx, S, extraTop) {
+async function commitState(tx, S, extraTop) {
+  Tours.settleHand(S);
+  const write=await prepareLedger(db(),tx,S.table.clubId,S.effects,S.id,S.now);
+  S.gameState.__seq=(S.raw.gameState?.__seq||0)+1;
+  write();S.effects=[];
+  if(S.torDirty){const {id,...doc}=S.tor;tx.set(db().doc('tournaments/'+id),doc);}
   const top = {
     players: S.players,
     gameState: S.gameState,
@@ -987,96 +1021,14 @@ function commitState(tx, S, extraTop) {
     top[`leftStacks.${uid}`] = v;
   });
   tx.update(tRef(S.id), top);
-  if (S.deck !== null) tx.set(privRef(S.id, "_engine"), {deck: S.deck});
-  Object.entries(S.priv).forEach(([uid, cards]) => {
+  if (S.deck !== null && JSON.stringify(S.deck)!==S._deckBefore) tx.set(privRef(S.id, "_engine"), {deck: S.deck});
+  Object.entries(S.priv).filter(([uid,cards])=>JSON.stringify(cards)!==JSON.stringify(JSON.parse(S._privBefore||'{}')[uid])).forEach(([uid, cards]) => {
     tx.set(privRef(S.id, uid), {cards});
   });
 }
 
-// Post-transaction side effects: money history + rake distribution.
-// Ports logGameResult (index.html:1636-1652) and distributeRake (:1534-1608).
 async function runEffects(S) {
-  for (const ef of S.effects) {
-    try {
-      if (ef.type === "gameLog") {
-        for (const e of ef.entries) {
-          if (!e.uid || String(e.uid).startsWith("bot_")) continue;
-          await db().collection("gameLog").add({
-            uid: e.uid, username: e.username || "", game: "poker",
-            clubId: S.table.clubId, profit: round2(e.profit || 0),
-            rake: round2(e.rake || 0), tableId: S.id, at: Date.now(),
-          });
-        }
-      } else if (ef.type === "credit") {
-        const mRef = db().doc(`memberships/${ef.uid}_${S.table.clubId}`);
-        await db().runTransaction(async (mtx) => {
-          const ms = await mtx.get(mRef);
-          if (!ms.exists) return;
-          const upd = {balance: round2((Number(ms.data().balance) || 0) + ef.amount)};
-          Object.entries(ef.fields || {}).forEach(([k, v]) => {
-            upd[k] = round2((Number(ms.data()[k]) || 0) + v);
-          });
-          mtx.update(mRef, upd);
-        });
-      } else if (ef.type === "rake") {
-        await distributeRakeSrv(S.table.clubId, ef.rake, ef.uids);
-      }
-    } catch (e) {
-      console.error("effect failed", ef.type, e);
-    }
-  }
-}
-
-// computeAgentCuts + creditAgent + creditRakeToClub — index.html:1454-1608.
-async function distributeRakeSrv(clubId, rake, uids) {
-  if (!rake || rake <= 0) return;
-  let total = 0;
-  const cuts = {};
-  try {
-    const list = (uids || []).filter((u) => u && !String(u).startsWith("bot_"));
-    if (list.length) {
-      const share = rake / list.length; // unrounded (client parity)
-      const snaps = await Promise.all(list.map((uid) => db().doc(`memberships/${uid}_${clubId}`).get()));
-      snaps.forEach((s, i) => {
-        if (!s.exists) return;
-        const m = s.data();
-        if (m.agentUid && (Number(m.agentPct) || 0) > 0 && m.agentUid !== list[i]) {
-          cuts[m.agentUid] = round2((cuts[m.agentUid] || 0) + round2(share * (Number(m.agentPct) || 0) / 100));
-        }
-      });
-      for (const [agentUid, amt] of Object.entries(cuts)) {
-        if (amt <= 0) continue;
-        total = round2(total + amt);
-        const aRef = db().doc(`memberships/${agentUid}_${clubId}`);
-        await db().runTransaction(async (mtx) => {
-          const s = await mtx.get(aRef);
-          if (!s.exists) return;
-          mtx.update(aRef, {
-            balance: round2((Number(s.data().balance) || 0) + amt),
-            agentProfits: round2((Number(s.data().agentProfits) || 0) + amt),
-          });
-        });
-        await db().collection("agentLog").add({agentUid, clubId, amount: round2(amt), at: Date.now()});
-      }
-    }
-  } catch (e) {
-    total = 0; // on any throw the whole rake goes to the club (client parity)
-  }
-  const clubAmt = round2(Math.max(rake - total, 0));
-  if (clubAmt <= 0) return;
-  const clubSnap = await db().doc(`clubs/${clubId}`).get();
-  const ownerUid = clubSnap.exists ? clubSnap.data().ownerUid : null;
-  if (!ownerUid) return;
-  const oRef = db().doc(`memberships/${ownerUid}_${clubId}`);
-  await db().runTransaction(async (mtx) => {
-    const s = await mtx.get(oRef);
-    if (!s.exists) return;
-    mtx.update(oRef, {
-      balance: round2((Number(s.data().balance) || 0) + clubAmt),
-      clubProfits: round2((Number(s.data().clubProfits) || 0) + clubAmt),
-    });
-  });
-  await db().collection("agentLog").add({clubId, amount: clubAmt, at: Date.now(), kind: "club"});
+  if(S.effects.length)throw new Error('Uncommitted financial effects');
 }
 
 /* ============================ tick orchestration ============================ */
@@ -1084,18 +1036,19 @@ async function distributeRakeSrv(clubId, rake, uids) {
 // Everything time-driven lives here: timeouts, bots, runouts, next hands,
 // spin arming/resolution, seat reaping. Called by every viewer every ~4s
 // (protocol §3.3) — must be cheap and idempotent.
-async function tickTable(id) {
+async function tickTable(id, testNow) {
   // Cheap pre-check without a transaction: bail when clearly nothing is due.
   const pre = await tRef(id).get();
   if (!pre.exists) return {};
   const t0 = pre.data();
-  if (t0.tournamentId) return {};
+  if (t0.authorityVersion!==2) return {};
   if (!((t0.settings || {}).serverEngine)) return {};
   let spinPayout = null;
   let S = null;
   await db().runTransaction(async (tx) => {
     spinPayout = null;
     S = await loadState(tx, id, {withCards: true});
+    if(testNow!=null)S.now=testNow;
     const g = S.gameState;
     const pl = S.players;
     const now = S.now;
@@ -1105,10 +1058,20 @@ async function tickTable(id) {
     // --- Spin arming: table full, wheel not spun yet (protocol §5) ---
     if (S.settings.spinMode && !S.raw.spin && Object.keys(pl).length >= (Number(S.settings.maxPlayers) || 3)) {
       const mult = C.spinDrawMult(rnd());
-      extraTop.spin = {mult, near: mult < 100 && rnd() < 0.3, prize: C.spinPrize(S.settings.spinBuyIn, mult)};
-      extraTop.spinStartAt = now + 7500;
-      S.table.spinStartAt = extraTop.spinStartAt;
+      extraTop.spin = {mult, near: mult < 100 && rnd() < 0.3, prize: C.spinPrize(S.settings.spinBuyIn, mult),fundingPending:true};
+      extraTop.spinStartAt = null;
       dirty = true;
+    }
+
+    if(S.settings.spinMode && S.raw.spin?.fundingPending){
+      const c=await tx.get(db().doc('clubs/'+S.table.clubId)),sponsor=c.exists&&c.data().ownerUid;
+      if(sponsor){const bank=await tx.get(db().doc(`memberships/${sponsor}_${S.table.clubId}`));
+        const paid=Object.values(pl).reduce((n,p)=>n+(p.spinPaid||0),0),delta=round2(paid-S.raw.spin.prize);
+        if(bank.exists&&Number.isFinite(bank.data().balance)&&bank.data().balance+delta>=0){
+          if(delta)S.effects.push({type:'credit',uid:sponsor,amount:delta});
+          extraTop.spin={...S.raw.spin,fundingPending:false};extraTop.spinStartAt=now+7500;S.table.spinStartAt=extraTop.spinStartAt;dirty=true;
+        }
+      }
     }
 
     // --- Spin resolution: one player left with chips, hand not running ---
@@ -1123,7 +1086,8 @@ async function tickTable(id) {
     }
 
     // --- Seat reaping (cash only): leaveReq/sitOut/busted between hands ---
-    if (!S.settings.spinMode && ["waiting", "showdown"].includes(g.phase)) {
+    if (!S.settings.spinMode && !S.tor && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=5000)) {
+      const banks=new Map();
       for (const p of Object.values(pl)) {
         const idle = p.leaveReq || (p.sitOut && p.sitOutAt && now - p.sitOutAt > 600000) ||
           (p.leavingAt && now >= p.leavingAt) ||
@@ -1134,8 +1098,10 @@ async function tickTable(id) {
         // game is still running whenever somebody looks. buyTotal records it,
         // so the chip audit still balances (guardTables reads that receipt).
         if (p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot)) {
-          const bbNow = (Number(S.settings.blinds) || 0.5) * 2;
-          const buy = round2(Math.max(bbNow * 100, Number(S.settings.minBuyIn) || 0));
+          const bbNow=blindsOf(S).bb,buy=round2(Math.min(S.settings.maxBuyIn||200*bbNow,Math.max(bbNow*100,S.settings.minBuyIn||0))),sponsor=A.payee(p);
+          if(!banks.has(sponsor)){const bank=await tx.get(db().doc(`memberships/${sponsor}_${S.table.clubId}`));banks.set(sponsor,bank.exists?bank.data().balance:-1);}
+          if(banks.get(sponsor)<buy){removeSeat(S,p.uid,false);dirty=true;continue;}
+          banks.set(sponsor,round2(banks.get(sponsor)-buy));S.effects.push({type:'credit',uid:sponsor,amount:-buy});
           p.stack = buy;
           p.bet = 0;
           p.buyTotal = round2((p.buyTotal || 0) + buy);
@@ -1150,8 +1116,9 @@ async function tickTable(id) {
     }
 
     // --- Next hand from waiting / showdown ---
-    const eligible = Object.values(pl).filter((p) => p.stack > 0 && !p.sitOut && !["busted", "out"].includes(p.status));
-    const spinGate = S.settings.spinMode ? (S.raw.spin || extraTop.spin) && now >= ((S.raw.spinStartAt || S.table.spinStartAt) || 0) && !S.raw.spinDone && !extraTop.spinDone : true;
+    const eligible = Object.values(pl).filter((p) => (p.stack > 0 || !S.tor && p.pendingTopUp > 0) && (S.tor || S.settings.spinMode || !p.sitOut) && p.status!=="out" && (p.status!=="busted" || !S.tor && p.pendingTopUp>0));
+    const activeSpin=extraTop.spin||S.raw.spin;
+    const spinGate = tournamentReady(S) && (S.settings.spinMode ? activeSpin && !activeSpin.fundingPending && now >= (extraTop.spinStartAt||S.raw.spinStartAt||Infinity) && !S.raw.spinDone && !extraTop.spinDone : true);
     if (g.phase === "waiting" && eligible.length >= 2 && spinGate) {
       startHand(S);
       dirty = true;
@@ -1212,7 +1179,7 @@ async function tickTable(id) {
           dirty = true;
         } else if (!actor.isBot) {
           const gone = actor.lastSeen && now - actor.lastSeen > 20000;
-          const limit = gone ? 9000 : ((Number(S.settings.actionTime) || 30) + 22) * 1000;
+          const limit = actor.sitOut ? 1500 : gone ? 9000 : (Number(S.settings.actionTime) || 30) * 1000 + 1000;
           if (stuck > limit) {
             const toCall = round2(Math.max(0, g.highestBet - (actor.bet || 0)));
             applyAction(S, actor.uid, toCall > 0 ? "fold" : "call", undefined, true);
@@ -1221,27 +1188,22 @@ async function tickTable(id) {
         }
       }
     }
-    if (dirty || Object.keys(extraTop).length) commitState(tx, S, extraTop);
+    if(spinPayout){
+      const {winner,prize,all}=spinPayout;
+      if(prize>0)S.effects.push({type:'credit',uid:A.payee(winner),amount:prize});
+      S.effects.push({type:'gameLog',entries:all.filter(p=>!p.isBot).map(p=>({uid:p.uid,username:p.name,profit:p.uid===winner.uid?round2(prize-(p.spinPaid||0)):-round2(p.spinPaid||0),rake:0}))});
+    }
+    if (dirty || Object.keys(extraTop).length) await commitState(tx, S, extraTop);
     else S.effects = [];
   });
-  if (S) {
-    if (spinPayout) {
-      const {winner, prize, all} = spinPayout;
-      if (!winner.isBot && prize > 0) S.effects.push({type: "credit", uid: winner.uid, amount: prize, fields: {bonusTotal: 0}});
-      S.effects.push({type: "gameLog", entries: all.filter((p) => !p.isBot).map((p) => ({
-        uid: p.uid, username: p.name,
-        profit: p.uid === winner.uid ? round2(prize - (p.spinPaid || 0)) : -round2(p.spinPaid || 0),
-        rake: 0,
-      }))});
-    }
-    await runEffects(S);
-  }
+  if (S) await runEffects(S);
   return {};
 }
 
 // Stand a seat up inside a loaded state (cash rules; spin/tour pay nothing).
 // Port of the pkLeave expectations (protocol §3.4) + leftStacks (index.html:10228).
 function removeSeat(S, uid, inHand) {
+  if(S.table.tournamentId)throw new HttpsError('failed-precondition','Tournament seats cannot cash out');
   const p = S.players[uid];
   if (!p) return;
   const g = S.gameState;
@@ -1262,16 +1224,12 @@ function removeSeat(S, uid, inHand) {
       g.turnStartedAt = S.now;
     } else g.activeTurnUid = null;
   }
-  if (credit > 0 && !p.isBot) {
-    S.effects.push({type: "credit", uid, amount: credit});
-    if (!S.settings.spinMode) {
-      S.effects.push({type: "gameLog", entries: [{uid, username: p.name, profit: round2(stack - (p.buyTotal || stack)), rake: 0}]});
-      if (stack > 0) {
-        S.leftWrites = S.leftWrites || {};
-        S.leftWrites[uid] = {amount: stack, at: S.now}; // 12h re-entry floor (index.html:10228)
-      }
-    }
+  if(credit>0)S.effects.push({type:'credit',uid:A.payee(p),amount:credit});
+  if(!S.settings.spinMode&&!p.isBot){
+    S.effects.push({type:'gameLog',entries:[{uid,username:p.name,profit:round2(credit-(p.buyTotal??stack)),rake:0}]});
+    if(stack>0){S.leftWrites=S.leftWrites||{};S.leftWrites[uid]={amount:stack,at:S.now};}
   }
+
 }
 
 /* ============================ callables ============================ */
@@ -1315,28 +1273,27 @@ exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
       const armed = S.raw.spin && S.raw.spinStartAt && Date.now() >= S.raw.spinStartAt && !S.raw.spinDone;
       if (!armed) throw new HttpsError("failed-precondition", "The spin has not started yet");
     }
+    if(phase==='showdown'&&S.now-(S.gameState.showdownAt||0)<5000){S=null;return;}
     startHand(S);
-    commitState(tx, S);
+    await commitState(tx, S);
   });
   if (S) await runEffects(S);
   return {ok: true};
 });
 
 // pkAct — protocol §3.2. amount is the TARGET TOTAL bet for the street.
-exports.pkAct = onCall(CALL_OPTS, async (request) => {
+exports.pkAct = onCall({...CALL_OPTS,minInstances:1}, async (request) => {
   const uid = authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const {action, amount, auto} = request.data || {};
   if (!["fold", "call", "raise"].includes(action)) throw new HttpsError("invalid-argument", "Unknown action");
-  let S = null;
-  await db().runTransaction(async (tx) => {
-    S = await loadState(tx, id, {withCards: true});
-    applyAction(S, uid, action, amount, !!auto);
-    commitState(tx, S);
+  if(action==='raise'&&(!Number.isFinite(amount)||amount<0))throw new HttpsError('invalid-argument','Invalid raise amount');
+  return A.command(request,'action',async(tx,database,actor)=>{
+    const S=await loadState(tx,id,{withCards:true}),g=S.gameState,e=request.data.expectedTurn;
+    if(!e || e.handN!==g.handN || e.phase!==g.phase || e.turnStartedAt!==g.turnStartedAt || e.highestBet!==g.highestBet)throw new HttpsError('failed-precondition','This turn already changed');
+    applyAction(S,actor,action,amount,false);await commitState(tx,S);return{ok:true};
   });
-  await runEffects(S);
-  return {ok: true};
 });
 
 // pkTick — protocol §3.3. Called by every viewer; cheap + idempotent.
@@ -1352,9 +1309,9 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const target = (request.data || {}).targetUid || uid;
-  let S = null;
+  let S = null,notice=false;
   await db().runTransaction(async (tx) => {
-    S = await loadState(tx, id, {withCards: true});
+    notice=false;S = await loadState(tx, id, {withCards: true});
     if (target !== uid) {
       const god = isGodAuth(request.auth);
       const clubSnap = await tx.get(db().doc(`clubs/${S.table.clubId}`));
@@ -1366,14 +1323,17 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
       S = null;
       return; // already gone — success
     }
-    const inHand = BETTING.includes(S.gameState.phase) && p.status === "active";
-    if (inHand && target === uid) throw new HttpsError("failed-precondition", "You are mid-hand — the seat clears when the hand ends");
-    removeSeat(S, target, inHand);
-    commitState(tx, S);
-    tx.set(privRef(id, target), {cards: []});
+    const noticeMs=(S.settings.leaveNoticeMins||0)*60000,otherHumans=Object.values(S.players).some(q=>q.uid!==uid&&!q.isBot),profitBB=((p.stack||0)+(p.bet||0)-(p.buyTotal||0))/(S.settings.blinds*2);
+    if(target===uid&&!S.tor&&!S.settings.spinMode&&noticeMs&&otherHumans&&(!(S.settings.leaveNoticeBB>0)||profitBB>=S.settings.leaveNoticeBB)){if(!p.leavingAt)p.leavingAt=S.now+noticeMs;if(S.now<p.leavingAt){notice=true;await commitState(tx,S);return;}}
+    const inHand=!A.idle(S.raw);
+    if(S.tor||S.settings.spinMode&&S.raw.spin&&!S.raw.spinDone){p.sitOut=true;p.sitOutAt=S.now;p.lastSeen=S.now;}
+    else if(inHand){p.leaveReq=S.now;p.sitOutNext=true;}
+    else removeSeat(S,target,false);
+    await commitState(tx, S);
+    if(!inHand&&!S.tor)tx.set(privRef(id, target), {cards: []});
   });
   if (S) await runEffects(S);
-  return {ok: true};
+  return {ok: true,notice};
 });
 
 // pkRit — protocol §3.5.
@@ -1426,7 +1386,7 @@ exports.pkPickGame = onCall(CALL_OPTS, async (request) => {
     if (S.gameState.phase !== "dc_selection") throw new HttpsError("failed-precondition", "Not in dc_selection");
     if (S.gameState.dcUid !== uid) throw new HttpsError("permission-denied", "Not your pick");
     executeDeal(S, gameType);
-    commitState(tx, S);
+    await commitState(tx, S);
   });
   await runEffects(S);
   return {ok: true};
@@ -1442,7 +1402,7 @@ exports.pkDiscard = onCall(CALL_OPTS, async (request) => {
   await db().runTransaction(async (tx) => {
     S = await loadState(tx, id, {withCards: true});
     if (!applyDiscard(S, uid, index)) throw new HttpsError("failed-precondition", "Cannot discard now");
-    commitState(tx, S);
+    await commitState(tx, S);
   });
   await runEffects(S);
   return {ok: true};
@@ -1517,88 +1477,23 @@ exports.admFixGameLog = onCall(CALL_OPTS, async (request) => {
 // client that sees a running tournament with no tables (index.html fallback
 // seeder), so play begins the moment players are looking at it.
 const {onSchedule} = require("firebase-functions/v2/scheduler");
-exports.tourAutoStart = onSchedule("every 1 minutes", async () => {
-  if (require("./pokerSecurity").POKER_SECURITY_PAUSED) return;
-  const now = Date.now();
-  const snap = await db().collection("tournaments").where("status", "==", "reg").get();
-  for (const d of snap.docs) {
-    const t = d.data();
-    if (!t.startAt || t.startAt > now) continue;
-    const entrants = Object.values(t.players || {}).filter((p) => !p.out);
-    if (entrants.length < Math.max(2, Number(t.minPlayers) || 2)) continue;
-    let rigUid = null;
-    if (t.mysteryBounty && t.mysteryRig && t.mysteryRig.playerId) {
-      const want = String(t.mysteryRig.playerId).trim().toUpperCase();
-      const hit = entrants.find((p) => String(p.playerId || "").toUpperCase() === want);
-      if (hit) rigUid = hit.uid;
-    }
-    try {
-      await db().runTransaction(async (tx) => {
-        const s = await tx.get(d.ref);
-        if (!s.exists || s.data().status !== "reg") return;
-        tx.update(d.ref, {
-          status: "running",
-          // blind clock anchored to the ADVERTISED start (Israel-time as set
-          // in the form), even if this tick ran up to a minute late
-          startedAt: Math.max(t.startAt, now - 60000),
-          round: 1,
-          ...(rigUid ? {mysteryRigUid: rigUid} : {}),
-        });
-      });
-    } catch (e) { /* raced another starter — fine */ }
+exports.tourAutoStart = onSchedule('every 1 minutes',async()=>{
+  if(require('./pokerSecurity').POKER_SECURITY_PAUSED)return;
+  const snap=await db().collection('tournaments').where('authorityVersion','==',2).get();
+  for(const d of snap.docs)if(['reg','running'].includes(d.data().status))try{await Tours.tickTournament(d.id);}catch(e){console.error('Tournament tick',d.id,e.message);}
+});
+exports.tableAutoDrive = onSchedule({schedule:'every 1 minutes',timeoutSeconds:120,memory:'1GiB',region:'us-central1'},async()=>{
+  if(require('./pokerSecurity').POKER_SECURITY_PAUSED)return;
+  const started=Date.now();
+  while(Date.now()-started<50000){
+    const tours=await db().collection('tournaments').where('authorityVersion','==',2).get();
+    for(const d of tours.docs)if(['reg','running'].includes(d.data().status))try{await Tours.tickTournament(d.id);}catch(e){console.error('Tournament driver',d.id,e.message);}
+    const snap=await db().collection('tables').where('authorityVersion','==',2).get();
+    const rows=snap.docs.filter(d=>!d.data().tournament?.finished&&Object.keys(d.data().players||{}).length);
+    for(let i=0;i<rows.length;i+=8)await Promise.all(rows.slice(i,i+8).map(d=>tickTable(d.id).catch(e=>console.error('Table driver',d.id,e.message))));
+    if(!rows.length)return;await new Promise(resolve=>setTimeout(resolve,1500));
   }
 });
 
-/* ============================ the table driver ============================
-   tickTable is a complete driver — it deals the next hand, acts for the bots,
-   force-acts a player who walked away, and reaps empty seats. The only reason
-   a table ever froze is that nothing called it: pkTick is onCall, so it ran
-   only while somebody had the table open in a browser. No admin tab, no game.
-
-   This calls it. Every minute, for ~50 seconds, so a table keeps moving with
-   nobody watching — which is also the whole point: a visitor looking at the
-   lobby should find a game in progress, not a photograph of one. */
-const DRIVE_WINDOW_MS = 50000;   // stay well inside the function timeout
-const DRIVE_STEP_MS = 1500;      // a bot acts every ~2.2s, so this is enough
-const DRIVE_MAX_TABLES = 12;     // a hard ceiling: a runaway must not bill
-
-exports.tableAutoDrive = onSchedule(
-    {schedule: "every 1 minutes", timeoutSeconds: 120, memory: "512MiB", region: "us-central1"},
-    async () => {
-      if (require("./pokerSecurity").POKER_SECURITY_PAUSED) return;
-      const started = Date.now();
-      const snap = await db().collection("tables")
-          .where("settings.serverEngine", "==", true).get();
-      const live = [];
-      let skipped = 0;
-      for (const d of snap.docs) {
-        const t = d.data();
-        if (t.tournamentId) continue;
-        const pl = Object.values(t.players || {});
-        if (!pl.some((p) => p.isBot)) continue;   // nothing here needs driving
-        const ready = pl.filter((p) => (p.stack > 0 || p.pendingTopUp > 0) &&
-            !p.sitOut && !["busted", "out"].includes(p.status));
-        if (ready.length < 2) continue;
-        if (live.length >= DRIVE_MAX_TABLES) { skipped++; continue; }
-        live.push(d.id);
-      }
-      if (skipped) console.log(`tableAutoDrive: ${skipped} table(s) over the ${DRIVE_MAX_TABLES} cap were not driven`);
-      if (!live.length) return;
-      let ticks = 0;
-      while (Date.now() - started < DRIVE_WINDOW_MS) {
-        for (const id of live) {
-          try {
-            await tickTable(id);
-            ticks++;
-          } catch (e) {
-            // one sick table must never stop the others
-            console.error(`tableAutoDrive ${id}: ${e && e.message}`);
-          }
-        }
-        await new Promise((r) => setTimeout(r, DRIVE_STEP_MS));
-      }
-      console.log(`tableAutoDrive: drove ${live.length} table(s), ${ticks} ticks`);
-    });
-
 // Test hook — a plain object, ignored by the Functions deploy loader.
-exports.__engineInternals = {startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, preflopTier, equityOf};
+exports.__engineInternals = {loadState,commitState,tickTable,startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, preflopTier, equityOf};

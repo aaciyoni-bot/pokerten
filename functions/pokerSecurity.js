@@ -1,7 +1,7 @@
 "use strict";
 // Incident containment is server-owned. Never read this gate from a browser,
 // player profile, table settings, or any document players previously controlled.
-const POKER_SECURITY_PAUSED = true;
+const POKER_SECURITY_PAUSED = false;
 function requirePokerAvailable() {
   if (POKER_SECURITY_PAUSED) {
     const {HttpsError} = require("firebase-functions/v2/https");

@@ -1094,7 +1094,7 @@
             window.__ptConfirm = null;
         };
         const _fx = getFunctions(app);
-        window.fb.fx = (name, data) => httpsCallable(_fx, name)(data).then(r => r.data);
+        window.fb.fx = (name, data) => httpsCallable(_fx, name,{timeout:20000})(data).then(r => r.data);
         // Robust Google sign-in: popup FIRST on every device. signInWithRedirect
         // breaks on modern mobile browsers when authDomain (…firebaseapp.com)
         // differs from the app origin — Chrome/Safari storage partitioning drops
@@ -1200,8 +1200,11 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     </script>
 
     <script src="assets/js/club-ui.js?v=1"></script>
+    <script src="assets/js/poker-tournament.js?v=264"></script>
     <script src="assets/js/poker-runtime.js?v=259"></script>
 <script>
+
+const pokerCommand=async(name,data)=>{const clean=JSON.parse(JSON.stringify(data));const key=name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{return await window.fb.fx(name,payload);}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
 const {
   useState,
   useEffect,
@@ -2329,9 +2332,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
     setPendChat(q => [...q.filter(x => Date.now() - x.at < 6000), msg]);
     playSnd(gift ? 'chip' : 'msg');
     try {
-      await window.fb.updateDoc(ref(), {
-        chat: [...rawChat, msg].slice(-40)
-      });
+      if(gameId==='poker')await pokerCommand('pkSeat',{tableId:tableDocId,op:'chat',text:msg.text||msg.emoji||msg.giftE,emoji:msg.emoji,gift:msg.gift,giftE:msg.giftE,to:msg.to});else await window.fb.updateDoc(ref(),{chat:[...rawChat,msg].slice(-40)});
     } catch (e) {
       setPendChat(q => q.filter(x => x !== msg));
       showToast("Message didn't send — try again", "error");
@@ -2340,9 +2341,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
   const toggleTableMute = async () => {
     if (!canModerate) return;
     try {
-      await window.fb.updateDoc(ref(), {
-        chatMuted: !chatMuted
-      });
+      if(gameId==='poker')await pokerCommand('pkTableManage',{tableId:tableDocId,op:'mute',muted:!chatMuted});else await window.fb.updateDoc(ref(),{chatMuted:!chatMuted});
     } catch (e) {}
   };
   const callFloor = async () => {
@@ -4122,97 +4121,8 @@ function App() {
       unsubM();
     };
   }, [fbReady, dbUser?.uid]);
-  useEffect(() => {
-    if (!fbReady || !dbUser?.uid) return;
-    (async () => {
-      try {
-        const mainRef = window.fb.doc(window.fb.db, "clubs", "main");
-        const mainSnap = await window.fb.getDoc(mainRef);
-        if (!mainSnap.exists() && (dbUser.email || '').toLowerCase() === SUPER_ADMIN_EMAIL) {
-          await window.fb.setDoc(mainRef, {
-            name: 'PokerTen Club',
-            ownerUid: dbUser.uid,
-            ownerName: dbUser.username,
-            createdAt: Date.now()
-          });
-        } else if (mainSnap.exists() && mainSnap.data().name === 'Main Club' && (dbUser.email || '').toLowerCase() === SUPER_ADMIN_EMAIL) {
-          await window.fb.updateDoc(mainRef, {
-            name: 'PokerTen Club'
-          });
-        }
-        await window.fb.runTransaction(window.fb.db, async tr => {
-          const mRef = window.fb.doc(window.fb.db, "memberships", `${dbUser.uid}_main`);
-          const mSnap = await tr.get(mRef);
-          if (mSnap.exists()) return;
-          const uRef = window.fb.doc(window.fb.db, "users", dbUser.uid);
-          const uSnap = await tr.get(uRef);
-          if (!uSnap.exists()) return;
-          const u = uSnap.data();
-          const isLegacy = !u.migratedToClubs && (u.status === 'approved' || (u.balance || 0) > 0 || u.role && u.role !== ROLES.PLAYER);
-          if (!isLegacy) {
-            tr.update(uRef, {
-              migratedToClubs: true
-            });
-            return;
-          }
-          tr.set(mRef, {
-            uid: dbUser.uid,
-            clubId: 'main',
-            username: u.username || '',
-            email: (u.email || '').toLowerCase(),
-            photo: u.photo || '',
-            avatarSeed: u.avatarSeed || '',
-            playerId: u.playerId || genPlayerId(),
-            isBot: !!u.isBot,
-            role: u.role || ROLES.PLAYER,
-            status: u.status || 'pending',
-            balance: round2(u.balance || 0),
-            clubProfits: round2(u.clubProfits || 0),
-            agentProfits: round2(u.agentProfits || 0),
-            agentUid: u.agentUid || '',
-            agentPct: Number(u.agentPct) || 0,
-            managedGames: u.managedGames || [],
-            stats: u.stats || {
-              gamesPlayed: 0,
-              gamesWon: 0,
-              totalProfit: 0
-            },
-            joinedAt: Date.now(),
-            migrated: true
-          });
-          tr.update(uRef, {
-            migratedToClubs: true
-          });
-        });
-      } catch (e) {}
-    })();
-  }, [fbReady, dbUser?.uid]);
-  useEffect(() => {
-    if (!fbReady || !dbUser || !isGodUser(dbUser) || !clubsList.length) return;
-    (async () => {
-      for (const c of clubsList) {
-        if (c.ownerSeeded || !c.ownerUid) continue;
-        try {
-          await window.fb.runTransaction(window.fb.db, async tr => {
-            const cRef = window.fb.doc(window.fb.db, "clubs", c.id);
-            const cSnap = await tr.get(cRef);
-            if (!cSnap.exists() || cSnap.data().ownerSeeded) return;
-            const mRef = window.fb.doc(window.fb.db, "memberships", `${c.ownerUid}_${c.id}`);
-            const mSnap = await tr.get(mRef);
-            if (mSnap.exists()) {
-              const bal = mSnap.data().balance || 0;
-              if (bal < 10000000) tr.update(mRef, {
-                balance: 10000000
-              });
-            }
-            tr.update(cRef, {
-              ownerSeeded: true
-            });
-          });
-        } catch (e) {}
-      }
-    })();
-  }, [fbReady, dbUser?.uid, clubsList.length]);
+  useEffect(() => {}, [fbReady, dbUser?.uid]);
+  useEffect(() => {}, [fbReady, dbUser?.uid, clubsList.length]);
   const [clubMsg, setClubMsg] = useState(null);
   useEffect(() => {
     if (!fbReady || !activeClub) {
@@ -4315,14 +4225,15 @@ function App() {
   };
   useEffect(() => {
     if (!fbReady || !dbUser?.uid) return;
-    const unsubT = window.fb.onSnapshot(window.fb.collection(window.fb.db, "tables"), s => {
+    if(!activeClub){setTablesDB([]);setToursDB([]);setTablesLoaded(true);return;}
+    const unsubT = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tables"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {
       setTablesDB(s.docs.map(d => ({
         docId: d.id,
         ...d.data()
       })));
       setTablesLoaded(true);
     });
-    const unsubTours = window.fb.onSnapshot(window.fb.collection(window.fb.db, "tournaments"), s => {
+    const unsubTours = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournaments"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {
       setToursDB(s.docs.map(d => ({
         id: d.id,
         ...d.data()
@@ -4357,7 +4268,7 @@ function App() {
       unsubTours();
       unsubU();
     };
-  }, [fbReady, dbUser?.uid]);
+  }, [fbReady, dbUser?.uid,activeClub?.id]);
   useEffect(() => {
     if (!fbReady || !dbUser) return;
     const iv = setInterval(() => {
@@ -4383,7 +4294,7 @@ function App() {
     const iv = setInterval(async () => {
       for (const tor of toursRef.current || []) {
         try {
-          if (tor.status !== 'running' || (tor.clubId || 'main') !== CLUB_ID) continue;
+          if (tor.game === 'poker' || tor.status !== 'running' || (tor.clubId || 'main') !== CLUB_ID) continue;
           if ((tablesRef2.current || []).some(tb => tb.tournamentId === tor.id)) continue;
           if (tor.advancingAt && Date.now() - tor.advancingAt < 90000) continue;
           if (tor.finalizingAt && Date.now() - tor.finalizingAt < 90000) continue;
@@ -4552,6 +4463,8 @@ function App() {
     clubSettings: clubSettings,
     excludeDocId: ['poker-table', 'durak-table', 'ofc-table'].includes(currentView) ? activeTable?.docId : null
   }), currentView === 'poker-table' && React.createElement(PokerTable, {
+    key:activeTable?.docId,
+    onTransfer:table=>{setActiveTable(table);},
     tableDocId: activeTable?.docId,
     user: effUser,
     clubSettings: clubSettings,
@@ -5651,23 +5564,8 @@ function ClubsView({
     }
   };
   const submitJoin = async (club, agent) => {
-    try {
-      const extra = agent ? {
-        agentUid: agent.uid,
-        agentPct: agent.pct
-      } : {};
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "memberships", `${user.uid}_${club.id}`), {
-        ...newMembership(user.uid, user),
-        clubId: club.id,
-        ...extra
-      });
-      setJoinFor(null);
-      setAgentCodeIn('');
-      showToast(agent ? `Request sent - assigned to agent${agent.name}! Pending approval` : `Join request to "${club.name}" sent! Pending approval`, "success");
-    } catch (e) {
-      showToast("Error sending request", "error");
-    }
-  };
+try{await pokerCommand('pkJoinClub',{clubId:club.id,agentUid:agent?.uid||''});setJoinFor(null);setAgentCodeIn('');showToast("Join request sent.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const requestJoin = async club => {
     try {
       const ref = JSON.parse(localStorage.getItem('agentRef') || 'null');
@@ -5684,55 +5582,11 @@ function ClubsView({
     setJoinFor(club);
   };
   const deleteClub = async c => {
-    if (c.id === 'main') return showToast("The original club can't be deleted - you can rename it", "error");
-    if (!window.confirm(`⚠️ Permanently delete the club "${c.name}"!\n\nAll memberships and Balances, all its Tables and all its Tournaments will be erased permanently.\n\nAre you sure you want to delete?`)) return;
-    if (!window.confirm(`Final confirmation: delete "${c.name}" for good?`)) return;
-    try {
-      for (const col of ["memberships", "tables", "tournaments"]) {
-        const q = window.fb.query(window.fb.collection(window.fb.db, col), window.fb.where("clubId", "==", c.id));
-        const snap = await window.fb.getDocs(q);
-        for (const d of snap.docs) {
-          try {
-            await window.fb.deleteDoc(d.ref);
-          } catch (e2) {}
-        }
-      }
-      await window.fb.deleteDoc(window.fb.doc(window.fb.db, "clubs", c.id));
-      showToast(`Club "${c.name}" deleted`, "info");
-    } catch (e) {
-      showToast("Error deleting club", "error");
-    }
-  };
+showToast('Club balances and game history are preserved.','info');
+};
   const createClub = async () => {
-    const nm = newName.trim();
-    if (nm.length < 2 || nm.length > 30) return showToast("Club name must be 2 to 30 characters", "error");
-    setCreating(true);
-    try {
-      const cRef = await window.fb.addDoc(window.fb.collection(window.fb.db, "clubs"), {
-        name: nm,
-        ownerUid: user.uid,
-        ownerName: user.username,
-        createdAt: Date.now()
-      });
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "memberships", `${user.uid}_${cRef.id}`), {
-        ...newMembership(user.uid, user),
-        clubId: cRef.id,
-        role: ROLES.CLUB_OWNER,
-        status: 'approved',
-        balance: 100000000
-      });
-      setNewName('');
-      showToast(`Club "${nm}" created — share code: ${clubCode(cRef.id)} 👑`, "success");
-      onEnter({
-        id: cRef.id,
-        name: nm,
-        ownerUid: user.uid
-      });
-    } catch (e) {
-      showToast("Error creating club", "error");
-    }
-    setCreating(false);
-  };
+setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.trim()});setNewName('');showToast('Club created.','success');onEnter(c);}catch(e){showToast(e.message,'error');}finally{setCreating(false);}
+};
   const ClubCard = ({
     c,
     action
@@ -8372,7 +8226,7 @@ function SettlementSection({
           by: user.username,
           note: eb.note.trim().slice(0, 120)
         };
-        await window.fb.addDoc(window.fb.collection(window.fb.db, "gameLog"), entry);
+        await pokerCommand('pkSettlementNote',{clubId:CLUB_ID,targetUid:eb.p.uid,amount:delta,note:entry.note});
         setGLog(prev => [...(prev || []), entry]);
         showToastG(`Result corrected (${delta > 0 ? '+' : ''}${formatMoney(delta)})`, "success");
       } catch (e) {
@@ -8384,9 +8238,7 @@ function SettlementSection({
       if (isNaN(pct)) return showToastG("Invalid %", "error");
       setBusy(true);
       try {
-        await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", eb.p.id), {
-          agentPct: pct
-        });
+        await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:eb.p.uid,op:'role',role:eb.p.role||'player',agentUid:eb.p.agentUid||'',agentPct:pct,managedGames:eb.p.managedGames||[]});
         setMems(prev => prev.map(m => m.id === eb.p.id ? {
           ...m,
           agentPct: pct
@@ -8418,11 +8270,9 @@ function SettlementSection({
           paid
         }
       };
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+      await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
         closedWeeks: upd
-      }, {
-        merge: true
-      });
+      }});
       setClosed(upd);
       if (window.__club) window.__club.closedWeeks = upd;
     } catch (e) {
@@ -8433,9 +8283,7 @@ function SettlementSection({
     if (!isOwnerView || weekLocked) return;
     setBusy(true);
     try {
-      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", p.id), {
-        agentUid: agentUid || null
-      });
+      await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:p.uid,op:'role',role:p.role||'player',agentUid:agentUid||'',agentPct:Number(p.agentPct)||0,managedGames:p.managedGames||[]});
       setMems(prev => prev.map(m => m.id === p.id ? {
         ...m,
         agentUid: agentUid || null
@@ -8472,11 +8320,9 @@ function SettlementSection({
         ...(closed || {}),
         [String(start)]: rec
       };
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+      await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
         closedWeeks: upd
-      }, {
-        merge: true
-      });
+      }});
       setClosed(upd);
       if (window.__club) window.__club.closedWeeks = upd;
       showToastG(`${cycLabel} closed & locked`, "success");
@@ -9034,9 +8880,9 @@ function BackofficeView({
         const dataUrl = cv.toDataURL('image/jpeg', 0.85);
         if (dataUrl.length > 60000) return showToast("Image too complex — try a simpler one", "error");
         try {
-          await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+          await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
             logo: dataUrl
-          });
+          }});
           showToast("Club logo updated! 🖼️", "success");
         } catch (err) {
           showToast("Error saving logo", "error");
@@ -9129,7 +8975,7 @@ function BackofficeView({
     if (!isOwner) return;
     (async () => {
       try {
-        const ts = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("clubId", "==", CLUB_ID)));
+        const ts = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("clubId", "==", CLUB_ID),window.fb.where("authorityVersion","==",2)));
         let onT = 0;
         ts.docs.forEach(d => {
           const t = d.data() || {};
@@ -9145,21 +8991,8 @@ function BackofficeView({
   const [resetBusy, setResetBusy] = useState(false);
   const [assignFor, setAssignFor] = useState(null);
   const approveWith = async (memId, agent) => {
-    try {
-      const extra = agent ? {
-        agentUid: agent.uid,
-        agentPct: Number(agent.agentSharePct) || 50
-      } : {};
-      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", memId), {
-        status: 'approved',
-        ...extra
-      });
-      setAssignFor(null);
-      showToast(agent ? `Player approved and assigned to ${agent.username}` : "Player approved", "success");
-    } catch (e) {
-      showToast("Approval error", "error");
-    }
-  };
+try{const m=usersList.find(x=>x.id===memId);await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:m.uid,op:'approve',agentUid:agent?.uid||''});setAssignFor(null);showToast("Player approved.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const handleApprove = async uid => {
     const mem = usersList.find(x => x.id === uid);
     if (mem && !mem.agentUid && agents.length > 0) {
@@ -9169,14 +9002,8 @@ function BackofficeView({
     approveWith(uid, null);
   };
   const handleReject = async u => {
-    if (!window.confirm(`Decline and delete ${u.username}?`)) return;
-    try {
-      await window.fb.deleteDoc(window.fb.doc(window.fb.db, "memberships", u.id));
-      showToast("Request declined", "info");
-    } catch (e) {
-      showToast("Decline error", "error");
-    }
-  };
+try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:u.uid,op:'reject'});showToast("Request declined.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const [dmBox, setDmBox] = useState(null); // {target, text} — replaces window.prompt
   const sendDirectMsg = target => setDmBox({
     target,
@@ -9211,141 +9038,23 @@ function BackofficeView({
     val: '100'
   });
   const applyBalance = async () => {
-    const {
-      target,
-      isDeposit
-    } = balBox;
-    const amount = parseFloat(balBox.val);
-    if (!amount || isNaN(amount) || amount <= 0) return showToast("Enter a valid amount", "error");
-    setBalBox(null);
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const ownerRef = memDoc(user.uid);
-        const targetRef = window.fb.doc(window.fb.db, "memberships", target.id);
-        const ownerSnap = await tr.get(ownerRef);
-        const targetSnap = await tr.get(targetRef);
-        let ownerBal = ownerSnap.data().balance || 0;
-        let targetBal = targetSnap.data().balance || 0;
-        if (isDeposit) {
-          if (ownerBal < amount) throw "You don't have enough balance for this deposit.";
-          ownerBal -= amount;
-          targetBal += amount;
-        } else {
-          if (targetBal < amount) throw "The player doesn't have enough balance for this withdrawal.";
-          ownerBal += amount;
-          targetBal -= amount;
-        }
-        tr.update(ownerRef, {
-          balance: round2(ownerBal)
-        });
-        tr.update(targetRef, {
-          balance: round2(targetBal)
-        });
-      });
-      showToast(isDeposit ? `Deposited ${formatMoney(amount)} to ${target.username}` : `Withdrew ${formatMoney(amount)} from ${target.username}`, "success");
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Action error", "error");
-    }
-  };
+const {target,isDeposit}=balBox,amount=Number(balBox.val);if(!(amount>0))return showToast('Enter a valid amount.','error');try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:target.uid,op:'transfer',amount:isDeposit?amount:-amount});setBalBox(null);showToast("Transfer completed.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const resetMember = async (target) => {
-    const bal = round2(Number(target.balance) || 0);
-    if (bal <= 0) return showToast(`${target.username} is already at 0`, "info");
-    if (!window.confirm(`Reset ${target.username}'s balance to 0?\n${formatMoney(bal)} returns to your balance.`)) return;
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const oRef = memDoc(user.uid), r = window.fb.doc(window.fb.db, "memberships", target.id);
-        const oS = await tr.get(oRef), s = await tr.get(r);
-        const b = round2(Number(s.data().balance) || 0);
-        tr.update(r, { balance: 0 });
-        tr.update(oRef, { balance: round2((oS.data().balance || 0) + b) });
-      });
-      showToast(`${target.username} reset — ${formatMoney(bal)} returned to you`, "success");
-    } catch (e) { showToast("Reset error", "error"); }
-  };
+try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:target.uid,op:'transfer',amount:-Number(target.balance)});showToast("Balance returned to the club.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   // Reset Cycle: zero EVERY non-bot, non-owner member; total returns to the owner.
   // Bots keep their chips. ONLY the balance is touched — role/agent/identity/stats stay.
   const resetCycle = async () => {
-    const targets = usersList.filter(u => !u.isBot && u.uid !== user.uid);
-    const total = round2(targets.reduce((s, u) => s + (Number(u.balance) || 0), 0));
-    if (targets.length === 0) return showToast("No players to reset", "info");
-    // gate lives in the Danger-Zone modal (typed club name) — no prompt here
-    setResetBusy(true);
-    let reclaimed = 0;
-    const ZERO_STATS = { gamesPlayed: 0, gamesWon: 0, totalProfit: 0 };
-    try {
-      for (const u of targets) {
-        await window.fb.runTransaction(window.fb.db, async tr => {
-          const r = window.fb.doc(window.fb.db, "memberships", u.id);
-          const s = await tr.get(r);
-          if (!s.exists()) return;
-          reclaimed = round2(reclaimed + (Number(s.data().balance) || 0));
-          tr.update(r, { balance: 0, clubProfits: 0, agentProfits: 0, bonusTotal: 0, bonusOpen: 0, promoBalance: 0,
-            lastBonusAt: 0, lastScratchAt: 0, lastRefundAt: 0, spinPaid: 0, stats: ZERO_STATS });
-        });
-      }
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const oRef = memDoc(user.uid);
-        const s = await tr.get(oRef);
-        tr.update(oRef, { balance: 10000000, clubProfits: 0, agentProfits: 0, bonusTotal: 0, bonusOpen: 0, promoBalance: 0,
-          lastBonusAt: 0, lastScratchAt: 0, lastRefundAt: 0, spinPaid: 0, stats: ZERO_STATS });
-      });
-      // A reset that leaves yesterday's tables standing is not a reset: the
-      // chips on them, the hand history inside them and the tournaments around
-      // them all survive into tonight. Wipe every collection this club owns.
-      let histFailed = 0;
-      const wiped = { hands: 0, tables: 0, tournaments: 0, alerts: 0 };
-      const delAll = async (docs, tally) => {
-        for (let i = 0; i < docs.length; i += 200) {
-          await Promise.all(docs.slice(i, i + 200).map(d => window.fb.deleteDoc(d.ref)
-            .then(() => { wiped[tally]++; }).catch(() => { histFailed++; })));
-        }
-      };
-      for (const logCol of ["gameLog", "agentLog"]) {
-        try {
-          const q = window.fb.query(window.fb.collection(window.fb.db, logCol), window.fb.where("clubId", "==", CLUB_ID));
-          await delAll((await window.fb.getDocs(q)).docs, 'hands');
-        } catch (e) { histFailed++; }
-      }
-      // Tables and tournaments are read in full and filtered here, not queried:
-      // documents written before clubId existed have no field to match on, and
-      // the app reads those as belonging to 'main' (t.clubId || 'main').
-      try {
-        const q = window.fb.query(window.fb.collection(window.fb.db, "hands"), window.fb.where("clubId", "==", CLUB_ID));
-        await delAll((await window.fb.getDocs(q)).docs, 'hands');
-      } catch (e) { histFailed++; }
-      for (const [col, tally] of [["tables", 'tables'], ["tournaments", 'tournaments']]) {
-        try {
-          const snap = await window.fb.getDocs(window.fb.collection(window.fb.db, col));
-          await delAll(snap.docs.filter(d => ((d.data() || {}).clubId || 'main') === CLUB_ID), tally);
-        } catch (e) { histFailed++; }
-      }
-      try {
-        const snap = await window.fb.getDocs(window.fb.collection(window.fb.db, "securityAlerts"));
-        await delAll(snap.docs.filter(d => ((d.data() || {}).clubId || 'main') === CLUB_ID), 'alerts');
-      } catch (e) { /* only the owner may read these; a manager running the reset cannot */ }
-      try {
-        await window.fb.setDoc(window.fb.doc(window.fb.db, "broadcasts", CLUB_ID), { text: '', at: 0 });
-      } catch (e) { histFailed++; }
-      if (histFailed > 0) showToast(`Reset ran, but ${histFailed} record(s) could not be deleted — press GENERAL RESET again (or the rules deploy hasn't landed yet).`, "error");
-      else {
-        showToast(`General reset done — balance ${formatMoney(10000000)}. Wiped: ${wiped.tables} table(s), ${wiped.tournaments} tournament(s), ${wiped.hands} history record(s), ${wiped.alerts} alert(s). Every player at 0; bot accounts kept. Refreshing…`, "success");
-        // The settlement report loads its history once on mount, so without a
-        // refresh the Result / Rake / All-time columns keep showing the wiped
-        // numbers until the owner reloads by hand.
-        setTimeout(() => window.location.reload(), 1800);
-      }
-    } catch (e) { showToast("Reset error — some data may not have reset", "error"); }
-    setResetBusy(false);
-  };
+showToast('Balances and tournament records are preserved. Use individual transfers for settlement.','info');
+};
   const saveClubSettings = async () => {
     const pct = parseFloat(rakeDraft);
     if (isNaN(pct) || pct < 0 || pct > 20) return showToast("Invalid rake percentage (0-20)", "error");
     try {
-      await window.fb.setDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+      await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
         rakePct: pct
-      }, {
-        merge: true
-      });
+      }});
       showToast(`Rake updated to ${pct}%`, "success");
     } catch (e) {
       showToast("Error saving settings", "error");
@@ -9381,27 +9090,8 @@ function BackofficeView({
     }));
   };
   const saveRole = async () => {
-    try {
-      const managedGames = [ROLES.MANAGER, ROLES.AGENT].includes(roleDraft.role) ? roleDraft.managedGames : [];
-      const agentPct = Math.min(100, Math.max(0, Number(roleDraft.agentPct) || 0));
-      const becomingAgent = roleDraft.role === ROLES.AGENT;
-      const agentFields = becomingAgent ? {
-        agentCode: roleEditUser.agentCode || genAgentCode(),
-        agentSharePct: Number(roleEditUser.agentSharePct) || 50
-      } : {};
-      await window.fb.updateDoc(window.fb.doc(window.fb.db, "memberships", roleEditUser.id), {
-        role: roleDraft.role,
-        managedGames,
-        agentUid: roleDraft.agentUid || '',
-        agentPct: roleDraft.agentUid ? agentPct : 0,
-        ...agentFields
-      });
-      showToast(`${roleEditUser.username} updated to ${ROLE_LABELS[roleDraft.role]}`, "success");
-      setRoleEditUser(null);
-    } catch (e) {
-      showToast("Error updating role", "error");
-    }
-  };
+try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid,op:'role',...roleDraft,agentPct:Number(roleDraft.agentPct)});setRoleEditUser(null);showToast("Role saved.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const handleCreateBots = async () => {
     try {
       showToast("Generating Bots...", "info");
@@ -9863,9 +9553,9 @@ function BackofficeView({
       const nm = clubNameDraft.trim();
       if (nm.length < 2) return showToast("Name must be 2 to 30 characters", "error");
       try {
-        await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+        await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
           name: nm
-        });
+        }});
         setClubNameDraft('');
         showToast("Club name updated!", "success");
       } catch (e) {
@@ -9893,9 +9583,9 @@ function BackofficeView({
   })), clubSettings?.logo && React.createElement("button", {
     onClick: async () => {
       try {
-        await window.fb.updateDoc(window.fb.doc(window.fb.db, "clubs", CLUB_ID), {
+        await pokerCommand('pkClubSettings',{clubId:CLUB_ID,patch:{
           logo: null
-        });
+        }});
         showToast("Logo removed", "info");
       } catch (err) {}
     },
@@ -10456,7 +10146,7 @@ function PokerCreateView({
     maxBuyIn: 200,
     leaveNoticeMins: 0,
     leaveNoticeBB: 0,
-    serverEngine: false, // new cash tables: proven client engine by default. The server engine (pk*) is now DEPLOYED and runs every spin table; flip this default after a few smooth server-engine cash sessions (there's a toggle in this form to test per-table).
+    serverEngine: true,
     rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT,
     autoStart: 2,
     straddle: false,
@@ -10478,26 +10168,8 @@ function PokerCreateView({
   const [spinOpen, setSpinOpen] = useState(false);
   const [sf, setSf] = useState({ gt: 'NLH', buy: 50, stack: 1000, sb: 10, levelSec: 180 });
   const createSpin = async () => {
-    const buy = Math.max(1, Number(sf.buy) || 50);
-    const stack = Math.max(10, Number(sf.stack) || 1000);
-    const sb = Math.max(0.01, Number(sf.sb) || 10);
-    const levelSec = Math.max(30, Number(sf.levelSec) || 180);
-    await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
-      type: 'poker', clubId: CLUB_ID, createdAt: Date.now(),
-      settings: {
-        baseGameType: sf.gt, spinMode: true, spinBuyIn: buy, spinStack: stack,
-        maxPlayers: 3, blinds: sb, spinLevelSec: levelSec, minBuyIn: buy, maxBuyIn: buy, minBuyInBB: 0, maxBuyInBB: 0,
-        serverEngine: true, rakePercent: 0, autoStart: 3, actionTime: 20,
-        isDealerChoice: false, straddle: false, ante: 0, omahaPotLimit: true,
-        bombEvery: 0, bombAnte: 2, aofEvery: 0, actionDeal: null, runTwice: false,
-        leaveNoticeMins: 0, leaveNoticeBB: 0
-      },
-      players: {}, chat: [], leftStacks: {},
-      gameState: { phase: 'waiting', deck: [], board: [], pots: [], highestBet: 0, minRaise: round2(sb * 2), dealerUid: null, dcUid: null, dcAnchor: null, currentGameType: sf.gt, activeTurnUid: null, turnStartedAt: null, lastWinners: null, lastWinAmount: 0, allInReveal: false }
-    });
-    setSpinOpen(false);
-    onCreated();
-  };
+try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{baseGameType:sf.gt,spinMode:true,spinBuyIn:Number(sf.buy),spinStack:Number(sf.stack),blinds:Number(sf.sb),spinLevelSec:Number(sf.levelSec),maxPlayers:3,minBuyIn:Number(sf.buy),maxBuyIn:Number(sf.buy),actionTime:20}});setSpinOpen(false);onCreated();}catch(e){showToast(e.message||String(e),'error');}
+};
   // A showcase table seats its bots at creation and runs on the SERVER driver,
   // so it is playing whether or not anybody has it open — which is the point:
   // a visitor looking at the lobby should find a game in progress.
@@ -10527,42 +10199,8 @@ function PokerCreateView({
     return out;
   };
   const handleCreate = async () => {
-    const nBots = Math.max(0, Math.min(Number(s.maxPlayers) || 6, Number(s.showcaseBots) || 0));
-    await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
-      type: 'poker',
-      clubId: CLUB_ID,
-      createdAt: Date.now(),
-      settings: {
-        ...s,
-        serverEngine: nBots >= 2 ? true : s.serverEngine,
-        blinds: Math.max(0.01, Number(s.blinds) || 0.5),
-        rakePercent: Number(s.rakePercent),
-        minBuyIn: Math.max(0.01, Number(s.minBuyIn) || 1),
-        maxBuyIn: Math.max(Number(s.minBuyIn) || 1, Number(s.maxBuyIn) || 1)
-      },
-      players: nBots >= 2 ? seedShowcaseBots(nBots) : {},
-      chat: [],
-      leftStacks: {},
-      gameState: {
-        phase: 'waiting',
-        deck: [],
-        board: [],
-        pots: [],
-        highestBet: 0,
-        minRaise: Number(s.blinds) * 2,
-        dealerUid: null,
-        dcUid: null,
-        dcAnchor: null,
-        currentGameType: s.baseGameType,
-        activeTurnUid: null,
-        turnStartedAt: null,
-        lastWinners: null,
-        lastWinAmount: 0,
-        allInReveal: false
-      }
-    });
-    onCreated();
-  };
+try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{...s,serverEngine:true},botCount:Number(s.showcaseBots)||0});onCreated();}catch(e){showToast(e.message||String(e),'error');}
+};
   const TPL_KEY = 'pokerTpl_' + CLUB_ID;
   const [tpls, setTpls] = useState(() => {
     try {
@@ -10717,19 +10355,7 @@ function PokerCreateView({
   }, "Any profit / everyone"), [10, 20, 25, 30, 50, 100].map(n => React.createElement("option", {
     key: n,
     value: n
-  }, n, " BB over buy-in")))), React.createElement(Field, {
-    label: "🔒 Server-secured engine (beta)"
-  }, React.createElement("select", {
-    value: s.serverEngine ? 1 : 0,
-    onChange: e => upd('serverEngine', parseInt(e.target.value) === 1),
-    className: sel
-  }, React.createElement("option", {
-    value: 0
-  }, "Off — classic engine"), React.createElement("option", {
-    value: 1
-  }, "On — server engine")), React.createElement("div", {
-    className: "text-[11px] text-slate-400 mt-1 leading-snug"
-  }, "The classic engine needs a manager watching the table; the server engine deals on its own.")), React.createElement(Field, {
+  }, n, " BB over buy-in")))), null, React.createElement(Field, {
     label: "🤖 Showcase table — runs on its own"
   }, React.createElement("select", {
     value: Number(s.showcaseBots) || 0,
@@ -10990,6 +10616,7 @@ function PokerTable({
   clubSettings,
   onLeave,
   onManage,
+  onTransfer,
   showToast,
   headless
 }) {
@@ -11000,6 +10627,8 @@ function PokerTable({
   useEffect(() => () => { oddsWorkerRef.current.close(); botWorkerRef.current.close(); }, []);
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournaments',id),d=>{if(!d.exists())return;const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
   const [tableError, setTableError] = useState('');
   const [connectionRetry, setConnectionRetry] = useState(0);
   const [handOrder, setHandOrder] = useState(() => {
@@ -11103,7 +10732,7 @@ function PokerTable({
     const torId = tableRef.current?.tournamentId;
     if (!torId) return;
     try {
-      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId)))]);
+      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",CLUB_ID)))]);
       const torPl = tSnap.exists() ? tSnap.data().players || {} : {};
       // Read the stack by the players-map KEY, not by a uid field inside the
       // seat: a seat written without `uid` used to be skipped entirely, and
@@ -11317,82 +10946,8 @@ function PokerTable({
   if (!playerCopiesRef.current) playerCopiesRef.current = window.PokerRuntime.createPlayerCopies();
   const clonePlayers = pl => playerCopiesRef.current.clone(pl);
   const saveGame = async (g, pl, extra = {}) => {
-    // Optimistic-concurrency guard. Every save carries the sequence number of
-    // the snapshot it was computed from; if the table doc moved on since (a
-    // second driver, or a phone waking from background with minutes-old state)
-    // the write is DROPPED instead of overwriting the fresher state. A stale
-    // client silently loses its echo — a pot award can no longer be erased.
-    const base = Number(g.__seq) || 0;
-    const gOut = {
-      ...g
-    };
-    let savedPlayers;
-    try {
-      await window.fb.runTransaction(window.fb.db, async trx => {
-        const s = await trx.get(tblRef());
-        if (!s.exists()) throw 'gone';
-        const d0 = s.data();
-        const cur = Number((d0.gameState || {}).__seq) || 0;
-        if (cur !== base) throw 'stale';
-        savedPlayers = playerCopiesRef.current.merge(d0.players || {}, pl);
-        gOut.__seq = cur + 1;
-        // chip-conservation sensor: total chips on the table must not change
-        // except for rake leaving at showdown or approved top-ups entering.
-        // A mismatch is recorded ON the doc for forensics (non-blocking).
-        try {
-          const tot = (px, gx) => round2(Object.values(px || {}).reduce((s2, q) => s2 + (Number(q.stack) || 0) + (Number(q.bet) || 0), 0) + ((gx || {}).pots || []).reduce((s2, q) => s2 + (Number(q.amount) || 0), 0));
-          const before = tot(d0.players, d0.gameState);
-          const after = tot(pl, gOut);
-          const delta = round2(after - before);
-          const sameSeats = Object.keys(d0.players || {}).length === Object.keys(pl || {}).length;
-          if (sameSeats && Math.abs(delta) > 0.011) {
-            // per-player breakdown: exactly WHOSE chips moved in this write
-            const perP = [];
-            Object.keys(pl || {}).forEach(k => {
-              const b2 = d0.players && d0.players[k] || {};
-              const a2 = pl[k] || {};
-              const dd = round2((Number(a2.stack) || 0) + (Number(a2.bet) || 0) - (Number(b2.stack) || 0) - (Number(b2.bet) || 0));
-              if (Math.abs(dd) > 0.011) perP.push({
-                n: a2.name || k,
-                d: dd
-              });
-            });
-            const entry2 = {
-              at: Date.now(),
-              delta,
-              phase: (d0.gameState || {}).phase + '→' + gOut.phase,
-              by: user.uid,
-              who: perP.slice(0, 6)
-            };
-            // capped forensic log ON the table doc — survives across hands
-            gOut.__chipLog = [...((d0.gameState || {}).__chipLog || []), entry2].slice(-12);
-            console.warn('CHIP DELTA', delta, entry2.phase, JSON.stringify(perP));
-          } else if ((d0.gameState || {}).__chipLog) {
-            gOut.__chipLog = d0.gameState.__chipLog; // carry the log forward
-          }
-        } catch (e2) {}
-        trx.update(tblRef(), {
-          gameState: gOut,
-          players: savedPlayers,
-          ...extra
-        });
-      });
-      // chained flows (save → advancePhase timer with the same object) must
-      // keep matching the doc, so bump the caller's copy in place
-      g.__seq = gOut.__seq;
-      playerCopiesRef.current.committed(pl, savedPlayers);
-      return true;
-    } catch (e) {
-      const reason = e?.message || String(e);
-      console.warn('Poker save rejected', { tableId: tableDocId, reason });
-      if (g.activeTurnUid === user.uid || tableRef.current?.gameState?.activeTurnUid === user.uid) {
-        actedTurnRef.current = null;
-        setActing(false);
-        showToast(reason === 'stale' || reason === 'stale-players' ? 'The table updated. Please try your action again.' : 'Action was not saved. Check your connection and try again.', 'error');
-      }
-      return false;
-    }
-  };
+throw new Error('Game state is managed by the server');
+};
   useEffect(() => {
     if (!tableDocId) return;
     setTableError('');
@@ -11412,8 +10967,7 @@ function PokerTable({
         setTableError(d.metadata?.fromCache ? 'Reconnecting — showing the last saved table.' : '');
         setLoading(false);
       } else if (!d.metadata?.fromCache) {
-        showToast('The table closed', 'error');
-        onLeave();
+        if(!tableRef.current?.tournamentId){showToast('The table closed','info');onLeave();}else setTableError('Moving to your tournament table…');
       } else setTableError('Waiting for the table to reconnect.');
     }, error => {
       clearTimeout(timeout);
@@ -11437,18 +10991,7 @@ function PokerTable({
   // Self-heal MY seat identity: if a write ever left my entry with a blank or
   // corrupt name/avatar/uid (the "I have no avatar" report), repair it from
   // the live profile. Converges in one write, no loops.
-  useEffect(() => {
-    const me = (tableState?.players || {})[user.uid];
-    if (!me) return;
-    const fix = {};
-    if (!me.uid) fix[`players.${user.uid}.uid`] = user.uid;
-    if (!me.name) fix[`players.${user.uid}.name`] = user.username || 'Player' + String(user.playerId || '').slice(-3);
-    const wantPhoto = user.photo || '';
-    const okPhoto = !wantPhoto || wantPhoto.startsWith('data:image');
-    if (okPhoto && (me.photo || '') !== wantPhoto) fix[`players.${user.uid}.photo`] = wantPhoto;
-    if (!wantPhoto && !me.avatarSeed) fix[`players.${user.uid}.avatarSeed`] = user.avatarSeed || user.uid;
-    if (Object.keys(fix).length) window.fb.updateDoc(tblRef(), fix).catch(() => {});
-  }, [tableState?.players?.[user.uid]?.name, tableState?.players?.[user.uid]?.photo, tableState?.players?.[user.uid]?.avatarSeed]);
+  useEffect(() => {}, [tableState?.players?.[user.uid]?.name, tableState?.players?.[user.uid]?.photo, tableState?.players?.[user.uid]?.avatarSeed]);
   const [preCF, setPreCF] = useState(false);
   useEffect(() => {
     if (!isMyTurn || !preCF) return;
@@ -11465,26 +11008,7 @@ function PokerTable({
   useEffect(() => {
     if (!['preflop', 'flop', 'turn', 'river'].includes(gs.phase) || myPlayer?.status !== 'active') setPreCF(false);
   }, [gs.phase, myPlayer?.status]);
-  useEffect(() => {
-    if (!isSeated) return;
-    const beat = () => window.fb.updateDoc(tblRef(), {
-      [`players.${user.uid}.lastSeen`]: Date.now()
-    }).catch(() => {});
-    beat();
-    // Fast heartbeat so a disconnect / closed tab is detectable within ~20s,
-    // not ~50s. Also beat the moment the player comes back / refocuses.
-    const iv = setInterval(beat, 8000);
-    const onBack = () => beat();
-    window.addEventListener('online', onBack);
-    window.addEventListener('focus', onBack);
-    document.addEventListener('visibilitychange', onBack);
-    return () => {
-      clearInterval(iv);
-      window.removeEventListener('online', onBack);
-      window.removeEventListener('focus', onBack);
-      document.removeEventListener('visibilitychange', onBack);
-    };
-  }, [isSeated, tableDocId]);
+  useEffect(() => {if(!tableState?.players?.[user.uid])return;const beat=()=>pokerCommand('pkSeat',{tableId:tableDocId,op:'heartbeat'}).catch(()=>{});beat();const iv=setInterval(beat,12000);return()=>clearInterval(iv);}, [isSeated, tableDocId]);
   const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
   useEffect(() => {
     const on = () => setOffline(false),
@@ -11837,113 +11361,8 @@ function PokerTable({
     if (!(await saveGame(g, pl))) return;
   };
   const performAction = async (actorUid, type, targetBet, autoTimeout) => {
-    if (setts.serverEngine) {
-      if (actorUid === user.uid) {
-        try {
-          await window.fb.fx('pkAct', {
-            tableId: tableDocId,
-            action: type === 'raise' ? 'raise' : type,
-            amount: targetBet,
-            auto: !!autoTimeout
-          });
-        } catch (e) {
-          const m = e && e.message || '';
-          if (!/turn|not your|in the hand|no betting|betting now/i.test(m)) showToast(m || 'Action failed', 'error');
-        } finally {
-          setActing(false);
-        }
-      }
-      return;
-    }
-    const t = tableRef.current;
-    if (!t) return;
-    const g = {
-      ...t.gameState
-    };
-    if (g.activeTurnUid !== actorUid || !BETTING.includes(g.phase)) return;
-    const pl = clonePlayers(t.players);
-    const p = pl[actorUid];
-    if (!p || p.status !== 'active') return;
-    p.missed = autoTimeout ? (p.missed || 0) + 1 : 0;
-    if (autoTimeout && p.missed >= 2 && !p.sitOut && !p.sitOutNext) {
-      p.sitOutNext = true;
-      p.sitAuto = true;
-    }
-    if (type === 'fold') {
-      p.status = 'folded';
-      p.actionText = 'Fold';
-      p.hasActed = true;
-    } else if (type === 'call') {
-      const toCall = round2(Math.max(0, g.highestBet - (p.bet || 0)));
-      const pay = Math.min(toCall, p.stack);
-      p.stack = round2(p.stack - pay);
-      p.bet = round2((p.bet || 0) + pay);
-      p.actionText = pay > 0 ? p.stack === 0 ? 'All-in' : 'Call' : 'Check';
-      p.hasActed = true;
-    } else if (type === 'raise') {
-      const maxT = round2((p.bet || 0) + p.stack);
-      let target = Math.min(round2(targetBet), maxT);
-      if (String(g.currentGameType || '').startsWith('Omaha') && setts.omahaPotLimit !== false) {
-        const toCallP = round2(Math.max(0, (g.highestBet || 0) - (p.bet || 0)));
-        const potNow = round2((g.pots || []).reduce((s2, x) => s2 + x.amount, 0) + Object.values(pl).reduce((s2, q) => s2 + (q.bet || 0), 0));
-        target = Math.min(target, round2((g.highestBet || 0) + potNow + toCallP));
-      }
-      const minT = round2(g.highestBet + g.minRaise);
-      if (target < minT) target = Math.min(minT, maxT);
-      const add = round2(target - (p.bet || 0));
-      if (add <= 0) return;
-      p.stack = round2(p.stack - add);
-      p.bet = target;
-      if (target > g.highestBet) {
-        g.minRaise = Math.max(g.minRaise, round2(target - g.highestBet));
-        g.highestBet = target;
-        Object.values(pl).forEach(q => {
-          if (q.uid !== actorUid && q.status === 'active' && q.stack > 0) q.hasActed = false;
-        });
-      }
-      p.actionText = p.stack === 0 ? 'All-in' : 'Raise';
-      p.hasActed = true;
-    }
-    // The hand's action log. Without this a session cannot be reviewed at all:
-    // the board and the winner say nothing about how the pot was played.
-    g.acts = [...(g.acts || []).slice(-79), {
-      u: actorUid,
-      n: p.name || '',
-      s: g.phase,
-      a: type === 'fold' ? 'fold' : p.actionText === 'Check' ? 'check' :
-        p.stack === 0 ? 'allin' : type === 'raise' ? 'raise' : 'call',
-      m: round2(p.bet || 0),
-      p: round2((g.pots || []).reduce((s2, x) => s2 + (x.amount || 0), 0) +
-        Object.values(pl).reduce((s2, q) => s2 + (q.bet || 0), 0))
-    }];
-    const actives = Object.values(pl).filter(q => q.status === 'active');
-    if (actives.length === 1) {
-      await finishEarlyWin(g, pl, actives[0].uid);
-      return;
-    }
-    const order = actives.sort((a, b) => a.seatIndex - b.seatIndex);
-    const actorSeat = p.seatIndex;
-    const after = order.filter(q => q.seatIndex > actorSeat).concat(order.filter(q => q.seatIndex <= actorSeat && q.uid !== actorUid));
-    let next = null;
-    for (const q of after) {
-      if (q.stack > 0 && (!q.hasActed || (q.bet || 0) < g.highestBet)) {
-        next = q;
-        break;
-      }
-    }
-    if (next) {
-      g.activeTurnUid = next.uid;
-      g.turnStartedAt = Date.now();
-      if (!(await saveGame(g, pl))) return;
-    } else {
-      g.activeTurnUid = null;
-      const actorsLeft = actives.filter(q => q.stack > 0);
-      if (actives.length > 1 && actorsLeft.length < 2) g.allInReveal = true;
-      if (!(await saveGame(g, pl))) return;
-      clearTimeout(advanceRef.current);
-      advanceRef.current = setTimeout(() => advancePhase(g, pl), 1300);
-    }
-  };
+if(actorUid!==user.uid||autoTimeout)return;const g=tableRef.current?.gameState;if(!g)return;try{await pokerCommand('pkAct',{tableId:tableDocId,action:type,amount:targetBet,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});}catch(e){showToast(e.message||'Action failed','error');}finally{setActing(false);}
+};
   const executeDeal = async (gBase, plBase, gameType) => {
     const tour = (tableRef.current || {}).tournament || null;
     const deck = pokerDeck();
@@ -12068,147 +11487,14 @@ function PokerTable({
     if (!(await saveGame(g, pl))) return;
   };
   const startHand = async (forceClient) => {
-    // Tournament break gate — ONE shared clock for every table. A hand that is
-    // already running simply finishes; the NEXT deal waits out the break, so a
-    // table that ended its hand late just gets a shorter break.
-    {
-      const tour0 = (tableRef.current || {}).tournament;
-      if (tour0 && tour0.startedAt) {
-        const tc0 = tourClock(tour0);
-        if (tc0.inBreak) {
-          clearTimeout(nextHandRef.current);
-          nextHandRef.current = setTimeout(() => startHand(forceClient), Math.max(1000, tc0.phaseEndsAt - Date.now() + 800));
-          return;
-        }
-      }
-    }
-    if (setts.serverEngine && !forceClient) {
-      try {
-        await Promise.race([window.fb.fx('pkDeal', {
-          tableId: tableDocId
-        }), new Promise((_, rej) => setTimeout(() => rej(new Error('pkDeal timeout')), 7000))]);
-        return;
-      } catch (e) {
-        console.error('pkDeal failed', e);
-        // FAILOVER: the server engine did not deal. Flip THIS table to the
-        // proven client engine and deal locally. Safe here — no cards have
-        // been dealt yet, so nothing renders wrong. Spin stays server-only
-        // (its prize flow lives on the server end-to-end).
-        if (setts.spinMode) {
-          showToast('Deal: ' + (e && e.message || e), 'error');
-          return;
-        }
-        try {
-          await window.fb.updateDoc(tblRef(), {
-            'settings.serverEngine': false
-          });
-        } catch (e2) {}
-        // fall through to the client-engine deal below
-      }
-    }
-    if (startingRef.current) return;
-    startingRef.current = true;
-    try {
-      const snap = await window.fb.getDoc(tblRef());
-      if (!snap.exists()) return;
-      const t = snap.data();
-      const g0 = t.gameState;
-      if (!['waiting', 'showdown'].includes(g0.phase)) return;
-      const pl = clonePlayers(t.players);
-      Object.values(pl).forEach(p => {
-        if (p.sitOutNext) {
-          p.sitOut = true;
-          p.sitOutAt = Date.now();
-          p.sitAuto = false;
-          p.sitOutNext = false;
-        }
-        if (p.leaveReq && !t.tournamentId) p.sitOut = true;
-        p.cards = [];
-        p.bet = 0;
-        p.actionText = '';
-        p.hasActed = false;
-        p.reveal = false;
-        p.mucked = false;
-        p.status = p.stack > 0 ? p.sitOut && !t.tournamentId ? 'sitout' : 'active' : ['busted', 'out'].includes(p.status) ? p.status : 'sitout';
-      });
-      const actives = Object.values(pl).filter(p => p.status === 'active').sort((a, b) => a.seatIndex - b.seatIndex);
-      if (actives.length < 2) {
-        if (!(await saveGame({
-          ...g0,
-          phase: 'waiting',
-          activeTurnUid: null,
-          board: [],
-          pots: []
-        }, pl))) return;
-        return;
-      }
-      const uids = actives.map(p => p.uid);
-      let dIdx = uids.indexOf(g0.dealerUid);
-      const dealerUid = uids[(dIdx + 1) % uids.length];
-      let dcUid = g0.dcUid || null;
-      let dcAnchor = g0.dcAnchor || null;
-      if (setts.isDealerChoice) {
-        if (!dcUid || uids.indexOf(dcUid) === -1 || !dcAnchor || uids.indexOf(dcAnchor) === -1) {
-          dcAnchor = dealerUid;
-          dcUid = uids[(uids.indexOf(dealerUid) - 1 + uids.length) % uids.length];
-        } else if (dealerUid === dcAnchor) {
-          dcUid = uids[(uids.indexOf(dcUid) - 1 + uids.length) % uids.length];
-        }
-      } else {
-        dcUid = null;
-        dcAnchor = null;
-      }
-      const g = {
-        ...g0,
-        dealerUid,
-        dcUid,
-        dcAnchor,
-        board: [],
-        pots: [],
-        lastWinners: null,
-        lastWinAmount: 0,
-        allInReveal: false
-      };
-      if (setts.isDealerChoice && dealerUid === dcUid) {
-        g.phase = 'dc_selection';
-        g.activeTurnUid = null;
-        g.turnStartedAt = Date.now();
-        if (!(await saveGame(g, pl))) return;
-      } else {
-        await executeDeal(g, pl, setts.isDealerChoice ? g.currentGameType || setts.baseGameType : setts.baseGameType);
-      }
-    } catch (e) {
-      console.error('client deal failed', e);
-      showToast('Deal: ' + (e && e.message || e), 'error');
-    } finally {
-      startingRef.current = false;
-    }
-  };
+if(startingRef.current)return;startingRef.current=true;try{await window.fb.fx('pkDeal',{tableId:tableDocId});}catch(e){if(!/Not enough|Wait|already|break|not ready/i.test(e.message||''))showToast(e.message||'Cannot start hand','error');}finally{startingRef.current=false;}
+};
   // Owner emergency unstick for a frozen table: refund every chip in play, switch
   // THIS table to the proven client engine, and deal a fresh hand. Safe — it
   // starts a clean hand (no priv/players.cards mismatch) and returns all bets.
   const forceUnstick = async () => {
-    try {
-      const t = tableRef.current;
-      if (!t) return;
-      if (!window.confirm('Unstick frozen table: current bets are refunded, the table switches to the client engine and a fresh hand is dealt. Continue?')) return;
-      const pl = clonePlayers(t.players);
-      const g = t.gameState || {};
-      Object.values(pl).forEach(p => { if (p.bet) { p.stack = round2((p.stack || 0) + p.bet); } });
-      (g.pots || []).forEach(pot => {
-        const elig = (pot.eligible || []).filter(u => pl[u]);
-        if (elig.length) { const share = round2((pot.amount || 0) / elig.length); elig.forEach(u => pl[u].stack = round2((pl[u].stack || 0) + share)); }
-      });
-      Object.values(pl).forEach(p => { p.cards = []; p.bet = 0; p.actionText = ''; p.hasActed = false; p.reveal = false; if (!['busted', 'out'].includes(p.status)) p.status = (p.stack > 0) ? 'active' : 'sitout'; });
-      await window.fb.updateDoc(tblRef(), {
-        'settings.serverEngine': false,
-        players: pl,
-        gameState: { ...g, __seq: (Number(g.__seq) || 0) + 1, phase: 'waiting', activeTurnUid: null, turnStartedAt: null, board: [], pots: [], highestBet: 0, minRaise: round2((setts.blinds || 0.5) * 2), allInReveal: false, lastWinners: null, lastWinAmount: 0 }
-      });
-      showToast('Table unstuck — dealing a fresh hand', 'success');
-      setTimeout(() => startHand(true), 1200);
-    } catch (e) { showToast('Unstick failed: ' + (e && e.message || e), 'error'); }
-  };
+try{await window.fb.fx('pkTick',{tableId:tableDocId});}catch(e){showToast(e.message||String(e),'error');}
+};
   const selectDCGame = async (gameType, byUid = user.uid) => {
     if (setts.serverEngine) {
       if (byUid === user.uid) {
@@ -12278,235 +11564,19 @@ function PokerTable({
     if (!(await saveGame(g, pl))) return;
   };
   const handleSit = async () => {
-    if (tableState?.tournament) return showToast("Tournament table - join via registration in the lobby", "error");
-    const clearPick = () => setPickSeat(null);
-    try {
-      let becameFull = false;
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const uRef = memDoc(user.uid);
-        const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tblRef())];
-        if (!tSnap.exists()) throw "Table doesn't exist";
-        const t = tSnap.data();
-        const pl = t.players || {};
-        if (pl[user.uid]) throw "You're already seated";
-        if (Object.keys(pl).length >= (t.settings.maxPlayers || 6)) throw "The table is full";
-        const sSp = t.settings || {};
-        if (sSp.spinMode) {
-          if (t.spin) throw "This spin already started — a fresh table is open in the lobby";
-          const entry = round2(Number(sSp.spinBuyIn) || 50);
-          const tickets = Number(uSnap.data().spinTickets || 0);
-          if (tickets > 0) tr.update(uRef, {
-            spinTickets: tickets - 1
-          });else if ((uSnap.data().balance || 0) >= entry) tr.update(uRef, {
-            balance: round2((uSnap.data().balance || 0) - entry)
-          });else throw "Not enough balance in wallet";
-          const cap2 = Math.max(2, Math.min(10, Number(sSp.maxPlayers) || 3));
-          const tk2 = new Set(Object.values(pl).map(p => Number(p.seatIndex) || 0));
-          let si2 = 0;
-          while (si2 < cap2 && tk2.has(si2)) si2++;
-          if (si2 >= cap2) throw "This spin table is full";
-          tr.update(tblRef(), {
-            'gameState.__seq': (Number((t.gameState || {}).__seq) || 0) + 1,
-            [`players.${user.uid}`]: {
-              uid: user.uid,
-              name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
-              photo: user.photo || '',
-              avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid),
-              seatIndex: si2,
-              stack: round2(Number(sSp.spinStack) || 1000),
-              bet: 0,
-              buyTotal: 0,
-              spinPaid: tickets > 0 ? 0 : entry,
-              status: 'active',
-              cards: [],
-              hasActed: false,
-              actionText: '',
-              isBot: false
-            }
-          });
-          return;
-        }
-        // HARD GUARD: sitting with a zero/below-minimum stack is impossible.
-        // (buyAmt starts at 0 until the table loads — a fast tap could seat a
-        // player with 0 chips at a random free seat. Never again.)
-        const minSit = Math.max(0.01, buyInMin(t.settings || {}));
-        if (!(Number(buyAmt) >= minSit)) throw `Pick a buy-in first (minimum ${formatMoney(minSit)})`;
-        if ((uSnap.data().balance || 0) < buyAmt) throw "Not enough balance in wallet";
-        const left = (t.leftStacks || {})[user.uid];
-        if (left && Date.now() - left.at < 12 * 60 * 60 * 1000 && buyAmt < round2(left.amount)) throw `You left this table with ${formatMoney(left.amount)} - you must return with at least this amount`;
-        // Seats must stay inside the table's capacity: an index handed out past
-        // maxPlayers wraps onto an occupied slot in the renderer (slotOf uses
-        // mod capN) and two players end up drawn on top of each other.
-        const cap = Math.max(2, Math.min(10, Number(t.settings.maxPlayers) || 6));
-        const taken = new Set(Object.values(pl).map(p => Number(p.seatIndex) || 0));
-        if (taken.size >= cap) throw "This table is full";
-        let seatIndex = Number.isFinite(pickSeat) && !taken.has(pickSeat) && pickSeat < cap ? pickSeat : -1;
-        if (seatIndex < 0) { seatIndex = 0; while (seatIndex < cap && taken.has(seatIndex)) seatIndex++; }
-        if (seatIndex >= cap) throw "This table is full";
-        const midHand = !['waiting', 'showdown'].includes(t.gameState.phase);
-        tr.update(uRef, {
-          balance: round2(uSnap.data().balance - buyAmt)
-        });
-        tr.update(tblRef(), {
-          [`leftStacks.${user.uid}`]: null,
-          'gameState.__seq': (Number((t.gameState || {}).__seq) || 0) + 1,
-          [`players.${user.uid}`]: {
-            uid: user.uid,
-            name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
-            photo: user.photo || '',
-            avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid),
-            seatIndex,
-            stack: round2(buyAmt),
-            bet: 0,
-            buyTotal: round2(buyAmt),
-            status: midHand ? 'waiting' : 'active',
-            cards: [],
-            hasActed: false,
-            actionText: '',
-            isBot: false
-          }
-        });
-        if (Object.keys(pl).length + 1 >= (t.settings.maxPlayers || 6)) becameFull = true;
-      });
-      setSpectate(false);
-      if (becameFull) spawnTwinTable(tableRef.current, true);
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Error taking a seat", "error");
-    }
-  };
+try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'join',amount:Number(buyAmt),seatIndex:pickSeat});setSpectate(false);setPickSeat(null);}catch(e){showToast(e.message||String(e),'error');}
+};
   const joinWaitlist = async () => {
-    if (tableState?.tournamentId) return;
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const tSnap = await tr.get(tblRef());
-        if (!tSnap.exists()) throw "Table doesn't exist";
-        const t = tSnap.data();
-        if ((t.players || {})[user.uid]) throw "You're already seated";
-        const wl = Array.isArray(t.waitlist) ? t.waitlist.slice() : [];
-        if (wl.some(w => w.uid === user.uid)) throw "You're already on the waitlist";
-        wl.push({
-          uid: user.uid,
-          name: user.username,
-          at: Date.now(),
-          buyAmt: round2(buyAmt)
-        });
-        tr.update(tblRef(), {
-          waitlist: wl
-        });
-      });
-      showToast("Added to the waitlist — you'll be seated automatically when a spot opens 🪑", "success");
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Waitlist error", "error");
-    }
-  };
+try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'wait',amount:Number(buyAmt)});showToast("You joined the waiting list.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const leaveWaitlist = async () => {
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const tSnap = await tr.get(tblRef());
-        if (!tSnap.exists()) return;
-        const wl = (tSnap.data().waitlist || []).filter(w => w.uid !== user.uid);
-        tr.update(tblRef(), {
-          waitlist: wl
-        });
-      });
-      showToast("Removed from the waitlist", "info");
-    } catch (e) {}
-  };
+try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'unwait'});}catch(e){showToast(e.message||String(e),'error');}
+};
   const promotingRef = useRef(false);
-  useEffect(() => {
-    const t = tableState;
-    if (!t || t.tournamentId) return;
-    const pl = t.players || {};
-    const wl = t.waitlist || [];
-    if (pl[user.uid]) return;
-    if (!wl.length || wl[0].uid !== user.uid) return;
-    const cap = (t.settings || {}).maxPlayers || 6;
-    if (Object.keys(pl).length >= cap) return;
-    if (promotingRef.current) return;
-    promotingRef.current = true;
-    (async () => {
-      try {
-        const want = round2(wl[0].buyAmt || buyAmt);
-        await window.fb.runTransaction(window.fb.db, async tr => {
-          const uRef = memDoc(user.uid);
-          const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tblRef())];
-          if (!tSnap.exists()) throw "gone";
-          const td = tSnap.data();
-          const p2 = td.players || {};
-          const w2 = td.waitlist || [];
-          if (p2[user.uid]) throw "seated";
-          if (!w2.length || w2[0].uid !== user.uid) throw "not-first";
-          if (Object.keys(p2).length >= ((td.settings || {}).maxPlayers || 6)) throw "full";
-          if ((uSnap.data().balance || 0) < want) throw "You reached the top of the waitlist but don't have enough balance — removed from list";
-          let seatIndex = 0;
-          const taken = new Set(Object.values(p2).map(p => p.seatIndex));
-          while (taken.has(seatIndex)) seatIndex++;
-          const midHand = !['waiting', 'showdown'].includes(td.gameState.phase);
-          tr.update(uRef, {
-            balance: round2(uSnap.data().balance - want)
-          });
-          tr.update(tblRef(), {
-            waitlist: w2.slice(1),
-            [`leftStacks.${user.uid}`]: null,
-            [`players.${user.uid}`]: {
-              uid: user.uid,
-              name: user.username,
-              photo: user.photo || '',
-              avatarSeed: user.avatarSeed || '',
-              seatIndex,
-              stack: round2(want),
-              bet: 0,
-              buyTotal: round2(want),
-              status: midHand ? 'waiting' : 'active',
-              cards: [],
-              hasActed: false,
-              actionText: '',
-              isBot: false
-            }
-          });
-        });
-        setSpectate(false);
-        showToast("A seat opened up — you're in! 🎉", "success");
-        const tNow = tableRef.current;
-        if (tNow && Object.keys(tNow.players || {}).length >= ((tNow.settings || {}).maxPlayers || 6)) spawnTwinTable(tNow, true);
-      } catch (e) {
-        if (typeof e === 'string' && e.startsWith('You reached')) {
-          showToast(e, "error");
-          leaveWaitlist();
-        }
-      } finally {
-        promotingRef.current = false;
-      }
-    })();
-  }, [tableState, user.uid]);
+  useEffect(() => {if(!srvEngine)return;const t=tableState;if(!t||t.players?.[user.uid]||t.waitlist?.[0]?.uid!==user.uid||Object.keys(t.players||{}).length>=(t.settings.maxPlayers||6)||promotingRef.current)return;promotingRef.current=true;pokerCommand('pkSeat',{tableId:tableDocId,op:'join',amount:t.waitlist[0].buyAmt||buyAmt,fromWaitlist:true}).then(()=>setSpectate(false)).catch(e=>showToast(e.message,'error')).finally(()=>{promotingRef.current=false;});}, [tableState, user.uid]);
   const handleRebuy = async () => {
-    if (tableState?.tournament) return showToast("No standard Rebuy in a tournament - use Rebuy/Add-on per tournament rules", "error");
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const uRef = memDoc(user.uid);
-        const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tblRef())];
-        if (!tSnap.exists()) throw "err";
-        const t = tSnap.data();
-        if (!t.players[user.uid]) throw "You're not seated at the table";
-        const capMax = buyInMax(t.settings);
-        const room = round2(capMax - (t.players[user.uid].stack || 0));
-        if (room <= 0) throw `You're already at the max table buy-in (${formatMoney(capMax)})`;
-        const addAmt = Math.min(round2(buyAmt), room);
-        if ((uSnap.data().balance || 0) < addAmt) throw "Not enough balance in wallet";
-        tr.update(uRef, {
-          balance: round2(uSnap.data().balance - addAmt)
-        });
-        tr.update(tblRef(), {
-          [`players.${user.uid}.stack`]: round2((t.players[user.uid].stack || 0) + addAmt),
-          [`players.${user.uid}.buyTotal`]: round2((t.players[user.uid].buyTotal || 0) + addAmt),
-          [`players.${user.uid}.status`]: ['waiting', 'showdown'].includes(t.gameState.phase) ? 'active' : t.players[user.uid].status
-        });
-      });
-      showToast("Rebuy done!", "success");
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Error", "error");
-    }
-  };
+try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amount:Number(buyAmt)});showToast("Chips purchased.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const applyTourFlow = (pl, winnersUids) => {
     const tour = (tableRef.current || {}).tournament;
     if (!tour) return {};
@@ -12546,48 +11616,8 @@ function PokerTable({
     return {};
   };
   const toggleSitOut = async () => {
-    const t = tableRef.current;
-    const meP = t?.players?.[user.uid];
-    if (!meP) return;
-    try {
-      if (meP.sitOut) {
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.sitOut`]: false,
-          [`players.${user.uid}.missed`]: 0,
-          [`players.${user.uid}.sitAuto`]: false,
-          [`players.${user.uid}.sitOutNext`]: false
-        });
-        showToast("You're back at the table! Dealt in next hand 💪", "success");
-      } else if (meP.sitOutNext) {
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.sitOutNext`]: false
-        });
-        showToast("Sit-out canceled — you stay in 💪", "success");
-      } else {
-        let inHand = false;
-        await window.fb.runTransaction(window.fb.db, async tr => {
-          const s2 = await tr.get(tblRef());
-          if (!s2.exists()) throw "err";
-          const t2 = s2.data();
-          const me2 = t2.players[user.uid];
-          if (!me2) throw "err";
-          inHand = !['waiting', 'showdown', 'dc_selection'].includes((t2.gameState || {}).phase) && me2.status === 'active';
-          if (inHand) tr.update(tblRef(), {
-            [`players.${user.uid}.sitOutNext`]: true
-          });else tr.update(tblRef(), {
-            [`players.${user.uid}.sitOut`]: true,
-            [`players.${user.uid}.sitOutAt`]: Date.now(),
-            [`players.${user.uid}.sitAuto`]: false
-          });
-        });
-        if (inHand) {
-          showToast("Sit out at the END of this hand ☕ (tap again to cancel)", "info");
-        } else {
-          showToast(t?.tournamentId ? "Sit out ☕ blinds keep going down in the tournament!" : "Sit out ☕ you have 10 minutes to return", "info");
-        }
-      }
-    } catch (e) {}
-  };
+try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'sitout'});}catch(e){showToast(e.message||String(e),'error');}
+};
   const topUpChips = () => {
     const t = tableRef.current;
     if (!t || t.tournamentId) return;
@@ -12607,75 +11637,11 @@ function PokerTable({
     });
   };
   const doTopUp = async (amount, inHand, room) => {
-    const add = Math.min(round2(Number(amount) || 0), room);
-    if (!add || add <= 0) return;
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const ms = await tr.get(memDoc(user.uid));
-        const ts2 = await tr.get(tblRef());
-        if (!ms.exists() || !ts2.exists()) throw "err";
-        if ((ms.data().balance || 0) < add) throw "Not enough in wallet";
-        const cur = ts2.data().players[user.uid];
-        if (!cur) throw "err";
-        tr.update(ms.ref, {
-          balance: round2((ms.data().balance || 0) - add)
-        });
-        if (inHand) tr.update(tblRef(), {
-          [`players.${user.uid}.pendingTopUp`]: round2((cur.pendingTopUp || 0) + add)
-        });else tr.update(tblRef(), {
-          [`players.${user.uid}.stack`]: round2((cur.stack || 0) + add)
-        });
-      });
-      playSnd('chip');
-      showToast(inHand ? `${formatMoney(add)} queued — added to your stack at the end of the hand 💰` : `${formatMoney(add)} added to your stack 💰`, "success");
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Error", "error");
-    }
-  };
+try{const result=await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amount:Number(amount)});showToast(result.queued?'Chips purchased; added after this hand.':'Chips added.','success');setTopUpBox(null);}catch(e){showToast(e.message||String(e),'error');}
+};
   const kickSeat = async (uid, byAdmin) => {
-    if (byAdmin && setts.serverEngine && !tableState?.tournamentId) {
-      try {
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${uid}.leaveReq`]: Date.now()
-        });
-      } catch (e) {}
-      try {
-        await window.fb.fx('pkLeave', {
-          tableId: tableDocId,
-          targetUid: uid
-        });
-      } catch (e) {
-        showToast('Removal queued — the seat clears within a few seconds', 'info');
-      }
-      return;
-    }
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const ts2 = await tr.get(tblRef());
-        if (!ts2.exists()) return;
-        const t = ts2.data();
-        const p = t.players[uid];
-        if (!p) return;
-        if (!byAdmin && !t.tournamentId && !(p.leaveReq || p.sitOut && Date.now() - (p.sitOutAt || 0) > 600000)) return;
-        if (!byAdmin && t.tournamentId) return;
-        const inHand = !['waiting', 'showdown'].includes((t.gameState || {}).phase) && p.status === 'active';
-        if (inHand && !byAdmin) return;
-        const ms = p.isBot ? null : await tr.get(memDoc(uid));
-        const pl = {
-          ...t.players
-        };
-        delete pl[uid];
-        if (ms && ms.exists()) tr.update(ms.ref, {
-          balance: round2((ms.data().balance || 0) + (p.stack || 0) + (p.pendingTopUp || 0) + (inHand ? 0 : p.bet || 0)),
-          lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
-        });
-        tr.update(tblRef(), {
-          players: pl,
-          'gameState.__seq': (Number((t.gameState || {}).__seq) || 0) + 1
-        });
-      });
-    } catch (e) {}
-  };
+try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){showToast(e.message||String(e),'error');}
+};
   useEffect(() => {
     if (!tableState || tableState.tournamentId) return;
     const iv = setInterval(() => {
@@ -12706,226 +11672,14 @@ function PokerTable({
     }
   }, [tableState]);
   const rebuyAfterBust = async () => {
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const uRef = memDoc(user.uid);
-        const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tblRef())];
-        if (!tSnap.exists()) throw "err";
-        const t = tSnap.data();
-        const me = t.players[user.uid];
-        if (!me || me.status !== 'busted') throw "Not allowed";
-        const amt = Math.min(Math.max(round2(buyAmt), minBuy), maxBuy);
-        if ((uSnap.data().balance || 0) < amt) throw "Not enough balance in wallet";
-        tr.update(uRef, {
-          balance: round2(uSnap.data().balance - amt)
-        });
-        tr.update(tblRef(), {
-          [`players.${user.uid}.stack`]: amt,
-          [`players.${user.uid}.buyTotal`]: round2((me.buyTotal || 0) + amt),
-          [`players.${user.uid}.status`]: ['waiting', 'showdown'].includes(t.gameState.phase) ? 'active' : 'waiting',
-          [`players.${user.uid}.bustedAt`]: null
-        });
-      });
-      playSnd('chip');
-      showToast("Rebuy done - you're in the next hand!", "success");
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Error", "error");
-    }
-  };
+try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'rebuy',amount:Math.min(Math.max(Number(buyAmt),minBuy),maxBuy)});showToast("Rebuy accepted.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const handleStandUp = async forceNow => {
-    const t = tableRef.current;
-    if (!t || !t.players[user.uid]) {
-      onLeave();
-      return;
-    }
-    const noticeMs = (Number(setts.leaveNoticeMins) || 0) * 60000;
-    const otherHumans = Object.values(t.players || {}).filter(p => p.uid !== user.uid && !p.isBot);
-    const alone = otherHumans.length === 0; // last human at the table — stand up immediately, no notice wait
-    if (!t.tournament && noticeMs > 0 && !forceNow && !alone) {
-      const meN = t.players[user.uid];
-      const bbV = (Number(setts.blinds) || 0.5) * 2;
-      const thrBB = Number(setts.leaveNoticeBB) || 0;
-      const profitBB = ((meN.stack || 0) + (meN.bet || 0) - (meN.buyTotal || 0)) / bbV;
-      if (thrBB > 0 && profitBB < thrBB && !meN.leavingAt) {} else {
-        if (!meN.leavingAt) {
-          try {
-            await window.fb.updateDoc(tblRef(), {
-              [`players.${user.uid}.leavingAt`]: Date.now() + noticeMs
-            });
-          } catch (e) {}
-          showToast(`🚪 Leave announced — the table sees it. You can stand up in ${Number(setts.leaveNoticeMins)} min (you keep playing until then).`, "info");
-          return;
-        }
-        if (meN.leavingAt && Date.now() < meN.leavingAt) {
-          if (await askConfirm("Cancel leaving and stay at the table?")) {
-            try {
-              await window.fb.updateDoc(tblRef(), {
-                [`players.${user.uid}.leavingAt`]: null
-              });
-            } catch (e) {}
-            showToast("Staying! 💪", "success");
-          } else {
-            const leftS = Math.ceil((meN.leavingAt - Date.now()) / 1000);
-            showToast(`${Math.floor(leftS / 60)}:${String(leftS % 60).padStart(2, '0')} left before you can stand up`, "info");
-          }
-          return;
-        }
-      }
-    }
-    if (t.tournament) {
-      // There is NO leaving a tournament: the seat and stack stay, the blinds
-      // keep coming out of the stack, turns auto-pass instantly, and the
-      // player can return and un-sit-out whenever they like.
-      const meT = t.players[user.uid];
-      if (meT.status !== 'out' && !meT.isBot) {
-        try {
-          await window.fb.updateDoc(tblRef(), {
-            [`players.${user.uid}.sitOut`]: true,
-            [`players.${user.uid}.sitAuto`]: false
-          });
-        } catch (e) {}
-        showToast("Sit-out: your seat and chips stay, blinds keep posting. Come back any time.", "info");
-      }
-      onLeave();
-      return;
-    }
-    const g = t.gameState;
-    const inHand = !['waiting', 'showdown'].includes(g.phase) && t.players[user.uid].status === 'active';
-    if (inHand) {
-      const meF = t.players[user.uid] || {};
-      if (meF.leaveReq) {
-        if (await askConfirm("Cancel leaving and stay at the table?")) {
-          try {
-            await window.fb.updateDoc(tblRef(), {
-              [`players.${user.uid}.leaveReq`]: null
-            });
-          } catch (e) {}
-          leaveArmedRef.current = false;
-          showToast("Staying! 💪", "success");
-        }
-        return;
-      }
-      if (!(await askConfirm("You're mid-hand — you'll leave when the hand ends. Play it out. Mark the exit?"))) return;
-      try {
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.leaveReq`]: Date.now()
-        });
-        leaveArmedRef.current = true;
-      } catch (e) {}
-      showToast("🚪 Leaving at the end of this hand (tap again to cancel)", "info");
-      return;
-    }
-    if (setts.serverEngine) {
-      const meS = t.players[user.uid] || {};
-      try {
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.leaveReq`]: Date.now()
-        });
-      } catch (e) {}
-      let left = false;
-      for (let i = 0; i < 2 && !left; i++) {
-        try {
-          await window.fb.fx('pkLeave', {
-            tableId: tableDocId
-          });
-          left = true;
-        } catch (e) {
-          await new Promise(r => setTimeout(r, 700));
-        }
-      }
-      onLeave();
-      return;
-    }
-    try {
-      let session = null;
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const uRef = memDoc(user.uid);
-        const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tblRef())];
-        if (!tSnap.exists()) return;
-        const td = tSnap.data();
-        const me = td.players[user.uid];
-        if (!me) return;
-        session = {
-          stack: me.stack || 0,
-          buy: me.buyTotal || me.stack || 0
-        };
-        const pl = {
-          ...td.players
-        };
-        delete pl[user.uid];
-        const pots = [...(td.gameState.pots || [])];
-        if ((me.bet || 0) > 0) {
-          const elig = Object.values(pl).filter(q => q.status === 'active').map(q => q.uid);
-          pots.push({
-            amount: round2(me.bet),
-            eligible: elig
-          });
-        }
-        tr.update(uRef, {
-          balance: round2((uSnap.data().balance || 0) + (me.stack || 0)),
-          lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
-        });
-        const upd = {
-          players: pl,
-          'gameState.pots': pots
-        };
-        if ((me.stack || 0) > 0) upd[`leftStacks.${user.uid}`] = {
-          amount: round2(me.stack),
-          at: Date.now()
-        };
-        tr.update(tblRef(), upd);
-      });
-      if (session) logGameResult([{
-        uid: user.uid,
-        username: user.username,
-        game: 'poker',
-        profit: round2(session.stack - session.buy)
-      }], tableDocId);
-    } catch (e) {}
-    onLeave();
-  };
+const t=tableRef.current;if(!t?.players?.[user.uid])return onLeave();if(!t.tournamentId&&(t.players[user.uid].leaveReq||t.players[user.uid].leavingAt)&&!forceNow){await pokerCommand('pkSeat',{tableId:tableDocId,op:'cancel-leave'});showToast('Leaving cancelled.','info');return;}try{const r=await window.fb.fx('pkLeave',{tableId:tableDocId});if(r.notice){showToast('Leaving notice is active. Your seat stays until it ends.','info');return;}if(!t.tournamentId&&!['waiting','showdown'].includes(t.gameState.phase)){leaveArmedRef.current=true;showToast('Leaving after this hand.','info');}else onLeave();}catch(e){showToast(e.message||String(e),'error');}
+};
   const handleAddBot = async () => {
-    const ref = tblRef();
-    let full = false;
-    try {
-      await window.fb.runTransaction(window.fb.db, async tx => {
-        const snap = await tx.get(ref);
-        if (!snap.exists()) return;
-        const t = snap.data();
-        const pl = t.players || {};
-        const max = (t.settings || {}).maxPlayers || 6;
-        if (Object.keys(pl).length >= max) {
-          full = true;
-          return;
-        }
-        const taken = new Set(Object.values(pl).map(p => p.seatIndex));
-        let seatIndex = 0;
-        while (taken.has(seatIndex)) seatIndex++;
-        const botUid = `bot_${Date.now()}_${Math.floor(Math.random() * 1e9).toString(36)}`;
-        const midHand = !['waiting', 'showdown'].includes((t.gameState || {}).phase);
-        const bb = (Number((t.settings || {}).blinds) || 0.5) * 2;
-        const usedN = new Set(Object.values(pl).map(q => q.name));
-        const usedK = new Set(Object.values(pl).map(q => botNameKey(q.name)));
-        tx.update(ref, {
-          [`players.${botUid}`]: {
-            uid: botUid,
-            name: botDisplayName(usedN, usedK),
-            seatIndex,
-            stack: (t.settings || {}).spinMode ? round2(Number((t.settings || {}).spinStack) || 1000) : round2(100 * bb),
-            bet: 0,
-            status: midHand ? 'waiting' : 'active',
-            cards: [],
-            hasActed: false,
-            actionText: '',
-            isBot: true
-          }
-        });
-      });
-    } catch (e) {}
-    if (full) return showToast("The table is full", "error");
-    const cur = tableRef.current;
-    if (cur && Object.keys(cur.players || {}).length >= ((cur.settings || {}).maxPlayers || 6)) spawnTwinTable(cur, true);
-  };
+try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'addbot'});showToast("Bot seated.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   useEffect(() => {
     if (srvEngine || !iDrive || !tableState || !gs.phase) return;
     const actor0 = players[gs.activeTurnUid];
@@ -12984,6 +11738,7 @@ function PokerTable({
     saidPhase: ''
   });
   const botSay = async (bot, text, emoji) => {
+    if(srvEngine)return;
     const t = tableRef.current;
     if (!t || !bot) return;
     try {
@@ -13046,50 +11801,7 @@ function PokerTable({
       return () => clearTimeout(tm);
     }
   }, [gs.phase, playersCount, iDrive]);
-  useEffect(() => {
-    if (!isSuperAdmin || !tableState) return;
-    if (clubSettings?.botsAuto !== true) return;
-    if (!['waiting', 'showdown'].includes(gs.phase)) return;
-    const iv = setInterval(async () => {
-      try {
-        const t = tableRef.current;
-        if (!t) return;
-        if (!['waiting', 'showdown'].includes(t.gameState.phase)) return;
-        const pl = t.players || {};
-        const count = Object.keys(pl).length;
-        const hasHuman = Object.values(pl).some(p => !p.isBot);
-        if (!hasHuman || count >= (t.settings.maxPlayers || 6)) return;
-        const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));
-        const botSnaps = await window.fb.getDocs(botQ);
-        if (botSnaps.empty) return;
-        const bots = botSnaps.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        })).filter(b => !pl[b.id]);
-        if (bots.length === 0) return;
-        const bot = bots[Math.floor(Math.random() * bots.length)];
-        let seatIndex = 0;
-        const taken = new Set(Object.values(pl).map(p => p.seatIndex));
-        while (taken.has(seatIndex)) seatIndex++;
-        const bbNow = (Number(t.settings.blinds) || 0.5) * 2;
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${bot.id}`]: {
-            uid: bot.id,
-            name: bot.username,
-            seatIndex,
-            stack: round2(100 * bbNow),
-            bet: 0,
-            status: 'active',
-            cards: [],
-            hasActed: false,
-            actionText: '',
-            isBot: true
-          }
-        });
-      } catch (e) {}
-    }, 3500);
-    return () => clearInterval(iv);
-  }, [gs.phase, playersCount, isSuperAdmin, clubSettings?.botsAuto]);
+  useEffect(() => {}, [gs.phase, playersCount, isSuperAdmin, clubSettings?.botsAuto]);
   useEffect(() => {
     let interval;
     if (inBetting && gs.turnStartedAt) {
@@ -13159,98 +11871,15 @@ function PokerTable({
     return () => clearTimeout(tm);
   }, [!!tour, tableState?.gameState?.phase, Object.keys(tableState?.players || {}).length]);
   const tourRebuyMe = async () => {
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const uRef = memDoc(user.uid);
-        const torRef = window.fb.doc(window.fb.db, "tournaments", tableState.tournamentId);
-        const [uSnap, tSnap, torSnap] = [await tr.get(uRef), await tr.get(tblRef()), await tr.get(torRef)];
-        if (!tSnap.exists() || !torSnap.exists()) throw "err";
-        const t = tSnap.data();
-        const torD = torSnap.data();
-        const me = t.players[user.uid];
-        if (!me || me.status !== 'busted') throw "Unavailable";
-        const entry = tourEntryOf(torD); // buy-in + fee + bounty (bounty free when club-funded)
-        if ((uSnap.data().balance || 0) < entry) throw "Not enough balance for Rebuy";
-        tr.update(uRef, {
-          balance: round2((uSnap.data().balance || 0) - entry)
-        });
-        tr.update(tblRef(), {
-          [`players.${user.uid}.stack`]: t.tournament.startStack || 1000,
-          [`players.${user.uid}.status`]: 'waiting',
-          [`players.${user.uid}.bustedAt`]: null
-        });
-        tr.update(torRef, {
-          prizePool: round2((torD.prizePool || 0) + (Number(torD.buyIn) || 0)),
-          feeTotal: round2((torD.feeTotal || 0) + (Number(torD.fee) || 0)),
-          [`players.${user.uid}.paid`]: round2(((torD.players[user.uid] || {}).paid || 0) + entry)
-        });
-      });
-      playSnd('chip');
-      showToast("Rebuy successful! 💪", "success");
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Error", "error");
-    }
-  };
+try{await pokerCommand('pkTournament',{op:'rebuy',tournamentId:tableRef.current?.tournamentId});showToast("Purchase accepted.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
   const tourDecline = async () => {
-    try {
-      await window.fb.updateDoc(tblRef(), {
-        [`players.${user.uid}.status`]: 'out',
-        [`players.${user.uid}.stack`]: 0,
-        [`players.${user.uid}.bustedAt`]: Date.now()
-      });
-      tourReportBust(tableState.tournamentId, [user.uid], [], 0, false);
-    } catch (e) {}
-  };
+try{await pokerCommand('pkTournament',{op:'decline',tournamentId:tableRef.current?.tournamentId});}catch(e){showToast(e.message||String(e),'error');}
+};
   const tourAddon = async () => {
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const uRef = memDoc(user.uid);
-        const torRef = window.fb.doc(window.fb.db, "tournaments", tableState.tournamentId);
-        const [uSnap, tSnap, torSnap] = [await tr.get(uRef), await tr.get(tblRef()), await tr.get(torRef)];
-        if (!tSnap.exists() || !torSnap.exists()) throw "err";
-        const t = tSnap.data();
-        const torD = torSnap.data();
-        const me = t.players[user.uid];
-        if (!me || (torD.players[user.uid] || {}).addon) throw "Add-on already used";
-        if (['out', 'busted'].includes(me.status)) throw "Add-on is for live stacks — use Rebuy";
-        // the add-on is only sold at its level (or the break right before it)
-        const lvlNow = t.tournament ? tourClock(t.tournament).lvl : -1;
-        if (lvlNow !== (t.tournament?.addonAt ?? -1)) throw "Add-on window is closed";
-        const price = Number(torD.buyIn) || 0;
-        if ((uSnap.data().balance || 0) < price) throw "Not enough balance";
-        tr.update(uRef, {
-          balance: round2((uSnap.data().balance || 0) - price)
-        });
-        tr.update(tblRef(), {
-          [`players.${user.uid}.stack`]: round2((me.stack || 0) + (t.tournament.startStack || 1000))
-        });
-        tr.update(torRef, {
-          prizePool: round2((torD.prizePool || 0) + price),
-          [`players.${user.uid}.addon`]: true,
-          [`players.${user.uid}.paid`]: round2(((torD.players[user.uid] || {}).paid || 0) + price)
-        });
-      });
-      playSnd('chip');
-      showToast("Add-on added to your stack! 🚀", "success");
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Error", "error");
-    }
-  };
-  useEffect(() => {
-    const me0 = tableState?.players?.[user.uid];
-    if (!me0?.leavingAt || !me0.sitOut || tableState?.tournamentId) return;
-    const iv = setInterval(() => {
-      const cur = tableRef.current?.players?.[user.uid];
-      if (!cur?.leavingAt || !cur.sitOut) {
-        clearInterval(iv);
-        return;
-      }
-      window.fb.updateDoc(tblRef(), {
-        [`players.${user.uid}.leavingAt`]: cur.leavingAt + 5000
-      }).catch(() => {});
-    }, 5000);
-    return () => clearInterval(iv);
-  }, [!!tableState?.players?.[user.uid]?.leavingAt, !!tableState?.players?.[user.uid]?.sitOut]);
+try{await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.current?.tournamentId});showToast("Purchase accepted.",'success');}catch(e){showToast(e.message||String(e),'error');}
+};
+  useEffect(() => {}, [!!tableState?.players?.[user.uid]?.leavingAt, !!tableState?.players?.[user.uid]?.sitOut]);
   const [, setLvTick] = useState(0);
   useEffect(() => {
     if (!tableState?.players?.[user.uid]?.leavingAt) return;
@@ -13272,7 +11901,7 @@ function PokerTable({
     const me = tableState?.players?.[user.uid];
     if (!me || me.status !== 'busted') return;
     const isTour = !!tableState.tournament;
-    const win = isTour ? 30 : 300;
+    const win = isTour ? 45 : 300;
     const iv = setInterval(() => {
       const cur = tableRef.current?.players?.[user.uid];
       if (!cur || cur.status !== 'busted' || (cur.stack || 0) > 0) {
@@ -13378,50 +12007,7 @@ function PokerTable({
     }, 6000);
     return () => clearInterval(iv);
   }, [canGuardTable, tableDocId]);
-  useEffect(() => {
-    // Runs on ANY seated client (admin included) — a table nobody managed used
-    // to keep busted players glued to their seats with 0 chips, so late
-    // registrations found "full" tables and got shoved into phantom seats.
-    if (!(isSuperAdmin || isSeated) || !tableState) return;
-    const iv = setInterval(async () => {
-      const t0 = tableRef.current;
-      if (!t0) return;
-      // 45s grace (rebuy countdown is 30s + margin for throttled tabs); a human
-      // with no bustedAt timestamp is never insta-swept.
-      const graceMs = t0.tournament ? 45000 : 300000;
-      const isStale = q => (q.status === 'busted' || q.status === 'out') && (q.isBot || q.bustedAt && Date.now() - q.bustedAt > graceMs);
-      if (!Object.values(t0.players || {}).some(isStale)) return;
-      // Transactional: re-read the live map inside the tx so a rebuy or add-on
-      // that landed a moment ago is never clobbered by a stale full-map write.
-      let removed = [];
-      try {
-        await window.fb.runTransaction(window.fb.db, async trx => {
-          removed = [];
-          const s = await trx.get(tblRef());
-          if (!s.exists()) return;
-          const t = s.data();
-          const pl = {
-            ...t.players
-          };
-          Object.values({
-            ...pl
-          }).forEach(q => {
-            if (isStale(q)) {
-              delete pl[q.uid];
-              removed.push(q.uid);
-            }
-          });
-          if (removed.length) trx.update(tblRef(), {
-            players: pl
-          });
-        });
-      } catch (e) {
-        removed = [];
-      }
-      if (removed.length && t0.tournament) tourReportBust(t0.tournamentId, removed, [], 0, false);
-    }, 6000);
-    return () => clearInterval(iv);
-  }, [isSuperAdmin, isSeated, tableDocId, tableState === null]);
+  useEffect(() => {}, [isSuperAdmin, isSeated, tableDocId, tableState === null]);
   // NOTE: table consolidation runs ONLY in tourOrchestrate/mttOrchestrate (one
   // orchestrator) — a second per-table merger here raced it and could delete
   // tables twice. Removed after the pre-pilot audit.
@@ -13863,10 +12449,7 @@ function PokerTable({
       const mn = Math.max(0.01, Number(buyinEdit.min) || 0);
       const mx = Math.max(mn, Number(buyinEdit.max) || 0);
       try {
-        await window.fb.updateDoc(tblRef(), {
-          'settings.minBuyIn': round2(mn),
-          'settings.maxBuyIn': round2(mx)
-        });
+        await pokerCommand('pkTableManage',{tableId:tableDocId,op:'limits',min:round2(mn),max:round2(mx)});
         showToast(`Buy-in updated: ${formatMoney(mn)}–${formatMoney(mx)}`, 'success');
         setBuyinEdit(null);
       } catch (e) {
@@ -15243,9 +13826,7 @@ function PokerTable({
     onClick: async () => {
       setToolsOpen(false);
       try {
-        await window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.straddleNext`]: !myPlayer?.straddleNext
-        });
+        await pokerCommand('pkSeat',{tableId:tableDocId,op:'straddle',enabled:!myPlayer?.straddleNext});
       } catch (e) {}
     },
     title: "Straddle when eligible (2×BB blind — you act last preflop)",
@@ -15312,12 +13893,7 @@ function PokerTable({
       try {
         if (isSeated) {
           const midHand = !['waiting', 'showdown'].includes(gs.phase);
-          await window.fb.updateDoc(tblRef(), midHand ? {
-            [`players.${user.uid}.sitOutNext`]: true
-          } : {
-            [`players.${user.uid}.sitOut`]: true,
-            [`players.${user.uid}.sitAuto`]: false
-          });
+          await pokerCommand('pkSeat',{tableId:tableDocId,op:'pause'});
         }
       } catch (e) {}
       onManage();
@@ -15327,7 +13903,7 @@ function PokerTable({
   }, ...menuTile("📊", "Manage")), React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
-      if (tableState?.tournament || !isSeated) onLeave();else handleStandUp();
+      if (!isSeated) onLeave();else handleStandUp();
     },
     title: tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave',
     className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-rose-500/40 bg-slate-900/90 text-rose-300 hover:bg-rose-800 hover:text-white shadow-xl text-lg"
@@ -15396,17 +13972,7 @@ function PokerTable({
         stack = Number(spinEdit.stack);
       if (!(sb > 0) || !(entry > 0) || !(stack > 0)) return;
       try {
-        await window.fb.updateDoc(tblRef(), {
-          'settings.blinds': sb,
-          'settings.spinBuyIn': entry,
-          'settings.spinStack': stack,
-          // the lobby's BUY-IN column reads minBuyIn — keep it in step with
-          // the entry price or the row keeps advertising the old number
-          'settings.minBuyIn': entry,
-          'settings.maxBuyIn': entry,
-          'settings.minBuyInBB': 0,
-          'settings.maxBuyInBB': 0
-        });
+        await pokerCommand('pkTableManage',{tableId:tableDocId,op:'spin',entry,stack,sb});
         setSpinEdit(null);
         showToast('Spin updated: entry ' + formatMoney(entry) + ' · blinds ' + formatShort(sb) + '/' + formatShort(sb * 2), 'success');
       } catch (e) {
@@ -18666,8 +17232,7 @@ const tourSchemeOf = t => {
   return custom || (n >= 5 ? [0.5, 0.3, 0.2] : n >= 3 ? [0.7, 0.3] : [1]);
 };
 const tourPrizeList = t => {
-  const pool = round2(Number(t.prizePool) || 0);
-  return tourSchemeOf(t).map(f => round2(Math.floor(pool * f * 100) / 100));
+if(t.status==='done'&&t.results)return [...t.results].sort((a,b)=>a.rank-b.rank).filter(r=>r.prize>0).map(r=>r.prize);const weights=tourSchemeOf(t),sum=weights.reduce((a,b)=>a+b,0),pool=Math.round(Number(t.prizePool||0)*100),out=weights.map(x=>Math.floor(pool*x/sum));if(out.length)out[0]+=pool-out.reduce((a,b)=>a+b,0);return out.map(x=>x/100);
 };
 // Effective blind structure for a tournament: the saved custom/auto structure,
 // or (legacy tournaments) rows generated from TOUR_SCHEDULE + levelMins + anteFromLevel.
@@ -18688,45 +17253,7 @@ const tourStructOf = tour => {
 // break time. A table mid-hand simply finishes the hand (the deal gate checks
 // inBreak) — so its break is naturally shorter, aligned to the shared clock.
 const tourClock = tour => {
-  const struct = tourStructOf(tour);
-  const bE = Number(tour.breakEvery) || 0;
-  const bM = Number(tour.breakMins) || 0;
-  const started = tour.startedAt || Date.now();
-  const t = Date.now() - started;
-  let acc = 0;
-  for (let i = 0; i < struct.length; i++) {
-    const lvMs = Math.max(1, Number(struct[i].mins) || 5) * 60000;
-    if (t < acc + lvMs) return {
-      lvl: i,
-      row: struct[i],
-      inBreak: false,
-      phaseEndsAt: started + acc + lvMs,
-      next: struct[i + 1] || null,
-      breakNext: !!(bE && bM && (i + 1) % bE === 0 && i + 1 < struct.length)
-    };
-    acc += lvMs;
-    if (bE && bM && (i + 1) % bE === 0 && i + 1 < struct.length) {
-      const brMs = bM * 60000;
-      if (t < acc + brMs) return {
-        lvl: i + 1,
-        row: struct[i + 1],
-        inBreak: true,
-        phaseEndsAt: started + acc + brMs,
-        next: struct[i + 1],
-        breakNext: false
-      };
-      acc += brMs;
-    }
-  }
-  const last = struct.length - 1;
-  return {
-    lvl: last,
-    row: struct[last],
-    inBreak: false,
-    phaseEndsAt: Infinity,
-    next: null,
-    breakNext: false
-  };
+return window.PokerTournament.clock(tour,tourStructOf(tour),Date.now());
 };
 const tourLevelOf = tour => tourClock(tour).lvl;
 const tRef = id => window.fb.doc(window.fb.db, "tournaments", id);
@@ -19004,6 +17531,8 @@ const payTourPrize = async (torId, uid, amt, statsPatch, asBonus) => {
   } catch (e) {}
 };
 const tourRegister = async (tor, user, showToast) => {
+if(tor.game==='poker'){try{await pokerCommand('pkTournament',{op:'register',tournamentId:tor.id});showToast('Registration updated.','success');}catch(e){showToast(e.message,'error');}return;}
+
   const entry = tourEntryOf(tor);
   let didLateSeat = false;
   try {
@@ -19085,6 +17614,8 @@ const tourRegister = async (tor, user, showToast) => {
   }
 };
 const tourUnregister = async (tor, user, showToast) => {
+if(tor.game==='poker'){try{await pokerCommand('pkTournament',{op:'unregister',tournamentId:tor.id});showToast('Registration updated.','success');}catch(e){showToast(e.message,'error');}return;}
+
   try {
     await window.fb.runTransaction(window.fb.db, async tr => {
       const uRef = memDoc(user.uid);
@@ -19282,6 +17813,8 @@ const tourSeedRound = async (tor, uids, round) => {
   }
 };
 const tourStart = async tor => {
+if(tor.game==='poker')return pokerCommand('pkTournament',{op:'start',tournamentId:tor.id});
+
   const entrants = Object.values(tor.players || {}).filter(p => !p.out);
   if (entrants.length < 2) {
     for (const p of entrants) await creditBalance(p.uid, p.paid || 0);
@@ -19779,6 +18312,8 @@ const tourAutoCancel = async tor => {
   } catch (e) {}
 };
 const tourOrchestrate = async (tours, tables, rakePct) => {
+await Promise.allSettled((tours||[]).filter(t=>t.authorityVersion===2&&t.game==='poker'&&['reg','running'].includes(t.status)).map(t=>window.fb.fx('pkTournament',{op:'tick',tournamentId:t.id})));tours=(tours||[]).filter(t=>t.game!=='poker');
+
   for (const tor of tours || []) {
     try {
       if (tor.status === 'reg' && tor.startAt && Date.now() >= tor.startAt) {
@@ -19912,7 +18447,8 @@ function TournamentsTab({
     paidPlaces: 3,
     payouts: [50, 30, 20],
     mysteryBounty: false,
-    mysteryRigId: '',
+    bountyMode:'fixed',progressiveCashPct:50,mysteryStartLevel:3,bountyBudgetRemaining:0,
+    maxRebuys:3,botRebuys:true,reentry:false,maxReentries:1,tableSize:6,actionTime:25,anteFromLevel:10,
     bountyFree: false,
     botFill: false,
     serverEngine: true,
@@ -19976,7 +18512,7 @@ function TournamentsTab({
     setStandFor(tor.id);
     setStandData(null);
     try {
-      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(tRef(tor.id)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", tor.id)))]);
+      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(tRef(tor.id)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", tor.id),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",CLUB_ID)))]);
       const torD = tSnap.exists() ? tSnap.data() : {};
       const torPl = torD.players || {};
       // Finished tournament: the FULL final table of every participant by
@@ -20058,7 +18594,7 @@ function TournamentsTab({
     bb,
     // BB-ante format: from level 10 the big blind alone posts an extra BB as
     // the ante for the whole table. 'none' turns antes off entirely.
-    ante: opts.anteMode === 'none' ? 0 : i >= 9 ? bb : 0,
+    ante: opts.anteMode === 'none' ? 0 : i+1 >= Number(opts.anteFromLevel) ? (opts.anteMode==='each'?sb:bb) : 0,
     mins: Number(opts.levelMins) || 5
   }));
   const structRows = opts.structure || autoStructRows();
@@ -20119,6 +18655,8 @@ function TournamentsTab({
   }, []);
   const bounty = round2(Number(opts.bounty) || 0);
   const handleCreate = async () => {
+if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=new Date(opts.date+'T'+(opts.time||'20:00')).getTime();try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,startAt,structure:opts.structure?.length?opts.structure:autoStructRows(),pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
+
     if (!opts.name.trim()) return showToast("Name the tournament", "error");
     if (!opts.date) return showToast("Choose a start date", "error");
     const startAt = new Date(`${opts.date}T${opts.time || '20:00'}`).getTime();
@@ -20215,6 +18753,8 @@ function TournamentsTab({
     return `${h}h ${String(m).padStart(2, '0')}m ${String(sec).padStart(2, '0')}s`;
   };
   const fillBots = async tor => {
+if(tor.game==='poker'){try{await pokerCommand('pkTournament',{op:'fillbots',tournamentId:tor.id});showToast("Bots registered and funded.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
+
     const cur = Object.keys(tor.players || {}).length;
     const room = (Number(tor.maxPlayers) || 0) - cur;
     if (room <= 0) return showToast(`The tournament is full (${cur}/${tor.maxPlayers})`, "error");
@@ -20303,6 +18843,8 @@ function TournamentsTab({
     }
   };
   const cancelTour = async tor => {
+if(tor.game==='poker'){try{await pokerCommand('pkTournament',{op:'cancel',tournamentId:tor.id});showToast("Registration cancelled; funds returned.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
+
     if (!window.confirm(`Cancel "${tor.name}"? Entry fees will be refunded to players and tables will close.`)) return;
     try {
       for (const p of Object.values(tor.players || {})) {
@@ -20326,6 +18868,8 @@ function TournamentsTab({
     }
   };
   const deleteTour = async tor => {
+if(tor.game==='poker')return showToast('Completed tournaments remain in the history.','info');
+
     if (!window.confirm(`Permanently delete "${tor.name}"? This cannot be undone.`)) return;
     try {
       for (const tb of (tables || []).filter(x => x.tournamentId === tor.id)) {
@@ -20665,37 +19209,11 @@ function TournamentsTab({
     className: "text-emerald-200 text-sm font-black"
   }, "🎁 Club-funded bounty — free for players")), React.createElement("p", {
     className: "text-[10px] text-emerald-300/70 font-bold mt-1"
-  }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && isGod && bounty > 0 && React.createElement("div", {
-    className: "p-3 rounded-xl border border-fuchsia-500/30 bg-fuchsia-900/10"
-  }, React.createElement("label", {
-    className: "flex items-center gap-2 cursor-pointer"
-  }, React.createElement("input", {
-    type: "checkbox",
-    checked: !!opts.mysteryBounty,
-    onChange: e => setOpts({
-      ...opts,
-      mysteryBounty: e.target.checked
-    }),
-    className: "w-4 h-4 accent-fuchsia-500"
-  }), React.createElement("span", {
-    className: "text-fuchsia-200 text-sm font-black"
-  }, "🎁 Mystery Bounty")), React.createElement("p", {
-    className: "text-[10px] text-fuchsia-300/70 font-bold mt-1"
-  }, "Each knockout draws a random multiple of the bounty — mostly small, rarely a jackpot (up to 25×)."), opts.mysteryBounty && React.createElement("div", {
-    className: "mt-2"
-  }, React.createElement("label", {
-    className: "text-fuchsia-300/80 text-[10px] font-black uppercase tracking-widest"
-  }, "Pre-assign jackpot winner (player ID, optional)"), React.createElement("input", {
-    value: opts.mysteryRigId,
-    onChange: e => setOpts({
-      ...opts,
-      mysteryRigId: e.target.value.toUpperCase()
-    }),
-    maxLength: 6,
-    placeholder: "Leave empty = fully random",
-    className: "w-full mt-1 bg-slate-900 text-white border border-fuchsia-700/50 rounded-xl p-2.5 outline-none focus:border-fuchsia-500 font-black tracking-widest",
-    dir: "ltr"
-  }))), React.createElement("div", null, React.createElement("label", {
+  }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && React.createElement('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-3', 'data-tournament-options':true},
+ ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxRebuys','Maximum rebuys per player',0,100],['maxReentries','Maximum re-entries per player',0,20],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
+ React.createElement(Field,{label:'Bounty type'},React.createElement('select',{value:opts.bountyMode,onChange:e=>setOpts({...opts,bountyMode:e.target.value}),className:'w-full bg-slate-900 text-white p-2 rounded-lg'},...['fixed','progressive','mystery'].map(x=>React.createElement('option',{key:x,value:x},x)))),
+ ...[['botRebuys','Bots can rebuy when eligible and funded'],['reentry','Allow re-entry during late registration']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',checked:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
+ React.createElement('p',{className:'text-xs text-slate-400 sm:col-span-2'},'Mystery starts after late registration and rebuy close. Club reserves fund free bounties. Bots use mixed playing styles and the same entry rules.')), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "Start date"), React.createElement("input", {
     type: "date",
@@ -20815,7 +19333,7 @@ function TournamentsTab({
     value: "bb"
   }, "BB-ante from L10 (big blind pays BB+BB)"), React.createElement("option", {
     value: "none"
-  }, "No ante")), opts.structure && React.createElement("button", {
+  }, "No ante"),React.createElement("option",{value:"each"},"Each player posts an ante")), opts.structure && React.createElement("button", {
     type: "button",
     onClick: () => setOpts({
       ...opts,
@@ -20908,7 +19426,8 @@ function TournamentsTab({
     className: "flex items-center gap-2 cursor-pointer"
   }, React.createElement("input", {
     type: "checkbox",
-    checked: opts.mttMode,
+    checked:true,
+    disabled:true,
     onChange: e => setOpts({
       ...opts,
       mttMode: e.target.checked
@@ -20928,11 +19447,12 @@ function TournamentsTab({
     className: "accent-purple-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-purple-300 text-xs font-black"
-  }, "🤖 Auto-fill with bots at start time if below minimum")), React.createElement("label", {
+  }, "🤖 Fill open places with funded bots at start time")), React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer mt-2"
   }, React.createElement("input", {
     type: "checkbox",
-    checked: opts.serverEngine,
+    checked: true,
+    disabled:true,
     onChange: e => setOpts({
       ...opts,
       serverEngine: e.target.checked
@@ -21083,7 +19603,7 @@ function TournamentsTab({
       className: "text-[10px] text-emerald-400 font-black bg-emerald-500/10 border border-emerald-500/30 px-2 py-1 rounded-full"
     }, "Registration open"), tor.status === 'running' && React.createElement("span", {
       className: "text-[10px] text-amber-400 font-black bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-full animate-pulse"
-    }, "● LIVE · Level ", tor.round), tor.status === 'done' && React.createElement("span", {
+    }, "● LIVE · Level ", tourClock(tor).lvl+1), tor.status === 'done' && React.createElement("span", {
       className: "text-[10px] text-slate-400 font-black bg-slate-500/10 border border-slate-600/40 px-2 py-1 rounded-full"
     }, "Ended"), tor.status === 'cancelled' && React.createElement("span", {
       className: "text-[10px] text-rose-400 font-black bg-rose-500/10 border border-rose-500/30 px-2 py-1 rounded-full"
@@ -21097,7 +19617,7 @@ function TournamentsTab({
       className: "text-amber-400"
     }, React.createElement("i", {
       className: "fa-solid fa-sack-dollar ml-1"
-    }), "Prize pool: ", formatMoney(tor.prizePool || 0))), tor.status === 'reg' && React.createElement("div", {
+    }), "Prize pool: ", formatMoney(tor.status==='done'?tor.finalPrizePool||0:tor.prizePool||0))), tor.status === 'reg' && React.createElement("div", {
       className: "bg-slate-950/60 rounded-xl border border-white/5 px-3 py-2 mb-3 text-center"
     }, React.createElement("span", {
       className: "text-[10px] text-slate-400 font-bold block"
@@ -21230,10 +19750,12 @@ function TournamentsTab({
       title: "The tournament is running but has no tables — create them now",
       className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 px-3.5 rounded-xl font-black text-sm shadow-lg animate-pulse"
     }, "⚡ Create tables"), ['reg', 'running'].includes(tor.status) && canManageGame(user, tor.game) && React.createElement("button", {
+      hidden:tor.game==='poker'&&tor.status!=='reg',
       onClick: () => cancelTour(tor),
       title: "Cancel tournament (refund)",
       className: "bg-slate-800 hover:bg-rose-900 text-rose-300 py-2.5 px-3.5 rounded-xl font-bold text-sm border border-white/10"
     }, "✖️"), ['cancelled', 'done'].includes(tor.status) && canManageGame(user, tor.game) && React.createElement("button", {
+      hidden:tor.game==='poker',
       onClick: () => deleteTour(tor),
       title: "Delete tournament",
       className: "bg-slate-800 hover:bg-rose-900 text-rose-300 py-2.5 px-3.5 rounded-xl font-bold text-sm border border-white/10"
@@ -21245,7 +19767,7 @@ function TournamentsTab({
     }, "Tournament full · ", alive, "/", tor.maxPlayers || 36)), tor.status === 'reg' && me && React.createElement("button", {
       onClick: () => tourUnregister(tor, user, showToast),
       className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-2.5 rounded-xl font-bold text-sm border border-white/10"
-    }, "Registered ✓ · Unregister"), tor.status === 'running' && !me && tourLateRegOpen(tor) && (alive < (tor.maxPlayers || 36) ? React.createElement("button", {
+    }, "Registered ✓ · Unregister"), tor.status === 'running' && (!me || me.out && tor.reentry && (me.reentries||0)<tor.maxReentries) && tourLateRegOpen(tor) && (alive < (tor.maxPlayers || 36) ? React.createElement("button", {
       onClick: () => tourRegister(tor, user, showToast),
       className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg"
     }, "Late register (", formatMoney(tourEntryOf(tor)), ")") : React.createElement("span", {
@@ -21398,16 +19920,13 @@ function TourDrivers({
   })));
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
-// Containment screen only. Firestore rules and server callables enforce the
-// pause even when this UI is removed, modified, or an old cached bundle is used.
-root.render(React.createElement("main", {
-  dir:"rtl", style:{minHeight:"100dvh",display:"grid",placeItems:"center",padding:"24px",background:"#0b1412",color:"#f6f4ec",fontFamily:"Arial,sans-serif"}
-}, React.createElement("section",{role:"status","data-security-maintenance":"2026-09-12",style:{width:"100%",maxWidth:"520px",textAlign:"center"}},
-  React.createElement("div",{dir:"ltr",style:{fontSize:"30px",fontWeight:900,color:"#d5b96f",letterSpacing:"2px",marginBottom:"32px"}},"POKERTEN"),
-  React.createElement("h1",{style:{fontSize:"28px",marginBottom:"18px"}},"תחזוקת אבטחה"),
-  React.createElement("p",{style:{fontSize:"18px",lineHeight:1.8}},"פעולות המשחק, הטעינה והמשיכה מושהות זמנית לצורך בדיקת יתרות והרשאות."),
-  React.createElement("p",{style:{fontSize:"15px",lineHeight:1.8,color:"#afc0b9",marginTop:"20px"}},"נתוני החשבונות והשולחנות נשמרים לבדיקה. נעדכן כאשר ניתן יהיה לחזור לשחק.")
-)));
+function PokerLaunch(){
+ const[ready,setReady]=useState(false),[message,setMessage]=useState('מתחבר למשחק…');
+ useEffect(()=>{let stopped=false,inFlight=false;const check=async()=>{if(stopped||inFlight||!window.fb?.fx)return;inFlight=true;try{const state=await window.fb.fx('pkSecurityStatus',{});if(!stopped){setReady(state.available===true);setMessage(state.available?'':'העדכון עדיין בהתקנה. המשחק ייפתח אוטומטית כשהשרת מוכן.');}}catch(e){if(!stopped)setMessage('לא ניתן להתחבר כרגע. מנסה שוב…');}finally{inFlight=false;}};check();window.addEventListener('firebase-ready',check);const iv=setInterval(check,5000);return()=>{stopped=true;clearInterval(iv);window.removeEventListener('firebase-ready',check);};},[]);
+ if(ready)return React.createElement(App);
+ return React.createElement('main',{dir:'rtl',style:{minHeight:'100dvh',display:'grid',placeItems:'center',padding:24,background:'#0b1412',color:'#f6f4ec',fontFamily:'Arial,sans-serif'}},React.createElement('section',{role:'status',style:{maxWidth:520,textAlign:'center'}},React.createElement('h1',{dir:'ltr',style:{color:'#d5b96f',fontSize:30}},'POKERTEN'),React.createElement('p',null,message)));
+}
+root.render(React.createElement(PokerLaunch));
 </script>
 </body>
 </html>

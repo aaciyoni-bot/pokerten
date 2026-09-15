@@ -16,10 +16,18 @@ on:
       - 'assets/**'
       - 'icon-*.png'
       - 'firebase.json'
+      - '.github/workflows/deploy-hosting.yml'
+      - 'scripts/wait-for-backend.cjs'
   workflow_dispatch: {}
 
 jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
   deploy-hosting:
+    needs: validate
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,6 +35,11 @@ jobs:
 
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
+
+      - name: Wait for the matching backend before publishing new controls
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/wait-for-backend.cjs
 
       - name: Deploy hosting
         env:

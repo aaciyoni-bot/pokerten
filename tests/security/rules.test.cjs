@@ -68,6 +68,16 @@ test("trusted backend remains capable of atomic ledger writes",async()=>{
 test("incident evidence cannot be erased by a player or a legacy club owner",async()=>{
  for(const uid of ["player","owner"])await assertFails(deleteDoc(doc(env.authenticatedContext(uid).firestore(),"securityAlerts/incident")));
 });
+test('table closure requires a server command and its accounting archive stays private',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{await setDoc(doc(ctx.firestore(),'_pkClosedTables/closed'),{clubId:'club',players:{player:{stack:100}},closedAt:1});});
+ for(const uid of ['player','owner']){
+  const db=env.authenticatedContext(uid).firestore();
+  await assertFails(deleteDoc(doc(db,'tables/protected')));
+  await assertFails(updateDoc(doc(db,'tables/protected'),{closeRequested:{by:uid,at:1}}));
+  await assertFails(getDoc(doc(db,'_pkClosedTables/closed')));
+  await assertFails(setDoc(doc(db,'_pkClosedTables/fake'),{clubId:'club',closedBy:uid}));
+ }
+});
 test('approved members can query protected tables of their club without gaining any write or private-card access',async()=>{
  const db=player();await assertSucceeds(getDoc(doc(db,'tables/protected')));
  await assertSucceeds(getDocs(query(collection(db,'tables'),where('authorityVersion','==',2),where('clubId','==','club'))));

@@ -3,7 +3,7 @@
 const copy=x=>JSON.parse(JSON.stringify(x)),cash=n=>Math.round(n*100)/100;
 const capacity=t=>Math.max(2,Math.min(9,Math.floor(44/(Number(String(t.pokerType||'').match(/Omaha\s*(\d)/i)?.[1])||2)),Math.floor(Number(t.tableSize)||9)));
 const idle=t=>['waiting','showdown'].includes(t.gameState?.phase||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Object.values(t.players||{}).some(p=>p.bet>0);
-const chips=rows=>cash(rows.reduce((sum,t)=>sum+Object.values(t.players||{}).reduce((n,p)=>n+Number(p.stack||0)+Number(p.bet||0),0)+(t.gameState?.pots||[]).reduce((n,p)=>n+Number(p.amount||0),0),0));
+const chips=rows=>cash(rows.reduce((sum,t)=>sum+Object.values(t.players||{}).reduce((n,p)=>n+Number(p.stack||0)+Number(p.bet||0)+Number(p.pendingTournamentChips||0),0)+(t.gameState?.pots||[]).reduce((n,p)=>n+Number(p.amount||0),0),0));
 function clock(t,rows,now=Date.now()){
  const started=Number(t.startedAt)||now,elapsed=Math.max(0,now-started),every=Math.max(0,Math.floor(Number(t.breakEvery)||0)),pause=Math.max(0,Number(t.breakMins)||0)*60000;let acc=0;
  for(let i=0;i<rows.length;i++){
@@ -44,6 +44,13 @@ function plan(t,input,now=Date.now()){
  const move=(src,dst,p)=>{clean(dst);const used=new Set(Object.values(dst.players).map(p=>p.seatIndex));let seat=0;while(used.has(seat)&&seat<cap)seat++;if(seat>=cap||dst.players[p.uid])throw Error('unsafe-seat');dst.players[p.uid]={...p,seatIndex:seat,bet:0,cards:[],cardCount:0,status:'waiting',hasActed:false,actionText:'',reveal:false,mucked:false,_reported:false};delete src.players[p.uid];save(src);save(dst);};
  for(const row of rows)if(!occupied(row).length&&ready(row))deleted.add(row.docId);
  const live=rows.filter(r=>occupied(r).length).sort((a,b)=>occupied(a).length-occupied(b).length||a.docId.localeCompare(b.docId));
+ // Optional multi-winner finish: settle every active hand before ranking the
+ // remaining players by their final stacks. Older events keep their format.
+ const paid=t.paidPct?Math.max(1,Math.floor(Object.keys(roster).length*t.paidPct/100)):Math.min(Object.keys(roster).length,(t.payouts||[100]).length);
+ if(t.finishAtPaidPlaces&&paid>1&&Object.keys(roster).length>paid&&alive.length<=paid&&rows.every(ready)&&live.every(row=>occupied(row).every(p=>p.stack>0))){
+  const stacks=Object.fromEntries(live.flatMap(row=>occupied(row).map(p=>[p.uid,p.stack+(p.pendingTournamentChips||0)])));
+  return{...finish(),finishers:[...alive].sort((a,b)=>stacks[b]-stacks[a]||a.localeCompare(b))};
+ }
  if(alive.length===1&&rows.every(ready)&&live.length===1&&occupied(live[0]).every(p=>p.stack>0)){const row=live[0];row.tournament={...row.tournament,finished:true,final:true,tableWinner:alive[0],balanceHoldUntil:0};save(row);return finish(alive[0]);}
  if(!live.length)return none('missing-seat');const seats=live.reduce((n,r)=>n+occupied(r).length,0),movable=r=>occupied(r).every(p=>p.stack>0);
  if(live.length>Math.ceil(seats/cap)){

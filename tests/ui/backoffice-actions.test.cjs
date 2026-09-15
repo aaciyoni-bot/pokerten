@@ -1,0 +1,20 @@
+'use strict';
+const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
+const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
+global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
+const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')},{Simulate}=require('react-dom/test-utils');w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.confirm=()=>true;
+const calls=[],writes=[],messages=[];const members=[{id:'owner_main',uid:'owner',username:'Owner',role:'club_owner',status:'approved',balance:1000},{id:'player_main',uid:'player',username:'Test Player',role:'player',status:'approved',balance:100}];
+const forbidden=async()=>{writes.push(1);throw Error('Direct write forbidden');};
+w.fb={db:{},auth:{currentUser:{uid:'owner'}},fx:async(name,args)=>{calls.push({name,args});if(name==='pkClubDirectory')return{members,agentLog:[]};return{ok:true};},updateDoc:forbidden,addDoc:forbidden,setDoc:forbidden,deleteDoc:forbidden,runTransaction:forbidden,getDocs:async()=>({docs:[],empty:true}),getDoc:async()=>({exists:()=>false}),doc:()=>({}),collection:()=>({}),query:()=>({}),where:()=>({}),onSnapshot:()=>()=>{}};
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function BackofficeView('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.PF=PlayerFileModal;window.PV=ProfileView;');w.eval(script);
+const root=ReactDOM.createRoot(w.document.getElementById('root')),toast=(m,type)=>messages.push({m,type}),user={uid:'owner',username:'Owner',role:'club_owner'};
+(async()=>{
+ await React.act(async()=>root.render(React.createElement(w.BO,{user,clubSettings:{rakePct:6},showToast:toast})));
+ assert.ok(calls.some(c=>c.name==='pkClubDirectory'));assert.match(w.document.body.textContent,/Test Player/);
+ const ban=w.document.querySelector('[title="Ban from the club"]');assert.ok(ban);await React.act(async()=>ban.click());const banned=calls.findLast(c=>c.name==='pkClubMember');assert.equal(banned.args.op,'ban');assert.equal(banned.args.targetUid,'player');assert.ok(calls.filter(c=>c.name==='pkClubDirectory').length>=2);
+ assert.doesNotMatch(w.document.body.textContent,/20 Bots|General reset|Daily bonus wheel/);
+ await React.act(async()=>root.render(React.createElement(w.PF,{mem:members[1],canEdit:true,agentName:()=>'',onClose(){},showToast:toast})));
+ const fields=[...w.document.querySelectorAll('input,textarea')];assert.ok(fields.length>=2);await React.act(()=>Simulate.change(fields[0],{target:{value:'test phone'}}));await React.act(()=>Simulate.change(fields[1],{target:{value:'test notes'}}));
+ const save=[...w.document.querySelectorAll('button')].find(b=>/Save/.test(b.textContent));assert.ok(save);await React.act(async()=>save.click());assert.equal(calls.at(-1).args.op,'details');assert.equal(calls.at(-1).args.notes,'test notes');
+ assert.equal(writes.length,0);await React.act(()=>root.unmount());w.close();console.log('PASS: actual backoffice loads authorized directory and saves bans and member details through the server');
+})().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

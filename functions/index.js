@@ -25,6 +25,7 @@ const BONUS_GAMES_OFF = true;
 // Requires the app to be initialized first, hence the require after initializeApp.
 Object.assign(exports, require("./pokerEngine"));
 Object.assign(exports, require("./personalCode"));
+Object.assign(exports, require("./pokerProfile"));
 
 // AVIATORIZIS — server-authoritative crash game (avJoin/avTick/avBet/
 // avCancelBet/avCashout/avCredit) — see aviator.js.

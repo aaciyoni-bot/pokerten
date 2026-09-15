@@ -8,13 +8,61 @@ require('../../functions/pokerSecurity').requirePokerAvailable=()=>{};
 const Access=require('../../functions/pokerAccess'),Engine=require('../../functions/pokerEngine'),Tours=require('../../functions/pokerTournaments'),Core=require('../../functions/pokerTournamentCore');
 const uid='pilot',owner='sponsor',club='server-test';
 const req=(user,data)=>({auth:{uid:user,token:{email:user+'@example.invalid',email_verified:true}},data:{requestId:crypto.randomUUID(),...data}});
-const call=(name,user,data)=>({...Access,...Engine,...Tours}[name]).run(req(user,data));
+const Profile=require('../../functions/pokerProfile');
+const call=(name,user,data)=>({...Access,...Engine,...Tours,...Profile}[name]).run(req(user,data));
 const get=async path=>(await db.doc(path).get()).data();
 const bank=async u=>(await get(`memberships/${u}_${club}`)).balance;
 const rows=async id=>(await db.collection('tables').where('tournamentId','==',id).get()).docs.map(d=>({...d.data(),docId:d.id}));
 const fresh=async(user,balance=100000)=>{await db.doc('users/'+user).set({username:user});await db.doc(`memberships/${user}_${club}`).set({uid:user,clubId:club,status:'approved',role:user===owner?'club_owner':'player',balance});};
 before(async()=>{await db.doc('clubs/'+club).set({ownerUid:owner});await fresh(owner,1000000);await fresh(uid);await fresh('opponent');});
 after(async()=>{await db.terminate();await admin.app().delete();});
+test('profile edits update club copies but cannot change identity, roles or chips',async()=>{
+ const u='profile-edit';await fresh(u,250);await db.doc(`memberships/${u}_second`).set({uid:u,clubId:'second',balance:75,role:'player'});
+ await call('pkProfile',u,{patch:{username:'שם חדש',photo:'',avatarSeed:'test-avatar'}});
+ assert.equal((await get('users/'+u)).username,'שם חדש');assert.equal((await get(`memberships/${u}_${club}`)).username,'שם חדש');assert.equal((await get(`memberships/${u}_second`)).avatarSeed,'test-avatar');
+ for(const patch of [{balance:99999},{role:'club_owner'},{playerId:'P123456789'},{photo:'javascript:alert(1)'}])await assert.rejects(call('pkProfile',u,{patch}));
+ assert.equal(await bank(u),250);assert.equal((await get(`memberships/${u}_second`)).balance,75);
+});
+test('club administration checks the owner, preserves balances and records notices exactly once',async()=>{
+ const u='managed-member';await fresh(u,123);
+ for(const op of ['ban','details','message','photo-reset','agent-settings'])await assert.rejects(call('pkClubMember',u,{clubId:club,targetUid:owner,op}),e=>e.code==='permission-denied');
+ await call('pkClubMember',owner,{clubId:club,targetUid:u,op:'details',phone:'test phone',notes:'Test note'});
+ await call('pkClubMember',owner,{clubId:club,targetUid:u,op:'ban'});assert.equal((await get(`memberships/${u}_${club}`)).status,'banned');assert.equal(await bank(u),123);
+ await call('pkClubMember',owner,{clubId:club,targetUid:u,op:'unban'});
+ const r=req(owner,{clubId:club,targetUid:u,op:'message',text:'Test message'});await Access.pkClubMember.run(r);await Access.pkClubMember.run(r);
+ assert.equal((await get(`memberships/${u}_${club}`)).inbox.length,1);await call('pkClubInbox',u,{clubId:club});assert.ok((await get(`memberships/${u}_${club}`)).inboxReadAt);
+ await assert.rejects(call('pkClubMember',owner,{clubId:club,targetUid:owner,op:'ban'}));
+ const broadcast=req(owner,{clubId:club,text:'Test broadcast'});await Profile.pkClubBroadcast.run(broadcast);await Profile.pkClubBroadcast.run(broadcast);assert.equal((await get('broadcasts/'+club)).history.length,1);
+ await assert.rejects(call('pkClubBroadcast',u,{clubId:club,text:'Not allowed'}),e=>e.code==='permission-denied');
+});
+test('agent referrals persist and directory access is restricted to assigned members',async()=>{
+ const agent='directory-agent',assigned='directory-assigned',other='directory-other';for(const u of [agent,assigned,other])await fresh(u);
+ await call('pkClubMember',owner,{clubId:club,targetUid:agent,op:'role',role:'agent',agentPct:25});
+ await call('pkClubMember',owner,{clubId:club,targetUid:agent,op:'agent-settings',share:0});const a=await get(`memberships/${agent}_${club}`);
+ const found=await call('pkAgentLookup',assigned,{clubId:club,code:a.agentCode});assert.equal(found.agent.uid,agent);assert.equal(found.agent.pct,0);
+ await db.doc(`memberships/${assigned}_${club}`).delete();await call('pkJoinClub',assigned,{clubId:club,agentUid:agent});
+ let m=await get(`memberships/${assigned}_${club}`);assert.equal(m.agentUid,agent);assert.equal(m.agentPct,0);assert.equal(m.status,'pending');await call('pkClubMember',owner,{clubId:club,targetUid:assigned,op:'approve',agentUid:agent});assert.equal((await get(`memberships/${assigned}_${club}`)).agentPct,0);
+ const scoped=await call('pkClubDirectory',agent,{clubId:club});assert.deepEqual(scoped.members.map(m=>m.uid).sort(),[agent,assigned].sort());
+ await assert.rejects(call('pkClubDirectory',other,{clubId:club}),e=>e.code==='permission-denied');
+ await call('pkClubMember',owner,{clubId:club,targetUid:agent,op:'ban'});await assert.rejects(call('pkClubDirectory',agent,{clubId:club}),e=>e.code==='permission-denied');
+});
+test('archiving completed tournament and historical tables never replays prizes or old stacks',async()=>{
+ const id='archive-done',balance=await bank(owner);await db.doc('tournaments/'+id).set({clubId:club,status:'done',paidPrizes:{sponsor:true}});
+ for(const [tableId,t]of [['archive-tour',{authorityVersion:2,tournamentId:id,settings:{serverEngine:true},players:{sponsor:{uid:owner,stack:100000}}}],['archive-legacy',{status:'done',players:{sponsor:{uid:owner,stack:99999}}}]]){
+  await db.doc('tables/'+tableId).set({clubId:club,...t});await call('pkTableManage',owner,{tableId,op:'delete'});await call('pkTableManage',owner,{tableId,op:'delete'});
+  assert.equal(await get('tables/'+tableId),undefined);assert.ok(await get('_pkClosedTables/'+tableId));assert.equal(await bank(owner),balance);
+ }
+});
+test('a tournament can finish at three configured winners only after every hand settles and pays once',async()=>{
+ const b=await bank(owner),{tournamentId:id}=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Three winners',maxPlayers:5,tableSize:5,buyIn:10,startStack:100,payouts:[50,30,20],finishAtPaidPlaces:true,botFill:true,startAt:Date.now()+600000}});
+ await call('pkTournament',owner,{op:'start',tournamentId:id});const [row]=await rows(id),ids=Object.keys(row.players),tor=await get('tournaments/'+id);
+ ids.forEach((u,i)=>{Object.assign(row.players[u],{stack:[250,150,100,0,0][i],status:i<3?'active':'out'});Object.assign(tor.players[u],{out:i>=3,rank:i>=3?i+1:null});});
+ await db.doc('tournaments/'+id).update({players:tor.players});await db.doc('tables/'+row.docId).update({players:row.players,gameState:{phase:'flop',pots:[]}});
+ await Tours.tickTournament(id);assert.equal((await get('tournaments/'+id)).status,'running');
+ await db.doc('tables/'+row.docId).update({'gameState.phase':'waiting'});await Tours.tickTournament(id);const done=await get('tournaments/'+id);
+ assert.equal(done.status,'done');assert.equal(done.winnerUids.length,3);assert.deepEqual(done.results.slice(0,3).map(r=>r.prize),[25,15,10]);assert.equal(Core.chips(await rows(id)),500);assert.equal(await bank(owner),b);
+ await Tours.tickTournament(id);assert.equal(await bank(owner),b);
+});
 test('cash entry rejects forged identity, grants, negative money and unaffordable purchases; replay charges once',async()=>{
  const before=await bank(uid),r=await call('pkTableCreate',owner,{clubId:club,settings:{baseGameType:'NLH',minBuyIn:40,maxBuyIn:200,blinds:1}}),tableId=r.tableId;
  await assert.rejects(call('pkTableCreate',uid,{clubId:club,settings:{}}),e=>e.code==='permission-denied');
@@ -34,9 +82,102 @@ test('cash entry rejects forged identity, grants, negative money and unaffordabl
  await call('pkLeave',uid,{tableId});const leaving=await get('tables/'+tableId);assert.ok(leaving.players[uid]);assert.ok(leaving.players[uid].leaveReq);
  await db.doc('tables/legacy').set({clubId:club,settings:{serverEngine:true},players:{[uid]:{stack:10000}}});await assert.rejects(call('pkLeave',uid,{tableId:'legacy'}),e=>e.code==='failed-precondition');
 });
+test('a last rebuy is charged before a multi-winner finish and tied stacks share their prize places',async()=>{
+ const balance=await bank(owner),{tournamentId:id}=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Rebuy at finish',maxPlayers:5,tableSize:5,buyIn:10,startStack:100,payouts:[50,30,20],finishAtPaidPlaces:true,rebuys:true,maxRebuys:1,rebuyUntilLevel:1,botFill:true,startAt:Date.now()+600000}});
+ await call('pkTournament',owner,{op:'start',tournamentId:id});const [row]=await rows(id),ids=Object.keys(row.players),t=await get('tournaments/'+id),now=Date.now();
+ ids.forEach((uid,i)=>{Object.assign(row.players[uid],{stack:i<2?250:0,status:i<2?'active':i===2?'busted':'out',bustedAt:now-5000});Object.assign(t.players[uid],{out:i>=3,rank:i>=3?i+1:null});});
+ await db.doc('tournaments/'+id).update({players:t.players});await db.doc('tables/'+row.docId).update({players:row.players,gameState:{phase:'waiting',pots:[]}});
+ await Tours.tickTournament(id,now);const done=await get('tournaments/'+id);assert.equal(done.status,'done');assert.equal(done.players[ids[2]].rebuys,1);assert.deepEqual(done.results.slice(0,3).map(p=>p.prize),[24,24,12]);assert.equal(Core.chips(await rows(id)),600);assert.equal(await bank(owner),balance);
+ await Tours.tickTournament(id,now+10000);assert.equal(await bank(owner),balance);
+});
+test('cash rebuy queues once during another hand and joins only the next deal, even after its old bust timer expires',async()=>{
+ const u='queued-rebuy',a='rebuy-other-a',b='rebuy-other-b';for(const x of [u,a,b])await fresh(x);
+ const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ for(const x of [u,a,b])await call('pkSeat',x,{tableId,op:'join',amount:100});
+ await db.doc('tables/'+tableId).update({['players.'+u+'.stack']:0,['players.'+u+'.status']:'busted',['players.'+u+'.bustedAt']:Date.now()-301000,['players.'+a+'.stack']:200});
+ await call('pkDeal',a,{tableId});const before=await get('tables/'+tableId),balance=await bank(u),request=req(u,{tableId,op:'rebuy',amount:40});
+ await Access.pkSeat.run(request);await Access.pkSeat.run(request);let t=await get('tables/'+tableId);
+ assert.equal(await bank(u),balance-40);assert.equal(t.players[u].stack,0);assert.equal(t.players[u].pendingTopUp,40);assert.equal(t.players[u].cardCount,0);assert.deepEqual(t.gameState.pots,before.gameState.pots);assert.equal(t.gameState.activeTurnUid,before.gameState.activeTurnUid);
+ await assert.rejects(call('pkSeat',u,{tableId,op:'rebuy',amount:40}),/already queued/);assert.equal(await bank(u),balance-40);
+ const g=t.gameState;await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
+ await Engine.__engineInternals.tickTable(tableId,Date.now()+6000);t=await get('tables/'+tableId);
+ assert.equal(t.gameState.handN,before.gameState.handN+1);assert.equal(t.players[u].pendingTopUp,0);assert.equal(t.players[u].stack+t.players[u].bet,40);assert.equal(t.players[u].cardCount,2);assert.equal(await bank(u),balance-40);assert.equal(Core.chips([t]),340);
+});
+test('spectators and undealt seats leave immediately; queued top-ups refund once and dealt players wait',async()=>{
+ const a='exit-a',b='exit-b',late='exit-waiting';for(const x of [a,b,late])await fresh(x);
+ const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ for(const x of [a,b])await call('pkSeat',x,{tableId,op:'join',amount:100});await call('pkDeal',a,{tableId});const before=await get('tables/'+tableId),balance=await bank(late);
+ assert.equal((await call('pkLeave',late,{tableId})).queued,false);assert.deepEqual(await get('tables/'+tableId),before);
+ await call('pkSeat',late,{tableId,op:'join',amount:100});await call('pkSeat',late,{tableId,op:'topup',amount:40});assert.equal(await bank(late),balance-140);
+ assert.equal((await call('pkLeave',late,{tableId})).queued,false);const after=await get('tables/'+tableId);assert.equal(after.players[late],undefined);assert.equal(await bank(late),balance);assert.equal(after.gameState.activeTurnUid,before.gameState.activeTurnUid);assert.deepEqual(after.gameState.pots,before.gameState.pots);
+ await call('pkLeave',late,{tableId});assert.equal(await bank(late),balance);assert.equal((await call('pkLeave',a,{tableId})).queued,true);assert.ok((await get('tables/'+tableId)).players[a].leaveReq);
+});
 test('club transfer is atomic and only the actual owner can authorize it',async()=>{
  const a=await bank(owner),b=await bank(uid);await call('pkClubMember',owner,{clubId:club,targetUid:uid,op:'transfer',amount:123.45});assert.equal(await bank(owner),a-123.45);assert.equal(await bank(uid),b+123.45);
  await assert.rejects(call('pkClubMember',uid,{clubId:club,targetUid:owner,op:'transfer',amount:10000}));await assert.rejects(call('pkClubMember',owner,{clubId:club,targetUid:uid,op:'transfer',amount:10000000}));assert.equal(await bank(owner),a-123.45);
+});
+test('deleting a previously played, now empty table never pays past players again',async()=>{
+ const a='delete-past-a',b='delete-past-b';await fresh(a);await fresh(b);
+ const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ for(const u of [a,b])await call('pkSeat',u,{tableId,op:'join',amount:100});await call('pkDeal',a,{tableId});
+ const g=(await get('tables/'+tableId)).gameState;await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
+ for(const u of [a,b])await call('pkLeave',u,{tableId});const before=await get('tables/'+tableId),balances=await Promise.all([bank(a),bank(b),bank(owner)]);
+ assert.equal(Object.keys(before.players).length,0);assert.ok(before.history.length);assert.ok(Object.keys(before.leftStacks).length);
+ const ledgers=(await db.collection('_pkLedger').where('source','==',tableId).get()).size;
+ const request=req(owner,{tableId,op:'delete'});assert.equal((await Access.pkTableManage.run(request)).deleted,true);await Access.pkTableManage.run(request);await call('pkTableManage',owner,{tableId,op:'delete'});
+ assert.equal(await get('tables/'+tableId),undefined);assert.deepEqual(await Promise.all([bank(a),bank(b),bank(owner)]),balances,'history, past buy-ins and leftStacks never create another credit');
+ assert.equal((await db.collection('_pkLedger').where('source','==',tableId).get()).size,ledgers);assert.deepEqual((await get('_pkClosedTables/'+tableId)).history,before.history);
+ assert.equal((await db.collection('tables/'+tableId+'/priv').get()).size,0);
+});
+test('cash table closure returns only seated balances and pending funds, including bot sponsors, once',async()=>{
+ const human='close-human';await fresh(human);const startHuman=await bank(human),startOwner=await bank(owner);
+ const {tableId}=await call('pkTableCreate',owner,{clubId:club,botCount:2,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ await call('pkSeat',human,{tableId,op:'join',amount:100});await call('pkSeat',human,{tableId,op:'topup',amount:40});
+ const requests=[req(owner,{tableId,op:'delete'}),req(owner,{tableId,op:'delete'})];await Promise.all(requests.map(r=>Access.pkTableManage.run(r)));
+ assert.equal(await bank(human),startHuman);assert.equal(await bank(owner),startOwner);assert.equal(await get('tables/'+tableId),undefined);
+ const logs=(await db.collection('_pkLedger').where('source','==',tableId).get()).docs.map(d=>d.data());assert.equal(logs.filter(l=>l.movements.some(m=>m.amount>0)).length,1);
+});
+test('closing a live cash table preserves its hand, settles its real winner and never deals or charges again',async()=>{
+ const a='close-live-a',b='close-live-b';await fresh(a);await fresh(b);const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ for(const u of [a,b])await call('pkSeat',u,{tableId,op:'join',amount:100});await call('pkDeal',a,{tableId});await call('pkSeat',a,{tableId,op:'topup',amount:40});
+ const before=await get('tables/'+tableId),balances=await Promise.all([bank(a),bank(b)]),result=await call('pkTableManage',owner,{tableId,op:'delete'});assert.equal(result.queued,true);
+ let t=await get('tables/'+tableId);assert.deepEqual(t.players,before.players);assert.deepEqual(t.gameState.pots,before.gameState.pots);assert.equal(t.gameState.activeTurnUid,before.gameState.activeTurnUid);
+ for(const op of ['join','topup','rebuy','addbot','wait'])await assert.rejects(call('pkSeat',a,{tableId,op,amount:40}),/closing/);await assert.rejects(call('pkDeal',a,{tableId}),/closing/);
+ assert.deepEqual(await Promise.all([bank(a),bank(b)]),balances);
+ const g=t.gameState;await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
+ t=await get('tables/'+tableId);assert.equal(t.gameState.phase,'showdown');assert.equal(Core.chips([t])+Object.values(t.players).reduce((n,p)=>n+(p.pendingTopUp||0),0),240);const expected=[a,b].map((u,i)=>balances[i]+t.players[u].stack+(t.players[u].pendingTopUp||0));
+ await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+1000);assert.ok(await get('tables/'+tableId),'winner display stays visible');
+ await Promise.all([1,2].map(()=>Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+6000)));
+ assert.equal(await get('tables/'+tableId),undefined);assert.deepEqual(await Promise.all([bank(a),bank(b)]),expected);assert.equal((await get('_pkClosedTables/'+tableId)).gameState.handN,before.gameState.handN);
+ await call('pkTableManage',owner,{tableId,op:'delete'});assert.deepEqual(await Promise.all([bank(a),bank(b)]),expected);
+});
+test('table controls require current club authority, including explicitly assigned poker managers',async()=>{
+ for(const [u,role,games,status]of [['poker-manager','manager',['poker'],'approved'],['other-manager','manager',['rummy'],'approved'],['pending-manager','manager',['poker'],'pending'],['fake-owner','club_owner',[],'approved']]){await fresh(u);await db.doc(`memberships/${u}_${club}`).update({role,managedGames:games,status});}
+ const {tableId}=await call('pkTableCreate','poker-manager',{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ for(const u of [uid,'other-manager','pending-manager','fake-owner'])for(const op of ['delete','limits','mute','clear-floor'])await assert.rejects(call('pkTableManage',u,{tableId,op,min:10,max:100,role:'club_owner',clubId:'forged'}),e=>e.code==='permission-denied');
+ await assert.rejects(Access.pkTableManage.run({data:{tableId,op:'delete',requestId:crypto.randomUUID()}}),e=>e.code==='unauthenticated');
+ for(const [min,max]of [[-1,100],[100,50],[NaN,100],[10,Infinity]])await assert.rejects(call('pkTableManage',owner,{tableId,op:'limits',min,max}));
+ await call('pkTableManage','poker-manager',{tableId,op:'limits',min:50,max:150});assert.equal((await get('tables/'+tableId)).settings.minBuyIn,50);
+ await call('pkTableManage','poker-manager',{tableId,op:'mute',muted:true});await call('pkSeat',uid,{tableId,op:'floor'});assert.equal((await get('tables/'+tableId)).floorCall.uid,uid);await assert.rejects(call('pkSeat',uid,{tableId,op:'floor'}),e=>e.code==='resource-exhausted');
+ await call('pkTableManage','poker-manager',{tableId,op:'clear-floor'});assert.equal((await get('tables/'+tableId)).floorCall,null);
+ await db.doc(`memberships/poker-manager_${club}`).update({managedGames:[]});await assert.rejects(call('pkTableManage','poker-manager',{tableId,op:'delete'}),e=>e.code==='permission-denied');
+ await call('pkTableManage',owner,{tableId,op:'delete'});await assert.rejects(call('pkTableManage',uid,{tableId,op:'delete'}),e=>e.code==='permission-denied');
+});
+test('table deletion never converts Spin or tournament chips to money, or interrupts funded competitions',async()=>{
+ for(const mode of ['unarmed','funding-pending','active','done']){
+  const balance=await bank(owner),{tableId}=await call('pkTableCreate',owner,{clubId:club,botCount:2,settings:{spinMode:true,spinBuyIn:10,spinStack:1000}});
+  if(mode!=='unarmed')await db.doc('tables/'+tableId).update({spin:{prize:100,fundingPending:mode==='funding-pending'},spinDone:mode==='done'});
+  await assert.rejects(call('pkTableManage',owner,{tableId,op:'limits',min:1,max:200}),/Spin settings/);
+  if(mode==='active'){const before=await get('tables/'+tableId);await assert.rejects(call('pkTableManage',owner,{tableId,op:'delete'}),/Spin must finish/);assert.deepEqual(await get('tables/'+tableId),before);assert.equal(await bank(owner),balance-20);}
+  else{await call('pkTableManage',owner,{tableId,op:'delete'});assert.equal(await bank(owner),mode==='done'?balance-20:balance,'completed Spin stacks and prizes must never be paid a second time');}
+ }
+ const {tournamentId}=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Do not delete live tournament tables',maxPlayers:2,tableSize:2,buyIn:10,startStack:1000,botFill:true,startAt:Date.now()+600000}});await call('pkTournament',owner,{op:'start',tournamentId});
+ const [row]=await rows(tournamentId),balance=await bank(owner);await assert.rejects(call('pkTableManage',owner,{tableId:row.docId,op:'delete'}),/Tournament tables/);assert.equal(await bank(owner),balance);assert.ok(await get('tables/'+row.docId));
+});
+test('a missing funding account aborts closure atomically instead of deleting chips or partially refunding',async()=>{
+ const a='close-missing',b='close-present';await fresh(a);await fresh(b);const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ for(const u of [a,b])await call('pkSeat',u,{tableId,op:'join',amount:100});await db.doc(`memberships/${a}_${club}`).delete();const before=await get('tables/'+tableId),balance=await bank(b);
+ await assert.rejects(call('pkTableManage',owner,{tableId,op:'delete'}),/Funding account missing/);assert.deepEqual(await get('tables/'+tableId),before);assert.equal(await bank(b),balance);assert.equal(await get('_pkClosedTables/'+tableId),undefined);
 });
 test('entries, unregister, late registration, re-entry, rebuy and add-on all debit their fresh server price',async()=>{
  const u='entrant';await fresh(u);await fresh('late');
@@ -52,6 +193,18 @@ test('entries, unregister, late registration, re-entry, rebuy and add-on all deb
  await db.doc('tables/'+row.docId).update({['players.'+u+'.stack']:0,['players.'+u+'.status']:'out'});await db.doc('tournaments/'+id).update({['players.'+u+'.out']:true,['players.'+u+'.rank']:3});
  await op('register');assert.equal(await bank(u),b-101);rs=await rows(id);assert.equal(rs.flatMap(r=>Object.keys(r.players)).filter(x=>x===u).length,1);assert.equal(rs.find(r=>r.players[u]).players[u].stack,100);
  await db.doc('tournaments/'+id).update({startedAt:Date.now()-1800000,structure:[{sb:1,bb:2,ante:0,mins:1},{sb:2,bb:4,ante:0,mins:1},{sb:4,bb:8,ante:0,mins:1}]});await fresh('too-late');await assert.rejects(op('register','too-late'),e=>e.code==='failed-precondition');
+});
+test('a paid tournament rebuy survives a live table, expiry and balancing until the next hand',async()=>{
+ const u='tour-queued',a='tour-queue-a',b='tour-queue-b';for(const x of [u,a,b])await fresh(x);
+ const r=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Queue regression',buyIn:20,fee:2,tableSize:3,maxPlayers:3,startStack:100,rebuys:true,rebuyUntilLevel:2,maxRebuys:1,startAt:Date.now()+600000,structure:[{sb:1,bb:2,ante:0,mins:10}]}}),id=r.tournamentId;
+ for(const x of [u,a,b])await call('pkTournament',x,{op:'register',tournamentId:id});await call('pkTournament',owner,{op:'start',tournamentId:id});const [row]=await rows(id),tableId=row.docId;
+ await db.doc('tables/'+tableId).update({['players.'+u+'.stack']:0,['players.'+u+'.status']:'busted',['players.'+u+'.bustedAt']:Date.now()-50000,['players.'+a+'.stack']:200});await call('pkDeal',a,{tableId});
+ const balance=await bank(u),request=req(u,{op:'rebuy',tournamentId:id}),result=await Tours.pkTournament.run(request);assert.equal(result.queued,true);await Tours.pkTournament.run(request);
+ let t=await get('tables/'+tableId),g=t.gameState;assert.equal(t.players[u].stack,0);assert.equal(t.players[u].pendingTournamentChips,100);assert.equal(t.players[u].cardCount,0);assert.equal(await bank(u),balance-22);assert.equal(Core.chips([t]),400);
+ await assert.rejects(call('pkTournament',u,{op:'rebuy',tournamentId:id}),/already queued/);
+ await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
+ await Tours.tickTournament(id,Date.now()+6000);assert.equal((await get('tournaments/'+id)).players[u].out,false,'accepted rebuy cannot expire or eliminate the player');
+ await Engine.__engineInternals.tickTable(tableId,Date.now()+7000);t=await get('tables/'+tableId);assert.equal(t.players[u].pendingTournamentChips,0);assert.equal(t.players[u].stack+t.players[u].bet,100);assert.equal(t.players[u].cardCount,2);assert.equal(Core.chips([t]),400);assert.equal(await bank(u),balance-22);
 });
 test('cancelling registration returns funded bot entries, guaranteed prize and unused bounty reserve exactly once',async()=>{
  const b=await bank(owner),r=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Cancel checks',buyIn:10,fee:1,bounty:5,bountyFree:true,bountyBudgetRemaining:100,addedPrize:50,maxPlayers:4,startAt:Date.now()+600000}}),id=r.tournamentId;

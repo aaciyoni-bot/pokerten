@@ -9,6 +9,13 @@ function number(v,fallback,min,max,integer=false){const n=v==null?fallback:Numbe
 const root=r=>r.auth?.token?.email_verified===true&&String(r.auth.token.email||'').trim().toLowerCase()==='aaci.yoni@gmail.com';
 const uid=r=>r.auth?.uid?key(r.auth.uid,'user'):fail('unauthenticated','Sign in first');
 async function owner(tx,db,cid,r){const c=await tx.get(db.doc('clubs/'+key(cid,'club')));if(!c.exists)fail('not-found','Club missing');if(!root(r)&&c.data().ownerUid!==uid(r))fail('permission-denied','Club owner only');return c.data();}
+async function tableManager(tx,db,cid,r){
+ const c=await tx.get(db.doc('clubs/'+key(cid,'club')));if(!c.exists)fail('not-found','Club missing');
+ if(root(r)||c.data().ownerUid===uid(r))return c.data();
+ const m=await tx.get(db.doc(`memberships/${uid(r)}_${cid}`)),p=m.exists?m.data():{};
+ if(p.status!=='approved'||p.role!=='manager'||!Array.isArray(p.managedGames)||!p.managedGames.includes('poker'))fail('permission-denied','Only the club owner or an assigned poker manager can manage tables');
+ return c.data();
+}
 async function member(tx,db,cid,r){const m=await tx.get(db.doc(`memberships/${uid(r)}_${key(cid)}`));if(!root(r)&&(!m.exists||m.data().status!=='approved'))fail('permission-denied','Approved membership required');return m.exists?m.data():{};}
 async function command(r,scope,body){
  const user=uid(r),rid=key(r.data?.requestId,'request');if(rid.length<16)fail('invalid-argument','Request identifier is too short');
@@ -20,4 +27,4 @@ async function command(r,scope,body){
 const capacity=s=>Math.max(2,Math.min(9,Math.floor(44/(s.isDealerChoice?6:(require('./pokerCore').GAME_CARDS[s.baseGameType||s.pokerType]||2))),Math.floor(Number(s.maxPlayers||s.tableSize)||9)));
 const idle=t=>['waiting','showdown'].includes(t.gameState?.phase||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Object.values(t.players||{}).some(p=>p.bet>0);
 const payee=p=>p.isBot?key(p.fundingUid,'bot sponsor'):key(p.uid);
-module.exports={fail,key,cash,number,root,uid,owner,member,command,capacity,idle,payee};
+module.exports={fail,key,cash,number,root,uid,owner,tableManager,member,command,capacity,idle,payee};

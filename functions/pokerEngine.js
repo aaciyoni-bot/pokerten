@@ -100,10 +100,12 @@ function tournamentReady(S) {
   return !S.tor || S.tor.status==='running' && !S.raw.tournament?.finished && !(S.raw.tournament?.balanceHoldUntil>S.now) && !Tours.clock(S.tor,S.now).inBreak;
 }
 function startHand(S, forcedGameType) {
+  if (S.raw.closeRequested) return 'waiting';
   if (!tournamentReady(S)) return 'waiting';
   const g0 = S.gameState || {};
   const pl = clonePlayers(S.players);
   Object.values(pl).forEach((p) => {
+    if(S.tor&&p.pendingTournamentChips>0){p.stack=round2(p.stack+p.pendingTournamentChips);p.pendingTournamentChips=0;p.bustedAt=null;p._reported=false;}
     if (!S.tor && p.pendingTopUp>0) {
       const max=S.settings.maxBuyIn || (S.settings.maxBuyInBB||200)*blindsOf(S).bb;
       const add=Math.min(p.pendingTopUp,Math.max(0,round2(max-p.stack))),refund=round2(p.pendingTopUp-add);
@@ -975,6 +977,7 @@ async function loadState(tx, id, opts) {
   require("./pokerSecurity").requirePokerAvailable();
   A.key(id);
   const snap = await tx.get(tRef(id));
+  if (!snap.exists && opts?.allowMissing) return null;
   if (!snap.exists) throw new HttpsError("not-found", "Table not found");
   const t = snap.data();
   if(t.authorityVersion!==2 || !t.settings?.serverEngine)throw new HttpsError('failed-precondition','Open a protected table from the lobby');
@@ -1049,8 +1052,13 @@ async function tickTable(id, testNow) {
   let S = null;
   await db().runTransaction(async (tx) => {
     spinPayout = null;
-    S = await loadState(tx, id, {withCards: true});
+    S = await loadState(tx, id, {withCards: true, allowMissing: true});
+    if (!S) return;
     if(testNow!=null)S.now=testNow;
+    if (S.raw.closeRequested && A.idle(S.raw) && (S.gameState.phase !== 'showdown' || S.now - (S.gameState.showdownAt || 0) >= 5000)) {
+      await require('./pokerTableLifecycle').closeTable(tx, db(), tRef(id), S.raw, S.raw.closeRequested.by, S.now);
+      return;
+    }
     const g = S.gameState;
     const pl = S.players;
     const now = S.now;
@@ -1088,12 +1096,12 @@ async function tickTable(id, testNow) {
     }
 
     // --- Seat reaping (cash only): leaveReq/sitOut/busted between hands ---
-    if (!S.settings.spinMode && !S.tor && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=5000)) {
+    if (!S.raw.closeRequested && !S.settings.spinMode && !S.tor && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=5000)) {
       const banks=new Map();
       for (const p of Object.values(pl)) {
         const idle = p.leaveReq || (p.sitOut && p.sitOutAt && now - p.sitOutAt > 600000) ||
           (p.leavingAt && now >= p.leavingAt) ||
-          (p.status === "busted" && p.bustedAt && (p.isBot || now - p.bustedAt > 300000));
+          (p.status === "busted" && !p.pendingTopUp && p.bustedAt && (p.isBot || now - p.bustedAt > 300000));
         if (!idle) continue;
         // A showcase table must not drain seat by seat until it dies. With no
         // human in it, a busted bot re-buys instead of standing up, so the
@@ -1118,9 +1126,9 @@ async function tickTable(id, testNow) {
     }
 
     // --- Next hand from waiting / showdown ---
-    const eligible = Object.values(pl).filter((p) => (p.stack > 0 || !S.tor && p.pendingTopUp > 0) && (S.tor || S.settings.spinMode || !p.sitOut) && p.status!=="out" && (p.status!=="busted" || !S.tor && p.pendingTopUp>0));
+    const eligible = Object.values(pl).filter((p) => (p.stack > 0 || (S.tor ? p.pendingTournamentChips : p.pendingTopUp) > 0) && (S.tor || S.settings.spinMode || !p.sitOut) && p.status!=="out" && (p.status!=="busted" || (S.tor ? p.pendingTournamentChips : p.pendingTopUp)>0));
     const activeSpin=extraTop.spin||S.raw.spin;
-    const spinGate = tournamentReady(S) && (S.settings.spinMode ? activeSpin && !activeSpin.fundingPending && now >= (extraTop.spinStartAt||S.raw.spinStartAt||Infinity) && !S.raw.spinDone && !extraTop.spinDone : true);
+    const spinGate = !S.raw.closeRequested && tournamentReady(S) && (S.settings.spinMode ? activeSpin && !activeSpin.fundingPending && now >= (extraTop.spinStartAt||S.raw.spinStartAt||Infinity) && !S.raw.spinDone && !extraTop.spinDone : true);
     if (g.phase === "waiting" && eligible.length >= 2 && spinGate) {
       startHand(S);
       dirty = true;
@@ -1265,6 +1273,7 @@ exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
     S = await loadState(tx, id, {withCards: true});
     const god = isGodAuth(request.auth);
     if (!S.players[uid] && !god) throw new HttpsError("permission-denied", "You are not seated at this table");
+    if (S.raw.closeRequested) throw new HttpsError('failed-precondition', 'This table is closing after the current hand');
     const phase = S.gameState.phase || "waiting";
     if (!["waiting", "showdown"].includes(phase)) {
       S.effects = [];
@@ -1311,31 +1320,29 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const target = (request.data || {}).targetUid || uid;
-  let S = null,notice=false;
+  let S = null,notice=false,queued=false;
   await db().runTransaction(async (tx) => {
-    notice=false;S = await loadState(tx, id, {withCards: true});
+    notice=false;queued=false;S = await loadState(tx, id, {withCards: true});
     if (target !== uid) {
-      const god = isGodAuth(request.auth);
-      const clubSnap = await tx.get(db().doc(`clubs/${S.table.clubId}`));
-      const owner = clubSnap.exists && clubSnap.data().ownerUid === uid;
-      if (!god && !owner) throw new HttpsError("permission-denied", "Not allowed");
+      await A.tableManager(tx,db(),S.table.clubId,request);
     }
     const p = S.players[target];
     if (!p) {
       S = null;
       return; // already gone — success
     }
-    const noticeMs=(S.settings.leaveNoticeMins||0)*60000,otherHumans=Object.values(S.players).some(q=>q.uid!==uid&&!q.isBot),profitBB=((p.stack||0)+(p.bet||0)-(p.buyTotal||0))/(S.settings.blinds*2);
-    if(target===uid&&!S.tor&&!S.settings.spinMode&&noticeMs&&otherHumans&&(!(S.settings.leaveNoticeBB>0)||profitBB>=S.settings.leaveNoticeBB)){if(!p.leavingAt)p.leavingAt=S.now+noticeMs;if(S.now<p.leavingAt){notice=true;await commitState(tx,S);return;}}
     const inHand=!A.idle(S.raw);
+    const participates=inHand&&((p.cardCount||0)>0||(p.bet||0)>0||(S.priv[target]||[]).length>0||(S.gameState.pots||[]).some(pot=>(pot.eligible||[]).includes(target)));
+    const noticeMs=(p.stack>0||participates)?(S.settings.leaveNoticeMins||0)*60000:0,otherHumans=Object.values(S.players).some(q=>q.uid!==uid&&!q.isBot),profitBB=((p.stack||0)+(p.bet||0)-(p.buyTotal||0))/(S.settings.blinds*2);
+    if(target===uid&&!S.tor&&!S.settings.spinMode&&noticeMs&&otherHumans&&(!(S.settings.leaveNoticeBB>0)||profitBB>=S.settings.leaveNoticeBB)){if(!p.leavingAt)p.leavingAt=S.now+noticeMs;if(S.now<p.leavingAt){notice=true;await commitState(tx,S);return;}}
     if(S.tor||S.settings.spinMode&&S.raw.spin&&!S.raw.spinDone){p.sitOut=true;p.sitOutAt=S.now;p.lastSeen=S.now;}
-    else if(inHand){p.leaveReq=S.now;p.sitOutNext=true;}
+    else if(participates){p.leaveReq=S.now;p.sitOutNext=true;queued=true;}
     else removeSeat(S,target,false);
     await commitState(tx, S);
-    if(!inHand&&!S.tor)tx.set(privRef(id, target), {cards: []});
+    if(!S.players[target])tx.set(privRef(id, target), {cards: []});
   });
   if (S) await runEffects(S);
-  return {ok: true,notice};
+  return {ok: true,notice,queued};
 });
 
 // pkRit — protocol §3.5.
@@ -1491,7 +1498,7 @@ exports.tableAutoDrive = onSchedule({schedule:'every 1 minutes',timeoutSeconds:1
     const tours=await db().collection('tournaments').where('authorityVersion','==',2).get();
     for(const d of tours.docs)if(['reg','running'].includes(d.data().status))try{await Tours.tickTournament(d.id);}catch(e){console.error('Tournament driver',d.id,e.message);}
     const snap=await db().collection('tables').where('authorityVersion','==',2).get();
-    const rows=snap.docs.filter(d=>!d.data().tournament?.finished&&Object.keys(d.data().players||{}).length);
+    const rows=snap.docs.filter(d=>!d.data().tournament?.finished&&(d.data().closeRequested||Object.keys(d.data().players||{}).length));
     for(let i=0;i<rows.length;i+=8)await Promise.all(rows.slice(i,i+8).map(d=>tickTable(d.id).catch(e=>console.error('Table driver',d.id,e.message))));
     if(!rows.length)return;await new Promise(resolve=>setTimeout(resolve,1500));
   }

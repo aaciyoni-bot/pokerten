@@ -20,8 +20,10 @@ on:
 jobs:
   validate:
     uses: ./.github/workflows/validate.yml
+  security:
+    uses: ./.github/workflows/security-rules.yml
   deploy:
-    needs: validate
+    needs: [validate, security]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -27,7 +27,7 @@ exports.pkClubInbox=onCall(opts,async r=>A.command(r,'club-inbox',async(tx,db,ui
 }));
 
 exports.pkClubBroadcast=onCall(opts,async r=>A.command(r,'club-broadcast',async(tx,db,uid,now)=>{
- const cid=A.key(r.data.clubId),club=await A.owner(tx,db,cid,r),message=text(r.data.text,300,'message');
+ const cid=A.key(r.data.clubId),club=await A.clubManager(tx,db,cid,r),message=text(r.data.text,300,'message');
  if(message.length<2)A.fail('invalid-argument','Write a message');
  const ref=db.doc('broadcasts/'+cid),old=await tx.get(ref),profile=await tx.get(db.doc('users/'+uid));
  const entry={text:message,at:now,by:profile.data()?.username||'Club owner'};
@@ -48,9 +48,16 @@ exports.pkClubDirectory=onCall(opts,async r=>{
   if(!rows.some(m=>m.uid===uid)&&me.exists)rows.push({id:me.id,...me.data()});
   // An agent receives only their own commissions and assigned players.
   let logs=db.collection('agentLog').where('clubId','==',cid);
-  if(!owner)logs=logs.where('agentUid','==',uid);
+  const manager=owner||role==='manager';if(!manager)logs=logs.where('agentUid','==',uid);
   const history=await tx.get(logs);
-  return{members:rows,agentLog:history.docs.map(d=>d.data())};
+  const treasury=manager?rows.find(m=>m.uid===club.data().ownerUid):null;
+  let gameLog=[],securityAlerts=[];
+  if(r.data.includeReports===true){
+   const games=await tx.get(db.collection('gameLog').where('clubId','==',cid));
+   const visible=new Set(rows.map(m=>m.uid));gameLog=games.docs.map(d=>d.data()).filter(g=>manager||visible.has(g.uid));
+  }
+  if(manager&&r.data.includeSecurity===true){const alerts=await tx.get(db.collection('securityAlerts').where('clubId','==',cid));securityAlerts=alerts.docs.map(d=>({id:d.id,...d.data()}));}
+  return{members:rows,agentLog:history.docs.map(d=>d.data()),gameLog,securityAlerts,treasury:treasury?{uid:treasury.uid,balance:treasury.balance,clubProfits:treasury.clubProfits||0}:null};
  });
 });
 
@@ -58,6 +65,6 @@ exports.pkAgentLookup=onCall(opts,async r=>{
  A.uid(r);const cid=A.key(r.data?.clubId),code=text(r.data?.code,12,'agent code').toUpperCase();
  if(!/^[A-Z0-9]{4,12}$/.test(code))A.fail('invalid-argument','Invalid agent code');
  const db=require('firebase-admin/firestore').getFirestore(),rows=await db.collection('memberships').where('clubId','==',cid).where('agentCode','==',code).limit(2).get();
- const agent=rows.docs.find(d=>d.data().status==='approved'&&d.data().role==='agent')?.data();
+ const agent=rows.docs.find(d=>d.data().status==='approved'&&['agent','manager'].includes(d.data().role))?.data();
  return{agent:agent?{uid:agent.uid,name:agent.username||'Agent',pct:agent.agentSharePct??50}:null};
 });

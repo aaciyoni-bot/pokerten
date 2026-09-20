@@ -13,15 +13,18 @@ const mems=[{uid:'owner',username:'Owner',role:'club_owner'},{uid:'agent',userna
 const logs=[{uid:'a',profit:25,rake:5,at:Date.now(),game:'NLH'},{uid:'a',profit:90,rake:15,at:1,game:'Old game'},{uid:'b',profit:-30,rake:7,at:Date.now(),game:'NLH'}];
 let writes=0;
 w.fb={db:{},auth:{},doc:(_, ...p)=>p.join('/'),collection:(_,p)=>p,query:x=>x,where:()=>null,
+  fx:async(name,args)=>{assert.equal(name,'pkClubDirectory');assert.equal(args.includeReports,true);return{members:mems.map((m,i)=>({id:String(i),...m})),agentLog:[{kind:'club',amount:9999,at:Date.now()},{kind:'bot',rakeSource:'bot',accountingVersion:2,amount:900,at:Date.now()},{kind:'club',rakeSource:'human',accountingVersion:2,amount:9,at:Date.now()},{agentUid:'agent',rakeSource:'human',accountingVersion:2,amount:3,at:Date.now()}],gameLog:[...logs,{uid:'bot_test',profit:100,rake:900,at:Date.now()}]};},
   getDocs:async p=>({docs:(p==='memberships'?mems:p==='gameLog'?logs:[]).map((v,i)=>({id:String(i),data:()=>v}))}),updateDoc:()=>writes++,setDoc:()=>writes++};
 w.eval(fs.readFileSync(path.join(__dirname,'../../assets/js/club-ui.js'),'utf8'));
 const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
 let source=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]).sort((a,b)=>b.length-a.length)[0];
 source=source.replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.SettlementTest=SettlementSection;');
 w.eval(source);w.__club={ownerUid:'owner',closedWeeks:{}};const root=ReactDOM.createRoot(w.document.getElementById('root'));
-const render=uid=>React.act(async()=>root.render(React.createElement(w.SettlementTest,{key:uid,user:{uid,email:uid+'@example.invalid',role:uid==='owner'?'club_owner':'agent'},showToast:()=>{}})));
+const render=uid=>React.act(async()=>root.render(React.createElement(w.SettlementTest,{key:uid,user:{uid,email:uid+'@example.invalid',role:uid==='owner'?'club_owner':uid==='manager'?'manager':'agent'},showToast:()=>{}})));
 (async()=>{
   await render('owner');assert.equal(w.document.querySelectorAll('.club-account-card').length,4);
+  assert.match(w.document.body.textContent,/Player rake12\.00/);assert.match(w.document.body.textContent,/Agent cuts \(verified\)3\.00/);assert.match(w.document.body.textContent,/Owner rake \(verified\)9\.00/);
+  assert.match(w.document.querySelector('[aria-label="Rake separation"]').textContent,/excluded from income: 900\.00/);assert.match(w.document.body.textContent,/unclassified: 9,999\.00/);
   const alice=[...w.document.querySelectorAll('.club-account-card')].find(b=>b.textContent.includes('Alice'));
   assert.match(alice.textContent,/Period result25\.00Current balance100\.00/);
   await React.act(()=>alice.click());assert.match(w.document.querySelector('[role=dialog]').textContent,/NLH/);assert.doesNotMatch(w.document.querySelector('[role=dialog]').textContent,/Old game/);
@@ -29,6 +32,7 @@ const render=uid=>React.act(async()=>root.render(React.createElement(w.Settlemen
   assert.ok(w.document.querySelector('details.club-report-details'),'the original detailed report remains available');
   const search=w.document.querySelector('input[placeholder="Search…"]');await React.act(()=>Simulate.change(search,{target:{value:'Alice'}}));
   assert.equal(w.document.querySelectorAll('.club-account-card').length,1);
+  await render('manager');assert.equal(w.document.querySelectorAll('.club-account-card').length,4);assert.match(w.document.body.textContent,/Bob/);
   await render('agent');assert.equal(w.document.querySelectorAll('.club-account-card').length,1);assert.doesNotMatch(w.document.body.textContent,/Bob/);
   assert.equal(writes,0,'reading account cards must never mutate finances');
   await React.act(()=>root.unmount());w.close();console.log('PASS: actual settlement cards, current-period entries, original report, filters and agent scope with zero writes');

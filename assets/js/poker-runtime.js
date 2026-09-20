@@ -103,7 +103,21 @@
     }
     return times;
   }
-  const api = { handDisplayOrder, createPlayerCopies, deckFour, visibleStack, createWorkerClient, spinTickTimes };
+  // One request at a time, including runouts. Slow connections cannot build
+  // a queue of overlapping ticks; stopping also cancels an in-flight follow-up.
+  function startTickLoop(request, options = {}) {
+    const schedule=options.setTimeout||setTimeout, cancel=options.clearTimeout||clearTimeout;
+    let stopped=false,timer=null;
+    const tick=async()=>{
+      if(stopped)return;
+      try{await request();if(!stopped&&options.onSuccess)options.onSuccess();}
+      catch(error){if(!stopped&&options.onError)options.onError(error);}
+      finally{if(!stopped)timer=schedule(tick,1000);}
+    };
+    tick();
+    return()=>{stopped=true;if(timer!==null)cancel(timer);};
+  }
+  const api = { handDisplayOrder, createPlayerCopies, deckFour, visibleStack, createWorkerClient, spinTickTimes, startTickLoop };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PokerRuntime = api;
 })(typeof window !== 'undefined' ? window : globalThis);

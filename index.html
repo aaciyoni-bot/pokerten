@@ -1161,7 +1161,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-auth.js?v=265"></script>
     <script src="assets/js/club-ui.js?v=1"></script>
     <script src="assets/js/poker-tournament.js?v=264"></script>
-    <script src="assets/js/poker-runtime.js?v=259"></script>
+    <script src="assets/js/poker-runtime.js?v=271"></script>
 <script>
 
 const pokerCommand=async(name,data)=>{const clean=JSON.parse(JSON.stringify(data));const key=name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{const result=await window.fb.fx(name,payload);if(['pkClubMember','pkProfile'].includes(name)&&window.dispatchEvent&&window.Event)window.dispatchEvent(new window.Event('pk-club-changed'));return result;}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
@@ -1386,12 +1386,8 @@ const isGodUser = u => {
   return !!(u && authUser && u.uid === authUser.uid && authUser.emailVerified === true &&
     GOD_EMAILS.includes(String(authUser.email || '').toLowerCase().trim()));
 };
-const canManageGame = (u, gameId) => {
-  if (!u) return false;
-  if ([ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(u.role)) return true;
-  if (u.role === ROLES.MANAGER) return (u.managedGames || []).includes(gameId);
-  return false;
-};
+const canManageClub = u => !!u && (!u.status || u.status === 'approved') && [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER, ROLES.MANAGER].includes(u.role);
+const canManageGame = (u, gameId) => canManageClub(u);
 const buyInMin = s => {
   s = s || {};
   return s.minBuyIn != null ? round2(Number(s.minBuyIn) || 0) : round2((Number(s.minBuyInBB) || 40) * (Number(s.blinds) || 0.5) * 2);
@@ -4357,6 +4353,7 @@ function App() {
       setLobbyTab('poker');
       changeView('lobby');
     },
+    onCreateTable: canManageGame(effUser,'poker') ? () => changeView('poker-create') : null,
     onManage: [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER, ROLES.MANAGER].includes(effUser?.role) ? () => changeView('backoffice') : null,
     showToast: showToast
   }), currentView === 'durak-table' && React.createElement(DurakTable, {
@@ -5964,9 +5961,9 @@ function ProfileView({
     className: "bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 rounded-xl"
   }, "Save")), React.createElement("p", {
     className: "text-slate-400 font-bold uppercase tracking-widest text-xs mt-1"
-  }, ROLE_LABELS[user.role] || user.role), user.role === ROLES.MANAGER && (user.managedGames || []).length > 0 && React.createElement("div", {
+  }, ROLE_LABELS[user.role] || user.role), user.role === ROLES.MANAGER && React.createElement("div", {
     className: "flex justify-center gap-2 mt-3 flex-wrap"
-  }, (user.managedGames || []).map(g => React.createElement("span", {
+  }, GAMES.map(game => game.id).map(g => React.createElement("span", {
     key: g,
     className: "text-[10px] bg-blue-500/15 border border-blue-500/40 text-blue-300 px-3 py-1 rounded-full font-bold"
   }, (GAMES.find(x => x.id === g) || {}).label || g)))), React.createElement("div", {
@@ -6357,6 +6354,19 @@ function LobbyView({
       return [];
     }
   })();
+  const [quickBuyIn,setQuickBuyIn]=useState('100');
+  const [quickRake,setQuickRake]=useState(String(clubSettings?.rakePct??DEFAULT_RAKE_PCT));
+  const quickPresets=['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple'];
+  const quickValid=quickBuyIn!==''&&quickRake!==''&&Number.isFinite(Number(quickBuyIn))&&Number(quickBuyIn)>=1&&Number(quickBuyIn)<=10000000&&Number.isFinite(Number(quickRake))&&Number(quickRake)>=0&&Number(quickRake)<=20;
+  const [fillingTables,setFillingTables]=useState({});
+  const fillLocks=useRef(new Set());
+  const fillFromLobby=async(e,t)=>{
+    e.stopPropagation();const id=t.docId||t.id;if(fillLocks.current.has(id))return;
+    fillLocks.current.add(id);setFillingTables(x=>({...x,[id]:true}));
+    try{const result=await pokerCommand('pkSeat',{tableId:id,op:'fillbots'});showToast(result.added?result.added+' bots added':'The table is already full','success');}
+    catch(err){showToast(err.message||'Could not fill this table','error');}
+    finally{fillLocks.current.delete(id);setFillingTables(x=>({...x,[id]:false}));}
+  };
   const [openingTemplate, setOpeningTemplate] = useState(null);
   const templateCreateLock = useRef(false);
   const createFromTpl = async tp => {
@@ -6367,12 +6377,16 @@ function LobbyView({
       await pokerCommand('pkTableCreate', {
         clubId: CLUB_ID,
         settings: {...st, name: st.name || st.tableName || tp.name, serverEngine: true},
-        botCount: Number(st.showcaseBots) || 0
+        botCount: st.showcaseBots==='full'?'full':Number(st.showcaseBots)||0
       });
       showToast('Table opened from "' + tp.name + '"', 'success');
     } catch (e) {
       showToast(e.message || 'Could not open table', 'error');
     } finally { templateCreateLock.current = false; setOpeningTemplate(null); }
+  };
+  const openQuickBots=game=>{
+    if(!quickValid)return showToast('Enter a valid buy-in and rake.','error');
+    return createFromTpl({name:'Bots · '+game,settings:{name:game+' · Bots',baseGameType:game,blinds:0.5,minBuyIn:Number(quickBuyIn),maxBuyIn:Number(quickBuyIn),rakePercent:Number(quickRake),maxPlayers:6,autoStart:2,actionTime:30,omahaPotLimit:true,showcaseBots:'full'}});
   };
   const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
   const variantCount = v => pokerTables.filter(t => !(t.settings || {}).spinMode && ((t.settings || {}).baseGameType || 'NLH') === v).length;
@@ -6684,64 +6698,7 @@ function LobbyView({
       overflowX: "hidden"
     },
     className: "club-lobby scrollable-content aurora-bg p-4 sm:p-6"
-  }, buyinEdit && ReactDOM.createPortal(React.createElement("div", {
-    dir: "ltr",
-    className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
-    onClick: () => setBuyinEdit(null)
-  }, React.createElement("div", {
-    onClick: e => e.stopPropagation(),
-    className: "glass-panel rounded-3xl p-6 w-full max-w-sm border border-white/10 animate-pop-in"
-  }, React.createElement("h3", {
-    className: "text-lg font-black text-white mb-1 flex items-center gap-2"
-  }, React.createElement("i", {
-    className: "fa-solid fa-coins text-amber-400"
-  }), "Buy-in — ", buyinEdit.name), React.createElement("p", {
-    className: "text-slate-400 text-xs font-bold mb-4"
-  }, "Adjust this table's buy-in from the lobby — no need to enter it."), React.createElement("label", {
-    className: "text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block"
-  }, "Min buy-in (₪)"), React.createElement("input", {
-    type: "number",
-    min: "0",
-    step: "any",
-    value: buyinEdit.min,
-    onChange: e => setBuyinEdit({
-      ...buyinEdit,
-      min: e.target.value
-    }),
-    className: "w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-3",
-    dir: "ltr"
-  }), React.createElement("label", {
-    className: "text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block"
-  }, "Max buy-in (₪)"), React.createElement("input", {
-    type: "number",
-    min: "0",
-    step: "any",
-    value: buyinEdit.max,
-    onChange: e => setBuyinEdit({
-      ...buyinEdit,
-      max: e.target.value
-    }),
-    className: "w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-5",
-    dir: "ltr"
-  }), React.createElement("div", {
-    className: "flex gap-2"
-  }, React.createElement("button", {
-    onClick: async () => {
-      const mn = Math.max(0.01, Number(buyinEdit.min) || 0);
-      const mx = Math.max(mn, Number(buyinEdit.max) || 0);
-      try {
-        await pokerCommand('pkTableManage',{tableId:buyinEdit.id,op:'limits',min:round2(mn),max:round2(mx)});
-        showToast(`Buy-in updated: ${formatMoney(mn)}–${formatMoney(mx)}`, 'success');
-        setBuyinEdit(null);
-      } catch (e) {
-        showToast(e.message||'Could not update buy-in', 'error');
-      }
-    },
-    className: "flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
-  }, "Save"), React.createElement("button", {
-    onClick: () => setBuyinEdit(null),
-    className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
-  }, "Cancel")))), document.body), cashierOpen && ReactDOM.createPortal(React.createElement("div", {
+  }, buyinEdit && React.createElement(TableSettingsEditor,{table:buyinEdit,onClose:()=>setBuyinEdit(null),showToast}), cashierOpen && ReactDOM.createPortal(React.createElement("div", {
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setCashierOpen(false)
   }, React.createElement("div", {
@@ -7229,7 +7186,13 @@ function LobbyView({
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(245,158,11,0.3)] text-sm"
   }, React.createElement("i", {
     className: "fa-solid fa-plus ml-2"
-  }), "New table")), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
+  }), "New table")), canManageGame(user,'poker') && React.createElement('section',{'aria-label':'Quick bot tables',className:'rounded-2xl border border-amber-400/25 bg-slate-900/70 p-4 mb-4'},
+    React.createElement('h3',{className:'font-black text-amber-200 mb-1'},'Quick tables with bots'),
+    React.createElement('p',{className:'text-xs text-slate-400 mb-3'},'Ready to play · 6 bots · blinds 0.5/1. Set the buy-in and rake, then open a table.'),
+    React.createElement('div',{className:'grid grid-cols-2 gap-3 mb-3'},
+      React.createElement('label',{className:'text-xs font-bold text-slate-300'},'Buy-in',React.createElement('input',{'aria-label':'Quick table buy-in',type:'number',min:1,max:10000000,step:'0.01',value:quickBuyIn,disabled:openingTemplate!==null,onChange:e=>setQuickBuyIn(e.target.value),className:'block w-full mt-1 rounded-xl bg-slate-950 border border-white/15 px-3 py-2 text-white',dir:'ltr'})),
+      React.createElement('label',{className:'text-xs font-bold text-slate-300'},'Rake (%)',React.createElement('input',{'aria-label':'Quick table rake',type:'number',min:0,max:20,step:'0.01',value:quickRake,disabled:openingTemplate!==null,onChange:e=>setQuickRake(e.target.value),className:'block w-full mt-1 rounded-xl bg-slate-950 border border-white/15 px-3 py-2 text-white',dir:'ltr'}))),
+    React.createElement('div',{className:'grid grid-cols-2 sm:grid-cols-3 gap-2'},quickPresets.map(game=>React.createElement('button',{key:game,'aria-label':'Open '+game+' with bots',disabled:openingTemplate!==null||!quickValid,'aria-busy':openingTemplate==='Bots · '+game,onClick:()=>openQuickBots(game),className:'rounded-xl border border-amber-400/30 bg-slate-800 hover:bg-amber-600 text-white py-3 px-2 font-bold disabled:opacity-40'},openingTemplate==='Bots · '+game?'Opening…':game,React.createElement('span',{className:'block text-xs text-amber-200 mt-1'},'6 bots'))))), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
     className: "flex flex-wrap gap-2 items-center mb-4"
   }, React.createElement("span", {
     className: "text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"
@@ -7345,6 +7308,7 @@ function LobbyView({
     }, (() => {
       const h10 = (t.history || []).filter(h => Date.now() - (h.at || 0) < 600000).length;
       if(t.closeRequested)return React.createElement('span',{className:'tbl-live'},'Closing after this hand');
+      if(t.pendingSettings)return React.createElement('span',{className:'tbl-live'},'Settings update after this hand');
       if (spinRunning) return React.createElement("span", { className: "tbl-live" }, "● In progress");
       return inHand ? React.createElement("span", {
         className: "tbl-live"
@@ -7361,18 +7325,20 @@ function LobbyView({
     }, spinRunning ? "👁" : formatMoney(minBuy)), s.spinMode && !spinRunning && React.createElement("span", {
       style: { fontSize: '9px', fontWeight: 900, color: '#fcd34d', lineHeight: 1, marginTop: '2px', whiteSpace: 'nowrap' },
       dir: "ltr"
-    }, "WIN ", formatShort((Number(s.spinBuyIn) || 50) * 100))), canManageGame(user, 'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && React.createElement("button", {
+    }, "WIN ", formatShort((Number(s.spinBuyIn) || 50) * 100))), canManageGame(user,'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && seated<cap && React.createElement('button',{
+      onClick:e=>fillFromLobby(e,t),disabled:!!fillingTables[t.docId||t.id],title:'Fill table with bots','aria-label':'Fill table with bots',className:'tbl-del disabled:opacity-40',style:{color:'#a7f3d0'}
+    },React.createElement('i',{className:fillingTables[t.docId||t.id]?'fa-solid fa-spinner fa-spin':'fa-solid fa-robot'})), canManageGame(user, 'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && React.createElement("button", {
       onClick: e => {
         e.stopPropagation();
         setBuyinEdit({
           id: t.docId,
           name: s.tableName || variantLabel(gt, s),
-          min: String(buyInMin(s)),
-          max: String(buyInMax(s))
+          settings: {...s,...t.pendingSettings?.settings}
         });
       },
       className: "tbl-del",
-      title: "Edit buy-in",
+      title: "Edit table settings",
+      "aria-label": "Edit table settings",
       style: {
         color: '#fbbf24'
       }
@@ -7722,15 +7688,11 @@ function SettlementSection({
     let alive=true;setLoadError('');
     (async () => {
       try {
-        const clubWhere = window.fb.where("clubId", "==", CLUB_ID);
-        const [aS, gS, mS] = await Promise.all([window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "agentLog"), clubWhere)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "gameLog"), clubWhere)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "memberships"), clubWhere))]);
+        const report=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,includeReports:true});
         if(!alive)return;
-        setALog(aS.docs.map(d => d.data()));
-        setGLog(gS.docs.map(d => d.data()));
-        setMems(mS.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        })).filter(m => !m.isBot));
+        setALog(report.agentLog||[]);
+        setGLog((report.gameLog||[]).filter(e=>!String(e.uid||'').startsWith('bot_')&&e.rakeSource!=='bot'&&!(report.members||[]).some(m=>m.uid===e.uid&&m.isBot)));
+        setMems((report.members||[]).filter(m=>!m.isBot));
       } catch (e) {
         if(!alive)return;setLoadError('לא ניתן לטעון את נתוני ההתחשבנות. נסה שוב.');
         setALog(null);
@@ -7739,7 +7701,7 @@ function SettlementSection({
       }
     })();
     return()=>{alive=false;};
-  }, [loadAttempt]);
+  }, [loadAttempt,user.uid,user.role]);
   if(loadError)return React.createElement('div',{role:'alert',className:'auth-error'},loadError,React.createElement('button',{onClick:()=>setLoadAttempt(x=>x+1),className:'block mt-3 px-4 py-2 rounded-lg bg-slate-800'},'נסה שוב'));
   if (aLog === null || gLog === null || mems === null) return React.createElement("div", {
     className: "text-center py-8 text-amber-500"
@@ -7751,9 +7713,11 @@ function SettlementSection({
     end = allTime || cyc === 0 ? Infinity : cycleStartIL(cyc - 1);
   const inCyc = at => allTime || ((at || 0) >= start && (at || 0) < end);
   const cuts = {};
-  let houseGross = 0;
+  let houseGross = 0, botRake = 0, legacyRake = 0;
   aLog.forEach(e => {
     if (!inCyc(e.at)) return;
+    if(e.rakeSource==='bot'){botRake=round2(botRake+(Number(e.amount)||0));return;}
+    if(e.accountingVersion!==2||e.rakeSource!=='human'){legacyRake=round2(legacyRake+(Number(e.amount)||0));return;}
     if (e.kind === 'club') houseGross = round2(houseGross + (e.amount || 0));else if (e.agentUid) cuts[e.agentUid] = round2((cuts[e.agentUid] || 0) + (e.amount || 0));
   });
   const pres = {};
@@ -7764,12 +7728,13 @@ function SettlementSection({
     rakes[e.uid] = round2((rakes[e.uid] || 0) + (e.rake || 0));
   });
   const totalCuts = round2(Object.values(cuts).reduce((a, b) => a + b, 0));
-  const grossRake = round2(houseGross + totalCuts);
+  const verifiedRake = round2(houseGross + totalCuts);
+  const grossRake = round2(Object.values(rakes).reduce((a,b)=>a+b,0));
   const club = window.__club || {};
   const iOwn = club.ownerUid === user.uid;
-  const isOwnerView = iOwn || user.email === SUPER_ADMIN_EMAIL || user.role === ROLES.SUPER_ADMIN;
+  const isOwnerView = iOwn || canManageClub(user);
   const showHouse = isGodUser(user) && iOwn;
-  const houseCut = showHouse ? round2(grossRake * 0.10) : 0;
+  const houseCut = showHouse ? round2(verifiedRake * 0.10) : 0;
   const ownerNet = round2(houseGross - houseCut);
   const playersByAgent = {};
   mems.forEach(m => {
@@ -7786,7 +7751,7 @@ function SettlementSection({
       (playersByAgent[a.uid] || []).forEach(p => rows.push([a.username, p.username, p.playerId || '', p.googleName || '', formatMoney(pres[p.uid] || 0), (p.agentPct || 0) + '%']));
       rows.push([a.username, '→ agent cut (rake)', '', '', formatMoney(cuts[a.uid] || 0), '']);
     });
-    rows.push([], ['Gross rake', formatMoney(grossRake)], ['Agent cuts', formatMoney(totalCuts)], ['Owner rake share', formatMoney(houseGross)]);
+    rows.push([], ['Player rake (game records)', formatMoney(grossRake)], ['Agent cuts (verified human rake)', formatMoney(totalCuts)], ['Owner rake (verified human rake)', formatMoney(houseGross)], ['Bot rake (excluded from income)',formatMoney(botRake)], ['Historical distributions (unclassified, excluded)',formatMoney(legacyRake)]);
     if (showHouse) {
       rows.push(['House expenses (10%)', formatMoney(houseCut)], ['Owner net', formatMoney(ownerNet)]);
     }
@@ -7918,6 +7883,10 @@ function SettlementSection({
         at: Date.now(),
         by: user.username,
         grossRake,
+        verifiedRake,
+        botRake,
+        legacyRake,
+        accountingVersion:2,
         totalCuts,
         houseGross,
         houseCut,
@@ -8033,21 +8002,21 @@ function SettlementSection({
     className: "glass-panel rounded-2xl p-3"
   }, React.createElement("div", {
     className: "text-[9px] text-slate-500 font-black uppercase"
-  }, "Gross rake"), React.createElement("div", {
+  }, "Player rake"), React.createElement("div", {
     className: "text-lg font-black text-amber-300",
     dir: "ltr"
   }, formatMoney(grossRake))), React.createElement("div", {
     className: "glass-panel rounded-2xl p-3"
   }, React.createElement("div", {
     className: "text-[9px] text-slate-500 font-black uppercase"
-  }, "Agent cuts"), React.createElement("div", {
+  }, "Agent cuts (verified)"), React.createElement("div", {
     className: "text-lg font-black text-purple-300",
     dir: "ltr"
   }, formatMoney(totalCuts))), React.createElement("div", {
     className: "glass-panel rounded-2xl p-3"
   }, React.createElement("div", {
     className: "text-[9px] text-slate-500 font-black uppercase"
-  }, "Owner rake"), React.createElement("div", {
+  }, "Owner rake (verified)"), React.createElement("div", {
     className: "text-lg font-black text-emerald-300",
     dir: "ltr"
   }, formatMoney(houseGross))), showHouse ? React.createElement("div", {
@@ -8066,7 +8035,10 @@ function SettlementSection({
   }, "Agents"), React.createElement("div", {
     className: "text-lg font-black text-white",
     dir: "ltr"
-  }, agents.length))), (() => {
+  }, agents.length))), isOwnerView && React.createElement('div',{className:'glass-panel rounded-2xl p-4 mb-5', 'aria-label':'Rake separation'},
+    React.createElement('div',{className:'font-black text-sky-300'},'Bot rake · excluded from income: ',formatMoney(botRake)),
+    React.createElement('p',{className:'text-xs text-slate-400 mt-2'},'Player rake comes from human game records. Verified owner income and agent cuts exclude bots. Bot-funded rake returns to its funding account without profit or commission.'),
+    legacyRake>0&&React.createElement('div',{className:'text-amber-200 mt-3'},'Historical distributions · unclassified: ',formatMoney(legacyRake),React.createElement('p',{className:'text-xs mt-1'},'Older payouts have no human/bot split. They are excluded from verified income and commissions; historical wallet credits are unchanged.'))), (() => {
     const presAll = {};
     gLog.forEach(e => {
       if (e.uid) presAll[e.uid] = round2((presAll[e.uid] || 0) + (e.profit || 0));
@@ -8400,6 +8372,7 @@ function BackofficeView({
   showToast
 }) {
   const [usersList, setUsersList] = useState([]);
+  const [treasury,setTreasury]=useState(null);
   const [botsList, setBotsList] = useState([]);
   const [bcText, setBcText] = useState('');
   const [bwDraft, setBwDraft] = useState(null);
@@ -8536,29 +8509,18 @@ function BackofficeView({
   }, [clubSettings.rakePct]);
   useEffect(() => {
     let stopped=false,busy=false;
-    const load=async()=>{if(busy)return;busy=true;try{const result=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID});if(stopped)return;setUsersList(result.members||[]);const cycle=cycleStartIL(0),totals={};for(const e of result.agentLog||[])if(e.at>=cycle&&e.agentUid)totals[e.agentUid]=round2((totals[e.agentUid]||0)+(Number(e.amount)||0));setAgentCycle(totals);}catch(e){if(!stopped)showToast(e.message||'Could not load club members','error');}finally{busy=false;}};
+    const load=async()=>{if(busy)return;busy=true;try{const result=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,includeSecurity:true});if(stopped)return;setUsersList(result.members||[]);setTreasury(result.treasury||null);setSecAlerts((result.securityAlerts||[]).sort((a,b)=>(b.at||0)-(a.at||0)));const cycle=cycleStartIL(0),totals={};for(const e of result.agentLog||[])if(e.at>=cycle&&e.agentUid&&e.accountingVersion===2&&e.rakeSource==='human')totals[e.agentUid]=round2((totals[e.agentUid]||0)+(Number(e.amount)||0));setAgentCycle(totals);}catch(e){if(!stopped)showToast(e.message||'Could not load club members','error');}finally{busy=false;}};
     load();window.addEventListener('pk-club-changed',load);const interval=setInterval(load,15000);return()=>{stopped=true;clearInterval(interval);window.removeEventListener('pk-club-changed',load);};
   }, [user.uid,user.role]);
-  const isOwner = [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role);
+  const canAdmin = canManageClub(user);
   const [secAlerts, setSecAlerts] = useState([]);
-  useEffect(() => {
-    if (!isOwner) return;
-    (async () => {
-      try {
-        // Readable only by the club owner / super admin per firestore.rules —
-        // anyone else gets a permission error and the panel simply stays hidden.
-        const sa = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "securityAlerts"), window.fb.where("clubId", "==", CLUB_ID)));
-        setSecAlerts(sa.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.at || 0) - (a.at || 0)));
-      } catch (e) {}
-    })();
-  }, [isOwner]);
   // Chips in circulation: the club is a closed system — every chip lives either
   // in a membership balance or on a table (stack/bet/pot). The total may only
   // change when the owner mints chips (general reset). If it grows on its own,
   // chips were created out of thin air — that is the decisive tamper test.
   const [chipsOnTables, setChipsOnTables] = useState(null);
   useEffect(() => {
-    if (!isOwner) return;
+    if (!canAdmin) return;
     (async () => {
       try {
         const ts = await window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("clubId", "==", CLUB_ID),window.fb.where("authorityVersion","==",2)));
@@ -8573,7 +8535,7 @@ function BackofficeView({
         setChipsOnTables(round2(onT));
       } catch (e) {}
     })();
-  }, [isOwner]);
+  }, [canAdmin]);
   const [resetBusy, setResetBusy] = useState(false);
   const [assignFor, setAssignFor] = useState(null);
   const approveWith = async (memId, agent) => {
@@ -8746,21 +8708,21 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       showToast("Error renaming bots", "error");
     }
   };
-  const canApproveAll = isOwner || user.role === ROLES.MANAGER;
+  const canApproveAll = canAdmin;
   const isAgentApprover = !canApproveAll && user.role === ROLES.AGENT;
   const pendingUsers = usersList.filter(u => u.status !== 'approved' && u.status !== 'banned' && !u.isBot && (!isAgentApprover || u.agentUid === user.uid));
-  const agents = usersList.filter(u => u.status === 'approved' && u.role === ROLES.AGENT && !u.isBot);
+  const agents = usersList.filter(u => u.status === 'approved' && [ROLES.AGENT, ROLES.MANAGER].includes(u.role) && !u.isBot);
   const agentName = uid => (usersList.find(x => x.uid === uid) || {}).username || '';
   useEffect(() => {
-    if (!isOwner) return;
+    if (!canAdmin) return;
     agents.filter(a => !a.agentCode).forEach(a => {
       pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:a.uid,op:'agent-settings'}).catch(e=>showToast(e.message||'Could not prepare agent code','error'));
     });
-  }, [agents.length, isOwner]);
+  }, [agents.length, canAdmin]);
   const [playerFile, setPlayerFile] = useState(null);
   const [agentCycle, setAgentCycle] = useState({});
   const isAgentOnly = user.role === ROLES.AGENT;
-  const canManageAny = isOwner || user.role === ROLES.MANAGER;
+  const canManageAny = canAdmin;
   const myAgentMem = usersList.find(x => x.uid === user.uid);
   const copyText = async (txt, msg) => {
     try {
@@ -8773,14 +8735,15 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   // Ghost oversight memberships: rows written by the old enterClub for a
   // super-admin looking in from outside. They are not members of this club and
   // the owner must never see them. The club's own owner is never hidden.
-  const clubOwnerUid = (window.__club || {}).ownerUid;
+  const clubOwnerUid = treasury?.uid || (window.__club || {}).ownerUid;
+  const clubBalance=canAdmin ? Number(treasury?.balance)||0 : Number(user.balance)||0;
   const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
-  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && !isGhostOversight(u)).filter(u => (isOwner || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true);
-  const balanceMembers = usersList.filter(m => ["approved","banned"].includes(m.status) && !m.isBot && m.uid !== user.uid && m.uid !== "bot_bank").filter(m => canManageAny || m.agentUid === user.uid);
+  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true);
+  const balanceMembers = usersList.filter(m => ["approved","banned"].includes(m.status) && !m.isBot && m.uid !== (canAdmin?clubOwnerUid:user.uid) && m.uid !== "bot_bank").filter(m => canManageAny || m.agentUid === user.uid);
   const statTiles = [{
-    label: 'Your balance',
-    value: formatMoney(user.balance),
+    label: canAdmin ? 'Club treasury' : 'Your balance',
+    value: formatMoney(clubBalance),
     icon: 'fa-wallet',
     color: 'text-white'
   }, {
@@ -8790,7 +8753,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     color: 'text-blue-400'
   }, {
     label: 'Club earnings (Rake)',
-    value: formatMoney(user.clubProfits || 0),
+    value: formatMoney(canAdmin ? treasury?.clubProfits || 0 : user.clubProfits || 0),
     icon: 'fa-building-columns',
     color: 'text-amber-400'
   }, {
@@ -8813,7 +8776,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   }, balBox && ReactDOM.createPortal((() => {
     const t = balBox.target;
     const amt = Math.max(0, parseFloat(balBox.val) || 0);
-    const myAfter = round2((user.balance || 0) + (balBox.isDeposit ? -amt : amt));
+    const myAfter = round2(clubBalance + (balBox.isDeposit ? -amt : amt));
     const theirAfter = round2((Number(t.balance) || 0) + (balBox.isDeposit ? amt : -amt));
     const bad = balBox.isDeposit ? myAfter < 0 : theirAfter < 0;
     return React.createElement("div", {
@@ -8821,12 +8784,14 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       onClick: () => setBalBox(null)
     }, React.createElement("div", {
       onClick: e => e.stopPropagation(),
+      role:"dialog",
+      "aria-label":"Transfer chips",
       className: "glass-panel rounded-3xl p-6 w-full max-w-sm animate-pop-in border border-gold-400/40"
     }, React.createElement("h3", {
       className: "text-lg font-black text-white mb-1"
     }, balBox.isDeposit ? '⬆️ Deposit to ' : '⬇️ Withdraw from ', t.username), React.createElement("p", {
       className: "text-[11px] text-slate-400 font-bold mb-4"
-    }, balBox.isDeposit ? 'Chips move from YOUR balance to the player.' : "Chips move from the player's balance to YOURS."), React.createElement("div", {
+    }, balBox.isDeposit ? 'Chips move from the club treasury to this member.' : "Chips return from this member to the club treasury."), React.createElement("div", {
       className: "flex gap-2 mb-3"
     }, [100, 500, 1000, 5000].map(v => React.createElement("button", {
       key: v,
@@ -8837,6 +8802,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       className: `flex-1 py-2 rounded-xl font-black text-xs border ${String(v) === balBox.val ? 'bg-gold-400 text-slate-900 border-gold-400' : 'bg-slate-900 text-slate-300 border-white/10 hover:text-white'}`
     }, formatShort(v))), React.createElement("input", {
       type: "number",
+      "aria-label":"Transfer amount",
       value: balBox.val,
       onChange: e => setBalBox(b => ({
         ...b,
@@ -8851,9 +8817,9 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       className: "flex justify-between"
     }, React.createElement("span", {
       className: "text-slate-400"
-    }, "You"), React.createElement("span", {
+    }, "Club treasury"), React.createElement("span", {
       className: myAfter < 0 ? 'text-rose-400' : 'text-white'
-    }, formatMoney(user.balance || 0), " → ", formatMoney(myAfter))), React.createElement("div", {
+    }, formatMoney(clubBalance), " → ", formatMoney(myAfter))), React.createElement("div", {
       className: "flex justify-between"
     }, React.createElement("span", {
       className: "text-slate-400"
@@ -8863,7 +8829,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       className: "flex gap-2"
     }, React.createElement("button", {
       onClick: applyBalance,
-      disabled: bad || amt <= 0,
+      disabled: bad || amt <= 0 || (canAdmin && !treasury),
       className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 disabled:opacity-40 text-white py-3 rounded-2xl font-black shadow-lg"
     }, "Confirm"), React.createElement("button", {
       onClick: () => setBalBox(null),
@@ -8948,7 +8914,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "text-2xl sm:text-3xl font-black text-white"
   }, "ניהול הקלאב"), React.createElement("p", {
     className: "text-sm text-slate-400 font-bold"
-  }, "שחקנים, התחשבנות והגדרות במקום אחד")), React.createElement("p",{className:"text-xs text-slate-400"},"Add and remove bots from the table controls.")), isOwner && React.createElement("div", {
+  }, "שחקנים, התחשבנות והגדרות במקום אחד")), React.createElement("p",{className:"text-xs text-slate-400"},"Add and remove bots from the table controls.")), canAdmin && React.createElement("div", {
     // Console nav: one sticky bar — every management area is a tap away
     className: "sticky top-0 z-40 -mx-1 px-1 py-2 bg-slate-950/85 backdrop-blur-md flex flex-wrap items-center gap-2 mb-5 border-b border-white/5"
   }, [
@@ -8961,7 +8927,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "relative text-xs font-black px-4 py-2.5 rounded-xl border shrink-0 text-gold-400 border-gold-400/30 bg-slate-900/60 hover:bg-slate-800"
   }, React.createElement("i", { className: `fa-solid ${s2.ico} mr-1` }), s2.label, s2.badge > 0 && React.createElement("span", {
     className: "absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border border-slate-900"
-  }, s2.badge)))), isOwner && secAlerts.length > 0 && React.createElement("div", {
+  }, s2.badge)))), canAdmin && secAlerts.length > 0 && React.createElement("div", {
     className: "glass-panel rounded-2xl p-4 mb-5",
     style: { border: '1px solid rgba(244,63,94,.45)' }
   }, React.createElement("div", {
@@ -9028,7 +8994,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   })), React.createElement("p", {
     className: `text-xl sm:text-2xl font-black ${t.color}`,
     dir: "ltr"
-  }, t.value)))), isOwner && React.createElement("div", {
+  }, t.value)))), canAdmin && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6 border border-amber-500/20"
   }, React.createElement("span", {
     id: "bo-settings",
@@ -9160,7 +9126,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-6 py-3 rounded-xl font-bold shadow-lg"
   }, "Save"), React.createElement("p", {
     className: "text-xs text-slate-500 font-bold basis-full"
-  }, "The rake applies to Rummy, Poker and all future games. Existing Poker Tables keep the rake set when they were opened."))), isOwner && React.createElement("div", {
+  }, "The rake applies to Rummy, Poker and all future games. Existing Poker Tables keep the rake set when they were opened."))), canAdmin && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6 border border-blue-500/20"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white mb-4 flex items-center gap-2"
@@ -9256,7 +9222,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   }))))))), playerFile && React.createElement(PlayerFileModal, {
     mem: playerFile,
     agentName: agentName,
-    canEdit: isOwner || canManageAny || playerFile.agentUid === user.uid,
+    canEdit: canAdmin || canManageAny || playerFile.agentUid === user.uid,
     onClose: () => setPlayerFile(null),
     showToast: showToast
   }), assignFor && ReactDOM.createPortal(React.createElement("div", {
@@ -9295,7 +9261,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   }, "Approve without agent assignment"), React.createElement("button", {
     onClick: () => setAssignFor(null),
     className: "text-slate-500 hover:text-white underline text-xs font-bold"
-  }, "Cancel"))), document.body), (isOwner || isAgentOnly) && React.createElement("div", {
+  }, "Cancel"))), document.body), (canAdmin || isAgentOnly) && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6 border border-purple-500/20"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white flex items-center gap-2 mb-4"
@@ -9328,7 +9294,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       className: "text-purple-300 text-xs font-black tracking-widest hover:text-purple-200",
       dir: "ltr",
       title: "Copy code"
-    }, "🎟️ ", a.agentCode || '...')), isOwner && React.createElement("div", {
+    }, "🎟️ ", a.agentCode || '...')), canAdmin && React.createElement("div", {
       className: "text-left shrink-0"
     }, React.createElement("input", {
       type: "number",
@@ -9368,7 +9334,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     }, formatMoney(a.agentProfits || 0)))), React.createElement("button", {
       onClick: () => copyText(inviteLink, 'Invite link copied - send it to Players!'),
       className: "w-full bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-500 text-white py-2 rounded-xl font-black text-xs shadow-md"
-    }, "🔗 Copy invite link (auto-assign)"), (isAgentOnly || isOwner) && linked.length > 0 && React.createElement("div", {
+    }, "🔗 Copy invite link (auto-assign)"), (isAgentOnly || canAdmin) && linked.length > 0 && React.createElement("div", {
       className: "mt-2.5 flex flex-wrap gap-1.5"
     }, linked.map(p => React.createElement("button", {
       key: p.id,
@@ -9461,19 +9427,19 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     title: "Send a personal message"
   }, React.createElement("i", {
     className: "fa-solid fa-envelope text-xs"
-  })), isOwner && !u.isBot && React.createElement("button", {
+  })), canAdmin && !u.isBot && React.createElement("button", {
     onClick: () => openRoleEditor(u),
     className: "w-9 h-9 rounded-full bg-slate-800 hover:bg-blue-900 text-slate-300 hover:text-white border border-white/10",
     title: "Set role and agent assignment"
   }, React.createElement("i", {
     className: "fa-solid fa-user-gear text-xs"
-  })), isOwner && !u.isBot && u.uid !== user.uid && React.createElement("button", {
+  })), canAdmin && !u.isBot && u.uid !== user.uid && React.createElement("button", {
     onClick: () => toggleBan(u),
     className: `w-9 h-9 rounded-full border font-black ${u.status === 'banned' ? 'bg-rose-900/70 border-rose-500/60 text-rose-200' : 'bg-slate-800 hover:bg-rose-900 text-slate-400 hover:text-white border-white/10'}`,
     title: u.status === 'banned' ? 'Banned — tap to unban' : 'Ban from the club'
   }, React.createElement("i", {
     className: "fa-solid fa-ban text-xs"
-  })), isOwner && (u.photo || u.avatarSeed) && React.createElement("button", {
+  })), canAdmin && (u.photo || u.avatarSeed) && React.createElement("button", {
     onClick: () => censorPhoto(u),
     className: "w-9 h-9 rounded-full bg-slate-800 hover:bg-rose-900 text-slate-400 hover:text-white border border-white/10",
     title: "Reset profile photo (censor)"
@@ -9513,9 +9479,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     value: ROLES.AGENT
   }, "Agent"), React.createElement("option", {
     value: ROLES.MANAGER
-  }, "Manager"), user.role === ROLES.SUPER_ADMIN && React.createElement("option", {
-    value: ROLES.CLUB_OWNER
-  }, "Owner")), React.createElement("div", {
+  }, "Manager — full club access")), React.createElement("div", {
     className: "bg-slate-900/60 rounded-2xl border border-amber-500/20 p-4 mb-4"
   }, React.createElement("label", {
     className: "text-amber-300 text-xs font-black mb-2 block uppercase tracking-widest"
@@ -9549,7 +9513,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "w-20 bg-slate-900 text-white border border-white/10 rounded-xl p-2.5 text-center font-bold text-sm outline-none focus:border-amber-500/60"
   }), React.createElement("span", {
     className: "text-slate-400 text-xs font-bold"
-  }, "% of rake to agent, the rest to house")))), [ROLES.MANAGER, ROLES.AGENT].includes(roleDraft.role) && React.createElement("div", {
+  }, "% of rake to agent, the rest to house")))), roleDraft.role === ROLES.MANAGER && React.createElement('p',{className:'text-sm text-amber-300 mb-4'},'Full club access: approve players, manage agents and tables, transfer chips from the club treasury, withdraw chips, and edit club settings.'), roleDraft.role === ROLES.AGENT && React.createElement("div", {
     className: "mb-4"
   }, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-2 block uppercase tracking-widest"
@@ -9587,6 +9551,24 @@ const Field = ({
 }) => React.createElement("div", null, React.createElement("label", {
   className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
 }, label), children);
+function TableSettingsEditor({table,onClose,showToast}) {
+  const initial=table.settings||{};
+  const [draft,setDraft]=useState({blinds:initial.blinds??0.5,minBuyIn:buyInMin(initial),maxBuyIn:buyInMax(initial),rakePercent:initial.rakePercent??0});
+  const [busy,setBusy]=useState(false),lock=useRef(false);
+  const save=async()=>{
+    if(lock.current)return;
+    if(Object.values(draft).some(v=>v===''||!Number.isFinite(Number(v))))return showToast('Enter valid numeric settings.','error');
+    lock.current=true;setBusy(true);
+    try{const result=await pokerCommand('pkTableManage',{tableId:table.id,op:'settings',patch:Object.fromEntries(Object.entries(draft).map(([k,v])=>[k,Number(v)]))});showToast(result.queued?'Settings saved — applied after this hand.':'Table settings updated.','success');onClose();}
+    catch(e){showToast(e.message||'Could not update table settings.','error');}finally{lock.current=false;setBusy(false);}
+  };
+  return ReactDOM.createPortal(React.createElement('div',{className:'fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4',onClick:()=>!busy&&onClose()},
+    React.createElement('div',{role:'dialog','aria-modal':true,'aria-label':'Table settings',dir:'ltr',className:'glass-panel rounded-3xl p-6 w-full max-w-sm border border-white/10 max-h-[90dvh] overflow-y-auto',onClick:e=>e.stopPropagation()},
+      React.createElement('h3',{className:'text-lg font-black text-white mb-2'},'Table settings — ',table.name),
+      React.createElement('p',{className:'text-slate-400 text-xs mb-4'},'During a hand, changes apply after it ends. Existing player stacks stay unchanged.'),
+      [['blinds','Small blind (big blind = ×2)',0.01,100000],['minBuyIn','Min buy-in',0.01,10000000],['maxBuyIn','Max buy-in',0.01,10000000],['rakePercent','Rake (%)',0,20]].map(([key,label,min,max])=>React.createElement('label',{key,className:'block text-slate-300 text-xs font-bold mb-3'},label,React.createElement('input',{type:'number',step:'0.01',min,max,'aria-label':label,value:draft[key],disabled:busy,onChange:e=>setDraft(d=>({...d,[key]:e.target.value})),className:'block w-full mt-1 bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white'}))),
+      React.createElement('div',{className:'flex gap-2'},React.createElement('button',{onClick:save,disabled:busy,className:'flex-1 bg-emerald-600 text-white p-3 rounded-xl font-bold'},busy?'Saving…':'Save'),React.createElement('button',{onClick:onClose,disabled:busy,className:'bg-slate-800 text-slate-300 p-3 rounded-xl'},'Cancel')))),document.body);
+}
 function PokerCreateView({
   user,
   clubSettings,
@@ -9659,7 +9641,7 @@ try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{baseGameType:sf
     return out;
   };
   const handleCreate = async () => {
-try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{...s,serverEngine:true},botCount:Number(s.showcaseBots)||0});onCreated();}catch(e){showToast(e.message||String(e),'error');}
+try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{...s,serverEngine:true},botCount:s.showcaseBots==='full'?'full':Number(s.showcaseBots)||0});onCreated();}catch(e){showToast(e.message||String(e),'error');}
 };
   const TPL_KEY = 'pokerTpl_' + CLUB_ID;
   const [tpls, setTpls] = useState(() => {
@@ -9819,12 +9801,13 @@ try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{...s,serverEngi
   }, n, " BB over buy-in")))), null, React.createElement(Field, {
     label: "🤖 Showcase table — runs on its own"
   }, React.createElement("select", {
-    value: Number(s.showcaseBots) || 0,
-    onChange: e => upd('showcaseBots', parseInt(e.target.value)),
+    value: s.showcaseBots || 0,
+    'aria-label': 'Bots at table creation',
+    onChange: e => upd('showcaseBots', e.target.value==='full'?'full':parseInt(e.target.value)),
     className: sel
   }, React.createElement("option", {
     value: 0
-  }, "Off"), [3, 4, 5, 6].map(n => React.createElement("option", {
+  }, "Off"), React.createElement("option",{value:"full"},"Fill every seat with bots"), [2, 3, 4, 5, 6, 7, 8, 9].filter(n=>n<=Math.min(Number(s.maxPlayers)||6,Math.floor(44/(s.isDealerChoice?6:(GAME_CARDS[String(s.baseGameType).replace(/^Omaha([456])$/,'Omaha $1')]||2))))).map(n => React.createElement("option", {
     key: n,
     value: n
   }, n, " bots, playing non-stop"))), React.createElement("div", {
@@ -10109,6 +10092,7 @@ function PokerTable({
   clubSettings,
   onLeave,
   onManage,
+  onCreateTable,
   onTransfer,
   showToast,
   headless
@@ -10136,6 +10120,8 @@ function PokerTable({
   const [discHide, setDiscHide] = useState(null);
   const [, setMuteTick] = useState(0);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const botAddLock = useRef(false);
+  const [addingBots, setAddingBots] = useState(false);
   const [tableInfoOpen, setTableInfoOpen] = useState(false);
   const tableInfoTrigger = useRef(null);
   const closeTableInfo = () => { setTableInfoOpen(false); tableInfoTrigger.current?.focus(); };
@@ -10329,33 +10315,15 @@ function PokerTable({
   }, [srvEngine, tableDocId]);
   useEffect(() => {
     if (!srvEngine) return;
-    let warned = false;
-    const iv = setInterval(() => {
-      window.fb.fx('pkTick', {
-        tableId: tableDocId
-      }).then(() => { warned = false; }).catch(e => {
-        // A spin table can ONLY be armed/dealt by the server — if pkTick is
-        // missing or down the table silently sits at "Waiting for players"
-        // forever. Say so once instead of looking like a lobby problem.
-        if (warned || !setts.spinMode) return;
-        if ((tableRef.current?.gameState?.phase || 'waiting') !== 'waiting') return;
-        warned = true;
-        showToast('Spin server is not responding (' + ((e && e.code) || (e && e.message) || e) + ') — the game cannot start. If this persists, the Cloud Functions deploy hasn\'t landed yet.', 'error');
-      });
-    }, 4000);
-    return () => clearInterval(iv);
-  }, [srvEngine, tableDocId]);
-  useEffect(() => {
-    if (!srvEngine) return;
-    const g0 = tableState?.gameState || {};
-    if (!(g0.allInReveal && ['preflop', 'flop', 'turn', 'river'].includes(g0.phase))) return;
-    const iv = setInterval(() => {
-      window.fb.fx('pkTick', {
-        tableId: tableDocId
-      }).catch(() => {});
-    }, 1800);
-    return () => clearInterval(iv);
-  }, [srvEngine, tableState?.gameState?.allInReveal, tableState?.gameState?.phase]);
+    let warned=false;
+    return window.PokerRuntime.startTickLoop(()=>window.fb.fx('pkTick',{tableId:tableDocId}),{
+      onSuccess:()=>{warned=false;},
+      onError:e=>{
+        if(warned||!tableRef.current?.settings?.spinMode||(tableRef.current?.gameState?.phase||'waiting')!=='waiting')return;
+        warned=true;showToast('The Spin server is not responding. Reconnecting…','error');
+      }
+    });
+  }, [srvEngine,tableDocId]);
   useEffect(() => {
     if (tableState?.gameState?.phase !== 'showdown') setRabbit([]);
   }, [tableState?.gameState?.phase]);
@@ -10523,7 +10491,7 @@ throw new Error('Game state is managed by the server');
     if (isMyTurn) setRaiseAmt(round2(Math.min((gs.highestBet || 0) + (gs.minRaise || BB), (myPlayer?.bet || 0) + (myPlayer?.stack || 0))));
   }, [gs.activeTurnUid, gs.turnStartedAt]);
   const myAct = (type, amt) => {
-    if (acting || !isMyTurn) return;
+    if (acting || !isMyTurn || actedTurnRef.current === gs.turnStartedAt) return;
     // instant local feedback — the sound fires on the press itself, not after the
     // Firestore round-trip (the sync effect skips our own echo to avoid doubling)
     try {
@@ -10531,10 +10499,6 @@ throw new Error('Game state is managed by the server');
     } catch (e) {}
     setActing(true);
     actedTurnRef.current = gs.turnStartedAt;
-    setTimeout(() => {
-      setActing(false);
-      if (tableRef.current?.gameState?.turnStartedAt === actedTurnRef.current) actedTurnRef.current = null;
-    }, 3500);
     performAction(user.uid, type, amt);
   };
   const firstAfterDealer = (g, pl) => {
@@ -10858,7 +10822,7 @@ throw new Error('Game state is managed by the server');
     if (!(await saveGame(g, pl))) return;
   };
   const performAction = async (actorUid, type, targetBet, autoTimeout) => {
-if(actorUid!==user.uid||autoTimeout)return;const g=tableRef.current?.gameState;if(!g)return;try{await pokerCommand('pkAct',{tableId:tableDocId,action:type,amount:targetBet,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});}catch(e){showToast(e.message||'Action failed','error');}finally{setActing(false);}
+if(actorUid!==user.uid||autoTimeout)return;const g=tableRef.current?.gameState;if(!g)return;try{await pokerCommand('pkAct',{tableId:tableDocId,action:type,amount:targetBet,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});}catch(e){if(actedTurnRef.current===g.turnStartedAt)actedTurnRef.current=null;showToast(e.message||'Action failed','error');}finally{setActing(false);}
 };
   const executeDeal = async (gBase, plBase, gameType) => {
     const tour = (tableRef.current || {}).tournament || null;
@@ -11183,9 +11147,11 @@ try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){s
       if(queued){leaveArmedRef.current=true;showToast('Leaving after this hand.','info');}else onLeave();
     }catch(e){showToast(e.message||String(e),'error');}
 };
-  const handleAddBot = async () => {
-try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'addbot'});showToast("Bot seated.",'success');}catch(e){showToast(e.message||String(e),'error');}
-};
+  const handleAddBot = async (fill=false) => {
+    if(botAddLock.current)return;botAddLock.current=true;setAddingBots(true);
+    try{const r=await pokerCommand('pkSeat',{tableId:tableDocId,op:fill?'fillbots':'addbot'});showToast(fill?(r.added?`${r.added} bots seated.`:'Table is already full.'):'Bot seated.','success');}
+    catch(e){showToast(e.message||String(e),'error');}finally{botAddLock.current=false;setAddingBots(false);}
+  };
   useEffect(() => {
     if (srvEngine || !iDrive || !tableState || !gs.phase) return;
     const actor0 = players[gs.activeTurnUid];
@@ -11934,64 +11900,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
      React.createElement("option", { value: "dealt" }, "As dealt"))), React.createElement("button", {
     onClick: () => setSkinOpen(false),
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm"
-  }, "Done"))), document.body), buyinEdit && ReactDOM.createPortal(React.createElement("div", {
-    dir: "ltr",
-    className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
-    onClick: () => setBuyinEdit(null)
-  }, React.createElement("div", {
-    onClick: e => e.stopPropagation(),
-    className: "glass-panel rounded-3xl p-6 w-full max-w-sm border border-white/10 animate-pop-in"
-  }, React.createElement("h3", {
-    className: "text-lg font-black text-white mb-1 flex items-center gap-2"
-  }, React.createElement("i", {
-    className: "fa-solid fa-coins text-amber-400"
-  }), "Table buy-in limits"), React.createElement("p", {
-    className: "text-slate-400 text-xs font-bold mb-4"
-  }, "Raise the stakes when the game heats up — applies to new sit-downs and top-ups."), React.createElement("label", {
-    className: "text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block"
-  }, "Min buy-in (₪)"), React.createElement("input", {
-    type: "number",
-    min: "0",
-    step: "any",
-    value: buyinEdit.min,
-    onChange: e => setBuyinEdit({
-      ...buyinEdit,
-      min: e.target.value
-    }),
-    className: "w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-3",
-    dir: "ltr"
-  }), React.createElement("label", {
-    className: "text-slate-400 text-[11px] font-black uppercase tracking-widest mb-1 block"
-  }, "Max buy-in (₪)"), React.createElement("input", {
-    type: "number",
-    min: "0",
-    step: "any",
-    value: buyinEdit.max,
-    onChange: e => setBuyinEdit({
-      ...buyinEdit,
-      max: e.target.value
-    }),
-    className: "w-full bg-slate-950 border border-white/10 rounded-xl px-4 py-3 text-white font-black text-center outline-none focus:border-amber-500/60 mb-5",
-    dir: "ltr"
-  }), React.createElement("div", {
-    className: "flex gap-2"
-  }, React.createElement("button", {
-    onClick: async () => {
-      const mn = Math.max(0.01, Number(buyinEdit.min) || 0);
-      const mx = Math.max(mn, Number(buyinEdit.max) || 0);
-      try {
-        await pokerCommand('pkTableManage',{tableId:tableDocId,op:'limits',min:round2(mn),max:round2(mx)});
-        showToast(`Buy-in updated: ${formatMoney(mn)}–${formatMoney(mx)}`, 'success');
-        setBuyinEdit(null);
-      } catch (e) {
-        showToast(e.message||'Could not update buy-in', 'error');
-      }
-    },
-    className: "flex-1 bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
-  }, "Save"), React.createElement("button", {
-    onClick: () => setBuyinEdit(null),
-    className: "px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
-  }, "Cancel")))), document.body), confirmBox && ReactDOM.createPortal(React.createElement("div", {
+  }, "Done"))), document.body), buyinEdit && React.createElement(TableSettingsEditor,{table:buyinEdit,onClose:()=>setBuyinEdit(null),showToast}), confirmBox && ReactDOM.createPortal(React.createElement("div", {
     className: "fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => {
       confirmBox.resolve(false);
@@ -12062,9 +11971,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       doTopUp(b.val, b.inHand, b.room);
     },
     className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
-  }, "Add")))), document.body), React.createElement("div", {
-    className: "pt-stage flex-1 relative flex items-center justify-center px-0 pt-0 pb-0 sm:p-5 min-h-0"
-  }, godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (() => {
+  }, "Add")))), document.body), godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (() => {
     const board = gs.board || [];
     const bl = board.length;
     let fin = null;
@@ -12090,7 +11997,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     if (bl < 5) nxt.push(['River', [fin[4]]]);
     if (!nxt.length) return null;
     return React.createElement("div", {
-      className: "absolute top-1 left-1/2 -translate-x-1/2 z-[80] flex items-center gap-3 bg-purple-950/90 border border-purple-500/50 rounded-2xl px-4 py-1.5 backdrop-blur shadow-xl"
+      className: "poker-god-runout flex items-center justify-center gap-2 bg-purple-950/90 border-b border-purple-500/50 px-2",
+      "aria-label": "GOD mode board preview"
     }, React.createElement("span", {
       className: "text-purple-300 font-black text-[10px]"
     }, React.createElement("i", {
@@ -12109,6 +12017,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       size: "sm"
     }) : null)))));
   })(), React.createElement("div", {
+    className: "pt-stage flex-1 relative flex items-center justify-center px-0 pt-0 pb-0 sm:p-5 min-h-0"
+  }, React.createElement("div", {
     className: "poker-table w-full max-w-none sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
     style: (() => {
       const F = {
@@ -12866,7 +12776,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "fa-solid fa-comment-dots"
   })), React.createElement("div", {
     className: "flex-1 text-center text-slate-500 font-bold text-xs truncate"
-  }, tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn ? React.createElement("button", {
+  }, tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn ? React.createElement("button", {
     onClick: () => setPreCF(v => !v),
     // reads as a real pressable button: raised gradient, visible border
     className: `shrink-0 px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
@@ -13259,13 +13169,15 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, "Resolve ✓")), isSeated && myPlayer?.sitOut && React.createElement("div", {
     className: "absolute top-3 left-1/2 -translate-x-1/2 z-[70] bg-amber-500/95 text-slate-900 font-black text-xs rounded-full px-4 py-2 shadow-xl cursor-pointer",
     onClick: toggleSitOut
-  }, "☕ You're in Sit out - tap to return ✋"), isSeated && React.createElement("div", {
-    className: "absolute top-[54px] left-2 z-[60] flex flex-col items-start gap-2"
+  }, "☕ You're in Sit out - tap to return ✋"), React.createElement("div", {
+    className: "poker-table-tools absolute top-[54px] left-2 z-[60] flex flex-col items-start gap-2"
   }, React.createElement("div", {
     className: "flex items-center gap-2"
   }, React.createElement("button", {
     onClick: () => setToolsOpen(o => !o),
     title: "Table menu",
+    "aria-label": "Table menu",
+    "aria-expanded": toolsOpen,
     className: `w-9 h-9 rounded-xl shadow-xl text-base border relative ${toolsOpen ? 'bg-amber-500 text-slate-900 border-amber-300' : 'glass-panel border-transparent text-slate-300 hover:text-white'}`
   }, React.createElement("i", {
     className: `fa-solid ${toolsOpen ? 'fa-xmark' : 'fa-bars'}`
@@ -13318,7 +13230,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, ...menuTile(window.__pkMuted ? '🔇' : '🔊', window.__pkMuted ? 'Sound off' : 'Sound on')),
   React.createElement('label', {className:'col-span-2 rounded-[20px] bg-slate-900/95 border border-slate-600 p-3 text-slate-100 flex flex-col justify-center gap-3'},
     'עוצמת צלילים · ' + Math.round(window.__pkVolume * 100) + '%',
-    React.createElement('input', {type:'range',min:0,max:100,value:Math.round(window.__pkVolume*100),'aria-label':'עוצמת צלילים',className:'w-full accent-amber-400',onChange:e=>{setSfxLevel(Number(e.target.value)/100);setMuteTick(x=>x+1);}})), setts.straddle && !tableState?.tournamentId && React.createElement("button", {
+    React.createElement('input', {type:'range',min:0,max:100,value:Math.round(window.__pkVolume*100),'aria-label':'עוצמת צלילים',className:'w-full accent-amber-400',onChange:e=>{setSfxLevel(Number(e.target.value)/100);setMuteTick(x=>x+1);}})), isSeated && setts.straddle && !tableState?.tournamentId && React.createElement("button", {
     onClick: async () => {
       setToolsOpen(false);
       try {
@@ -13327,14 +13239,14 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     },
     title: "Straddle when eligible (2×BB blind — you act last preflop)",
     className: `aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 shadow-xl text-[10px] font-black border ${myPlayer?.straddleNext ? 'bg-amber-500 text-slate-900 border-amber-300' : 'glass-panel border-transparent text-slate-300 hover:text-amber-300'}`
-  }, ...menuTile("⏫", myPlayer?.straddleNext ? "Straddle on" : "Straddle")), React.createElement("button", {
+  }, ...menuTile("⏫", myPlayer?.straddleNext ? "Straddle on" : "Straddle")), isSeated && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       toggleSitOut();
     },
     title: myPlayer?.sitOut ? 'Take a seat 🪑' : myPlayer?.sitOutNext ? 'Cancel sit-out (queued for end of hand)' : 'Sit out',
     className: `aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : myPlayer?.sitOutNext ? 'bg-amber-500/40 text-amber-200 border-amber-400/60 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`
-  }, ...menuTile(myPlayer?.sitOut ? '✋' : '☕', myPlayer?.sitOut ? 'Back in' : myPlayer?.sitOutNext ? 'Sit-out queued' : 'Sit out')), !tableState?.tournamentId && React.createElement("button", {
+  }, ...menuTile(myPlayer?.sitOut ? '✋' : '☕', myPlayer?.sitOut ? 'Back in' : myPlayer?.sitOutNext ? 'Sit-out queued' : 'Sit out')), isSeated && !tableState?.tournamentId && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       topUpChips();
@@ -13352,14 +13264,20 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     },
     title: "GOD view",
     className: `aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border shadow-xl text-lg ${godView ? 'bg-purple-600 text-white border-purple-400' : 'glass-panel border-transparent text-purple-300'}`
-  }, ...menuTile("👁", godView ? "GOD view on" : "GOD view")), isSuperAdmin && React.createElement("button", {
+  }, ...menuTile("👁", godView ? "GOD view on" : "GOD view")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       handleAddBot();
     },
     title: "Add bot",
+    disabled: addingBots || Object.keys(players).length >= (setts.maxPlayers||6),
     className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-purple-300 hover:text-white shadow-xl text-lg"
-  }, ...menuTile("🤖", "Add bot")), isSuperAdmin && ['waiting', 'showdown'].includes(gs.phase) && eligibleCount >= 2 && React.createElement("button", {
+  }, ...menuTile("🤖", "Add bot")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
+    onClick:()=>{setToolsOpen(false);handleAddBot(true);},title:"Fill empty seats with bots",disabled:addingBots||Object.keys(players).length>=(setts.maxPlayers||6),
+    className:"aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-purple-300 hover:text-white shadow-xl text-lg disabled:opacity-40"
+  },...menuTile("🤖","Fill bots")), !isSeated && onCreateTable && canManageGame(user,'poker') && React.createElement("button", {
+    onClick:()=>{setToolsOpen(false);onCreateTable();},title:"Create a new table",className:"aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-emerald-300 shadow-xl text-lg"
+  },...menuTile("➕","New table")), isSuperAdmin && ['waiting', 'showdown'].includes(gs.phase) && eligibleCount >= 2 && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       startHand();
@@ -13373,17 +13291,16 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     },
     title: "Force-unstick a frozen table",
     className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-rose-400 bg-rose-700 text-white shadow-xl text-lg"
-  }, ...menuTile("🔧", "Unstick")), (isSuperAdmin || canManageGame(user, 'poker')) && !tableState?.tournamentId && React.createElement("button", {
+  }, ...menuTile("🔧", "Unstick")), canManageGame(user, 'poker') && !tableState?.tournamentId && !setts.spinMode && !tableState.closeRequested && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       setBuyinEdit({
-        min: String(buyInMin(setts)),
-        max: String(buyInMax(setts))
+        id:tableDocId,name:setts.name||setts.tableName||'Table',settings:{...setts,...tableState.pendingSettings?.settings}
       });
     },
-    title: "Adjust table buy-in",
+    title: "Edit table settings",
     className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-amber-300 hover:text-white shadow-xl text-lg"
-  }, ...menuTile("🪙", "Buy-in")), onManage && React.createElement("button", {
+  }, ...menuTile("🪙", "Settings")), onManage && React.createElement("button", {
     onClick: async () => {
       setToolsOpen(false);
       try {
@@ -13403,7 +13320,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     },
     title: tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave',
     className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-rose-500/40 bg-slate-900/90 text-rose-300 hover:bg-rose-800 hover:text-white shadow-xl text-lg"
-  }, ...menuTile("🚪", tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave'))))), document.body), gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
+  }, ...menuTile("🚪", tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave'))))), document.body), isSeated && gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
     onClick: async () => {
       try {
         if (srvEngine) {

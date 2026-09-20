@@ -2,6 +2,7 @@
 const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
+const {Simulate}=require('react-dom/test-utils');
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 const calls=[],writes=[],messages=[];let settle;
 const forbidden=async()=>{writes.push(1);throw new Error('Client table writes are forbidden');};
@@ -24,5 +25,22 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  await React.act(async()=>button('My PLO6').click());assert.equal(calls.length,3);assert.notEqual(calls[1].args.requestId,calls[2].args.requestId);
  await React.act(async()=>settle.resolve({tableId:'second'}));
  assert.equal(writes.length,0,'quick open never writes table state, stacks or balances from the browser');assert.deepEqual(JSON.parse(w.localStorage.getItem('pokerTpl_main')),templates,'existing templates remain intact');
+
+ // Built-ins must exist on a fresh browser, without saving any template first.
+ w.localStorage.removeItem('pokerTpl_main');let joined=0;
+ const emptyTable={docId:'empty',type:'poker',authorityVersion:2,clubId:'main',settings:{serverEngine:true,baseGameType:'NLH',blinds:.5,minBuyIn:40,maxBuyIn:200,maxPlayers:6},players:{},gameState:{phase:'waiting'}};
+ const render=role=>React.act(async()=>root.render(React.createElement(w.LobbyTest,{key:role,tablesLoaded:true,user:{uid:'spectating-manager',role,managedGames:[]},tables:[emptyTable],tournaments:[],clubSettings:{rakePct:6},tab:'poker',setTab(){},onJoinPoker(){joined++;},showToast:(m,type)=>messages.push({m,type})})));
+ await render('manager');const doc=w.document,quick=doc.querySelector('[aria-label="Quick bot tables"]');assert.ok(quick);assert.equal(quick.querySelectorAll('input').length,2,'only buy-in and rake need editing');
+ await React.act(()=>{Simulate.change(quick.querySelector('[aria-label="Quick table buy-in"]'),{target:{value:'250'}});Simulate.change(quick.querySelector('[aria-label="Quick table rake"]'),{target:{value:'4'}});});
+ for(const game of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple']){
+  const open=doc.querySelector('[aria-label="Open '+game+' with bots"]'),before=calls.length;
+  await React.act(async()=>{open.click();open.click();});assert.equal(calls.length,before+1);const c=calls.at(-1);assert.equal(c.name,'pkTableCreate');assert.equal(c.args.botCount,'full');assert.equal(c.args.settings.baseGameType,game);assert.equal(c.args.settings.minBuyIn,250);assert.equal(c.args.settings.maxBuyIn,250);assert.equal(c.args.settings.rakePercent,4);assert.equal(c.args.settings.maxPlayers,6);assert.equal(c.args.settings.blinds,.5);
+  await React.act(async()=>settle.resolve({tableId:'quick-'+game}));
+ }
+ await React.act(()=>Simulate.change(quick.querySelector('[aria-label="Quick table rake"]'),{target:{value:'21'}}));assert.ok(doc.querySelector('[aria-label="Open NLH with bots"]').disabled);
+ await React.act(()=>Simulate.change(quick.querySelector('[aria-label="Quick table rake"]'),{target:{value:'0'}}));assert.equal(doc.querySelector('[aria-label="Open NLH with bots"]').disabled,false,'zero rake is valid');
+ const fill=doc.querySelector('[aria-label="Fill table with bots"]');assert.ok(fill);const count=calls.length;await React.act(async()=>{fill.click();fill.click();});assert.equal(calls.length,count+1);assert.equal(calls.at(-1).name,'pkSeat');assert.equal(calls.at(-1).args.op,'fillbots');assert.equal(calls.at(-1).args.tableId,'empty');assert.equal(joined,0,'lobby fill never enters or seats the manager');
+ await React.act(async()=>settle.reject(Error('Insufficient club funds')));assert.equal(fill.disabled,false);assert.equal(messages.at(-1).m,'Insufficient club funds');
+ await render('player');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null);assert.equal(doc.querySelector('[aria-label="Fill table with bots"]'),null);assert.equal(writes.length,0);
  await React.act(()=>root.unmount());w.close();console.log('PASS: saved NLH/PLO templates use server creation, preserve settings, prevent double opens and recover from errors');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

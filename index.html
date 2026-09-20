@@ -1161,7 +1161,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-auth.js?v=265"></script>
     <script src="assets/js/club-ui.js?v=1"></script>
     <script src="assets/js/poker-tournament.js?v=264"></script>
-    <script src="assets/js/poker-runtime.js?v=271"></script>
+    <script src="assets/js/poker-runtime.js?v=274"></script>
 <script>
 
 const pokerCommand=async(name,data)=>{const clean=JSON.parse(JSON.stringify(data));const key=name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{const result=await window.fb.fx(name,payload);if(['pkClubMember','pkProfile'].includes(name)&&window.dispatchEvent&&window.Event)window.dispatchEvent(new window.Event('pk-club-changed'));return result;}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
@@ -10390,6 +10390,7 @@ function PokerTable({
   const [topUpBox, setTopUpBox] = useState(null);
   const [rebuyBusy, setRebuyBusy] = useState(false);
   const tableRef = useRef(null);
+  const tableSessionRef = useRef(null);
   const actedTurnRef = useRef(null);
   const leaveArmedRef = useRef(false);
   const leavingNowRef = useRef(false);
@@ -10440,16 +10441,20 @@ throw new Error('Game state is managed by the server');
 };
   useEffect(() => {
     if (!tableDocId) return;
+    const session = {};
+    tableSessionRef.current = session;
+    if (tableRef.current?.id !== tableDocId) tableRef.current = null;
     setTableError('');
     let received = false;
     const timeout = setTimeout(() => {
       if (!received) setTableError('The table is taking too long to connect. Retry to reconnect.');
     }, 12000);
     const unsub = window.fb.onSnapshot(tblRef(), { includeMetadataChanges: true }, d => {
+      if (tableSessionRef.current !== session) return;
       received = true;
       clearTimeout(timeout);
       if (d.exists()) {
-        const t = { id: d.id, ...d.data() };
+        const t = window.PokerRuntime.acceptTableUpdate(tableRef.current, {...d.data(), id: d.id});
         // The document key is the seat identity, including older malformed seats.
         // Preserve the server snapshot exactly for optimistic concurrency checks.
         tableRef.current = t;
@@ -10460,11 +10465,13 @@ throw new Error('Game state is managed by the server');
         if(!tableRef.current?.tournamentId){showToast('The table closed','info');onLeave();}else setTableError('Moving to your tournament table…');
       } else setTableError('Waiting for the table to reconnect.');
     }, error => {
+      if (tableSessionRef.current !== session) return;
       clearTimeout(timeout);
       setTableError('Connection to the table failed. Retry to reconnect.');
       console.warn('Poker subscription failed', { tableId: tableDocId, code: error.code });
     });
     return () => {
+      if (tableSessionRef.current === session) tableSessionRef.current = null;
       clearTimeout(timeout);
       unsub();
       clearTimeout(advanceRef.current);
@@ -10847,7 +10854,21 @@ throw new Error('Game state is managed by the server');
     if (!(await saveGame(g, pl))) return;
   };
   const performAction = async (actorUid, type, targetBet, autoTimeout) => {
-if(actorUid!==user.uid||autoTimeout)return;const g=tableRef.current?.gameState;if(!g)return;try{await pokerCommand('pkAct',{tableId:tableDocId,action:type,amount:targetBet,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});}catch(e){if(actedTurnRef.current===g.turnStartedAt)actedTurnRef.current=null;showToast(e.message||'Action failed','error');}finally{setActing(false);}
+    if(actorUid!==user.uid||autoTimeout)return;
+    const g=tableRef.current?.gameState,session=tableSessionRef.current;
+    if(!g)return;
+    try {
+      const result=await pokerCommand('pkAct',{tableId:tableDocId,action:type,amount:targetBet,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
+      if(tableSessionRef.current!==session||result?.tableId!==tableDocId||!result.tableUpdate)return;
+      const next=window.PokerRuntime.acceptTableUpdate(tableRef.current,{...result.tableUpdate,id:result.tableId},true);
+      if(next!==tableRef.current){tableRef.current=next;setTableState(next);}
+    } catch(e) {
+      if(tableSessionRef.current!==session)return;
+      if(actedTurnRef.current===g.turnStartedAt)actedTurnRef.current=null;
+      showToast(e.message||'Action failed','error');
+    } finally {
+      if(tableSessionRef.current===session&&(actedTurnRef.current===g.turnStartedAt||actedTurnRef.current===null))setActing(false);
+    }
 };
   const executeDeal = async (gBase, plBase, gameType) => {
     const tour = (tableRef.current || {}).tournament || null;

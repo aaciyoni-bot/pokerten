@@ -1031,6 +1031,14 @@ async function commitState(tx, S, extraTop) {
   Object.entries(S.priv).filter(([uid,cards])=>JSON.stringify(cards)!==JSON.stringify(JSON.parse(S._privBefore||'{}')[uid])).forEach(([uid, cards]) => {
     tx.set(privRef(S.id, uid), {cards});
   });
+  // Return only the public document fields actually written. Private cards
+  // and the remaining deck stay in their separate, protected documents.
+  const publicUpdate = {...top};
+  if (Object.keys(S.leftWrites || {}).length) {
+    publicUpdate.leftStacks = {...(S.raw.leftStacks || {}), ...S.leftWrites};
+    for (const uid of Object.keys(S.leftWrites)) delete publicUpdate[`leftStacks.${uid}`];
+  }
+  return publicUpdate;
 }
 
 async function runEffects(S) {
@@ -1347,7 +1355,9 @@ exports.pkAct = onCall(CALL_OPTS, async (request) => {
   return A.command(request,'action',async(tx,database,actor)=>{
     const S=await loadState(tx,id,{withCards:true}),g=S.gameState,e=request.data.expectedTurn;
     if(!e || e.handN!==g.handN || e.phase!==g.phase || e.turnStartedAt!==g.turnStartedAt || e.highestBet!==g.highestBet)throw new HttpsError('failed-precondition','This turn already changed');
-    applyAction(S,actor,action,amount,false);await commitState(tx,S);return{ok:true};
+    applyAction(S,actor,action,amount,false);
+    const tableUpdate = await commitState(tx,S);
+    return {ok:true,tableId:id,tableUpdate};
   });
 });
 

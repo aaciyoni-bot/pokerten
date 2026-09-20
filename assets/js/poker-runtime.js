@@ -58,6 +58,16 @@
   function visibleStack(value) {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
   }
+  // Callable confirmations and realtime snapshots may arrive in either order.
+  // Apply chips and turn as one server-owned update; never replay an old one.
+  function acceptTableUpdate(current, incoming, partial = false) {
+    if (!incoming || !incoming.id || (current && current.id !== incoming.id)) return current;
+    const nextSeq = incoming.gameState?.__seq, currentSeq = current?.gameState?.__seq;
+    if (partial && (!current || !incoming.players || !incoming.gameState || !Number.isSafeInteger(nextSeq))) return current;
+    if (Number.isFinite(currentSeq) && Number.isFinite(nextSeq) &&
+        (nextSeq < currentSeq || (partial && nextSeq === currentSeq))) return current;
+    return partial ? {...current, ...incoming} : incoming;
+  }
   function createWorkerClient(WorkerType) {
     let worker = null, sequence = 0;
     const pending = new Map();
@@ -117,7 +127,7 @@
     tick();
     return()=>{stopped=true;if(timer!==null)cancel(timer);};
   }
-  const api = { handDisplayOrder, createPlayerCopies, deckFour, visibleStack, createWorkerClient, spinTickTimes, startTickLoop };
+  const api = { handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PokerRuntime = api;
 })(typeof window !== 'undefined' ? window : globalThis);

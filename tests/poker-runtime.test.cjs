@@ -39,3 +39,20 @@ test('tick loop starts immediately, never overlaps slow requests and stops witho
  reject(Error('temporary network error'));await flush();assert.equal(errors,1);assert.equal(timers.size,1);
  const retry=timers.values().next().value;timers.clear();retry();assert.equal(calls,3);stop();resolve();await flush();assert.equal(timers.size,0);assert.equal(calls,3);
 });
+
+test('CALL confirmation and listener snapshots stay atomic in either arrival order',()=>{
+ const {acceptTableUpdate}=require('../assets/js/poker-runtime');
+ const old={id:'a',settings:{blinds:0.5},players:{me:{stack:99.5,bet:0.5}},gameState:{__seq:10,activeTurnUid:'me'}};
+ const patch={id:'a',players:{me:{stack:99,bet:1}},gameState:{__seq:11,activeTurnUid:'next'}};
+ const accepted=acceptTableUpdate(old,patch,true);
+ assert.equal(accepted.players.me.stack,99);assert.equal(accepted.gameState.activeTurnUid,'next');assert.deepEqual(accepted.settings,old.settings);
+ assert.equal(acceptTableUpdate(accepted,old),accepted,'old listener delivery cannot roll back confirmed chips');
+ const newer={...accepted,players:{me:{stack:90,bet:10}},gameState:{__seq:12,activeTurnUid:'third'}};
+ assert.equal(acceptTableUpdate(newer,patch,true),newer,'late response cannot overwrite a newer turn');
+ assert.equal(acceptTableUpdate(accepted,patch,true),accepted,'duplicate confirmation cannot debit twice');
+ assert.equal(acceptTableUpdate(old,{...patch,id:'b'},true),old,'old table response is ignored');
+ assert.equal(acceptTableUpdate(null,patch,true),null,'a confirmation cannot restore a left table');
+ assert.equal(acceptTableUpdate(old,{id:'a',gameState:{__seq:11}},true),old,'turn without player balances is rejected');
+ assert.equal(acceptTableUpdate(old,{...patch,gameState:{activeTurnUid:'next'}},true),old,'unversioned partial update is rejected');
+ assert.equal(old.players.me.stack,99.5,'no optimistic or in-place debit');
+});

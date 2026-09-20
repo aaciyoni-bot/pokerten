@@ -1337,7 +1337,7 @@ exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
 });
 
 // pkAct — protocol §3.2. amount is the TARGET TOTAL bet for the street.
-exports.pkAct = onCall({...CALL_OPTS,minInstances:1}, async (request) => {
+exports.pkAct = onCall(CALL_OPTS, async (request) => {
   const uid = authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
@@ -1352,7 +1352,7 @@ exports.pkAct = onCall({...CALL_OPTS,minInstances:1}, async (request) => {
 });
 
 // pkTick — protocol §3.3. Called by every viewer; cheap + idempotent.
-exports.pkTick = onCall({...CALL_OPTS,minInstances:1}, async (request) => {
+exports.pkTick = onCall(CALL_OPTS, async (request) => {
   authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
   return await tickTable(reqTableId(request));

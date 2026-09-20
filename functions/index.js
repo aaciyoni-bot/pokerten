@@ -363,10 +363,7 @@ exports.guardTables = onDocumentWrittenWithAuthContext("tables/{tableId}",
         }
       });
       // rake leaves the table when a hand is booked into history
-      const hb = (before.history || []).length;
-      const ha = (after.history || []).length;
-      let rake = 0;
-      for (let i = hb; i < ha; i++) rake += Number((after.history[i] || {}).rake) || 0;
+      const rake = require('./pokerRake').newlyBookedRake(before.history,after.history);
 
       const delta = round2((sumAfter + potChips(after.gameState)) -
           (sumBefore + potChips(before.gameState)) - broughtIn + carriedOut + rake);

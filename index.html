@@ -1098,7 +1098,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=2">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=5">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=6">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -6004,14 +6004,14 @@ function ProfileView({
     className: "flex justify-between text-[12px] font-bold"
   }, React.createElement("span", {
     className: "text-slate-300"
-  }, "🤝 Agent earnings"), React.createElement("span", {
+  }, "🤝 Recorded agent payouts (includes unclassified history)"), React.createElement("span", {
     className: "text-white font-black",
     dir: "ltr"
   }, formatMoney(user.agentProfits || 0))), [ROLES.SUPER_ADMIN, ROLES.CLUB_OWNER].includes(user.role) && React.createElement("div", {
     className: "flex justify-between text-[12px] font-bold"
   }, React.createElement("span", {
     className: "text-slate-300"
-  }, "🏛️ Club earnings (rake)"), React.createElement("span", {
+  }, "🏛️ Recorded club payouts (includes unclassified history)"), React.createElement("span", {
     className: "text-white font-black",
     dir: "ltr"
   }, formatMoney(user.clubProfits || 0))))), React.createElement("div", {
@@ -8373,6 +8373,7 @@ function BackofficeView({
 }) {
   const [usersList, setUsersList] = useState([]);
   const [treasury,setTreasury]=useState(null);
+  const [rakeTotals,setRakeTotals]=useState({club:0,agents:{}});
   const [botsList, setBotsList] = useState([]);
   const [bcText, setBcText] = useState('');
   const [bwDraft, setBwDraft] = useState(null);
@@ -8474,8 +8475,8 @@ function BackofficeView({
   const exportClubCSV = async () => {
     setExporting(true);
     try {
-      const s = await window.fb.getDocs(window.fb.collection(window.fb.db, "gameLog"));
-      let all = s.docs.map(d => d.data());
+      const report = await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,includeReports:true});
+      let all = (report.gameLog||[]).filter(e=>!String(e.uid||'').startsWith('bot_')&&e.rakeSource!=='bot'&&!(report.members||[]).some(m=>m.uid===e.uid&&m.isBot));
       if (expFrom) all = all.filter(l => l.at >= new Date(expFrom).getTime());
       if (expTo) all = all.filter(l => l.at <= new Date(expTo).getTime() + 24 * 3600 * 1000);
       all.sort((a, b) => (a.at || 0) - (b.at || 0));
@@ -8509,7 +8510,7 @@ function BackofficeView({
   }, [clubSettings.rakePct]);
   useEffect(() => {
     let stopped=false,busy=false;
-    const load=async()=>{if(busy)return;busy=true;try{const result=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,includeSecurity:true});if(stopped)return;setUsersList(result.members||[]);setTreasury(result.treasury||null);setSecAlerts((result.securityAlerts||[]).sort((a,b)=>(b.at||0)-(a.at||0)));const cycle=cycleStartIL(0),totals={};for(const e of result.agentLog||[])if(e.at>=cycle&&e.agentUid&&e.accountingVersion===2&&e.rakeSource==='human')totals[e.agentUid]=round2((totals[e.agentUid]||0)+(Number(e.amount)||0));setAgentCycle(totals);}catch(e){if(!stopped)showToast(e.message||'Could not load club members','error');}finally{busy=false;}};
+    const load=async()=>{if(busy)return;busy=true;try{const result=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,includeSecurity:true});if(stopped)return;setUsersList(result.members||[]);setTreasury(result.treasury||null);setSecAlerts((result.securityAlerts||[]).sort((a,b)=>(b.at||0)-(a.at||0)));const cycle=cycleStartIL(0),totals={},verified={club:0,agents:{}};for(const e of result.agentLog||[]){if(e.accountingVersion!==2||e.rakeSource!=='human')continue;const amount=Number(e.amount)||0;if(e.kind==='club')verified.club=round2(verified.club+amount);else if(e.agentUid){verified.agents[e.agentUid]=round2((verified.agents[e.agentUid]||0)+amount);if(e.at>=cycle)totals[e.agentUid]=round2((totals[e.agentUid]||0)+amount);}}setAgentCycle(totals);setRakeTotals(verified);}catch(e){if(!stopped)showToast(e.message||'Could not load club members','error');}finally{busy=false;}};
     load();window.addEventListener('pk-club-changed',load);const interval=setInterval(load,15000);return()=>{stopped=true;clearInterval(interval);window.removeEventListener('pk-club-changed',load);};
   }, [user.uid,user.role]);
   const canAdmin = canManageClub(user);
@@ -8752,8 +8753,8 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     icon: 'fa-users',
     color: 'text-blue-400'
   }, {
-    label: 'Club earnings (Rake)',
-    value: formatMoney(canAdmin ? treasury?.clubProfits || 0 : user.clubProfits || 0),
+    label: 'Club rake (verified humans)',
+    value: formatMoney(rakeTotals.club),
     icon: 'fa-building-columns',
     color: 'text-amber-400'
   }, {
@@ -9328,10 +9329,10 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       className: "bg-slate-950/60 rounded-xl py-1.5"
     }, React.createElement("div", {
       className: "text-[9px] text-slate-500 font-bold"
-    }, "Total earnings"), React.createElement("div", {
+    }, "Verified human earnings"), React.createElement("div", {
       className: "text-emerald-400 font-black text-sm",
       dir: "ltr"
-    }, formatMoney(a.agentProfits || 0)))), React.createElement("button", {
+    }, formatMoney(rakeTotals.agents[a.uid] || 0)))), React.createElement("button", {
       onClick: () => copyText(inviteLink, 'Invite link copied - send it to Players!'),
       className: "w-full bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-500 text-white py-2 rounded-xl font-black text-xs shadow-md"
     }, "🔗 Copy invite link (auto-assign)"), (isAgentOnly || canAdmin) && linked.length > 0 && React.createElement("div", {
@@ -12775,8 +12776,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, React.createElement("i", {
     className: "fa-solid fa-comment-dots"
   })), React.createElement("div", {
-    className: "flex-1 text-center text-slate-500 font-bold text-xs truncate"
-  }, tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn ? React.createElement("button", {
+    role:'status',
+    className: "flex-1 text-center text-slate-400 font-bold text-xs truncate"
+  }, acting ? 'Sending move…' : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn && !acting ? React.createElement("button", {
     onClick: () => setPreCF(v => !v),
     // reads as a real pressable button: raised gradient, visible border
     className: `shrink-0 px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`

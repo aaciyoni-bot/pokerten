@@ -1098,7 +1098,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=6">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=276">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -5615,7 +5615,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
       const members = clubMemberCount(c.id);
       return React.createElement("div", {
         key: c.id,
-        className: "cl-card"
+        className: "cl-card" + (d.kind === 'mine' ? ' cl-card-member' : '') + (ix === slide ? ' cl-card-active' : '')
       }, React.createElement("div", {
         className: "cl-art"
       }, c.logo ? React.createElement("img", {
@@ -11693,19 +11693,17 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     if (myIdx >= 0) displayList = [...list.slice(myIdx), ...list.slice(0, myIdx)];
   }
   const N = Math.max(displayList.length, 2);
+  // Avatar centres measured from the selected portrait ClubGG reference.
+  // Capacity, not occupancy, determines the ring so joining never moves others.
   const SEAT_LAYOUTS = {
-    // GG-style ring: avatar centers sit ON the rail line of the full-capsule
-    // SVG felt (top 18% / bottom 96.3% of the container). Hero bottom-center.
-    // Rings are per TABLE CAPACITY (physical seats), not per seated count —
-    // vacant slots render as small "sit here" discs, exactly like ClubGG.
-    2: [[50, 74], [50, 15]],
-    3: [[50, 74], [13, 45], [87, 45]],
-    4: [[50, 74], [13, 45], [50, 15], [87, 45]],
-    5: [[50, 74], [13, 63], [30, 16], [70, 16], [87, 63]],
-    6: [[50, 74], [12, 68], [12, 27], [50, 12], [88, 27], [88, 68]],
-    7: [[50, 74], [14, 67], [13, 43], [30, 16], [70, 16], [87, 43], [86, 67]],
-    8: [[50, 74], [14, 67], [13, 43], [14, 23], [50, 15], [86, 23], [87, 43], [86, 67]],
-    9: [[50, 74], [15, 69], [13, 48], [13, 26], [33, 15], [67, 15], [87, 26], [87, 48], [85, 69]]
+    2: [[16,79],[75,18]],
+    3: [[16,79],[25,18],[90,59]],
+    4: [[16,79],[25,18],[75,18],[90,59]],
+    5: [[16,79],[10,45],[25,18],[75,18],[90,59]],
+    6: [[16,79],[10,45],[25,18],[75,18],[90,45],[84,79]],
+    7: [[16,79],[10,59],[10,32],[25,18],[75,18],[90,32],[90,59]],
+    8: [[16,79],[10,59],[10,32],[25,18],[75,18],[90,32],[90,59],[84,79]],
+    9: [[50,84],[16,76],[10,54],[10,32],[25,18],[75,18],[90,32],[90,54],[84,76]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -11748,7 +11746,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     return m;
   })();
   const slotOf = i => slotMap[i] || 0;
-  const seatXY = i => slotXY(slotOf(i));
+  const seatXY = i => isSeated && displayList[i]?.uid === user.uid ? [50,78] : slotXY(slotOf(i));
   const seatPos = i => {
     const [x, y] = seatXY(i);
     return {
@@ -11769,8 +11767,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       L = sx + (50 - sx) * inward;
       T = sy < 60 ? 61 : 66;
     } else {
-      L = 50;
-      T = 68;
+      L = sx + (50 - sx) * 0.45;
+      T = 61;
     }
     return {
       left: `${round2(L)}%`,
@@ -11859,7 +11857,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
   const tableLogo = clubSettings?.logo || window.__club?.logo;
   return React.createElement("div", {
-    className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative",
+    className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (isSeated ? " is-seated" : " is-spectating"),
     dir: "ltr",
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
@@ -11894,9 +11892,17 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "glass-panel rounded-3xl p-5 w-full max-w-sm animate-pop-in border border-white/10"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white mb-1"
-  }, "Cards & preferences"), React.createElement("p", {
+  }, "Table, cards & preferences"), React.createElement("p", {
     className: "text-[11px] text-slate-400 font-bold mb-3"
-  }, "Only YOU see this — every player picks their own look."), React.createElement("label", {
+  }, "Only YOU see this — every player picks their own look."),
+  React.createElement('fieldset',{className:'poker-felt-choices'},
+    React.createElement('legend',null,'Table color · matching LED'),
+    React.createElement('div',null,[['auto','Auto','#777'],['green','Green','#24681b'],['blue','Blue','#235882'],['red','Red','#862626'],['purple','Purple','#673d8b'],['gold','Gold','#997b23'],['slate','Slate','#485260']].map(([key,label,color])=>React.createElement('button',{
+      key,type:'button','aria-label':'Table color: '+label,'aria-pressed':(skin.felt||'auto')===key,
+      onClick:()=>saveSkin({...skin,felt:key==='auto'?null:key}),style:{'--swatch':color}
+    },React.createElement('span',{'aria-hidden':true}),label))),
+    React.createElement('small',null,'The felt and LED change together. Saved on this device.')),
+  React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer bg-slate-900/70 border border-gold-400/25 rounded-xl p-3 mb-4"
   }, React.createElement("input", {
     type: "checkbox",
@@ -12133,6 +12139,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         '--feltA': c[0],
         '--feltB': c[1],
         '--feltC': c[2],
+        '--table-filter': ({green:'none',blue:'hue-rotate(105deg) saturate(.85)',red:'hue-rotate(-115deg) saturate(.9)',purple:'hue-rotate(165deg) saturate(.8)',gold:'hue-rotate(-65deg) saturate(.85)',slate:'saturate(.12) hue-rotate(95deg)'})[skin.felt || (['NLH','Pineapple'].includes(gs.currentGameType || setts.baseGameType) ? (gs.currentGameType || setts.baseGameType)==='Pineapple'?'gold':'green' : 'blue')] || 'none',
         // rotate the baked GG image toward the skin color (base H110/S.27/L.33)
         '--fHue': `${Math.round(hh - 110)}deg`,
         '--fSat': Math.max(0.15, Math.min(3, ss / 0.27)).toFixed(2),
@@ -12144,7 +12151,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-wrap approved-poker-table"
   }, React.createElement("img", {
     className: "approved-poker-material",
-    src: "assets/design/poker-table-portrait.webp",
+    src: "assets/design/poker-gg-led-v276.webp",
     alt: "",
     draggable: false
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
@@ -12238,7 +12245,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "poker-table-caption",
     'aria-label': 'Table branding'
   }, tableLogo ? React.createElement('img', {className:'poker-felt-logo',src:tableLogo,alt:clubSettings?.name || 'Club logo'}) : React.createElement('strong', {className:'poker-felt-wordmark'}, 'POKERTEN'),
-    React.createElement('span', {className:'poker-felt-variant'}, tableVariant))), gs.dealerUid && (() => {
+    React.createElement('span', {className:'poker-felt-variant'}, tableVariant + ' ' + tableStakes))), gs.dealerUid && (() => {
     const di = displayList.findIndex(pp => pp.uid === gs.dealerUid);
     if (di < 0) return null;
     const [sxD, syD] = seatXY(di);
@@ -12284,7 +12291,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
           setSpectate(false);
         },
         title: "Sit here",
-        className: "absolute z-20",
+        className: "poker-empty-seat absolute z-20",
+        'aria-label': 'Take seat ' + (realSeat + 1),
         style: {
           left: `${ex}%`,
           top: `${ey}%`,
@@ -12292,7 +12300,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         }
       }, React.createElement("div", {
         className: `w-10 h-10 rounded-full flex items-center justify-center text-base font-black shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)] active:scale-90 transition-transform ${pickSeat === realSeat ? 'bg-amber-500/85 border-2 border-amber-200 text-slate-900' : 'bg-slate-950/60 border border-gold-400/30 text-gold-400/50'}`
-      }, "+")));
+      }, React.createElement("i",{className:"fa-solid fa-chevron-down",'aria-hidden':true}),React.createElement("span",null,"Take Seat"))));
     }
     return out;
   })(), displayList.map((p, i) => {
@@ -12302,7 +12310,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const seatXv = parseFloat(seatPos(i).left);
     const seatYv = parseFloat(seatPos(i).top);
     // 2.5D depth cue per spec: near pods 1.0, far pods ~30% smaller (1.30:1)
-    const podScale = isMe ? 1 : Math.max(0.82, Math.min(1, 1 - 0.18 * (74 - seatYv) / 59));
+    const podScale = isMe ? 1 : Math.max(0.86, Math.min(1, 0.86 + 0.14 * (seatYv - 18) / 61));
     const farPod = !isMe && seatYv <= 22;
     const fanBelow = !isMe && (topSeat || seatXv <= 20 || seatXv >= 80);
     const inX = -(seatXv - 50) / 50;

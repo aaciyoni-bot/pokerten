@@ -117,7 +117,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'90');
    assert.equal(doc.querySelectorAll('.poker-bet').length,0);
    assert.equal(doc.querySelectorAll('.poker-bet-collection').length,0);
-   assert.ok(doc.querySelector('.poker-total-pot .casino-chip'),'central chips are present immediately');
+   assert.ok(doc.querySelector('.poker-collected-pot .casino-chip'),'central chips are present immediately');
    // An all-in zero is genuine and must not count down after the next turn.
    current.players.me.stack=0;current.players.me.bet=90;current.players.me.actionText='All-in';
    current.gameState.highestBet=90;current.gameState.turnStartedAt++;

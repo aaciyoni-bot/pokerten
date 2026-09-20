@@ -124,5 +124,38 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  const call=[...dock.querySelectorAll('button')].find(b=>b.textContent.includes('CALL'));assert.ok(call);current.players.me.stack=150;
  await React.act(async()=>call.click());assert.equal(writes.length,0);assert.equal(current.players.me.stack,150);const action=fxCalls.findLast(c=>c.name==='pkAct');assert.ok(action);assert.ok(action.args.requestId.length>=16);assert.equal(action.args.expectedTurn.turnStartedAt,saved.gameState.turnStartedAt);assert.equal(action.args.expectedTurn.highestBet,10);
  await React.act(async()=>tableFail({code:'permission-denied'}));assert.ok(doc.querySelector('.poker-connection-status'));assert.ok(doc.querySelector('.poker-seat-hero'));assert.equal(doc.querySelector('.poker-seat-hero .poker-player-info').textContent.includes('100'),true);
- await React.act(async()=>root.unmount());w.close();console.log('PASS: readable cards and winners, fixed action dock, chip/pot/turn synchronization before animation frames, protected top-up and recoverable snapshot failure');
+ // Exact reported case: SB completes 0.50 to 1.00. The callable response
+ // arrives before the realtime listener. No animation or second network
+ // delivery should be needed to show the accepted chips and next turn.
+ current=structuredClone(saved);current.settings.serverEngine=true;
+ current.gameState={...current.gameState,__seq:20,handN:20,highestBet:1,minRaise:1,turnStartedAt:Date.now()+100};
+ current.players.me={...current.players.me,stack:99.5,bet:0.5,cards:[],cardCount:6};
+ current.players.other={...current.players.other,stack:99,bet:1};
+ await React.act(async()=>tableNext(snapshot()));
+ let confirmCall;const response=new Promise(resolve=>{confirmCall=resolve;});
+ w.fb.fx=(name,args)=>name==='pkAct'?response:oldFx(name,args);
+ const updated=structuredClone(current);updated.gameState.__seq=21;updated.gameState.activeTurnUid='other';updated.gameState.turnStartedAt++;
+ updated.players.me.stack=99;updated.players.me.bet=1;updated.players.me.actionText='Call';
+ await React.act(()=>doc.querySelector('.btn-call').click());
+ assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99.5','no unconfirmed debit');
+ assert.match(doc.querySelector('.poker-action-meta [role=status]').textContent,/Sending move/);
+ w.requestAnimationFrame=()=>0;
+ await React.act(async()=>confirmCall({ok:true,tableId:'test-table',tableUpdate:{players:updated.players,gameState:updated.gameState}}));
+ assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','confirmation updates the stack without waiting for the listener');
+ assert.equal(doc.querySelector('.poker-pot-amount').textContent,'2');
+ assert.equal(doc.querySelector('.poker-bet[data-player-uid="me"]').textContent.includes('0.5'),false);
+ assert.ok(doc.querySelector('.poker-seat:not(.poker-seat-hero) .active-glow'));
+ await React.act(async()=>tableNext(snapshot()));
+ assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','late pre-CALL snapshot cannot restore the old stack');
+ assert.ok(doc.querySelector('.poker-seat:not(.poker-seat-hero) .active-glow'),'late snapshot cannot restore the old turn');
+ current=updated;await React.act(async()=>tableNext(snapshot()));
+ assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','listener echo does not debit twice');
+ current.gameState={...current.gameState,__seq:22,activeTurnUid:'me',highestBet:2,turnStartedAt:current.gameState.turnStartedAt+1};
+ await React.act(async()=>tableNext(snapshot()));
+ w.fb.fx=(name,args)=>name==='pkAct'?Promise.reject(Error('Action rejected for test')):oldFx(name,args);
+ await React.act(async()=>doc.querySelector('.btn-call').click());
+ assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','rejected action cannot debit the stack');
+ assert.ok(doc.querySelector('.btn-call')&&!doc.querySelector('.btn-call').disabled,'rejected action releases the button for retry');
+ w.requestAnimationFrame=originalRaf;
+ await React.act(async()=>root.unmount());w.close();console.log('PASS: cards, controls, authoritative CALL confirmation, fractional chips, delayed listener and snapshot recovery');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});

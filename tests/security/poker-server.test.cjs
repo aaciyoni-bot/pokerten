@@ -110,7 +110,7 @@ test('a tournament can finish at three configured winners only after every hand 
  await Tours.tickTournament(id);assert.equal(await bank(owner),b);
 });
 test('cash entry rejects forged identity, grants, negative money and unaffordable purchases; replay charges once',async()=>{
- const before=await bank(uid),r=await call('pkTableCreate',owner,{clubId:club,settings:{baseGameType:'NLH',minBuyIn:40,maxBuyIn:200,blinds:1}}),tableId=r.tableId;
+ const before=await bank(uid),r=await call('pkTableCreate',owner,{clubId:club,settings:{baseGameType:'NLH',minBuyIn:40,maxBuyIn:200,blinds:0.5}}),tableId=r.tableId;
  await assert.rejects(call('pkTableCreate',uid,{clubId:club,settings:{}}),e=>e.code==='permission-denied');
  for(const amount of [-10,0,10000,NaN,Infinity])await assert.rejects(call('pkSeat',uid,{tableId,op:'join',amount}));
  await assert.rejects(call('pkSeat','stranger',{tableId,op:'join',amount:100,uid:owner,role:'club_owner'}));
@@ -121,8 +121,10 @@ test('cash entry rejects forged identity, grants, negative money and unaffordabl
  const t=await get('tables/'+tableId),g=t.gameState,actor=g.activeTurnUid;assert.ok(actor);assert.equal(t.players[actor].cards.length,0);assert.equal(t.gameState.deck,undefined);
  const turn={handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet};
  const action=req(actor,{tableId,action:'call',expectedTurn:turn});const stack=t.players[actor].stack,toCall=Math.min(stack,g.highestBet-t.players[actor].bet);
- await Engine.pkAct.run(action);const called=await get('tables/'+tableId);assert.equal(called.players[actor].stack,stack-toCall);assert.notEqual(called.gameState.activeTurnUid,actor);
- assert.equal(Core.chips([called]),200);await Engine.pkAct.run(action);assert.deepEqual(await get('tables/'+tableId),called);
+ const confirmation=await Engine.pkAct.run(action);const called=await get('tables/'+tableId);assert.equal(toCall,0.5);assert.equal(called.players[actor].stack,stack-toCall);assert.notEqual(called.gameState.activeTurnUid,actor);
+ assert.equal(confirmation.tableId,tableId);assert.deepEqual(confirmation.tableUpdate.players,called.players);assert.deepEqual(confirmation.tableUpdate.gameState,called.gameState);
+ assert.equal(confirmation.tableUpdate.gameState.__seq,g.__seq+1);assert.equal(confirmation.tableUpdate.gameState.deck,undefined);assert.equal(confirmation.tableUpdate.priv,undefined);assert.ok(Object.values(confirmation.tableUpdate.players).every(p=>p.cards.length===0),'confirmation must not expose private hands');
+ assert.equal(Core.chips([called]),200);assert.deepEqual(await Engine.pkAct.run(action),confirmation,'request replay returns the same committed confirmation');assert.deepEqual(await get('tables/'+tableId),called);
  await assert.rejects(call('pkAct',actor,{tableId,action:'call',expectedTurn:turn}),e=>e.code==='failed-precondition');
  await call('pkSeat',uid,{tableId,op:'topup',amount:25});let topped=await get('tables/'+tableId);assert.equal(topped.players[uid].pendingTopUp,25);assert.equal(await bank(uid),before-125);
  await call('pkLeave',uid,{tableId});const leaving=await get('tables/'+tableId);assert.ok(leaving.players[uid]);assert.ok(leaving.players[uid].leaveReq);

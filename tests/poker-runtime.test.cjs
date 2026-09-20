@@ -56,3 +56,26 @@ test('CALL confirmation and listener snapshots stay atomic in either arrival ord
  assert.equal(acceptTableUpdate(old,{...patch,gameState:{activeTurnUid:'next'}},true),old,'unversioned partial update is rejected');
  assert.equal(old.players.me.stack,99.5,'no optimistic or in-place debit');
 });
+
+test('read subscriptions recover after errors and tab resume without leaking old listeners',()=>{
+ const {watchSnapshot}=require('../assets/js/poker-runtime');
+ const timers=new Map(), handlers=new Map(), subs=[];let id=0,received=[],errors=[];
+ const page={visibilityState:'visible',addEventListener:(n,f)=>handlers.set(n,f),removeEventListener:n=>handlers.delete(n)};
+ const opts={document:page,events:page,setTimeout:(f,ms)=>{timers.set(++id,{f,ms});return id;},clearTimeout:i=>timers.delete(i)};
+ const stop=watchSnapshot((next,fail)=>{const sub={next,fail,closed:false};subs.push(sub);return()=>{sub.closed=true;};},v=>received.push(v),e=>errors.push(e),opts);
+ const run=()=>{const [key,job]=timers.entries().next().value;timers.delete(key);job.f();};
+ subs[0].next({metadata:{fromCache:false},value:1});
+ subs[0].fail({code:'unavailable'});assert.equal(timers.values().next().value.ms,1000);run();
+ assert.equal(subs[0].closed,true);subs[0].next({value:'stale'});assert.equal(received.length,1);
+ subs[1].fail({code:'unavailable'});assert.equal(timers.values().next().value.ms,2000);
+ page.visibilityState='hidden';handlers.get('visibilitychange')();assert.equal(subs.length,2);
+ page.visibilityState='visible';handlers.get('visibilitychange')();handlers.get('online')();assert.equal(timers.size,1);run();assert.equal(subs.length,3);assert.equal(subs[1].closed,true);
+ subs[2].next({metadata:{fromCache:false},value:2});subs[2].fail({code:'unavailable'});assert.equal(timers.values().next().value.ms,1000,'successful server update resets backoff');
+ stop();assert.equal(timers.size,0);assert.equal(handlers.size,0);assert.equal(subs[2].closed,true);subs[2].next({value:'after stop'});assert.equal(received.length,2);assert.equal(errors.length,3);
+});
+
+test('permission errors do not create an automatic subscription retry storm',()=>{
+ const {watchSnapshot}=require('../assets/js/poker-runtime');let fail,scheduled=0,online;
+ const stop=watchSnapshot((next,error)=>{fail=error;return()=>{};},()=>{},()=>{}, {document:{visibilityState:'visible'},events:{addEventListener:(n,f)=>online=f,removeEventListener:()=>{}},setTimeout:()=>scheduled++});
+ fail({code:'firestore/permission-denied'});online();assert.equal(scheduled,0);stop();
+});

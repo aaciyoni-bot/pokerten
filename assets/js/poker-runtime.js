@@ -127,7 +127,49 @@
     tick();
     return()=>{stopped=true;if(timer!==null)cancel(timer);};
   }
-  const api = { handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop };
+  // Firestore error callbacks terminate that listener. Re-open transient
+  // failures, and renew read subscriptions after a sleeping tab comes back.
+  // This deliberately never retries a game action or financial command.
+  function watchSnapshot(subscribe, next, onError, options = {}) {
+    const schedule = options.setTimeout || setTimeout, cancel = options.clearTimeout || clearTimeout;
+    const page = options.document || root.document, events = options.events || root;
+    let stopped = false, generation = 0, unsubscribe = null, timer = null, failures = 0, terminal = false;
+    const clear = () => { if (timer !== null) cancel(timer); timer = null; };
+    const connect = () => {
+      if (stopped) return;
+      clear();
+      const current = ++generation;
+      if (unsubscribe) unsubscribe();
+      unsubscribe = null;
+      const fail = error => {
+        if (stopped || current !== generation) return;
+        terminal = /(?:^|\/)(permission-denied|unauthenticated|invalid-argument)$/.test(error?.code || '');
+        onError?.(error);
+        if (!terminal) { clear(); timer = schedule(connect, Math.min(15000, 1000 * 2 ** Math.min(failures++, 4))); }
+      };
+      try {
+        unsubscribe = subscribe(value => {
+          if (stopped || current !== generation) return;
+          if (!value.metadata?.fromCache) failures = 0;
+          next(value);
+        }, fail);
+      } catch (error) { fail(error); }
+    };
+    const resume = () => {
+      if (stopped || terminal || page?.visibilityState === 'hidden') return;
+      // Coalesce online + visibility events from the same wake-up.
+      clear(); timer = schedule(connect, 100);
+    };
+    page?.addEventListener?.('visibilitychange', resume);
+    events?.addEventListener?.('online', resume);
+    connect();
+    return () => {
+      stopped = true; generation++; clear(); unsubscribe?.();
+      page?.removeEventListener?.('visibilitychange', resume);
+      events?.removeEventListener?.('online', resume);
+    };
+  }
+  const api = { handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PokerRuntime = api;
 })(typeof window !== 'undefined' ? window : globalThis);

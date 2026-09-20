@@ -124,6 +124,8 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  const call=[...dock.querySelectorAll('button')].find(b=>b.textContent.includes('CALL'));assert.ok(call);current.players.me.stack=150;
  await React.act(async()=>call.click());assert.equal(writes.length,0);assert.equal(current.players.me.stack,150);const action=fxCalls.findLast(c=>c.name==='pkAct');assert.ok(action);assert.ok(action.args.requestId.length>=16);assert.equal(action.args.expectedTurn.turnStartedAt,saved.gameState.turnStartedAt);assert.equal(action.args.expectedTurn.highestBet,10);
  await React.act(async()=>tableFail({code:'permission-denied'}));assert.ok(doc.querySelector('.poker-connection-status'));assert.ok(doc.querySelector('.poker-seat-hero'));assert.equal(doc.querySelector('.poker-seat-hero .poker-player-info').textContent.includes('100'),true);
+ await React.act(async()=>doc.querySelector('.poker-connection-status button').click());
+ assert.equal(doc.querySelector('.poker-connection-status'),null);
  // Exact reported case: SB completes 0.50 to 1.00. The callable response
  // arrives before the realtime listener. No animation or second network
  // delivery should be needed to show the accepted chips and next turn.
@@ -139,6 +141,10 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  await React.act(()=>doc.querySelector('.btn-call').click());
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99.5','no unconfirmed debit');
  assert.match(doc.querySelector('.poker-action-meta [role=status]').textContent,/Sending move/);
+ const oldListener=tableNext;
+ await React.act(async()=>{w.dispatchEvent(new w.Event('online'));w.dispatchEvent(new w.Event('online'));await new Promise(resolve=>setTimeout(resolve,150));});
+ assert.notEqual(tableNext,oldListener,'returning online renews the read listener');
+ assert.match(doc.querySelector('.poker-action-meta [role=status]').textContent,/Sending move/,'reconnecting does not drop an in-flight action');
  w.requestAnimationFrame=()=>0;
  await React.act(async()=>confirmCall({ok:true,tableId:'test-table',tableUpdate:{players:updated.players,gameState:updated.gameState}}));
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','confirmation updates the stack without waiting for the listener');
@@ -148,6 +154,8 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  await React.act(async()=>tableNext(snapshot()));
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','late pre-CALL snapshot cannot restore the old stack');
  assert.ok(doc.querySelector('.poker-seat:not(.poker-seat-hero) .active-glow'),'late snapshot cannot restore the old turn');
+ await React.act(async()=>oldListener(snapshot()));
+ assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','closed subscription cannot overwrite accepted state');
  current=updated;await React.act(async()=>tableNext(snapshot()));
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','listener echo does not debit twice');
  current.gameState={...current.gameState,__seq:22,activeTurnUid:'me',highestBet:2,turnStartedAt:current.gameState.turnStartedAt+1};

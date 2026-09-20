@@ -16,7 +16,19 @@ let left=0,fullscreenRequests=0;
 w.document.documentElement.requestFullscreen=async options=>{assert.equal(options.navigationUI,'hide');fullscreenRequests++;w.document.fullscreenElement=w.document.documentElement;w.document.dispatchEvent(new w.Event('fullscreenchange'));};
 w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document.dispatchEvent(new w.Event('fullscreenchange'));};
 (async()=>{await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test-table',user:{uid:'me',role:'player',balance:500,playerId:'P123456789'},clubSettings:{name:'My Club',logo:'data:image/png;base64,test'},onLeave(){left++;},showToast:m=>messages.push(m)})));
- const doc=w.document,dock=doc.querySelector('.poker-action-dock');assert.ok(dock);assert.equal(dock.parentElement.classList.contains('poker-room'),true);assert.equal(dock.closest('.pt-stage'),null);
+ const doc=w.document;
+ await React.act(()=>doc.querySelector('[title="Table menu"]').click());
+ await React.act(()=>doc.querySelector('[title="My table look — only you see it"]').click());
+ for(const color of ['Green','Blue','Red','Purple','Gold','Slate']){
+  await React.act(()=>doc.querySelector('[aria-label="Table color: '+color+'"]').click());
+  assert.equal(JSON.parse(w.localStorage.getItem('pkSkin')).felt,color.toLowerCase());
+  assert.equal(doc.querySelector('[aria-label="Table color: '+color+'"]').getAttribute('aria-pressed'),'true');
+  assert.ok(doc.querySelector('.poker-table').style.getPropertyValue('--table-filter'));
+  assert.equal(doc.querySelector('.approved-poker-material').getAttribute('src'),'assets/design/poker-gg-led-v276.webp','felt and LED use a single recolored material');
+ }
+ await React.act(()=>doc.querySelector('[aria-label="Table color: Auto"]').click());
+ await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Done').click());
+ const dock=doc.querySelector('.poker-action-dock');assert.ok(dock);assert.equal(dock.parentElement.classList.contains('poker-room'),true);assert.equal(dock.closest('.pt-stage'),null);
  const heading=doc.querySelector('.poker-table-heading');assert.equal(heading.parentElement.classList.contains('poker-room'),true);assert.match(heading.textContent,/Blinds 5\/10/);
  assert.ok(doc.querySelector('.poker-community .poker-felt-logo'));assert.equal(doc.querySelector('.poker-felt-logo').alt,'My Club');
  const details=doc.querySelector('[aria-label="Table details"]');await React.act(()=>details.click());let dialog=doc.querySelector('[role="dialog"]');assert.match(dialog.textContent,/My Club/);assert.match(dialog.textContent,/test-table/);assert.equal(doc.activeElement,dialog.querySelector('button'));

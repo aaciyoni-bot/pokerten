@@ -19,5 +19,25 @@ const setInput=async value=>React.act(async()=>{const el=w.document.getElementBy
  assert.equal(entered.length,2,'a valid code cannot bypass membership approval');assert.ok([...w.document.querySelectorAll('button')].some(b=>b.textContent==='Request to join'));
  await React.act(async()=>root.render(React.createElement(w.ClubsTest,{...props,myMems:[{clubId:'main',status:'pending'}]})));await setInput('');await setInput(code);
  assert.equal(entered.length,2);assert.match(w.document.body.textContent,/pending approval/);
- await React.act(()=>root.unmount());w.close();console.log('PASS: typed and pasted club codes, immediate approved entry, unknown code and membership approval protection');
+ // Memberships and clubs arrive independently. Do not mount Create as the
+ // only carousel snap target while the user's club list is still loading.
+ await React.act(async()=>root.render(React.createElement(w.ClubsTest,{...props,directoryReady:false})));
+ assert.equal(w.document.querySelector('.cl-deck'),null);
+ assert.match(w.document.querySelector('[role="status"]').textContent,/Loading your clubs/);
+ let scrolled=0;w.HTMLElement.prototype.scrollTo=function(options){assert.equal(options.left,0);scrolled++;};
+ await React.act(async()=>root.render(React.createElement(w.ClubsTest,{...props,directoryReady:true})));
+ assert.equal(scrolled,1);assert.equal(w.document.querySelector('.cl-deck .cl-name').textContent,'PokerTen');
+ // Returning balances must not yank the user's manually chosen card back.
+ await React.act(async()=>root.render(React.createElement(w.ClubsTest,{...props,myMems:[{clubId:'main',status:'approved',balance:20}]})));
+ assert.equal(scrolled,1);
+ await React.act(async()=>root.render(null));
+ w.localStorage.setItem('pkLastClub_player','recent');
+ const allClubs=[{id:'oversight',name:'Oversight',ownerUid:'someone'},club,{id:'recent',name:'Recent club',ownerUid:'someone'},{id:'owned',name:'Owned club',ownerUid:'player'}];
+ const memberships=[{clubId:'main',status:'approved'},{clubId:'recent',status:'approved'},{clubId:'owned',status:'approved'}];
+ await React.act(async()=>root.render(React.createElement(w.ClubsTest,{...props,clubs:allClubs,myMems:memberships})));
+ assert.deepEqual([...w.document.querySelectorAll('.cl-deck .cl-name')].map(e=>e.textContent),['Recent club','Owned club','PokerTen']);
+ assert.ok(w.document.querySelector('.cl-deck').lastElementChild.classList.contains('cl-card-create'));
+ await React.act(async()=>root.render(React.createElement(w.ClubsTest,{...props,clubs:allClubs,myMems:memberships.filter(m=>m.clubId!=='recent')})));
+ assert.equal(w.document.querySelector('.cl-deck .cl-name').textContent,'Owned club','a remembered club cannot restore removed membership');
+ await React.act(()=>root.unmount());w.close();console.log('PASS: club codes, membership protection, membership-first loading, remembered club order and stable carousel');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

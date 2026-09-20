@@ -3849,6 +3849,8 @@ function App() {
   const [lobbyTab, setLobbyTab] = useState('poker');
   const [clubsList, setClubsList] = useState([]);
   const [myMems, setMyMems] = useState([]);
+  const [clubsReadyUid, setClubsReadyUid] = useState('');
+  const [membershipsReadyUid, setMembershipsReadyUid] = useState('');
   const [activeClub, setActiveClubState] = useState(null);
   const [activeMem, setActiveMem] = useState(null);
   const viewRef = useRef(currentView);
@@ -4009,6 +4011,7 @@ function App() {
         id: d.id,
         ...d.data()
       })));
+      if (!snap.metadata?.fromCache || snap.docs.length) setClubsReadyUid(dbUser.uid);
     });
     const memQ = window.fb.query(window.fb.collection(window.fb.db, "memberships"), window.fb.where("uid", "==", dbUser.uid));
     const unsubM = window.fb.onSnapshot(memQ, snap => {
@@ -4016,6 +4019,7 @@ function App() {
         id: d.id,
         ...d.data()
       })));
+      if (!snap.metadata?.fromCache || snap.docs.length) setMembershipsReadyUid(dbUser.uid);
     });
     return () => {
       unsubC();
@@ -4111,6 +4115,7 @@ function App() {
         return;
       }
       setActiveClub(club);
+      try { localStorage.setItem('pkLastClub_' + dbUser.uid, club.id); } catch (_) {}
       setActiveClubState(club);
       changeView('lobby');
     } catch (e) {
@@ -4292,6 +4297,7 @@ function App() {
     user: dbUser,
     clubs: clubsList,
     myMems: myMems,
+    directoryReady: clubsReadyUid === dbUser.uid && membershipsReadyUid === dbUser.uid,
     onEnter: enterClub,
     showToast: showToast
   }), currentView === 'pending' && React.createElement(PendingView, {
@@ -5149,6 +5155,7 @@ function ClubsView({
   user,
   clubs,
   myMems,
+  directoryReady = true,
   onEnter,
   showToast
 }) {
@@ -5157,6 +5164,16 @@ function ClubsView({
   const [createOpen, setCreateOpen] = useState(false);
   const [slide, setSlide] = useState(0);
   const deckRef = useRef(null);
+  const [lastClubId] = useState(() => {
+    try { return localStorage.getItem('pkLastClub_' + user.uid) || ''; } catch (_) { return ''; }
+  });
+  React.useLayoutEffect(() => {
+    if (!directoryReady || !deckRef.current) return;
+    // The Create card used to be the sole snap target before memberships
+    // arrived. Mount the complete deck, then start at the preferred club.
+    deckRef.current.scrollTo?.({left: 0, behavior: 'auto'});
+    setSlide(0);
+  }, [directoryReady, user.uid]);
   // member counts for the card stat pills (one query, cached per club)
   const [memCounts, setMemCounts] = useState({});
   useEffect(() => {
@@ -5221,6 +5238,12 @@ function ClubsView({
   const myClubs = clubs.filter(c => {
     const m = memOf(c.id);
     return m && m.status === 'approved' || god;
+  }).sort((a, b) => {
+    const priority = c => {
+      const joined = memOf(c.id)?.status === 'approved' || c.ownerUid === user.uid;
+      return joined ? (c.id === lastClubId ? 0 : c.ownerUid === user.uid ? 1 : 2) : 3;
+    };
+    return priority(a) - priority(b);
   });
   const pendingClubs = clubs.filter(c => {
     const m = memOf(c.id);
@@ -5548,7 +5571,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     }, "Request to join")
   })), foundClub && memOf(foundClub.id) && ['pending', 'approved'].includes(memOf(foundClub.id).status) && React.createElement("div", {
     className: "text-center text-slate-400 font-bold text-sm py-2"
-  }, "You're already ", memOf(foundClub.id).status === 'approved' ? 'a member' : 'pending approval', " in this club.")), (() => {
+  }, "You're already ", memOf(foundClub.id).status === 'approved' ? 'a member' : 'pending approval', " in this club.")), !directoryReady ? React.createElement('div', {role:'status',className:'text-center py-8 text-slate-400'}, 'Loading your clubs…') : (() => {
     // deck = my clubs, then pending, then the Create card (always last)
     const deck = [...myClubs.map(c => ({ c, kind: 'mine' })), ...pendingClubs.map(c => ({ c, kind: 'pending' })), { kind: 'create' }];
     return React.createElement("div", {
@@ -5558,6 +5581,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
       "aria-label": "Your clubs",
       dir: "ltr",
       ref: deckRef,
+      style: {overflowAnchor: 'none'},
       onScroll: e => {
         const el = e.currentTarget;
         const center = el.getBoundingClientRect().left + el.clientWidth / 2;

@@ -30,9 +30,12 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Done').click());
  const dock=doc.querySelector('.poker-action-dock');assert.ok(dock);assert.equal(dock.parentElement.classList.contains('poker-room'),true);assert.equal(dock.closest('.pt-stage'),null);
  const heading=doc.querySelector('.poker-table-heading');assert.equal(heading.parentElement.classList.contains('poker-room'),true);assert.match(heading.textContent,/Blinds 5\/10/);
- assert.ok(doc.querySelector('.poker-community .poker-felt-logo'));assert.equal(doc.querySelector('.poker-felt-logo').alt,'My Club');
+ assert.equal(doc.querySelector('.poker-felt-wordmark').textContent,'POKERTEN','club logos never replace the POKERTEN name');assert.equal(doc.querySelector('.poker-felt-logo'),null);assert.equal(doc.querySelector('.poker-felt-club-name').textContent,'My Club');
  const details=doc.querySelector('[aria-label="Table details"]');await React.act(()=>details.click());let dialog=doc.querySelector('[role="dialog"]');assert.match(dialog.textContent,/My Club/);assert.match(dialog.textContent,/test-table/);assert.equal(doc.activeElement,dialog.querySelector('button'));
  await React.act(()=>dialog.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(doc.querySelector('.poker-info-dialog'),null);assert.equal(doc.activeElement,details);
+ await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test-table',user:{uid:'me',role:'player',balance:500,playerId:'P123456789'},clubSettings:{name:'Renamed Club',logo:'data:image/png;base64,test'},onLeave(){left++;},showToast:m=>messages.push(m)})));
+ assert.equal(doc.querySelector('.poker-felt-club-name').textContent,'Renamed Club','a live club-name update appears on the existing table');
+ assert.equal(doc.querySelector('.poker-felt-wordmark').textContent,'POKERTEN');
  assert.equal(fullscreenRequests,0,'fullscreen is only requested from an explicit click');await React.act(async()=>doc.querySelector('[aria-label="Enter fullscreen"]').click());assert.equal(fullscreenRequests,1);assert.ok(doc.querySelector('[aria-label="Exit fullscreen"]'));
  await React.act(async()=>doc.exitFullscreen());assert.ok(doc.querySelector('[aria-label="Enter fullscreen"]'),'system exit updates the control without re-entering fullscreen');
  assert.equal(doc.querySelector('.btn-call .poker-action-amount').textContent,'10');

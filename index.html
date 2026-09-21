@@ -1098,7 +1098,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=278">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=279">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -11849,7 +11849,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const tableLevel = tour && tour.startedAt ? tourClock(tour).row : null;
   const tableStakes = 'Blinds ' + formatShort(tableLevel ? tableLevel.sb : setts.blinds) + '/' + formatShort(tableLevel ? tableLevel.bb : BB)
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
-  const tableLogo = clubSettings?.logo || window.__club?.logo;
+  const tableClubName = String(clubSettings?.name || window.__club?.name || '').trim();
   return React.createElement("div", {
     className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (isSeated ? " is-seated" : " is-spectating"),
     dir: "ltr",
@@ -12233,8 +12233,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }))), React.createElement("div", {
     className: "poker-table-caption",
     'aria-label': 'Table branding'
-  }, tableLogo ? React.createElement('img', {className:'poker-felt-logo',src:tableLogo,alt:clubSettings?.name || 'Club logo'}) : React.createElement('strong', {className:'poker-felt-wordmark'}, 'POKERTEN'),
-    React.createElement('span', {className:'poker-felt-variant'}, tableVariant), React.createElement('span', {className:'poker-felt-stakes'}, tableStakes))), totalPot > 0 && gs.phase !== 'waiting' && React.createElement('div', {className:'poker-collected-pot', 'aria-label':'Collected pot',dir:'ltr'}, (gs.pots || []).map((pot,i)=>React.createElement(CasinoChipStack,{key:i,amount:pot.amount,scale:.7,showLabel:false,unit:chipUnit})),React.createElement('span',null,formatShort(totalPot))), !isSeated && !tableState?.tournamentId && (() => {
+  }, React.createElement('strong', {className:'poker-felt-wordmark'}, 'POKERTEN'),
+    tableClubName && React.createElement('span', {className:'poker-felt-club-name',dir:'auto',title:tableClubName}, tableClubName),
+    React.createElement('div', {className:'poker-felt-details'}, React.createElement('span', {className:'poker-felt-variant'}, tableVariant), React.createElement('span', {className:'poker-felt-stakes'}, tableStakes)))), totalPot > 0 && gs.phase !== 'waiting' && React.createElement('div', {className:'poker-collected-pot', 'aria-label':'Collected pot',dir:'ltr'}, (gs.pots || []).map((pot,i)=>React.createElement(CasinoChipStack,{key:i,amount:pot.amount,scale:.7,showLabel:false,unit:chipUnit})),React.createElement('span',null,formatShort(totalPot))), !isSeated && !tableState?.tournamentId && (() => {
     // Vacant seats: tap a "+" to pick THAT seat, then confirm the buy-in.
     // Hidden the moment you are seated (owner request).
     const occ = new Set(displayList.map((p, i) => slotOf(i)));

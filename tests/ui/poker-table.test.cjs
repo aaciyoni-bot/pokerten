@@ -176,6 +176,14 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  await React.act(async()=>doc.querySelector('.btn-call').click());
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','rejected action cannot debit the stack');
  assert.ok(doc.querySelector('.btn-call')&&!doc.querySelector('.btn-call').disabled,'rejected action releases the button for retry');
+ current.players.me.sitOut=true;current.players.me.sitOutAt=Date.now()-90000;
+ await React.act(async()=>tableNext(snapshot()));
+ const returnButton=doc.querySelector('button[aria-label="Return to game"]');
+ assert.ok(returnButton&&returnButton.closest('.poker-seat-hero'),'return action is attached to the player seat');
+ assert.equal(doc.body.textContent.includes("You're in Sit out - tap to return"),false,'old header banner is removed');
+ const returnCalls=[];w.fb.fx=async(name,args)=>{returnCalls.push({name,args});return {};};
+ await React.act(async()=>returnButton.click());
+ assert.ok(returnCalls.some(c=>c.name==='pkSeat'&&c.args.op==='sitout'&&c.args.tableId==='test-table'),'seat button uses existing authoritative return command');
  w.requestAnimationFrame=originalRaf;
  await React.act(async()=>root.unmount());w.close();console.log('PASS: cards, controls, authoritative CALL confirmation, fractional chips, delayed listener and snapshot recovery');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});

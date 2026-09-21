@@ -283,3 +283,87 @@ body.poker-theme .cl-card-member.cl-card-active,body.poker-theme .cl-card-member
 /* Keep the far rail fixed while matching the measured lower rail at 93%. */
 .poker-room .approved-poker-material{transform:scaleY(1.029);transform-origin:50% 18%}
 .poker-room .poker-felt-wordmark,.poker-room .poker-felt-logo{position:absolute;bottom:calc(100% + 60px)}
+
+/* Opponent cards have a separate lane; never paint a hand over the face. */
+.poker-room .poker-seat:not(.poker-seat-hero) .poker-opponent-fan{top:var(--poker-card-side-top,0px)!important;bottom:auto;left:auto;right:auto;translate:none!important;transform:none!important;--poker-fan-width:clamp(28px,8.2cqw,48px);--poker-fan-overlap:-.8}
+.poker-room .poker-seat:not(.poker-seat-hero) .poker-opponent-fan.poker-revealed-hand{--poker-fan-width:clamp(30px,min(8.8cqw,4.1cqh),46px);--poker-fan-overlap:-.66}
+.poker-room .poker-seat[data-card-lane="left"] .poker-opponent-fan{left:calc(100% + 14px)}
+.poker-room .poker-seat[data-card-lane="right"] .poker-opponent-fan{right:calc(100% + 14px)}
+.poker-room .poker-seat[data-card-lane="top"] .poker-opponent-fan{top:calc(100% + 4px)!important;bottom:auto;left:calc(50% + var(--poker-card-shift));transform:translateX(-50%)!important}
+.poker-room .poker-seat[data-card-lane="bottom"] .poker-opponent-fan{top:auto!important;bottom:calc(100% + 10px);left:calc(50% + var(--poker-card-shift));transform:translateX(-50%)!important}
+
+.poker-room .poker-opponent-fan .poker-card-index{left:4%!important}
+.poker-room .poker-opponent-fan .poker-card-index>span:first-child{font-size:40cqw!important}
+.poker-room .poker-opponent-fan .poker-card-index svg{width:29cqw!important;height:29cqw!important}
+
+.poker-room .poker-collected-pot{top:54.5%;transform:translateX(-50%) scale(.75);transform-origin:50% 0}
+.poker-room .poker-table-caption{display:none}
+
+/* A compact chip and amount share one line; labels cannot climb into avatars. */
+.poker-room .poker-bet>div{display:flex;align-items:center;gap:3px;height:auto!important}
+.poker-room .poker-bet>div>.absolute{position:static;transform:none;font-size:10px;line-height:14px;padding:1px 3px}
+.poker-room .poker-bet>div>.flex>.relative:not(:first-child){display:none}
+.poker-room .poker-collected-pot{top:42%;left:31%}
+
+@media(max-height:720px){
+ .poker-room .poker-action-dock{height:118px;grid-template-rows:18px 44px 24px;gap:4px;padding-top:6px}
+ .poker-room .poker-action-buttons>div>.grid>button{height:44px;min-height:44px}
+ .poker-room .poker-seat-hero{bottom:124px!important}
+ .poker-room .poker-own-fan{--poker-fan-width:30px}
+ .poker-room .poker-community:not(.has-second-board){width:48%}
+}
+
+/* The player's hand stays in GG's lower-left corner, above the action dock. */
+.poker-room{--poker-hero-bottom:158px}
+.poker-room .poker-seat-hero{left:24px!important;right:16px;width:auto!important;height:76px;bottom:var(--poker-hero-bottom)!important;transform:none!important}
+.poker-room .poker-seat-hero>.relative.flex.flex-col.items-center{display:grid;grid-template-columns:minmax(0,1fr) 40px 82px;grid-template-rows:1fr;gap:6px;height:100%;align-items:end}
+.poker-room .poker-seat-hero .poker-own-fan{grid-column:1;grid-row:1;justify-self:start;align-self:end;transform:none!important}
+.poker-room .poker-seat-hero .player-pod{grid-column:2;grid-row:1;align-self:end}
+.poker-room .poker-seat-hero .poker-player-info{grid-column:3;grid-row:1;min-width:0!important;width:82px!important;align-self:end;margin:0!important}
+.poker-room .poker-seat-hero .poker-result-meta{position:absolute;bottom:calc(100% + 4px);left:0;max-width:none}
+@media(max-height:720px){.poker-room{--poker-hero-bottom:124px}}
+
+.poker-room .poker-community:not(.has-second-board){width:min(60%,230px)}
+.poker-room .poker-own-fan{--poker-fan-width:clamp(34px,min(11cqw,5.5cqh),44px)}
+@media(max-width:340px){.poker-room .poker-seat:not(.poker-seat-hero) .poker-opponent-fan.poker-revealed-hand{--poker-fan-overlap:-.7}}
+@media(max-height:720px){
+ .poker-room .poker-own-fan{--poker-fan-width:30px}
+ .poker-room .poker-community:not(.has-second-board){width:48%}
+ .poker-room .poker-seat[data-seat-row="top"]{left:var(--poker-short-seat-x)!important}
+ .poker-room .poker-seat[data-seat-row="top"] .poker-opponent-fan{top:0!important;transform:none!important;left:auto;right:auto}
+ .poker-room .poker-seat[data-seat-row="top"][data-seat-side="left"] .poker-opponent-fan{left:calc(100% + 14px)}
+ .poker-room .poker-seat[data-seat-row="top"][data-seat-side="right"] .poker-opponent-fan{right:calc(100% + 14px)}
+ .poker-room .poker-seat[data-seat-row="upper"]{top:calc(var(--poker-seat-y) - 32px)!important}
+}
+
+/* Two boards share the middle gap; their pot label uses the free left rail. */
+.poker-room .poker-community.has-second-board{top:44.5%;width:min(40%,170px);transform:translate(-50%,-50%);gap:10px}
+.poker-room .poker-community.has-second-board .poker-total-pot{left:-25%;top:50%;bottom:auto;transform:translate(-50%,-50%);min-width:0;max-width:none;padding:3px 5px}
+.poker-room:has(.poker-community.has-second-board) .poker-collected-pot{left:85%;top:44%}
+.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat:not(.poker-seat-hero) .poker-opponent-fan{--poker-fan-width:26px}
+.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-opponent-fan.poker-revealed-hand{--poker-fan-width:26px}
+
+/* GOD uses the existing utility row; enabling it never shrinks the table. */
+.poker-room:has(>.poker-god-runout) .pt-stage{top:0}
+.poker-room>.poker-god-runout{position:absolute;top:46px;left:90px;right:8px;height:34px;min-height:34px;flex-basis:34px;gap:4px;padding:2px 4px;border:1px solid #a855f744;border-radius:7px;background:#281341e8;overflow:hidden}
+.poker-room>.poker-god-runout .card-face{width:20px!important;height:28px!important;min-height:28px!important}
+.poker-room>.poker-god-runout>span{font-size:8px}
+.poker-room>.poker-god-runout>div{gap:2px}
+.poker-room>.poker-god-runout>div>span{font-size:8px}
+.poker-room .poker-table-tools,.poker-room:has(>.poker-god-runout) .poker-table-tools{top:48px!important}
+@media(max-height:720px){.poker-room .poker-seat[data-seat-row="top"]{top:18%!important}}
+
+.poker-room .poker-seat:not(.poker-seat-hero) .poker-opponent-fan[data-card-count="2"]{--poker-fan-overlap:-.35}
+
+/* The return action belongs to the local seat, never behind the header. */
+.poker-room .poker-seat-hero .poker-return-to-game{position:absolute;right:0;bottom:48px;z-index:50;display:flex;align-items:center;justify-content:center;gap:7px;min-height:36px;min-width:122px;padding:6px 10px;border:1px solid #ffe3a1;border-radius:10px;background:#e9b33f;color:#211805;font:700 12px Arial,sans-serif;box-shadow:0 2px 7px #0008;cursor:pointer}
+.poker-room .poker-return-to-game small{font-size:10px;font-variant-numeric:tabular-nums}
+.poker-room .poker-return-to-game:focus-visible{outline:2px solid white;outline-offset:3px}
+
+/* GG reference: branding and game details stay on the felt, below the board. */
+.poker-room .poker-community .poker-table-caption{display:flex;top:calc(100% + 17cqw);height:auto;min-height:32px;gap:3px;overflow:visible;opacity:.55;z-index:-1}
+.poker-room .poker-felt-wordmark,.poker-room .poker-felt-logo{position:absolute;bottom:calc(100% + 75px);font-size:clamp(22px,6.5cqw,40px);color:#c8dcc47a;letter-spacing:.04em;max-width:100%;height:auto}
+.poker-room .poker-felt-logo{max-height:55px;object-fit:contain}
+.poker-room .poker-felt-variant,.poker-room .poker-felt-stakes{font:400 clamp(10px,2.8cqw,16px)/1.25 Arial,sans-serif;color:#d4dedb}
+.poker-room .poker-community.has-second-board .poker-table-caption{top:calc(100% + 16px)}
+.poker-room .poker-community.has-second-board .poker-felt-wordmark,.poker-room .poker-community.has-second-board .poker-felt-logo{display:none}

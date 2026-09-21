@@ -1,0 +1,34 @@
+name: Preview poker layout
+
+on:
+  push:
+    branches: [codex/full-audit-20260920]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    uses: ./.github/workflows/validate.yml
+  preview:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install -g firebase-tools
+      - name: Include isolated synthetic table for browser verification
+        run: |
+          node - <<'JS'
+          const fs = require('fs');
+          const html = fs.readFileSync('tests/ui/gg-preview.html','utf8')
+            .replace("fetch('../../index.html'", "fetch('./index.html'")
+            .replace("new URL('../../',location.href)", "new URL('./',location.href)");
+          fs.writeFileSync('layout-review.html', html);
+          JS
+      - name: Deploy expiring preview, without production changes
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: firebase hosting:channel:deploy layout-278 --expires 1d --project pokerten --non-interactive

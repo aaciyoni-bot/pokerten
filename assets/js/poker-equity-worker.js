@@ -61,7 +61,7 @@ const evaluate5Cards = cards5 => {
   if (isStraight && isFlush) return 8000000 + straightHigh * 10000;
   if (groups[0].count === 4) return 7000000 + groups[0].rank * 10000 + kickers([groups[0].rank])[0];
   if (groups[0].count === 3 && groups[1] && groups[1].count >= 2) return 6000000 + groups[0].rank * 10000 + groups[1].rank;
-  if (isFlush) return 5000000 + ranks[0] * 10000 + ranks[1] * 500 + ranks[2] * 25 + ranks[3];
+  if (isFlush) return 5000000 + ranks[0] * 10000 + ranks[1] * 500 + ranks[2] * 25 + ranks[3] + ranks[4] / 15;
   if (isStraight) return 4000000 + straightHigh * 10000;
   if (groups[0].count === 3) {
     const k = kickers([groups[0].rank]);

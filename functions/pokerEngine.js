@@ -369,11 +369,18 @@ function revealActiveHands(S) {
   });
 }
 
-// Run-it-twice offer — protocol §3.5. Only when the board is incomplete.
+// Each remaining board needs its own burn cards as well as community cards.
+// Seven PLO6 seats consume 42 cards; a preflop double runout needs 16 more.
+function canRunTwice(S) {
+  const remaining = {0:8, 3:4, 4:2}[(S.gameState.board || []).length];
+  return Number.isFinite(remaining) && (S.deck || []).length >= remaining * 2;
+}
+// Run-it-twice offer — protocol §3.5. Only when both boards can be dealt.
 function maybeOfferRit(S) {
   const g = S.gameState;
   if (!S.settings.runTwice || S.table.tournamentId) return;
   if ((g.board || []).length >= 5) return;
+  if (!canRunTwice(S)) return;
   const acts = activesOf(S.players);
   if (acts.length < 2) return;
   g.ritOffer = {until: S.now + 10000};
@@ -388,7 +395,7 @@ function resolveRitIfDue(S) {
   if (!allVoted && S.now < g.ritOffer.until) return false; // still open
   const agreed = acts.length >= 2 && acts.every((p) => votes[p.uid] === true);
   g.ritOffer = null;
-  if (agreed) g.board2 = [...(g.board || [])];
+  if (agreed && canRunTwice(S)) g.board2 = [...(g.board || [])];
   return true;
 }
 

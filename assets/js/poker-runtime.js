@@ -84,7 +84,7 @@
         return new Promise(resolve => {
           try {
             if (!worker) {
-              worker = new WorkerType('assets/js/poker-equity-worker.js?v=258');
+              worker = new WorkerType('assets/js/poker-equity-worker.js?v=278');
               worker.onerror = close;
               worker.onmessage = ({data}) => {
                 const job = pending.get(data.id);

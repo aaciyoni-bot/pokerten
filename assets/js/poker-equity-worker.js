@@ -238,7 +238,7 @@ const botPokerMove = (g, t, b) => {
   }
   // Read the opponents' strength from the bet we are facing, not from thin air.
   const gt = g.currentGameType || 'NLH';
-  const eqP = simMyEquity(b.cards || [], g.board || [], Math.min(3, oppN), gt, botRangeFacing(toCall, potNow, bb));
+  const eqP = simMyEquity(b.cards || [], g.board || [], oppN, gt, botRangeFacing(toCall, potNow, bb));
   // An unknown hand used to default to 50%, which is what made a bot call off
   // its stack holding nothing. Unknown now means "do not gamble".
   const eq = (eqP == null ? 35 : eqP) / 100;
@@ -263,10 +263,17 @@ const botPokerMove = (g, t, b) => {
     return { type: 'raise', amt: target };
   };
   if (toCall <= 0) {
+    // No opponent with chips can contest another bet.
+    if (!Object.values(t.players || {}).some(p => p.uid !== b.uid && p.status === 'active' && p.stack > 0)) return { type: 'call' };
     // Monsters BET. Trapping (check) is human on early streets, but checking a
     // near-nuts hand on the RIVER leaves money on the table — a dead giveaway.
     const river = g.phase === 'river';
-    if (eq > 0.9) return ((river ? r < 0.05 : r < 0.15) ? null : betPot(0.65 + r * 0.35)) || { type: 'call' };
+    // If the board supplies our entire hand, a bet adds no private hand value.
+    if (river && !gt.startsWith('Omaha') && bestScoreFull(b.cards || [], g.board || [], gt) === bestScoreFull([], g.board || [], gt)) return { type: 'call' };
+    // Multiway aggression needs a made hand or a live draw, not blind noise.
+    if (oppN > 1 && body.made < 2 && body.outs < 4) return { type: 'call' };
+    // With very high river equity, take value instead of randomly checking.
+    if (eq > 0.9) return ((!river && r < 0.15) ? null : betPot(0.65 + r * 0.35)) || { type: 'call' };
     if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(0.55 + r * 0.3)) || { type: 'call' };
     if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || { type: 'call' };
     return (r < 0.11 ? betPot(0.55) : null) || { type: 'call' };

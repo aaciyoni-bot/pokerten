@@ -869,7 +869,7 @@ function botAction(S, uid) {
   const callCost=Math.min(toCall,stack),actualOdds=callCost>0?callCost/(potNow+callCost):0;
   if(cards.length && toCall>0 && actualOdds<=.025){
     if(g.phase==='preflop')return{action:'call'};
-    const cheapEquity=equityOf(cards,g.board||[],Math.min(3,oppN),g.currentGameType||'NLH',rangeFacing(callCost,potNow,bb));
+    const cheapEquity=equityOf(cards,g.board||[],oppN,g.currentGameType||'NLH',rangeFacing(callCost,potNow,bb));
     if(cheapEquity!=null&&cheapEquity>=actualOdds)return{action:'call'};
   }
   if (g.phase === "preflop") {
@@ -900,7 +900,7 @@ function botAction(S, uid) {
   // Read the opponents' strength from the bet we are facing, not from thin air.
   const gt = g.currentGameType || "NLH";
   const rng = rangeFacing(toCall, potNow, bb);
-  const eqRaw = equityOf(cards, g.board || [], Math.min(3, oppN), gt, rng);
+  const eqRaw = equityOf(cards, g.board || [], oppN, gt, rng);
   if(eqRaw==null)return{action:toCall>0?'fold':'call'};
   const eq=eqRaw;
   const potOdds=actualOdds;
@@ -943,7 +943,14 @@ function botAction(S, uid) {
 
   if (toCall <= 0) {
     const river = g.phase === "river";
-    if (eq > 0.9) return ((river ? r < 0.05 : r < 0.15) ? null : betPot(0.65 + r * 0.35)) || {action: "call"};
+    if (!activesOf(S.players).some(p => p.uid !== uid && p.stack > 0)) return {action: "call"};
+    if (river && !gt.startsWith("Omaha") && C.bestScoreFull(cards, g.board, gt) === C.bestScoreFull([], g.board, gt)) return {action: "call"};
+    // In a multiway pot, a weak pair or air needs a real draw to justify
+    // aggression. Keep semi-bluffs with four or more outs, but do not turn
+    // the generic random-bluff branch into a large bet with no direction.
+    // This uses only our cards, the public board and number of opponents.
+    if (oppN > 1 && body.made < 2 && body.outs < 4) return {action: "call"};
+    if (eq > 0.9) return ((!river && r < 0.15) ? null : betPot(0.65 + r * 0.35)) || {action: "call"};
     if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(0.55 + r * 0.3)) || {action: "call"};
     if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || {action: "call"};
     return (r < 0.11 ? betPot(0.55) : null) || {action: "call"};

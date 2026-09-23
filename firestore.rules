@@ -12,7 +12,7 @@ service cloud.firestore {
     // by players. The Admin SDK remains the only game-state writer.
     function superAdmin() {
       return signedIn() && request.auth.token.get('email_verified', false) == true
-        && request.auth.token.get('email', '') == 'aaci.yoni@gmail.com';
+        && request.auth.token.get('email', '') in ['aaci.yoni@gmail.com', 'haim29071994@gmail.com'];
     }
     function clubOwnerOf(cid) {
       return signedIn() && request.auth.uid == get(/databases/$(database)/documents/clubs/$(cid)).data.ownerUid;

@@ -1066,7 +1066,37 @@
         .cl-page .cl-banner, .cl-page .cl-code-wrap, .club-lobby .club-card { border-color: rgba(72,228,216,.32); }
         .club-lobby .club-card:hover { border-color: rgba(76,236,222,.64); box-shadow: 0 14px 34px rgba(0,0,0,.5), 0 0 22px rgba(42,219,206,.14); }
         @media (min-width: 640px) { .cl-page .cl-card { flex-basis: 250px; } .cl-page .cl-deck { scroll-padding-inline: max(16px, calc((100% - 250px)/2)); padding-inline: max(16px, calc((100% - 250px)/2)); } }
-    </style>
+    
+        /* Shared turquoise surfaces for non-table views. */
+        .pt-theme {
+            --pt-gold: #41e1d2; --pt-gold-deep: #119da7;
+            --pt-card: #10202e; --pt-raised: #172b3a;
+            --pt-line: rgba(62,225,212,.18);
+            --pt-shadow: 0 10px 28px rgba(0,0,0,.4);
+            background: radial-gradient(circle at 78% 5%, rgba(30,177,187,.15), transparent 40%), #07121c;
+        }
+        .pt-theme > nav { background: linear-gradient(100deg, rgba(10,31,44,.97), rgba(15,57,68,.94)); border-bottom: 1px solid rgba(72,226,214,.22); }
+        .pt-theme .logo-shine { background-image: linear-gradient(100deg, #affff4, #33d7cd 58%, #83d9ff) !important; }
+        .pt-theme .btn-gold { background: linear-gradient(145deg, #9ffff0, #23c9c3 58%, #168da8); color: #062433 !important; border-color: rgba(176,255,245,.6); box-shadow: 0 6px 17px rgba(16,180,185,.23); }
+        .pt-theme .btn-outline { border-color: rgba(73,222,212,.3); color: #b6e4e3 !important; }
+        .pt-theme .club-card, .pt-theme .glass-panel, .pt-theme .tbl-row {
+            border-color: rgba(69,221,211,.19);
+        }
+        .pt-theme .club-badge { background: linear-gradient(145deg, #18566a, #123047); border: 1px solid rgba(75,234,221,.38); color: #9affef; }
+        .pt-theme .club-card { background: linear-gradient(155deg, #183143, #0d1d2d); }
+        .pt-theme .club-card:hover { border-color: rgba(81,238,221,.65); }
+        .pt-theme .vtab-active { color: #53e5d9; border-bottom-color: #35d6cf; }
+        .pt-theme .club-sec-label::before { background: #40decf; }
+        .pt-theme .cl-code-wrap, .pt-theme .cl-search { background: linear-gradient(145deg, #152f40, #101e2e); border-color: rgba(80,227,218,.28); }
+        .pt-theme .cl-box-filled, .pt-theme .cl-box-on { border-color: #4ae4d7; }
+        .pt-theme .cl-box-on { box-shadow: inset 0 2px 6px rgba(0,0,0,.5), 0 0 0 3px rgba(68,225,212,.17); }
+        .pt-theme .cl-banner { box-shadow: 0 16px 36px rgba(0,0,0,.46), 0 0 22px rgba(33,206,201,.09); }
+
+        /* The optional turquoise skin changes paint only, preserving table sizes. */
+        [data-felt="turquoise"] .pt-felt3d { box-shadow: inset 0 0 0 2.5px rgba(97,248,228,.65), inset 0 1px 0 rgba(255,255,255,.14), inset 0 12px 38px rgba(0,0,0,.5), inset 0 0 90px rgba(0,0,0,.32), 0 26px 70px rgba(0,0,0,.85), 0 0 100px rgba(34,215,202,.25); }
+        [data-felt="turquoise"] .casino-chip { background: radial-gradient(circle at 30% 24%, rgba(255,255,255,.55), transparent 46%), repeating-conic-gradient(var(--chipC, #148c9d) 0deg 38deg, #bafff5 38deg 60deg); box-shadow: 0 3px 5px rgba(0,0,0,.6), 0 5px 12px rgba(9,188,192,.22), inset 0 2px 3px rgba(255,255,255,.4); }
+        [data-felt="turquoise"] .casino-chip-inner { border-color: rgba(200,255,249,.85); box-shadow: inset 0 1px 4px rgba(0,0,0,.3), 0 0 0 1px rgba(9,49,62,.65); }
+</style>
 
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -4269,7 +4299,7 @@ function App() {
   }));
   const inTable = ['poker-table', 'durak-table', 'ofc-table'].includes(currentView);
   return React.createElement("div", {
-    className: "h-full w-full flex flex-col relative overflow-hidden"
+    className: "h-full w-full flex flex-col relative overflow-hidden" + (inTable ? "" : " pt-theme")
   }, effUser && activeClub && effUser.status === 'approved' && !inTable && currentView !== 'clubs' && React.createElement("nav", {
     className: "bg-slate-900/80 backdrop-blur-xl px-4 py-3 z-40 shrink-0 border-b border-white/5 shadow-xl flex justify-between items-center"
   }, React.createElement("div", {
@@ -11925,7 +11955,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, "Only YOU see this — every player picks their own look."),
   React.createElement('fieldset',{className:'poker-felt-choices'},
     React.createElement('legend',null,'Table color · matching LED'),
-    React.createElement('div',null,[['auto','Auto','#777'],['green','Green','#24681b'],['blue','Blue','#235882'],['red','Red','#862626'],['purple','Purple','#673d8b'],['gold','Gold','#997b23'],['slate','Slate','#485260']].map(([key,label,color])=>React.createElement('button',{
+    React.createElement('div',null,[['auto','Auto','#777'],['green','Green','#24681b'],['blue','Blue','#235882'],['red','Red','#862626'],['purple','Purple','#673d8b'],['gold','Gold','#997b23'],['slate','Slate','#485260'],['turquoise','Turquoise','#2bd9cf']].map(([key,label,color])=>React.createElement('button',{
       key,type:'button','aria-label':'Table color: '+label,'aria-pressed':(skin.felt||'auto')===key,
       onClick:()=>saveSkin({...skin,felt:key==='auto'?null:key}),style:{'--swatch':color}
     },React.createElement('span',{'aria-hidden':true}),label))),
@@ -12105,6 +12135,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-stage flex-1 relative flex items-center justify-center px-0 pt-0 pb-0 sm:p-5 min-h-0"
   }, React.createElement("div", {
     'data-seat-count': capN,
+    'data-felt': skin.felt || 'auto',
     className: "poker-table w-full max-w-none sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
     style: (() => {
       const F = {
@@ -12117,7 +12148,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         red: ['#8a3131', '#6b2222', '#411111'],
         purple: ['#5b3a86', '#452a6b', '#2a1747'],
         gold: ['#a08326', '#7d661d', '#4e4012'],
-        slate: ['#4a5568', '#374151', '#1f2937']
+        slate: ['#4a5568', '#374151', '#1f2937'],
+        turquoise: ['#239d9d', '#13737e', '#0a3d52']
       };
       const c = skin.felt && FELT_CHOICES[skin.felt] || F[gs.currentGameType || setts.baseGameType] || ['#2e6089', '#1f4a6e', '#132f47'];
       const CB = {
@@ -12168,7 +12200,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         '--feltA': c[0],
         '--feltB': c[1],
         '--feltC': c[2],
-        '--table-filter': ({green:'none',blue:'hue-rotate(105deg) saturate(.85)',red:'hue-rotate(-115deg) saturate(.9)',purple:'hue-rotate(165deg) saturate(.8)',gold:'hue-rotate(-65deg) saturate(.85)',slate:'saturate(.12) hue-rotate(95deg)'})[skin.felt || (['NLH','Pineapple'].includes(gs.currentGameType || setts.baseGameType) ? (gs.currentGameType || setts.baseGameType)==='Pineapple'?'gold':'green' : 'blue')] || 'none',
+        '--table-filter': ({green:'none',blue:'hue-rotate(105deg) saturate(.85)',red:'hue-rotate(-115deg) saturate(.9)',purple:'hue-rotate(165deg) saturate(.8)',gold:'hue-rotate(-65deg) saturate(.85)',slate:'saturate(.12) hue-rotate(95deg)',turquoise:'hue-rotate(125deg) saturate(1.25)'})[skin.felt || (['NLH','Pineapple'].includes(gs.currentGameType || setts.baseGameType) ? (gs.currentGameType || setts.baseGameType)==='Pineapple'?'gold':'green' : 'blue')] || 'none',
         // rotate the baked GG image toward the skin color (base H110/S.27/L.33)
         '--fHue': `${Math.round(hh - 110)}deg`,
         '--fSat': Math.max(0.15, Math.min(3, ss / 0.27)).toFixed(2),

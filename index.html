@@ -1032,6 +1032,40 @@
             opacity: 0.012;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
         }
+
+        /* Club visual refresh: scoped to the club areas; table geometry stays intact. */
+        .cl-page, .club-lobby {
+            --pt-gold: #37e2d0; --pt-gold-deep: #0eaaa5;
+            --pt-card: #101c29; --pt-raised: #142635;
+            --pt-line: rgba(67,226,213,.19);
+            background: radial-gradient(ellipse at 80% 4%, rgba(20,195,190,.19), transparent 42%),
+                        radial-gradient(ellipse at 10% 85%, rgba(34,123,156,.15), transparent 50%), #07121d;
+        }
+        .cl-page .cl-deck {
+            display: flex; flex-wrap: nowrap; gap: 14px; overflow-x: auto; overflow-y: hidden;
+            scroll-snap-type: x mandatory; scroll-padding-inline: max(12px, calc((100% - 220px)/2));
+            padding: 12px max(12px, calc((100% - 220px)/2)) 20px;
+            -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+        }
+        .cl-page .cl-card {
+            flex: 0 0 min(220px, 72vw); min-width: 0; scroll-snap-align: center;
+            padding: 11px; border-radius: 20px;
+            border: 1px solid rgba(84,230,220,.3);
+            background: linear-gradient(145deg, #183448, #0c1929 78%);
+            box-shadow: 0 15px 30px rgba(0,0,0,.36), inset 0 1px rgba(199,255,250,.15);
+        }
+        .cl-page .cl-card-active { border-color: rgba(93,246,225,.8); box-shadow: 0 14px 36px rgba(0,0,0,.42), 0 0 22px rgba(40,218,203,.16); }
+        .cl-page .cl-art { height: 126px; border-radius: 14px; border-color: rgba(76,226,217,.35); background: radial-gradient(circle at 50% 18%, #277c91, #102b40 55%, #0b1827); }
+        .cl-page .cl-art-letter { color: #8df8ed; text-shadow: 0 0 18px rgba(67,226,213,.7); }
+        .cl-page .cl-cta, .club-lobby .btn-gold { background: linear-gradient(145deg, #89fff0, #21c7c3 55%, #108eac); color: #062332 !important; border-color: rgba(171,255,247,.62); box-shadow: 0 7px 18px rgba(18,192,188,.24); }
+        .cl-page .cl-cta-wait { background: rgba(255,255,255,.05); color: #b5c9d1 !important; }
+        .cl-page .cl-stat { background: rgba(38,188,187,.1); border-color: rgba(82,224,216,.17); }
+        .cl-page .cl-dots { display: flex !important; }
+        .cl-page .cl-dot-on, .cl-page .cl-dot-plus.cl-dot-on { background: #53e6d7; }
+        .cl-page .cl-owner, .cl-page .cl-search-go { background: #49e0d2; }
+        .cl-page .cl-banner, .cl-page .cl-code-wrap, .club-lobby .club-card { border-color: rgba(72,228,216,.32); }
+        .club-lobby .club-card:hover { border-color: rgba(76,236,222,.64); box-shadow: 0 14px 34px rgba(0,0,0,.5), 0 0 22px rgba(42,219,206,.14); }
+        @media (min-width: 640px) { .cl-page .cl-card { flex-basis: 250px; } .cl-page .cl-deck { scroll-padding-inline: max(16px, calc((100% - 250px)/2)); padding-inline: max(16px, calc((100% - 250px)/2)); } }
     </style>
 
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>

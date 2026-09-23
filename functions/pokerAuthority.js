@@ -6,7 +6,7 @@ const fail=(code,message)=>{throw new HttpsError(code,message);};
 const key=(v,label='identifier')=>{if(typeof v!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(v))fail('invalid-argument','Invalid '+label);return v;};
 const cash=n=>Math.round(n*100)/100;
 function number(v,fallback,min,max,integer=false){const n=v==null?fallback:Number(v);if(!Number.isFinite(n)||n<min||n>max||(integer?!Number.isInteger(n):Math.abs(cash(n)-n)>1e-7))fail('invalid-argument','Invalid numeric setting');return n;}
-const root=r=>r.auth?.token?.email_verified===true&&String(r.auth.token.email||'').trim().toLowerCase()==='aaci.yoni@gmail.com';
+const root=r=>r.auth?.token?.email_verified===true&&['aaci.yoni@gmail.com','haim29071994@gmail.com'].includes(String(r.auth.token.email||'').trim().toLowerCase());
 const uid=r=>r.auth?.uid?key(r.auth.uid,'user'):fail('unauthenticated','Sign in first');
 async function owner(tx,db,cid,r){const c=await tx.get(db.doc('clubs/'+key(cid,'club')));if(!c.exists)fail('not-found','Club missing');if(!root(r)&&c.data().ownerUid!==uid(r))fail('permission-denied','Club owner only');return c.data();}
 async function clubManager(tx,db,cid,r){

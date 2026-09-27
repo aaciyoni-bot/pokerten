@@ -1267,31 +1267,43 @@ async function tickTable(id, testNow) {
       if(Object.keys(managedPatch).length){Object.assign(extraTop,managedPatch);dirty=true;}
     }
 
-    // Cash bots have finite, staggered sessions. A replacement is funded by
-    // the same club sponsor, atomically with the departing bot's cash-out.
-    // Never replace a participant in an active hand, Spin or tournament.
-    if(!S.raw.botLobby&&!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&now>=(S.raw.botRotateAfter||0)&&
+    // Cash bots have finite, staggered sessions. Live human waiters get a
+    // vacancy at the settled boundary, including on manually opened tables.
+    // No human is automatically seated or charged by this maintenance path.
+    const manualHumanWaiting=!S.raw.botLobby&&require('./pokerWaitlist').normalizeWaitlist({...S.raw,players:pl},now).some(p=>p.isBot!==true);
+    if(!S.raw.botLobby&&!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&
        (g.phase!=='showdown'||now-(g.showdownAt||0)>=(g.earlyWin?2500:5000))){
-      const due=Object.values(pl).filter(p=>p.isBot&&p.fundingUid&&!p.pendingTopUp).map(p=>({p,at:p.botLeavesAt||botSession(p.uid,p.botJoinedAt||S.raw.createdAt||now).botLeavesAt})).filter(x=>x.at<=now).sort((a,b)=>a.at-b.at||a.p.seatIndex-b.p.seatIndex)[0];
+      const yieldSeat=manualHumanWaiting&&Object.keys(pl).length>=A.capacity(S.settings);
+      const candidates=Object.values(pl).filter(p=>p.isBot&&p.fundingUid&&!p.pendingTopUp).map(p=>({p,at:p.botLeavesAt||botSession(p.uid,p.botJoinedAt||S.raw.createdAt||now).botLeavesAt}));
+      const due=yieldSeat?candidates.sort((a,b)=>Number(b.p.status==='busted'||!!b.p.leaveReq)-Number(a.p.status==='busted'||!!a.p.leaveReq)||a.at-b.at||a.p.seatIndex-b.p.seatIndex)[0]:now>=(S.raw.botRotateAfter||0)?candidates.filter(x=>x.at<=now).sort((a,b)=>a.at-b.at||a.p.seatIndex-b.p.seatIndex)[0]:null;
       if(due){
         const old=due.p,sponsor=A.payee(old),refund=round2((old.stack||0)+(old.bet||0)),bbNow=blindsOf(S).bb;
         const buy=round2(Math.min(S.settings.maxBuyIn||200*bbNow,Math.max(bbNow*100,S.settings.minBuyIn||0)));
-        const enough=(await fundedBalance(sponsor))+refund>=buy;
-        const newUid='bot_'+crypto.createHash('sha256').update(S.id+':'+old.uid+':'+now).digest('hex').slice(0,24);
-        const others=Object.values(pl).filter(p=>p.uid!==old.uid).map(p=>p.name),past=[...(S.raw.botNameHistory||[]),old.name].slice(-20);
-        removeSeat(S,old.uid,false);delete S.priv[old.uid];S.privateDeletes=[old.uid];
-        if(enough){
-          const name=botName(newUid,[...others,...past],{tableNames:others});
-          pl[newUid]={uid:newUid,name,isBot:true,...botSession(newUid,now),fundingUid:sponsor,botStyle:['tight','balanced','aggressive'][crypto.createHash('sha256').update(newUid).digest()[0]%3],seatIndex:old.seatIndex,stack:buy,buyTotal:buy,bet:0,status:'active',cards:[],cardCount:0,hasActed:false,actionText:'',avatarSeed:newUid,lastSeen:now};
-          S.effects.push({type:'credit',uid:sponsor,amount:-buy});
+        const enough=!yieldSeat&&(await fundedBalance(sponsor))+refund>=buy;
+        // With a vacancy already reserved, an unfunded replacement must not
+        // cause another healthy bot to leave solely because a human is waiting.
+        if(yieldSeat||enough||!manualHumanWaiting){
+          const newUid='bot_'+crypto.createHash('sha256').update(S.id+':'+old.uid+':'+now).digest('hex').slice(0,24);
+          const others=Object.values(pl).filter(p=>p.uid!==old.uid).map(p=>p.name),past=[...(S.raw.botNameHistory||[]),old.name].slice(-20);
+          removeSeat(S,old.uid,false);delete S.priv[old.uid];S.privateDeletes=[...(S.privateDeletes||[]),old.uid];
+          if(enough){
+            const name=botName(newUid,[...others,...past],{tableNames:others});
+            pl[newUid]={uid:newUid,name,isBot:true,...botSession(newUid,now),fundingUid:sponsor,botStyle:['tight','balanced','aggressive'][crypto.createHash('sha256').update(newUid).digest()[0]%3],seatIndex:old.seatIndex,stack:buy,buyTotal:buy,bet:0,status:'active',cards:[],cardCount:0,hasActed:false,actionText:'',avatarSeed:newUid,lastSeen:now};
+            S.effects.push({type:'credit',uid:sponsor,amount:-buy});
+          }
+          if(g.dealerUid===old.uid){
+            const active=Object.values(pl).filter(p=>p.stack>0&&!p.sitOut).sort((a,b)=>a.seatIndex-b.seatIndex);
+            g.dealerUid=enough?newUid:active.filter(p=>p.seatIndex<old.seatIndex).at(-1)?.uid||active.at(-1)?.uid||null;
+          }
+          if(enough){if(g.dcUid===old.uid)g.dcUid=newUid;if(g.dcAnchor===old.uid)g.dcAnchor=newUid;}
+          extraTop.botRotateAfter=now+rotationGap(newUid);extraTop.botNameHistory=past;
+          S.botRotation={clubId:S.table.clubId,tableId:S.id,action:'bot-rotation',at:now,departed:old.uid,joined:enough?newUid:null,refund,buy:enough?buy:0,...(yieldSeat?{reason:'human-waitlist'}:{})};dirty=true;
         }
-        extraTop.botRotateAfter=now+rotationGap(newUid);extraTop.botNameHistory=past;
-        S.botRotation={clubId:S.table.clubId,tableId:S.id,action:'bot-rotation',at:now,departed:old.uid,joined:enough?newUid:null,refund,buy:enough?buy:0};dirty=true;
       }
     }
 
     // --- Seat reaping (cash only): leaveReq/sitOut/busted between hands ---
-    if (!S.raw.closeRequested && !S.settings.spinMode && !S.tor && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=5000)) {
+    if (!S.raw.closeRequested && !S.settings.spinMode && !S.tor && A.idle(S.raw) && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=5000)) {
       for (const p of Object.values(pl)) {
         const idle = p.leaveReq || (p.sitOut && p.sitOutAt && now - p.sitOutAt > 600000) ||
           (p.leavingAt && now >= p.leavingAt) ||
@@ -1301,7 +1313,7 @@ async function tickTable(id, testNow) {
         // human in it, a busted bot re-buys instead of standing up, so the
         // game is still running whenever somebody looks. buyTotal records it,
         // so the chip audit still balances (guardTables reads that receipt).
-        if (p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot)) {
+        if (p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot) && !(manualHumanWaiting && Object.keys(pl).length >= A.capacity(S.settings))) {
           const bbNow=blindsOf(S).bb,buy=round2(Math.min(S.settings.maxBuyIn||200*bbNow,Math.max(bbNow*100,S.settings.minBuyIn||0))),sponsor=A.payee(p);
           if((await fundedBalance(sponsor))<buy){removeSeat(S,p.uid,false);dirty=true;continue;}
           S.effects.push({type:'credit',uid:sponsor,amount:-buy});

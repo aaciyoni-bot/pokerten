@@ -198,13 +198,21 @@ async function upgradeNetabelTexas(db,now=Date.now()){
  });
 }
 async function maintainBotLobbies(db,now=Date.now()){
- try{const result=await bootstrapNetabel(db,now);if(!result.configured&&!['existing-setting','no-existing-bot-tables'].includes(result.reason))console.warn('Netabel bot lobby bootstrap skipped',result.reason);}catch(e){console.error('Netabel bot lobby bootstrap',e.message);}
- try{const result=await upgradeNetabelTexas(db,now);if(result.configured)console.info('BOT_LOBBY_VARIETY_MIGRATION '+JSON.stringify({release:TEXAS_RELEASE,slots:result.slots}));}catch(e){console.error('Netabel Texas availability upgrade',e.message);}
+ // Emit only bounded operational state, never club members, cards or balances.
+ // A missing/disabled setup must be distinguishable from an unread scheduler log.
+ const status=fields=>console.info('BOT_LOBBY_VARIETY_STATUS '+JSON.stringify({at:now,release:TEXAS_RELEASE,...fields}));
+ let bootstrapReason;
+ try{const result=await bootstrapNetabel(db,now);bootstrapReason=result.reason;if(!result.configured&&!['existing-setting','no-existing-bot-tables'].includes(result.reason))console.warn('Netabel bot lobby bootstrap skipped',result.reason);}catch(e){console.error('Netabel bot lobby bootstrap',e.message);}
+ try{
+  const result=await upgradeNetabelTexas(db,now);
+  if(result.configured)console.info('BOT_LOBBY_VARIETY_MIGRATION '+JSON.stringify({release:TEXAS_RELEASE,slots:result.slots}));
+  else if(result.reason!=='already-configured')status({reason:bootstrapReason==='insufficient-existing-funds'?'bootstrap-insufficient-existing-funds':result.reason});
+ }catch(e){status({reason:'maintenance-failed'});console.error('Netabel Texas availability upgrade',e.message);}
  const clubs=await db.collection('clubs').where('botLobby.version','==',1).get();
  for(const club of clubs.docs)try{
   const result=await maintainClub(db,club.id,now);
   if(club.data().botLobby?.texasRelease===TEXAS_RELEASE)console.info('BOT_LOBBY_VARIETY_STATUS '+JSON.stringify({at:now,release:club.data().botLobby.texasRelease,coverage:result.coverage||[],fundingBlocked:result.fundingBlocked===true,missingSlots:result.missingSlots||[],disabled:result.disabled===true}));
- }catch(e){console.error('Bot lobby maintenance',club.id,e.message);}
+ }catch(e){if(club.data().botLobby?.texasRelease===TEXAS_RELEASE)status({reason:'maintenance-failed'});console.error('Bot lobby maintenance',club.id,e.message);}
 }
 
 // Invoked by the existing engine transaction at the settled hand boundary.

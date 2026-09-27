@@ -26,11 +26,13 @@ jobs:
         run: node predeploy-check.js
       - name: Verify generated poker worker matches client policy
         run: node scripts/build-poker-worker.cjs --check
+      - name: Check read-only live-table status parsing
+        run: node --test scripts/verify-bot-lobby-variety.test.cjs
       - name: Check actual client and server bot decisions
         run: node tests/ui/bot-policy.test.cjs
       - name: Check managed bot tables, waiting lists and management access
         run: |
-          node --test functions/test/botLobby.test.js functions/test/waitlistPriority.test.js functions/test/managementAccess.test.js
+          node --test functions/test/botLobby.test.js functions/test/waitlistPriority.test.js functions/test/manualBotWaitlist.test.js functions/test/managementAccess.test.js
           node tests/ui/waitlist-ui.test.cjs
           node tests/ui/bot-lobby-control.test.cjs
       - name: Check game engine

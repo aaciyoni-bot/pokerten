@@ -83,6 +83,45 @@ test('real-player private cards and unrevealed deck are never consulted by bot p
  assert.equal(seeded(.05,()=>E.botAction(s,'hero')).action,'call');
 });
 
+test('a short stack prices only matched wagers and eligible pots',()=>{
+ const s=state({hole:['7♣','2♦'],board:[],stack:10,pot:0,toCall:1000,opponents:1});
+ s.players.p1.bet=1000;s.gameState.phase='preflop';
+ assert.deepEqual(E.botCallPrice(s.gameState,s.players,s.players.hero),{cost:10,pot:10,odds:.5});
+ assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'fold','An unmatched 1000-chip wager is not a cheap 1% call');
+ s.gameState.pots=[{amount:60,eligible:['hero','p1']},{amount:500,eligible:['p1','out']}];
+ assert.deepEqual(E.botCallPrice(s.gameState,s.players,s.players.hero),{cost:10,pot:70,odds:.125});
+});
+test('a live flush draw calls a well-priced all-in instead of demanding an arbitrary 45% equity',()=>{
+ const s=state({hole:['7♠','6♠'],board:['K♠','8♠','2♥'],stack:20,pot:80,toCall:20,opponents:2});
+ s.gameState.phase='flop';s.players.p1.bet=20;
+ assert.ok(Math.abs(E.botCallPrice(s.gameState,s.players,s.players.hero).odds-1/6)<1e-12);
+ for(const draw of [.1,.5,.9])assert.equal(seeded(draw,()=>E.botAction(s,'hero')).action,'call');
+});
+test('the same draw folds an expensive turn shove',()=>{
+ const s=state({hole:['7♠','6♠'],board:['K♠','8♠','2♥','Q♦'],stack:100,pot:20,toCall:100,opponents:2});
+ s.gameState.phase='turn';s.players.p1.bet=100;
+ assert.ok(E.botCallPrice(s.gameState,s.players,s.players.hero).odds>.45);
+ assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'fold');
+});
+test('money already invested does not justify a negative-value river call',()=>{
+ const s=state({hole:['2♣','3♦'],board:['10♥','J♥','Q♥','K♥','A♥'],stack:60,pot:45,toCall:55,opponents:2});
+ s.players.p1.bet=55;
+ assert.ok(E.botCallPrice(s.gameState,s.players,s.players.hero).odds>1/3);
+ assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'fold','A guaranteed third of the pot is below the price despite having a committed stack');
+});
+test('short-stack Omaha premium raises respect the pot limit in the decision itself',()=>{
+ const s=state({hole:['A♠','A♥','K♠','K♥'],board:[],game:'Omaha 4',stack:10,pot:0,toCall:1,opponents:2});
+ s.gameState.phase='preflop';s.players.p1.bet=1;s.players.p2.bet=.5;
+ const move=seeded(.95,()=>E.botAction(s,'hero'));
+ assert.equal(move.action,'raise');assert.equal(move.amount,3.5);
+});
+test('a playable marginal hand opens on the button without copying that open in early position',()=>{
+ const s=state({hole:['A♣','2♦'],board:[],stack:100,pot:0,toCall:1,opponents:5});
+ s.gameState.phase='preflop';s.players.p1.bet=1;s.players.p2.bet=.5;
+ s.gameState.dealerUid='hero';assert.equal(seeded(.2,()=>E.botAction(s,'hero')).action,'raise');
+ s.gameState.dealerUid='p3';assert.equal(seeded(.2,()=>E.botAction(s,'hero')).action,'call');
+});
+
 test('multiway flop air without a straight or flush draw checks across random seeds',()=>{
  for(const r of [.01,.05,.5,.9]){
   const s=state({hole:['7♣','2♦'],board:['A♠','K♥','9♦'],pot:50,opponents:2});s.gameState.phase='flop';
@@ -102,4 +141,3 @@ test('live nut-flush and open-ended straight draws retain multiway semi-bluffs',
   assert.ok(action.amount>0&&action.amount<=100);
  }
 });
-

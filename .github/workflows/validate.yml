@@ -28,9 +28,15 @@ jobs:
         run: node scripts/build-poker-worker.cjs --check
       - name: Check actual client and server bot decisions
         run: node tests/ui/bot-policy.test.cjs
+      - name: Check managed bot tables, waiting lists and management access
+        run: |
+          node --test functions/test/botLobby.test.js functions/test/waitlistPriority.test.js functions/test/managementAccess.test.js
+          node tests/ui/waitlist-ui.test.cjs
+          node tests/ui/bot-lobby-control.test.cjs
       - name: Check game engine
         run: node functions/engine.smoke.test.js
       - name: Check audio and accounting
         run: node --test tests/*.test.cjs
       - name: Check simulated login, chat, lobby and settlement flows
         run: npm test --prefix tests/ui
+

@@ -494,7 +494,7 @@ function applyDiscard(S, uid, index) {
 function autoDiscardAll(S) {
   activesOf(S.players).forEach((p) => {
     const hand = S.priv[p.uid] || [];
-    if (hand.length === 3) applyDiscard(S, p.uid, crypto.randomInt(0, 3));
+    if (hand.length === 3) applyDiscard(S, p.uid, p.isBot ? botDiscardIndex(hand, S.gameState.board || []) : crypto.randomInt(0, 3));
   });
 }
 
@@ -678,80 +678,157 @@ function settleAfterHand(S, rake, winnerUids) {
 const RANK_V = {"2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
   "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14};
 
-// 0 = trash, 1 = playable, 2 = strong, 3 = premium
+// 0 = trash, 1 = playable, 2 = strong, 3 = premium. This evaluates the
+// structure actually usable by the variant; extra Omaha copies are blockers,
+// not extra pairs, and Pineapple can discard its weakest third card.
 function preflopTier(cards) {
-  const vs = (cards || []).map((c) => RANK_V[c.val] || 0).sort((a, b) => b - a);
-  if (!cards || cards.length !== 2) { // Omaha & friends: count high cards
-    const hi = vs.filter((v) => v >= 11).length;
-    const paired = new Set(vs).size < vs.length;
-    const suits = {};
-    (cards || []).forEach((c) => { suits[c.suit] = (suits[c.suit] || 0) + 1; });
-    const suited = Object.values(suits).some((n) => n >= 2);
-    if (hi >= 3 || (paired && hi >= 2)) return 2;
-    if (hi >= 2 || paired || (suited && hi >= 1)) return 1;
-    return rnd() < 0.3 ? 1 : 0;
+  if (!Array.isArray(cards) || cards.length < 2) return 0;
+  if (cards.length === 3) {
+    return Math.max(...C.getCombinations(cards, 2).map(preflopTier));
   }
-  const suited = cards[0].suit === cards[1].suit;
-  if (vs[0] === vs[1]) return vs[0] >= 10 ? 3 : 2; // every pair is playable
-  const gap = vs[0] - vs[1];
-  if (vs[0] === 14 && vs[1] >= 12) return 3;
-  if ((vs[0] >= 12 && vs[1] >= 10) || (vs[0] === 14 && suited)) return 2;
-  if (vs[0] === 14 || (gap <= 1 && vs[1] >= 5) || (gap <= 3 && suited && vs[1] >= 4) ||
-      (vs[0] >= 10 && vs[1] >= 8)) return 1;
+  const vs = cards.map(c => RANK_V[c.val] || 0).sort((a, b) => b - a);
+  if (cards.length === 2) {
+    const suited = cards[0].suit === cards[1].suit;
+    if (vs[0] === vs[1]) return vs[0] >= 10 ? 3 : 2;
+    const gap = vs[0] - vs[1];
+    if (vs[0] === 14 && vs[1] >= 12) return 3;
+    if ((vs[0] >= 12 && vs[1] >= 10) || (vs[0] === 14 && suited)) return 2;
+    if (vs[0] === 14 || (gap <= 1 && vs[1] >= 5) || (gap <= 3 && suited && vs[1] >= 4) ||
+        (vs[0] >= 10 && vs[1] >= 8)) return 1;
+    return 0;
+  }
+  const counts = {}, suits = {};
+  cards.forEach(c => {
+    const rank = RANK_V[c.val] || 0;
+    counts[rank] = (counts[rank] || 0) + 1;
+    (suits[c.suit] ||= []).push(rank);
+  });
+  const unique = [...new Set(vs)];
+  const pairs = unique.filter(v => counts[v] >= 2);
+  const usableSuits = Object.values(suits).filter(ranks => ranks.length >= 2);
+  const nutSuits = usableSuits.filter(ranks => ranks.includes(14)).length;
+  let connected = 0;
+  for (let high = 5; high <= 14; high++) {
+    const window = high === 5 ? [14, 2, 3, 4, 5] : [high-4, high-3, high-2, high-1, high];
+    connected = Math.max(connected, window.filter(v => unique.includes(v)).length);
+  }
+  const pairValue = rank => rank === 14 ? 12 : rank >= 11 ? rank - 5 : rank >= 8 ? 4 : 2;
+  const pairScores = pairs.map(pairValue).sort((a, b) => b - a);
+  let quality = (pairScores[0] || 0) + (pairScores[1] || 0) * 0.5;
+  quality += unique.filter(v => v >= 10).length * 1.25;
+  quality += connected >= 4 ? 7 + (connected - 4) * 2 : connected === 3 ? 3 : 0;
+  quality += Math.min(3, usableSuits.length) * 2 + nutSuits * 2;
+  // A third/fourth copy removes set outs. More than two cards of one suit
+  // remove flush outs. Neither should make a hand look more premium.
+  quality -= Object.values(counts).reduce((n, count) => n + Math.max(0, count - 2) * 7, 0);
+  quality -= Object.values(suits).reduce((n, ranks) => n + Math.max(0, ranks.length - 2) * 1.5, 0);
+  const extraCards = Math.max(0, cards.length - 4);
+  if (quality >= 21 + extraCards && (pairs.includes(14) || (connected >= 4 && nutSuits > 0))) return 3;
+  if (quality >= 11 + extraCards * 0.5) return 2;
+  if (quality >= 5 + extraCards * 0.5) return 1;
   return 0;
 }
 
-/* Monte-Carlo equity. Returns 0..1, or null when the hand is unknown —
- * callers must treat null as "do not gamble".
- *
- * `range` is what makes the bot notice its opponent. At range=1 each opponent
- * is dealt one random hand, which is the assumption the bot used to make on
- * every street: that a player who just shoved the river is as likely to hold
- * seven-deuce as aces. It measured -17 bb/100 against an opponent who only
- * ever played premiums — it kept paying him off.
- *
- * At range=k each opponent is dealt k candidate hands and plays the best of
- * them, which is a cheap, honest model of "this player's range is roughly the
- * top 1/k of hands". Callers raise k with the size of the bet being faced, so
- * a pot-sized river bet is answered as the strong range it usually is.
+// Strength used to condition a *sampled* opponent range. Only the public
+// street is inspected: never select a flop hand by how it happens to hit a
+// subsequently sampled river. Draw bonuses are deliberately modest; the
+// eventual showdown calculation still uses the exact unchanged evaluator.
+function rangeHandStrength(cards, board, gameType) {
+  if (board.length < 3) return preflopTier(cards) * 1e6 + cards.reduce((n,c) => n + (RANK_V[c.val] || 0), 0);
+  const made = C.bestScoreFull(cards, board, gameType);
+  if (board.length >= 5 || made >= 4000000) return made;
+  const omaha = (gameType || '').startsWith('Omaha');
+  const holeRanks = cards.map(c => RANK_V[c.val] || 0), boardRanks = board.map(c => RANK_V[c.val] || 0);
+  let flushBonus = 0;
+  for (const suit of C.SUITS) {
+    const mine = cards.filter(c => c.suit === suit), publicCount = board.filter(c => c.suit === suit).length;
+    const draw = omaha ? mine.length >= 2 && publicCount === 2 : mine.length > 0 && mine.length + publicCount === 4;
+    if (draw) flushBonus = Math.max(flushBonus, mine.some(c => c.val === 'A') ? 1050000 : 750000);
+  }
+  const missing = new Set();
+  const holePairs = omaha ? C.getCombinations(holeRanks, 2) : null;
+  const boardPairs = omaha ? C.getCombinations(boardRanks, 2) : null;
+  for (let high = 5; high <= 14; high++) {
+    const run = high === 5 ? [14, 2, 3, 4, 5] : [high-4, high-3, high-2, high-1, high];
+    if (omaha) {
+      for (const h of holePairs) for (const b of boardPairs) {
+        const four = new Set([...h, ...b]);
+        if (four.size === 4 && [...four].every(v => run.includes(v))) missing.add(run.find(v => !four.has(v)));
+      }
+    } else {
+      const all = new Set([...holeRanks, ...boardRanks]);
+      const present = run.filter(v => all.has(v));
+      if (present.length === 4 && holeRanks.some(v => run.includes(v) && !boardRanks.includes(v))) missing.add(run.find(v => !all.has(v)));
+    }
+  }
+  const straightBonus = missing.size >= 2 ? 700000 : missing.size === 1 ? 350000 : 0;
+  return made + Math.max(flushBonus, straightBonus) + Math.min(flushBonus, straightBonus) * 0.35;
+}
+
+function botDiscardIndex(cards, board) {
+  if (!Array.isArray(cards) || cards.length !== 3) return 0;
+  let best = -Infinity, discard = 0;
+  for (let i = 0; i < 3; i++) {
+    const kept = cards.filter((_, j) => j !== i);
+    const strength = rangeHandStrength(kept, (board || []).slice(0, 3), 'NLH');
+    if (strength > best) { best = strength; discard = i; }
+  }
+  return discard;
+}
+
+/* Monte-Carlo equity using own cards and public board only. Each opponent's
+ * range is sampled on the CURRENT street. Rejected alternatives go straight
+ * back into the unknown pool; they are hypotheses, not dead dealt cards.
+ * This keeps a six-card multiway game from silently collapsing every range
+ * to a single uniformly random hand just because candidates consumed a deck.
  */
 function equityOf(myCards, board, oppCount, gameType, range) {
   try {
     if (!myCards || !myCards.length) return null;
-    const omaha = (gameType || "").startsWith("Omaha");
+    const publicBoard = board || [];
+    const opponents = Math.max(1, Math.floor(oppCount || 1));
+    const omaha = (gameType || '').startsWith('Omaha');
     const iters = omaha ? 90 : 200;
-    const wantedRange = Math.max(1, Math.min(6, Math.round(range || 1)));
-    const known = new Set([...myCards, ...(board || [])].map((c) => c.id));
-    const rest = C.pokerDeck().filter((c) => !known.has(c.id));
-    const missingBoard = Math.max(0, 5 - (board || []).length);
-    const k = Math.min(wantedRange, Math.floor((rest.length - missingBoard) / (myCards.length * oppCount)));
-    if (k < 1) return null;
+    const ranges = Array.from({length:opponents}, (_, i) => Math.max(1, Math.min(6, Math.round((Array.isArray(range) ? range[i] : range) || 1))));
+    const known = new Set([...myCards, ...publicBoard].map(c => c.id));
+    const rest = C.pokerDeck().filter(c => !known.has(c.id));
+    const missingBoard = Math.max(0, 5 - publicBoard.length);
+    if (rest.length < myCards.length * opponents + missingBoard) return null;
+    const sample = (pool, n) => {
+      const copy = pool.slice();
+      for (let i = 0; i < n; i++) {
+        const j = i + Math.floor(rnd() * (copy.length - i));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy.slice(0, n);
+    };
     let score = 0;
     for (let i = 0; i < iters; i++) {
-      // cheap partial shuffle of the remaining deck
-      const d = rest.slice();
-      for (let x = d.length - 1; x > 0; x--) {
-        const j = Math.floor(rnd() * (x + 1));
-        [d[x], d[j]] = [d[j], d[x]];
-      }
-      const fb = [...(board || [])];
+      let pool = rest;
       const oppHands = [];
-      for (let o = 0; o < oppCount; o++) {
-        const cands = [];
-        for (let c = 0; c < k; c++) cands.push(d.splice(0, myCards.length));
-        oppHands.push(cands);
-      }
-      while (fb.length < 5) fb.push(d.pop());
-      const my = C.bestScoreFull(myCards, fb, gameType);
-      let lose = false; let ties = 1;
-      for (const cands of oppHands) {
-        let best = 0;
-        for (const oc of cands) {
-          const sc = C.bestScoreFull(oc, fb, gameType);
-          if (sc > best) best = sc;
+      for (let o = 0; o < opponents; o++) {
+        const k = ranges[o];
+        let chosen = null, strength = -Infinity;
+        for (let c = 0; c < k; c++) {
+          const candidate = sample(pool, myCards.length);
+          const candidateStrength = k > 1 ? rangeHandStrength(candidate, publicBoard, gameType) : 0;
+          if (candidateStrength > strength) { chosen = candidate; strength = candidateStrength; }
         }
-        if (best > my) { lose = true; break; }
-        if (best === my) ties++;
+        oppHands.push(chosen);
+        const chosenIds = new Set(chosen.map(c => c.id));
+        pool = pool.filter(c => !chosenIds.has(c.id));
+      }
+      const fb = [...publicBoard, ...sample(pool, missingBoard)];
+      // Pineapple must discard on the flop. Do not give the simulation a
+      // third playable hole card or choose its discard after seeing the river.
+      const kept = hand => gameType === 'Pineapple' && hand.length === 3
+        ? hand.filter((_, j) => j !== botDiscardIndex(hand, fb.slice(0, 3))) : hand;
+      const my = C.bestScoreFull(kept(myCards), fb, gameType);
+      let lose = false, ties = 1;
+      for (const hand of oppHands) {
+        const their = C.bestScoreFull(kept(hand), fb, gameType);
+        if (their > my) { lose = true; break; }
+        if (their === my) ties++;
       }
       if (!lose) score += 1 / ties;
     }
@@ -761,17 +838,14 @@ function equityOf(myCards, board, oppCount, gameType, range) {
   }
 }
 
-/* How strong to assume the opponents' range is, from what they just did.
- * A check is no information; a small bet is barely any; a pot-sized bet or a
- * shove is a lot. This is the whole of "the bot pays attention". */
-/* Below this real equity a bot will not put 40%+ of its stack in, on a
-   bots-only table. A live flush draw is ~35%; hopeless is under 15%. */
+/* Range size reflects the wager relative to the pot BEFORE that wager.
+ * potNow already includes the outstanding bet, so dividing by potNow would
+ * mislabel a pot-sized bet as a half-pot bet and underweight strong ranges. */
 const GOD_FLOOR = 0.20;
-
 function rangeFacing(toCall, potNow, bb) {
   if (toCall <= 0) return 1;
-  const ratio = toCall / Math.max(bb, potNow);
-  if (ratio >= 1.0) return 4;   // pot-sized or bigger
+  const ratio = toCall / Math.max(bb, potNow - toCall);
+  if (ratio >= 1.0) return 4;
   if (ratio >= 0.6) return 3;
   if (ratio >= 0.3) return 2;
   return 1;
@@ -851,6 +925,19 @@ function handBody(cards, board, gameType) {
   }
 }
 
+// Only chips this player can win belong in the price of a call. A short
+// stack cannot count an opponent's unmatched overbet or an ineligible side pot.
+function botCallPrice(g, players, b) {
+  const toCall = round2(Math.max(0, (g.highestBet || 0) - (b.bet || 0)));
+  const cost = Math.min(toCall, b.stack || 0);
+  const cap = round2((b.bet || 0) + cost);
+  const settled = (g.pots || []).reduce((sum, p) =>
+    sum + (!Array.isArray(p.eligible) || p.eligible.includes(b.uid) ? Number(p.amount) || 0 : 0), 0);
+  const wagers = Object.values(players).reduce((sum, p) => sum + Math.min(Number(p.bet) || 0, cap), 0);
+  const pot = round2(settled + wagers);
+  return {cost, pot, odds: cost > 0 ? cost / (pot + cost) : 0};
+}
+
 function botAction(S, uid) {
   const g = S.gameState;
   const b = S.players[uid];
@@ -862,20 +949,34 @@ function botAction(S, uid) {
       Object.values(S.players).reduce((s, p) => s + (p.bet || 0), 0));
   const oppN = Math.max(1, activesOf(S.players).filter((p) => p.uid !== uid).length);
   const snap = (x) => Math.max(bb, Math.round(x / bb) * bb);
-  const raiseTo = (x) => round2(Math.min(Math.max(snap(x), round2(g.highestBet + (g.minRaise || bb))),
-      round2(stack + (b.bet || 0))));
+  const gt = g.currentGameType || S.settings.baseGameType || 'NLH';
+  const maxRaise = Math.min(round2(stack + (b.bet || 0)),
+    gt.startsWith('Omaha') && S.settings.omahaPotLimit !== false ? round2(g.highestBet + potNow + toCall) : Infinity);
+  const raiseTo = (x) => round2(Math.min(Math.max(snap(x), round2(g.highestBet + (g.minRaise || bb))), maxRaise));
   const style=b.botStyle||['tight','balanced','aggressive'][Array.from(uid).reduce((n,c)=>n+c.charCodeAt(0),0)%3];
   const r=Math.min(.999,rnd()/(style==='aggressive'?1.35:style==='tight'?.75:1));
-  const callCost=Math.min(toCall,stack),actualOdds=callCost>0?callCost/(potNow+callCost):0;
+  const price = botCallPrice(g, S.players, b);
+  const callCost=price.cost,actualOdds=price.odds;
   if(cards.length && toCall>0 && actualOdds<=.025){
-    if(g.phase==='preflop')return{action:'call'};
-    const cheapEquity=equityOf(cards,g.board||[],oppN,g.currentGameType||'NLH',rangeFacing(callCost,potNow,bb));
+    const cheapEquity=equityOf(cards,g.board||[],oppN,gt,rangeFacing(toCall,potNow,bb));
     if(cheapEquity!=null&&cheapEquity>=actualOdds)return{action:'call'};
   }
   if (g.phase === "preflop") {
-    // with a blind or less behind, folding is never right
-    if (toCall > 0 && stack <= bb * 1.5) return {action: "call"};
     const tier = preflopTier(cards);
+    // Large commitments are an equity/price decision, not a fixed chance to
+    // call with a broad hand label. Includes short stacks facing an overbet.
+    if (toCall > 0 && (callCost >= stack * .35 || toCall >= bb * 10)) {
+      const preEquity = equityOf(cards, [], oppN, gt, Math.max(2, rangeFacing(toCall, potNow, bb)));
+      return preEquity != null && preEquity > actualOdds + .035 ? {action:'call'} : {action:'fold'};
+    }
+    // Open first-in rather than limp most playable hands. Marginal opens
+    // require late position; premium hands are not dependent on position.
+    const seats = Object.values(S.players).filter(p => p.status === 'active' || p.status === 'folded').sort((a,b)=>a.seatIndex-b.seatIndex);
+    const button = seats.findIndex(p => p.uid === g.dealerUid);
+    const cutoff = seats.length > 2 && button >= 0 ? seats[(button + seats.length - 1) % seats.length].uid : null;
+    const late = g.dealerUid === uid || cutoff === uid || seats.length === 2;
+    if (g.highestBet <= bb && !Object.values(S.players).some(p => p.uid !== uid && p.status === 'active' && p.hasActed && p.bet > 0) && tier > 0 && (tier >= 2 || late) && r < (tier >= 2 ? .85 : .5))
+      return {action:'raise',amount:raiseTo(bb * (late ? 2.5 : 3))};
     const isPair = cards.length === 2 && cards[0].val === cards[1].val;
     if (isPair && toCall > 0 && toCall <= Math.min(stack * 0.15, bb * 8) && tier < 3) return {action: "call"};
     if (tier === 0) return toCall <= 0 ? {action: "call"} : {action: "fold"};
@@ -892,19 +993,17 @@ function botAction(S, uid) {
       if (toCall > bb * 3.5) return r < 0.55 ? {action: "call"} : {action: "fold"};
       return r < 0.3 ? {action: "raise", amount: raiseTo((g.highestBet || bb) * 3)} : {action: "call"};
     }
-    if (stack <= bb * 12) return {action: "raise", amount: round2(stack + (b.bet || 0))};
+    if (stack <= bb * 12) return {action: "raise", amount: raiseTo(stack + (b.bet || 0))};
     if (toCall <= 0) return r < 0.8 ? {action: "raise", amount: raiseTo(bb * (2.8 + r))} : {action: "call"};
     return r < 0.7 ? {action: "raise", amount: raiseTo((g.highestBet || bb) * (2.7 + r * 0.8))} : {action: "call"};
   }
 
   // Read the opponents' strength from the bet we are facing, not from thin air.
-  const gt = g.currentGameType || "NLH";
   const rng = rangeFacing(toCall, potNow, bb);
   const eqRaw = equityOf(cards, g.board || [], oppN, gt, rng);
   if(eqRaw==null)return{action:toCall>0?'fold':'call'};
   const eq=eqRaw;
   const potOdds=actualOdds;
-  const committed = potNow > 0 && stack <= potNow * 0.6;
   const body = handBody(cards, g.board || [], gt);
   const hasBody = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
   const hasAnything = body.made >= 1 || body.outs >= 4; // may call a small one
@@ -957,7 +1056,7 @@ function botAction(S, uid) {
   }
   // Facing a shove, or a bet that costs most of the stack: a hand with neither
   // a pair nor a real draw folds. No exceptions, no miracle river.
-  if (toCall >= stack) return hasSomething() && eq > Math.max(0.45, potOdds) ? {action: "call"} : {action: "fold"};
+  if (toCall >= stack) return hasSomething() && eq > potOdds + .025 ? {action: "call"} : {action: "fold"};
   // No pair, no draw, facing a bet: fold at any price — client parity.
   if (!hasAnything) {
     const peek = body.outs >= 4 && (g.board || []).length < 5 && toCall <= potNow * 0.1;
@@ -971,8 +1070,10 @@ function botAction(S, uid) {
     return {action: "call"};
   }
   if (eq > potOdds + 0.02) return {action: "call"};
-  if (committed && eq > potOdds - 0.06) return {action: "call"};
-  if (r < 0.07) { const rr = raisePot(0.7); if (rr) return rr; }
+  // A failed call-price test is not rescued by money already invested.
+  // Raise as a semi-bluff only with a live strong draw and foldable opponents.
+  const canFold = activesOf(S.players).some(p => p.uid !== uid && p.stack > toCall);
+  if (g.phase !== 'river' && body.outs >= 8 && eq > .25 && canFold && r < .12) { const rr = raisePot(0.7); if (rr) return rr; }
   return {action: "fold"};
 }
 
@@ -1140,10 +1241,17 @@ async function tickTable(id, testNow) {
       }
     }
 
+    // Managed cash availability reconciles only after settlement. It uses the
+    // same sponsor ledger and seat removal path as ordinary bot sessions.
+    if(S.raw.botLobby?.version===1){
+      const managedPatch=await require('./botLobby').reconcileManagedSeats(S,removeSeat,fundedBalance);
+      if(Object.keys(managedPatch).length){Object.assign(extraTop,managedPatch);dirty=true;}
+    }
+
     // Cash bots have finite, staggered sessions. A replacement is funded by
     // the same club sponsor, atomically with the departing bot's cash-out.
     // Never replace a participant in an active hand, Spin or tournament.
-    if(!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&now>=(S.raw.botRotateAfter||0)&&
+    if(!S.raw.botLobby&&!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&now>=(S.raw.botRotateAfter||0)&&
        (g.phase!=='showdown'||now-(g.showdownAt||0)>=(g.earlyWin?2500:5000))){
       const due=Object.values(pl).filter(p=>p.isBot&&p.fundingUid&&!p.pendingTopUp).map(p=>({p,at:p.botLeavesAt||botSession(p.uid,p.botJoinedAt||S.raw.createdAt||now).botLeavesAt})).filter(x=>x.at<=now).sort((a,b)=>a.at-b.at||a.p.seatIndex-b.p.seatIndex)[0];
       if(due){
@@ -1220,11 +1328,11 @@ async function tickTable(id, testNow) {
       let acted = false;
       activesOf(pl).forEach((p) => {
         if ((S.priv[p.uid] || []).length !== 3) return;
-        if (p.isBot && stuck > 1600) acted = applyDiscard(S, p.uid, crypto.randomInt(0, 3)) || acted;
+        if (p.isBot && stuck > 1600) acted = applyDiscard(S, p.uid, botDiscardIndex(S.priv[p.uid] || [], g.board || [])) || acted;
       });
       if (!acted && stuck > 25000) {
         const holdout = activesOf(pl).find((p) => (S.priv[p.uid] || []).length === 3);
-        if (holdout) acted = applyDiscard(S, holdout.uid, crypto.randomInt(0, 3));
+        if (holdout) acted = applyDiscard(S, holdout.uid, holdout.isBot ? botDiscardIndex(S.priv[holdout.uid] || [], g.board || []) : crypto.randomInt(0, 3));
       }
       dirty = dirty || acted;
     } else if (BETTING.includes(g.phase)) {
@@ -1562,6 +1670,7 @@ exports.tourAutoStart = onSchedule('every 1 minutes',async()=>{
 exports.tableAutoDrive = onSchedule({schedule:'every 1 minutes',timeoutSeconds:120,memory:'1GiB',region:'us-central1'},async()=>{
   if(require('./pokerSecurity').POKER_SECURITY_PAUSED)return;
   const started=Date.now();
+  await require('./botLobby').maintainBotLobbies(db(),started);
   while(Date.now()-started<50000){
     const tours=await db().collection('tournaments').where('authorityVersion','==',2).get();
     for(const d of tours.docs)if(['reg','running'].includes(d.data().status))try{await Tours.tickTournament(d.id);}catch(e){console.error('Tournament driver',d.id,e.message);}
@@ -1573,4 +1682,4 @@ exports.tableAutoDrive = onSchedule({schedule:'every 1 minutes',timeoutSeconds:1
 });
 
 // Test hook — a plain object, ignored by the Functions deploy loader.
-exports.__engineInternals = {loadState,commitState,tickTable,tickMayAdvance,startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, preflopTier, equityOf};
+exports.__engineInternals = {loadState,commitState,tickTable,tickMayAdvance,startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, botCallPrice, botDiscardIndex, preflopTier, equityOf, rangeFacing, rangeHandStrength};

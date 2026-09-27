@@ -69,3 +69,12 @@ assert.equal(client.bestScoreFull(menCards,riverBoard,'Omaha 6'),4060000,'Men ha
 console.log('PASS: screenshot river bluff, river nuts value, all-in-only check, board split, and Omaha straight ranks');
 
 require('../../functions/test/botDecision.test.js');
+require('../../functions/test/botRange.test.js');
+const {execFileSync}=require('node:child_process');
+const path=require('node:path');
+execFileSync(process.execPath,['scripts/sync-bot-policy.cjs','--check'],{cwd:path.join(__dirname,'../..')});
+assert.equal(client.botPreflopTier([c('9','♠'),c('8','♠'),c('7','♥'),c('6','♥')]),2);
+assert.equal(client.botPreflopTier([c('K','♠'),c('K','♥'),c('K','♦'),c('K','♣')]),0);
+assert.equal(client.botRangeFacing(100,200,1),4);
+const short={uid:'short',stack:10,bet:0};
+assert.equal(client.botCallPrice({highestBet:1000,pots:[]},{short,opponent:{uid:'opponent',bet:1000}},short).odds,.5);

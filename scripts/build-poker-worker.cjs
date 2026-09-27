@@ -5,7 +5,7 @@ const babel = require('../tests/ui/node_modules/@babel/core');
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const source = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m => m[1].includes('const botPokerMove ='))[1];
-const names = ['round2','SUITS','CARD_VALUES','pokerDeck','getCombinations','evaluate5Cards','bestScoreFull','deckWithout','simMyEquity','simRealEquity','botRangeFacing','botHandBody','botPreflopTier','botPokerMove'];
+const names = ['round2','SUITS','CARD_VALUES','pokerDeck','getCombinations','evaluate5Cards','bestScoreFull','deckWithout','simMyEquity','simRealEquity','botRangeFacing','botHandBody','botPreflopTier', 'BOT_RANK_V', 'botActives', 'botRangeHandStrength', 'botDiscardIndex', 'botSampleEquity', 'botCallPrice', 'botDecision','botPokerMove'];
 const found = new Map();
 for (const node of babel.parseSync(source).program.body) {
   if (node.type === 'VariableDeclaration') for (const d of node.declarations) {
@@ -27,3 +27,4 @@ const output = path.join(root,'assets/js/poker-equity-worker.js');
 if (process.argv.includes('--check')) {
   if (fs.readFileSync(output,'utf8') !== worker) throw Error('Worker differs from client policy: run node scripts/build-poker-worker.cjs');
 } else fs.writeFileSync(output, worker);
+

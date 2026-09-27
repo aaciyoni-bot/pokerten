@@ -62,6 +62,29 @@ for (const draw of [.001,.01,.04,.5,.99]) {
 const allInTable = {...nutsTable,players:{dana:nuts,men:{...nutsTable.players.men,stack:0}}};
 assert.equal(withDecisionDraw(.01,()=>client.botPokerMove(nutsGame,allInTable,nuts)).type,'call','Do not bet into only all-in opponents');
 assert.equal(withDecisionDraw(.01,()=>client.botPokerMove({...nutsGame,board},nutsTable,nuts)).type,'call','A royal flush supplied entirely by the board is a split, not a value bet');
+// Exercise the actual generated browser raise branch: public helpers must
+// survive removal of the server-only demo guard during policy generation.
+function serverMoveWithDraw(first,g,t,b){
+  const crypto=require('node:crypto'),original=crypto.randomInt;
+  let initial=true;
+  crypto.randomInt=(min,max)=>{
+    if(initial){initial=false;return min+Math.floor(first*(max-min));}
+    return original(min,max);
+  };
+  try{
+    const move=server.botAction({...t,gameState:g,priv:{[b.uid]:b.cards}},b.uid);
+    return{type:move.action,...(move.amount==null?{}:{amt:move.amount})};
+  }finally{crypto.randomInt=original;}
+}
+for(const {wager,pot} of [{wager:20,pot:100},{wager:1,pot:1000}]){
+  const facing={...nutsGame,highestBet:wager,pots:[{amount:pot}]};
+  for(const remaining of [100,0])for(const draw of [.01,.5,.99]){
+    const tableWithBet={...nutsTable,players:{dana:nuts,men:{...nutsTable.players.men,bet:wager,stack:remaining}}};
+    const move=withDecisionDraw(draw,()=>client.botPokerMove(facing,tableWithBet,nuts));
+    assert.equal(move.type,remaining>0?'raise':'call','River nuts raise only when an opponent can pay more');
+    assert.deepEqual({...move},serverMoveWithDraw(draw,facing,tableWithBet,nuts),'Generated browser and server must agree on value raises and all-in calls');
+  }
+}
 const benCards=[c('A','♦'),c('10','♦'),c('7','♠'),c('5','♣'),c('4','♠'),c('2','♣')];
 const menCards=[c('J','♥'),c('6','♠'),c('5','♦'),c('4','♣'),c('3','♣'),c('2','♦')];
 assert.equal(client.bestScoreFull(benCards,riverBoard,'Omaha 6'),4050000,'Ben has a five-high straight, not air');

@@ -29,18 +29,57 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  // Built-ins must exist on a fresh browser, without saving any template first.
  w.localStorage.removeItem('pokerTpl_main');let joined=0;
  const emptyTable={docId:'empty',type:'poker',authorityVersion:2,clubId:'main',settings:{serverEngine:true,baseGameType:'NLH',blinds:.5,minBuyIn:40,maxBuyIn:200,maxPlayers:6},players:{},gameState:{phase:'waiting'}};
- const render=role=>React.act(async()=>root.render(React.createElement(w.LobbyTest,{key:role,tablesLoaded:true,user:{uid:'spectating-manager',role,managedGames:[]},tables:[emptyTable],tournaments:[],clubSettings:{rakePct:6},tab:'poker',setTab(){},onJoinPoker(){joined++;},showToast:(m,type)=>messages.push({m,type})})));
- await render('manager');const doc=w.document,quick=doc.querySelector('[aria-label="Quick bot tables"]');assert.ok(quick);assert.equal(quick.querySelectorAll('input').length,2,'only buy-in and rake need editing');
- await React.act(()=>{Simulate.change(quick.querySelector('[aria-label="Quick table buy-in"]'),{target:{value:'250'}});Simulate.change(quick.querySelector('[aria-label="Quick table rake"]'),{target:{value:'4'}});});
+ const render=(role,status)=>React.act(async()=>root.render(React.createElement(w.LobbyTest,{key:role+status,tablesLoaded:true,user:{uid:'spectating-manager',role,status,managedGames:[]},tables:[emptyTable],tournaments:[],clubSettings:{rakePct:6},tab:'poker',setTab(){},onJoinPoker(){joined++;},showToast:(m,type)=>messages.push({m,type})})));
+ await render('manager');const doc=w.document,quick=doc.querySelector('[aria-label="Quick bot tables"]');assert.ok(quick);
+ const control=label=>quick.querySelector('[aria-label="'+label+'"]');
+ const change=async(label,value)=>React.act(()=>Simulate.change(control(label),{target:{value:String(value)}}));
+ const toggle=quick.querySelector('button');assert.equal(toggle.getAttribute('aria-expanded'),'false');assert.equal(control('Create bot table'),null,'Form opens explicitly from the manager button');
+ await React.act(()=>toggle.click());assert.equal(toggle.getAttribute('aria-expanded'),'true');
+ assert.equal(control('Quick table rake').value,'6','Current club rake is retained by default');
+ await change('Quick table rake',4);
  for(const game of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple']){
-  const open=doc.querySelector('[aria-label="Open '+game+' with bots"]'),before=calls.length;
-  await React.act(async()=>{open.click();open.click();});assert.equal(calls.length,before+1);const c=calls.at(-1);assert.equal(c.name,'pkTableCreate');assert.equal(c.args.botCount,'full');assert.equal(c.args.settings.baseGameType,game);assert.equal(c.args.settings.minBuyIn,250);assert.equal(c.args.settings.maxBuyIn,250);assert.equal(c.args.settings.rakePercent,4);assert.equal(c.args.settings.maxPlayers,6);assert.equal(c.args.settings.blinds,.5);
-  await React.act(async()=>settle.resolve({tableId:'quick-'+game}));
+  await change('Quick table game',game);
+  const seats=['Omaha 4','Omaha 5','Pineapple'].includes(game)?4:6;
+  assert.equal(control('Quick table seats').value,String(seats),'Small Omaha and Pineapple tables default to four seats');
+  for(const [index,sb] of [.5,1,2].entries()){
+   await change('Quick table blinds',sb);await change('Quick table bot seats',index);
+   assert.equal(control('Quick table min buy-in').value,String(sb*100));assert.equal(control('Quick table max buy-in').value,String(sb*400));
+   const count=seats-index,open=control('Create bot table'),before=calls.length,successBefore=messages.filter(m=>m.type==='success').length;
+   assert.ok(control('Initial bot funding').textContent.replace(/,/g,'').includes('Initial club chips: '+(count*sb*200).toFixed(2)),'Displayed funding matches the server 100 BB rule');
+   await React.act(async()=>{open.click();open.click();});assert.equal(calls.length,before+1,'Repeated synchronous clicks create one table');
+   assert.equal(messages.filter(m=>m.type==='success').length,successBefore,'No success before the server response');
+   assert.equal(open.disabled,true);assert.equal(control('Quick table game').disabled,true);
+   const c=calls.at(-1);assert.equal(c.name,'pkTableCreate');assert.equal(c.args.clubId,'main');assert.equal(c.args.botCount,index===0?'full':count);
+   assert.equal(c.args.settings.baseGameType,game);assert.equal(c.args.settings.minBuyIn,sb*100);assert.equal(c.args.settings.maxBuyIn,sb*400);
+   assert.equal(c.args.settings.rakePercent,4);assert.equal(c.args.settings.maxPlayers,seats);assert.equal(c.args.settings.blinds,sb);
+   assert.equal(c.args.settings.serverEngine,true);assert.equal(c.args.settings.autoStart,2);assert.equal(c.args.settings.omahaPotLimit,true);assert.ok(c.args.requestId.length>=16);
+   assert.equal('botLobby' in c.args,false,'Manual tables do not change the automatic pool');
+   await React.act(async()=>settle.resolve({tableId:'quick-'+game+'-'+sb}));assert.equal(open.disabled,false);assert.match(quick.querySelector('[role="status"]').textContent,/opened with/);
+  }
  }
- await React.act(()=>Simulate.change(quick.querySelector('[aria-label="Quick table rake"]'),{target:{value:'21'}}));assert.ok(doc.querySelector('[aria-label="Open NLH with bots"]').disabled);
- await React.act(()=>Simulate.change(quick.querySelector('[aria-label="Quick table rake"]'),{target:{value:'0'}}));assert.equal(doc.querySelector('[aria-label="Open NLH with bots"]').disabled,false,'zero rake is valid');
+ // Seats and buy-in limits remain editable; cost respects both server clamps.
+ await change('Quick table game','Pineapple');await change('Quick table seats',6);await change('Quick table blinds',.5);await change('Quick table bot seats',1);
+ await change('Quick table min buy-in',90);await change('Quick table max buy-in',95);assert.match(control('Initial bot funding').textContent,/475/);
+ await change('Quick table min buy-in',300);await change('Quick table max buy-in',350);assert.match(control('Initial bot funding').textContent,/1,?500/);
+ const create=control('Create bot table');await React.act(async()=>create.click());const failed=calls.at(-1);
+ assert.equal(failed.args.settings.maxPlayers,6);assert.equal(failed.args.settings.minBuyIn,300);assert.equal(failed.args.settings.maxBuyIn,350);assert.equal(failed.args.botCount,5);
+ const successes=messages.filter(m=>m.type==='success').length;
+ await React.act(async()=>settle.reject(Error('Insufficient club funds')));
+ assert.equal(quick.querySelector('[role="alert"]').textContent,'Insufficient club funds');assert.equal(quick.querySelector('[role="status"]'),null);assert.equal(create.disabled,false);
+ assert.equal(messages.filter(m=>m.type==='success').length,successes,'Failure never claims that a table was opened');
+ await React.act(async()=>{create.click();create.click();});assert.notEqual(calls.at(-1).args.requestId,failed.args.requestId,'Explicit retry has a fresh request id');
+ await React.act(async()=>settle.resolve({tableId:'manual-retry'}));assert.equal(quick.querySelector('[role="alert"]'),null);
+ await change('Quick table rake',21);assert.ok(create.disabled);
+ await change('Quick table rake',0);assert.equal(create.disabled,false,'Zero rake is valid');
+ await change('Quick table max buy-in',299);assert.ok(create.disabled,'Maximum below minimum is rejected');
+ await change('Quick table max buy-in',350);await change('Quick table min buy-in','');assert.ok(create.disabled,'Empty buy-in is rejected');
+ await change('Quick table min buy-in',300);
  const fill=doc.querySelector('[aria-label="Fill table with bots"]');assert.ok(fill);const count=calls.length;await React.act(async()=>{fill.click();fill.click();});assert.equal(calls.length,count+1);assert.equal(calls.at(-1).name,'pkSeat');assert.equal(calls.at(-1).args.op,'fillbots');assert.equal(calls.at(-1).args.tableId,'empty');assert.equal(joined,0,'lobby fill never enters or seats the manager');
  await React.act(async()=>settle.reject(Error('Insufficient club funds')));assert.equal(fill.disabled,false);assert.equal(messages.at(-1).m,'Insufficient club funds');
  await render('player');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null);assert.equal(doc.querySelector('[aria-label="Fill table with bots"]'),null);assert.equal(writes.length,0);
- await React.act(()=>root.unmount());w.close();console.log('PASS: saved NLH/PLO templates use server creation, preserve settings, prevent double opens and recover from errors');
+ await render('agent','approved');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null);
+ await render('manager','banned');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null);
+ w.fb.auth.currentUser={uid:'spectating-manager',email:'haim29071994@gmail.com',emailVerified:true};await render('player','pending');assert.ok(doc.querySelector('[aria-label="Quick bot tables"]'),'Existing verified oversight identity gets the same controls');
+ w.fb.auth.currentUser.emailVerified=false;await render('player','approved');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null,'An unverified email does not grant management controls');
+ await React.act(()=>root.unmount());w.close();console.log('PASS: saved templates and manual bot tables across five games / three stakes, seat and fill choices, funding, permissions, duplicate prevention and failure recovery');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

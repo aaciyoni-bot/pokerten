@@ -1166,8 +1166,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
     <script src="assets/js/poker-auth.js?v=265"></script>
     <script src="assets/js/club-ui.js?v=1"></script>
-    <script src="assets/js/poker-tournament.js?v=264"></script>
-    <script src="assets/js/poker-runtime.js?v=283"></script>
+    <script src="assets/js/poker-tournament.js?v=286"></script>
+    <script src="assets/js/poker-runtime.js?v=286"></script>
 <script>
 
 const pokerCommand=async(name,data)=>{const clean=JSON.parse(JSON.stringify(data));const key=name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{const result=await window.fb.fx(name,payload);if(['pkClubMember','pkProfile'].includes(name)&&window.dispatchEvent&&window.Event)window.dispatchEvent(new window.Event('pk-club-changed'));return result;}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
@@ -2881,10 +2881,16 @@ function botSampleEquity(myCards, board, oppCount, gameType, range) {
       }
       return copy.slice(0, n);
     };
+    const kept = (hand, fb) => gameType === 'Pineapple' && hand.length === 3
+      ? hand.filter((_, j) => j !== botDiscardIndex(hand, fb.slice(0, 3))) : hand;
+    // On the river neither our score nor a candidate's score can change.
+    // Reuse them instead of evaluating the same Omaha combinations again.
+    const riverScore = missingBoard === 0 ? bestScoreFull(kept(myCards, publicBoard), publicBoard, gameType) : null;
     let score = 0;
     for (let i = 0; i < iters; i++) {
       let pool = rest;
       const oppHands = [];
+      const riverOppScores = [];
       for (let o = 0; o < opponents; o++) {
         const k = ranges[o];
         let chosen = null, strength = -Infinity;
@@ -2894,18 +2900,17 @@ function botSampleEquity(myCards, board, oppCount, gameType, range) {
           if (candidateStrength > strength) { chosen = candidate; strength = candidateStrength; }
         }
         oppHands.push(chosen);
+        riverOppScores.push(missingBoard === 0 && k > 1 && !(gameType === 'Pineapple' && chosen.length === 3) ? strength : null);
         const chosenIds = new Set(chosen.map(c => c.id));
         pool = pool.filter(c => !chosenIds.has(c.id));
       }
       const fb = [...publicBoard, ...sample(pool, missingBoard)];
       // Pineapple must discard on the flop. Do not give the simulation a
       // third playable hole card or choose its discard after seeing the river.
-      const kept = hand => gameType === 'Pineapple' && hand.length === 3
-        ? hand.filter((_, j) => j !== botDiscardIndex(hand, fb.slice(0, 3))) : hand;
-      const my = bestScoreFull(kept(myCards), fb, gameType);
+      const my = riverScore == null ? bestScoreFull(kept(myCards, fb), fb, gameType) : riverScore;
       let lose = false, ties = 1;
-      for (const hand of oppHands) {
-        const their = bestScoreFull(kept(hand), fb, gameType);
+      for (let o = 0; o < oppHands.length; o++) {
+        const their = riverOppScores[o] == null ? bestScoreFull(kept(oppHands[o], fb), fb, gameType) : riverOppScores[o];
         if (their > my) { lose = true; break; }
         if (their === my) ties++;
       }
@@ -2983,7 +2988,7 @@ function botDecision(S, uid) {
   const r=Math.min(.999,Math.random()/(style==='aggressive'?1.35:style==='tight'?.75:1));
   const price = botCallPrice(g, S.players, b);
   const callCost=price.cost,actualOdds=price.odds;
-  if(cards.length && toCall>0 && actualOdds<=.025){
+  if(g.phase==='preflop' && cards.length && toCall>0 && actualOdds<=.025){
     const cheapEquity=botSampleEquity(cards,g.board||[],oppN,gt,botRangeFacing(toCall,potNow,bb));
     if(cheapEquity!=null&&cheapEquity>=actualOdds)return{action:'call'};
   }
@@ -3004,7 +3009,15 @@ function botDecision(S, uid) {
     if (g.highestBet <= bb && !Object.values(S.players).some(p => p.uid !== uid && p.status === 'active' && p.hasActed && p.bet > 0) && tier > 0 && (tier >= 2 || late) && r < (tier >= 2 ? .85 : .5))
       return {action:'raise',amount:raiseTo(bb * (late ? 2.5 : 3))};
     const isPair = cards.length === 2 && cards[0].val === cards[1].val;
-    if (isPair && toCall > 0 && toCall <= Math.min(stack * 0.15, bb * 8) && tier < 3) return {action: "call"};
+    if (isPair && toCall > bb && tier < 3) {
+      // Set-mining needs chips left to win after the call. Our own deep stack
+      // cannot justify paying eight blinds against an almost all-in opponent.
+      const behind = Math.max(0, ...botActives(S.players).filter(p => p.uid !== uid)
+        .map(p => Math.min(stack - callCost, p.stack || 0)));
+      if (callCost <= Math.min(stack * .07, behind / 15)) return {action:'call'};
+      const pairEquity = botSampleEquity(cards, [], oppN, gt, Math.max(2, botRangeFacing(toCall, potNow, bb)));
+      return pairEquity != null && pairEquity > actualOdds + .035 ? {action:'call'} : {action:'fold'};
+    }
     if (tier === 0) return toCall <= 0 ? {action: "call"} : {action: "fold"};
     if (tier === 1) {
       if (toCall <= 0) return r < 0.12 ? {action: "raise", amount: raiseTo(bb * 2.5)} : {action: "call"};
@@ -3035,7 +3048,9 @@ function botDecision(S, uid) {
   const hasAnything = body.made >= 1 || body.outs >= 4; // may call a small one
   const hasSomething = () => hasBody;
   // Sizing is priced off the POT, never off the opponent's bet.
+  const canValueRaise = botActives(S.players).some(p => p.uid !== uid && p.stack > 0);
   const raisePot = (frac) => {
+    if (!canValueRaise) return null;
     const potAfterCall = potNow + toCall;
     const target = raiseTo(g.highestBet + Math.max(bb * 2, potAfterCall * frac));
     const allIn = target >= round2(stack + (b.bet || 0)) - 0.01;
@@ -3063,6 +3078,9 @@ function botDecision(S, uid) {
     if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || {action: "call"};
     return (r < 0.11 ? betPot(0.55) : null) || {action: "call"};
   }
+  // A tiny wager may offer a profitable call even to a weak hand. It must
+  // not force the river nuts to flat-call and forgo every possible value raise.
+  if (actualOdds <= .025 && eq >= actualOdds && !(g.phase === 'river' && eq > .90)) return {action:'call'};
   // Facing a shove, or a bet that costs most of the stack: a hand with neither
   // a pair nor a real draw folds. No exceptions, no miracle river.
   if (toCall >= stack) return hasSomething() && eq > potOdds + .025 ? {action: "call"} : {action: "fold"};
@@ -3075,7 +3093,8 @@ function botDecision(S, uid) {
   // and it never calls off a stack — that is the 10-3 on A-K-3.
   if (!hasSomething() && toCall > potNow * 0.4) return {action: "fold"};
   if (eq > potOdds + 0.18 && eq > 0.62) {
-    if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
+    const valueFrequency = g.phase === 'river' && eq > .98 ? 1 : eq > .90 ? .8 : eq > .78 ? .5 : .3;
+    if (r < valueFrequency) { const rr = raisePot(0.6 + Math.min(r, .4)); if (rr) return rr; }
     return {action: "call"};
   }
   if (eq > potOdds + 0.02) return {action: "call"};
@@ -6435,6 +6454,78 @@ function PokerWaitlistIndicator({ table, uid, className = 'tbl-waitlist', showEm
     queue.bots > 0 && React.createElement('span', { className: 'waitlist-bots' }, ' · 🤖 ', queue.bots, queue.bots === 1 ? ' bot' : ' bots'),
     queue.position > 0 && React.createElement('span', { className: 'waitlist-position', title: 'Your position among waiting players. Players are seated before bots.' }, ' · You: #', queue.position));
 }
+function QuickBotTableCreate({user, clubSettings, showToast}) {
+  const [expanded, setExpanded] = useState(false);
+  const [game, setGame] = useState('NLH');
+  const [blinds, setBlinds] = useState('0.5');
+  const [seats, setSeats] = useState('6');
+  const [vacancies, setVacancies] = useState('1');
+  const [minBuy, setMinBuy] = useState('50');
+  const [maxBuy, setMaxBuy] = useState('200');
+  const [rake, setRake] = useState(String(clubSettings?.rakePct ?? DEFAULT_RAKE_PCT));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [opened, setOpened] = useState('');
+  const requestLock = useRef(false);
+  const panelId = React.useId();
+  const games = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
+  const gameLabel = game === 'NLH' ? 'Texas Hold’em' : game;
+  const allowed = canManageGame(user, 'poker');
+  const valid = games.includes(game) && ['0.5','1','2'].includes(blinds) && ['4','6'].includes(seats) && ['0','1','2'].includes(vacancies) &&
+    [minBuy,maxBuy,rake].every(v => v !== '' && Number.isFinite(Number(v))) && Number(minBuy) >= 0.01 && Number(maxBuy) >= Number(minBuy) && Number(maxBuy) <= 10000000 && Number(rake) >= 0 && Number(rake) <= 20;
+  const botCount = Number(seats) - Number(vacancies);
+  // Match the server's 100 BB buy-in, capped to the selected table limits.
+  const botBuy = Math.min(Number(maxBuy), Math.max(Number(minBuy), Number(blinds) * 200));
+  const clearNotice = () => {setError('');setOpened('');};
+  const create = async () => {
+    if (!allowed || requestLock.current || !valid) return;
+    requestLock.current = true;setBusy(true);clearNotice();
+    const title = gameLabel + ' · ' + blinds + '/' + Number(blinds)*2;
+    try {
+      await pokerCommand('pkTableCreate', {clubId:CLUB_ID, settings:{
+        name:title, baseGameType:game, blinds:Number(blinds), minBuyIn:Number(minBuy), maxBuyIn:Number(maxBuy),
+        rakePercent:Number(rake), maxPlayers:Number(seats), autoStart:2, actionTime:30, omahaPotLimit:true, serverEngine:true
+      }, botCount:vacancies === '0' ? 'full' : botCount});
+      setOpened(title + ' opened with ' + botCount + ' bots.');
+      showToast?.(title + ' opened with ' + botCount + ' bots.', 'success');
+    } catch (e) {setError(e.message || 'Could not open this table. Try again.');}
+    finally {requestLock.current = false;setBusy(false);}
+  };
+  if (!allowed) return null;
+  const inputClass = 'block w-full mt-1 rounded-xl bg-slate-950 border border-white/15 px-3 py-2 text-white';
+  const labelClass = 'min-w-0 text-xs font-bold text-slate-300';
+  return React.createElement('section', {'aria-label':'Quick bot tables', className:'lobby-quick-tables rounded-2xl border border-amber-400/25 bg-slate-900/70 p-4 mb-4'},
+    React.createElement('button', {type:'button', 'aria-expanded':expanded, 'aria-controls':panelId, disabled:busy,
+      onClick:() => setExpanded(v => !v), className:'rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50'},
+      React.createElement('i', {className:'fa-solid fa-robot mr-2', 'aria-hidden':true}), 'Open table with bots'),
+    expanded && React.createElement('div', {id:panelId, className:'mt-3'},
+      React.createElement('p', {className:'text-xs text-slate-300 mb-3'}, 'Open one extra table. Your automatic table activity continues separately.'),
+      React.createElement('div', {className:'grid grid-cols-2 gap-3'},
+        React.createElement('label', {className:labelClass}, 'Game', React.createElement('select', {'aria-label':'Quick table game', value:game, disabled:busy, className:inputClass,
+          onChange:e => {setGame(e.target.value);setSeats(['Omaha 4','Omaha 5','Pineapple'].includes(e.target.value) ? '4' : '6');clearNotice();}},
+          games.map(g => React.createElement('option', {key:g, value:g}, g === 'NLH' ? 'Texas Hold’em (NLH)' : g)))),
+        React.createElement('label', {className:labelClass}, 'Blinds', React.createElement('select', {'aria-label':'Quick table blinds', value:blinds, disabled:busy, className:inputClass, dir:'ltr',
+          onChange:e => {setBlinds(e.target.value);setMinBuy(String(Number(e.target.value)*100));setMaxBuy(String(Number(e.target.value)*400));clearNotice();}},
+          ['0.5','1','2'].map(b => React.createElement('option', {key:b, value:b}, b + '/' + Number(b)*2)))),
+        React.createElement('label', {className:labelClass}, 'Seats', React.createElement('select', {'aria-label':'Quick table seats', value:seats, disabled:busy, className:inputClass,
+          onChange:e => {setSeats(e.target.value);clearNotice();}}, [4,6].map(n => React.createElement('option', {key:n, value:n}, n + ' seats')))),
+        React.createElement('label', {className:labelClass}, 'Bot seats', React.createElement('select', {'aria-label':'Quick table bot seats', value:vacancies, disabled:busy, className:inputClass,
+          onChange:e => {setVacancies(e.target.value);clearNotice();}},
+          React.createElement('option', {value:'0'}, 'Full · ' + seats + ' bots'),
+          React.createElement('option', {value:'1'}, '1 free seat · ' + (Number(seats)-1) + ' bots'),
+          React.createElement('option', {value:'2'}, '2 free seats · ' + (Number(seats)-2) + ' bots'))),
+        React.createElement('label', {className:labelClass}, 'Min buy-in', React.createElement('input', {'aria-label':'Quick table min buy-in', type:'number', min:0.01, max:10000000, step:'0.01', value:minBuy, disabled:busy, className:inputClass, dir:'ltr', onChange:e => {setMinBuy(e.target.value);clearNotice();}})),
+        React.createElement('label', {className:labelClass}, 'Max buy-in', React.createElement('input', {'aria-label':'Quick table max buy-in', type:'number', min:0.01, max:10000000, step:'0.01', value:maxBuy, disabled:busy, className:inputClass, dir:'ltr', onChange:e => {setMaxBuy(e.target.value);clearNotice();}})),
+        React.createElement('label', {className:labelClass}, 'Rake (%)', React.createElement('input', {'aria-label':'Quick table rake', type:'number', min:0, max:20, step:'0.01', value:rake, disabled:busy, className:inputClass, dir:'ltr', onChange:e => {setRake(e.target.value);clearNotice();}}))),
+      valid && React.createElement('p', {'aria-label':'Initial bot funding', className:'mt-3 text-sm text-amber-200'},
+        'Initial club chips: ', formatMoney(botCount * botBuy), ' · ', botCount, ' bots × ', formatMoney(botBuy), ' chips. ', Number(vacancies) ? vacancies + (vacancies === '1' ? ' seat available for a player.' : ' seats available for players.') : 'Players can join the waitlist.'),
+      !valid && React.createElement('p', {className:'mt-3 text-xs text-amber-200'}, 'Enter valid buy-in limits and a rake from 0% to 20%.'),
+      error && React.createElement('p', {role:'alert', className:'mt-3 text-sm text-rose-300'}, error),
+      opened && React.createElement('p', {role:'status', className:'mt-3 text-sm text-emerald-300'}, opened),
+      React.createElement('button', {type:'button', 'aria-label':'Create bot table', disabled:busy || !valid, 'aria-busy':busy, onClick:create,
+        className:'btn-gold mt-3 w-full rounded-xl px-4 py-3 text-sm font-black disabled:opacity-40'},
+        busy ? 'Opening…' : 'Open ' + gameLabel + ' · ' + blinds + '/' + Number(blinds)*2)));
+}
 function LobbyView({
   tablesLoaded,
   user,
@@ -6522,10 +6613,6 @@ function LobbyView({
       return [];
     }
   })();
-  const [quickBuyIn,setQuickBuyIn]=useState('100');
-  const [quickRake,setQuickRake]=useState(String(clubSettings?.rakePct??DEFAULT_RAKE_PCT));
-  const quickPresets=['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple'];
-  const quickValid=quickBuyIn!==''&&quickRake!==''&&Number.isFinite(Number(quickBuyIn))&&Number(quickBuyIn)>=1&&Number(quickBuyIn)<=10000000&&Number.isFinite(Number(quickRake))&&Number(quickRake)>=0&&Number(quickRake)<=20;
   const [fillingTables,setFillingTables]=useState({});
   const fillLocks=useRef(new Set());
   const fillFromLobby=async(e,t)=>{
@@ -6551,10 +6638,6 @@ function LobbyView({
     } catch (e) {
       showToast(e.message || 'Could not open table', 'error');
     } finally { templateCreateLock.current = false; setOpeningTemplate(null); }
-  };
-  const openQuickBots=game=>{
-    if(!quickValid)return showToast('Enter a valid buy-in and rake.','error');
-    return createFromTpl({name:'Bots · '+game,settings:{name:game+' · Bots',baseGameType:game,blinds:0.5,minBuyIn:Number(quickBuyIn),maxBuyIn:Number(quickBuyIn),rakePercent:Number(quickRake),maxPlayers:6,autoStart:2,actionTime:30,omahaPotLimit:true,showcaseBots:'full'}});
   };
   const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
   const variantCount = v => pokerTables.filter(t => !(t.settings || {}).spinMode && ((t.settings || {}).baseGameType || 'NLH') === v).length;
@@ -7355,13 +7438,7 @@ function LobbyView({
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(245,158,11,0.3)] text-sm"
   }, React.createElement("i", {
     className: "fa-solid fa-plus ml-2"
-  }), "New table")), canManageGame(user,'poker') && React.createElement('details',{'aria-label':'Quick bot tables',className:'lobby-quick-tables rounded-2xl border border-amber-400/25 bg-slate-900/70 p-4 mb-4'},
-    React.createElement('summary',{className:'font-black text-amber-200'},'Quick tables with bots'),
-    React.createElement('p',{className:'text-xs text-slate-400 mb-3'},'Ready to play · 6 bots · blinds 0.5/1. Set the buy-in and rake, then open a table.'),
-    React.createElement('div',{className:'grid grid-cols-2 gap-3 mb-3'},
-      React.createElement('label',{className:'text-xs font-bold text-slate-300'},'Buy-in',React.createElement('input',{'aria-label':'Quick table buy-in',type:'number',min:1,max:10000000,step:'0.01',value:quickBuyIn,disabled:openingTemplate!==null,onChange:e=>setQuickBuyIn(e.target.value),className:'block w-full mt-1 rounded-xl bg-slate-950 border border-white/15 px-3 py-2 text-white',dir:'ltr'})),
-      React.createElement('label',{className:'text-xs font-bold text-slate-300'},'Rake (%)',React.createElement('input',{'aria-label':'Quick table rake',type:'number',min:0,max:20,step:'0.01',value:quickRake,disabled:openingTemplate!==null,onChange:e=>setQuickRake(e.target.value),className:'block w-full mt-1 rounded-xl bg-slate-950 border border-white/15 px-3 py-2 text-white',dir:'ltr'}))),
-    React.createElement('div',{className:'grid grid-cols-2 sm:grid-cols-3 gap-2'},quickPresets.map(game=>React.createElement('button',{key:game,'aria-label':'Open '+game+' with bots',disabled:openingTemplate!==null||!quickValid,'aria-busy':openingTemplate==='Bots · '+game,onClick:()=>openQuickBots(game),className:'rounded-xl border border-amber-400/30 bg-slate-800 hover:bg-amber-600 text-white py-3 px-2 font-bold disabled:opacity-40'},openingTemplate==='Bots · '+game?'Opening…':game,React.createElement('span',{className:'block text-xs text-amber-200 mt-1'},'6 bots'))))), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
+  }), "New table")), React.createElement(QuickBotTableCreate, {user,clubSettings,showToast}), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
     className: "flex flex-wrap gap-2 items-center mb-4"
   }, React.createElement("span", {
     className: "text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"
@@ -8562,14 +8639,19 @@ function BotLobbyControl({user, clubSettings, tables, showToast}) {
   const config = clubSettings?.botLobby || {};
   const enabled = config.enabled === true;
   const templates = botLobbyTemplates(tables, CLUB_ID, config.templates || []);
+  const slots = Array.isArray(config.slots) ? config.slots.filter(s => [0,1,2].includes(s.profile) && Array.isArray(s.templates) && s.templates.length) : [];
+  const hasSavedSlots = slots.length > 0;
   const blocked = clubSettings?.botsAuto === false;
-  const maxStartChips = templates.length ? [0,1,2].reduce((sum,empty) => sum + Math.max(...templates.map(t => (t.capacity - empty) * t.buy)), 0) : 0;
+  const slotBuy = s => Math.min(Number(s.maxBuyIn), Math.max(Number(s.minBuyIn), 200 * Number(s.blinds)));
+  const maxStartChips = hasSavedSlots ? slots.reduce((sum,slot) => sum + Math.max(...slot.templates.map(s => (Number(s.maxPlayers) - slot.profile) * slotBuy(s))), 0) : templates.length ? [0,1,2].reduce((sum,empty) => sum + Math.max(...templates.map(t => (t.capacity - empty) * t.buy)), 0) : 0;
+  const configuredSettings = hasSavedSlots ? slots.flatMap(s => s.templates) : templates.map(t => t.settings);
+  const settingsLabels = [...new Set(configuredSettings.map(s => (s.baseGameType === 'NLH' ? 'Texas Hold’em' : s.baseGameType) + ' ' + formatMoney(s.blinds) + '/' + formatMoney(Number(s.blinds)*2) + ' · min ' + formatMoney(s.minBuyIn)))];
   const toggle = async () => {
-    if (!allowed || saving.current || !enabled && (blocked || !templates.length)) return;
+    if (!allowed || saving.current || !enabled && (blocked || !hasSavedSlots && !templates.length)) return;
     saving.current = true;setBusy(true);setError('');
     try {
       await pokerCommand('pkBotLobbyConfigure', {clubId:CLUB_ID, enabled:!enabled,
-        ...(!enabled ? {templateTableIds:templates.map(t => t.id)} : {})});
+        ...(!enabled && !hasSavedSlots ? {templateTableIds:templates.map(t => t.id)} : {})});
       showToast?.(enabled ? 'Automatic table activity turned off.' : 'Automatic table activity enabled. Tables update on the next cycle.', 'success');
     } catch (e) {setError(e.message || 'Could not update automatic table activity. Try again.');}
     finally {saving.current = false;setBusy(false);}
@@ -8580,18 +8662,18 @@ function BotLobbyControl({user, clubSettings, tables, showToast}) {
     React.createElement('div', {className:'flex items-center justify-between gap-3 flex-wrap'},
       React.createElement('h4', {className:'text-sm font-black text-white'}, 'Automatic table activity'),
       React.createElement('span', {className:'text-xs font-bold text-emerald-300', role:'status'}, status)),
-    React.createElement('p', {className:'text-sm text-slate-300 mt-2'}, 'Keeps three bot tables available: full with a waitlist, one free seat, and two free seats.'),
+    React.createElement('p', {className:'text-sm text-slate-300 mt-2'}, hasSavedSlots ? 'Keeps ' + slots.length + ' bot tables across the game and blind levels below, with full tables, one free seat, and two free seats.' : 'Keeps three bot tables available: full with a waitlist, one free seat, and two free seats.'),
     React.createElement('p', {className:'text-xs text-slate-400 mt-2'}, 'Bot sessions: 25–35 minutes, with 1–2 minutes between replacements. Bot-only tables: 1–2 hours, at least 10 minutes between table renewals. Changes wait for the hand to finish.'),
     React.createElement('p', {className:'text-xs text-slate-400 mt-2'}, 'Uses club treasury chips. Turning off leaves games with human players running.'),
-    templates.length > 0 && React.createElement('div', {className:'mt-3 text-xs text-slate-300'},
+    settingsLabels.length > 0 && React.createElement('div', {className:'mt-3 text-xs text-slate-300'},
       React.createElement('span', {className:'font-bold'}, 'Table settings: '),
-      templates.map(t => t.game + ' ' + formatMoney(t.settings.blinds) + '/' + formatMoney(Number(t.settings.blinds)*2)).join(' · '),
-      !enabled && React.createElement('div', {className:'mt-1'}, 'Up to ' + formatMoney(maxStartChips) + ' club chips to start three tables.')),
-    !enabled && !templates.length && React.createElement('p', {className:'mt-2 text-xs text-amber-300'}, 'Open a cash table with at least four seats first.'),
+      settingsLabels.join(' · '),
+      !enabled && React.createElement('div', {className:'mt-1'}, 'Up to ' + formatMoney(maxStartChips) + ' club chips to start ' + (hasSavedSlots ? slots.length : 'three') + ' tables.')),
+    !enabled && !hasSavedSlots && !templates.length && React.createElement('p', {className:'mt-2 text-xs text-amber-300'}, 'Open a cash table with at least four seats first.'),
     !enabled && blocked && React.createElement('p', {className:'mt-2 text-xs text-amber-300'}, 'Allow automatic bot entry below before enabling table activity.'),
     config.lastMaintainedAt && React.createElement('p', {className:'mt-2 text-xs text-slate-400'}, 'Last updated: ' + new Date(config.lastMaintainedAt).toLocaleString('he-IL')),
     error && React.createElement('p', {role:'alert', className:'mt-2 text-sm text-rose-300'}, error),
-    React.createElement('button', {type:'button', onClick:toggle, disabled:busy || !enabled && (blocked || !templates.length), 'aria-busy':busy,
+    React.createElement('button', {type:'button', onClick:toggle, disabled:busy || !enabled && (blocked || !hasSavedSlots && !templates.length), 'aria-busy':busy,
       className:'mt-3 rounded-xl border border-white/15 bg-slate-800 px-4 py-3 text-sm font-bold text-white disabled:opacity-40'},
       busy ? 'Saving…' : enabled ? 'Turn off automatic tables' : 'Enable automatic tables'));
 }
@@ -9236,7 +9318,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center"
   }, React.createElement("i", {
     className: "fa-solid fa-sliders text-amber-400 text-sm"
-  })), "Club Settings"), React.createElement(BotLobbyControl, {user,clubSettings,tables,showToast}), React.createElement("div", {
+  })), "Club Settings"), React.createElement(BotLobbyControl, {user,clubSettings,tables,showToast}), React.createElement(QuickBotTableCreate, {user,clubSettings,showToast}), React.createElement("div", {
     className: "flex items-end gap-4 flex-wrap mb-4 pb-4 border-b border-white/5"
   }, React.createElement("div", {
     className: "w-full text-[11px] font-black uppercase tracking-[0.18em] text-gold-400 mb-1"

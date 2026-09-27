@@ -99,3 +99,20 @@ test('six-card multiway ranges keep all alternatives without consuming hypotheti
     assert.equal(candidates,90*5*4,'Full-table PLO6 must not silently discard range strength');
   } finally { C.bestScoreFull=original; }
 }));
+
+test('river equity reuses exact hero and selected range scores without extra evaluations',()=>seeded(()=>{
+ const original=C.bestScoreFull;
+ const hero=cards(['A♠','K♠','Q♥','J♥','6♦','3♦']),board=cards(['2♠','8♠','K♦','7♣','9♥']);
+ let heroScores=0,opponentScores=0;
+ C.bestScoreFull=(hole,publicBoard)=>{
+  assert.deepEqual(publicBoard,board);
+  if(hole.every((c,i)=>c.id===hero[i].id))heroScores++;
+  else opponentScores++;
+  return 0;
+ };
+ try{
+  assert.ok(Math.abs(E.equityOf(hero,board,5,'Omaha 6',4)-1/6)<1e-12);
+  assert.equal(heroScores,1,'The known river hand needs one evaluation');
+  assert.equal(opponentScores,90*5*4,'Chosen river scores are reused from range selection');
+ }finally{C.bestScoreFull=original;}
+}));

@@ -53,6 +53,18 @@ const click=async()=>React.act(async()=>document.querySelector('button').dispatc
  assert.match(document.querySelector('[role="status"]').textContent,/Paused/);assert.equal(document.querySelector('button').disabled,false);
  await render({clubSettings:{...clubSettings,botLobby:{version:1,enabled:true,fundingBlockedAt:1700000000000}}});
  assert.match(document.querySelector('[role="status"]').textContent,/Waiting for club chips/);
+ const slots = [
+  ...['NLH','Omaha 6'].flatMap(game => [.5,1,2].map((blinds,profile) => ({id:game+profile,profile,templates:[{...eligible.settings,baseGameType:game,blinds,minBuyIn:100*blinds,maxBuyIn:400*blinds}]}))),
+  ...['Omaha 4','Omaha 5','Pineapple'].map(game => ({id:game,profile:1,templates:[{...eligible.settings,baseGameType:game,maxPlayers:4,minBuyIn:50}]}))
+ ];
+ await render({tables:[],clubSettings:{...clubSettings,botLobby:{version:1,enabled:false,slots}}});
+ assert.match(document.body.textContent,/Keeps 9 bot tables/);
+ assert.match(document.body.textContent,/Texas Hold’em 2\.00\/4\.00 · min 200\.00/);
+ assert.match(document.body.textContent,/Omaha 6 1\.00\/2\.00 · min 100\.00/);
+ assert.match(document.body.textContent,/Omaha 4/);assert.match(document.body.textContent,/Omaha 5/);assert.match(document.body.textContent,/Pineapple/);
+ assert.match(document.body.textContent,/7,?300\.00/,'Funding reflects all nine saved slots');
+ assert.equal(document.querySelector('button').disabled,false,'Saved portfolio can restart after its bot tables close');
+ await click();assert.deepEqual(commands.at(-1),{name:'pkBotLobbyConfigure',payload:{clubId:'clubA',enabled:true}});
  await render({});failNext=true;await click();
  assert.equal(document.querySelector('[role="alert"]').textContent,'Temporary server failure');
  assert.equal(document.querySelector('button').disabled,false,'Failed update remains retryable');

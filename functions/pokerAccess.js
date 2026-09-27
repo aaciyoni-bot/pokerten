@@ -22,7 +22,7 @@ exports.pkTableCreate=onCall(opts,async r=>{available();return command(r,'table-
  const players={},cost=s.spinMode?s.spinBuyIn:Math.min(s.maxBuyIn,Math.max(s.minBuyIn,100*s.blinds*2));
  const write=await prepareLedger(db,tx,cid,n?[{type:'credit',uid:club.ownerUid,amount:-cash(n*cost)}]:[],id,now);
  for(let i=0;i<n;i++){const bid='bot_'+id+'_'+i;players[bid]={uid:bid,name:botName(bid,Object.values(players).map(p=>p.name)),isBot:true,...botSession(bid,now),fundingUid:club.ownerUid,botStyle:['tight','balanced','aggressive'][i%3],seatIndex:i,stack:s.spinMode?s.spinStack:cost,buyTotal:s.spinMode?0:cost,spinPaid:s.spinMode?cost:0,bet:0,status:'active',cards:[],cardCount:0};}
- write();tx.set(ref,{authorityVersion:2,type:'poker',clubId:cid,createdBy:uid,createdAt:now,settings:s,players,chat:[],leftStacks:{},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:s.blinds*2,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}});return{ok:true,tableId:id};
+ write();tx.set(ref,{authorityVersion:2,type:'poker',botLobbyExcluded:true,clubId:cid,createdBy:uid,createdAt:now,settings:s,players,chat:[],leftStacks:{},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:s.blinds*2,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}});return{ok:true,tableId:id};
 });});
 exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(tx,db,uid,now)=>{
  const tid=key(r.data.tableId),ref=db.doc('tables/'+tid),snap=await tx.get(ref);if(!snap.exists)fail('not-found','Table missing');const t=snap.data(),s=t.settings||{},cid=t.clubId||'main';

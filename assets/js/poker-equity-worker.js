@@ -208,10 +208,16 @@ function botSampleEquity(myCards, board, oppCount, gameType, range) {
       }
       return copy.slice(0, n);
     };
+    const kept = (hand, fb) => gameType === 'Pineapple' && hand.length === 3
+      ? hand.filter((_, j) => j !== botDiscardIndex(hand, fb.slice(0, 3))) : hand;
+    // On the river neither our score nor a candidate's score can change.
+    // Reuse them instead of evaluating the same Omaha combinations again.
+    const riverScore = missingBoard === 0 ? bestScoreFull(kept(myCards, publicBoard), publicBoard, gameType) : null;
     let score = 0;
     for (let i = 0; i < iters; i++) {
       let pool = rest;
       const oppHands = [];
+      const riverOppScores = [];
       for (let o = 0; o < opponents; o++) {
         const k = ranges[o];
         let chosen = null, strength = -Infinity;
@@ -221,18 +227,17 @@ function botSampleEquity(myCards, board, oppCount, gameType, range) {
           if (candidateStrength > strength) { chosen = candidate; strength = candidateStrength; }
         }
         oppHands.push(chosen);
+        riverOppScores.push(missingBoard === 0 && k > 1 && !(gameType === 'Pineapple' && chosen.length === 3) ? strength : null);
         const chosenIds = new Set(chosen.map(c => c.id));
         pool = pool.filter(c => !chosenIds.has(c.id));
       }
       const fb = [...publicBoard, ...sample(pool, missingBoard)];
       // Pineapple must discard on the flop. Do not give the simulation a
       // third playable hole card or choose its discard after seeing the river.
-      const kept = hand => gameType === 'Pineapple' && hand.length === 3
-        ? hand.filter((_, j) => j !== botDiscardIndex(hand, fb.slice(0, 3))) : hand;
-      const my = bestScoreFull(kept(myCards), fb, gameType);
+      const my = riverScore == null ? bestScoreFull(kept(myCards, fb), fb, gameType) : riverScore;
       let lose = false, ties = 1;
-      for (const hand of oppHands) {
-        const their = bestScoreFull(kept(hand), fb, gameType);
+      for (let o = 0; o < oppHands.length; o++) {
+        const their = riverOppScores[o] == null ? bestScoreFull(kept(oppHands[o], fb), fb, gameType) : riverOppScores[o];
         if (their > my) { lose = true; break; }
         if (their === my) ties++;
       }
@@ -310,7 +315,7 @@ function botDecision(S, uid) {
   const r=Math.min(.999,Math.random()/(style==='aggressive'?1.35:style==='tight'?.75:1));
   const price = botCallPrice(g, S.players, b);
   const callCost=price.cost,actualOdds=price.odds;
-  if(cards.length && toCall>0 && actualOdds<=.025){
+  if(g.phase==='preflop' && cards.length && toCall>0 && actualOdds<=.025){
     const cheapEquity=botSampleEquity(cards,g.board||[],oppN,gt,botRangeFacing(toCall,potNow,bb));
     if(cheapEquity!=null&&cheapEquity>=actualOdds)return{action:'call'};
   }
@@ -331,7 +336,15 @@ function botDecision(S, uid) {
     if (g.highestBet <= bb && !Object.values(S.players).some(p => p.uid !== uid && p.status === 'active' && p.hasActed && p.bet > 0) && tier > 0 && (tier >= 2 || late) && r < (tier >= 2 ? .85 : .5))
       return {action:'raise',amount:raiseTo(bb * (late ? 2.5 : 3))};
     const isPair = cards.length === 2 && cards[0].val === cards[1].val;
-    if (isPair && toCall > 0 && toCall <= Math.min(stack * 0.15, bb * 8) && tier < 3) return {action: "call"};
+    if (isPair && toCall > bb && tier < 3) {
+      // Set-mining needs chips left to win after the call. Our own deep stack
+      // cannot justify paying eight blinds against an almost all-in opponent.
+      const behind = Math.max(0, ...botActives(S.players).filter(p => p.uid !== uid)
+        .map(p => Math.min(stack - callCost, p.stack || 0)));
+      if (callCost <= Math.min(stack * .07, behind / 15)) return {action:'call'};
+      const pairEquity = botSampleEquity(cards, [], oppN, gt, Math.max(2, botRangeFacing(toCall, potNow, bb)));
+      return pairEquity != null && pairEquity > actualOdds + .035 ? {action:'call'} : {action:'fold'};
+    }
     if (tier === 0) return toCall <= 0 ? {action: "call"} : {action: "fold"};
     if (tier === 1) {
       if (toCall <= 0) return r < 0.12 ? {action: "raise", amount: raiseTo(bb * 2.5)} : {action: "call"};
@@ -362,7 +375,9 @@ function botDecision(S, uid) {
   const hasAnything = body.made >= 1 || body.outs >= 4; // may call a small one
   const hasSomething = () => hasBody;
   // Sizing is priced off the POT, never off the opponent's bet.
+  const canValueRaise = botActives(S.players).some(p => p.uid !== uid && p.stack > 0);
   const raisePot = (frac) => {
+    if (!canValueRaise) return null;
     const potAfterCall = potNow + toCall;
     const target = raiseTo(g.highestBet + Math.max(bb * 2, potAfterCall * frac));
     const allIn = target >= round2(stack + (b.bet || 0)) - 0.01;
@@ -390,6 +405,9 @@ function botDecision(S, uid) {
     if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || {action: "call"};
     return (r < 0.11 ? betPot(0.55) : null) || {action: "call"};
   }
+  // A tiny wager may offer a profitable call even to a weak hand. It must
+  // not force the river nuts to flat-call and forgo every possible value raise.
+  if (actualOdds <= .025 && eq >= actualOdds && !(g.phase === 'river' && eq > .90)) return {action:'call'};
   // Facing a shove, or a bet that costs most of the stack: a hand with neither
   // a pair nor a real draw folds. No exceptions, no miracle river.
   if (toCall >= stack) return hasSomething() && eq > potOdds + .025 ? {action: "call"} : {action: "fold"};
@@ -402,7 +420,8 @@ function botDecision(S, uid) {
   // and it never calls off a stack — that is the 10-3 on A-K-3.
   if (!hasSomething() && toCall > potNow * 0.4) return {action: "fold"};
   if (eq > potOdds + 0.18 && eq > 0.62) {
-    if (r < 0.3) { const rr = raisePot(0.6 + r); if (rr) return rr; }
+    const valueFrequency = g.phase === 'river' && eq > .98 ? 1 : eq > .90 ? .8 : eq > .78 ? .5 : .3;
+    if (r < valueFrequency) { const rr = raisePot(0.6 + Math.min(r, .4)); if (rr) return rr; }
     return {action: "call"};
   }
   if (eq > potOdds + 0.02) return {action: "call"};

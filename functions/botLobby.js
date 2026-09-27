@@ -28,15 +28,22 @@ function botQueue(tableId,players,waitlist,now,buy){
  }
  return waiting;
 }
-function managedTag(profile,seed,now,configuredAt){return{version:1,profile,rotateAt:expiry(seed,now),configuredAt,disabled:false};}
-function makeTable(clubId,ownerUid,settings,profile,id,now,configuredAt){
+const legacySlotId=profile=>'main-'+profile;
+const tableSlotId=t=>t.botLobby?.slotId||legacySlotId(t.botLobby?.profile);
+function availabilitySlots(config){
+ if(Array.isArray(config.slots)&&config.slots.length)return config.slots;
+ return PROFILES.map(profile=>({id:legacySlotId(profile),profile,templates:config.templates||[]}));
+}
+function managedTag(profile,seed,now,configuredAt,slotId){return{version:1,profile,...(slotId?{slotId}:{}),rotateAt:expiry(seed,now),configuredAt,disabled:false};}
+function makeTable(clubId,ownerUid,settings,profile,id,now,configuredAt,slotId){
  const players={},buy=buyIn(settings),count=A.capacity(settings)-profile;
  for(let i=0;i<count;i++){const uid='bot_'+hash(id+':'+i).slice(0,24);players[uid]=bot(uid,i,buy,ownerUid,now,Object.values(players).map(p=>p.name));}
- return{authorityVersion:2,type:'poker',clubId,createdBy:ownerUid,createdAt:now,settings:{...settings},players,chat:[],leftStacks:{},waitlist:profile===0?botQueue(id,players,[],now,buy):[],botLobby:{...managedTag(profile,id,now,configuredAt),fundingUid:ownerUid},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:settings.blinds*2,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}};
+ return{authorityVersion:2,type:'poker',clubId,createdBy:ownerUid,createdAt:now,settings:{...settings},players,chat:[],leftStacks:{},waitlist:profile===0?botQueue(id,players,[],now,buy):[],botLobby:{...managedTag(profile,id,now,configuredAt,slotId),fundingUid:ownerUid},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:settings.blinds*2,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}};
 }
 const sameSettings=(a,b)=>JSON.stringify(Object.entries(a||{}).sort(([x],[y])=>x.localeCompare(y)))===JSON.stringify(Object.entries(b||{}).sort(([x],[y])=>x.localeCompare(y)));
 const sponsoredBots=(t,owner)=>Object.values(t.players||{}).length>0&&Object.values(t.players||{}).every(p=>p.isBot===true&&p.fundingUid===owner);
-const healthyProfile=(t,profile,now)=>safeCash(t)&&!t.closeRequested&&!humans(t,now)&&Object.keys(t.players||{}).length===A.capacity(t.settings)-profile&&Object.values(t.players||{}).filter(p=>p.stack>0&&!p.sitOut&&!['out','busted'].includes(p.status)).length>=2;
+const playableCount=t=>Object.values(t.players||{}).filter(p=>p.stack>0&&!p.sitOut&&!['out','busted'].includes(p.status)).length;
+const healthyProfile=(t,profile,now)=>safeCash(t)&&!t.closeRequested&&!humans(t,now)&&Object.keys(t.players||{}).length===A.capacity(t.settings)-profile&&playableCount(t)>=2;
 const refundable=t=>A.cash(Object.values(t.players||{}).reduce((sum,p)=>sum+(p.stack||0)+(p.bet||0)+(p.pendingTopUp||0),0)+(t.gameState?.pots||[]).reduce((sum,p)=>sum+(p.amount||0),0));
 
 async function maintainClub(db,clubId,now=Date.now()){
@@ -57,8 +64,8 @@ async function maintainClub(db,clubId,now=Date.now()){
    for(const {row,value}of updates.values())tx.update(row.ref,value);
    return{created:0,disabled:true};
   }
-  const templates=Array.isArray(config.templates)?config.templates:[];
-  if(!templates.length||!club.ownerUid)return{created:0};
+  const slots=availabilitySlots(config);
+  if(!slots.length||slots.some(slot=>!slot.templates?.length)||!club.ownerUid)return{created:0};
   const bank=await tx.get(db.doc(`memberships/${A.key(club.ownerUid)}_${clubId}`));
   let available=bank.exists&&Number.isFinite(bank.data().balance)?bank.data().balance:0;
   const selected=new Set(),healthy=new Set(),fundingRetirements=[];let blocked=false;
@@ -72,64 +79,71 @@ async function maintainClub(db,clubId,now=Date.now()){
   };
   // Replenish a missing profile before spending spare chips on another
   // table's renewal. This also serializes low-reserve close/refund/reopen.
-  const hasLive=profile=>managed.some(r=>r.table.botLobby.profile===profile&&!r.table.botLobby.disabled&&!r.table.closeRequested&&!humans(r.table,now)&&safeCash(r.table));
-  const order=[...PROFILES].sort((a,b)=>Number(hasLive(a))-Number(hasLive(b)));
-  for(const profile of order){
+  const hasLive=slot=>managed.some(r=>tableSlotId(r.table)===slot.id&&!r.table.botLobby.disabled&&!r.table.closeRequested&&!humans(r.table,now)&&safeCash(r.table));
+  const order=[...slots].sort((a,b)=>Number(hasLive(a))-Number(hasLive(b)));
+  for(const slot of order){
+   const {profile,templates}=slot;
    // Keep funded games until a replacement exists. Joining a managed table
    // detaches it from availability selection; it is never evicted or reset.
-   const live=managed.filter(r=>r.table.botLobby.profile===profile&&!r.table.botLobby.disabled&&!r.table.closeRequested&&!humans(r.table,now)&&safeCash(r.table));
-   const ready=live.find(r=>r.table.botLobby.configuredAt===config.updatedAt&&r.table.botLobby.rotateAt>now&&Object.keys(r.table.players||{}).length>=A.capacity(r.table.settings)-profile);
-   if(ready){selected.add(ready.id);if(healthyProfile(ready.table,profile,now))healthy.add(profile);continue;}
+   const live=managed.filter(r=>tableSlotId(r.table)===slot.id&&!r.table.botLobby.disabled&&!r.table.closeRequested&&!humans(r.table,now)&&safeCash(r.table));
+   const ready=live.find(r=>r.table.botLobby.configuredAt===config.updatedAt&&r.table.botLobby.rotateAt>now&&templates.some(s=>sameSettings(s,r.table.settings))&&Object.keys(r.table.players||{}).length>=A.capacity(r.table.settings)-profile);
+   if(ready){selected.add(ready.id);if(healthyProfile(ready.table,profile,now))healthy.add(slot.id);continue;}
    // Do not let the final cleanup retire an overdue incumbent during cooldown.
    if(live.length&&!canRotate()){
     const held=live.find(r=>healthyProfile(r.table,profile,now))||live[0];
-    selected.add(held.id);if(healthyProfile(held.table,profile,now))healthy.add(profile);continue;
+    selected.add(held.id);if(healthyProfile(held.table,profile,now))healthy.add(slot.id);continue;
    }
-   const reusable=rows.filter(r=>!selected.has(r.id)&&!r.table.botLobby&&!r.table.closeRequested&&!r.table.pendingSettings&&safeCash(r.table)&&!humans(r.table,now)&&Object.values(r.table.players||{}).every(p=>p.fundingUid===club.ownerUid)&&Object.keys(r.table.players||{}).length>=A.capacity(r.table.settings)-profile&&templates.some(s=>sameSettings(s,r.table.settings))).sort((a,b)=>(Object.keys(a.table.players).length-A.capacity(a.table.settings))-(Object.keys(b.table.players).length-A.capacity(b.table.settings)))[0];
-   if(reusable){patch(reusable,{botLobby:{...managedTag(profile,reusable.id+':'+now,now,config.updatedAt),fundingUid:club.ownerUid}});selected.add(reusable.id);if(healthyProfile(reusable.table,profile,now))healthy.add(profile);if(live.length)closeOne(live[0]);continue;}
+   const reusable=rows.filter(r=>!selected.has(r.id)&&r.table.botLobbyExcluded!==true&&!r.table.botLobby&&!r.table.closeRequested&&!r.table.pendingSettings&&safeCash(r.table)&&!humans(r.table,now)&&Object.values(r.table.players||{}).every(p=>p.fundingUid===club.ownerUid)&&Object.keys(r.table.players||{}).length>=A.capacity(r.table.settings)-profile&&templates.some(s=>sameSettings(s,r.table.settings))).sort((a,b)=>(Object.keys(a.table.players).length-A.capacity(a.table.settings))-(Object.keys(b.table.players).length-A.capacity(b.table.settings)))[0];
+   if(reusable){patch(reusable,{botLobby:{...managedTag(profile,reusable.id+':'+now,now,config.updatedAt,slot.id),fundingUid:club.ownerUid}});selected.add(reusable.id);if(healthyProfile(reusable.table,profile,now))healthy.add(slot.id);if(live.length)closeOne(live[0]);continue;}
    const affordable=templates.filter(s=>A.cash((A.capacity(s)-profile)*buyIn(s))<=available);
    const choices=affordable.length?affordable:templates;
-   const settings=choices[parseInt(hash(clubId+':'+profile+':'+now).slice(0,4),16)%choices.length];
+   const settings=choices[parseInt(hash(clubId+':'+slot.id+':'+now).slice(0,4),16)%choices.length];
    const cost=A.cash((A.capacity(settings)-profile)*buyIn(settings));
    if(cost>available){
     blocked=true;const fallback=live.find(r=>healthyProfile(r.table,profile,now))||live[0];
     if(fallback){
-     selected.add(fallback.id);if(healthyProfile(fallback.table,profile,now))healthy.add(profile);
+     selected.add(fallback.id);if(healthyProfile(fallback.table,profile,now))healthy.add(slot.id);
      const leastCost=Math.min(...templates.map(s=>A.cash((A.capacity(s)-profile)*buyIn(s))));
-     if(fallback.table.botLobby.rotateAt<=now&&healthyProfile(fallback.table,profile,now)&&sponsoredBots(fallback.table,club.ownerUid)&&available+refundable(fallback.table)>=leastCost)fundingRetirements.push({row:fallback,profile});
+     if((fallback.table.botLobby.rotateAt<=now||fallback.table.botLobby.configuredAt!==config.updatedAt||!templates.some(s=>sameSettings(s,fallback.table.settings)))&&healthyProfile(fallback.table,profile,now)&&sponsoredBots(fallback.table,club.ownerUid)&&available+refundable(fallback.table)>=leastCost)fundingRetirements.push({row:fallback,slot});
     }
     continue;
    }
    available=A.cash(available-cost);
-   const id='autobot_'+hash(clubId+':'+profile+':'+now).slice(0,26);
-   created.push({id,table:makeTable(clubId,club.ownerUid,settings,profile,id,now,config.updatedAt)});selected.add(id);healthy.add(profile);
+   const id='autobot_'+hash(clubId+':'+slot.id+':'+now).slice(0,26);
+   created.push({id,table:makeTable(clubId,club.ownerUid,settings,profile,id,now,config.updatedAt,slot.id)});selected.add(id);healthy.add(slot.id);
    effects.push({type:'credit',uid:club.ownerUid,amount:-cost});
    if(live.length)closeOne(live[0]);
   }
   // With no spare treasury a fully occupied portfolio would otherwise never
-  // rotate. Retire at most ONE expired bot-only table, and only while two
+  // rotate. Retire at most ONE expired or reconfigured bot-only table, while two
   // other actual funded profiles remain. Settlement returns its chips through
   // the existing close path; the missing profile gets first funding priority
   // on the next pass. Never start a second retirement while one is in flight.
-  if(canRotate()&&healthy.size===3&&!managed.some(r=>r.table.closeRequested||(!selected.has(r.id)&&!humans(r.table,now)&&safeCash(r.table)))&&fundingRetirements.length){
+  if(canRotate()&&healthy.size>=3&&!managed.some(r=>r.table.closeRequested||(!selected.has(r.id)&&!humans(r.table,now)&&safeCash(r.table)))&&fundingRetirements.length){
    const candidate=fundingRetirements.sort((a,b)=>a.row.table.botLobby.rotateAt-b.row.table.botLobby.rotateAt)[0];
    // Earlier new-table buys may have reduced the spare balance since this
    // candidate was considered. Recheck the replacement funding requirement.
-   const leastCost=Math.min(...templates.map(s=>A.cash((A.capacity(s)-candidate.profile)*buyIn(s))));
-   if(available+refundable(candidate.row.table)>=leastCost&&closeOne(candidate.row))healthy.delete(candidate.profile);
+   const leastCost=Math.min(...candidate.slot.templates.map(s=>A.cash((A.capacity(s)-candidate.slot.profile)*buyIn(s))));
+   if(available+refundable(candidate.row.table)>=leastCost&&closeOne(candidate.row))healthy.delete(candidate.slot.id);
   }
   // Human seats/queues block retirement even if the table is overdue or is a
   // duplicate. closeRequested prevents a later join while the last hand ends.
-  for(const row of managed)if(!selected.has(row.id))closeOne(row);
+  for(const row of managed)if(!selected.has(row.id)&&healthy.size>=2)closeOne(row);
   // The one-time named-club migration also retires its original surplus bot
-  // tables, but only after all three replacement profiles are actually ready.
-  if(healthy.size===3)for(const row of rows)if((config.adoptTableIds||[]).includes(row.id)&&!selected.has(row.id)&&sponsoredBots(row.table,club.ownerUid))closeOne(row);
+  // tables, but only after all requested replacement slots are actually ready.
+  if(healthy.size===slots.length)for(const row of rows)if((config.adoptTableIds||[]).includes(row.id)&&row.table.botLobbyExcluded!==true&&!selected.has(row.id)&&sponsoredBots(row.table,club.ownerUid))closeOne(row);
   const write=await prepareLedger(db,tx,clubId,effects,'bot-lobby',now);
   write();for(const {row,value}of updates.values())tx.update(row.ref,value);
   for(const entry of created)tx.create(db.doc('tables/'+entry.id),entry.table);
   tx.update(clubRef,{'botLobby.lastMaintainedAt':now,'botLobby.fundingBlockedAt':blocked?now:null,...(rotationUsed?{'botLobby.nextTableRotationAt':nextTableRotationAt}:{})});
   if(created.length)tx.set(db.collection('_pkAudit').doc(),{action:'bot-lobby-create',clubId,uid:club.ownerUid,at:now,tableIds:created.map(r=>r.id)});
-  return{created:created.length,fundingBlocked:blocked};
+  const coverage=slots.map(slot=>{
+   const row=[...rows,...created.map(entry=>({id:entry.id,table:entry.table}))].find(r=>selected.has(r.id)&&tableSlotId({...r.table,...(updates.get(r.id)?.value.botLobby?{botLobby:updates.get(r.id).value.botLobby}:{})})===slot.id);
+   if(!row)return{slotId:slot.id,missing:true};
+   const table=row.table,closing=!!(table.closeRequested||updates.get(row.id)?.value.closeRequested);
+   return{slotId:slot.id,game:table.settings.baseGameType,smallBlind:table.settings.blinds,minBuyIn:table.settings.minBuyIn,seated:Object.keys(table.players||{}).length,playable:playableCount(table),closing,matchesSettings:slot.templates.some(s=>sameSettings(s,table.settings)),humanCount:Object.values(table.players||{}).filter(p=>p.isBot!==true).length};
+  });
+  return{created:created.length,fundingBlocked:blocked,coverage,missingSlots:coverage.filter(row=>row.missing||row.closing||!row.matchesSettings||row.playable<2).map(row=>row.slotId)};
  });
 }
 const BOOTSTRAP_RELEASE='bot-lobby-netabel-2026-09-27';
@@ -140,7 +154,7 @@ async function bootstrapNetabel(db,now=Date.now()){
   const cs=matches.docs[0],club=cs.data(),clubId=cs.id;
   if(Object.prototype.hasOwnProperty.call(club,'botLobby')||club.botsAuto===false||!club.ownerUid)return{configured:false,reason:'existing-setting'};
   const tables=await tx.get(db.collection('tables').where('clubId','==',clubId));
-  const eligible=tables.docs.map(d=>({id:d.id,table:d.data()})).filter(r=>safeCash(r.table)&&!r.table.closeRequested&&!r.table.pendingSettings&&!humans(r.table,now)&&sponsoredBots(r.table,club.ownerUid));
+  const eligible=tables.docs.map(d=>({id:d.id,table:d.data()})).filter(r=>r.table.botLobbyExcluded!==true&&safeCash(r.table)&&!r.table.closeRequested&&!r.table.pendingSettings&&!humans(r.table,now)&&sponsoredBots(r.table,club.ownerUid));
   if(!eligible.length)return{configured:false,reason:'no-existing-bot-tables'};
   const sanitize=require('./pokerAccess').__accessInternals.tableSettings;
   const templates=[];
@@ -159,10 +173,38 @@ async function bootstrapNetabel(db,now=Date.now()){
   return{configured:true,clubId};
  });
 }
+const TEXAS_RELEASE='bot-lobby-netabel-texas-2026-09-27';
+async function upgradeNetabelTexas(db,now=Date.now()){
+ return db.runTransaction(async tx=>{
+  const matches=await tx.get(db.collection('clubs').where('name','==','Netabel'));
+  if(matches.docs.length!==1)return{configured:false,reason:'not-unique'};
+  const cs=matches.docs[0],club=cs.data(),config=club.botLobby;
+  if(config?.version!==1||config.enabled!==true||club.botsAuto===false||!club.ownerUid)return{configured:false,reason:'disabled-or-unconfigured'};
+  if(config.texasRelease===TEXAS_RELEASE)return{configured:false,reason:'already-configured'};
+  const sanitize=require('./pokerAccess').__accessInternals.tableSettings;
+  const source=[];for(const raw of config.templates||[]){try{const s=sanitize(raw);if(!s.spinMode&&A.capacity(s)>=4&&!source.some(t=>sameSettings(t,s)))source.push(s);}catch{}}
+  if(!source.length)return{configured:false,reason:'no-cash-template'};
+  const variantSettings=(game,blinds,maxPlayers)=>{
+   const base=source.find(s=>s.baseGameType===game)||source[0];
+   return sanitize({...base,baseGameType:game,blinds,minBuyIn:100*blinds,maxBuyIn:400*blinds,minBuyInBB:50,maxBuyInBB:200,maxPlayers,autoStart:Math.min(base.autoStart,maxPlayers),isDealerChoice:false,bombEvery:0,aofEvery:0,ante:0,straddle:false,name:game+' '+blinds+'/'+(2*blinds)});
+  };
+  const slots=PROFILES.map(profile=>({id:legacySlotId(profile),profile,templates:[variantSettings('Omaha 6',[.5,1,2][profile],6)]}));
+  for(const profile of PROFILES)slots.push({id:'nlh-'+profile,profile,templates:[variantSettings('NLH',[.5,1,2][profile],6)]});
+  for(const [id,game]of [['omaha4-4max','Omaha 4'],['omaha5-4max','Omaha 5'],['pineapple-4max','Pineapple']])slots.push({id,profile:1,templates:[variantSettings(game,.5,4)]});
+  const templates=[];for(const slot of slots)for(const s of slot.templates)if(!templates.some(t=>sameSettings(t,s)))templates.push(s);
+  tx.update(cs.ref,{botLobby:{...config,slots,templates,updatedAt:now,updatedBy:TEXAS_RELEASE,texasRelease:TEXAS_RELEASE}});
+  tx.set(db.collection('_pkAudit').doc(),{action:'bot-lobby-texas-upgrade',clubId:cs.id,actor:TEXAS_RELEASE,at:now,slotCount:slots.length});
+  return{configured:true,clubId:cs.id,slots:slots.length};
+ });
+}
 async function maintainBotLobbies(db,now=Date.now()){
  try{const result=await bootstrapNetabel(db,now);if(!result.configured&&!['existing-setting','no-existing-bot-tables'].includes(result.reason))console.warn('Netabel bot lobby bootstrap skipped',result.reason);}catch(e){console.error('Netabel bot lobby bootstrap',e.message);}
+ try{const result=await upgradeNetabelTexas(db,now);if(result.configured)console.info('BOT_LOBBY_VARIETY_MIGRATION '+JSON.stringify({release:TEXAS_RELEASE,slots:result.slots}));}catch(e){console.error('Netabel Texas availability upgrade',e.message);}
  const clubs=await db.collection('clubs').where('botLobby.version','==',1).get();
- for(const club of clubs.docs)try{await maintainClub(db,club.id,now);}catch(e){console.error('Bot lobby maintenance',club.id,e.message);}
+ for(const club of clubs.docs)try{
+  const result=await maintainClub(db,club.id,now);
+  if(club.data().botLobby?.texasRelease===TEXAS_RELEASE)console.info('BOT_LOBBY_VARIETY_STATUS '+JSON.stringify({at:now,release:club.data().botLobby.texasRelease,coverage:result.coverage||[],fundingBlocked:result.fundingBlocked===true,missingSlots:result.missingSlots||[],disabled:result.disabled===true}));
+ }catch(e){console.error('Bot lobby maintenance',club.id,e.message);}
 }
 
 // Invoked by the existing engine transaction at the settled hand boundary.
@@ -222,11 +264,19 @@ exports.pkBotLobbyConfigure=onCall({region:'us-central1'},async r=>{
   if(typeof r.data.enabled!=='boolean')A.fail('invalid-argument','Specify whether automatic cash tables are enabled');
   let templates=club.botLobby?.templates||[];
   if(r.data.enabled){
-   const ids=r.data.templateTableIds;if(!Array.isArray(ids)||ids.length<1||ids.length>6)A.fail('invalid-argument','Choose one to six existing cash tables as templates');
-   const snaps=await tx.getAll(...[...new Set(ids)].map(id=>db.doc('tables/'+A.key(id))));
-   templates=snaps.map(s=>{const t=s.exists?s.data():{};if(t.clubId!==clubId||!safeCash(t))A.fail('failed-precondition','Templates must be protected cash tables in this club with at least four seats');return require('./pokerAccess').__accessInternals.tableSettings(t.settings);});
+   const ids=r.data.templateTableIds;
+   if(ids===undefined&&club.botLobby?.slots?.length){
+    const slots=club.botLobby.slots,sanitize=require('./pokerAccess').__accessInternals.tableSettings;
+    if(slots.length>18||new Set(slots.map(s=>s.id)).size!==slots.length||slots.some(s=>typeof s.id!=='string'||!s.id||!PROFILES.includes(s.profile)||!Array.isArray(s.templates)||!s.templates.length||s.templates.length>6))A.fail('failed-precondition','Saved automatic table configuration is invalid');
+    templates=[];for(const slot of slots)for(const raw of slot.templates){const s=sanitize(raw);if(s.spinMode||A.capacity(s)<4)A.fail('failed-precondition','Saved templates must be cash tables with at least four seats');if(!templates.some(t=>sameSettings(t,s)))templates.push(s);}
+   }else{
+    if(!Array.isArray(ids)||ids.length<1||ids.length>6)A.fail('invalid-argument','Choose one to six existing cash tables as templates');
+    const snaps=await tx.getAll(...[...new Set(ids)].map(id=>db.doc('tables/'+A.key(id))));
+    templates=snaps.map(s=>{const t=s.exists?s.data():{};if(t.clubId!==clubId||!safeCash(t))A.fail('failed-precondition','Templates must be protected cash tables in this club with at least four seats');return require('./pokerAccess').__accessInternals.tableSettings(t.settings);});
+   }
   }
-  const config={version:1,enabled:r.data.enabled,templates,updatedAt:now,updatedBy:uid};
+  const previous=club.botLobby||{};
+  const config={version:1,enabled:r.data.enabled,templates,updatedAt:now,updatedBy:uid,...(previous.slots?.length?{slots:previous.slots}:{}),...(previous.texasRelease?{texasRelease:previous.texasRelease}:{}),...(previous.bootstrapRelease?{bootstrapRelease:previous.bootstrapRelease}:{}),...(previous.adoptTableIds?{adoptTableIds:previous.adoptTableIds}:{}),...(previous.nextTableRotationAt?{nextTableRotationAt:previous.nextTableRotationAt}:{})};
   tx.update(db.doc('clubs/'+clubId),{botLobby:config});
   tx.set(db.collection('_pkAudit').doc(),{action:'bot-lobby-configure',clubId,uid,at:now,enabled:r.data.enabled,templateCount:templates.length});
   return{ok:true,enabled:r.data.enabled,profiles:PROFILES};
@@ -234,4 +284,4 @@ exports.pkBotLobbyConfigure=onCall({region:'us-central1'},async r=>{
 });
 exports.maintainBotLobbies=maintainBotLobbies;
 exports.reconcileManagedSeats=reconcileManagedSeats;
-exports.__botLobbyInternals={humans,safeCash,buyIn,expiry,botQueue,makeTable,maintainClub,bootstrapNetabel,healthyProfile,PROFILES,TABLE_ROTATION_GAP_MS};
+exports.__botLobbyInternals={humans,safeCash,buyIn,expiry,botQueue,makeTable,maintainClub,bootstrapNetabel,healthyProfile,PROFILES,TABLE_ROTATION_GAP_MS,upgradeNetabelTexas,availabilitySlots,TEXAS_RELEASE};

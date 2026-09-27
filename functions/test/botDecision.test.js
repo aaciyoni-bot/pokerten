@@ -141,3 +141,28 @@ test('live nut-flush and open-ended straight draws retain multiway semi-bluffs',
   assert.ok(action.amount>0&&action.amount<=100);
  }
 });
+
+test('private river nuts raise normal bets and tiny blocking bets instead of automatically paying',()=>{
+ for(const {wager,pot} of [{wager:1,pot:1000},{wager:20,pot:100}])for(const r of [.01,.4,.8,.999]){
+  const s=state({hole:['A♠','K♠'],board:['Q♠','J♠','10♠','2♥','3♦'],pot,stack:500,toCall:wager,opponents:1});
+  s.players.p1.bet=wager;
+  const action=seeded(r,()=>E.botAction(s,'hero'));
+  assert.equal(action.action,'raise','Nuts should take river value even against a tiny blocking bet');
+  assert.ok(action.amount>wager&&action.amount<=500);
+ }
+});
+test('private river nuts only call when the bettor is already all-in',()=>{
+ const s=state({hole:['A♠','K♠'],board:['Q♠','J♠','10♠','2♥','3♦'],pot:100,stack:500,toCall:20,opponents:1});
+ s.players.p1.bet=20;s.players.p1.stack=0;
+ assert.equal(seeded(.1,()=>E.botAction(s,'hero')).action,'call','There is no additional opponent stack to value-raise');
+});
+test('small pairs do not pay eight blinds to set-mine an opponent with only two blinds left',()=>{
+ const s=state({hole:['2♣','2♦'],board:[],pot:0,stack:100,toCall:8,opponents:1});
+ s.gameState.phase='preflop';s.players.p1.bet=8;s.players.p1.stack=2;
+ for(const r of [.01,.5,.99])assert.equal(seeded(r,()=>E.botAction(s,'hero')).action,'fold');
+});
+test('a small pair can still set-mine a modest raise when effective stacks are deep',()=>{
+ const s=state({hole:['2♣','2♦'],board:[],pot:0,stack:100,toCall:3,opponents:1});
+ s.gameState.phase='preflop';s.players.p1.bet=3;s.players.p1.stack=97;
+ assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'call');
+});

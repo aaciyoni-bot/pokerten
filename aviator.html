@@ -1546,19 +1546,19 @@ function frame(now){
    in for the owner's email until it returns).
    The live multiplayer club has no god mode by design — real players.
    ===================================================================== */
-const GOD_HASH = "c97ff791ceded486acc101a8ffc404ded6a4e2cb6bea81e18abeab3c23377bcf";
-let godMode = store.get("pt_av_godok", false) && store.get("pt_av_god", false);
+const GOD_HASH = "35b82bf04c50bfd6f79b20ba1fb53231f81de375b62172e1cf26d67f9bca94ad";
+let godMode = store.get("pt_av_godok", "") === GOD_HASH && store.get("pt_av_god", false);
 function updateGod(){
   $("#godPill").hidden = !godMode;
   if (godMode) $("#godVal").textContent = S.crashPoint.toFixed(2) + "x";
 }
 async function godGate(){
-  if (store.get("pt_av_godok", false)) return true;
+  if (store.get("pt_av_godok", "") === GOD_HASH) return true;
   const c = prompt("קוד מנהל:") || "";
   const h = [...new Uint8Array(
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(c.trim()))
   )].map(b => b.toString(16).padStart(2, "0")).join("");
-  if (h === GOD_HASH){ store.set("pt_av_godok", true); return true; }
+  if (h === GOD_HASH){ store.set("pt_av_godok", GOD_HASH); return true; }
   return false;
 }
 let brandTaps = [];

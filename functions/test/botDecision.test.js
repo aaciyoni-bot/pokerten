@@ -64,9 +64,10 @@ test('all live opponents, including zero-stack all-ins, enter multiway equity',(
  const s=state({hole:['2♣','3♦'],board:['10♥','J♥','Q♥','K♥','A♥'],stack:1000,pot:75,toCall:25,opponents:5});
  s.players.p1.bet=25;for(let i=2;i<=5;i++)s.players['p'+i].stack=0;
  assert.equal(E.activesOf(s.players).length,6);
- // A guaranteed sixth-share is below 25/(100+25). The old three-opponent
- // cap incorrectly estimated a quarter-share and called this price.
- assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'fold');
+ // All six split the main pot, but only the two funded players contest
+ // this street's new 50-chip side pot. A call returns 12.5 + 25 for 25.
+ assert.ok(Math.abs(seeded(.5,()=>E.equityOf(s.priv.hero,s.gameState.board,5,'NLH',1))-1/6)<1e-12);
+ assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'call');
 });
 test('Ben screenshot has a wheel; the opposing 6-high straight is stronger',()=>{
  const board=cards(SCREEN_BOARD);
@@ -104,10 +105,10 @@ test('the same draw folds an expensive turn shove',()=>{
  assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'fold');
 });
 test('money already invested does not justify a negative-value river call',()=>{
- const s=state({hole:['2♣','3♦'],board:['10♥','J♥','Q♥','K♥','A♥'],stack:60,pot:45,toCall:55,opponents:2});
+ const s=state({hole:['6♣','2♦'],board:['A♠','K♥','J♦','9♣','2♥'],stack:60,pot:45,toCall:55,opponents:2});
  s.players.p1.bet=55;
  assert.ok(E.botCallPrice(s.gameState,s.players,s.players.hero).odds>1/3);
- assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'fold','A guaranteed third of the pot is below the price despite having a committed stack');
+ assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'fold','A weak pair cannot justify a bad call with money already committed');
 });
 test('short-stack Omaha premium raises respect the pot limit in the decision itself',()=>{
  const s=state({hole:['A♠','A♥','K♠','K♥'],board:[],game:'Omaha 4',stack:10,pot:0,toCall:1,opponents:2});
@@ -165,4 +166,26 @@ test('a small pair can still set-mine a modest raise when effective stacks are d
  const s=state({hole:['2♣','2♦'],board:[],pot:0,stack:100,toCall:3,opponents:1});
  s.gameState.phase='preflop';s.players.p1.bet=3;s.players.p1.stack=97;
  assert.equal(seeded(.5,()=>E.botAction(s,'hero')).action,'call');
+});
+
+test('six-handed river call is valued separately for its small main pot and large heads-up side pot',()=>{
+ const s=state({hole:['2♣','3♦'],board:['10♥','J♥','Q♥','K♥','A♥'],stack:100,pot:0,toCall:60,opponents:5});
+ s.gameState.pots=[{amount:30,eligible:Object.keys(s.players)},{amount:100,eligible:['hero','p1']}];
+ s.players.p1.bet=60;for(let i=2;i<=5;i++)s.players['p'+i].stack=0;
+ const price=E.botCallPrice(s.gameState,s.players,s.players.hero,true),valuation={pots:price.equityPots};
+ const equity=seeded(.5,()=>E.equityOf(s.priv.hero,s.gameState.board,5,'NLH',3,valuation));
+ assert.ok(Math.abs(equity-1/6)<1e-12,'All six still contest the main pot');
+ assert.deepEqual(price.equityPots,[{amount:30,opponents:[0,1,2,3,4]},{amount:100,opponents:[0]},{amount:120,opponents:[0]}]);
+ assert.equal(price.cost,60);assert.equal(price.pot,190);
+ assert.ok(Math.abs(valuation.callEquity*(price.pot+price.cost)-115)<1e-10,'Call receives 30/6 + (100+120)/2');
+ for(const r of [.01,.5,.99])assert.equal(seeded(r,()=>E.botAction(s,'hero')).action,'call','Do not fold a guaranteed +55 call by charging the side pot for ineligible opponents');
+});
+test('projected current wagers preserve partial all-in tiers and pending players who can still match',()=>{
+ const s=state({hole:['A♣','K♦'],board:[],stack:100,pot:0,toCall:60,opponents:3});
+ s.players.p1.bet=60;s.players.p2.bet=10;s.players.p2.stack=0;s.players.p3.stack=100;
+ const price=E.botCallPrice(s.gameState,s.players,s.players.hero,true);
+ assert.deepEqual(price.equityPots,[{amount:30,opponents:[0,1,2]},{amount:100,opponents:[0,2]}]);
+ assert.equal(price.equityPots.reduce((n,p)=>n+p.amount,0),price.pot+price.cost);
+ s.gameState.pots=[{amount:1000,eligible:['p1','p2']}];
+ assert.equal(E.botCallPrice(s.gameState,s.players,s.players.hero,true).equityPots.reduce((n,p)=>n+p.amount,0),130,'An ineligible settled pot is never counted');
 });

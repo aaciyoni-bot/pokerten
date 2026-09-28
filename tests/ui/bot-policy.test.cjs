@@ -91,6 +91,27 @@ assert.equal(client.bestScoreFull(benCards,riverBoard,'Omaha 6'),4050000,'Ben ha
 assert.equal(client.bestScoreFull(menCards,riverBoard,'Omaha 6'),4060000,'Men has the higher six-high straight');
 console.log('PASS: screenshot river bluff, river nuts value, all-in-only check, board split, and Omaha straight ranks');
 
+// A live opponent's new wager creates a side pot that the already all-in
+// seats cannot win. Both real policies must value each eligible pot correctly.
+const sideHero={uid:'sideHero',isBot:true,botStyle:'balanced',status:'active',seatIndex:0,stack:200,bet:0,cards:hand};
+const sidePlayers={sideHero,live:{uid:'live',isBot:false,status:'active',seatIndex:1,stack:200,bet:60}};
+for(let i=0;i<4;i++)sidePlayers['allin'+i]={uid:'allin'+i,isBot:false,status:'active',seatIndex:i+2,stack:0,bet:0};
+const sideGame={phase:'river',currentGameType:'NLH',highestBet:60,minRaise:60,handBB:1,board,
+  pots:[{amount:30,eligible:Object.keys(sidePlayers)},{amount:100,eligible:['sideHero','live']}]};
+const sideTable={settings:{blinds:.5,baseGameType:'NLH'},players:sidePlayers};
+for(const p of Object.values(sidePlayers).filter(p=>p.uid!=='sideHero'))Object.defineProperty(p,'cards',{get(){throw Error('Side-pot policy read opponent cards');}});
+for(const draw of [.01,.5,.99]){
+  const move=withDecisionDraw(draw,()=>client.botPokerMove(sideGame,sideTable,sideHero));
+  assert.equal(move.type,'call','Guaranteed return is 30/6 + (100+60+60)/2 = 115 for a 60-chip call');
+  assert.deepEqual({...move},serverMoveWithDraw(draw,sideGame,sideTable,sideHero));
+}
+const noSideValue={...sideGame,board:[c('A','♣'),c('K','♦'),c('J','♥'),c('9','♠'),c('4','♣')]};
+const weakHero={...sideHero,cards:[c('7','♣'),c('2','♦')]};
+const weakTable={...sideTable,players:{...sidePlayers,sideHero:weakHero}};
+assert.equal(withDecisionDraw(.5,()=>client.botPokerMove(noSideValue,weakTable,weakHero)).type,'fold','Side-pot correction must not pay off river air');
+assert.equal(serverMoveWithDraw(.5,noSideValue,weakTable,weakHero).type,'fold');
+console.log('PASS: actual client/server side-pot call value and hidden-card boundary');
+
 require('../../functions/test/botDecision.test.js');
 require('../../functions/test/botRange.test.js');
 const {execFileSync}=require('node:child_process');

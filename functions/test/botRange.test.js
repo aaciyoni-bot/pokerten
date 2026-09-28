@@ -116,3 +116,22 @@ test('river equity reuses exact hero and selected range scores without extra eva
   assert.equal(opponentScores,90*5*4,'Chosen river scores are reused from range selection');
  }finally{C.bestScoreFull=original;}
 }));
+
+test('one shared Omaha simulation can lose the main pot while winning an eligible side pot',()=>seeded(()=>{
+ const original=C.bestScoreFull;
+ const hero=cards(['A♠','K♠','Q♥','J♥','6♦','3♦']),board=cards(['2♠','8♠','K♦','7♣','9♥']);
+ let evaluations=0;
+ C.bestScoreFull=(hole,publicBoard)=>{
+  assert.deepEqual(publicBoard,board);
+  if(hole.every((c,i)=>c.id===hero[i].id))return 10;
+  // The first sampled opponent beats us in the main pot; the second loses
+  // to us in both pools. This evaluator stub isolates eligibility arithmetic.
+  return ++evaluations%2===1?20:5;
+ };
+ const valuation={pots:[{amount:30,opponents:[0,1]},{amount:100,opponents:[1]}]};
+ try{
+  assert.equal(E.equityOf(hero,board,2,'Omaha 6',1,valuation),0);
+  assert.ok(Math.abs(valuation.callEquity-100/130)<1e-12);
+  assert.equal(evaluations,90*2,'Each selected opponent is evaluated at most once per shared sample');
+ }finally{C.bestScoreFull=original;}
+}));

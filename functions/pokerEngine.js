@@ -782,11 +782,16 @@ function botDiscardIndex(cards, board) {
  * This keeps a six-card multiway game from silently collapsing every range
  * to a single uniformly random hand just because candidates consumed a deck.
  */
-function equityOf(myCards, board, oppCount, gameType, range) {
+function equityOf(myCards, board, oppCount, gameType, range, valuation) {
   try {
+    if (valuation) valuation.callEquity = null;
     if (!myCards || !myCards.length) return null;
     const publicBoard = board || [];
     const opponents = Math.max(1, Math.floor(oppCount || 1));
+    const allOpponents = Array.from({length:opponents}, (_, i) => i);
+    const equityPots = valuation && Array.isArray(valuation.pots) ? valuation.pots : [];
+    const potTotal = equityPots.reduce((sum, p) => sum + p.amount, 0);
+    const separatePots = potTotal > 0 && equityPots.some(p => p.opponents.length < opponents);
     const omaha = (gameType || '').startsWith('Omaha');
     const iters = omaha ? 90 : 200;
     const ranges = Array.from({length:opponents}, (_, i) => Math.max(1, Math.min(6, Math.round((Array.isArray(range) ? range[i] : range) || 1))));
@@ -807,7 +812,7 @@ function equityOf(myCards, board, oppCount, gameType, range) {
     // On the river neither our score nor a candidate's score can change.
     // Reuse them instead of evaluating the same Omaha combinations again.
     const riverScore = missingBoard === 0 ? C.bestScoreFull(kept(myCards, publicBoard), publicBoard, gameType) : null;
-    let score = 0;
+    let score = 0, potReturn = 0;
     for (let i = 0; i < iters; i++) {
       let pool = rest;
       const oppHands = [];
@@ -829,14 +834,22 @@ function equityOf(myCards, board, oppCount, gameType, range) {
       // Pineapple must discard on the flop. Do not give the simulation a
       // third playable hole card or choose its discard after seeing the river.
       const my = riverScore == null ? C.bestScoreFull(kept(myCards, fb), fb, gameType) : riverScore;
-      let lose = false, ties = 1;
-      for (let o = 0; o < oppHands.length; o++) {
-        const their = riverOppScores[o] == null ? C.bestScoreFull(kept(oppHands[o], fb), fb, gameType) : riverOppScores[o];
-        if (their > my) { lose = true; break; }
-        if (their === my) ties++;
-      }
-      if (!lose) score += 1 / ties;
+      const opponentScores = riverOppScores;
+      const shareAgainst = eligible => {
+        let ties = 1;
+        for (const o of eligible) {
+          if (opponentScores[o] == null) opponentScores[o] = C.bestScoreFull(kept(oppHands[o], fb), fb, gameType);
+          if (opponentScores[o] > my) return 0;
+          if (opponentScores[o] === my) ties++;
+        }
+        return 1 / ties;
+      };
+      score += shareAgainst(allOpponents);
+      // A player can lose a small main pot and still win the large side pot.
+      // Price each eligible pool with the SAME sampled hands and runout.
+      if (separatePots) for (const p of equityPots) potReturn += p.amount * shareAgainst(p.opponents);
     }
+    if (valuation) valuation.callEquity = separatePots ? potReturn / (potTotal * iters) : score / iters;
     return score / iters;
   } catch (e) {
     return null;
@@ -932,7 +945,7 @@ function handBody(cards, board, gameType) {
 
 // Only chips this player can win belong in the price of a call. A short
 // stack cannot count an opponent's unmatched overbet or an ineligible side pot.
-function botCallPrice(g, players, b) {
+function botCallPrice(g, players, b, includePots = false) {
   const toCall = round2(Math.max(0, (g.highestBet || 0) - (b.bet || 0)));
   const cost = Math.min(toCall, b.stack || 0);
   const cap = round2((b.bet || 0) + cost);
@@ -940,7 +953,27 @@ function botCallPrice(g, players, b) {
     sum + (!Array.isArray(p.eligible) || p.eligible.includes(b.uid) ? Number(p.amount) || 0 : 0), 0);
   const wagers = Object.values(players).reduce((sum, p) => sum + Math.min(Number(p.bet) || 0, cap), 0);
   const pot = round2(settled + wagers);
-  return {cost, pot, odds: cost > 0 ? cost / (pot + cost) : 0};
+  const result = {cost, pot, odds: cost > 0 ? cost / (pot + cost) : 0};
+  if (includePots) {
+    const opponents = activesOf(players).filter(p => p.uid !== b.uid);
+    const all = opponents.map((_, i) => i);
+    const pots = (g.pots || []).filter(p => !Array.isArray(p.eligible) || p.eligible.includes(b.uid))
+      .map(p => ({amount:Number(p.amount)||0, opponents:Array.isArray(p.eligible)
+        ? all.filter(i => p.eligible.includes(opponents[i].uid)) : all}));
+    const bets = Object.values(players).map(p => p.uid === b.uid ? cap : Math.min(Number(p.bet)||0,cap));
+    const levels = [...new Set(bets.filter(n => n > 0))].sort((a,b) => a-b);
+    let previous = 0;
+    for (const level of levels) {
+      const amount = round2((level-previous)*bets.filter(n => n >= level).length);
+      // Still-funded players may answer the wager; an already all-in player
+      // cannot contest a later side bet above their current contribution.
+      const eligible = all.filter(i => (Number(opponents[i].bet)||0)+(Number(opponents[i].stack)||0) >= level);
+      pots.push({amount, opponents:eligible});
+      previous = level;
+    }
+    result.equityPots = pots.filter(p => p.amount > 0);
+  }
+  return result;
 }
 
 function botAction(S, uid) {
@@ -960,19 +993,20 @@ function botAction(S, uid) {
   const raiseTo = (x) => round2(Math.min(Math.max(snap(x), round2(g.highestBet + (g.minRaise || bb))), maxRaise));
   const style=b.botStyle||['tight','balanced','aggressive'][Array.from(uid).reduce((n,c)=>n+c.charCodeAt(0),0)%3];
   const r=Math.min(.999,rnd()/(style==='aggressive'?1.35:style==='tight'?.75:1));
-  const price = botCallPrice(g, S.players, b);
+  const price = botCallPrice(g, S.players, b, true);
+  const valuation = {pots:price.equityPots};
   const callCost=price.cost,actualOdds=price.odds;
   if(g.phase==='preflop' && cards.length && toCall>0 && actualOdds<=.025){
-    const cheapEquity=equityOf(cards,g.board||[],oppN,gt,rangeFacing(toCall,potNow,bb));
-    if(cheapEquity!=null&&cheapEquity>=actualOdds)return{action:'call'};
+    const cheapEquity=equityOf(cards,g.board||[],oppN,gt,rangeFacing(toCall,potNow,bb),valuation);
+    if(cheapEquity!=null&&valuation.callEquity>=actualOdds)return{action:'call'};
   }
   if (g.phase === "preflop") {
     const tier = preflopTier(cards);
     // Large commitments are an equity/price decision, not a fixed chance to
     // call with a broad hand label. Includes short stacks facing an overbet.
     if (toCall > 0 && (callCost >= stack * .35 || toCall >= bb * 10)) {
-      const preEquity = equityOf(cards, [], oppN, gt, Math.max(2, rangeFacing(toCall, potNow, bb)));
-      return preEquity != null && preEquity > actualOdds + .035 ? {action:'call'} : {action:'fold'};
+      const preEquity = equityOf(cards, [], oppN, gt, Math.max(2, rangeFacing(toCall, potNow, bb)),valuation);
+      return preEquity != null && valuation.callEquity > actualOdds + .035 ? {action:'call'} : {action:'fold'};
     }
     // Open first-in rather than limp most playable hands. Marginal opens
     // require late position; premium hands are not dependent on position.
@@ -989,8 +1023,8 @@ function botAction(S, uid) {
       const behind = Math.max(0, ...activesOf(S.players).filter(p => p.uid !== uid)
         .map(p => Math.min(stack - callCost, p.stack || 0)));
       if (callCost <= Math.min(stack * .07, behind / 15)) return {action:'call'};
-      const pairEquity = equityOf(cards, [], oppN, gt, Math.max(2, rangeFacing(toCall, potNow, bb)));
-      return pairEquity != null && pairEquity > actualOdds + .035 ? {action:'call'} : {action:'fold'};
+      const pairEquity = equityOf(cards, [], oppN, gt, Math.max(2, rangeFacing(toCall, potNow, bb)),valuation);
+      return pairEquity != null && valuation.callEquity > actualOdds + .035 ? {action:'call'} : {action:'fold'};
     }
     if (tier === 0) return toCall <= 0 ? {action: "call"} : {action: "fold"};
     if (tier === 1) {
@@ -1013,9 +1047,10 @@ function botAction(S, uid) {
 
   // Read the opponents' strength from the bet we are facing, not from thin air.
   const rng = rangeFacing(toCall, potNow, bb);
-  const eqRaw = equityOf(cards, g.board || [], oppN, gt, rng);
+  const eqRaw = equityOf(cards, g.board || [], oppN, gt, rng,valuation);
   if(eqRaw==null)return{action:toCall>0?'fold':'call'};
   const eq=eqRaw;
+  const callEquity=valuation.callEquity;
   const potOdds=actualOdds;
   const body = handBody(cards, g.board || [], gt);
   const hasBody = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
@@ -1071,10 +1106,10 @@ function botAction(S, uid) {
   }
   // A tiny wager may offer a profitable call even to a weak hand. It must
   // not force the river nuts to flat-call and forgo every possible value raise.
-  if (actualOdds <= .025 && eq >= actualOdds && !(g.phase === 'river' && eq > .90)) return {action:'call'};
+  if (actualOdds <= .025 && callEquity >= actualOdds && !(g.phase === 'river' && eq > .90)) return {action:'call'};
   // Facing a shove, or a bet that costs most of the stack: a hand with neither
   // a pair nor a real draw folds. No exceptions, no miracle river.
-  if (toCall >= stack) return hasSomething() && eq > potOdds + .025 ? {action: "call"} : {action: "fold"};
+  if (toCall >= stack) return hasSomething() && callEquity > potOdds + .025 ? {action: "call"} : {action: "fold"};
   // No pair, no draw, facing a bet: fold at any price — client parity.
   if (!hasAnything) {
     const peek = body.outs >= 4 && (g.board || []).length < 5 && toCall <= potNow * 0.1;
@@ -1088,7 +1123,7 @@ function botAction(S, uid) {
     if (r < valueFrequency) { const rr = raisePot(0.6 + Math.min(r, .4)); if (rr) return rr; }
     return {action: "call"};
   }
-  if (eq > potOdds + 0.02) return {action: "call"};
+  if (callEquity > potOdds + 0.02) return {action: "call"};
   // A failed call-price test is not rescued by money already invested.
   // Raise as a semi-bluff only with a live strong draw and foldable opponents.
   const canFold = activesOf(S.players).some(p => p.uid !== uid && p.stack > toCall);

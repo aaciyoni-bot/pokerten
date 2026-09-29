@@ -1301,7 +1301,7 @@ const GAMES = [{
   label: 'Chinese Poker (OFC)',
   live: true
 }];
-const GOD_EMAILS = ['aaci.yoni@gmail.com', 'info.bagso@gmail.com', 'avi057278@gmail.com', 'khnby749@gmail.com', 'bykhn3234@gmail.com', 'easymarcelos@gmail.com', 'haim29071994@gmail.com'];
+const GOD_EMAILS = ['aaci.yoni@gmail.com', 'info.bagso@gmail.com', 'avi057278@gmail.com', 'khnby749@gmail.com', 'bykhn3234@gmail.com', 'haim29071994@gmail.com'];
 const SUPER_ADMIN_EMAIL = 'aaci.yoni@gmail.com';
 // Match pokerAuthority.root and firestore.rules; table GOD view is separate.
 const CLUB_OVERSIGHT_EMAILS = [SUPER_ADMIN_EMAIL, 'haim29071994@gmail.com'];
@@ -4034,6 +4034,7 @@ function App() {
     viewRef.current = currentView;
   }, [currentView]);
   const signedInGod = isGodUser(dbUser);
+  const signedInOversight = isClubOversightUser(dbUser);
   const effUser = useMemo(() => {
     if (!dbUser) return null;
     if (!activeClub) return dbUser;
@@ -4045,7 +4046,8 @@ function App() {
       promoBalance: m.promoBalance || 0,
       bonusTotal: m.bonusTotal || 0,
       bonusOpen: m.bonusOpen !== undefined ? m.bonusOpen : undefined,
-      role: god ? ROLES.SUPER_ADMIN : m.role || ROLES.PLAYER,
+      // Card-viewing privileges do not grant club management. Match the server's oversight identity.
+      role: signedInOversight ? ROLES.SUPER_ADMIN : m.role || ROLES.PLAYER,
       status: god ? 'approved' : m.status || 'pending',
       stats: m.stats || {
         gamesPlayed: 0,
@@ -4058,9 +4060,9 @@ function App() {
       lastScratchAt: m.lastScratchAt || 0,
       agentUid: m.agentUid || '',
       agentPct: m.agentPct || 0,
-      managedGames: god ? GAMES.map(g => g.id) : m.managedGames || []
+      managedGames: signedInOversight ? GAMES.map(g => g.id) : m.managedGames || []
     };
-  }, [dbUser, activeClub, activeMem, signedInGod]);
+  }, [dbUser, activeClub, activeMem, signedInGod, signedInOversight]);
   const showToast = (msg, type = 'info') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, {
@@ -4495,9 +4497,16 @@ function App() {
     onJoinDurak: t => changeView('durak-table', t),
     onJoinOfc: t => changeView('ofc-table', t),
     onCreatePoker: () => changeView('poker-create'),
+    onSettlement: () => changeView(canOpenBackoffice(effUser) ? 'settlement' : 'profile'),
     showToast: showToast
-  }), currentView === 'profile' && activeClub && React.createElement(ProfileView, {
+  }), currentView === 'settlement' && activeClub && canOpenBackoffice(effUser) && React.createElement('div', {className:'club-admin scrollable-content aurora-bg p-4 sm:p-6'},
+    React.createElement('div', {className:'max-w-6xl mx-auto'},
+      React.createElement('div', {className:'flex items-center justify-between gap-3 mb-5'},
+        React.createElement('h2', {className:'text-xl font-black text-white'}, 'Club settlement'),
+        React.createElement('button', {type:'button', onClick:() => changeView('lobby'), className:'btn-outline rounded-xl px-4 py-2'}, 'Back to lobby')),
+      React.createElement(SettlementSection, {user:effUser,showToast}))), currentView === 'profile' && activeClub && React.createElement(ProfileView, {
     user: effUser,
+    onBack: () => changeView('lobby'),
     showToast: showToast
   }), currentView === 'leaders' && activeClub && React.createElement(LeadersView, {
     user: effUser,
@@ -5946,6 +5955,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
 }
 function ProfileView({
   user,
+  onBack,
   showToast
 }) {
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -6106,7 +6116,7 @@ function ProfileView({
     className: "club-surface scrollable-content aurora-bg p-4 sm:p-8"
   }, React.createElement("div", {
     className: "max-w-4xl mx-auto animate-fade-in relative z-10"
-  }, React.createElement(window.PokerAuthUI.CodeSettings, {user}), React.createElement("div", {
+  }, onBack && React.createElement("button", {type:"button",onClick:onBack,className:"btn-outline rounded-xl px-4 py-2 mb-4"}, "Back to lobby"), React.createElement(window.PokerAuthUI.CodeSettings, {user}), React.createElement("div", {
     className: "glass-panel p-8 rounded-3xl text-center mb-6"
   }, React.createElement("img", {
     src: avatarUrl(user),
@@ -6573,6 +6583,7 @@ function LobbyView({
   onJoinDurak,
   onJoinOfc,
   onCreatePoker,
+  onSettlement,
   showToast
 }) {
   // Give up a seat straight from the lobby: refunds the stack to the wallet
@@ -7015,19 +7026,11 @@ function LobbyView({
     className: "w-full bg-slate-900 border border-gold-400/30 text-gold-400 py-3 rounded-2xl font-black text-lg tracking-widest mb-3",
     dir: "ltr"
   }, user.playerId || '—', " 📋"), React.createElement("button", {
-    // The settlement itself lives outside this app (CLUBCULATION reads this
-    // club's Firestore directly). One button for everyone: it works out the
-    // role from the signed-in account — owner sees everything, an agent sees
-    // his own players, a player sees only his own results and no rake.
-    onClick: () => {
-      try {
-        window.open('https://clubculation.com/pokerten', '_blank', 'noopener');
-      } catch (e) {}
-    },
+    // Keep reports in the current authenticated club session.
+    onClick: () => { setCashierOpen(false); onSettlement?.(); },
+    "aria-label": canOpenBackoffice(user) ? "Club settlement" : "My results",
     className: "w-full bg-slate-900 border border-emerald-500/40 text-emerald-300 py-3 rounded-2xl font-black mb-3 flex items-center justify-center gap-2"
-  }, "📊 Account statement / settlement", React.createElement("i", {
-    className: "fa-solid fa-arrow-up-right-from-square text-[11px] opacity-70"
-  })), React.createElement("button", {
+  }, canOpenBackoffice(user) ? "📊 Club settlement" : "📊 My results"), React.createElement("button", {
     onClick: () => setCashierOpen(false),
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Close"))), document.body), React.createElement("div", {
@@ -7049,15 +7052,9 @@ function LobbyView({
     onClick: () => setCashierOpen(true),
     className: "btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
   }, "💳 Cashier"), React.createElement("button", {
-    // The settlement site, one tap from the lobby. It was only inside the
-    // cashier, which is two taps and out of sight — the owner could not find it.
-    onClick: () => {
-      try {
-        window.open('https://clubculation.com/pokerten', '_blank', 'noopener');
-      } catch (e) {}
-    },
-    title: "Account statement / settlement",
-    "aria-label": "Settlement",
+    onClick: () => onSettlement?.(),
+    title: canOpenBackoffice(user) ? "Club settlement" : "My results",
+    "aria-label": canOpenBackoffice(user) ? "Club settlement" : "My results",
     className: "ml-1.5 px-3 py-2 text-[12px] font-black rounded-xl shrink-0 bg-slate-900 border border-emerald-500/40 text-emerald-300"
   }, "📊")), React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
@@ -7978,7 +7975,7 @@ function SettlementSection({
         setGLog((report.gameLog||[]).filter(e=>!String(e.uid||'').startsWith('bot_')&&e.rakeSource!=='bot'&&!(report.members||[]).some(m=>m.uid===e.uid&&m.isBot)));
         setMems((report.members||[]).filter(m=>!m.isBot));
       } catch (e) {
-        if(!alive)return;setLoadError('לא ניתן לטעון את נתוני ההתחשבנות. נסה שוב.');
+        if(!alive)return;setLoadError(/(^|\/)permission-denied$/.test(e.code||'') ? 'לחשבון המחובר אין הרשאה להתחשבנות בקלאב הזה. יש להיכנס עם חשבון המנהל המורשה.' : 'לא ניתן לטעון את נתוני ההתחשבנות. נסה שוב.');
         setALog(null);
         setGLog([]);
         setMems([]);

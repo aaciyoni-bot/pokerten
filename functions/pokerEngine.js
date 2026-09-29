@@ -31,7 +31,7 @@ let _db = null;
 const db = () => (_db = _db || getFirestore());
 
 // index.html:1048-1049 — keep in sync with the client list.
-const GOD_EMAILS = ["aaci.yoni@gmail.com", "info.bagso@gmail.com", "avi057278@gmail.com", "khnby749@gmail.com", "bykhn3234@gmail.com", "easymarcelos@gmail.com"];
+const GOD_EMAILS = ["aaci.yoni@gmail.com", "info.bagso@gmail.com", "avi057278@gmail.com", "khnby749@gmail.com", "bykhn3234@gmail.com", "haim29071994@gmail.com"];
 const SUPER_ADMIN_EMAIL = "aaci.yoni@gmail.com";
 const isGodAuth = (auth) => !!(auth && auth.uid && auth.token && auth.token.email_verified === true && GOD_EMAILS.includes(String(auth.token.email || "").toLowerCase().trim()));
 

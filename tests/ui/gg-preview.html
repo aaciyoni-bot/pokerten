@@ -30,6 +30,7 @@
  if(query.has('bets'))Object.values(players).forEach((p,i)=>p.bet=[.5,12,345,8,50,2,65][i%7]);
  const state={authorityVersion:2,settings:{serverEngine:true,maxPlayers:capacity,baseGameType:variant,actionTime:30,blinds:.5,buyIn:100},gameState:{__seq:1,phase:'flop',activeTurnUid:mode==='reference'?'p3':'me',turnStartedAt:Date.now(),highestBet:1,minRaise:1,pots:[{amount:115}],board:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'}],currentGameType:variant,handN:1,dealerUid:'p3'},players};
  if(query.has('sitout')&&players.me){players.me.sitOut=true;players.me.sitOutAt=Date.now()-90000;players.me.status='sitout';players.me.cardCount=0;}
+ if(query.has('turn')&&players[query.get('turn')])state.gameState.activeTurnUid=query.get('turn');
  if(query.has('phase'))state.gameState.phase=query.get('phase');
  if(['preflop','discard'].includes(state.gameState.phase))state.gameState.board=[];
  if(state.gameState.phase==='showdown'){state.gameState.activeTurnUid=null;state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});}

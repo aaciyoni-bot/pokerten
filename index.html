@@ -1103,7 +1103,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=279">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=289">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=288">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
@@ -12826,7 +12826,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     }, React.createElement("div", {
       className: "poker-player-name text-[10px] font-bold text-white leading-tight",
       title: isMe ? 'You' : p.name
-    }, React.createElement('span', {className:'truncate'}, isMe ? 'You' : p.name), gs.dealerUid === p.uid && React.createElement('span', {className:'poker-dealer-marker', 'aria-label':'Dealer'}, 'D')), React.createElement("div", {
+    }, godView && React.createElement('span', {
+      className: 'poker-god-player-kind ' + (p.isBot === true ? 'is-bot' : 'is-human'),
+      role: 'img',
+      'aria-label': p.isBot === true ? 'בוט' : 'שחקן אנושי',
+      title: p.isBot === true ? 'בוט' : 'שחקן אנושי'
+    }, React.createElement('i', {className: p.isBot === true ? 'fa-solid fa-robot' : 'fa-solid fa-user', 'aria-hidden': true})), React.createElement('span', {className:'truncate'}, isMe ? 'You' : p.name), gs.dealerUid === p.uid && React.createElement('span', {className:'poker-dealer-marker', 'aria-label':'Dealer'}, 'D')), React.createElement("div", {
       className: "poker-stack-amount text-gold-400 font-black text-[12px] leading-tight",
       dir: "ltr"
     }, window.PokerRuntime.visibleStack(p.stack) === null ? '—' : formatShort(p.stack)), p.actionText && React.createElement("div", {

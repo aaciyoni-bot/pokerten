@@ -99,7 +99,11 @@ jobs:
             return result;
           }
           for(const functionName of functions){
-            const result=spawnSync('firebase',['functions:log','--only',functionName,'--lines','100','--project','pokerten','--non-interactive'],{encoding:'utf8',timeout:45000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']});
+            // Firebase CLI compares --only literally against function_name OR
+            // service_name. Gen 2 Cloud Run service names are lowercase; include
+            // both identifiers so new revision logs are not silently omitted.
+            const functionFilter=functionName+','+functionName.toLowerCase();
+            const result=spawnSync('firebase',['functions:log','--only',functionFilter,'--lines','100','--project','pokerten','--non-interactive'],{encoding:'utf8',timeout:45000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']});
             if(result.status!==0){
               // Classify CLI failure privately; do not echo captured stderr.
               const capture=clean(result.stdout)+' '+clean(result.stderr);

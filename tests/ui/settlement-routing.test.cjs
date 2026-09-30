@@ -48,6 +48,7 @@ function firebaseFixture(email,membershipStatus,role='player'){
    calls.push({name,args});
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
    if(name==='pkClubDirectory'&&reportDenied)throw Object.assign(new Error('Club staff only'),{code:'functions/permission-denied'});
+   if(name==='pkClubDirectory'&&args.reportSection)return{records:[],hasMore:false,nextCursor:null};
    if(name==='pkClubDirectory')return{members:[owner,membership,other],treasury:{uid:'owner',balance:1000},securityAlerts:[],agentLog:[],gameLog:[]};
    throw Error('Unexpected callable during management navigation: '+name);
   },
@@ -78,7 +79,7 @@ async function assertStaffLinks(fixture){
   assert.match(doc.body.textContent,/Weekly Settlement/);
   assert.match(doc.body.textContent,/Other human player/);
   const call=fixture.calls.findLast(c=>c.name==='pkClubDirectory');
-  assert.equal(call.args.clubId,'main');assert.equal(call.args.includeReports,true);
+  assert.equal(call.args.clubId,'main');assert.equal(call.args.reportSection,'gameLog');
   assert.equal(button('Close'),undefined,'cashier dialog is gone after report navigation');
   await back();
  }

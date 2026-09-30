@@ -35,30 +35,84 @@ exports.pkClubBroadcast=onCall(opts,async r=>A.command(r,'club-broadcast',async(
  return{ok:true,entry};
 }));
 
-exports.pkClubDirectory=onCall(opts,async r=>{
- const uid=A.uid(r),cid=A.key(r.data?.clubId),db=require('firebase-admin/firestore').getFirestore();
- return db.runTransaction(async tx=>{
+exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>{
+ const uid=A.uid(r),cid=A.key(r.data?.clubId),{getFirestore,FieldPath}=require('firebase-admin/firestore'),db=getFirestore();
+ const reportSection=r.data?.reportSection,pageSize=r.data?.pageSize??200,cursor=r.data?.cursor;
+ if(reportSection!==undefined){
+  if(!['agentLog','gameLog','securityAlerts'].includes(reportSection))A.fail('invalid-argument','Unknown report section');
+  if(!Number.isInteger(pageSize)||pageSize<1||pageSize>200)A.fail('invalid-argument','Report page size must be 1 to 200');
+  // History may have legacy IDs containing punctuation, spaces or Unicode.
+  // Validate a single Firestore document ID, not the stricter player UID format.
+  if(cursor!=null&&(typeof cursor!=='string'||!cursor.length||cursor.includes('/')||cursor==='.'||cursor==='..'||Buffer.byteLength(cursor,'utf8')>1500))A.fail('invalid-argument','Invalid report cursor');
+  if(r.data.directoryOnly===true)A.fail('invalid-argument','Choose either the member directory or a report section');
+ }
+ const started=Date.now(),directoryOnly=r.data?.directoryOnly===true;
+ const diagnostic={stage:'authorization',code:'unknown',elapsedMs:0,memberCount:0,agentLogCount:0,gameLogCount:0};
+ try{return await db.runTransaction(async tx=>{
   const club=await tx.get(db.doc('clubs/'+cid)),me=await tx.get(db.doc(`memberships/${uid}_${cid}`));
   if(!club.exists)A.fail('not-found','Club missing');
   const owner=A.root(r)||club.data().ownerUid===uid,role=me.data()?.role;
   if(!owner&&(me.data()?.status!=='approved'||!['manager','agent'].includes(role)))A.fail('permission-denied','Club staff only');
+  const manager=owner||role==='manager';
+  if(reportSection!==undefined){
+   // Each page rechecks staff authority. Paging by document ID preserves legacy
+   // records without timestamps and uses existing equality/name indexes.
+   if(reportSection==='securityAlerts'&&!manager)return{records:[],hasMore:false,nextCursor:null};
+   let visible=null;
+   if(reportSection==='gameLog'&&!manager){
+    diagnostic.stage='members';
+    const assigned=await tx.get(db.collection('memberships').where('clubId','==',cid).where('agentUid','==',uid));
+    visible=new Set([uid,...assigned.docs.map(d=>d.data().uid)]);
+    diagnostic.memberCount=visible.size;
+   }
+   diagnostic.stage=reportSection==='gameLog'?'game-history':reportSection==='agentLog'?'agent-history':'security-alerts';
+   let query=db.collection(reportSection).where('clubId','==',cid);
+   if(reportSection==='agentLog'&&!manager)query=query.where('agentUid','==',uid);
+   query=query.orderBy(FieldPath.documentId());
+   if(cursor!=null)query=query.startAfter(cursor);
+   const page=await tx.get(query.limit(pageSize+1)),docs=page.docs.slice(0,pageSize),hasMore=page.docs.length>pageSize;
+   if(reportSection==='agentLog')diagnostic.agentLogCount=page.docs.length;
+   if(reportSection==='gameLog')diagnostic.gameLogCount=page.docs.length;
+   const records=docs.filter(d=>!visible||visible.has(d.data().uid)).map(d=>({id:d.id,...d.data()}));
+   // Advance using the scanned page, even if agent scoping hides every row.
+   return{records,hasMore,nextCursor:hasMore?docs[docs.length-1].id:null};
+  }
+  diagnostic.stage='members';
   let query=db.collection('memberships').where('clubId','==',cid);
   if(!owner&&role==='agent')query=query.where('agentUid','==',uid);
   const members=await tx.get(query),rows=members.docs.map(d=>({id:d.id,...d.data()}));
   if(!rows.some(m=>m.uid===uid)&&me.exists)rows.push({id:me.id,...me.data()});
-  // An agent receives only their own commissions and assigned players.
-  let logs=db.collection('agentLog').where('clubId','==',cid);
-  const manager=owner||role==='manager';if(!manager)logs=logs.where('agentUid','==',uid);
-  const history=await tx.get(logs);
+  diagnostic.memberCount=rows.length;
   const treasury=manager?rows.find(m=>m.uid===club.data().ownerUid):null;
-  let gameLog=[],securityAlerts=[];
-  if(r.data.includeReports===true){
-   const games=await tx.get(db.collection('gameLog').where('clubId','==',cid));
-   const visible=new Set(rows.map(m=>m.uid));gameLog=games.docs.map(d=>d.data()).filter(g=>manager||visible.has(g.uid));
+  let agentLog=[],gameLog=[],securityAlerts=[];
+  // The member list and approvals must load independently of financial history.
+  // Keep the existing full-report contract for clients that do not opt in.
+  if(!directoryOnly){
+   diagnostic.stage='agent-history';
+   let logs=db.collection('agentLog').where('clubId','==',cid);
+   if(!manager)logs=logs.where('agentUid','==',uid);
+   const history=await tx.get(logs);agentLog=history.docs.map(d=>d.data());
+   diagnostic.agentLogCount=agentLog.length;
+   if(r.data.includeReports===true){
+    diagnostic.stage='game-history';
+    const games=await tx.get(db.collection('gameLog').where('clubId','==',cid));
+    const visible=new Set(rows.map(m=>m.uid));gameLog=games.docs.map(d=>d.data()).filter(g=>manager||visible.has(g.uid));
+    diagnostic.gameLogCount=gameLog.length;
+   }
+   if(manager&&r.data.includeSecurity===true){
+    diagnostic.stage='security-alerts';
+    const alerts=await tx.get(db.collection('securityAlerts').where('clubId','==',cid));securityAlerts=alerts.docs.map(d=>({id:d.id,...d.data()}));
+   }
   }
-  if(manager&&r.data.includeSecurity===true){const alerts=await tx.get(db.collection('securityAlerts').where('clubId','==',cid));securityAlerts=alerts.docs.map(d=>({id:d.id,...d.data()}));}
-  return{members:rows,agentLog:history.docs.map(d=>d.data()),gameLog,securityAlerts,treasury:treasury?{uid:treasury.uid,balance:treasury.balance,clubProfits:treasury.clubProfits||0}:null};
- });
+  return{members:rows,agentLog,gameLog,securityAlerts,historyIncluded:!directoryOnly,treasury:treasury?{uid:treasury.uid,balance:treasury.balance,clubProfits:treasury.clubProfits||0}:null};
+ },{readOnly:true});}catch(error){
+  // Only stage, standard status code and counts: never log user data or raw errors.
+  const code=error?.code,known=['cancelled','unknown','invalid-argument','deadline-exceeded','not-found','already-exists','permission-denied','resource-exhausted','failed-precondition','aborted','out-of-range','unimplemented','internal','unavailable','data-loss','unauthenticated'];
+  diagnostic.code=Number.isInteger(code)&&code>=0&&code<=16?String(code):known.includes(code)?code:'unknown';
+  diagnostic.elapsedMs=Math.max(0,Date.now()-started);
+  console.error('CLUB_DIRECTORY_DIAGNOSTIC',JSON.stringify(diagnostic));
+  throw error;
+ }
 });
 
 exports.pkAgentLookup=onCall(opts,async r=>{
@@ -68,3 +122,4 @@ exports.pkAgentLookup=onCall(opts,async r=>{
  const agent=rows.docs.find(d=>d.data().status==='approved'&&['agent','manager'].includes(d.data().role))?.data();
  return{agent:agent?{uid:agent.uid,name:agent.username||'Agent',pct:agent.agentSharePct??50}:null};
 });
+

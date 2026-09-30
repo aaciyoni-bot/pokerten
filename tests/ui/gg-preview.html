@@ -44,7 +44,9 @@
    {uid:'p2',username:'Daniel Levy',playerId:'4018',role:'player',balance:530,status:'approved',stats:{gamesPlayed:22,gamesWon:8,totalProfit:-175}}
  ];
  const demoLogs=[{uid:'owner',profit:430,rake:12,at:Date.now()-3600000,game:'NLH',tableId:'test0'}, {uid:'owner',profit:150,rake:8,at:Date.now()-86400000,game:'Omaha 6',tableId:'test3'}, {uid:'p1',profit:350,rake:12,at:Date.now(),game:'NLH',tableId:'test0'}, {uid:'p2',profit:-175,rake:8,at:Date.now(),game:'Omaha 6',tableId:'test3'}];
- const directory={members:demoMembers,gameLog:demoLogs,agentLog:[],treasury:{balance:2000,clubProfits:500},securityAlerts:[]};
+ if(query.has('pending'))demoMembers.push({uid:'new_player',username:'New player · pending approval',playerId:'9001',role:'player',status:'pending',balance:0});
+ demoMembers.forEach(m=>{m.id=m.uid+'_main';m.clubId='main';});
+ const directory={members:demoMembers,gameLog:demoLogs,agentLog:[],treasury:{uid:'owner',balance:2000,clubProfits:500},securityAlerts:[]};
  const stub=`window.__pkMuted=true;window.__previewMode=true;
  if(window.Worker){const PreviewWorker=window.Worker;window.Worker=class extends PreviewWorker{constructor(url,options){super(new URL(String(url),${JSON.stringify(projectRoot.href)}),options);}};}
 
@@ -56,7 +58,7 @@
  const denyWrite=async()=>{throw Error('Design preview only: data changes are disabled');};
  window.fb={db:{},auth:{currentUser:{uid:'${uid}',email:'preview@example.invalid',emailVerified:true}},doc:previewRef,collection:previewRef,
  query:(r,...filters)=>({...r,filters}),where:(field,op,value)=>({field,op,value}),
- fx:async(name)=>{if(name==='pkClubDirectory')return structuredClone(previewDirectory);if(name==='pkTick')return{};if(name==='godPeek')return{hands:Object.fromEntries(Object.keys(previewState.players).map(k=>[k,privateCards])),finalBoard:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}]};return denyWrite();},
+ fx:async(name,args={})=>{if(name==='pkClubDirectory'){if(args.reportSection){if(${query.has('reporterror')})throw Object.assign(new Error('Simulated report failure'),{code:'functions/unavailable'});const rows=previewDirectory[args.reportSection]||[],start=Number(args.cursor)||0,end=start+2;return{records:structuredClone(rows.slice(start,end)),hasMore:end<rows.length,nextCursor:end<rows.length?String(end):null};}return structuredClone(previewDirectory);}if(name==='pkTick')return{};if(name==='godPeek')return{hands:Object.fromEntries(Object.keys(previewState.players).map(k=>[k,privateCards])),finalBoard:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}]};return denyWrite();},
  getDoc:async()=>({exists:()=>false}),getDocs:async(r)=>{let rows=r.path==='memberships'?previewDirectory.members:r.path==='gameLog'?previewDirectory.gameLog:[];for(const f of r.filters||[])if(f.op==='=='&&f.field!=='clubId')rows=rows.filter(row=>row[f.field]===f.value);return previewDocs(rows);},
  onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;let done=false;queueMicrotask(()=>{if(done)return;if(r.path==='tables/preview')cb(previewSnap());else if(r.path.includes('/priv/'))cb({exists:()=>true,data:()=>({cards:privateCards})});else cb({exists:()=>false,...previewDocs([])});});return()=>{done=true;};},
  updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite,signIn:denyWrite,signInCode:denyWrite,signOut:denyWrite};`;

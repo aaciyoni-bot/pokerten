@@ -1170,7 +1170,35 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-runtime.js?v=287"></script>
 <script>
 
-const pokerCommand=async(name,data)=>{const clean=JSON.parse(JSON.stringify(data));const key=name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{const result=await window.fb.fx(name,payload);if(['pkClubMember','pkProfile'].includes(name)&&window.dispatchEvent&&window.Event)window.dispatchEvent(new window.Event('pk-club-changed'));return result;}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
+const pokerCommand=async(name,data,scope='')=>{const clean=JSON.parse(JSON.stringify(data));const key=String(window.fb.auth?.currentUser?.uid||'')+':'+scope+':'+name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{const result=await window.fb.fx(name,payload);if(['pkClubMember','pkProfile'].includes(name)&&window.dispatchEvent&&window.Event)window.dispatchEvent(new window.Event('pk-club-changed'));return result;}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
+// Assemble every page before exposing totals or exports. A failed page must never
+// turn a partial report into a successful-looking settlement.
+const loadClubDirectoryReport = async (options, scope='') => {
+  const clubId=options.clubId;
+  const directory=await pokerCommand('pkClubDirectory',{clubId,directoryOnly:true},scope);
+  const sections=['agentLog',...(options.includeReports?['gameLog']:[]),...(options.includeSecurity?['securityAlerts']:[])];
+  const result={...directory,agentLog:[],gameLog:[],securityAlerts:[]};
+  for(const reportSection of sections){
+    const records=[],seen=new Set();let cursor;
+    for(;;){
+      const page=await pokerCommand('pkClubDirectory',{clubId,reportSection,pageSize:200,...(cursor?{cursor}:{})},scope);
+      if(!Array.isArray(page?.records)||typeof page.hasMore!=='boolean')throw Object.assign(new Error('Invalid report page'),{code:'functions/internal'});
+      records.push(...page.records);
+      if(!page.hasMore)break;
+      const next=page.nextCursor;
+      if(typeof next!=='string'||!next||seen.has(next))throw Object.assign(new Error('Incomplete report pagination'),{code:'functions/internal'});
+      seen.add(next);cursor=next;
+    }
+    result[reportSection]=records;
+  }
+  return result;
+};
+// Surface only allowlisted transport codes, never raw server details.
+const clubRequestError = (error, fallback) => {
+  const raw = String(error?.code || '').replace(/^functions\//, '');
+  const code = ['unauthenticated','permission-denied','unavailable','deadline-exceeded','resource-exhausted','failed-precondition','aborted','internal','not-found','invalid-argument'].includes(raw) ? raw : 'unknown';
+  return `${fallback} (${code})`;
+};
 const {
   useState,
   useEffect,
@@ -7969,13 +7997,13 @@ function SettlementSection({
     let alive=true;setLoadError('');
     (async () => {
       try {
-        const report=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,includeReports:true});
+        const report=await loadClubDirectoryReport({clubId:CLUB_ID,includeReports:true},`${user.uid}:${user.role}:${user.status}:${CLUB_ID}`);
         if(!alive)return;
         setALog(report.agentLog||[]);
         setGLog((report.gameLog||[]).filter(e=>!String(e.uid||'').startsWith('bot_')&&e.rakeSource!=='bot'&&!(report.members||[]).some(m=>m.uid===e.uid&&m.isBot)));
         setMems((report.members||[]).filter(m=>!m.isBot));
       } catch (e) {
-        if(!alive)return;setLoadError(/(^|\/)permission-denied$/.test(e.code||'') ? 'לחשבון המחובר אין הרשאה להתחשבנות בקלאב הזה. יש להיכנס עם חשבון המנהל המורשה.' : 'לא ניתן לטעון את נתוני ההתחשבנות. נסה שוב.');
+        if(!alive)return;setLoadError(clubRequestError(e, /(^|\/)permission-denied$/.test(e.code||'') ? 'לחשבון המחובר אין הרשאה להתחשבנות בקלאב הזה. יש להיכנס עם חשבון המנהל המורשה.' : 'לא ניתן לטעון את נתוני ההתחשבנות. נסה שוב.'));
         setALog(null);
         setGLog([]);
         setMems([]);
@@ -8716,6 +8744,19 @@ function BackofficeView({
   showToast
 }) {
   const [usersList, setUsersList] = useState([]);
+  const directoryScope = `${user.uid}:${user.role}:${user.status}:${CLUB_ID}`;
+  const [loadedDirectoryScope, setLoadedDirectoryScope] = useState('');
+  const directoryLoaded = loadedDirectoryScope === directoryScope;
+  const [directoryLoading, setDirectoryLoading] = useState(true);
+  const [directoryError, setDirectoryError] = useState('');
+  const [directoryAttempt, setDirectoryAttempt] = useState(0);
+  const [loadedActivityScope, setLoadedActivityScope] = useState('');
+  const activityLoaded = loadedActivityScope === directoryScope;
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState('');
+  const [activityAttempt, setActivityAttempt] = useState(0);
+  const [memberBusy, setMemberBusy] = useState('');
+  const memberActionRef = useRef(false);
   const [treasury,setTreasury]=useState(null);
   const [rakeTotals,setRakeTotals]=useState({club:0,agents:{}});
   const [botsList, setBotsList] = useState([]);
@@ -8819,7 +8860,7 @@ function BackofficeView({
   const exportClubCSV = async () => {
     setExporting(true);
     try {
-      const report = await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,includeReports:true});
+      const report = await loadClubDirectoryReport({clubId:CLUB_ID,includeReports:true},directoryScope);
       let all = (report.gameLog||[]).filter(e=>!String(e.uid||'').startsWith('bot_')&&e.rakeSource!=='bot'&&!(report.members||[]).some(m=>m.uid===e.uid&&m.isBot));
       if (expFrom) all = all.filter(l => l.at >= new Date(expFrom).getTime());
       if (expTo) all = all.filter(l => l.at <= new Date(expTo).getTime() + 24 * 3600 * 1000);
@@ -8853,10 +8894,53 @@ function BackofficeView({
     setRakeDraft(clubSettings.rakePct);
   }, [clubSettings.rakePct]);
   useEffect(() => {
+    setUsersList([]);setTreasury(null);setDirectoryError('');setActivityError('');
+    setLoadedDirectoryScope('');setLoadedActivityScope('');setSecAlerts([]);
+    setAgentCycle({});setRakeTotals({club:0,agents:{}});setAssignFor(null);setPlayerFile(null);
+  }, [directoryScope]);
+  useEffect(() => {
     let stopped=false,busy=false;
-    const load=async()=>{if(busy)return;busy=true;try{const result=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,includeSecurity:true});if(stopped)return;setUsersList(result.members||[]);setTreasury(result.treasury||null);setSecAlerts((result.securityAlerts||[]).sort((a,b)=>(b.at||0)-(a.at||0)));const cycle=cycleStartIL(0),totals={},verified={club:0,agents:{}};for(const e of result.agentLog||[]){if(e.accountingVersion!==2||e.rakeSource!=='human')continue;const amount=Number(e.amount)||0;if(e.kind==='club')verified.club=round2(verified.club+amount);else if(e.agentUid){verified.agents[e.agentUid]=round2((verified.agents[e.agentUid]||0)+amount);if(e.at>=cycle)totals[e.agentUid]=round2((totals[e.agentUid]||0)+amount);}}setAgentCycle(totals);setRakeTotals(verified);}catch(e){if(!stopped)showToast(e.message||'Could not load club members','error');}finally{busy=false;}};
-    load();window.addEventListener('pk-club-changed',load);const interval=setInterval(load,15000);return()=>{stopped=true;clearInterval(interval);window.removeEventListener('pk-club-changed',load);};
-  }, [user.uid,user.role]);
+    const load=async()=>{
+      if(busy)return;
+      busy=true;setDirectoryLoading(true);
+      try{
+        const result=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,directoryOnly:true},directoryScope);
+        if(stopped)return;
+        setUsersList(result.members||[]);setTreasury(result.treasury||null);
+        setLoadedDirectoryScope(directoryScope);setDirectoryError('');
+      }catch(e){
+        if(!stopped)setDirectoryError(clubRequestError(e,'Could not load club members. Try again.'));
+      }finally{busy=false;if(!stopped)setDirectoryLoading(false);}
+    };
+    load();window.addEventListener('pk-club-changed',load);
+    const interval=setInterval(load,15000);
+    return()=>{stopped=true;clearInterval(interval);window.removeEventListener('pk-club-changed',load);};
+  }, [directoryScope,directoryAttempt]);
+  useEffect(() => {
+    if(!directoryLoaded)return;
+    let stopped=false,busy=false;
+    const load=async()=>{
+      if(busy)return;
+      busy=true;setActivityLoading(true);
+      try{
+        const result=await loadClubDirectoryReport({clubId:CLUB_ID,includeSecurity:canManageClub(user)},directoryScope);
+        if(stopped)return;
+        setSecAlerts((result.securityAlerts||[]).sort((a,b)=>(b.at||0)-(a.at||0)));
+        const cycle=cycleStartIL(0),totals={},verified={club:0,agents:{}};
+        for(const e of result.agentLog||[]){
+          if(e.accountingVersion!==2||e.rakeSource!=='human')continue;
+          const amount=Number(e.amount)||0;
+          if(e.kind==='club')verified.club=round2(verified.club+amount);
+          else if(e.agentUid){verified.agents[e.agentUid]=round2((verified.agents[e.agentUid]||0)+amount);if(e.at>=cycle)totals[e.agentUid]=round2((totals[e.agentUid]||0)+amount);}
+        }
+        setAgentCycle(totals);setRakeTotals(verified);setLoadedActivityScope(directoryScope);setActivityError('');
+      }catch(e){
+        if(!stopped)setActivityError(clubRequestError(e,'Could not refresh commissions and security alerts.'));
+      }finally{busy=false;if(!stopped)setActivityLoading(false);}
+    };
+    load();const interval=setInterval(load,60000);
+    return()=>{stopped=true;clearInterval(interval);};
+  }, [directoryLoaded,directoryScope,activityAttempt]);
   const canAdmin = canManageClub(user);
   const [secAlerts, setSecAlerts] = useState([]);
   // Chips in circulation: the club is a closed system — every chip lives either
@@ -8883,20 +8967,31 @@ function BackofficeView({
   }, [canAdmin]);
   const [resetBusy, setResetBusy] = useState(false);
   const [assignFor, setAssignFor] = useState(null);
+  const runMemberDecision = async (member, op, agentUid) => {
+    if(!canAdmin||memberActionRef.current)return;
+    if(!member?.uid){setDirectoryAttempt(x=>x+1);showToast('Member list changed. Please try again.','error');return;}
+    memberActionRef.current=true;setMemberBusy(member.uid);
+    try{
+      await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:member.uid,op,...(op==='approve'?{agentUid}: {})});
+      setUsersList(rows=>rows.map(row=>row.uid===member.uid?{...row,status:op==='approve'?'approved':'rejected'}:row));
+      setAssignFor(null);setDirectoryAttempt(x=>x+1);
+      showToast(op==='approve'?'Player approved.':'Request declined.','success');
+    }catch(e){showToast(clubRequestError(e,op==='approve'?'Could not approve player. Try again.':'Could not decline request. Try again.'),'error');}
+    finally{memberActionRef.current=false;setMemberBusy('');}
+  };
   const approveWith = async (memId, agent) => {
-try{const m=usersList.find(x=>x.id===memId);await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:m.uid,op:'approve',agentUid:agent?.uid||m.agentUid||''});setAssignFor(null);showToast("Player approved.",'success');}catch(e){showToast(e.message||String(e),'error');}
-};
-  const handleApprove = async uid => {
-    const mem = usersList.find(x => x.id === uid);
+    const member=usersList.find(x=>x.id===memId);
+    return runMemberDecision(member,'approve',agent?.uid||member?.agentUid||'');
+  };
+  const handleApprove = async memId => {
+    const mem = usersList.find(x => x.id === memId);
     if (mem && !mem.agentUid && agents.length > 0) {
       setAssignFor(mem);
       return;
     }
-    approveWith(uid, null);
+    return approveWith(memId, null);
   };
-  const handleReject = async u => {
-try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:u.uid,op:'reject'});showToast("Request declined.",'success');}catch(e){showToast(e.message||String(e),'error');}
-};
+  const handleReject = async member => runMemberDecision(member,'reject');
   const [dmBox, setDmBox] = useState(null); // {target, text} — replaces window.prompt
   const sendDirectMsg = target => setDmBox({
     target,
@@ -9055,7 +9150,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   };
   const canApproveAll = canAdmin;
   const isAgentApprover = !canApproveAll && user.role === ROLES.AGENT;
-  const pendingUsers = usersList.filter(u => u.status !== 'approved' && u.status !== 'banned' && !u.isBot && (!isAgentApprover || u.agentUid === user.uid));
+  const pendingUsers = usersList.filter(u => u.status !== 'approved' && u.status !== 'banned' && u.status !== 'rejected' && !u.isBot && (!isAgentApprover || u.agentUid === user.uid));
   const agents = usersList.filter(u => u.status === 'approved' && [ROLES.AGENT, ROLES.MANAGER].includes(u.role) && !u.isBot);
   const agentName = uid => (usersList.find(x => x.uid === uid) || {}).username || '';
   useEffect(() => {
@@ -9098,7 +9193,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     color: 'text-blue-400'
   }, {
     label: 'Club rake (verified humans)',
-    value: formatMoney(rakeTotals.club),
+    value: activityLoaded ? formatMoney(rakeTotals.club) : '…',
     icon: 'fa-building-columns',
     color: 'text-amber-400'
   }, {
@@ -9113,12 +9208,20 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     color: 'text-fuchsia-400',
     hint: 'All balances + all chips on tables. This number must NOT grow on its own.'
   }];
+  const directoryNotice = directoryError ? React.createElement('div', {role:'alert',className:'auth-error mb-4'},
+    directoryError, directoryLoaded && React.createElement('p',{className:'mt-2 text-sm'},'Showing the last loaded member list.'),
+    React.createElement('button',{type:'button',onClick:()=>setDirectoryAttempt(x=>x+1),disabled:directoryLoading,className:'block mt-3 px-4 py-2 rounded-lg bg-slate-800 disabled:opacity-50'},directoryLoading?'Loading…':'Retry member list')) : null;
+  if(!directoryLoaded)return React.createElement('div',{className:'club-admin scrollable-content p-4 sm:p-6','aria-busy':directoryLoading},
+    React.createElement('h2',{className:'text-2xl font-black text-white mb-6'},'ניהול הקלאב'),
+    directoryNotice || React.createElement('p',{role:'status',className:'text-center py-8 text-amber-400'},'Loading club members…'));
   return React.createElement("div", {
     style: {
       overflowX: "hidden"
     },
     className: "club-admin scrollable-content p-4 sm:p-6"
-  }, balBox && ReactDOM.createPortal((() => {
+  }, directoryNotice, activityError && React.createElement('div',{role:'alert',className:'auth-error mb-4'},activityError,
+    activityLoaded && React.createElement('p',{className:'mt-2 text-sm'},'Showing the last loaded commission totals.'),
+    React.createElement('button',{type:'button',onClick:()=>setActivityAttempt(x=>x+1),disabled:activityLoading,className:'block mt-3 px-4 py-2 rounded-lg bg-slate-800 disabled:opacity-50'},activityLoading?'Loading…':'Retry activity')), balBox && ReactDOM.createPortal((() => {
     const t = balBox.target;
     const amt = Math.max(0, parseFloat(balBox.val) || 0);
     const myAfter = round2(clubBalance + (balBox.isDeposit ? -amt : amt));
@@ -9552,19 +9655,21 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     dir: "ltr"
   }, u.isGuest ? '👤 ' + (u.playerId || '—') : 'ID ' + (u.playerId || '—')), u.agentUid && React.createElement("div", {
     className: "text-[10px] text-purple-300 font-black truncate"
-  }, "🤝 ", u.agentUid === user.uid ? 'Your referral' : 'Agent: ' + agentName(u.agentUid)))), React.createElement("div", {
+  }, "🤝 ", u.agentUid === user.uid ? 'Your referral' : 'Agent: ' + agentName(u.agentUid)))), canAdmin ? React.createElement("div", {
     className: "flex gap-2 shrink-0"
   }, React.createElement("button", {
     onClick: () => handleApprove(u.id),
+    disabled: !!memberBusy,
     className: "bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white px-4 py-2 rounded-xl font-bold text-sm shadow-lg"
   }, React.createElement("i", {
     className: "fa-solid fa-check ml-1"
-  }), "Approve"), React.createElement("button", {
+  }), memberBusy===u.uid ? "Saving…" : "Approve"), React.createElement("button", {
+    disabled: !!memberBusy,
     onClick: () => handleReject(u),
     className: "bg-slate-800 hover:bg-rose-900 text-slate-300 w-10 rounded-xl font-bold text-sm border border-white/10"
   }, React.createElement("i", {
     className: "fa-solid fa-xmark"
-  }))))))), playerFile && React.createElement(PlayerFileModal, {
+  }))) : React.createElement("span",{className:"text-xs text-amber-300"},"Awaiting manager approval"))))), playerFile && React.createElement(PlayerFileModal, {
     mem: playerFile,
     agentName: agentName,
     canEdit: canAdmin || canManageAny || playerFile.agentUid === user.uid,
@@ -9588,6 +9693,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   }, agents.map(a => React.createElement("button", {
     key: a.id,
     onClick: () => approveWith(assignFor.id, a),
+    disabled: !!memberBusy,
     className: "flex items-center gap-3 bg-slate-950/70 hover:bg-purple-900/40 border border-purple-500/25 hover:border-purple-400/60 rounded-2xl p-3 transition-colors"
   }, React.createElement("img", {
     src: avatarUrl({
@@ -9602,6 +9708,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     dir: "ltr"
   }, Number(a.agentSharePct ?? 50), "%")))), React.createElement("button", {
     onClick: () => approveWith(assignFor.id, null),
+    disabled: !!memberBusy,
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-xl font-bold border border-white/10 mb-2"
   }, "Approve without agent assignment"), React.createElement("button", {
     onClick: () => setAssignFor(null),
@@ -9669,14 +9776,14 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     }, "This cycle"), React.createElement("div", {
       className: "text-emerald-400 font-black text-sm",
       dir: "ltr"
-    }, formatMoney(agentCycle[a.uid] || 0))), React.createElement("div", {
+    }, activityLoaded ? formatMoney(agentCycle[a.uid] || 0) : '…')), React.createElement("div", {
       className: "bg-slate-950/60 rounded-xl py-1.5"
     }, React.createElement("div", {
       className: "text-[9px] text-slate-500 font-bold"
     }, "Verified human earnings"), React.createElement("div", {
       className: "text-emerald-400 font-black text-sm",
       dir: "ltr"
-    }, formatMoney(rakeTotals.agents[a.uid] || 0)))), React.createElement("button", {
+    }, activityLoaded ? formatMoney(rakeTotals.agents[a.uid] || 0) : '…'))), React.createElement("button", {
       onClick: () => copyText(inviteLink, 'Invite link copied - send it to Players!'),
       className: "w-full bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-500 text-white py-2 rounded-xl font-black text-xs shadow-md"
     }, "🔗 Copy invite link (auto-assign)"), (isAgentOnly || canAdmin) && linked.length > 0 && React.createElement("div", {

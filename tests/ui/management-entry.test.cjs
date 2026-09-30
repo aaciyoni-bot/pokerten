@@ -43,6 +43,7 @@ function firebaseFixture(email,membershipStatus){
   fx:async(name,args)=>{
    calls.push({name,args});
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
+   if(name==='pkClubDirectory'&&args.reportSection)return{records:[],hasMore:false,nextCursor:null};
    if(name==='pkClubDirectory')return{members:[owner,membership,other],treasury:{uid:'owner',balance:1000},securityAlerts:[],agentLog:[],gameLog:[]};
    throw Error('Unexpected callable during management navigation: '+name);
   },
@@ -71,8 +72,8 @@ async function assertFullManagement(fixture){
  assert.match(doc.body.textContent,/Export full club report/);
  assert.match(doc.body.textContent,/Other human player/);
  assert.ok(doc.querySelector('[title="Set role and agent assignment"]'),'management includes member-role controls');
- assert.ok(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.includeSecurity===true));
- assert.ok(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.includeReports===true));
+ assert.ok(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.reportSection==='securityAlerts'));
+ assert.ok(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.reportSection==='gameLog'));
  assert.equal(fixture.writes.length,0,'oversight entry must not create or promote a membership');
 }
 (async()=>{

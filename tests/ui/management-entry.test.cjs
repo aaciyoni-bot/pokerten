@@ -51,15 +51,15 @@ function firebaseFixture(email,membershipStatus){
  };
  return{identity,membership,calls,writes,refresh:()=>tokenChanged(identity)};
 }
-const manage=()=>doc.querySelector('button[title="Manage"]');
+const manage=()=>[...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Manage')||null;
 async function mountAndEnter(fixture){
  w.localStorage.clear();
  await React.act(async()=>root.render(React.createElement(w.ManagementAppTest)));
  await React.act(async()=>fixture.refresh());
- const enter=[...doc.querySelectorAll('button.cl-cta')].find(button=>button.textContent==='Enter');
+ const enter=[...doc.querySelectorAll('button.cl-cta')].find(button=>button.textContent.trim()==='Enter club');
  assert.ok(enter,'the real club directory offers an authorized entry');
  await React.act(async()=>enter.click());
- assert.ok(doc.querySelector('button[title="Clubs"]'),'club entry reaches the real app navigation');
+ assert.ok([...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Clubs'),'club entry reaches the real app navigation');
 }
 async function assertFullManagement(fixture){
  assert.ok(manage(),'verified HAIM has the top Manage button despite stale membership metadata');

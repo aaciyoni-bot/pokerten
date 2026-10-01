@@ -35,7 +35,7 @@ const setInput=async value=>React.act(async()=>{const el=w.document.getElementBy
  const allClubs=[{id:'oversight',name:'Oversight',ownerUid:'someone'},club,{id:'recent',name:'Recent club',ownerUid:'someone'},{id:'owned',name:'Owned club',ownerUid:'player'}];
  const memberships=[{clubId:'main',status:'approved'},{clubId:'recent',status:'approved'},{clubId:'owned',status:'approved'}];
  await React.act(async()=>root.render(React.createElement(w.ClubsTest,{...props,clubs:allClubs,myMems:memberships})));
- assert.deepEqual([...w.document.querySelectorAll('.cl-deck .cl-name')].map(e=>e.textContent),['Recent club','Owned club','PokerTen']);
+ assert.deepEqual([...w.document.querySelectorAll('.cl-deck .cl-card:not(.cl-card-create) .cl-name')].map(e=>e.textContent),['Recent club','Owned club','PokerTen']);
  assert.ok(w.document.querySelector('.cl-deck').lastElementChild.classList.contains('cl-card-create'));
  await React.act(async()=>root.render(React.createElement(w.ClubsTest,{...props,clubs:allClubs,myMems:memberships.filter(m=>m.clubId!=='recent')})));
  assert.equal(w.document.querySelector('.cl-deck .cl-name').textContent,'Owned club','a remembered club cannot restore removed membership');

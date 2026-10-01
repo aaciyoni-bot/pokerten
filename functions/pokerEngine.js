@@ -1659,6 +1659,9 @@ exports.pkDiscard = onCall(CALL_OPTS, async (request) => {
   return {ok: true};
 });
 
+// Occupancy summaries use the same verified GOD allowlist, without reading cards.
+exports.godLobbyCounts = require("./godLobby").createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS});
+
 // godPeek — protocol §3.9. GOD accounts only: all hands + the coming runout.
 exports.godPeek = onCall(CALL_OPTS, async (request) => {
   authedUid(request);

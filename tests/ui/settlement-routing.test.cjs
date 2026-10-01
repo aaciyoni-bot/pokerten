@@ -56,22 +56,22 @@ function firebaseFixture(email,membershipStatus,role='player'){
  };
  return{identity,membership,calls,writes,queries,denyReports:value=>{reportDenied=value;},refresh:()=>tokenChanged(identity)};
 }
-const manage=()=>doc.querySelector('button[title="Manage"]');
+const manage=()=>[...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Manage')||null;
 async function mountAndEnter(fixture){
  w.localStorage.clear();
  await React.act(async()=>root.render(React.createElement(w.ManagementAppTest)));
  await React.act(async()=>fixture.refresh());
- const enter=[...doc.querySelectorAll('button.cl-cta')].find(button=>button.textContent==='Enter');
+ const enter=[...doc.querySelectorAll('button.cl-cta')].find(button=>button.textContent.trim()==='Enter club');
  assert.ok(enter,'the real club directory offers an authorized entry');
  await React.act(async()=>enter.click());
- assert.ok(doc.querySelector('button[title="Clubs"]'),'club entry reaches the real app navigation');
+ assert.ok([...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Clubs'),'club entry reaches the real app navigation');
 }
 const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const reportLink=label=>doc.querySelector('button[aria-label="'+label+'"]');
-const back=async()=>{assert.ok(button('Back to lobby'));await React.act(async()=>button('Back to lobby').click());assert.ok(button('💳 Cashier'));};
+const back=async()=>{assert.ok(button('Back to lobby'));await React.act(async()=>button('Back to lobby').click());assert.ok(button('Cashier'));};
 async function assertStaffLinks(fixture){
  for(const source of ['lobby','cashier']){
-  if(source==='cashier')await React.act(async()=>button('💳 Cashier').click());
+  if(source==='cashier')await React.act(async()=>button('Cashier').click());
   const links=[...doc.querySelectorAll('button[aria-label="Club settlement"]')];
   assert.equal(links.length,source==='cashier'?2:1);
   await React.act(async()=>links.at(source==='cashier'?-1:0).click());
@@ -88,7 +88,7 @@ async function assertStaffLinks(fixture){
 async function assertPlayerLinks(fixture){
  assert.equal(manage(),null,'card viewing or a profile claim must not grant club management');
  for(const source of ['lobby','cashier']){
-  if(source==='cashier')await React.act(async()=>button('💳 Cashier').click());
+  if(source==='cashier')await React.act(async()=>button('Cashier').click());
   const links=[...doc.querySelectorAll('button[aria-label="My results"]')];
   assert.equal(links.length,source==='cashier'?2:1);
   await React.act(async()=>links.at(source==='cashier'?-1:0).click());

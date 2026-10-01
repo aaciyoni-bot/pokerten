@@ -561,3 +561,61 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 /* GOD-only identity markers share the existing name row without moving stacks. */
 .poker-room .poker-god-player-kind{display:inline-flex;align-items:center;justify-content:center;flex:0 0 13px;width:13px;height:13px;border-radius:3px;font-size:9px;line-height:1;background:#15333e;color:#99e5ff}
 .poker-room .poker-god-player-kind.is-bot{background:#48361a;color:#ffda85}
+
+/* Headerless table: utility controls live behind one small menu button. */
+.poker-room .poker-table-tools,.poker-room:has(>.poker-god-runout) .poker-table-tools{top:calc(env(safe-area-inset-top,0px) + 8px)!important;left:max(8px,env(safe-area-inset-left));z-index:110}
+.poker-room .poker-table-tools>div>button{width:40px;height:40px;border-radius:12px;background:#111b24e8;border:1px solid #71858c66;box-shadow:0 2px 9px #0005}
+.poker-room>.poker-god-runout{top:calc(env(safe-area-inset-top,0px) + 10px);left:58px;right:8px}
+.poker-menu-wait-count{position:absolute;right:-5px;top:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:10px;background:#f1ce81;color:#152127;font:bold 10px/16px Arial,sans-serif;text-align:center;pointer-events:none}
+.poker-menu-panel{max-width:600px;margin-inline:auto;max-height:calc(100dvh - max(24px,env(safe-area-inset-top)) - max(24px,env(safe-area-inset-bottom)));overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 2px 8px}
+.poker-menu-heading{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;padding:14px;border:1px solid #71858c66;border-radius:16px;background:#101b27f5;color:#f2f5fa}
+.poker-menu-heading>div{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.poker-menu-heading strong{font-size:17px;line-height:1.3;overflow-wrap:anywhere}.poker-menu-heading span{font-size:12px;color:#c4d6e4}.poker-menu-heading button{width:36px;height:36px;flex:0 0 36px;border:1px solid #8193a166;border-radius:10px;background:#233443;color:#f1f5f9;font-size:18px}
+.poker-menu-grid{gap:9px}.poker-menu-grid>button,.poker-menu-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:76px;aspect-ratio:auto;border:1px solid #71858c66;border-radius:15px;background:#152331f5;color:#e6eef6;padding:10px 5px;box-shadow:0 4px 12px #0005;cursor:pointer}.poker-menu-tile>i{font-size:21px}.poker-menu-tile>span{font-size:10px;font-weight:800;text-align:center;line-height:1.25}.poker-menu-grid>button:focus-visible,.poker-menu-heading button:focus-visible{outline:2px solid #ffe7ab;outline-offset:2px}.poker-menu-panel .poker-waitlist-status{margin-bottom:12px;border:1px solid #8268a5;border-radius:12px}
+@media(max-width:380px){.poker-menu-grid{gap:7px}.poker-menu-grid>button{min-height:70px}}
+
+/* GG card presentation: hands sit on their avatars; names and money below stay clear. */
+.poker-room .poker-seat:not(.poker-seat-hero){--poker-fan-width:clamp(27px,min(8cqw,4.8cqh),40px);--poker-fan-overlap:-.68;--poker-fan-span:calc(var(--poker-fan-width) * (1 + (var(--poker-card-count,2) - 1) * .32))}
+.poker-room .poker-seat:not(.poker-seat-hero) .poker-opponent-fan,
+.poker-room .poker-seat:not(.poker-seat-hero) .poker-opponent-fan.poker-revealed-hand{--poker-fan-width:inherit;--poker-fan-overlap:inherit;position:absolute;top:calc(var(--gg-pod) * .54 - var(--poker-fan-width) * 1.4 - 5px)!important;bottom:auto!important;left:50%!important;right:auto!important;transform:translateX(-50%)!important;translate:none!important;margin:0!important;z-index:20}
+.poker-room .poker-seat:not(.poker-seat-hero)[data-seat-side="left"] .poker-opponent-fan{left:max(50%,calc(var(--poker-fan-span) / 2 + 16px - var(--poker-seat-x) + var(--gg-pod) / 2))!important}
+.poker-room .poker-seat:not(.poker-seat-hero)[data-seat-side="right"] .poker-opponent-fan{left:min(50%,calc(100cqw - var(--poker-seat-x) + var(--gg-pod) / 2 - var(--poker-fan-span) / 2 - 16px))!important}
+.poker-room .poker-seat-hero{--poker-fan-width:clamp(32px,min(10.5cqw,4.8cqh),44px);--poker-fan-overlap:-.5;--poker-fan-span:calc(var(--poker-fan-width) * (1 + (var(--poker-card-count,2) - 1) * .5));left:max(18px,calc(var(--poker-fan-span) / 2 - var(--poker-hero-size,64px) / 2 + 18px))!important;right:auto;width:var(--poker-hero-size,64px)!important}
+.poker-room .poker-seat-hero>.relative.flex.flex-col.items-center{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:0;height:auto}
+.poker-room .poker-seat-hero .poker-own-fan{--poker-fan-width:inherit;--poker-fan-overlap:inherit;position:absolute;top:calc(var(--poker-hero-size,64px) * .54 - var(--poker-fan-width) * 1.4 - 7px);left:50%;right:auto;bottom:auto;transform:translateX(-50%)!important;align-self:auto;justify-self:auto;margin:0!important;z-index:20}
+.poker-room .poker-seat-hero .player-pod{flex:none;align-self:center;margin:0}.poker-room .poker-seat-hero .poker-player-info{align-self:center;flex:none;z-index:25}.poker-room .poker-seat-hero .poker-result-meta{top:100%;bottom:auto;left:calc(100% + 8px);transform:none;width:max-content;max-width:110px}.poker-room .poker-seat-hero .poker-return-to-game{left:calc(100% + 12px);right:auto;bottom:0}
+.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat:not(.poker-seat-hero){--poker-fan-width:clamp(22px,6.2cqw,28px)}
+.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat:not(.poker-seat-hero) .poker-opponent-fan{--poker-fan-width:inherit}
+@media(max-height:720px){.poker-room .poker-seat-hero{--poker-fan-width:30px}.poker-room .poker-seat:not(.poker-seat-hero){--poker-fan-width:clamp(25px,7.5cqw,30px)}}
+
+/* Dense portrait tables keep the top seats above the next seat's cards. */
+@media(max-height:720px){.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat[data-seat-row="top"]{top:14%!important;left:var(--poker-seat-x)!important}}
+
+/* Rotated card corners need a real viewport gutter, beyond the fan's box. */
+.poker-room .poker-table:not([data-seat-count="8"]):not([data-seat-count="9"]) .poker-seat[data-seat-row="upper"] .poker-opponent-fan{top:calc(var(--gg-pod) * .54 - var(--poker-fan-width) * 1.4 - 5px)!important}
+/* Extend the far rail upwards while retaining the lower rail's reference position. */
+.poker-room .approved-poker-material{transform:translateY(-3%) scaleY(1.03);transform-origin:50% 0}
+
+/* On short phones, stagger the upper seats inward instead of stacking their
+   nameplates above a neighbour's hand. Bets follow underneath each top seat. */
+@media(max-height:720px){
+ .poker-room{--poker-hero-bottom:calc(23cqh - 42px)}
+ .poker-room .poker-seat[data-seat-row="top"][data-seat-side="left"],.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat[data-seat-row="top"][data-seat-side="left"]{left:35%!important}
+ .poker-room .poker-seat[data-seat-row="top"][data-seat-side="right"],.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat[data-seat-row="top"][data-seat-side="right"]{left:65%!important}
+ .poker-room .poker-bet[data-bet-row="top"]{top:calc(18% + 72px)!important}
+ .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-bet[data-bet-row="top"]{top:calc(14% + 72px)!important}
+}
+
+/* Two cards and Pineapple discard are deliberately spread, not overlapped. */
+.poker-room .poker-seat-hero[data-hole-count="2"]{--poker-fan-span:calc(var(--poker-fan-width) * 2 + 4px)}
+.poker-room .poker-seat-hero[data-cards-spread="true"][data-hole-count="3"]{--poker-fan-span:calc(var(--poker-fan-width) * 3 + 8px)}
+/* With eight or nine seats, centre the local seat in the only empty bottom lane. */
+.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat-hero{left:calc(50% - var(--poker-hero-size,64px) / 2)!important}
+
+/* A centred dense-table hero needs a clear nameplate lane through the dock.
+   Keep strength at the sides and return turn text to the dock's footer row. */
+.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-hand-status{justify-content:space-between;gap:8px}
+.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-hand-status>span{max-width:calc(50% - 44px);min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-action-meta [role="status"]{position:static;left:auto;top:auto;transform:none;width:auto;max-width:none;min-width:0;line-height:14px}
+
+/* Wide tables leave the top bets above the next seat's enlarged card fan. */
+@media(min-width:700px) and (min-height:721px){.poker-room .poker-bet[data-bet-row="top"]{translate:0 -14px}}

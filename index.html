@@ -524,6 +524,8 @@
         .btn-raise:not(:disabled):hover { filter: brightness(1.06); }
         /* starts at 12 o'clock and drains CLOCKWISE (scaleX flip — owner request) */
         .timer-ring { transform: rotate(-90deg) scaleX(-1); transition: stroke-dashoffset 1s linear, stroke 0.35s ease; filter: drop-shadow(0 0 4px currentColor); }
+        .timer-ring circle { transition: stroke-dasharray 1s linear; }
+        @media (prefers-reduced-motion: reduce) { .timer-ring circle { transition: none; } }
         /* Gentle "no signal" blink: wifi + diagonal slash */
         .no-signal { color: #fca5a5; font-size: 12px; animation: nsBlink 1.2s ease-in-out infinite; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8)); }
         .ns-slash { position: absolute; left: 50%; top: 50%; width: 16px; height: 2px; background: #f43f5e; transform: translate(-50%, -50%) rotate(-45deg); border-radius: 2px; }
@@ -1103,8 +1105,9 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=289">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=292">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=288">
+<link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -3787,35 +3790,102 @@ const PodiumScreen = ({
     className: "mt-3 text-slate-400 hover:text-white text-sm font-bold underline"
   }, "Keep watching this table"));
 };
-const DiscardFly = ({
-  card
-}) => {
-  const [go, setGo] = React.useState(false);
+// Motion preferences affect display only; accepted actions and balances remain
+// immediate. Listen for changes so an open table respects the OS setting.
+const useReducedPokerMotion = () => {
+  const query = '(prefers-reduced-motion: reduce)';
+  const [reduced, setReduced] = React.useState(() => !!(window.matchMedia && window.matchMedia(query).matches));
   React.useEffect(() => {
-    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
-    return () => cancelAnimationFrame(r);
+    if (!window.matchMedia) return;
+    const media = window.matchMedia(query);
+    const update = () => setReduced(media.matches);
+    update();
+    if (media.addEventListener) media.addEventListener('change', update);
+    else if (media.addListener) media.addListener(update);
+    return () => {
+      if (media.removeEventListener) media.removeEventListener('change', update);
+      else if (media.removeListener) media.removeListener(update);
+    };
   }, []);
+  return reduced;
+};
+const usePokerMotionStart = reduced => {
+  const [go, setGo] = React.useState(reduced);
+  React.useEffect(() => {
+    if (reduced) { setGo(true); return; }
+    let second = 0;
+    const first = requestAnimationFrame(() => { second = requestAnimationFrame(() => setGo(true)); });
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
+  }, [reduced]);
+  return reduced || go;
+};
+const pokerVisualPoint = (table, element, fallback) => {
+  if (!table || !element) return fallback;
+  const field = table.getBoundingClientRect(), item = element.getBoundingClientRect();
+  if (!(field.width > 0 && field.height > 0 && item.width > 0 && item.height > 0)) return fallback;
+  return {
+    left: `${100 * (item.left + item.width / 2 - field.left) / field.width}%`,
+    top: `${100 * (item.top + item.height / 2 - field.top) / field.height}%`
+  };
+};
+const usePokerFlightPoints = (ref, from, to, options = {}) => {
+  const [points, setPoints] = React.useState({from, to});
+  React.useLayoutEffect(() => {
+    const table = ref.current && ref.current.closest('.poker-table');
+    if (!table) return;
+    const pot = table.querySelector('.poker-collected-pot') || table.querySelector('.poker-total-pot');
+    const seat = options.toUid && [...table.querySelectorAll('.poker-seat[data-player-uid]')].find(el => el.getAttribute('data-player-uid') === options.toUid);
+    const next = {
+      from: options.fromPot ? pokerVisualPoint(table, pot, from) : from,
+      to: options.toPot ? pokerVisualPoint(table, pot, to) : seat ? pokerVisualPoint(table, seat.querySelector('.player-pod'), to) : to
+    };
+    if (next.from !== from || next.to !== to) setPoints(next);
+  }, []);
+  return points;
+};
+const DiscardFly = ({
+  card,
+  from
+}) => {
+  const flight = React.useRef(null);
+  const [origin, setOrigin] = React.useState(from || {left:'50%',top:'76%'});
+  React.useLayoutEffect(() => {
+    if (from) return;
+    const table = flight.current && flight.current.closest('.poker-table');
+    const fan = table && table.querySelector('.poker-own-fan');
+    if (fan) setOrigin(pokerVisualPoint(table, fan, origin));
+  }, []);
+  const reduced = useReducedPokerMotion();
+  const go = usePokerMotionStart(reduced);
   return React.createElement("div", {
-    className: "absolute z-[70] pointer-events-none",
+    ref: flight,
+    className: "poker-discard-flight absolute inset-0 z-[70] pointer-events-none",
     style: {
-      left: '50%',
-      top: go ? '60%' : '76%',
-      transform: `translate(-50%, -50%) rotate(${go ? 110 : 0}deg) scale(${go ? 0.5 : 1})`,
+      transform: go ? `translate(calc(50% - ${origin.left}), calc(60% - ${origin.top}))` : 'translate(0, 0)',
       opacity: go ? 0 : 1,
-      transition: 'all 0.65s ease-in'
+      transition: reduced ? 'none' : 'transform 0.38s ease-in, opacity 0.38s ease-in'
+    }
+  }, React.createElement("div", {
+    className: "absolute",
+    style: {
+      left: origin.left,
+      top: origin.top,
+      transform: `translate(-50%, -50%) rotate(${go ? 110 : 0}deg) scale(${go ? 0.5 : 1})`,
+      transition: reduced ? 'none' : 'transform 0.38s ease-in'
     }
   }, React.createElement(PCard, {
     card: card,
     size: "lg"
-  }));
+  })));
 };
 // Animated number: eases toward the target instead of snapping, so pot and
 // stack changes read as money MOVING (P3). Pure display — state is untouched.
 const CountNum = ({
   value,
   fmt,
-  dur = 380
+  dur = 220
 }) => {
+  const reduced = useReducedPokerMotion();
   const [disp, setDisp] = React.useState(value);
   const ref = React.useRef({
     to: value,
@@ -3823,7 +3893,7 @@ const CountNum = ({
   });
   React.useEffect(() => {
     const st = ref.current;
-    if (value === null || disp === null) { cancelAnimationFrame(st.raf); st.to = value; setDisp(value); return; }
+    if (reduced || dur <= 0 || value === null || disp === null) { cancelAnimationFrame(st.raf); st.to = value; setDisp(value); return; }
     if (value === st.to && disp === value) return;
     const from = disp,
       t0 = performance.now();
@@ -3837,8 +3907,8 @@ const CountNum = ({
     };
     st.raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(st.raf);
-  }, [value]);
-  return (fmt || (x => x))(value === null ? null : disp);
+  }, [value, dur, reduced]);
+  return (fmt || (x => x))(value === null ? null : reduced ? value : disp);
 };
 const BetCollect = ({
   unit,
@@ -3847,40 +3917,53 @@ const BetCollect = ({
   amount,
   snd
 }) => {
-  const [go, setGo] = React.useState(false);
+  const flight = React.useRef(null);
+  const points = usePokerFlightPoints(flight, from, to, {toPot:true});
+  const reduced = useReducedPokerMotion();
+  const go = usePokerMotionStart(reduced);
   React.useEffect(() => {
     // one soft chip-settle as the bets land in the pot (P3 — was silent)
-    const tm = snd ? setTimeout(() => playSnd('tile'), 620) : null;
-    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
+    const tm = snd ? setTimeout(() => playSnd('tile'), 350) : null;
     return () => {
-      cancelAnimationFrame(r);
       if (tm) clearTimeout(tm);
     };
   }, []);
   return React.createElement("div", {
-    className: "poker-bet-collection absolute z-[36] pointer-events-none",
+    ref: flight,
+    className: "poker-bet-collection absolute inset-0 z-[36] pointer-events-none",
     style: {
-      left: go ? to.left : from.left,
-      top: go ? to.top : from.top,
       opacity: go ? 0.1 : 1,
+      // This wrapper is table-sized: percentages and nested calc() coordinates
+      // keep the original path without animating layout on every frame.
+      transform: go ? `translate(calc(${points.to.left} - ${points.from.left}), calc(${points.to.top} - ${points.from.top}))` : 'translate(0, 0)',
+      transition: reduced ? 'none' : 'transform 0.38s ease-in, opacity 0.38s ease-in'
+    }
+  }, React.createElement("div", {
+    className: "absolute",
+    style: {
+      left: points.from.left,
+      top: points.from.top,
       transform: 'translate(-50%, -50%)',
-      transition: 'left 0.65s ease-in, top 0.65s ease-in, opacity 0.65s ease-in'
     }
   }, React.createElement(CasinoChipStack, {
     amount: amount,
     scale: 0.85,
     showLabel: false,
     unit
-  }));
+  })));
 };
 const PotAward = ({
   to,
+  toUid,
   amount,
   dur,
   snd,
   unit
 }) => {
-  const [go, setGo] = React.useState(false);
+  const flight = React.useRef(null);
+  const points = usePokerFlightPoints(flight, {left:'50%',top:'63.5%'}, to, {fromPot:true,toUid});
+  const reduced = useReducedPokerMotion();
+  const go = usePokerMotionStart(reduced);
   // the amount is the one number that should run: it starts at nothing and
   // climbs to the award as the stack slides to the winner
   const [shown, setShown] = React.useState(0);
@@ -3889,24 +3972,28 @@ const PotAward = ({
     return () => clearTimeout(t);
   }, [amount]);
   React.useEffect(() => {
-    // The long slide already plays on the showdown transition; here just one
+    // The slide already plays on the showdown transition; here just one
     // soft chip "settle" as the stack lands on the winner (owner request —
     // the old 6-hit burst was grating).
     const tm = snd ? setTimeout(() => playSnd('tile'), Math.max(300, dur * 800)) : null;
-    const r = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)));
     return () => {
-      cancelAnimationFrame(r);
       if (tm) clearTimeout(tm);
     };
   }, []);
   return (React.createElement("div", {
-      className: "absolute z-[120] pointer-events-none",
+      ref: flight,
+      className: "poker-pot-award absolute inset-0 z-[120] pointer-events-none",
       style: {
-        left: go ? to.left : '50%',
-        top: go ? to.top : '63.5%',
         opacity: go ? 0 : 1,
+        transform: go ? `translate(calc(${points.to.left} - ${points.from.left}), calc(${points.to.top} - ${points.from.top}))` : 'translate(0, 0)',
+        transition: reduced ? 'none' : `transform ${dur}s ease-in-out, opacity 0.18s ease-in ${dur}s`
+      }
+    }, React.createElement("div", {
+      className: "absolute",
+      style: {
+        left: points.from.left,
+        top: points.from.top,
         transform: 'translate(-50%, -50%) scale(1.15)',
-        transition: `left ${dur}s ease-in-out, top ${dur}s ease-in-out, opacity 0.45s ease-in ${dur}s`
       }
     }, React.createElement("div", {
       className: "flex flex-col items-center gap-1"
@@ -3922,7 +4009,7 @@ const PotAward = ({
       scale: 1.05,
       showLabel: false,
       unit
-    })))
+    }))))
   );
 };
 function App() {
@@ -10506,7 +10593,7 @@ try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{...s,serverEngi
     React.createElement("button", { onClick: () => setSpinOpen(false), className: "w-full text-slate-400 hover:text-white text-sm font-bold" }, "Cancel")
   )), document.body))));
 }
-function PokerFullscreenButton({showToast}) {
+function PokerFullscreenButton({showToast, onToggle}) {
   const [active, setActive] = useState(!!(document.fullscreenElement || document.webkitFullscreenElement));
   const [pending, setPending] = useState(false);
   useEffect(() => {
@@ -10529,14 +10616,16 @@ function PokerFullscreenButton({showToast}) {
         else await document.webkitExitFullscreen();
       } else if (el.requestFullscreen) await el.requestFullscreen({navigationUI:'hide'});
       else await el.webkitRequestFullscreen();
+      onToggle?.();
     } catch (_) {
       showToast('הדפדפן לא אפשר מסך מלא. אפשר לנסות לפתוח את האפליקציה ממסך הבית.', 'info');
     } finally { setPending(false); }
   };
   return React.createElement('button', {type:'button', onClick:toggle, disabled:pending,
     'aria-label':active ? 'Exit fullscreen' : 'Enter fullscreen', 'aria-pressed':active,
-    title:active ? 'יציאה ממסך מלא' : 'מסך מלא', className:'poker-fullscreen-button'},
-    React.createElement('i', {className:active ? 'fa-solid fa-compress' : 'fa-solid fa-expand', 'aria-hidden':true}));
+    title:active ? 'יציאה ממסך מלא' : 'מסך מלא', className:'poker-fullscreen-button poker-menu-tile'},
+    React.createElement('i', {className:active ? 'fa-solid fa-compress' : 'fa-solid fa-expand', 'aria-hidden':true}),
+    React.createElement('span', null, active ? 'Exit fullscreen' : 'Fullscreen'));
 }
 function PokerTable({
   tableDocId,
@@ -10576,8 +10665,9 @@ function PokerTable({
   const botAddLock = useRef(false);
   const [addingBots, setAddingBots] = useState(false);
   const [tableInfoOpen, setTableInfoOpen] = useState(false);
-  const tableInfoTrigger = useRef(null);
-  const closeTableInfo = () => { setTableInfoOpen(false); tableInfoTrigger.current?.focus(); };
+  const tableMenuTrigger = useRef(null);
+  const closeTableInfo = () => { setTableInfoOpen(false); tableMenuTrigger.current?.focus(); };
+  const closeTableMenu = () => { setToolsOpen(false); tableMenuTrigger.current?.focus(); };
   const [peek, setPeek] = useState(null);
   const [podium, setPodium] = useState(null);
   const podiumShownRef = useRef(false);
@@ -10636,6 +10726,17 @@ function PokerTable({
     prev: {},
     seq: 0,
     now: {}
+  });
+  const tableVisualRef = useRef(null);
+  // Remember the chips' rendered centers while they are still on the rail.
+  // Responsive CSS can move them away from betPos's fallback coordinates.
+  React.useLayoutEffect(() => {
+    const field = tableVisualRef.current;
+    if (!field) return;
+    field.querySelectorAll('.poker-bet[data-player-uid]').forEach(element => {
+      const entry = betLayoutRef.current.now[element.getAttribute('data-player-uid')];
+      if (entry && entry.bet > 0) entry.pos = pokerVisualPoint(field, element, entry.pos);
+    });
   });
   useEffect(() => {
     const L = betLayoutRef.current;
@@ -11797,6 +11898,7 @@ try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){s
     return () => clearTimeout(tm);
   }, [gs.activeTurnUid, gs.phase, myPlayer?.sitOut, myPlayer?.status]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const closeHandHistory = () => { setHistoryOpen(false); tableMenuTrigger.current?.focus(); };
   const [histExpand, setHistExpand] = useState(null);
   const [bustLeft, setBustLeft] = useState(300);
   const [skin, setSkin] = useState(() => {
@@ -12206,7 +12308,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const pod = podWidthFor(sy);
     return {
       left: hero ? 'calc(100% - 55px)' : `${x}%`,
-      '--poker-top-bet-x': sx < 50 ? '31%' : '69%',
+      '--poker-top-bet-x': sx < 50 ? '35%' : '65%',
       top: hero ? 'calc(100% - var(--poker-hero-bottom, 158px) - 20px)' : capN >= 8 && sy >= 40 ? `calc(${sy}% - 34px)` : `calc(${sy}% + clamp(22px, min(${(pod / 2).toFixed(3)}cqw, ${(pod * .46125 / 2).toFixed(3)}cqh), 44px) + ${(sy <= 22 ? 23 : 39) + resultGap}px)`
     };
   };
@@ -12300,18 +12402,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
     }
-  }, React.createElement('header', {className:'poker-table-heading'},
-    React.createElement('span', {className:'poker-heading-brand'}, 'POKERTEN'),
-    React.createElement('div', {className:'poker-heading-info'},
-      React.createElement('strong', {title:tableTitle}, tableTitle),
-      React.createElement('span', {dir:'ltr'}, tableState.closeRequested?'Closing after this hand':tableStakes)),
-    React.createElement('button', {type:'button', ref:tableInfoTrigger, onClick:()=>setTableInfoOpen(true), 'aria-label':'Table details'}, 'פרטים'),
-    React.createElement(PokerFullscreenButton, {showToast}),
-    !isSeated && React.createElement('button', {type:'button', onClick:onLeave, 'aria-label':'Leave table', title:'חזרה ללובי'}, '🚪')),
-  !tableState.tournamentId && !setts.spinMode && (isFull || waitlist.length > 0) && React.createElement('div', {className:'poker-waitlist-status'},
-    React.createElement(PokerWaitlistIndicator, {table:tableState, uid:user.uid, className:'poker-waitlist-summary', showEmpty:true}),
-    !isSeated && onWaitlist && React.createElement('button', {type:'button', onClick:leaveWaitlist}, 'Leave waitlist'),
-    spectate && !isSeated && !onWaitlist && requiresWaitlist && !tableState.closeRequested && React.createElement('button', {type:'button', onClick:()=>setSpectate(false)}, 'Join waitlist')),
+  },
   tableInfoOpen && ReactDOM.createPortal(React.createElement('div', {className:'poker-info-overlay', onClick:closeTableInfo},
     React.createElement('section', {role:'dialog', 'aria-modal':true, 'aria-label':'Table details', className:'poker-info-dialog', onClick:e=>e.stopPropagation(), onKeyDown:e=>{if(e.key==='Escape'){e.stopPropagation();closeTableInfo();}else if(e.key==='Tab'){e.preventDefault();e.currentTarget.querySelector('button').focus();}}},
       React.createElement('button', {type:'button', autoFocus:true, onClick:closeTableInfo, 'aria-label':'Close table details'}, '✕'),
@@ -12522,6 +12613,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     'data-seat-count': capN,
     'data-felt': skin.felt || 'auto',
     className: "poker-table w-full max-w-none sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
+    ref: tableVisualRef,
     style: (() => {
       const F = {
         'NLH': ['#2f7d4d', '#215c37', '#123a20'],
@@ -12597,7 +12689,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-wrap approved-poker-table"
   }, React.createElement("img", {
     className: "approved-poker-material",
-    src: "assets/design/poker-gg-led-v276.webp",
+    src: "assets/design/poker-material-v292.webp",
     alt: "",
     draggable: false
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
@@ -12761,10 +12853,14 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       // a talking player's whole seat lifts above the bet stacks (z-35) —
       // the bubble's own z is trapped inside the seat's stacking context
       className: "poker-seat " + (isWinner ? "poker-seat-winner " : "") + (isMe ? "poker-seat-hero " : "") + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
+      'data-player-uid': p.uid,
+      'data-hole-count': Math.max(1, dispCards.length),
+      'data-cards-spread': isMe && gs.phase === 'discard',
       'data-seat-side': seatXv < 50 ? 'left' : 'right',
       'data-seat-row': seatYv <= 22 ? 'top' : seatYv <= 40 ? 'upper' : seatYv <= 50 ? 'middle' : seatYv <= 71 ? 'lower' : 'bottom',
       'data-card-lane': isMe ? 'hero' : seatYv <= 22 ? 'top' : seatYv >= 72 ? 'bottom' : seatXv < 50 ? 'left' : 'right',
       style: isMe ? {
+        '--poker-card-count': Math.max(1, dispCards.length),
         left: '50%',
         // Anchored in pixels on the phone so the fixed-height action bar can
         // never cover his stack (see .pt-hero — on a landscape/desktop window
@@ -12774,6 +12870,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         transform: 'translateX(-50%)'
       } : {
         ...seatPos(i),
+        '--poker-seat-x': `${seatXv}cqw`,
+        '--poker-card-count': Math.max(1, dispCards.length),
         '--poker-seat-y': `${seatYv}%`,
         '--poker-short-seat-x': seatXv < 50 ? '10%' : '90%',
         '--poker-reveal-shift': seatXv < 25 ? '7px' : seatXv > 75 ? '-7px' : '0px',
@@ -12841,10 +12939,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         className: "w-2"
       }) : React.createElement("div", {
         key: ci,
-        onClick: () => {
+        onClick: e => {
           if (discHide !== null) return;
           setDiscFx({
             card: c,
+            from: pokerVisualPoint(tableVisualRef.current, e.currentTarget.querySelector('.card-face') || e.currentTarget, {left:'50%',top:'76%'}),
             id: Date.now()
           });
           setDiscHide(ci);
@@ -13039,7 +13138,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     }));
   }), discFx && React.createElement(DiscardFly, {
     key: discFx.id,
-    card: discFx.card
+    card: discFx.card,
+    from: discFx.from
   }), !gs.activeTurnUid && betFx.map((fx, fxi) => React.createElement(BetCollect, {
     unit: chipUnit,
     key: fx.id,
@@ -13069,11 +13169,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       }));
     }
     if (!awards.length) return null;
-    const dur = Math.min(3.2, 0.9 + Math.log10(1 + awards[0].amount) * 0.55);
+    const dur = Math.min(0.9, 0.42 + Math.log10(1 + awards[0].amount) * 0.08);
     return awards.map((a, k) => React.createElement(PotAward, {
       unit: chipUnit,
       key: 'pa' + (displayList[a.ix]?.uid || a.ix) + '_' + (gs.showdownAt || 0),
       to: seatPos(a.ix),
+      toUid: displayList[a.ix]?.uid,
       amount: a.amount,
       dur: dur,
       snd: k === 0
@@ -13542,10 +13643,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "shrink-0 bg-slate-800 hover:bg-rose-900 text-slate-300 w-10 h-10 rounded-xl font-black border border-white/10"
   }, "🚪"))), historyOpen && React.createElement("div", {
     className: "absolute inset-0 z-[250] bg-black/75 backdrop-blur-sm flex items-center justify-center p-3",
-    onClick: () => setHistoryOpen(false)
+    onClick: closeHandHistory
   }, React.createElement("div", {
     className: "glass-panel rounded-3xl w-full max-w-md max-h-[80vh] flex flex-col animate-pop-in",
     onClick: e => e.stopPropagation(),
+    role: 'dialog', 'aria-modal': true, 'aria-label': 'Hand history',
+    onKeyDown: e => { if(e.key==='Escape'){e.stopPropagation();closeHandHistory();} },
     dir: "ltr"
   }, React.createElement("div", {
     className: "flex items-center justify-between px-4 py-3 border-b border-white/5 shrink-0"
@@ -13554,7 +13657,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, React.createElement("i", {
     className: "fa-solid fa-clock-rotate-left ml-2 text-amber-400"
   }), "Hand history (", (tableState.history || []).length, ")"), React.createElement("button", {
-    onClick: () => setHistoryOpen(false),
+    type: 'button', autoFocus: true, 'aria-label': 'Close hand history',
+    onClick: closeHandHistory,
     className: "text-slate-500 hover:text-white w-7 h-7"
   }, React.createElement("i", {
     className: "fa-solid fa-xmark"
@@ -13664,44 +13768,55 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     onClick: ch.clearFloor,
     className: "bg-slate-950/20 hover:bg-slate-950/40 rounded-full px-2 py-0.5"
   }, "Resolve ✓")), React.createElement("div", {
-    className: "poker-table-tools absolute top-[54px] left-2 z-[60] flex flex-col items-start gap-2"
+    className: "poker-table-tools absolute left-2 z-[60] flex flex-col items-start gap-2"
   }, React.createElement("div", {
     className: "flex items-center gap-2"
   }, React.createElement("button", {
+    type: "button",
+    ref: tableMenuTrigger,
     onClick: () => setToolsOpen(o => !o),
     title: "Table menu",
     "aria-label": "Table menu",
     "aria-expanded": toolsOpen,
+    "aria-haspopup": "dialog",
     className: `w-9 h-9 rounded-xl shadow-xl text-base border relative ${toolsOpen ? 'bg-amber-500 text-slate-900 border-amber-300' : 'glass-panel border-transparent text-slate-300 hover:text-white'}`
   }, React.createElement("i", {
     className: `fa-solid ${toolsOpen ? 'fa-xmark' : 'fa-bars'}`
   }), !toolsOpen && (myPlayer?.sitOut || myPlayer?.sitOutNext || (myPlayer?.pendingTopUp || 0) > 0) && React.createElement("span", {
     className: "absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border border-slate-900 animate-pulse"
-  })), React.createElement("button", {
-    onClick: () => {
-      setToolsOpen(false);
-      setHistoryOpen(true);
-      setHistExpand(null);
-    },
-    title: "Hand history",
-    className: "w-9 h-9 rounded-xl glass-panel border border-white/10 text-slate-300 hover:text-white shadow-xl text-sm"
-  }, React.createElement("i", {
-    className: "fa-solid fa-clock-rotate-left"
-  }))), toolsOpen && ReactDOM.createPortal(React.createElement("div", {
+  })), waitlist.length > 0 && React.createElement('span', {className:'poker-menu-wait-count', 'aria-label':'Waitlist: '+waitlist.length}, waitlist.length)), toolsOpen && ReactDOM.createPortal(React.createElement("div", {
     className: "fixed inset-0 z-[230]",
-    onClick: () => setToolsOpen(false)
+    onClick: closeTableMenu
   }, React.createElement("div", {
     className: "absolute inset-0 bg-black/70 backdrop-blur-[3px]"
   }), React.createElement("div", {
-    // floating squares, no panel behind them: each tile is its own glass
-    // object on the dimmed felt (owner's call — the solid sheet read heavy)
-    className: "absolute inset-x-3 bottom-[max(18px,env(safe-area-inset-bottom))] animate-pop-in",
-    onClick: e => e.stopPropagation()
-  }, React.createElement("div", {
+    className: "poker-menu-panel absolute inset-x-3 bottom-[max(18px,env(safe-area-inset-bottom))] animate-pop-in",
+    role: 'dialog', 'aria-modal':true, 'aria-label':'Table menu',
+    onClick: e => e.stopPropagation(),
+    onKeyDown: e => {
+      if (e.key === 'Escape') { e.stopPropagation(); closeTableMenu(); }
+      if (e.key === 'Tab') {
+        const targets = [...e.currentTarget.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex="0"]')];
+        const first = targets[0], last = targets[targets.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    }
+  }, React.createElement('div', {className:'poker-menu-heading'},
+    React.createElement('div',null,React.createElement('strong',null,tableTitle),React.createElement('span',null,tableClubName || 'POKERTEN'),React.createElement('span',{dir:'ltr'},tableState.closeRequested?'Closing after this hand':tableStakes)),
+    React.createElement('button',{type:'button',autoFocus:true,onClick:closeTableMenu,'aria-label':'Close table menu'},'✕')),
+  !tableState.tournamentId && !setts.spinMode && (isFull || waitlist.length > 0) && React.createElement('div', {className:'poker-waitlist-status'},
+    React.createElement(PokerWaitlistIndicator, {table:tableState, uid:user.uid, className:'poker-waitlist-summary', showEmpty:true}),
+    !isSeated && onWaitlist && React.createElement('button', {type:'button', onClick:()=>{setToolsOpen(false);leaveWaitlist();}}, 'Leave waitlist'),
+    spectate && !isSeated && !onWaitlist && requiresWaitlist && !tableState.closeRequested && React.createElement('button', {type:'button', onClick:()=>{setToolsOpen(false);setSpectate(false);}}, 'Join waitlist')),
+  React.createElement("div", {
     className: "text-[10px] text-slate-400/80 font-bold text-center mb-2 tracking-widest"
   }, "GPS \u00b7 ON \u00b7 IP \u00b7 ON"), React.createElement("div", {
-    className: "grid grid-cols-4 gap-3"
-  }, React.createElement("button", {
+    className: "poker-menu-grid grid grid-cols-4 gap-3"
+  }, React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setTableInfoOpen(true);},'aria-label':'Table details',className:'poker-menu-tile'},...menuTile('ⓘ','Details')),
+  React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setHistoryOpen(true);setHistExpand(null);},title:'Hand history',className:'poker-menu-tile'},...menuTile('↶','Hand history')),
+  React.createElement(PokerFullscreenButton,{showToast,onToggle:closeTableMenu}),
+  React.createElement("button", {
     onClick: () => {
       setToolsOpen(false); // picking an item folds the menu back to ☰
       setSkinOpen(true);
@@ -13813,6 +13928,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       if (!isSeated) onLeave();else handleStandUp();
     },
     title: tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave',
+    'aria-label': isSeated ? 'Stand up' : 'Leave table',
     className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-rose-500/40 bg-slate-900/90 text-rose-300 hover:bg-rose-800 hover:text-white shadow-xl text-lg"
   }, ...menuTile("🚪", tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave'))))), document.body), isSeated && gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
     onClick: async () => {

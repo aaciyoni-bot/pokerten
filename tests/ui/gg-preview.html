@@ -21,6 +21,8 @@
  if(query.has('bare'))document.querySelector('nav').remove();
  let code=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.PreviewTable=PokerTable;window.PreviewClubs=ClubsView;window.PreviewLobby=LobbyView;window.PreviewAuth=AuthView;window.PreviewAdmin=BackofficeView;window.PreviewSettlement=SettlementSection;window.PreviewProfile=ProfileView;window.PreviewRanks=LeadersView;window.PreviewCreate=PokerCreateView;');
  if(query.has('god'))code=code.replace('const [godViewRequested, setGodView] = useState(false);','const [godViewRequested, setGodView] = useState(true);').replace('useEffect(() => setGodView(false), [user.uid]);','useEffect(() => setGodView(true), [user.uid]);').replace(/const GOD_EMAILS = \[[^;]+;/,"const GOD_EMAILS = ['preview@example.invalid'];");
+ code=code.replaceAll('assets/design/poker-material-v292.webp',localAsset('assets/design/poker-material-v292.webp'));
+ if(query.has('motion'))code+='\nwindow.PreviewMotion={DiscardFly,BetCollect,PotAward,pokerVisualPoint,useReducedPokerMotion};';
  const variants={nlh:['NLH',2],pineapple:['Pineapple',3],omaha4:['Omaha 4',4],omaha5:['Omaha 5',5],omaha:['Omaha 6',6]};const [variant,holeCount]=variants[mode]||variants.nlh;
  const cards=['A','K','Q','J','10','9'].map((val,i)=>({val,suit:['♠','♥','♦','♣'][i%4]}));
  const players={};['Sharon',null,'Maya','MindStack','David',null,'Robin'].forEach((name,i)=>{if(name)players['p'+i]={uid:'p'+i,name,stack:[2225.60,0,354.77,437.91,1100.07,0,1692.11][i],bet:0,seatIndex:i,status:'active',cards:[],cardCount:i===3?2:0,photo:'/BearFace_2k.png',lastSeen:Date.now()};});
@@ -74,6 +76,22 @@
  let propsCode=mode==='clubs'?JSON.stringify(clubProps):JSON.stringify(props);
  let renderPreview=`window.__club={id:'main',name:'Netabel',ownerUid:'owner',closedWeeks:{}}; const noop=()=>{}; const demo=React.createElement(window.${component},{...${propsCode},tableDocId:'preview',onClose:noop,onEnter:noop,onBack:noop,onJoinPoker:noop,onJoinOfc:noop,onJoinDurak:noop,onCreatePoker:noop,onCreated:noop,onLeave:noop,setTab:noop,showToast:noop}); ReactDOM.createRoot(document.getElementById('root')).render(React.createElement('div',{className:'pt-theme h-full w-full flex flex-col'},${mode==='settlement'?"React.createElement('div',{className:'club-admin scrollable-content p-4'},demo)":"demo"}));`;
  if(component==='PreviewTable')renderPreview=`ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'player',balance:500},clubSettings:{name:'Netabel'},onLeave:()=>{},showToast:()=>{}}));`;
+ if(component==='PreviewTable'&&query.has('motion'))renderPreview=`
+ const M=window.PreviewMotion;
+ function MotionPreview(){
+   const [host,setHost]=React.useState(null),[effect,setEffect]=React.useState(null),reduced=M.useReducedPokerMotion();
+   React.useEffect(()=>{const update=()=>{const table=document.querySelector('.poker-table');if(table){setHost(table);observer.disconnect();}};const observer=new MutationObserver(update);observer.observe(document.getElementById('root'),{childList:true,subtree:true});update();return()=>observer.disconnect();},[]);
+   React.useEffect(()=>{if(!effect)return;const timer=setTimeout(()=>setEffect(null),effect.kind==='award'?2450:750);return()=>clearTimeout(timer);},[effect]);
+   const replay=kind=>setEffect({kind,id:Date.now(),from:M.pokerVisualPoint(host,host&&host.querySelector('.poker-bet'),{left:'50%',top:'76%'})});
+   const buttonStyle={padding:'6px 8px',border:'1px solid #8dc6d5',borderRadius:'7px',background:'#143642',color:'white',font:'bold 11px Arial'};
+   const controls=React.createElement('div',{'aria-label':'Motion verification',style:{position:'fixed',left:'8px',right:'8px',top:'96px',zIndex:9999,padding:'8px',border:'1px solid #80b4c3',borderRadius:'10px',background:'#08151ff0',display:'flex',gap:'5px',flexWrap:'wrap'}},
+     React.createElement('span',{style:{width:'100%',font:'11px Arial',color:'#d5e9f0'}},'Visual test only · simulated chips · '+(reduced?'Reduced motion':'Motion enabled')),
+     ...['collect','award','discard'].map(kind=>React.createElement('button',{key:kind,type:'button',style:buttonStyle,onClick:()=>replay(kind),disabled:!host},'Replay '+kind)),
+     React.createElement('button',{type:'button',style:buttonStyle,onClick:()=>setEffect(null)},'Clear motion'));
+   let moving=null;if(effect&&host){const common={key:effect.id,unit:.5,amount:125,snd:false};moving=effect.kind==='collect'?React.createElement(M.BetCollect,{...common,from:effect.from,to:{left:'50%',top:'35%'}}):effect.kind==='award'?React.createElement(M.PotAward,{...common,to:{left:'50%',top:'78%'},toUid:'${uid}',dur:.6}):React.createElement(M.DiscardFly,{key:effect.id,card:{val:'A',suit:'♠'}});}
+   return React.createElement(React.Fragment,null,React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'player',balance:500},clubSettings:{name:'Netabel'},onLeave:()=>{},showToast:()=>{}}),controls,host&&moving&&ReactDOM.createPortal(moving,host));
+ }
+ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(MotionPreview));`;
  const tag=code=>'<scr'+'ipt>'+code+'</scr'+'ipt>';
  // Disallow network calls from the preview; SDK initialization is removed above.
  const isolation='<meta http-equiv="Content-Security-Policy" content="connect-src \'none\'; form-action \'none\'">';
@@ -84,4 +102,3 @@
 
 })().catch(e=>document.body.append(String(e)));
 </script></body></html>
-

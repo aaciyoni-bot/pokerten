@@ -44,6 +44,7 @@ async function final(tx,db,t,rows,champion,now,pendingEffects=[]){
 async function tickTournament(id,now=Date.now()){
  const db=getFirestore(),ref=db.doc('tournaments/'+key(id));return db.runTransaction(async tx=>{
   const snap=await tx.get(ref);if(!snap.exists)return{};const t={...snap.data(),id};if(t.authorityVersion!==2)return{};const effects=[];
+  if(['reg','running'].includes(t.status)){const club=await tx.get(db.doc('clubs/'+t.clubId));if(club.exists&&club.data().archived===true)return{};}
   const namesChanged=renameGenericBots(t.players,null,{table:false});
   if(t.status==='reg'){
    if(now<t.startAt){if(namesChanged)tx.set(ref,docOf(t));return{};}if(t.botFill){const c=await tx.get(db.doc('clubs/'+t.clubId));if(!c.exists||!c.data().ownerUid)fail('failed-precondition','Bot sponsor missing');if(c.data().botsAuto!==false)addBots(t,c.data().ownerUid,effects);}if(all(t).length<t.minPlayers){if(namesChanged)tx.set(ref,docOf(t));return{};}
@@ -82,9 +83,10 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
  if(op==='tick'){const db=getFirestore(),ref=db.doc('tournaments/'+key(r.data.tournamentId)),s=await ref.get();if(!s.exists)fail('not-found','Tournament missing');const m=await db.doc(`memberships/${uid}_${s.data().clubId}`).get();if(!A.root(r)&&(!m.exists||m.data().status!=='approved'))fail('permission-denied','Club membership required');return tickTournament(r.data.tournamentId);}
  return A.command(r,'tournament',async(tx,db,uid,now)=>{
   const id=op==='create'?'event_'+crypto.createHash('sha256').update(uid+r.data.requestId).digest('hex').slice(0,24):key(r.data.tournamentId),ref=db.doc('tournaments/'+id),snap=await tx.get(ref),effects=[];
-  if(op==='create'){const cid=key(r.data.clubId),club=await A.tableManager(tx,db,cid,r);if(snap.exists)return{ok:true,tournamentId:id};const t=config(r.data.settings||{},cid,uid,now);t.bountyFundingUid=club.ownerUid;const cost=cash(t.addedPrize+t.bountyBudgetRemaining),write=await prepareLedger(db,tx,cid,cost?[{type:'credit',uid:club.ownerUid,amount:-cost}]:[],id,now);write();tx.set(ref,t);return{ok:true,tournamentId:id};}
+  if(op==='create'){const cid=key(r.data.clubId),club=await A.tableManager(tx,db,cid,r);A.assertClubOpen(club);if(snap.exists)return{ok:true,tournamentId:id};const t=config(r.data.settings||{},cid,uid,now);t.bountyFundingUid=club.ownerUid;const cost=cash(t.addedPrize+t.bountyBudgetRemaining),write=await prepareLedger(db,tx,cid,cost?[{type:'credit',uid:club.ownerUid,amount:-cost}]:[],id,now);write();tx.set(ref,t);return{ok:true,tournamentId:id};}
   if(!snap.exists)fail('not-found','Tournament missing');const t={...snap.data(),id};if(t.authorityVersion!==2)fail('failed-precondition','Protected tournaments only');
   const managing=['start','fillbots','cancel'].includes(op),club=managing?await A.tableManager(tx,db,t.clubId,r):null;if(!managing)await A.member(tx,db,t.clubId,r);
+  if(['register','start','fillbots','rebuy','addon'].includes(op)){if(club)A.assertClubOpen(club);else await A.activeClub(tx,db,t.clubId);}
   const rows=t.status==='running'?await tables(tx,db,id):[],mine=t.players[uid],late=t.status==='running'&&clock(t,now).lvl<t.lateRegUntilLevel;let queued=false;
   if(op==='register'){
    if(t.demoOnly)fail('failed-precondition','This demonstration is bots only');if(!['reg','running'].includes(t.status)||t.status==='running'&&!late)fail('failed-precondition','Registration closed');if(mine&&!mine.out)return{ok:true,tournamentId:id};if(mine&&(!t.reentry||(mine.reentries||0)>=t.maxReentries))fail('failed-precondition','Re-entry unavailable');if(all(t).filter(p=>!p.out).length>=t.maxPlayers)fail('failed-precondition','Tournament full');

@@ -61,7 +61,7 @@ async function mountAndEnter(fixture){
  w.localStorage.clear();
  await React.act(async()=>root.render(React.createElement(w.ManagementAppTest)));
  await React.act(async()=>fixture.refresh());
- const enter=[...doc.querySelectorAll('button.cl-cta')].find(button=>button.textContent.trim()==='Enter club');
+ const enter=doc.querySelector('.blue-club-orb[role=button][aria-label^="Enter "]');
  assert.ok(enter,'the real club directory offers an authorized entry');
  await React.act(async()=>enter.click());
  assert.ok([...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Clubs'),'club entry reaches the real app navigation');

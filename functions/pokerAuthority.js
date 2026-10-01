@@ -17,6 +17,10 @@ async function clubManager(tx,db,cid,r){
  return c.data();
 }
 const tableManager=clubManager;
+// New play must serialize on the club document with reversible archival.
+// Keep this separate from member/manager checks: reports and recovery remain available.
+function assertClubOpen(club){if(club.archived===true)fail('failed-precondition','This club is archived. Restore it before opening games or joining.');return club;}
+async function activeClub(tx,db,cid){const c=await tx.get(db.doc('clubs/'+key(cid,'club')));if(!c.exists)fail('not-found','Club missing');return assertClubOpen(c.data());}
 async function member(tx,db,cid,r){const m=await tx.get(db.doc(`memberships/${uid(r)}_${key(cid)}`));if(!root(r)&&(!m.exists||m.data().status!=='approved'))fail('permission-denied','Approved membership required');return m.exists?m.data():{};}
 async function command(r,scope,body){
  const user=uid(r),rid=key(r.data?.requestId,'request');if(rid.length<16)fail('invalid-argument','Request identifier is too short');
@@ -28,4 +32,4 @@ async function command(r,scope,body){
 const capacity=s=>Math.max(2,Math.min(9,Math.floor(44/(s.isDealerChoice?6:(require('./pokerCore').GAME_CARDS[s.baseGameType||s.pokerType]||2))),Math.floor(Number(s.maxPlayers||s.tableSize)||9)));
 const idle=t=>['waiting','showdown'].includes(t.gameState?.phase||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Object.values(t.players||{}).some(p=>p.bet>0);
 const payee=p=>p.isBot?key(p.fundingUid,'bot sponsor'):key(p.uid);
-module.exports={fail,key,cash,number,root,uid,owner,clubManager,tableManager,member,command,capacity,idle,payee};
+module.exports={fail,key,cash,number,root,uid,owner,clubManager,tableManager,assertClubOpen,activeClub,member,command,capacity,idle,payee};

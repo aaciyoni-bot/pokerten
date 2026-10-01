@@ -37,7 +37,7 @@ function fixture(seed=1){
  const access=load('pokerAccess.js'),engine=load('pokerEngine.js').__engineInternals;
  const auth=uid=>({uid,token:{email:uid+'@example.test',email_verified:true}});
  return{docs,db,engine,now:()=>now,advance:ms=>{now+=ms;},table:id=>docs.get('tables/'+id),balance:uid=>docs.get(`memberships/${uid}_clubA`).balance,
-  create:settings=>access.pkTableCreate({auth:auth('owner'),data:{clubId:'clubA',requestId:'manual-create-request-'+(++request),settings:{baseGameType:'NLH',blinds:.5,minBuyIn:50,maxBuyIn:200,maxPlayers:4,...settings},botCount:'full'}}),
+  create:settings=>access.pkTableCreate({auth:auth('owner'),data:{clubId:'clubA',manual:true,requestId:'manual-create-request-'+(++request),settings:{baseGameType:'NLH',blinds:.5,minBuyIn:50,maxBuyIn:200,maxPlayers:4,...settings},botCount:'full'}}),
   wait:id=>access.pkSeat({auth:auth('human'),data:{op:'wait',tableId:id,amount:100,requestId:'manual-wait-request-'+(++request)}}),
   tick:id=>engine.tickTable(id,now)
  };

@@ -425,3 +425,4 @@ exports.guardTables = onDocumentWrittenWithAuthContext("tables/{tableId}",
 Object.assign(exports,require("./pokerAccess"));
 exports.pkTournament=require("./pokerTournaments").pkTournament;
 exports.pkBotLobbyConfigure=require("./botLobby").pkBotLobbyConfigure;
+exports.pkClubArchive=require("./clubArchive").pkClubArchive;

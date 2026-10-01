@@ -18,6 +18,8 @@ function tableSettings(raw={}){
 }
 exports.pkTableCreate=onCall(opts,async r=>{available();return command(r,'table-create',async(tx,db,uid,now)=>{
  const cid=key(r.data.clubId),club=await A.tableManager(tx,db,cid,r),s=tableSettings(r.data.settings),n=r.data.botCount==='full'?s.maxPlayers:number(r.data.botCount,0,0,s.maxPlayers,true);
+ A.assertClubOpen(club);
+ if(r.data.manual!==true)fail('failed-precondition','Open tables manually from the lobby. Reload the app before creating a table.');
  const id='secure_'+crypto.createHash('sha256').update(uid+':'+r.data.requestId).digest('hex').slice(0,28),ref=db.doc('tables/'+id),old=await tx.get(ref);if(old.exists)return{ok:true,tableId:id};
  const players={},cost=s.spinMode?s.spinBuyIn:Math.min(s.maxBuyIn,Math.max(s.minBuyIn,100*s.blinds*2));
  const write=await prepareLedger(db,tx,cid,n?[{type:'credit',uid:club.ownerUid,amount:-cash(n*cost)}]:[],id,now);
@@ -28,6 +30,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
  const tid=key(r.data.tableId),ref=db.doc('tables/'+tid),snap=await tx.get(ref);if(!snap.exists)fail('not-found','Table missing');const t=snap.data(),s=t.settings||{},cid=t.clubId||'main';
  if(t.authorityVersion!==2||!s.serverEngine)fail('failed-precondition','Open a protected table');await member(tx,db,cid,r);
  const us=await tx.get(db.doc('users/'+uid)),profile=us.exists?us.data():{},op=r.data.op,pl=t.players||{},p=pl[uid],idle=A.idle(t),patch={},effects=[],waiting=normalizeWaitlist(t,now),humanWaiters=waiting.filter(entry=>entry.isBot!==true);let result={ok:true};
+ if(['join','wait','addbot','fillbots','topup','rebuy'].includes(op))await A.activeClub(tx,db,cid);
  if(t.tournamentId&&['join','topup','rebuy','addbot','fillbots'].includes(op))fail('failed-precondition','Use tournament registration');
  if(t.closeRequested&&['join','topup','rebuy','addbot','fillbots','wait'].includes(op))fail('failed-precondition','This table is closing after the current hand');
  if(op==='fillbots'){
@@ -88,7 +91,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
  const write=await prepareLedger(db,tx,cid,effects,tid,now);write();patch['gameState.__seq']=(t.gameState?.__seq||0)+1;tx.update(ref,patch);return result;
 });});
 exports.pkJoinClub=onCall(opts,async r=>{const uid=A.uid(r),cid=key(r.data?.clubId),db=require('firebase-admin/firestore').getFirestore();return db.runTransaction(async tx=>{
- const [c,m,u]=await tx.getAll(db.doc('clubs/'+cid),db.doc(`memberships/${uid}_${cid}`),db.doc('users/'+uid));if(!c.exists||!u.exists)fail('not-found','Club or profile missing');if(m.exists)return{status:m.data().status};const p=u.data(),admin=root(r)||c.data().ownerUid===uid;let referral={};if(r.data.agentUid){const a=await tx.get(db.doc(`memberships/${key(r.data.agentUid)}_${cid}`));if(!a.exists||!['agent','manager'].includes(a.data().role)||a.data().status!=='approved')fail('failed-precondition','Agent is not approved');referral={agentUid:a.data().uid,agentPct:number(a.data().agentSharePct,50,0,100)};}
+ const [c,m,u]=await tx.getAll(db.doc('clubs/'+cid),db.doc(`memberships/${uid}_${cid}`),db.doc('users/'+uid));if(!c.exists||!u.exists)fail('not-found','Club or profile missing');A.assertClubOpen(c.data());if(m.exists)return{status:m.data().status};const p=u.data(),admin=root(r)||c.data().ownerUid===uid;let referral={};if(r.data.agentUid){const a=await tx.get(db.doc(`memberships/${key(r.data.agentUid)}_${cid}`));if(!a.exists||!['agent','manager'].includes(a.data().role)||a.data().status!=='approved')fail('failed-precondition','Agent is not approved');referral={agentUid:a.data().uid,agentPct:number(a.data().agentSharePct,50,0,100)};}
  tx.set(m.ref,{...referral,uid,clubId:cid,username:p.username||'Player',playerId:p.playerId||'',photo:p.photo||'',role:admin?'club_owner':'player',status:admin?'approved':'pending',balance:0,clubProfits:0,agentProfits:0,createdAt:Date.now()});return{status:admin?'approved':'pending'};
 });});
 exports.pkClubCreate=onCall(opts,async r=>command(r,'club-create',async(tx,db,uid,now)=>{
@@ -168,9 +171,9 @@ exports.pkTableManage=onCall(opts,async r=>command(r,'table-manage',async(tx,db,
 }));
 exports.__accessInternals={tableSettings};
 exports.pkClubSettings=onCall(opts,async r=>command(r,'club-settings',async(tx,db,uid,now)=>{
- const cid=key(r.data.clubId);await A.clubManager(tx,db,cid,r);const raw=r.data.patch||{},patch={};
+ const cid=key(r.data.clubId),club=await A.clubManager(tx,db,cid,r);const raw=r.data.patch||{},patch={};
  for(const k of Object.keys(raw))if(!['name','logo','rakePct','closedWeeks','botsAuto'].includes(k))fail('invalid-argument','Unsupported club setting');
- if('botsAuto'in raw){if(typeof raw.botsAuto!=='boolean')fail('invalid-argument','Invalid bot setting');patch.botsAuto=raw.botsAuto;patch.botsAutoBy=uid;patch.botsAutoAt=now;}
+ if('botsAuto'in raw){if(raw.botsAuto===true)A.assertClubOpen(club);if(typeof raw.botsAuto!=='boolean')fail('invalid-argument','Invalid bot setting');patch.botsAuto=raw.botsAuto;patch.botsAutoBy=uid;patch.botsAutoAt=now;}
  if('name'in raw){patch.name=String(raw.name||'').trim();if(patch.name.length<2||patch.name.length>30)fail('invalid-argument','Club name must be 2–30 characters');}
  if('logo'in raw){const logo=raw.logo;if(logo!==null&&(typeof logo!=='string'||logo.length>80000||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(logo)))fail('invalid-argument','Invalid club logo');patch.logo=logo;}
  if('rakePct'in raw)patch.rakePct=number(raw.rakePct,NaN,0,20);

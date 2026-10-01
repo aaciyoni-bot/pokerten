@@ -11,7 +11,11 @@ const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document
 const render=async role=>React.act(async()=>root.render(React.createElement(w.TableTest,{key:role,tableDocId:'test',user:{uid:'viewer',role,managedGames:[],balance:1000},clubSettings:{},onLeave(){},onCreateTable(){newTables++;},showToast:(m,type)=>messages.push({m,type})})));
 const menu=async()=>React.act(()=>byTitle('Table menu').click());
 (async()=>{
- await render('player');await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table').click());assert.ok(byTitle('Table menu'));await menu();
+ await render('player');await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table').click());
+ assert.equal(doc.querySelector('.poker-spectator-seat'),null,'open tables use the black seat controls without a duplicate floating Take a seat');
+ const emptySeat=doc.querySelector('button[aria-label="Take seat 2"]');assert.ok(emptySeat,'the real empty seat remains clickable');
+ await React.act(()=>emptySeat.click());assert.match(doc.querySelector('[role="dialog"]').textContent,/Seat 2 — buy-in/,'the chosen seat opens the buy-in confirmation');assert.equal(calls.length,0,'choosing a seat never buys in without confirming the amount');
+ await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table').click());assert.ok(byTitle('Table menu'));await menu();
  assert.ok(byTitle('Sound on/off'));for(const t of ['Add chips','Sit out','Add bot','Fill empty seats with bots','Create a new table','Edit table settings'])assert.equal(byTitle(t),null,t+' is unavailable to a regular spectator');assert.equal(calls.length,0);
  for(const role of ['club_owner','manager','super_admin']){
   await render(role);await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table').click());await menu();

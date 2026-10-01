@@ -110,8 +110,8 @@ test('a tournament can finish at three configured winners only after every hand 
  await Tours.tickTournament(id);assert.equal(await bank(owner),b);
 });
 test('cash entry rejects forged identity, grants, negative money and unaffordable purchases; replay charges once',async()=>{
- const before=await bank(uid),r=await call('pkTableCreate',owner,{clubId:club,settings:{baseGameType:'NLH',minBuyIn:40,maxBuyIn:200,blinds:0.5}}),tableId=r.tableId;
- await assert.rejects(call('pkTableCreate',uid,{clubId:club,settings:{}}),e=>e.code==='permission-denied');
+ const before=await bank(uid),r=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{baseGameType:'NLH',minBuyIn:40,maxBuyIn:200,blinds:0.5}}),tableId=r.tableId;
+ await assert.rejects(call('pkTableCreate',uid,{manual:true,clubId:club,settings:{}}),e=>e.code==='permission-denied');
  for(const amount of [-10,0,10000,NaN,Infinity])await assert.rejects(call('pkSeat',uid,{tableId,op:'join',amount}));
  await assert.rejects(call('pkSeat','stranger',{tableId,op:'join',amount:100,uid:owner,role:'club_owner'}));
  const request=req(uid,{tableId,op:'join',amount:100});await Access.pkSeat.run(request);await Access.pkSeat.run(request);
@@ -140,7 +140,7 @@ test('a last rebuy is charged before a multi-winner finish and tied stacks share
 });
 test('cash rebuy queues once during another hand and joins only the next deal, even after its old bust timer expires',async()=>{
  const u='queued-rebuy',a='rebuy-other-a',b='rebuy-other-b';for(const x of [u,a,b])await fresh(x);
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
  for(const x of [u,a,b])await call('pkSeat',x,{tableId,op:'join',amount:100});
  await db.doc('tables/'+tableId).update({['players.'+u+'.stack']:0,['players.'+u+'.status']:'busted',['players.'+u+'.bustedAt']:Date.now()-301000,['players.'+a+'.stack']:200});
  await call('pkDeal',a,{tableId});const before=await get('tables/'+tableId),balance=await bank(u),request=req(u,{tableId,op:'rebuy',amount:40});
@@ -153,7 +153,7 @@ test('cash rebuy queues once during another hand and joins only the next deal, e
 });
 test('spectators and undealt seats leave immediately; queued top-ups refund once and dealt players wait',async()=>{
  const a='exit-a',b='exit-b',late='exit-waiting';for(const x of [a,b,late])await fresh(x);
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
  for(const x of [a,b])await call('pkSeat',x,{tableId,op:'join',amount:100});await call('pkDeal',a,{tableId});const before=await get('tables/'+tableId),balance=await bank(late);
  assert.equal((await call('pkLeave',late,{tableId})).queued,false);assert.deepEqual(await get('tables/'+tableId),before);
  await call('pkSeat',late,{tableId,op:'join',amount:100});await call('pkSeat',late,{tableId,op:'topup',amount:40});assert.equal(await bank(late),balance-140);
@@ -166,7 +166,7 @@ test('club transfers are atomic and ordinary players cannot authorize them',asyn
 });
 test('deleting a previously played, now empty table never pays past players again',async()=>{
  const a='delete-past-a',b='delete-past-b';await fresh(a);await fresh(b);
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
  for(const u of [a,b])await call('pkSeat',u,{tableId,op:'join',amount:100});await call('pkDeal',a,{tableId});
  const g=(await get('tables/'+tableId)).gameState;await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
  for(const u of [a,b])await call('pkLeave',u,{tableId});const before=await get('tables/'+tableId),balances=await Promise.all([bank(a),bank(b),bank(owner)]);
@@ -179,14 +179,14 @@ test('deleting a previously played, now empty table never pays past players agai
 });
 test('cash table closure returns only seated balances and pending funds, including bot sponsors, once',async()=>{
  const human='close-human';await fresh(human);const startHuman=await bank(human),startOwner=await bank(owner);
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,botCount:2,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:2,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
  await call('pkSeat',human,{tableId,op:'join',amount:100});await call('pkSeat',human,{tableId,op:'topup',amount:40});
  const requests=[req(owner,{tableId,op:'delete'}),req(owner,{tableId,op:'delete'})];await Promise.all(requests.map(r=>Access.pkTableManage.run(r)));
  assert.equal(await bank(human),startHuman);assert.equal(await bank(owner),startOwner);assert.equal(await get('tables/'+tableId),undefined);
  const logs=(await db.collection('_pkLedger').where('source','==',tableId).get()).docs.map(d=>d.data());assert.equal(logs.filter(l=>l.movements.some(m=>m.amount>0)).length,1);
 });
 test('closing a live cash table preserves its hand, settles its real winner and never deals or charges again',async()=>{
- const a='close-live-a',b='close-live-b';await fresh(a);await fresh(b);const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ const a='close-live-a',b='close-live-b';await fresh(a);await fresh(b);const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
  for(const u of [a,b])await call('pkSeat',u,{tableId,op:'join',amount:100});await call('pkDeal',a,{tableId});await call('pkSeat',a,{tableId,op:'topup',amount:40});
  const before=await get('tables/'+tableId),balances=await Promise.all([bank(a),bank(b)]),result=await call('pkTableManage',owner,{tableId,op:'delete'});assert.equal(result.queued,true);
  let t=await get('tables/'+tableId);assert.deepEqual(t.players,before.players);assert.deepEqual(t.gameState.pots,before.gameState.pots);assert.equal(t.gameState.activeTurnUid,before.gameState.activeTurnUid);
@@ -201,7 +201,7 @@ test('closing a live cash table preserves its hand, settles its real winner and 
 });
 test('table controls require current club authority and managers have full club access',async()=>{
  for(const [u,role,games,status]of [['poker-manager','manager',['poker'],'approved'],['other-manager','manager',['rummy'],'approved'],['pending-manager','manager',['poker'],'pending'],['fake-owner','club_owner',[],'approved']]){await fresh(u);await db.doc(`memberships/${u}_${club}`).update({role,managedGames:games,status});}
- const {tableId}=await call('pkTableCreate','poker-manager',{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ const {tableId}=await call('pkTableCreate','poker-manager',{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
  for(const u of [uid,'pending-manager','fake-owner'])for(const op of ['delete','limits','settings','mute','clear-floor'])await assert.rejects(call('pkTableManage',u,{tableId,op,min:10,max:100,role:'club_owner',clubId:'forged'}),e=>e.code==='permission-denied');
  await assert.rejects(Access.pkTableManage.run({data:{tableId,op:'delete',requestId:crypto.randomUUID()}}),e=>e.code==='unauthenticated');
  for(const [min,max]of [[-1,100],[100,50],[NaN,100],[10,Infinity]])await assert.rejects(call('pkTableManage',owner,{tableId,op:'limits',min,max}));
@@ -213,7 +213,7 @@ test('table controls require current club authority and managers have full club 
 });
 test('table deletion never converts Spin or tournament chips to money, or interrupts funded competitions',async()=>{
  for(const mode of ['unarmed','funding-pending','active','done']){
-  const balance=await bank(owner),{tableId}=await call('pkTableCreate',owner,{clubId:club,botCount:2,settings:{spinMode:true,spinBuyIn:10,spinStack:1000}});
+  const balance=await bank(owner),{tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:2,settings:{spinMode:true,spinBuyIn:10,spinStack:1000}});
   if(mode!=='unarmed')await db.doc('tables/'+tableId).update({spin:{prize:100,fundingPending:mode==='funding-pending'},spinDone:mode==='done'});
   await assert.rejects(call('pkTableManage',owner,{tableId,op:'limits',min:1,max:200}),/Spin settings/);
   if(mode==='active'){const before=await get('tables/'+tableId);await assert.rejects(call('pkTableManage',owner,{tableId,op:'delete'}),/Spin must finish/);assert.deepEqual(await get('tables/'+tableId),before);assert.equal(await bank(owner),balance-20);}
@@ -223,7 +223,7 @@ test('table deletion never converts Spin or tournament chips to money, or interr
  const [row]=await rows(tournamentId),balance=await bank(owner);await assert.rejects(call('pkTableManage',owner,{tableId:row.docId,op:'delete'}),/Tournament tables/);assert.equal(await bank(owner),balance);assert.ok(await get('tables/'+row.docId));
 });
 test('a missing funding account aborts closure atomically instead of deleting chips or partially refunding',async()=>{
- const a='close-missing',b='close-present';await fresh(a);await fresh(b);const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ const a='close-missing',b='close-present';await fresh(a);await fresh(b);const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
  for(const u of [a,b])await call('pkSeat',u,{tableId,op:'join',amount:100});await db.doc(`memberships/${a}_${club}`).delete();const before=await get('tables/'+tableId),balance=await bank(b);
  await assert.rejects(call('pkTableManage',owner,{tableId,op:'delete'}),/Funding account missing/);assert.deepEqual(await get('tables/'+tableId),before);assert.equal(await bank(b),balance);assert.equal(await get('_pkClosedTables/'+tableId),undefined);
 });
@@ -259,7 +259,7 @@ test('cancelling registration returns funded bot entries, guaranteed prize and u
  await call('pkTournament',owner,{op:'fillbots',tournamentId:id});assert.equal(await bank(owner),b-194);await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),b);await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),b);
 });
 test('cash and tournament bots get real display names and existing generic names refresh without changing identity',async()=>{
- const names=require('../../functions/botNames'),r=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:40,maxBuyIn:100,blinds:1},botCount:1});
+ const names=require('../../functions/botNames'),r=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:100,blinds:1},botCount:1});
  let t=await get('tables/'+r.tableId);const id=Object.keys(t.players)[0],p=t.players[id];assert.equal(names.generic(p.name),false);
  await db.doc('tables/'+r.tableId).update({['players.'+id+'.name']:'BOT 1'});const b=await bank(owner);await Engine.__engineInternals.tickTable(r.tableId,Date.now());t=await get('tables/'+r.tableId);
  assert.equal(names.generic(t.players[id].name),false);assert.equal(t.players[id].stack,p.stack);assert.equal(t.players[id].fundingUid,p.fundingUid);assert.equal(await bank(owner),b);
@@ -325,19 +325,19 @@ test('an all-bot multi-table tournament ends, balances tables, preserves chips a
 
 test('spectating managers fill all remaining seats atomically without sitting or overcharging the sponsor',async()=>{
  const manager='fill-manager';await fresh(manager);await db.doc(`memberships/${manager}_${club}`).update({role:'manager',managedGames:['poker']});
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{maxPlayers:6,minBuyIn:40,maxBuyIn:100,blinds:1}});
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{maxPlayers:6,minBuyIn:40,maxBuyIn:100,blinds:1}});
  await assert.rejects(call('pkSeat',uid,{tableId,op:'fillbots'}),e=>e.code==='permission-denied');
  const before=await bank(owner),request=req(manager,{tableId,op:'fillbots'});await Promise.all([Access.pkSeat.run(request),Access.pkSeat.run(request)]);
  const t=await get('tables/'+tableId),ps=Object.values(t.players),names=require('../../functions/botNames');assert.equal(ps.length,6);assert.equal(t.players[manager],undefined);assert.equal(await bank(owner),before-600);
  const families=ps.map(p=>names.familyKey(p.name)).filter(Boolean);assert.equal(new Set(families).size,families.length);assert.ok(ps.some(p=>names.language(p.name)==='en'));assert.ok(ps.some(p=>names.language(p.name)==='he'));assert.ok(ps.every(p=>p.botLeavesAt>p.botJoinedAt));
  assert.equal((await call('pkSeat',manager,{tableId,op:'fillbots'})).added,0);assert.equal(await bank(owner),before-600);
- const six=await call('pkTableCreate',owner,{clubId:club,botCount:'full',settings:{maxPlayers:9,baseGameType:'Omaha6',minBuyIn:40,maxBuyIn:100,blinds:1}});assert.equal(Object.keys((await get('tables/'+six.tableId)).players).length,7);
- const poor='unfunded-fill';await fresh(poor);const c=await call('pkClubCreate',poor,{name:'No funds'}),r=await call('pkTableCreate',poor,{clubId:c.id,settings:{}});
+ const six=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:'full',settings:{maxPlayers:9,baseGameType:'Omaha6',minBuyIn:40,maxBuyIn:100,blinds:1}});assert.equal(Object.keys((await get('tables/'+six.tableId)).players).length,7);
+ const poor='unfunded-fill';await fresh(poor);const c=await call('pkClubCreate',poor,{name:'No funds'}),r=await call('pkTableCreate',poor,{manual:true,clubId:c.id,settings:{}});
  await assert.rejects(call('pkSeat',poor,{tableId:r.tableId,op:'fillbots'}));assert.equal(Object.keys((await get('tables/'+r.tableId)).players).length,0,'insufficient funding creates no partial table');
 });
 test('lobby settings queue through an active hand, keep its rake and stacks, and apply at the next boundary',async()=>{
  const a='settings-a',b='settings-b';await fresh(a);await fresh(b);
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{blinds:1,minBuyIn:40,maxBuyIn:200,rakePercent:6}});
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{blinds:1,minBuyIn:40,maxBuyIn:200,rakePercent:6}});
  await call('pkSeat',a,{tableId,op:'join',amount:100});await call('pkSeat',b,{tableId,op:'join',amount:100});
  await assert.rejects(call('pkTableManage',a,{tableId,op:'settings',patch:{blinds:2}}),e=>e.code==='permission-denied');
  for(const patch of [{rakePercent:21},{blinds:0},{minBuyIn:300,maxBuyIn:100},{serverEngine:false},{players:{}},{rakePercent:''}])await assert.rejects(call('pkTableManage',owner,{tableId,op:'settings',patch}));
@@ -350,7 +350,7 @@ test('lobby settings queue through an active hand, keep its rake and stacks, and
  await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+6000);t=await get('tables/'+tableId);assert.equal(t.gameState.highestBet,10);assert.equal(Core.chips([t]),chips);
 });
 test('cash bot rotation is staggered, boundary-only, preserves funds and removes obsolete private cards',async()=>{
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,botCount:3,settings:{maxPlayers:3,blinds:1,minBuyIn:40,maxBuyIn:100}});let t=await get('tables/'+tableId);const ids=Object.keys(t.players),now=Date.now();
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:3,settings:{maxPlayers:3,blinds:1,minBuyIn:40,maxBuyIn:100}});let t=await get('tables/'+tableId);const ids=Object.keys(t.players),now=Date.now();
  for(const id of ids){t.players[id].botLeavesAt=now-10000;await db.doc(`tables/${tableId}/priv/${id}`).set({cards:[{val:'A',suit:'♠'}]});}
  await db.doc('tables/'+tableId).update({players:t.players});const total=(await bank(owner))+Core.chips([t]);
  await Promise.all([Engine.__engineInternals.tickTable(tableId,now),Engine.__engineInternals.tickTable(tableId,now)]);t=await get('tables/'+tableId);
@@ -361,7 +361,7 @@ test('cash bot rotation is staggered, boundary-only, preserves funds and removes
  await db.doc('tables/'+tableId).update({players:t.players,gameState:{phase:'showdown',showdownAt:now-10000,earlyWin:false,pots:[],board:[],handN:1,__seq:5}});await Engine.__engineInternals.tickTable(tableId,now+2000);assert.deepEqual(Object.keys((await get('tables/'+tableId)).players).sort(),inHandIds,'a hand boundary does not bypass the rotation spacing');
 });
 test('expired bot sessions never rotate out of Spin or tournaments',async()=>{
- const spin=await call('pkTableCreate',owner,{clubId:club,botCount:2,settings:{spinMode:true,spinBuyIn:10,spinStack:1000}}),now=Date.now();let t=await get('tables/'+spin.tableId);const ids=Object.keys(t.players);for(const p of Object.values(t.players))p.botLeavesAt=1;await db.doc('tables/'+spin.tableId).update({players:t.players});await Engine.__engineInternals.tickTable(spin.tableId,now);assert.deepEqual(Object.keys((await get('tables/'+spin.tableId)).players).sort(),ids.sort());
+ const spin=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:2,settings:{spinMode:true,spinBuyIn:10,spinStack:1000}}),now=Date.now();let t=await get('tables/'+spin.tableId);const ids=Object.keys(t.players);for(const p of Object.values(t.players))p.botLeavesAt=1;await db.doc('tables/'+spin.tableId).update({players:t.players});await Engine.__engineInternals.tickTable(spin.tableId,now);assert.deepEqual(Object.keys((await get('tables/'+spin.tableId)).players).sort(),ids.sort());
  const c=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Stable sessions',maxPlayers:6,tableSize:6,buyIn:0,botFill:true,startAt:now+600000}});await call('pkTournament',owner,{op:'start',tournamentId:c.tournamentId});const [row]=await rows(c.tournamentId),tourIds=Object.keys(row.players);for(const p of Object.values(row.players))p.botLeavesAt=1;await db.doc('tables/'+row.docId).update({players:row.players});await Engine.__engineInternals.tickTable(row.docId,now);assert.deepEqual(Object.keys((await get('tables/'+row.docId)).players).sort(),tourIds.sort());
 });
 
@@ -410,7 +410,7 @@ test('manager deposits and withdrawals use club funds, serialize concurrent spen
 
 test('revoked, pending, banned and other-club managers cannot retain financial or administrative authority',async()=>{
  const manager='revocable-manager';await fresh(manager,0);const ref=db.doc(`memberships/${manager}_${club}`);
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{}});
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{}});
  const actions=[()=>call('pkClubMember',manager,{clubId:club,targetUid:uid,op:'transfer',amount:10}),()=>call('pkClubMember',manager,{clubId:club,targetUid:uid,op:'approve'}),()=>call('pkClubMember',manager,{clubId:club,targetUid:manager,op:'role',role:'manager'}),()=>call('pkClubSettings',manager,{clubId:club,patch:{name:'Denied'}}),()=>call('pkClubBroadcast',manager,{clubId:club,text:'Denied message'}),()=>call('pkSettlementNote',manager,{clubId:club,targetUid:uid,note:'Denied',amount:5}),()=>call('pkTableManage',manager,{tableId,op:'delete'}),()=>call('pkClubDirectory',manager,{clubId:club,includeReports:true})];
  for(const patch of [{role:'manager',status:'pending'},{role:'manager',status:'banned'},{role:'player',status:'approved'},{role:'club_owner',status:'approved'}]){await ref.update(patch);for(const action of actions)await assert.rejects(action,e=>e.code==='permission-denied');}
  await ref.update({role:'manager',status:'approved'});await call('pkClubSettings',manager,{clubId:club,patch:{name:'Allowed'}});
@@ -429,7 +429,7 @@ test('manager-created tournament reserves and cancellation refunds both use the 
 test('built-in cash variants open with a full funded bot roster without seating the manager',async()=>{
  const manager='quick-manager';await fresh(manager,0);await db.doc(`memberships/${manager}_${club}`).update({role:'manager',managedGames:[]});
  for(const game of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple']){
-  const before=await bank(owner),{tableId}=await call('pkTableCreate',manager,{clubId:club,botCount:'full',settings:{baseGameType:game,blinds:.5,minBuyIn:250,maxBuyIn:250,rakePercent:4,maxPlayers:6,autoStart:2}});
+  const before=await bank(owner),{tableId}=await call('pkTableCreate',manager,{manual:true,clubId:club,botCount:'full',settings:{baseGameType:game,blinds:.5,minBuyIn:250,maxBuyIn:250,rakePercent:4,maxPlayers:6,autoStart:2}});
   const table=await get('tables/'+tableId);assert.equal(table.settings.baseGameType,game);assert.equal(table.settings.rakePercent,4);assert.equal(Object.keys(table.players).length,6);assert.equal(table.players[manager],undefined);assert.ok(Object.values(table.players).every(p=>p.isBot&&p.stack===250&&p.fundingUid===owner));assert.equal(await bank(owner),before-1500);assert.equal(await bank(manager),0);
   const names=Object.values(table.players).map(p=>p.name);assert.ok(names.some(n=>/[A-Za-z]/.test(n)));assert.ok(names.some(n=>/[א-ת]/.test(n)));
   await call('pkTableManage',manager,{tableId,op:'delete'});assert.equal(await bank(owner),before);
@@ -438,12 +438,12 @@ test('built-in cash variants open with a full funded bot roster without seating 
 
 test('frequent ticks do not shorten thinking time or duplicate a bot move, while human actions advance immediately',async()=>{
  const a='latency-a',b='latency-b';await fresh(a);await fresh(b);
- const {tableId}=await call('pkTableCreate',owner,{clubId:club,settings:{minBuyIn:100,maxBuyIn:100,blinds:.5,maxPlayers:2}});
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:100,maxBuyIn:100,blinds:.5,maxPlayers:2}});
  for(const u of [a,b])await call('pkSeat',u,{tableId,op:'join',amount:100});
  await Engine.__engineInternals.tickTable(tableId);let table=await get('tables/'+tableId),g=table.gameState;
  await Engine.__engineInternals.tickTable(tableId,g.turnStartedAt+1000);assert.equal((await get('tables/'+tableId)).gameState.__seq,g.__seq,'a thinking human is not auto-acted');
  await call('pkAct',g.activeTurnUid,{tableId,action:'call',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});assert.equal((await get('tables/'+tableId)).gameState.__seq,g.__seq+1,'human action never waits for a polling tick');
- const created=await call('pkTableCreate',owner,{clubId:club,botCount:'full',settings:{minBuyIn:100,maxBuyIn:100,blinds:.5,maxPlayers:2}});await Engine.__engineInternals.tickTable(created.tableId);table=await get('tables/'+created.tableId);g=table.gameState;
+ const created=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:'full',settings:{minBuyIn:100,maxBuyIn:100,blinds:.5,maxPlayers:2}});await Engine.__engineInternals.tickTable(created.tableId);table=await get('tables/'+created.tableId);g=table.gameState;
  await Engine.__engineInternals.tickTable(created.tableId,g.turnStartedAt+2100);assert.equal((await get('tables/'+created.tableId)).gameState.__seq,g.__seq);
  await Promise.all([1,2,3].map(()=>Engine.__engineInternals.tickTable(created.tableId,g.turnStartedAt+2300)));assert.equal((await get('tables/'+created.tableId)).gameState.__seq,g.__seq+1,'only one due bot move commits across racing viewers');
 });

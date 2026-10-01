@@ -1107,11 +1107,12 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
 <link rel="stylesheet" href="assets/css/approved-game-design.css?v=292">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
-<link rel="stylesheet" href="assets/css/club-blue.css?v=295">
+<link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
 <link rel="stylesheet" href="assets/css/tournament-blue.css?v=294">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
+<link rel="stylesheet" href="assets/css/table-entry-blue.css?v=296">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1135,9 +1136,9 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     @keyframes oiFade { to { opacity: 1; } }
     @keyframes oiLine { to { width: min(320px, 60vw); } }
   </style>
-  <img class="blue-launch-icon" src="assets/brand/blue-icon512.png" width="112" height="112" alt="PokerTen">
+  <div class="oi-mark">ORIZIS</div>
   <div class="oi-line"></div>
-  <div class="oi-sub">POKER WITH FRIENDS</div>
+  <div class="oi-sub">TECHNOLOGY</div>
   <div class="oi-load"><div class="oi-spin"></div>LOADING</div>
   <script>
     (function () {
@@ -2132,62 +2133,9 @@ const downloadCSV = (rows, filename) => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 };
-const spawnTwinTable = async (t, force) => {
-  try {
-    if (!t || !t.type || t.tournamentId) return;
-    const cid = t.clubId || CLUB_ID;
-    if (!force) try {
-      const q = window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("type", "==", t.type));
-      const snap = await window.fb.getDocs(q);
-      const keyOf = x => JSON.stringify([Number((x.settings || {}).buyIn) || 0, Number((x.settings || {}).blinds) || 0, (x.settings || {}).baseGameType || '', Number((x.settings || {}).maxPlayers) || 0, Number((x.settings || {}).deckSize) || 0, (x.settings || {}).variant || '', Number((x.settings || {}).target) || 0]);
-      const maxOf = x => Number((x.settings || {}).maxPlayers) || 9;
-      const myId = t.docId || t.id || '';
-      const twinExists = snap.docs.some(d => {
-        if (d.id === myId) return false;
-        const x = d.data();
-        if ((x.clubId || 'main') !== cid || x.tournamentId) return false;
-        const joinable = x.type === 'poker' ? true : x.status === 'setup';
-        if (!joinable) return false;
-        if (Object.keys(x.players || {}).length >= maxOf(x)) return false;
-        return keyOf(x) === keyOf(t);
-      });
-      if (twinExists) return;
-    } catch (e2) {}
-    const col = window.fb.collection(window.fb.db, "tables");
-    if (t.type === 'poker') {
-      if(t.closeRequested)return;
-      await pokerCommand('pkTableCreate',{clubId:cid,settings:t.settings||{},botCount:0});
-    } else if (t.type === 'durak') {
-      await window.fb.addDoc(col, {
-        type: 'durak',
-        clubId: CLUB_ID,
-        createdAt: Date.now(),
-        hostUid: t.hostUid,
-        status: 'setup',
-        settings: {
-          ...t.settings
-        },
-        players: {},
-        pot: 0,
-        deck: [],
-        trumpCard: null,
-        trumpSuit: null,
-        attackerUid: null,
-        defenderUid: null,
-        pairs: [],
-        roundCap: 6,
-        finishOrder: [],
-        chat: [],
-        lastResults: null,
-        turnStartedAt: null
-      });
-    } else if (t.type === 'ofc') {
-      await window.fb.addDoc(col, ofcTableDoc(t.hostUid, {
-        ...t.settings
-      }));
-    }
-  } catch (e) {}
-};
+// Retired automatic twin helper. Legacy game callbacks may still reach this
+// function, but opening a table now requires an explicit manager action.
+const spawnTwinTable = async () => ({created:false,manualOnly:true});
 const Coin = ({
   amount,
   className = ""
@@ -4047,6 +3995,43 @@ function BlueTableActions({children}) {
     React.createElement('summary',{'aria-label':'Table actions',title:'Table actions'},React.createElement('i',{className:'fa-solid fa-ellipsis-vertical','aria-hidden':true})),
     React.createElement('div',{className:'blue-table-menu'},items.map((item,index)=>React.cloneElement(item,{key:index,onClick:e=>{if(ref.current)ref.current.open=false;item.props.onClick?.(e);}},item.props.children,React.createElement('span',null,item.props['aria-label']||item.props.title)))));
 }
+// The manifest requests fullscreen, with standalone as a fallback. Keep all
+// install entry points in sync with the actual display mode and this runtime's
+// installation event; nothing is persisted across later browser sessions.
+const PWA_APP_DISPLAY_MODES = ['fullscreen', 'standalone', 'minimal-ui', 'window-controls-overlay'];
+let pwaInstalledThisRuntime = false;
+function isInstalledAppDisplay() {
+  return pwaInstalledThisRuntime || window.navigator.standalone === true ||
+    (typeof window.matchMedia === 'function' && PWA_APP_DISPLAY_MODES.some(mode => window.matchMedia(`(display-mode: ${mode})`).matches));
+}
+function useInstalledAppDisplay() {
+  const [installed, setInstalled] = useState(isInstalledAppDisplay);
+  useEffect(() => {
+    const queries = typeof window.matchMedia === 'function' ? PWA_APP_DISPLAY_MODES.map(mode => window.matchMedia(`(display-mode: ${mode})`)) : [];
+    const sync = () => setInstalled(pwaInstalledThisRuntime || window.navigator.standalone === true || queries.some(query => query.matches));
+    const onInstalled = () => {
+      pwaInstalledThisRuntime = true;
+      window.__installEvt = null;
+      sync();
+    };
+    queries.forEach(query => {
+      if (query.addEventListener) query.addEventListener('change', sync);
+      else if (query.addListener) query.addListener(sync);
+    });
+    window.addEventListener('appinstalled', onInstalled);
+    window.addEventListener('pageshow', sync);
+    sync();
+    return () => {
+      queries.forEach(query => {
+        if (query.removeEventListener) query.removeEventListener('change', sync);
+        else if (query.removeListener) query.removeListener(sync);
+      });
+      window.removeEventListener('appinstalled', onInstalled);
+      window.removeEventListener('pageshow', sync);
+    };
+  }, []);
+  return installed;
+}
 function App() {
   const [fbReady, setFbReady] = useState(false);
   const [dbUser, setDbUser] = useState(null);
@@ -4056,7 +4041,7 @@ function App() {
   const [canInstallApp, setCanInstallApp] = useState(!!window.__installEvt);
   const [showInstall, setShowInstall] = useState(false);
   const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-  const isStandaloneApp = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isStandaloneApp = useInstalledAppDisplay();
   useEffect(() => {
     const h = () => setCanInstallApp(true);
     window.addEventListener('pwa-installable', h);
@@ -4092,53 +4077,8 @@ function App() {
   useEffect(() => {
     tablesRef2.current = tablesDB;
   }, [tablesDB]);
-  // Lobby guarantee: always keep ONE joinable table open per live config.
-  // Runs only on the club owner's client (no thundering herd) and only for a
-  // config that ALREADY has a table but zero joinable ones (bounded — it can
-  // never invent tables from nothing, so it cannot run away). This is what
-  // Safety net for Spin & Cash: when the last joinable table of a config FILLS
-  // UP, a twin should already have been spawned by whoever took the seat; if
-  // that write failed, this catches it.
-  //
-  // It used to be written as a STATE test — "no joinable table of this config
-  // exists, so make one" — which made a table impossible to close: the owner
-  // deleted one and his own lobby immediately recreated it. So it is an EVENT
-  // test now: it fires only on the transition from "somewhere to sit" to
-  // "nowhere to sit", and never when the table count went DOWN, because a
-  // table that went away was closed on purpose. Closing stays closed.
-  const ensureRef = useRef({});
-  useEffect(() => {
-    const ownerUid = (window.__club || {}).ownerUid;
-    if (!dbUser?.uid || !ownerUid || ownerUid !== dbUser.uid) return;
-    const cid = CLUB_ID;
-    const mine = (tablesDB || []).filter(x => (x.clubId || 'main') === cid && !x.tournamentId && !x.closeRequested && x.type === 'poker');
-    const keyOf = x => { const s = x.settings || {}; return JSON.stringify([!!s.spinMode, Number(s.spinBuyIn) || 0, Number(s.buyIn) || 0, Number(s.blinds) || 0, s.baseGameType || '', Number(s.maxPlayers) || 0, s.variant || '']); };
-    const isJoinable = x => {
-      const s = x.settings || {};
-      if (Object.keys(x.players || {}).length >= (Number(s.maxPlayers) || 9)) return false;
-      if (s.spinMode && x.spin) return false; // spin already armed/started → not a place to sit
-      return true;
-    };
-    const groups = {};
-    mine.forEach(x => { const k = keyOf(x); (groups[k] = groups[k] || []).push(x); });
-    const now = Date.now();
-    const seen = ensureRef.current;
-    Object.keys(groups).forEach(k => {
-      const arr = groups[k];
-      const joinable = arr.filter(isJoinable).length;
-      const prev = seen[k];
-      seen[k] = { joinable, total: arr.length, spawnedAt: (prev && prev.spawnedAt) || 0 };
-      if (joinable > 0) return;                    // there is still somewhere to sit
-      if (!prev) return;                           // first sighting (page load) — never spawn
-      if (prev.joinable === 0) return;             // this transition was already handled
-      if (arr.length < prev.total) return;         // a table was CLOSED, not filled — leave it closed
-      if (now - (prev.spawnedAt || 0) < 8000) return; // never twice in a breath
-      seen[k].spawnedAt = now;
-      spawnTwinTable(arr[0], true);
-    });
-    // configs whose last table was deleted must not keep stale state around
-    Object.keys(seen).forEach(k => { if (!groups[k]) delete seen[k]; });
-  }, [tablesDB, dbUser?.uid]);
+  // Table snapshots only render the lobby. Filling or deleting the last
+  // available table must never trigger a replacement in an owner's browser.
   const [activeTable, setActiveTable] = useState(null);
   const [toasts, setToasts] = useState([]);
   // Tournament celebration: the champion's table gets DELETED at finalize, so
@@ -4672,7 +4612,7 @@ function App() {
       changeView('lobby');
     },
     showToast: showToast
-  })), showInstall && ReactDOM.createPortal(React.createElement("div", {
+  })), showInstall && !isStandaloneApp && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4",
     onClick: () => setShowInstall(false)
@@ -4794,7 +4734,7 @@ function App() {
 function InstallBanner({
   variant
 }) {
-  const isStandaloneApp = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isStandaloneApp = useInstalledAppDisplay();
   const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
   const [installable, setInstallable] = useState(!!window.__installEvt);
   const [showGuide, setShowGuide] = useState(false);
@@ -5402,7 +5342,7 @@ const clubCode = id => {
   for (const ch of String(id || '')) h = h * 31 + ch.charCodeAt(0) >>> 0;
   return String(100000 + h % 900000);
 };
-const ClubRotaryCarousel = React.forwardRef(function ClubRotaryCarousel({items, activeIndex, onChange, onMovingChange, renderCard}, apiRef) {
+const ClubRotaryCarousel = React.forwardRef(function ClubRotaryCarousel({items, activeIndex, onChange, onMovingChange, onActivate, renderCard}, apiRef) {
   const count = items.length;
   // Repeated visual slots prevent a two-club cylinder from hiding its only
   // neighbour behind the axis. Dots, selection and entry remain one per item.
@@ -5473,7 +5413,13 @@ const ClubRotaryCarousel = React.forwardRef(function ClubRotaryCarousel({items, 
     'data-position':position, tabIndex:0,
     style:{'--club-radius':count <= 1 ? '0px' : `max(200px, calc(var(--club-card-width) * ${radiusFactor}))`},
     onKeyDown:event => {
+      if (['Enter',' '].includes(event.key) && event.target === event.currentTarget) {
+        event.preventDefault();
+        if (!moving.current && Date.now() >= suppressClickUntil.current && items[activeIndex]?.kind !== 'pending') onActivate?.(items[activeIndex]);
+        return;
+      }
       if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+      event.currentTarget.focus();
       event.preventDefault();
       if (event.key === 'Home' || event.key === 'End') select(event.key === 'Home' ? 0 : count - 1);
       else rotateTo(Math.round(positionRef.current) + (event.key === 'ArrowRight' ? 1 : -1));
@@ -5508,15 +5454,50 @@ const ClubRotaryCarousel = React.forwardRef(function ClubRotaryCarousel({items, 
         const depth = Math.cos(offset * step * Math.PI / 180);
         const visible = Math.abs(offset) <= 2.05 && depth > -.01;
         const front = Math.abs(offset) < .01;
+        const canActivate = front && index === activeIndex && !moving.current && item.kind !== 'pending';
+        const activate = event => {
+          if (!canActivate) return;
+          event.stopPropagation();
+          if (!moving.current && Date.now() >= suppressClickUntil.current) onActivate?.(item);
+        };
         const nearestTarget = slot + Math.round((positionRef.current - slot) / slots) * slots;
         return React.createElement('div',{
           key:slot, className:'cl-card'+(front&&index===activeIndex?' cl-card-active':'')+(item.kind==='create'?' cl-card-create':''),
           'data-item-index':index,'data-visual-copy':slot>=count?'true':'false','data-front':front?'true':'false',
-          'aria-hidden':true, style:{transform:`rotateY(${slot * step}deg) translateZ(var(--club-radius))`,pointerEvents:visible?'auto':'none'},
-          onClick:()=>rotateTo(nearestTarget)
-        }, React.createElement('div',{className:'blue-club-orb',style:{transform:`rotateY(${(position - slot) * step}deg)`,opacity:visible?.65+.35*Math.max(0,depth):0}},renderCard(item)));
+          'aria-hidden':!canActivate, style:{transform:`rotateY(${slot * step}deg) translateZ(var(--club-radius))`,pointerEvents:visible?'auto':'none'},
+          onClick:()=>{if(!moving.current)rotateTo(nearestTarget);}
+        }, React.createElement('div',{
+          className:'blue-club-orb',role:canActivate?'button':undefined,tabIndex:canActivate?0:undefined,
+          'aria-label':canActivate?(item.kind==='create'?'Create club':'Enter '+item.c.name):undefined,
+          onClick:activate,onKeyDown:event=>{if(canActivate&&['Enter',' '].includes(event.key)){event.preventDefault();activate(event);}},
+          style:{transform:`rotateY(${(position - slot) * step}deg)`,opacity:visible?.65+.35*Math.max(0,depth):0}
+        },renderCard(item)));
       }))));
 });
+
+function ClubArchiveDialog({title, busy, onClose, children}) {
+  const ref = useRef(null), closeRef = useRef(onClose), busyRef = useRef(busy);
+  closeRef.current = onClose; busyRef.current = busy;
+  useEffect(() => {
+    const previous = document.activeElement, el = ref.current;
+    const focusable = () => [...el.querySelectorAll('input:not([disabled]),button:not([disabled]),[tabindex="0"]')];
+    (focusable()[0] || el).focus();
+    const keydown = e => {
+      if (e.key === 'Escape') { e.preventDefault(); if (!busyRef.current) closeRef.current(); }
+      if (e.key === 'Tab') {
+        const items = focusable(), first = items[0], last = items[items.length - 1];
+        if (!items.length) { e.preventDefault(); el.focus(); }
+        else if (e.shiftKey && (document.activeElement === first || !el.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && (document.activeElement === last || !el.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', keydown);
+    return () => { document.removeEventListener('keydown', keydown); (previous?.isConnected ? previous : document.querySelector('.blue-archived-clubs,.cl-deck'))?.focus(); };
+  }, []);
+  return ReactDOM.createPortal(React.createElement('div', {className:'blue-club-dialog-overlay',onClick:()=>{if(!busy)onClose();}},
+    React.createElement('section', {ref,role:'dialog','aria-modal':true,'aria-label':title,'aria-busy':!!busy,tabIndex:-1,dir:'ltr',className:'blue-club-dialog',onClick:e=>e.stopPropagation()},
+      React.createElement('h2',null,title),children)),document.body);
+}
 
 function ClubsView({
   user,
@@ -5531,6 +5512,21 @@ function ClubsView({
   const [createOpen, setCreateOpen] = useState(false);
   const [slide, setSlide] = useState(0);
   const [carouselBusy, setCarouselBusy] = useState(false);
+  const [archiveFor, setArchiveFor] = useState(null);
+  const [archiveName, setArchiveName] = useState('');
+  const [archiveBusy, setArchiveBusy] = useState('');
+  const [archiveError, setArchiveError] = useState('');
+  const [archivedOpen, setArchivedOpen] = useState(false);
+  const [archiveOverrides, setArchiveOverrides] = useState({});
+  const archiveInFlight = useRef(false);
+  // A successful command is reflected immediately until the club snapshot catches up.
+  useEffect(() => {
+    setArchiveOverrides(previous => {
+      const next = {...previous};
+      for (const c of clubs) if (Object.hasOwn(next,c.id) && (c.archived === true) === next[c.id]) delete next[c.id];
+      return Object.keys(next).length === Object.keys(previous).length ? previous : next;
+    });
+  }, [clubs, archiveOverrides]);
   const deckRef = useRef(null);
   const [lastClubId] = useState(() => {
     try { return localStorage.getItem('pkLastClub_' + user.uid) || ''; } catch (_) { return ''; }
@@ -5558,7 +5554,7 @@ function ClubsView({
   const clubMemberCount = cid => memCounts[cid] || 0;
   const [canInstall, setCanInstall] = useState(!!window.__installEvt);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-  const isStandalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isStandalone = useInstalledAppDisplay();
   const isIOSSafari = isIOS && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(navigator.userAgent);
   const isAndroidMob = /Android/i.test(navigator.userAgent || '');
   const [iosGuide, setIosGuide] = useState(false);
@@ -5596,7 +5592,11 @@ function ClubsView({
   };
   const god = isGodUser(user);
   const memOf = cid => myMems.find(m => m.clubId === cid);
-  const myClubs = clubs.filter(c => {
+  const isArchived = c => archiveOverrides[c.id] ?? (c.archived === true);
+  const canArchiveClub = c => !!c && c.id !== 'main' && (c.ownerUid === user.uid || god);
+  const availableClubs = clubs.filter(c => !isArchived(c));
+  const archivedClubs = clubs.filter(c => isArchived(c) && canArchiveClub(c));
+  const myClubs = availableClubs.filter(c => {
     const m = memOf(c.id);
     return m && m.status === 'approved' || god;
   }).sort((a, b) => {
@@ -5606,11 +5606,11 @@ function ClubsView({
     };
     return priority(a) - priority(b);
   });
-  const pendingClubs = clubs.filter(c => {
+  const pendingClubs = availableClubs.filter(c => {
     const m = memOf(c.id);
     return m && m.status !== 'approved' && !god;
   });
-  const otherClubs = clubs.filter(c => !memOf(c.id) && !god);
+  const otherClubs = availableClubs.filter(c => !memOf(c.id) && !god);
   const [searchCode, setSearchCode] = useState('');
   const [foundClub, setFoundClub] = useState(null);
   const doClubSearch = (value = searchCode) => {
@@ -5619,7 +5619,7 @@ function ClubsView({
       setFoundClub(null);
       return showToast("Enter a 6-digit club code", "error");
     }
-    const hit = clubs.find(c => clubCode(c.id) === code);
+    const hit = availableClubs.find(c => clubCode(c.id) === code);
     if (!hit) {
       setFoundClub(null);
       return showToast("No club found with that code", "error");
@@ -5656,9 +5656,24 @@ try{await pokerCommand('pkJoinClub',{clubId:club.id,agentUid:agent?.uid||''});se
     setAgentCodeIn('');
     setJoinFor(club);
   };
-  const deleteClub = async c => {
-showToast('Club balances and game history are preserved.','info');
-};
+  const deleteClub = c => {
+    if (!canArchiveClub(c) || carouselBusy || archiveInFlight.current) return;
+    setArchiveFor(c); setArchiveName(''); setArchiveError('');
+  };
+  const closeArchive = () => { if (!archiveInFlight.current) { setArchiveFor(null); setArchiveError(''); } };
+  const changeClubArchive = async (c, op) => {
+    if (!canArchiveClub(c) || archiveInFlight.current) return;
+    if (op === 'archive' && archiveName.trim() !== String(c.name || '').trim()) return;
+    archiveInFlight.current = true; setArchiveBusy(c.id); setArchiveError('');
+    try {
+      await pokerCommand('pkClubArchive',{clubId:c.id,op,...(op==='archive'?{confirmName:archiveName.trim()}:{})});
+      setArchiveOverrides(previous=>({...previous,[c.id]:op==='archive'}));
+      setFoundClub(null); setArchiveFor(null); setArchiveName('');
+      showToast(op==='archive'?'Club removed from the lobby. Balances and history are kept.':'Club restored.','success');
+    } catch (e) {
+      setArchiveError(e.message || 'Could not update the club. Please try again.');
+    } finally { archiveInFlight.current = false; setArchiveBusy(''); }
+  };
   const createClub = async () => {
 setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.trim()});setNewName('');showToast('Club created.','success');onEnter(c);}catch(e){showToast(e.message,'error');}finally{setCreating(false);}
 };
@@ -5675,7 +5690,9 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
         e.stopPropagation();
         deleteClub(c);
       },
-      title: "Delete club",
+      title: "Remove club",
+      "aria-label": "Remove club " + c.name,
+      disabled: !!archiveBusy,
       className: "absolute top-2 right-2 w-7 h-7 rounded-lg text-slate-600 hover:text-rose-400 transition-colors flex items-center justify-center"
     }, React.createElement("i", {
       className: "fa-solid fa-trash text-[10px]"
@@ -5766,7 +5783,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     style: {
       color: 'var(--pt-gold)'
     }
-  }), "Install as app")), iosGuide && ReactDOM.createPortal(React.createElement("div", {
+  }), "Install as app")), iosGuide && !isStandalone && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[300] bg-slate-950/95 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setIosGuide(false)
@@ -5905,7 +5922,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     maxLength: 6,
     className: "cl-code-input",
     dir: "ltr"
-  }))), foundClub && (!memOf(foundClub.id) || memOf(foundClub.id).status === 'rejected') && React.createElement("div", {
+  }))), foundClub && availableClubs.some(c=>c.id===foundClub.id) && (!memOf(foundClub.id) || memOf(foundClub.id).status === 'rejected') && React.createElement("div", {
     className: "mt-3"
   }, React.createElement(ClubCard, {
     c: foundClub,
@@ -5913,7 +5930,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
       onClick: () => requestJoin(foundClub),
       className: "btn-outline w-full py-2 text-sm"
     }, "Request to join")
-  })), foundClub && memOf(foundClub.id) && ['pending', 'approved'].includes(memOf(foundClub.id).status) && React.createElement("div", {
+  })), foundClub && availableClubs.some(c=>c.id===foundClub.id) && memOf(foundClub.id) && ['pending', 'approved'].includes(memOf(foundClub.id).status) && React.createElement("div", {
     className: "text-center text-slate-400 font-bold text-sm py-2"
   }, "You're already ", memOf(foundClub.id).status === 'approved' ? 'a member' : 'pending approval', " in this club.")), !directoryReady ? React.createElement('div', {role:'status',className:'text-center py-8 text-slate-400'}, 'Loading your clubs…') : (() => {
     const deck = [...myClubs.map(c=>({c,kind:'mine'})),...pendingClubs.map(c=>({c,kind:'pending'})),{kind:'create'}];
@@ -5921,7 +5938,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     const selectedMem = selected.c && memOf(selected.c.id);
     const moveTo = ix => deckRef.current?.select(ix);
     return React.createElement('section',{className:'blue-club-selection','aria-label':'Choose a club'},
-      React.createElement(ClubRotaryCarousel,{ref:deckRef,items:deck,activeIndex:slide,onChange:setSlide,onMovingChange:setCarouselBusy,renderCard:d=>React.createElement(React.Fragment,null,
+      React.createElement('div',{className:'blue-club-stage'},React.createElement(ClubRotaryCarousel,{ref:deckRef,items:deck,activeIndex:slide,onChange:setSlide,onMovingChange:setCarouselBusy,onActivate:d=>{if(d.kind==='mine')onEnter(d.c);else if(d.kind==='create')setCreateOpen(true);},renderCard:d=>React.createElement(React.Fragment,null,
         React.createElement('img',{className:'blue-orb-skin',src:'assets/brand/club-sphere-blue.webp',alt:'',draggable:false,decoding:'async'}),
         React.createElement('div',{className:'blue-orb-content'},
           d.c?.logo && React.createElement('img',{className:'blue-club-logo',src:d.c.logo,alt:'',draggable:false,decoding:'async'}),
@@ -5930,13 +5947,32 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
           React.createElement('span',{className:'cl-id'},d.c?'ID '+clubCode(d.c.id):'Create. Invite. Play.'),
           d.c && React.createElement('span',{className:'blue-member-count'},React.createElement('i',{className:'fa-solid fa-users','aria-hidden':true}),' ',clubMemberCount(d.c.id)||'—',' members'),
           d.c?.ownerUid===user.uid && React.createElement('span',{className:'cl-owner'},'YOURS')))}),
+        canArchiveClub(selected.c) && React.createElement('button',{type:'button',className:'blue-club-remove',disabled:carouselBusy||!!archiveBusy,'aria-label':'Remove club '+selected.c.name,title:'Remove club',onClick:e=>{e.stopPropagation();deleteClub(selected.c);}},React.createElement('i',{className:'fa-solid fa-trash','aria-hidden':true}))),
       React.createElement('div',{className:'blue-club-details','aria-live':'polite','aria-atomic':true},
         React.createElement('span',{className:'sr-only'},selected.c?.name || 'Create club'),
         selected.kind==='create' ? React.createElement('p',{className:'blue-create-description'},'Bring your players together in your own club.') : React.createElement('div',{className:'cl-balance'},React.createElement('span',{className:'cl-balance-label'},'YOUR BALANCE'),React.createElement('strong',{className:'cl-balance-amount',dir:'ltr'},selectedMem && Number.isFinite(selectedMem.balance)?formatMoney(selectedMem.balance):'—')),
-        selected.kind==='pending' ? React.createElement('div',{className:'cl-cta cl-cta-wait'},React.createElement('i',{className:'fa-solid fa-hourglass-half','aria-hidden':true}),' Pending approval') : React.createElement('button',{type:'button',className:'cl-cta',disabled:carouselBusy,'aria-busy':carouselBusy,onClick:()=>selected.kind==='create'?setCreateOpen(true):onEnter(selected.c)},selected.kind==='create'?'Create club':'Enter club',React.createElement('i',{className:'fa-solid fa-chevron-right','aria-hidden':true}))),
+        selected.kind==='pending' && React.createElement('div',{className:'cl-cta cl-cta-wait'},React.createElement('i',{className:'fa-solid fa-hourglass-half','aria-hidden':true}),' Pending approval')),
       React.createElement('div',{className:'cl-dots'},deck.map((d,ix)=>React.createElement('button',{key:ix,type:'button',onClick:()=>moveTo(ix),'aria-label':d.kind==='create'?'Show Create Club':'Show '+d.c.name,'aria-current':ix===slide?'true':undefined,className:'cl-dot'+(ix===slide?' cl-dot-on':'')},d.kind==='create'?React.createElement('i',{className:'fa-solid fa-plus','aria-hidden':true}):null))),
-      React.createElement('button',{className:'blue-create-club',type:'button',style:{visibility:selected.kind==='create'?'hidden':undefined},'aria-hidden':selected.kind==='create'?true:undefined,tabIndex:selected.kind==='create'?-1:undefined,onClick:()=>setCreateOpen(true)},React.createElement('i',{className:'fa-solid fa-circle-plus','aria-hidden':true}), 'Create club'));
-  })(), joinFor && ReactDOM.createPortal(React.createElement("div", {
+      React.createElement('button',{className:'blue-create-club',type:'button',style:{visibility:selected.kind==='create'?'hidden':undefined},'aria-hidden':selected.kind==='create'?true:undefined,tabIndex:selected.kind==='create'?-1:undefined,onClick:()=>setCreateOpen(true)},React.createElement('i',{className:'fa-solid fa-circle-plus','aria-hidden':true}), 'Create club'),
+      archivedClubs.length > 0 && React.createElement('button',{type:'button',className:'blue-archived-clubs',onClick:()=>{setArchivedOpen(true);setArchiveError('');}},React.createElement('i',{className:'fa-solid fa-box-archive','aria-hidden':true}), 'Archived clubs (',archivedClubs.length,')'));
+  })(), archiveFor && React.createElement(ClubArchiveDialog,{title:'Remove club',busy:!!archiveBusy,onClose:closeArchive},
+    React.createElement('p',{className:'blue-club-dialog-name'},archiveFor.name),
+    React.createElement('p',null,'This club will be removed from the lobby. Balances and game history are kept. You can restore it from Archived clubs.'),
+    React.createElement('form',{onSubmit:e=>{e.preventDefault();changeClubArchive(archiveFor,'archive');}},
+      React.createElement('label',{htmlFor:'club-archive-name'},'Type the club name to confirm'),
+      React.createElement('input',{id:'club-archive-name',type:'text',value:archiveName,disabled:!!archiveBusy,autoComplete:'off',onChange:e=>setArchiveName(e.target.value)}),
+      archiveError && React.createElement('p',{role:'alert',className:'blue-club-dialog-error'},archiveError),
+      React.createElement('div',{className:'blue-club-dialog-actions'},
+        React.createElement('button',{type:'button',disabled:!!archiveBusy,onClick:closeArchive},'Cancel'),
+        React.createElement('button',{type:'submit',className:'blue-club-confirm-remove',disabled:!!archiveBusy||archiveName.trim()!==String(archiveFor.name||'').trim()},archiveBusy?'Removing…':'Remove club')))),
+    archivedOpen && React.createElement(ClubArchiveDialog,{title:'Archived clubs',busy:!!archiveBusy,onClose:()=>{setArchivedOpen(false);setArchiveError('');}},
+      React.createElement('p',null,'Balances and game history are kept. Restore a club to show it in the lobby again.'),
+      archiveError && React.createElement('p',{role:'alert',className:'blue-club-dialog-error'},archiveError),
+      archivedClubs.length ? React.createElement('ul',{className:'blue-club-archive-list'},archivedClubs.map(c=>React.createElement('li',{key:c.id},
+        React.createElement('div',null,React.createElement('strong',null,c.name),React.createElement('span',null,'ID '+clubCode(c.id))),
+        React.createElement('button',{type:'button',disabled:!!archiveBusy,'aria-label':'Restore club '+c.name,onClick:()=>changeClubArchive(c,'restore')},archiveBusy===c.id?'Restoring…':'Restore')))) : React.createElement('p',{className:'blue-club-archive-empty'},'No archived clubs.'),
+      React.createElement('button',{type:'button',className:'blue-club-dialog-close',disabled:!!archiveBusy,onClick:()=>{setArchivedOpen(false);setArchiveError('');}},'Close')),
+    joinFor && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[300] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setJoinFor(null)
@@ -6612,7 +6648,7 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
     requestLock.current = true;setBusy(true);clearNotice();
     const title = gameLabel + ' · ' + blinds + '/' + Number(blinds)*2;
     try {
-      await pokerCommand('pkTableCreate', {clubId:CLUB_ID, settings:{
+      await pokerCommand('pkTableCreate', {manual:true, clubId:CLUB_ID, settings:{
         name:title, baseGameType:game, blinds:Number(blinds), minBuyIn:Number(minBuy), maxBuyIn:Number(maxBuy),
         rakePercent:Number(rake), maxPlayers:Number(seats), autoStart:2, actionTime:30, omahaPotLimit:true, serverEngine:true
       }, botCount:vacancies === '0' ? 'full' : botCount});
@@ -6629,7 +6665,7 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
       onClick:() => setExpanded(v => !v), className:'rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50'},
       React.createElement('i', {className:'fa-solid fa-robot mr-2', 'aria-hidden':true}), 'Open table with bots'),
     expanded && React.createElement('div', {id:panelId, className:'mt-3'},
-      React.createElement('p', {className:'text-xs text-slate-300 mb-3'}, 'Open one extra table. Your automatic table activity continues separately.'),
+      React.createElement('p', {className:'text-xs text-slate-300 mb-3'}, 'Open one table with the game, blinds and seats you choose. Tables open only when you request them.'),
       React.createElement('div', {className:'grid grid-cols-2 gap-3'},
         React.createElement('label', {className:labelClass}, 'Game', React.createElement('select', {'aria-label':'Quick table game', value:game, disabled:busy, className:inputClass,
           onChange:e => {setGame(e.target.value);setSeats(['Omaha 4','Omaha 5','Pineapple'].includes(e.target.value) ? '4' : '6');clearNotice();}},
@@ -6762,6 +6798,7 @@ function LobbyView({
     const st = tp.settings || {};
     try {
       await pokerCommand('pkTableCreate', {
+        manual: true,
         clubId: CLUB_ID,
         settings: {...st, name: st.name || st.tableName || tp.name, serverEngine: true},
         botCount: st.showcaseBots==='full'?'full':Number(st.showcaseBots)||0
@@ -8760,51 +8797,14 @@ function botLobbyTemplates(tables, clubId, configured = []) {
   const seen = new Set();
   return choices.filter(t => {if(seen.has(t.key))return false;seen.add(t.key);return true;}).slice(0,6);
 }
-function BotLobbyControl({user, clubSettings, tables, showToast}) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const saving = useRef(false);
-  const allowed = canConfigureBotLobby(user, clubSettings);
-  const config = clubSettings?.botLobby || {};
-  const enabled = config.enabled === true;
-  const templates = botLobbyTemplates(tables, CLUB_ID, config.templates || []);
-  const slots = Array.isArray(config.slots) ? config.slots.filter(s => [0,1,2].includes(s.profile) && Array.isArray(s.templates) && s.templates.length) : [];
-  const hasSavedSlots = slots.length > 0;
-  const blocked = clubSettings?.botsAuto === false;
-  const slotBuy = s => Math.min(Number(s.maxBuyIn), Math.max(Number(s.minBuyIn), 200 * Number(s.blinds)));
-  const maxStartChips = hasSavedSlots ? slots.reduce((sum,slot) => sum + Math.max(...slot.templates.map(s => (Number(s.maxPlayers) - slot.profile) * slotBuy(s))), 0) : templates.length ? [0,1,2].reduce((sum,empty) => sum + Math.max(...templates.map(t => (t.capacity - empty) * t.buy)), 0) : 0;
-  const configuredSettings = hasSavedSlots ? slots.flatMap(s => s.templates) : templates.map(t => t.settings);
-  const settingsLabels = [...new Set(configuredSettings.map(s => (s.baseGameType === 'NLH' ? 'Texas Hold’em' : s.baseGameType) + ' ' + formatMoney(s.blinds) + '/' + formatMoney(Number(s.blinds)*2) + ' · min ' + formatMoney(s.minBuyIn)))];
-  const toggle = async () => {
-    if (!allowed || saving.current || !enabled && (blocked || !hasSavedSlots && !templates.length)) return;
-    saving.current = true;setBusy(true);setError('');
-    try {
-      await pokerCommand('pkBotLobbyConfigure', {clubId:CLUB_ID, enabled:!enabled,
-        ...(!enabled && !hasSavedSlots ? {templateTableIds:templates.map(t => t.id)} : {})});
-      showToast?.(enabled ? 'Automatic table activity turned off.' : 'Automatic table activity enabled. Tables update on the next cycle.', 'success');
-    } catch (e) {setError(e.message || 'Could not update automatic table activity. Try again.');}
-    finally {saving.current = false;setBusy(false);}
-  };
-  if (!allowed) return null;
-  const status = !enabled ? 'Off' : blocked ? 'Paused — automatic bots are blocked' : config.fundingBlockedAt ? 'Waiting for club chips' : 'On';
-  return React.createElement('section', {className:'bot-lobby-control mb-4 pb-4 border-b border-white/5', 'aria-label':'Automatic table activity'},
+function BotLobbyControl({user, clubSettings}) {
+  if (!canConfigureBotLobby(user, clubSettings)) return null;
+  return React.createElement('section', {className:'bot-lobby-control mb-4 pb-4 border-b border-white/5', 'aria-label':'Table opening'},
     React.createElement('div', {className:'flex items-center justify-between gap-3 flex-wrap'},
-      React.createElement('h4', {className:'text-sm font-black text-white'}, 'Automatic table activity'),
-      React.createElement('span', {className:'text-xs font-bold text-emerald-300', role:'status'}, status)),
-    React.createElement('p', {className:'text-sm text-slate-300 mt-2'}, hasSavedSlots ? 'Keeps ' + slots.length + ' bot tables across the game and blind levels below, with full tables, one free seat, and two free seats.' : 'Keeps three bot tables available: full with a waitlist, one free seat, and two free seats.'),
-    React.createElement('p', {className:'text-xs text-slate-400 mt-2'}, 'Bot sessions: 25–35 minutes, with 1–2 minutes between replacements. Bot-only tables: 1–2 hours, at least 10 minutes between table renewals. Changes wait for the hand to finish.'),
-    React.createElement('p', {className:'text-xs text-slate-400 mt-2'}, 'Uses club treasury chips. Turning off leaves games with human players running.'),
-    settingsLabels.length > 0 && React.createElement('div', {className:'mt-3 text-xs text-slate-300'},
-      React.createElement('span', {className:'font-bold'}, 'Table settings: '),
-      settingsLabels.join(' · '),
-      !enabled && React.createElement('div', {className:'mt-1'}, 'Up to ' + formatMoney(maxStartChips) + ' club chips to start ' + (hasSavedSlots ? slots.length : 'three') + ' tables.')),
-    !enabled && !hasSavedSlots && !templates.length && React.createElement('p', {className:'mt-2 text-xs text-amber-300'}, 'Open a cash table with at least four seats first.'),
-    !enabled && blocked && React.createElement('p', {className:'mt-2 text-xs text-amber-300'}, 'Allow automatic bot entry below before enabling table activity.'),
-    config.lastMaintainedAt && React.createElement('p', {className:'mt-2 text-xs text-slate-400'}, 'Last updated: ' + new Date(config.lastMaintainedAt).toLocaleString('he-IL')),
-    error && React.createElement('p', {role:'alert', className:'mt-2 text-sm text-rose-300'}, error),
-    React.createElement('button', {type:'button', onClick:toggle, disabled:busy || !enabled && (blocked || !hasSavedSlots && !templates.length), 'aria-busy':busy,
-      className:'mt-3 rounded-xl border border-white/15 bg-slate-800 px-4 py-3 text-sm font-bold text-white disabled:opacity-40'},
-      busy ? 'Saving…' : enabled ? 'Turn off automatic tables' : 'Enable automatic tables'));
+      React.createElement('h4', {className:'text-sm font-black text-white'}, 'Table opening'),
+      React.createElement('span', {className:'text-xs font-bold text-sky-300', role:'status'}, 'Manual only')),
+    React.createElement('p', {className:'text-sm text-slate-300 mt-2'}, 'Open tables from the lobby using the game and blind levels you choose.'),
+    React.createElement('p', {className:'text-xs text-slate-400 mt-2'}, 'Deleting a table will not open a replacement. Existing tables keep running; tables are not opened or rotated automatically.'));
 }
 function BackofficeView({
   user,
@@ -10132,7 +10132,7 @@ function PokerCreateView({
   const [spinOpen, setSpinOpen] = useState(false);
   const [sf, setSf] = useState({ gt: 'NLH', buy: 50, stack: 1000, sb: 10, levelSec: 180 });
   const createSpin = async () => {
-try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{baseGameType:sf.gt,spinMode:true,spinBuyIn:Number(sf.buy),spinStack:Number(sf.stack),blinds:Number(sf.sb),spinLevelSec:Number(sf.levelSec),maxPlayers:3,minBuyIn:Number(sf.buy),maxBuyIn:Number(sf.buy),actionTime:20}});setSpinOpen(false);onCreated();}catch(e){showToast(e.message||String(e),'error');}
+try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{baseGameType:sf.gt,spinMode:true,spinBuyIn:Number(sf.buy),spinStack:Number(sf.stack),blinds:Number(sf.sb),spinLevelSec:Number(sf.levelSec),maxPlayers:3,minBuyIn:Number(sf.buy),maxBuyIn:Number(sf.buy),actionTime:20}});setSpinOpen(false);onCreated();}catch(e){showToast(e.message||String(e),'error');}
 };
   // A showcase table seats its bots at creation and runs on the SERVER driver,
   // so it is playing whether or not anybody has it open — which is the point:
@@ -10163,7 +10163,7 @@ try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{baseGameType:sf
     return out;
   };
   const handleCreate = async () => {
-try{await pokerCommand('pkTableCreate',{clubId:CLUB_ID,settings:{...s,serverEngine:true},botCount:s.showcaseBots==='full'?'full':Number(s.showcaseBots)||0});onCreated();}catch(e){showToast(e.message||String(e),'error');}
+try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...s,serverEngine:true},botCount:s.showcaseBots==='full'?'full':Number(s.showcaseBots)||0});onCreated();}catch(e){showToast(e.message||String(e),'error');}
 };
   const TPL_KEY = 'pokerTpl_' + CLUB_ID;
   const [tpls, setTpls] = useState(() => {
@@ -13363,10 +13363,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: `shrink-0 px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
   }, preCF ? '✓ CHECK/FOLD' : 'CHECK / FOLD') : React.createElement("div", {
     className: "w-9 shrink-0"
-  })), spectate && !isSeated && !tableState.closeRequested && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
+  })), spectate && !isSeated && (requiresWaitlist || onWaitlist) && !tableState.closeRequested && !(setts.spinMode && tableState.spin) && !tableState.tournamentId && React.createElement("button", {
     onClick: () => setSpectate(false),
     className: "poker-spectator-seat mx-auto mt-1 bg-gradient-to-b from-emerald-500 to-emerald-700 text-white px-8 py-2.5 rounded-xl font-black text-sm shadow-lg"
-  }, onWaitlist ? 'View your waitlist position' : requiresWaitlist ? 'Join waitlist' : 'Take a seat 🪑')), tour && (() => {
+  }, onWaitlist ? 'View your waitlist position' : 'Join waitlist')), tour && (() => {
     const tc = tourClock(tour);
     const lvl = tc.lvl;
     const sb = Number(tc.row.sb) || 5,
@@ -13964,63 +13964,73 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     onClick: onLeave,
     className: "block mx-auto mt-2 text-slate-500 hover:text-white text-xs font-bold underline"
   }, "Back to lobby")))) : (canShowBuyIn || needRebuy) && React.createElement("div", {
-    className: "absolute inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+    className: "pt-buyin-overlay"
   }, React.createElement("div", {
-    className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/30"
+    className: "pt-buyin-dialog",
+    role: "dialog",
+    "aria-modal": true,
+    "aria-labelledby": "pt-buyin-title"
   }, React.createElement("i", {
-    className: "fa-solid fa-coins text-4xl text-gold-400 mb-3"
+    className: "fa-solid fa-coins pt-buyin-icon",
+    "aria-hidden": true
   }), React.createElement("h3", {
-    className: "text-xl font-black text-white mb-1"
-  }, needRebuy ? 'Out of chips - Rebuy' : Number.isFinite(pickSeat) ? `Seat ${pickSeat + 1} — buy-in` : 'Table buy-in'), React.createElement("p", {
-    className: "text-slate-400 text-xs font-bold mb-4",
+    id: "pt-buyin-title",
+    className: "pt-buyin-title"
+  }, needRebuy ? 'Out of chips - Rebuy' : Number.isFinite(pickSeat) ? `Seat ${pickSeat + 1} — buy-in` : 'Table buy-in'), React.createElement("div", {
+    className: "pt-buyin-details",
     dir: "ltr"
-  }, "Blinds ", formatShort(setts.blinds), "/", formatShort(BB), " · Balance: ", formatMoney(user.balance)), React.createElement("div", {
-    className: "text-3xl font-black text-gold-400 mb-2",
+  }, React.createElement("div", null, React.createElement("span", null, "Blinds"), React.createElement("strong", null, formatShort(setts.blinds), "/", formatShort(BB))), React.createElement("div", null, React.createElement("span", null, "Balance"), React.createElement("strong", null, formatMoney(user.balance)))), React.createElement("label", {
+    htmlFor: "pt-buyin-amount",
+    className: "pt-buyin-label"
+  }, "Buy-in amount"), React.createElement("div", {
+    className: "pt-buyin-amount",
     dir: "ltr"
   }, formatMoney(buyAmt)), React.createElement("input", {
+    id: "pt-buyin-amount",
     type: "range",
     min: minBuy,
     max: maxBuy,
     step: BB,
     value: Math.min(Math.max(buyAmt, minBuy), maxBuy),
     onChange: e => setBuyAmt(parseFloat(e.target.value)),
-    className: "w-full accent-amber-500 mb-1",
+    className: "pt-buyin-range",
+    "aria-valuetext": formatMoney(Math.min(Math.max(buyAmt, minBuy), maxBuy)),
     dir: "ltr"
   }), React.createElement("div", {
-    className: "flex justify-between text-[10px] text-slate-500 font-bold mb-2",
+    className: "pt-buyin-limits",
     dir: "ltr"
   }, React.createElement("span", null, "Min ", formatMoney(minBuy)), React.createElement("span", null, "Max ", formatMoney(maxBuy))), lockActive && !needRebuy && React.createElement("div", {
-    className: "text-[10px] text-amber-400 font-bold mb-3"
+    className: "pt-buyin-notice pt-buyin-notice-lock"
   }, "🔒 You left here with ", formatMoney(leftLock.amount), " - you must return with at least this"), !needRebuy && requiresWaitlist && !onWaitlist && React.createElement("div", {
-    className: "mb-2"
+    className: "pt-buyin-waitlist"
   }, React.createElement("div", {
-    className: "text-[11px] text-amber-300 font-bold mb-2"
+    className: "pt-buyin-notice"
   }, isFull ? `Table full (${tblCap}/${tblCap})` : 'Waiting players have priority', waitlist.length > 0 ? ` · ${waitlist.length} waiting` : '', ". Join the waitlist and you'll be seated automatically with this buy-in when your turn comes. Keep this table open to hold your place."), React.createElement("button", {
     onClick: joinWaitlist,
-    className: "w-full bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white py-3.5 rounded-2xl font-black shadow-lg"
+    className: "pt-buyin-button pt-buyin-primary"
   }, React.createElement("i", {
     className: "fa-solid fa-clock-rotate-left ml-1"
   }), " Join waitlist")), !needRebuy && onWaitlist && React.createElement("div", {
-    className: "mb-2"
+    className: "pt-buyin-waitlist"
   }, React.createElement("div", {
-    className: "text-sm text-sky-300 font-black mb-2"
-  }, "🪑 On the waitlist — player position ", myWaitPos + 1, " · ", waitlist.length, " waiting"), React.createElement('p', {className:'text-xs text-slate-400 mb-2'}, 'Keep this table open to hold your place. Your place expires after 5 minutes offline.'), React.createElement("button", {
+    className: "pt-buyin-waitlist-title"
+  }, "🪑 On the waitlist — player position ", myWaitPos + 1, " · ", waitlist.length, " waiting"), React.createElement('p', {className:'pt-buyin-notice'}, 'Keep this table open to hold your place. Your place expires after 5 minutes offline.'), React.createElement("button", {
     onClick: leaveWaitlist,
-    className: "w-full bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 py-2.5 rounded-2xl font-black"
+    className: "pt-buyin-button pt-buyin-secondary"
   }, "Leave waitlist")), !(requiresWaitlist && !needRebuy) && React.createElement("button", {
     onClick: needRebuy ? handleRebuy : handleSit,
-    className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
+    className: "pt-buyin-button pt-buyin-primary"
   }, needRebuy ? 'Do Rebuy' : 'Take a seat 🪑'), !needRebuy && React.createElement("button", {
     onClick: () => setSpectate(true),
-    className: "w-full flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 border border-gold-400/30 text-gold-400 hover:text-white py-3 rounded-2xl font-black text-sm shadow-lg mb-2"
+    className: "pt-buyin-button pt-buyin-secondary"
   }, React.createElement("i", {
     className: "fa-solid fa-eye text-base"
   }), "Spectate the table"), needRebuy && React.createElement("button", {
     onClick: handleStandUp,
-    className: "text-slate-400 hover:text-white text-xs font-bold underline"
+    className: "pt-buyin-back"
   }, "Stand up"), React.createElement("button", {
     onClick: onLeave,
-    className: "block mx-auto mt-2 text-slate-500 hover:text-white text-xs font-bold underline"
+    className: "pt-buyin-back"
   }, "Back to lobby"))));
 }
 const DURAK_TIME = 30;

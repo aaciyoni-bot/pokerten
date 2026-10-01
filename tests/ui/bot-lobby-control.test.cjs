@@ -26,49 +26,24 @@ const eligible=table('cashA');
 const user={uid:'manager',role:'manager',status:'approved'};
 const clubSettings={ownerUid:'owner',botsAuto:true};
 const render=async props=>React.act(async()=>{root.render(React.createElement(actual.BotLobbyControl,{user,clubSettings,tables:[eligible],...props}));});
-const click=async()=>React.act(async()=>document.querySelector('button').dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
 
 (async()=>{
- const choices=actual.botLobbyTemplates([table('duplicate'),eligible,table('foreign',{clubId:'elsewhere'}),table('tournament',{tournamentId:'tour'}),table('legacy',{authorityVersion:1}),table('closing',{closeRequested:true}),table('spin',{settings:{...eligible.settings,spinMode:true}}),table('small',{settings:{...eligible.settings,maxPlayers:3}})],'clubA');
- assert.equal(choices.length,1);assert.equal(choices[0].id,'cashA');
- await render({});
- assert.match(document.body.textContent,/full with a waitlist, one free seat, and two free seats/);
- assert.match(document.body.textContent,/1,?500\.00|1500\.00/,'Funding estimate is disclosed before enable');
- await click();
- assert.deepEqual(commands.at(-1),{name:'pkBotLobbyConfigure',payload:{clubId:'clubA',enabled:true,templateTableIds:['cashA']}});
- await render({tables:[],clubSettings:{...clubSettings,botLobby:{version:1,enabled:true}}});
- assert.equal(document.querySelector('button').disabled,false,'Disable never needs template tables');
- await click();
- assert.deepEqual(commands.at(-1),{name:'pkBotLobbyConfigure',payload:{clubId:'clubA',enabled:false}});
+ for(const config of [undefined,{version:1,enabled:true},{version:1,enabled:false},{version:1,enabled:true,fundingBlockedAt:1700000000000,slots:[{id:'old',profile:0,templates:[eligible.settings]}]}]){
+  await render({clubSettings:{...clubSettings,botLobby:config}});
+  assert.equal(document.querySelector('[role="status"]').textContent,'Manual only');
+  assert.match(document.body.textContent,/Deleting a table will not open a replacement/);
+  assert.equal(document.querySelectorAll('button').length,0,'Old settings cannot offer an automatic-enable control');
+ }
  await render({user:{...user,role:'agent'}});assert.equal(document.body.textContent,'');
  await render({user:{...user,status:'banned'}});assert.equal(document.body.textContent,'');
- await render({user:{uid:'owner',role:'player',status:'pending'}});assert.match(document.body.textContent,/Automatic table activity/,'Actual owner may configure');
+ await render({user:{uid:'owner',role:'player',status:'pending'}});assert.match(document.body.textContent,/Manual only/,'Actual owner sees manual-opening status');
  scope.window.fb.auth.currentUser={uid:'haim',email:'haim29071994@gmail.com',emailVerified:true};
- await render({user:{uid:'haim',role:'player',status:'pending'}});assert.match(document.body.textContent,/Automatic table activity/,'Existing verified root may configure');
+ await render({user:{uid:'haim',role:'player',status:'pending'}});assert.match(document.body.textContent,/Manual only/,'Existing verified GOD sees manual-opening status');
  scope.window.fb.auth.currentUser.emailVerified=false;
  await render({user:{uid:'haim',role:'player',status:'pending'}});assert.equal(document.body.textContent,'');
- await render({tables:[]});assert.equal(document.querySelector('button').disabled,true);
- await render({clubSettings:{...clubSettings,botsAuto:false}});assert.equal(document.querySelector('button').disabled,true);
- await render({clubSettings:{...clubSettings,botsAuto:false,botLobby:{version:1,enabled:true}}});
- assert.match(document.querySelector('[role="status"]').textContent,/Paused/);assert.equal(document.querySelector('button').disabled,false);
- await render({clubSettings:{...clubSettings,botLobby:{version:1,enabled:true,fundingBlockedAt:1700000000000}}});
- assert.match(document.querySelector('[role="status"]').textContent,/Waiting for club chips/);
- const slots = [
-  ...['NLH','Omaha 6'].flatMap(game => [.5,1,2].map((blinds,profile) => ({id:game+profile,profile,templates:[{...eligible.settings,baseGameType:game,blinds,minBuyIn:100*blinds,maxBuyIn:400*blinds}]}))),
-  ...['Omaha 4','Omaha 5','Pineapple'].map(game => ({id:game,profile:1,templates:[{...eligible.settings,baseGameType:game,maxPlayers:4,minBuyIn:50}]}))
- ];
- await render({tables:[],clubSettings:{...clubSettings,botLobby:{version:1,enabled:false,slots}}});
- assert.match(document.body.textContent,/Keeps 9 bot tables/);
- assert.match(document.body.textContent,/Texas Hold’em 2\.00\/4\.00 · min 200\.00/);
- assert.match(document.body.textContent,/Omaha 6 1\.00\/2\.00 · min 100\.00/);
- assert.match(document.body.textContent,/Omaha 4/);assert.match(document.body.textContent,/Omaha 5/);assert.match(document.body.textContent,/Pineapple/);
- assert.match(document.body.textContent,/7,?300\.00/,'Funding reflects all nine saved slots');
- assert.equal(document.querySelector('button').disabled,false,'Saved portfolio can restart after its bot tables close');
- await click();assert.deepEqual(commands.at(-1),{name:'pkBotLobbyConfigure',payload:{clubId:'clubA',enabled:true}});
- await render({});failNext=true;await click();
- assert.equal(document.querySelector('[role="alert"]').textContent,'Temporary server failure');
- assert.equal(document.querySelector('button').disabled,false,'Failed update remains retryable');
- assert.equal(document.querySelector('[role="status"]').textContent,'Off','Failure does not invent enabled state');
+ await render({tables:[],clubSettings:{...clubSettings,botsAuto:false}});
+ assert.equal(document.querySelector('[role="status"]').textContent,'Manual only');
+ assert.equal(commands.length,0,'The status panel cannot request automatic creation');
  await React.act(async()=>root.unmount());
- console.log('PASS: actual automatic-table control permissions, template isolation, request payloads, funding/paused states, disable and failed-update retry');
+ console.log('PASS: manual-only table opening status, obsolete config isolation, no automatic enable action, and manager/GOD permissions');
 })().catch(error=>{console.error(error);process.exitCode=1;});

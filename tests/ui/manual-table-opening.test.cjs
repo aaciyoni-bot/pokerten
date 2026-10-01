@@ -1,5 +1,5 @@
 'use strict';
-// Exercise the real App -> club entry -> navigation -> BackofficeView flow.
+// Exercise actual owner App snapshots: filling or deleting games opens nothing.
 // Only Firebase is simulated; no UI component or access predicate is replaced.
 const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;
@@ -8,11 +8,11 @@ const React=require('react'),ReactDOM={...require('react-dom'),...require('react
 w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');
 w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
-const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManagementAppTest=App;');
+const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManualOnlyAppTest=App;window.retiredTwin=spawnTwinTable;');
 w.eval(script);w.__pkMuted=true;
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const HAIM='haim29071994@gmail.com';
-const club={id:'main',name:'Management Regression Club',ownerUid:'owner',rakePct:6};
+const club={id:'main',name:'Manual Opening Regression Club',ownerUid:'haim-auth-uid',rakePct:6};
 const record=(id,data)=>({id,exists:()=>data!==null,data:()=>structuredClone(data),metadata:{fromCache:false}});
 const records=rows=>{const docs=rows.map(row=>record(row.id||row.uid,row));return{docs,empty:docs.length===0,size:docs.length,metadata:{fromCache:false},forEach:fn=>docs.forEach(fn)};};
 function firebaseFixture(email,membershipStatus){
@@ -22,7 +22,7 @@ function firebaseFixture(email,membershipStatus){
  const membership={id:identity.uid+'_main',uid:identity.uid,clubId:'main',username:profile.username,role:'player',status:membershipStatus,balance:25};
  const other={id:'other_main',uid:'other',clubId:'main',username:'Other human player',role:'player',status:'approved',balance:80};
  const owner={id:'owner_main',uid:'owner',clubId:'main',username:'Owner',role:'club_owner',status:'approved',balance:1000};
- const calls=[],writes=[];let tokenChanged;
+ const calls=[],writes=[],tableSubscriptions=new Set();let tokenChanged,tableRows=[];
  const ref=(_, ...parts)=>({path:parts.join('/')});
  const snapshot=target=>{
   if(target.path==='users/'+identity.uid)return record(identity.uid,profile);
@@ -30,7 +30,7 @@ function firebaseFixture(email,membershipStatus){
   if(target.path==='clubs/main')return record('main',club);
   if(target.path==='clubs')return records([club]);
   if(target.path==='memberships')return records((target.filters?.some(f=>f[0]==='uid')?[membership]:[owner,membership,other]));
-  if(target.path==='tables'||target.path==='tournaments')return records([]);
+  if(target.path==='tables')return records(tableRows);if(target.path==='tournaments')return records([]);
   return record(target.path.split('/').at(-1),null);
  };
  const denyWrite=async()=>{writes.push(1);throw Error('This access regression must never write application data');};
@@ -39,65 +39,42 @@ function firebaseFixture(email,membershipStatus){
   onAuthStateChanged:()=>{throw Error('Management must observe identity-token refreshes, not just sign-in changes');},
   doc:ref,collection:ref,where:(...filter)=>filter,query:(target,...filters)=>({...target,filters}),
   getDoc:async target=>snapshot(target),getDocs:async target=>snapshot(target),
-  onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;fn(snapshot(target));return()=>{};},
+  onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;if(target.path==='tables')tableSubscriptions.add(fn);fn(snapshot(target));return()=>tableSubscriptions.delete(fn);},
   fx:async(name,args)=>{
    calls.push({name,args});
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
    if(name==='pkClubDirectory'&&args.reportSection)return{records:[],hasMore:false,nextCursor:null};
    if(name==='pkClubDirectory')return{members:[owner,membership,other],treasury:{uid:'owner',balance:1000},securityAlerts:[],agentLog:[],gameLog:[]};
-   throw Error('Unexpected callable during management navigation: '+name);
+   throw Error('Unexpected automatic callable: '+name);
   },
   updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite
  };
- return{identity,membership,calls,writes,refresh:()=>tokenChanged(identity)};
+ return{identity,membership,calls,writes,refresh:()=>tokenChanged(identity),emitTables:rows=>{assert.ok(tableSubscriptions.size,'real App subscribes to tables');tableRows=rows;for(const fn of tableSubscriptions)fn(records(rows));}};
 }
 const manage=()=>[...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Manage')||null;
 async function mountAndEnter(fixture){
  w.localStorage.clear();
- await React.act(async()=>root.render(React.createElement(w.ManagementAppTest)));
+ await React.act(async()=>root.render(React.createElement(w.ManualOnlyAppTest)));
  await React.act(async()=>fixture.refresh());
  const enter=doc.querySelector('.blue-club-orb[role=button][aria-label^="Enter "]');
  assert.ok(enter,'the real club directory offers an authorized entry');
  await React.act(async()=>enter.click());
  assert.ok([...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Clubs'),'club entry reaches the real app navigation');
 }
-async function assertFullManagement(fixture){
- assert.ok(manage(),'verified HAIM has the top Manage button despite stale membership metadata');
- await React.act(async()=>manage().click());
- assert.ok(doc.querySelector('.club-admin'),'the Manage button opens BackofficeView');
- assert.ok(doc.getElementById('bo-settings'),'full Club Settings are mounted');
- assert.ok(doc.getElementById('bo-players'),'member management is mounted');
- assert.ok(doc.getElementById('bo-settlement'),'settlement is mounted');
- assert.match(doc.body.textContent,/Club Settings/);
- assert.match(doc.body.textContent,/Export full club report/);
- assert.match(doc.body.textContent,/Other human player/);
- assert.ok(doc.querySelector('[title="Set role and agent assignment"]'),'management includes member-role controls');
- assert.ok(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.reportSection==='securityAlerts'));
- assert.ok(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.reportSection==='gameLog'));
- assert.equal(fixture.writes.length,0,'oversight entry must not create or promote a membership');
-}
-(async()=>{
- const haim=firebaseFixture(HAIM,'pending');
- await mountAndEnter(haim);
- await assertFullManagement(haim);
- assert.equal(haim.membership.role,'player');assert.equal(haim.membership.status,'pending');
- // Revocation changes the trusted identity on the same mounted App and UID.
- haim.identity.emailVerified=false;
- await React.act(async()=>haim.refresh());
- assert.equal(manage(),null,'an unverified identity cannot retain Manage');
- assert.equal(doc.querySelector('.club-admin'),null,'revocation removes the privileged view');
- await React.act(()=>root.render(null));
 
- const ordinary=firebaseFixture('ordinary@example.invalid','approved');
- await mountAndEnter(ordinary);
- assert.equal(manage(),null,'an ordinary approved player gets no Manage button from HAIM profile name/email');
- assert.equal(doc.querySelector('.club-admin'),null);
- assert.equal(ordinary.calls.some(call=>call.name==='pkClubDirectory'),false,'ordinary club entry does not load management reports');
- // A verified identity refresh must update access without signing out/remounting.
- ordinary.identity.email=HAIM;
- await React.act(async()=>ordinary.refresh());
- await assertFullManagement(ordinary);
- assert.equal(ordinary.calls.filter(call=>call.name==='pkEnsurePlayer').length,2,'both initial login and token refresh load the effective account');
+const table=(id,count,patch={})=>({id,docId:id,clubId:'main',authorityVersion:2,type:'poker',createdAt:1,settings:{serverEngine:true,baseGameType:'NLH',blinds:1,minBuyIn:100,maxBuyIn:400,maxPlayers:6},players:Object.fromEntries(Array.from({length:count},(_,i)=>['bot_'+i,{uid:'bot_'+i,name:'Player '+i,isBot:true,stack:100,seatIndex:i}])),gameState:{phase:'waiting',handN:0,pots:[]},...patch});
+(async()=>{
+ const fixture=firebaseFixture('owner@example.test','approved');
+ await mountAndEnter(fixture);
+ assert.equal(w.__club.ownerUid,fixture.identity.uid,'the actual signed-in user owns this club');
+ for(const rows of [[table('cash',5)],[table('cash',6)],[table('cash',5)],[],[table('cash',6)],[table('spin',2,{settings:{spinMode:true,spinBuyIn:50,maxPlayers:3}})],[table('spin',3,{settings:{spinMode:true,spinBuyIn:50,maxPlayers:3},spin:{started:true}})],[]]){
+  await React.act(async()=>fixture.emitTables(rows));
+ }
+ assert.equal(fixture.calls.filter(c=>c.name==='pkTableCreate').length,0,'owner snapshot changes never create a cash or Spin twin');
+ assert.equal(fixture.writes.length,0,'lobby snapshots never write legacy table documents');
+ const before=fixture.calls.length;
+ for(const type of ['poker','durak','ofc'])await w.retiredTwin({...table('old-client-callback',6),type},true);
+ assert.equal(fixture.calls.length,before,'all retained automatic twin callbacks are inert');assert.equal(fixture.writes.length,0);
  await React.act(()=>root.unmount());w.close();
- console.log('PASS: real App club entry grants verified HAIM full management with stale membership, denies forged profile identity, and follows token refresh/revocation');
+ console.log('PASS: actual owner App available/full/deleted cash and Spin snapshots never open twins; legacy automatic callbacks are inert');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

@@ -52,11 +52,16 @@ body.poker-theme:has(.pt-theme) .cl-code{gap:7px}
 body.poker-theme:has(.pt-theme) .cl-box{width:37px;height:39px;border:1px solid #5275a0!important;border-radius:50%!important;background:#020b18!important;color:#ddebff!important;font-size:20px;box-shadow:none!important}
 body.poker-theme:has(.pt-theme) :is(.cl-box-on,.cl-box-filled){border-color:#21b9ff!important;box-shadow:0 0 10px #007aff80!important}
 body.poker-theme:has(.pt-theme) .blue-club-selection{display:flex;flex-direction:column;justify-content:center;flex:1 0 auto;min-width:0}
-body.poker-theme:has(.pt-theme) .pt-theme .cl-page:has(.cl-deck) .cl-deck{--club-card-width:clamp(242px,68vw,320px);display:flex;gap:0;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;scroll-padding:0;padding:14px calc((100% - var(--club-card-width))/2) 10px;position:relative;overscroll-behavior-x:contain;touch-action:pan-x pan-y;perspective:1000px;min-height:0;outline-offset:-4px}
-body.poker-theme:has(.pt-theme) .cl-deck::-webkit-scrollbar{display:none}
-body.poker-theme:has(.pt-theme) .pt-theme .cl-page:has(.cl-deck) .cl-card{flex:0 0 var(--club-card-width);height:var(--club-card-width);width:var(--club-card-width);padding:0;border:0!important;background:none!important;box-shadow:none!important;scroll-snap-align:center;position:relative;transform:scale(.77);opacity:.7;transition:transform .26s cubic-bezier(.2,.75,.3,1),opacity .2s;cursor:pointer;overflow:visible!important;isolation:isolate}
-body.poker-theme:has(.pt-theme) .pt-theme .cl-page:has(.cl-deck) .cl-card-active{transform:scale(1);opacity:1;border:0!important;box-shadow:none!important}
-body.poker-theme:has(.pt-theme) .blue-club-orb{width:100%;height:100%;position:relative;display:grid;place-items:center}
+body.poker-theme:has(.pt-theme) .pt-theme .cl-page:has(.cl-deck) .cl-deck{--club-card-width:clamp(242px,68vw,320px);display:block;position:relative;height:calc(var(--club-card-width) + 28px);min-height:0;width:100%;padding:0;overflow:hidden;scroll-snap-type:none;touch-action:pan-y pinch-zoom;user-select:none;cursor:grab;outline-offset:-4px}
+body.poker-theme:has(.pt-theme) .cl-deck.is-dragging{cursor:grabbing}
+body.poker-theme:has(.pt-theme) .cl-deck:focus-visible{outline:2px solid #38c6ff;outline-offset:-5px;border-radius:22px}
+body.poker-theme:has(.pt-theme) .cl-deck:focus:not(:focus-visible){outline:none}
+body.poker-theme:has(.pt-theme) .cl-carousel-camera{position:absolute;inset:0;perspective:1000px;perspective-origin:50% 50%;transform-style:preserve-3d;overflow:visible}
+body.poker-theme:has(.pt-theme) .cl-carousel-axis{position:absolute;inset:0;transform-style:preserve-3d;will-change:transform}
+body.poker-theme:has(.pt-theme) .pt-theme .cl-page:has(.cl-deck) .cl-card{height:var(--club-card-width);width:var(--club-card-width);position:absolute;top:50%;left:50%;margin:calc(-.5 * var(--club-card-width));padding:0;border:0!important;background:none!important;box-shadow:none!important;transform-style:preserve-3d;opacity:1;transition:none;cursor:inherit;overflow:visible!important;isolation:auto;scroll-snap-align:none}
+body.poker-theme:has(.pt-theme) .pt-theme .cl-page:has(.cl-deck) .cl-card-active{border:0!important;box-shadow:none!important}
+body.poker-theme:has(.pt-theme) .blue-club-orb{width:100%;height:100%;position:relative;display:grid;place-items:center;transform-style:preserve-3d;will-change:transform}
+body.poker-theme:has(.pt-theme) .blue-club-details .cl-cta:disabled{opacity:.65;cursor:wait}
 body.poker-theme:has(.pt-theme) .blue-orb-skin{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
 body.poker-theme:has(.pt-theme) .blue-orb-content{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:70%;text-align:center;padding-top:4px}
 body.poker-theme:has(.pt-theme) .blue-club-logo{width:62px;height:62px;object-fit:contain;border-radius:12px}
@@ -205,3 +210,7 @@ body.poker-theme .blue-launch-icon{width:112px;height:112px;object-fit:contain;d
 body.poker-theme .blue-launch p{font-size:15px;line-height:1.7}
 body.poker-theme:has(.pt-theme) .auth-card .blue-auth-icon{display:block;width:88px;height:88px;object-fit:contain;margin:0 auto 14px;border-radius:20px}
 @media(prefers-reduced-motion:reduce){body.poker-theme #orizis-intro,body.poker-theme #orizis-intro *{animation:none!important;transition:none!important;opacity:1}}
+
+/* Reserve one identical information lane through every orbital selection. */
+body.poker-theme:has(.pt-theme) .blue-club-details :is(.cl-balance,.blue-create-description){height:64px;min-height:64px;margin:0 0 15px!important;box-sizing:border-box}
+body.poker-theme:has(.pt-theme) .blue-club-details .blue-create-description{display:flex;align-items:center;justify-content:center}

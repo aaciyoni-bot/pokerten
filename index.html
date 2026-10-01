@@ -1107,7 +1107,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
 <link rel="stylesheet" href="assets/css/approved-game-design.css?v=292">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
-<link rel="stylesheet" href="assets/css/club-blue.css?v=294">
+<link rel="stylesheet" href="assets/css/club-blue.css?v=295">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
 <link rel="stylesheet" href="assets/css/tournament-blue.css?v=294">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
@@ -5402,6 +5402,122 @@ const clubCode = id => {
   for (const ch of String(id || '')) h = h * 31 + ch.charCodeAt(0) >>> 0;
   return String(100000 + h % 900000);
 };
+const ClubRotaryCarousel = React.forwardRef(function ClubRotaryCarousel({items, activeIndex, onChange, onMovingChange, renderCard}, apiRef) {
+  const count = items.length;
+  // Repeated visual slots prevent a two-club cylinder from hiding its only
+  // neighbour behind the axis. Dots, selection and entry remain one per item.
+  const slots = count <= 1 ? 1 : count < 6 ? count * Math.ceil(6 / count) : count;
+  const step = count <= 1 ? 0 : 360 / slots;
+  const radiusFactor = count <= 1 ? 0 : 1 / (2 * Math.tan(Math.PI / slots));
+  const [position, setPosition] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const positionRef = useRef(0), targetRef = useRef(0), frameRef = useRef(0);
+  const gesture = useRef(null), suppressClickUntil = useRef(0), moving = useRef(false);
+  const callbacks = useRef({onChange, onMovingChange});
+  callbacks.current = {onChange, onMovingChange};
+  const wrap = value => ((value % count) + count) % count;
+  const move = value => { positionRef.current = value; setPosition(value); };
+  const cancelFrame = () => { if (frameRef.current) cancelAnimationFrame(frameRef.current); frameRef.current = 0; };
+  const markMoving = value => { if (moving.current !== value) { moving.current = value; callbacks.current.onMovingChange?.(value); } };
+  const settle = target => {
+    cancelFrame(); targetRef.current = target; move(target); setDragging(false);
+    callbacks.current.onChange(wrap(Math.round(target))); markMoving(false);
+  };
+  const settleRef = useRef(settle); settleRef.current = settle;
+  const rotateTo = target => {
+    if (count <= 1) target = 0;
+    cancelFrame(); targetRef.current = target; setDragging(false);
+    const start = positionRef.current, distance = target - start;
+    if (count <= 1 || Math.abs(distance) < .001 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { settle(target); return; }
+    markMoving(true);
+    let began;
+    const tick = now => {
+      if (began === undefined) began = now;
+      const progress = Math.min(1, (now - began) / 420);
+      move(start + distance * (1 - Math.pow(1 - progress, 3)));
+      if (progress < 1) frameRef.current = requestAnimationFrame(tick); else settleRef.current(target);
+    };
+    frameRef.current = requestAnimationFrame(tick);
+  };
+  const select = index => {
+    const start = Math.round(positionRef.current), current = wrap(start);
+    let delta = wrap(index - current);
+    if (delta > count / 2) delta -= count;
+    rotateTo(start + delta);
+  };
+  React.useImperativeHandle(apiRef, () => ({select}), [count, step]);
+  const scope = items.map(item => (item.c?.id || 'create') + ':' + item.kind).join('|');
+  React.useLayoutEffect(() => {
+    cancelFrame(); gesture.current = null; positionRef.current = 0; targetRef.current = 0;
+    setPosition(0); setDragging(false); callbacks.current.onChange(0); markMoving(false);
+  }, [scope]);
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const changed = () => { if (media.matches && moving.current) settleRef.current(targetRef.current); };
+    media.addEventListener?.('change', changed);
+    return () => { cancelFrame(); media.removeEventListener?.('change', changed); };
+  }, []);
+  const endGesture = (event, cancelled = false) => {
+    const drag = gesture.current;
+    if (!drag || drag.id !== event.pointerId) return;
+    gesture.current = null;
+    if (!drag.horizontal) return;
+    suppressClickUntil.current = Date.now() + 300;
+    try { event.currentTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
+    const momentum = cancelled ? 0 : Math.max(-1.5, Math.min(1.5, drag.velocity || 0)) * 90 / drag.pixels;
+    rotateTo(Math.round(positionRef.current - momentum));
+  };
+  return React.createElement('div', {
+    className:'cl-deck cl-deck-rotary' + (dragging ? ' is-dragging' : ''), dir:'ltr', role:'region',
+    'aria-roledescription':'carousel', 'aria-label':'Your clubs', 'aria-busy':moving.current,
+    'data-position':position, tabIndex:0,
+    style:{'--club-radius':count <= 1 ? '0px' : `max(200px, calc(var(--club-card-width) * ${radiusFactor}))`},
+    onKeyDown:event => {
+      if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+      event.preventDefault();
+      if (event.key === 'Home' || event.key === 'End') select(event.key === 'Home' ? 0 : count - 1);
+      else rotateTo(Math.round(positionRef.current) + (event.key === 'ArrowRight' ? 1 : -1));
+    },
+    onPointerDown:event => {
+      if (count <= 1 || event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      gesture.current = {id:event.pointerId,x:event.clientX,y:event.clientY,start:positionRef.current,lastX:event.clientX,lastAt:event.timeStamp,velocity:0,horizontal:false,pixels:Math.max(120,Math.min(220,event.currentTarget.clientWidth*.45))};
+    },
+    onPointerMove:event => {
+      const drag = gesture.current;
+      if (!drag || drag.id !== event.pointerId) return;
+      const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
+      if (!drag.horizontal) {
+        if (Math.abs(dy) > 8 && Math.abs(dy) >= Math.abs(dx)) { gesture.current = null; return; }
+        if (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(dy)) return;
+        drag.horizontal = true; drag.start = positionRef.current; cancelFrame(); setDragging(true); markMoving(true);
+        try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
+      }
+      event.preventDefault();
+      const elapsed = event.timeStamp - drag.lastAt;
+      if (elapsed > 0) drag.velocity = (event.clientX - drag.lastX) / elapsed;
+      drag.lastX = event.clientX; drag.lastAt = event.timeStamp;
+      move(drag.start - dx / drag.pixels);
+    },
+    onPointerUp:event => endGesture(event), onPointerCancel:event => endGesture(event,true),
+    onClickCapture:event => { if (Date.now() < suppressClickUntil.current) { event.preventDefault(); event.stopPropagation(); } }
+  }, React.createElement('div',{className:'cl-carousel-camera'},
+    React.createElement('div',{className:'cl-carousel-axis',style:{transform:`translateZ(calc(-1 * var(--club-radius))) rotateY(${-position * step}deg)`}},
+      Array.from({length:slots},(_,slot) => {
+        const index = slot % count, item = items[index];
+        let offset = ((slot - position + slots / 2) % slots + slots) % slots - slots / 2;
+        const depth = Math.cos(offset * step * Math.PI / 180);
+        const visible = Math.abs(offset) <= 2.05 && depth > -.01;
+        const front = Math.abs(offset) < .01;
+        const nearestTarget = slot + Math.round((positionRef.current - slot) / slots) * slots;
+        return React.createElement('div',{
+          key:slot, className:'cl-card'+(front&&index===activeIndex?' cl-card-active':'')+(item.kind==='create'?' cl-card-create':''),
+          'data-item-index':index,'data-visual-copy':slot>=count?'true':'false','data-front':front?'true':'false',
+          'aria-hidden':true, style:{transform:`rotateY(${slot * step}deg) translateZ(var(--club-radius))`,pointerEvents:visible?'auto':'none'},
+          onClick:()=>rotateTo(nearestTarget)
+        }, React.createElement('div',{className:'blue-club-orb',style:{transform:`rotateY(${(position - slot) * step}deg)`,opacity:visible?.65+.35*Math.max(0,depth):0}},renderCard(item)));
+      }))));
+});
+
 function ClubsView({
   user,
   clubs,
@@ -5414,17 +5530,11 @@ function ClubsView({
   const [creating, setCreating] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [slide, setSlide] = useState(0);
+  const [carouselBusy, setCarouselBusy] = useState(false);
   const deckRef = useRef(null);
   const [lastClubId] = useState(() => {
     try { return localStorage.getItem('pkLastClub_' + user.uid) || ''; } catch (_) { return ''; }
   });
-  React.useLayoutEffect(() => {
-    if (!directoryReady || !deckRef.current) return;
-    // The Create card used to be the sole snap target before memberships
-    // arrived. Mount the complete deck, then start at the preferred club.
-    deckRef.current.scrollTo?.({left: 0, behavior: 'auto'});
-    setSlide(0);
-  }, [directoryReady, user.uid]);
   // member counts for the card stat pills (one query, cached per club)
   const [memCounts, setMemCounts] = useState({});
   useEffect(() => {
@@ -5809,29 +5919,23 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     const deck = [...myClubs.map(c=>({c,kind:'mine'})),...pendingClubs.map(c=>({c,kind:'pending'})),{kind:'create'}];
     const selected = deck[Math.min(slide,deck.length-1)];
     const selectedMem = selected.c && memOf(selected.c.id);
-    const moveTo = ix => {
-      const el=deckRef.current, card=el?.children[ix];
-      if(card)el.scrollTo({left:card.offsetLeft-(el.clientWidth-card.offsetWidth)/2,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
-    };
+    const moveTo = ix => deckRef.current?.select(ix);
     return React.createElement('section',{className:'blue-club-selection','aria-label':'Choose a club'},
-      React.createElement('div',{className:'cl-deck',ref:deckRef,dir:'ltr',role:'region','aria-roledescription':'carousel','aria-label':'Your clubs',tabIndex:0,
-        onKeyDown:e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();moveTo(e.key==='Home'?0:e.key==='End'?deck.length-1:Math.max(0,Math.min(deck.length-1,slide+(e.key==='ArrowRight'?1:-1))));}},
-        onScroll:e=>{const el=e.currentTarget;const center=el.getBoundingClientRect().left+el.clientWidth/2;let ix=0,distance=Infinity;Array.from(el.children).forEach((card,i)=>{const r=card.getBoundingClientRect();const d=Math.abs(r.left+r.width/2-center);if(d<distance){ix=i;distance=d;}});if(ix!==slide)setSlide(ix);}},
-        deck.map((d,ix)=>React.createElement('div',{key:d.c?.id||'create',className:'cl-card'+(ix===slide?' cl-card-active':'')+(d.kind==='create'?' cl-card-create':''),'aria-label':d.c?.name||'Create club',onClick:()=>moveTo(ix)},
-          React.createElement('div',{className:'blue-club-orb'},
-            React.createElement('img',{className:'blue-orb-skin',src:'assets/brand/club-sphere-blue.webp',alt:'',draggable:false,decoding:'async'}),
-            React.createElement('div',{className:'blue-orb-content'},
-              d.c?.logo && React.createElement('img',{className:'blue-club-logo',src:d.c.logo,alt:'',draggable:false,decoding:'async'}),
-              d.kind==='create' ? React.createElement('i',{className:'fa-solid fa-plus blue-create-icon','aria-hidden':true}) : null,
-              React.createElement('strong',{className:'cl-name'},d.c?.name||'Your own club'),
-              React.createElement('span',{className:'cl-id'},d.c?'ID '+clubCode(d.c.id):'Create. Invite. Play.'),
-              d.c && React.createElement('span',{className:'blue-member-count'},React.createElement('i',{className:'fa-solid fa-users','aria-hidden':true}),' ',clubMemberCount(d.c.id)||'—',' members'),
-              d.c?.ownerUid===user.uid && React.createElement('span',{className:'cl-owner'},'YOURS')))))),
+      React.createElement(ClubRotaryCarousel,{ref:deckRef,items:deck,activeIndex:slide,onChange:setSlide,onMovingChange:setCarouselBusy,renderCard:d=>React.createElement(React.Fragment,null,
+        React.createElement('img',{className:'blue-orb-skin',src:'assets/brand/club-sphere-blue.webp',alt:'',draggable:false,decoding:'async'}),
+        React.createElement('div',{className:'blue-orb-content'},
+          d.c?.logo && React.createElement('img',{className:'blue-club-logo',src:d.c.logo,alt:'',draggable:false,decoding:'async'}),
+          d.kind==='create' ? React.createElement('i',{className:'fa-solid fa-plus blue-create-icon','aria-hidden':true}) : null,
+          React.createElement('strong',{className:'cl-name'},d.c?.name||'Your own club'),
+          React.createElement('span',{className:'cl-id'},d.c?'ID '+clubCode(d.c.id):'Create. Invite. Play.'),
+          d.c && React.createElement('span',{className:'blue-member-count'},React.createElement('i',{className:'fa-solid fa-users','aria-hidden':true}),' ',clubMemberCount(d.c.id)||'—',' members'),
+          d.c?.ownerUid===user.uid && React.createElement('span',{className:'cl-owner'},'YOURS')))}),
       React.createElement('div',{className:'blue-club-details','aria-live':'polite','aria-atomic':true},
+        React.createElement('span',{className:'sr-only'},selected.c?.name || 'Create club'),
         selected.kind==='create' ? React.createElement('p',{className:'blue-create-description'},'Bring your players together in your own club.') : React.createElement('div',{className:'cl-balance'},React.createElement('span',{className:'cl-balance-label'},'YOUR BALANCE'),React.createElement('strong',{className:'cl-balance-amount',dir:'ltr'},selectedMem && Number.isFinite(selectedMem.balance)?formatMoney(selectedMem.balance):'—')),
-        selected.kind==='pending' ? React.createElement('div',{className:'cl-cta cl-cta-wait'},React.createElement('i',{className:'fa-solid fa-hourglass-half','aria-hidden':true}),' Pending approval') : React.createElement('button',{type:'button',className:'cl-cta',onClick:()=>selected.kind==='create'?setCreateOpen(true):onEnter(selected.c)},selected.kind==='create'?'Create club':'Enter club',React.createElement('i',{className:'fa-solid fa-chevron-right','aria-hidden':true}))),
+        selected.kind==='pending' ? React.createElement('div',{className:'cl-cta cl-cta-wait'},React.createElement('i',{className:'fa-solid fa-hourglass-half','aria-hidden':true}),' Pending approval') : React.createElement('button',{type:'button',className:'cl-cta',disabled:carouselBusy,'aria-busy':carouselBusy,onClick:()=>selected.kind==='create'?setCreateOpen(true):onEnter(selected.c)},selected.kind==='create'?'Create club':'Enter club',React.createElement('i',{className:'fa-solid fa-chevron-right','aria-hidden':true}))),
       React.createElement('div',{className:'cl-dots'},deck.map((d,ix)=>React.createElement('button',{key:ix,type:'button',onClick:()=>moveTo(ix),'aria-label':d.kind==='create'?'Show Create Club':'Show '+d.c.name,'aria-current':ix===slide?'true':undefined,className:'cl-dot'+(ix===slide?' cl-dot-on':'')},d.kind==='create'?React.createElement('i',{className:'fa-solid fa-plus','aria-hidden':true}):null))),
-      selected.kind!=='create' && React.createElement('button',{className:'blue-create-club',type:'button',onClick:()=>setCreateOpen(true)},React.createElement('i',{className:'fa-solid fa-circle-plus','aria-hidden':true}), 'Create club'));
+      React.createElement('button',{className:'blue-create-club',type:'button',style:{visibility:selected.kind==='create'?'hidden':undefined},'aria-hidden':selected.kind==='create'?true:undefined,tabIndex:selected.kind==='create'?-1:undefined,onClick:()=>setCreateOpen(true)},React.createElement('i',{className:'fa-solid fa-circle-plus','aria-hidden':true}), 'Create club'));
   })(), joinFor && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[300] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",

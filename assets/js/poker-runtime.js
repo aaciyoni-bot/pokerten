@@ -52,6 +52,15 @@
       (mode === 'suit' ? suit(cards[a]) - suit(cards[b]) : 0) ||
       rank(cards[b]) - rank(cards[a]) || suit(cards[a]) - suit(cards[b]) || a - b);
   }
+  // Keep in sync with functions/godPeek.js. Never use betting/presence sequence
+  // numbers here: only a change to the cards/board invalidates a private peek.
+  function godCardContext(table) {
+    const g = table?.gameState || {}, players = table?.players || {};
+    return JSON.stringify([Number(table?.handCount) || 0, Number(g.handN) || 0, g.phase || '', g.currentGameType || '',
+      (g.board || []).map(c => [c.val, c.suit]),
+      Object.keys(players).filter(uid => (players[uid]?.cardCount || 0) > 0).sort()
+        .map(uid => [uid, players[uid].cardCount])]);
+  }
   function deckFour(storage) {
     try { return storage.getItem('pkDeck4') === '1'; } catch (_) { return false; }
   }
@@ -169,7 +178,7 @@
       events?.removeEventListener?.('online', resume);
     };
   }
-  const api = { handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
+  const api = { godCardContext, handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PokerRuntime = api;
 })(typeof window !== 'undefined' ? window : globalThis);

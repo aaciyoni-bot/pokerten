@@ -1663,39 +1663,7 @@ exports.pkDiscard = onCall(CALL_OPTS, async (request) => {
 exports.godLobbyCounts = require("./godLobby").createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS});
 
 // godPeek — protocol §3.9. GOD accounts only: all hands + the coming runout.
-exports.godPeek = onCall(CALL_OPTS, async (request) => {
-  authedUid(request);
-  if (!isGodAuth(request.auth)) {
-    throw new HttpsError("permission-denied", "Not allowed");
-  }
-  const id = reqTableId(request);
-  const tSnap = await tRef(id).get();
-  if (!tSnap.exists) throw new HttpsError("not-found", "Table not found");
-  const t = tSnap.data();
-  const pl = t.players || {};
-  const uids = Object.keys(pl).filter((uid) => (pl[uid].cardCount || 0) > 0);
-  const [engSnap, ...cardSnaps] = await Promise.all([
-    privRef(id, "_engine").get(),
-    ...uids.map((uid) => privRef(id, uid).get()),
-  ]);
-  const hands = {};
-  cardSnaps.forEach((s, i) => {
-    if (s.exists && (s.data().cards || []).length) hands[uids[i]] = s.data().cards;
-  });
-  // simulate the exact upcoming pops (burn + street) without mutating
-  const board = ((t.gameState || {}).board || []);
-  const deck = engSnap.exists ? [...(engSnap.data().deck || [])] : [];
-  const finalBoard = [...board];
-  if (board.length === 0 && deck.length >= 4) {
-    deck.pop();
-    finalBoard.push(deck.pop(), deck.pop(), deck.pop());
-  }
-  while (finalBoard.length < 5 && deck.length >= 2) {
-    deck.pop();
-    finalBoard.push(deck.pop());
-  }
-  return {hands, finalBoard: finalBoard.length === 5 ? finalBoard : []};
-});
+exports.godPeek = require("./godPeek").createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS});
 
 // admFixGameLog — protocol §3.10: delete duplicate gameLog docs for a club.
 exports.admFixGameLog = onCall(CALL_OPTS, async (request) => {

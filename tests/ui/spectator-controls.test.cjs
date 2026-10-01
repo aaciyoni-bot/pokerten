@@ -27,7 +27,7 @@ const menu=async()=>React.act(()=>byTitle('Table menu').click());
  }
  assert.equal(newTables,3);
  w.fb.auth.currentUser={uid:'viewer',email:'aaci.yoni@gmail.com',emailVerified:true};
- const baseFx=w.fb.fx,board=['A','K','Q','J','10'].map(val=>({val,suit:'♠'}));w.fb.fx=(name,args)=>name==='godPeek'?Promise.resolve({hands:{},finalBoard:board}):baseFx(name,args);
+ const baseFx=w.fb.fx,board=['A','K','Q','J','10'].map(val=>({val,suit:'♠'}));w.fb.fx=(name,args)=>name==='godPeek'?Promise.resolve({tableId:args.tableId,contextKey:args.contextKey,hands:{},finalBoard:board}):baseFx(name,args);
  current.gameState={phase:'preflop',activeTurnUid:'other',turnStartedAt:Date.now(),highestBet:2,minRaise:2,handN:1,__seq:2,pots:[],board:[]};current.players={other:{uid:'other',name:'Other',isBot:false,stack:98,bet:2,cards:[],cardCount:2,status:'active',seatIndex:3},bot:{uid:'bot',name:'Robot',isBot:true,stack:100,bet:0,cards:[],cardCount:2,status:'active',seatIndex:1}};
  const kindBadges=()=>doc.querySelectorAll('.poker-god-player-kind');
  await render('player');await render('super_admin');const watch=[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table');if(watch)await React.act(()=>watch.click());

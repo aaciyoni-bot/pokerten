@@ -608,14 +608,10 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 /* Two cards and Pineapple discard are deliberately spread, not overlapped. */
 .poker-room .poker-seat-hero[data-hole-count="2"]{--poker-fan-span:calc(var(--poker-fan-width) * 2 + 4px)}
 .poker-room .poker-seat-hero[data-cards-spread="true"][data-hole-count="3"]{--poker-fan-span:calc(var(--poker-fan-width) * 3 + 8px)}
-/* With eight or nine seats, centre the local seat in the only empty bottom lane. */
-.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat-hero{left:calc(50% - var(--poker-hero-size,64px) / 2)!important}
-
-/* A centred dense-table hero needs a clear nameplate lane through the dock.
-   Keep strength at the sides and return turn text to the dock's footer row. */
-.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-hand-status{justify-content:space-between;gap:8px}
-.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-hand-status>span{max-width:calc(50% - 44px);min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-action-meta [role="status"]{position:static;left:auto;top:auto;transform:none;width:auto;max-width:none;min-width:0;line-height:14px}
-
 /* Wide tables leave the top bets above the next seat's enlarged card fan. */
 @media(min-width:700px) and (min-height:721px){.poker-room .poker-bet[data-bet-row="top"]{translate:0 -14px}}
+
+/* One lower-left anchor for the local player at every table capacity. */
+.poker-room{--poker-hero-bet-x:28%;--poker-hero-bet-y:calc(100% - var(--poker-hero-bottom) - var(--poker-hero-size,64px) - 24px)}
+.poker-room.is-seated .poker-hand-status{justify-content:flex-start;gap:6px;direction:ltr;padding-left:8px;position:relative;left:auto;right:auto;top:auto;bottom:auto;transform:none}
+.poker-room.is-seated .poker-hand-status>span{flex:0 1 auto;max-width:none;white-space:nowrap}

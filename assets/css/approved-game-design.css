@@ -648,8 +648,10 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 .poker-room.is-god-view>.poker-god-runout>div{display:flex;flex-direction:column;gap:3px}
 .poker-room.is-god-view>.poker-god-runout>div>span{font-size:11px;line-height:13px}
 .poker-room.is-god-view>.poker-god-runout .card-face{width:36px!important;height:50.4px!important;min-height:50.4px!important}
-.poker-room.is-god-view .poker-seat:not(.poker-seat-hero){--poker-fan-width:clamp(34px,10cqw,44px);--poker-fan-overlap:-.4}
-.poker-room.is-god-view .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat:not(.poker-seat-hero){--poker-fan-width:clamp(32px,9.5cqw,40px);--poker-fan-overlap:-.42}
+/* Publicly revealed hands get the same readable size as authorized GOD hands.
+   This selector only styles faces already rendered by the visibility rules. */
+.poker-room .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand){--poker-fan-width:clamp(34px,10cqw,44px);--poker-fan-overlap:-.4;--poker-fan-span:calc(var(--poker-fan-width) * (1 + (var(--poker-card-count,2) - 1) * .6))}
+.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand){--poker-fan-width:clamp(32px,9.5cqw,40px);--poker-fan-overlap:-.42;--poker-fan-span:calc(var(--poker-fan-width) * (1 + (var(--poker-card-count,2) - 1) * .58))}
 .poker-room.is-god-view .poker-seat[data-seat-row="top"]{margin-top:30px}
 @media(max-width:350px){.poker-room.is-god-view>.poker-god-runout{left:52px;right:4px;gap:5px;padding:4px}.poker-room.is-god-view>.poker-god-runout .card-face{width:33px!important;height:46.2px!important;min-height:46.2px!important}}
 

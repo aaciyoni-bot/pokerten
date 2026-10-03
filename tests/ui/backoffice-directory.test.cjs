@@ -56,9 +56,9 @@ const requestCard=name=>[...doc.querySelectorAll('button')].filter(b=>b.textCont
  await React.act(async()=>button('Retry member list').click());
  assert.match(doc.body.textContent,/Join requests \(3\)/);
  assert.ok(requestCard('New Alice'));
- assert.match(doc.body.textContent,/Could not refresh commissions and security alerts.*internal/);
- assert.match(doc.body.textContent,/לא ניתן לטעון את נתוני ההתחשבנות.*internal/);
- assert.match(doc.body.textContent,/Club rake \(verified humans\)…/,'failed optional totals are unknown rather than fabricated zero');
+ assert.match(doc.body.textContent,/Could not refresh security alerts.*internal/);
+ assert.doesNotMatch(doc.body.textContent,/Weekly Settlement/,'settlement is no longer mounted in management');
+ assert.doesNotMatch(doc.body.textContent,/Club rake \(verified humans\)/,'financial totals are separate from management');
  assert.doesNotMatch(doc.body.textContent,/SECRET/);
 
  const approve=requestCard('New Alice').querySelector('button');

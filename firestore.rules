@@ -265,6 +265,10 @@ service cloud.firestore {
     // the unified-shell rework, alongside fleet_.
     match /d1_data/{doc}      { allow read, write: if signedIn(); }
 
+    // Settlement responses are field-filtered and role-scoped by callables.
+    // No browser (including an owner) reads raw terms, counters or journals.
+    match /settlementClubs/{document=**} { allow read, write: if false; }
+
     // Anything not explicitly matched above — denied.
     match /{document=**}     { allow read, write: if false; }
   }

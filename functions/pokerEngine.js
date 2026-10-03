@@ -669,6 +669,7 @@ function settleAfterHand(S, rake, winnerUids) {
     })),
   };
   S.table.history = [...(S.table.history || []), hist].slice(-100);
+  if(!S.tor)S.effects.push({type:'settlementHands',entries:dealt.filter(p=>!p.isBot).map(p=>({uid:p.uid,hands:1,tableName:S.raw?.name||S.settings.name||S.id,gameType:g.currentGameType||S.settings.pokerType||'poker'}))});
   if (rake > 0) {
     S.effects.push({type: "rake", rake, allocations: require('./pokerRake').allocateRake(rake,dealt)});
   }

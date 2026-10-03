@@ -108,3 +108,10 @@ test('raw rake receipts cannot be read by players, owners or forged GOD claims',
  const god=env.authenticatedContext('verified-admin',{email:'aaci.yoni@gmail.com',email_verified:true}).firestore();
  await assertSucceeds(getDoc(doc(god,'gameLog/log')));
 });
+
+
+test("settlement journal, terms, balances and statements have no direct client access",async()=>{
+ const paths=['settlementClubs/club','settlementClubs/club/terms/player','settlementClubs/club/sessions/hand','settlementClubs/club/cycles/cycle_1','settlementClubs/club/activationBalances/player','settlementClubs/club/payments/payment'];
+ await env.withSecurityRulesDisabled(async ctx=>{for(const p of paths)await setDoc(doc(ctx.firestore(),p),{uid:'player',rake:100,agentPct:70});});
+ for(const uid of ['player','other','owner','agent']){const db=env.authenticatedContext(uid,{email:uid+'@example.test',email_verified:true}).firestore();for(const p of paths){await assertFails(getDoc(doc(db,p)));await assertFails(setDoc(doc(db,p),{rake:0}));}await assertFails(getDocs(collection(db,'settlementClubs/club/sessions')));}
+});

@@ -1175,6 +1175,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
     <script src="assets/js/poker-auth.js?v=265"></script>
     <script src="assets/js/club-ui.js?v=1"></script>
+    <link rel="stylesheet" href="assets/css/settlement.css?v=303">
+    <script src="assets/js/poker-settlement-ui.js?v=303"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=286"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
@@ -4601,14 +4603,14 @@ function App() {
     onJoinDurak: t => changeView('durak-table', t),
     onJoinOfc: t => changeView('ofc-table', t),
     onCreatePoker: () => changeView('poker-create'),
-    onSettlement: () => changeView(canOpenBackoffice(effUser) ? 'settlement' : 'profile'),
+    onSettlement: () => changeView('settlement'),
     showToast: showToast
-  }), currentView === 'settlement' && activeClub && canOpenBackoffice(effUser) && React.createElement('div', {className:'club-admin scrollable-content aurora-bg p-4 sm:p-6'},
+  }), currentView === 'settlement' && activeClub && React.createElement('div', {className:'club-admin scrollable-content aurora-bg p-4 sm:p-6'},
     React.createElement('div', {className:'max-w-6xl mx-auto'},
       React.createElement('div', {className:'flex items-center justify-between gap-3 mb-5'},
-        React.createElement('h2', {className:'text-xl font-black text-white'}, 'Club settlement'),
+        React.createElement('h2', {className:'text-xl font-black text-white'}, 'מידע והתחשבנות'),
         React.createElement('button', {type:'button', onClick:() => changeView('lobby'), className:'btn-outline rounded-xl px-4 py-2'}, 'Back to lobby')),
-      React.createElement(SettlementSection, {user:effUser,showToast}))), currentView === 'profile' && activeClub && React.createElement(ProfileView, {
+      React.createElement(window.PokerSettlement.Settlement, {user:effUser,clubId:CLUB_ID,call:pokerCommand,showToast}))), currentView === 'profile' && activeClub && React.createElement(ProfileView, {
     user: effUser,
     onBack: () => changeView('lobby'),
     showToast: showToast
@@ -7213,7 +7215,7 @@ function LobbyView({
     onClick: () => { setCashierOpen(false); onSettlement?.(); },
     "aria-label": canOpenBackoffice(user) ? "Club settlement" : "My results",
     className: "w-full bg-slate-900 border border-emerald-500/40 text-emerald-300 py-3 rounded-2xl font-black mb-3 flex items-center justify-center gap-2"
-  }, canOpenBackoffice(user) ? "📊 Club settlement" : "📊 My results"), React.createElement("button", {
+  }, "📊 מידע והתחשבנות"), React.createElement("button", {
     onClick: () => setCashierOpen(false),
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Close"))), document.body), React.createElement("div", {
@@ -8942,32 +8944,7 @@ function BackofficeView({
   };
   const [search, setSearch] = useState('');
   const [memberSort,setMemberSort]=useState('name');
-  const [accounting,setAccounting]=useState(null);
-  const [accountingError,setAccountingError]=useState('');
-  const [accountingAttempt,setAccountingAttempt]=useState(0);
-  const canSeeRake=isGodUser(user);
-  const accountingReady=accounting?.scope===directoryScope;
-  useEffect(()=>{
-    setAccounting(null);setAccountingError('');
-    if(!directoryLoaded)return;
-    let stopped=false,busy=false;
-    const load=async()=>{
-      if(busy)return;busy=true;
-      try{const report=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},directoryScope);
-        if(!report.accounting?.players)throw new Error('Accounting unavailable');
-        if(!stopped){setAccounting({...report.accounting,scope:directoryScope});setAccountingError('');}
-      }catch(e){if(!stopped)setAccountingError(clubRequestError(e,'לא ניתן לרענן תוצאות למחזור.'));}
-      finally{busy=false;}
-    };
-    load();const interval=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
-    return()=>{stopped=true;clearInterval(interval);window.removeEventListener('pk-club-changed',load);};
-  },[directoryScope,directoryLoaded,accountingAttempt]);
-  const accountNumbers=(value,balance)=>React.createElement('div',{className:'management-account-numbers'},
-    React.createElement('div',{dir:'ltr',className:'management-account-line'},
-      React.createElement(Coin,{amount:value?.balance??balance??0,className:'club-member-balance text-sm',title:'Current balance'}),
-      React.createElement('strong',{className:value?.result<0?'text-rose-400':'text-emerald-400','data-cycle-result':value?.result,title:'תוצאה במחזור, כולל סשנים פתוחים'},value?`(${value.result>0?'+':''}${formatMoney(value.result)})`:'(…)')),
-    value?.onTables>0&&React.createElement('small',null,'בשולחנות: ',formatMoney(value.onTables),' · סה״כ צ׳יפים: ',formatMoney(value.chips)),
-    canSeeRake&&accounting?.rakeVisible&&React.createElement('small',{'data-cycle-rake':value?.rake,className:'text-amber-300'},'רייק במחזור: ',value?formatMoney(value.rake):'…'));
+  const accountNumbers=(value,balance)=>React.createElement(Coin,{amount:balance??0,className:'club-member-balance text-sm',title:'Current balance'});
 
   const [memFilter, setMemFilter] = useState('all'); // members directory: All / Agents / Managers / Banned
   const [roleEditUser, setRoleEditUser] = useState(null);
@@ -9076,19 +9053,12 @@ function BackofficeView({
       if(busy)return;
       busy=true;setActivityLoading(true);
       try{
-        const result=await loadClubDirectoryReport({clubId:CLUB_ID,includeSecurity:canManageClub(user)},directoryScope);
+        const result=canManageClub(user)?await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,reportSection:'securityAlerts',pageSize:200},directoryScope):{records:[]};
         if(stopped)return;
-        setSecAlerts((result.securityAlerts||[]).sort((a,b)=>(b.at||0)-(a.at||0)));
-        const cycle=cycleStartIL(0),totals={},verified={club:0,agents:{}};
-        for(const e of result.agentLog||[]){
-          if(e.accountingVersion!==2||e.rakeSource!=='human')continue;
-          const amount=Number(e.amount)||0;
-          if(e.kind==='club')verified.club=round2(verified.club+amount);
-          else if(e.agentUid){verified.agents[e.agentUid]=round2((verified.agents[e.agentUid]||0)+amount);if(e.at>=cycle)totals[e.agentUid]=round2((totals[e.agentUid]||0)+amount);}
-        }
-        setAgentCycle(totals);setRakeTotals(verified);setLoadedActivityScope(directoryScope);setActivityError('');
+        setSecAlerts((result.records||[]).sort((a,b)=>(b.at||0)-(a.at||0)));
+        setLoadedActivityScope(directoryScope);setActivityError('');
       }catch(e){
-        if(!stopped)setActivityError(clubRequestError(e,'Could not refresh commissions and security alerts.'));
+        if(!stopped)setActivityError(clubRequestError(e,'Could not refresh security alerts.'));
       }finally{busy=false;if(!stopped)setActivityLoading(false);}
     };
     load();const interval=setInterval(load,60000);
@@ -9332,7 +9302,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   const clubBalance=canAdmin ? Number(treasury?.balance)||0 : Number(user.balance)||0;
   const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
-  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>memberSort==='name'?(a.username||'').localeCompare(b.username||''):(Number(accountingReady?accounting.players[b.uid]?.[memberSort==='rake'&&canSeeRake?'rake':'chips']:b.balance)||0)-(Number(accountingReady?accounting.players[a.uid]?.[memberSort==='rake'&&canSeeRake?'rake':'chips']:a.balance)||0)||(a.username||'').localeCompare(b.username||''));
+  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>memberSort==='name'?(a.username||'').localeCompare(b.username||''):(Number(b.balance)||0)-(Number(a.balance)||0)||(a.username||'').localeCompare(b.username||''));
   const balanceMembers = usersList.filter(m => ["approved","banned"].includes(m.status) && !m.isBot && m.uid !== (canAdmin?clubOwnerUid:user.uid) && m.uid !== "bot_bank").filter(m => canManageAny || m.agentUid === user.uid);
   const statTiles = [{
     label: canAdmin ? 'Club treasury' : 'Your balance',
@@ -9344,11 +9314,6 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     value: formatMoney(balanceMembers.reduce((s, p) => s + (Number(p.balance) || 0), 0)),
     icon: 'fa-users',
     color: 'text-blue-400'
-  }, {
-    label: 'Club rake (verified humans)',
-    value: activityLoaded ? formatMoney(rakeTotals.club) : '…',
-    icon: 'fa-building-columns',
-    color: 'text-amber-400'
   }, {
     label: 'Registered Players',
     value: realPlayers.filter(m => canManageAny || m.uid === user.uid || m.agentUid === user.uid).length,
@@ -9373,7 +9338,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     },
     className: "club-admin blue-secondary scrollable-content p-4 sm:p-6"
   }, directoryNotice, activityError && React.createElement('div',{role:'alert',className:'auth-error mb-4'},activityError,
-    activityLoaded && React.createElement('p',{className:'mt-2 text-sm'},'Showing the last loaded commission totals.'),
+    activityLoaded && React.createElement('p',{className:'mt-2 text-sm'},'Showing the last loaded security alerts.'),
     React.createElement('button',{type:'button',onClick:()=>setActivityAttempt(x=>x+1),disabled:activityLoading,className:'block mt-3 px-4 py-2 rounded-lg bg-slate-800 disabled:opacity-50'},activityLoading?'Loading…':'Retry activity')), balBox && ReactDOM.createPortal((() => {
     const t = balBox.target;
     const amt = Math.max(0, parseFloat(balBox.val) || 0);
@@ -9508,19 +9473,19 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "max-w-5xl mx-auto animate-fade-in relative z-10"
   }, React.createElement("nav", {className:"admin-shortcuts","aria-label":"ניווט ניהול"},
     React.createElement("a",{href:"#bo-players",onClick:e=>{e.preventDefault();document.getElementById("bo-players")?.scrollIntoView({behavior:"smooth",block:"start"});}},"שחקנים וכרטיסים"),
-    React.createElement("a",{href:"#bo-settlement",onClick:e=>{e.preventDefault();document.getElementById("bo-settlement")?.scrollIntoView({behavior:"smooth",block:"start"});}},"התחשבנות"),
+    React.createElement("a",{href:"#bo-terms",onClick:e=>{e.preventDefault();document.getElementById("bo-terms")?.scrollIntoView({behavior:"smooth",block:"start"});}},"סוכנים ואחוזים"),
     React.createElement("a",{href:"#bo-settings",onClick:e=>{e.preventDefault();document.getElementById("bo-settings")?.scrollIntoView({behavior:"smooth",block:"start"});}},"הגדרות הקלאב")), React.createElement("div", {
     className: "flex items-center justify-between mb-6 flex-wrap gap-3"
   }, React.createElement("div", null, React.createElement("h2", {
     className: "text-2xl sm:text-3xl font-black text-white"
   }, "ניהול הקלאב"), React.createElement("p", {
     className: "text-sm text-slate-400 font-bold"
-  }, "שחקנים, התחשבנות והגדרות במקום אחד")), React.createElement("p",{className:"text-xs text-slate-400"},"Add and remove bots from the table controls.")), canAdmin && React.createElement("div", {
+  }, "שחקנים, הטענות, אישורים ותנאים")), React.createElement("p",{className:"text-xs text-slate-400"},"Add and remove bots from the table controls.")), canAdmin && React.createElement("div", {
     // Console nav: one sticky bar — every management area is a tap away
     className: "club-admin-sections sticky top-0 z-40 -mx-1 px-1 py-2 bg-slate-950/85 backdrop-blur-md flex flex-wrap items-center gap-2 mb-5 border-b border-white/5"
   }, [
     { id: 'bo-players', ico: 'fa-users', label: 'Members', badge: (usersList || []).filter(u2 => u2.status === 'pending').length },
-    { id: 'bo-settlement', ico: 'fa-file-invoice-dollar', label: 'Settlement', badge: 0 },
+    { id: 'bo-terms', ico: 'fa-file-invoice-dollar', label: 'סוכנים ואחוזים', badge: 0 },
     { id: 'bo-settings', ico: 'fa-sliders', label: 'Settings', badge: 0 }
   ].map(s2 => React.createElement("button", {
     key: s2.id,
@@ -9580,12 +9545,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     title: "The signed-in account that actually performed the write (" + (a.authType || "?") + ")"
   }, "by ", a.byUid ? (usersList.find(m => m.uid === a.byUid) || {}).username || a.byUid.slice(0, 10) : "unknown"), (a.count || 1) > 1 && React.createElement("span", {
     className: "text-slate-500"
-  }, "×", a.count, " today, +", formatMoney(a.total || 0), " total"))))), React.createElement('section',{className:'management-cycle-summary','aria-label':'סיכום המחזור'},
-    React.createElement('h3',null,canAdmin?'כל שחקני הקלאב':'כל השחקנים שלי'),
-    accountNumbers(accountingReady?(canAdmin?accounting.club:accounting.agents[user.uid]):null),
-    React.createElement('p',null,'מחזור נוכחי: מיום שני 00:01 (ישראל). כולל תוצאת הסשנים הפתוחים; יד פעילה מתעדכנת בסיומה.'),
-    accountingReady&&React.createElement('small',null,'עודכן: ',new Date(accounting.asOf).toLocaleTimeString('he-IL')),
-    accountingError&&React.createElement('div',{role:'alert'},accountingError,React.createElement('button',{onClick:()=>setAccountingAttempt(x=>x+1)},'נסה שוב'))), React.createElement("div", {
+  }, "×", a.count, " today, +", formatMoney(a.total || 0), " total"))))), React.createElement("div", {
     className: "club-admin-metrics grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
   }, statTiles.map((t, i) => React.createElement("div", {
     key: i,
@@ -9732,48 +9692,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-6 py-3 rounded-xl font-bold shadow-lg"
   }, "Save"), React.createElement("p", {
     className: "text-xs text-slate-500 font-bold basis-full"
-  }, "The rake applies to Rummy, Poker and all future games. Existing Poker Tables keep the rake set when they were opened."))), canAdmin && React.createElement("div", {
-    className: "glass-panel p-6 rounded-3xl mb-6 border border-blue-500/20"
-  }, React.createElement("h3", {
-    className: "text-lg font-black text-white mb-4 flex items-center gap-2"
-  }, React.createElement("span", {
-    className: "w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center"
-  }, React.createElement("i", {
-    className: "fa-solid fa-file-export text-blue-400 text-sm"
-  })), "Export full club report"), React.createElement("div", {
-    className: "flex flex-wrap items-end gap-3"
-  }, React.createElement("div", null, React.createElement("label", {
-    className: "text-slate-400 text-[10px] font-bold mb-1 block uppercase"
-  }, "From date"), React.createElement("input", {
-    type: "date",
-    value: expFrom,
-    onChange: e => setExpFrom(e.target.value),
-    className: "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-sm font-bold outline-none"
-  })), React.createElement("div", null, React.createElement("label", {
-    className: "text-slate-400 text-[10px] font-bold mb-1 block uppercase"
-  }, "To date"), React.createElement("input", {
-    type: "date",
-    value: expTo,
-    onChange: e => setExpTo(e.target.value),
-    className: "bg-slate-900 text-white border border-white/10 rounded-xl px-3 py-2 text-sm font-bold outline-none"
-  })), React.createElement("button", {
-    onClick: exportClubCSV,
-    disabled: exporting,
-    className: "bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 text-white px-6 py-2 rounded-xl font-bold text-sm shadow-lg disabled:opacity-50"
-  }, exporting ? React.createElement("i", {
-    className: "fa-solid fa-spinner fa-spin"
-  }) : React.createElement("span", null, React.createElement("i", {
-    className: "fa-solid fa-file-csv ml-1"
-  }), "Export CSV")), React.createElement("p", {
-    className: "text-xs text-slate-500 font-bold basis-full"
-  }, "Every result of every player, in all games - one row per game, with a total per player at the end of the file."))), canOpenBackoffice(user) && React.createElement("div", {
-    id: "bo-settlement",
-    className: "glass-panel p-6 rounded-3xl mb-6",
-    style: { scrollMarginTop: '76px' }
-  }, React.createElement(SettlementSection, {
-    user: user,
-    showToast: showToast
-  })), React.createElement("div", {
+  }, "The rake applies to Rummy, Poker and all future games. Existing Poker Tables keep the rake set when they were opened."))), window.PokerSettlement && React.createElement(window.PokerSettlement.SettlementMembers,{clubId:CLUB_ID,call:pokerCommand}), React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white mb-4 flex items-center gap-2"
@@ -9904,45 +9823,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       className: "text-purple-300 text-xs font-black tracking-widest hover:text-purple-200",
       dir: "ltr",
       title: "Copy code"
-    }, "🎟️ ", a.agentCode || '...')), canAdmin && React.createElement("div", {
-      className: "text-left shrink-0"
-    }, React.createElement("input", {
-      type: "number",
-      min: "0",
-      max: "100",
-      defaultValue: Number(a.agentSharePct ?? 50),
-      onBlur: e => {
-        const v = Math.min(100, Math.max(0, Number(e.target.value) || 0));
-        pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:a.uid,op:'agent-settings',share:v}).then(()=>showToast(`${a.username}'s share: ${v}%`,'success')).catch(e=>showToast(e.message||'Could not save agent share','error'));
-      },
-      className: "w-14 bg-slate-950 border border-white/10 rounded-lg px-1.5 py-1 text-white font-black text-center text-xs outline-none focus:border-purple-500/60",
-      dir: "ltr"
-    }), React.createElement("div", {
-      className: "text-[9px] text-slate-500 font-bold text-center mt-0.5"
-    }, "% of rake"))), React.createElement('div',{className:'management-agent-totals','aria-label':'סיכום שחקני הסוכן'},
-      React.createElement('small',null,'סך כל שחקני הסוכן'),accountNumbers(accountingReady?accounting.agents[a.uid]:null)), React.createElement("div", {
-      className: "grid grid-cols-3 gap-2 text-center mb-2.5"
-    }, React.createElement("div", {
-      className: "bg-slate-950/60 rounded-xl py-1.5"
-    }, React.createElement("div", {
-      className: "text-[9px] text-slate-500 font-bold"
-    }, "Players"), React.createElement("div", {
-      className: "text-white font-black text-sm"
-    }, linked.length)), React.createElement("div", {
-      className: "bg-slate-950/60 rounded-xl py-1.5"
-    }, React.createElement("div", {
-      className: "text-[9px] text-slate-500 font-bold"
-    }, "עמלת הסוכן במחזור"), React.createElement("div", {
-      className: "text-emerald-400 font-black text-sm",
-      dir: "ltr"
-    }, activityLoaded ? formatMoney(agentCycle[a.uid] || 0) : '…')), React.createElement("div", {
-      className: "bg-slate-950/60 rounded-xl py-1.5"
-    }, React.createElement("div", {
-      className: "text-[9px] text-slate-500 font-bold"
-    }, "Verified human earnings"), React.createElement("div", {
-      className: "text-emerald-400 font-black text-sm",
-      dir: "ltr"
-    }, activityLoaded ? formatMoney(rakeTotals.agents[a.uid] || 0) : '…'))), React.createElement("button", {
+    }, "🎟️ ", a.agentCode || '...'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3'},'שחקנים משויכים: ',linked.length), React.createElement("button", {
       onClick: () => copyText(inviteLink, 'Invite link copied - send it to Players!'),
       className: "w-full bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-500 text-white py-2 rounded-xl font-black text-xs shadow-md"
     }, "🔗 Copy invite link (auto-assign)"), (isAgentOnly || canAdmin) && linked.length > 0 && React.createElement("div", {
@@ -9975,9 +9856,8 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     onChange: e => setSearch(e.target.value),
     placeholder: "Search player...",
     className: "bg-slate-900/80 border border-white/10 rounded-full pr-9 pl-4 py-2 text-sm text-white w-52 outline-none focus:border-emerald-500/50"
-  })), React.createElement('select',{value:memberSort,onChange:e=>setMemberSort(e.target.value),'aria-label':'סידור שחקנים',className:'management-sort',disabled:!accountingReady},
-    React.createElement('option',{value:'name'},'לפי שם'),React.createElement('option',{value:'chips'},'צ׳יפים — מהגבוה לנמוך'),
-    canSeeRake&&accounting?.rakeVisible&&React.createElement('option',{value:'rake'},'רייק — מהגבוה לנמוך'))), React.createElement("div", {
+  })), React.createElement('select',{value:memberSort,onChange:e=>setMemberSort(e.target.value),'aria-label':'סידור שחקנים',className:'management-sort'},
+    React.createElement('option',{value:'name'},'לפי שם'),React.createElement('option',{value:'chips'},'צ׳יפים — מהגבוה לנמוך'))), React.createElement("div", {
     className: "flex gap-1.5 mb-3 flex-wrap"
   }, [['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
     key: k2,
@@ -10023,7 +9903,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "text-[10px] text-purple-300/90 font-bold truncate"
   }, "🤝 ", agentName(u.agentUid), " (", u.agentPct || 0, "%)"))), React.createElement("div", {
     className: "club-member-actions flex items-center gap-2 sm:gap-3 shrink-0"
-  }, accountNumbers(accountingReady?accounting.players[u.uid]:null,u.balance), React.createElement("button", {
+  }, accountNumbers(null,u.balance), React.createElement("button", {
     onClick: () => adjustBalance(u, true),
     className: "w-9 h-9 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-800 hover:from-emerald-400 text-white font-black shadow-md",
     title: "Deposit chips"

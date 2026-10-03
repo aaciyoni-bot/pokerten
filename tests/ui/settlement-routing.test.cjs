@@ -11,6 +11,7 @@ const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
 const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManagementAppTest=App;');
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/club-ui.js'),'utf8'));
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js'),'utf8'));
 w.eval(script);w.__pkMuted=true;
 w.open=()=>assert.fail('Reports must not open another site or lose the current authenticated session');
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
@@ -46,6 +47,7 @@ function firebaseFixture(email,membershipStatus,role='player'){
   onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;fn(snapshot(target));return()=>{};},
   fx:async(name,args)=>{
    calls.push({name,args});
+   if(name==='pkSettlementReport'){if(reportDenied)throw Object.assign(new Error('אין הרשאה להתחשבנות'),{code:'functions/permission-denied'});return require('./settlement-fixture.cjs')(email===HAIM||role==='manager'?'owner':'player',identity.uid);}
    if(name==='pkGameHistory')return{records:[{uid:identity.uid,game:'NLH',clubId:'main',profit:25,at:Date.now()}],nextCursor:null};
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
    if(name==='pkClubDirectory'&&reportDenied)throw Object.assign(new Error('Club staff only'),{code:'functions/permission-denied'});
@@ -77,10 +79,10 @@ async function assertStaffLinks(fixture){
   assert.equal(links.length,source==='cashier'?2:1);
   await React.act(async()=>links.at(source==='cashier'?-1:0).click());
   assert.equal(new URL(w.location.href).searchParams.get('v'),'settlement');
-  assert.match(doc.body.textContent,/Weekly Settlement/);
+  assert.match(doc.body.textContent,/פירוט שחקנים/);
   assert.match(doc.body.textContent,/Other human player/);
-  const call=fixture.calls.findLast(c=>c.name==='pkClubDirectory');
-  assert.equal(call.args.clubId,'main');assert.equal(call.args.reportSection,'gameLog');
+  const call=fixture.calls.findLast(c=>c.name==='pkSettlementReport');
+  assert.equal(call.args.clubId,'main');
   assert.equal(button('Close'),undefined,'cashier dialog is gone after report navigation');
   await back();
  }
@@ -93,12 +95,12 @@ async function assertPlayerLinks(fixture){
   const links=[...doc.querySelectorAll('button[aria-label="My results"]')];
   assert.equal(links.length,source==='cashier'?2:1);
   await React.act(async()=>links.at(source==='cashier'?-1:0).click());
-  assert.equal(new URL(w.location.href).searchParams.get('v'),'profile');
-  assert.match(doc.body.textContent,/My game report/);
-  assert.equal(doc.querySelector('.club-admin'),null);
+  assert.equal(new URL(w.location.href).searchParams.get('v'),'settlement');
+  assert.match(doc.body.textContent,/המשחקים שלי/);
+  assert.doesNotMatch(doc.body.textContent,/ניהול מחזורים|רייקבק/);
   assert.equal(fixture.calls.some(c=>c.name==='pkClubDirectory'),false);
-  const request=fixture.calls.findLast(c=>c.name==='pkGameHistory');
-  assert.equal(request.args.targetUid,fixture.identity.uid,'personal history stays scoped to the signed-in user');
+  const request=fixture.calls.findLast(c=>c.name==='pkSettlementReport');
+  assert.equal(request.args.clubId,'main','server scopes personal history to the authenticated user');assert.equal(request.args.targetUid,undefined);
   assert.equal(fixture.queries.some(q=>q.path==='gameLog'),false,'raw rake-bearing history is no longer read in the browser');
   assert.doesNotMatch(doc.body.textContent,/Other human player/);
   await back();
@@ -109,8 +111,8 @@ async function assertPlayerLinks(fixture){
  const haim=firebaseFixture(HAIM,'pending');await mountAndEnter(haim);await assertStaffLinks(haim);
  // A permission failure must remain an error with recovery, never turn into an empty successful report.
  haim.denyReports(true);await React.act(async()=>reportLink('Club settlement').click());
- assert.match(doc.querySelector('[role="alert"]').textContent,/אין הרשאה/);assert.doesNotMatch(doc.body.textContent,/Weekly Settlement/);
- haim.denyReports(false);await React.act(async()=>button('נסה שוב').click());assert.match(doc.body.textContent,/Weekly Settlement/);await back();
+ assert.match(doc.querySelector('[role="alert"]').textContent,/אין הרשאה/);assert.doesNotMatch(doc.body.textContent,/פירוט שחקנים/);
+ haim.denyReports(false);await React.act(async()=>button('נסה שוב').click());assert.match(doc.body.textContent,/פירוט שחקנים/);await back();
  await React.act(()=>root.render(null));
  const godOnly=firebaseFixture('info.bagso@gmail.com','approved');await mountAndEnter(godOnly);await assertPlayerLinks(godOnly);await React.act(()=>root.render(null));
  const ordinary=firebaseFixture('ordinary@example.invalid','approved');await mountAndEnter(ordinary);await assertPlayerLinks(ordinary);await React.act(()=>root.render(null));

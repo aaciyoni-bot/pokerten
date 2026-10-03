@@ -608,14 +608,66 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 /* Two cards and Pineapple discard are deliberately spread, not overlapped. */
 .poker-room .poker-seat-hero[data-hole-count="2"]{--poker-fan-span:calc(var(--poker-fan-width) * 2 + 4px)}
 .poker-room .poker-seat-hero[data-cards-spread="true"][data-hole-count="3"]{--poker-fan-span:calc(var(--poker-fan-width) * 3 + 8px)}
-/* With eight or nine seats, centre the local seat in the only empty bottom lane. */
-.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat-hero{left:calc(50% - var(--poker-hero-size,64px) / 2)!important}
-
-/* A centred dense-table hero needs a clear nameplate lane through the dock.
-   Keep strength at the sides and return turn text to the dock's footer row. */
-.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-hand-status{justify-content:space-between;gap:8px}
-.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-hand-status>span{max-width:calc(50% - 44px);min-width:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.poker-room.is-seated:has(.poker-table:is([data-seat-count="8"],[data-seat-count="9"])) .poker-action-meta [role="status"]{position:static;left:auto;top:auto;transform:none;width:auto;max-width:none;min-width:0;line-height:14px}
-
 /* Wide tables leave the top bets above the next seat's enlarged card fan. */
 @media(min-width:700px) and (min-height:721px){.poker-room .poker-bet[data-bet-row="top"]{translate:0 -14px}}
+
+/* The local bet is a child of its seat: it follows every responsive seat move. */
+.poker-room .poker-seat-hero .poker-bet-hero{position:absolute;left:calc(100% + 28px);top:calc(var(--poker-hero-size,64px) * .9);transform:translate(-50%,-50%);z-index:35;width:max-content;pointer-events:none}
+
+/* Reserve the centre lane below the board for branding and table information.
+   The old 21cqh offset put the caption and turn text into the hero's card fan. */
+.poker-room .poker-community .poker-table-caption,
+.poker-room .poker-community.has-second-board .poker-table-caption{top:calc(100% + 20px);width:min(100%,48cqw);gap:3px;overflow:hidden}
+.poker-room .poker-table-caption .poker-felt-wordmark,
+.poker-room .poker-table-caption .poker-felt-logo{position:static!important;inset:auto!important;flex:none;max-width:100%;font-size:clamp(16px,4.5cqw,25px)!important}
+.poker-room .poker-action-meta [role="status"]{position:static!important;inset:auto!important;transform:none!important;width:auto;max-width:100%;line-height:14px}
+
+/* Keep the local hand, bet and strength together on the left at every capacity. */
+.poker-room .poker-seat-hero .poker-hand-status{position:absolute;left:calc(100% + 10px);top:calc(var(--poker-hero-size,64px) * .9 + 17px);width:max-content;max-width:calc(70cqw - 24px);justify-content:flex-start;gap:4px;overflow:visible;pointer-events:none}
+.poker-room .poker-seat-hero .poker-hand-status>span{font-size:10px;line-height:15px;padding:3px 6px;white-space:nowrap}
+@media(max-height:720px){.poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat[data-seat-row="lower"][data-seat-side="left"]{top:56%!important}}
+
+/* Reserve the GOD winner row above the action buttons. */
+.poker-room .poker-seat-hero:has(.poker-god-best-badge){bottom:calc(var(--poker-hero-bottom) + 20px)!important}
+
+.management-account-numbers{display:flex;flex-direction:column;gap:4px;min-width:0}
+.management-account-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.management-account-numbers small{font-size:11px;line-height:1.5;white-space:normal}
+.management-cycle-summary{padding:18px;margin:0 0 18px;border:1px solid #475569;border-radius:18px;background:#0f172a}
+.management-cycle-summary h3{font-size:16px;font-weight:800;margin-bottom:8px}
+.management-cycle-summary p,.management-cycle-summary>small{color:#94a3b8;font-size:11px;margin-top:10px}
+.management-cycle-summary button{margin:0 8px;text-decoration:underline}
+.management-agent-totals{padding:10px 0;margin-bottom:8px;border-bottom:1px solid #334155}
+.management-agent-totals>small{color:#94a3b8;font-size:11px}
+.management-sort{max-width:100%;background:#0f172a;border:1px solid #334155;color:#fff;padding:8px 10px;border-radius:16px;font-size:12px}
+.club-member-actions{flex-wrap:wrap}
+
+/* Authorized GOD view gets legible hole cards and a larger future board. */
+.poker-room.is-god-view>.poker-god-runout{height:76px;min-height:76px;padding:4px 6px;gap:8px;border-radius:10px;overflow:visible}
+.poker-room.is-god-view>.poker-god-runout>span{position:absolute;top:3px;left:5px;font-size:8px;opacity:.7}
+.poker-room.is-god-view>.poker-god-runout>div{display:flex;flex-direction:column;gap:3px}
+.poker-room.is-god-view>.poker-god-runout>div>span{font-size:11px;line-height:13px}
+.poker-room.is-god-view>.poker-god-runout .card-face{width:36px!important;height:50.4px!important;min-height:50.4px!important}
+.poker-room.is-god-view .poker-seat:not(.poker-seat-hero){--poker-fan-width:clamp(34px,10cqw,44px);--poker-fan-overlap:-.4}
+.poker-room.is-god-view .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat:not(.poker-seat-hero){--poker-fan-width:clamp(32px,9.5cqw,40px);--poker-fan-overlap:-.42}
+.poker-room.is-god-view .poker-seat[data-seat-row="top"]{margin-top:30px}
+@media(max-width:350px){.poker-room.is-god-view>.poker-god-runout{left:52px;right:4px;gap:5px;padding:4px}.poker-room.is-god-view>.poker-god-runout .card-face{width:33px!important;height:46.2px!important;min-height:46.2px!important}}
+
+/* Blind inputs must not contribute their browser intrinsic width to the grid. */
+.tournament-blind-editor,.tournament-blind-rows{min-width:0;max-width:100%;box-sizing:border-box}
+.tournament-blind-editor select{min-width:0;max-width:100%;width:100%;text-overflow:ellipsis}
+.tournament-blind-rows{max-height:58dvh;overflow-y:auto;overscroll-behavior:contain;padding:2px}
+.tournament-blind-header,.tournament-blind-row{display:grid;grid-template-columns:26px repeat(3,minmax(0,1fr)) minmax(38px,.7fr) 54px;gap:4px;align-items:center;min-width:0}
+.tournament-blind-field{min-width:0;display:block;margin:0}
+.tournament-blind-field>span{display:none}
+.tournament-blind-field input{min-width:0!important;max-width:100%!important;width:100%!important;box-sizing:border-box;padding:7px 2px!important}
+@media(max-width:600px){
+ .tournament-blind-header{display:none}
+ .tournament-blind-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;margin-bottom:6px;border:1px solid #64748b55;border-radius:10px;background:#0f172a99}
+ .tournament-blind-level{grid-column:1/-1;text-align:left;font-size:12px}
+ .tournament-blind-level:before{content:'Level '}
+ .tournament-blind-field>span{display:block;color:#b8c3d4;font-size:11px;margin-bottom:3px}
+ .tournament-blind-field input{font-size:16px!important;min-height:36px}
+ .tournament-blind-actions{grid-column:1/-1;justify-content:flex-end;gap:8px}
+ .tournament-blind-actions button{min-width:36px;min-height:32px}
+}

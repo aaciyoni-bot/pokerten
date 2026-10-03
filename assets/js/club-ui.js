@@ -21,7 +21,7 @@
         h('div', null, h('dt', null, icon('id-card'), he?'מזהה שחקן':'Player ID'), h('dd', {className:'club-player-id',dir:'ltr'}, user.playerId || '—'))));
   }
 
-  function SettlementPlayerCards({players = [], results = {}, rakes = {}, members = {}, logs = [], period, locale = 'en', formatAmount = amount}) {
+  function SettlementPlayerCards({players = [], results = {}, rakes = {}, showRake = false, members = {}, logs = [], period, locale = 'en', formatAmount = amount}) {
     const he = locale === 'he';
     const [selected, setSelected] = R.useState(null), [page, setPage] = R.useState(0);
     const dialog = R.useRef(null);
@@ -52,7 +52,7 @@
       },
         h('span',{className:'club-account-identity'},h('span',{className:'club-avatar'},icon('user')),h('span',null,h('strong',null,p.username || '—'),h('small',{dir:'ltr'},p.playerId || '—')),icon('arrow-up-right-from-square')),
         h('span',{className:'club-account-result'},h('small',null,label('Period result','תוצאת התקופה')),h('strong',{className:(results[p.uid] || 0)<0?'club-negative':'club-positive',dir:'ltr'},formatAmount(results[p.uid]))),
-        h('span',{className:'club-account-numbers'},h('span',null,h('small',null,label('Current balance','יתרה נוכחית')),h('b',{dir:'ltr'},formatAmount(p.balance))),h('span',null,h('small',null,label('Period rake','רייק בתקופה')),h('b',{dir:'ltr'},formatAmount(rakes[p.uid])))),
+        h('span',{className:'club-account-numbers'},h('span',null,h('small',null,label('Current balance','יתרה נוכחית')),h('b',{dir:'ltr'},formatAmount(p.balance))),showRake && h('span',null,h('small',null,label('Period rake','רייק בתקופה')),h('b',{dir:'ltr'},formatAmount(rakes[p.uid])))),
         h('span',{className:'club-account-agent'},icon('handshake'),members[p.agentUid]?.username || label('No assigned agent','ללא סוכן משויך'))))),
       !players.length && h('p',{className:'club-empty'},label('No players match these filters.','לא נמצאו שחקנים שמתאימים לסינון.')),
       maxPage>0 && h('nav',{className:'club-pagination','aria-label':label('Player pages','עמודי שחקנים')},

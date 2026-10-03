@@ -59,9 +59,9 @@ function fixture({failCollection,records=3}={}){
  };
  const runTransaction=db.runTransaction.bind(db);
  db.runTransaction=(callback,opts)=>{options.push(opts);return runTransaction(callback,opts);};
- const sandbox={exports:{},require:name=>name==='firebase-functions/v2/https'?https:name==='./pokerAuthority'?A:name==='firebase-admin/firestore'?{getFirestore:()=>db,FieldPath}:(()=>{throw Error('Unexpected import '+name);})(),Date,console:{error:(...args)=>logs.push(args)},Buffer};
+ const sandbox={exports:{},require:name=>name==='firebase-functions/v2/https'?https:name==='./pokerAuthority'?A:name==='./pokerAccounting'?require('../pokerAccounting'):name==='firebase-admin/firestore'?{getFirestore:()=>db,FieldPath}:(()=>{throw Error('Unexpected import '+name);})(),Date,console:{error:(...args)=>logs.push(args)},Buffer};
  new Function('require','exports','console',source)(sandbox.require,sandbox.exports,sandbox.console);
- return{run:(data={},identity=auth())=>sandbox.exports.pkClubDirectory.run({auth:identity,data:{clubId:'clubA',...data}}),requests,options,logs,documents,endpoint:sandbox.exports.pkClubDirectory.__endpoint};
+ return{history:(data={},identity=auth())=>sandbox.exports.pkGameHistory.run({auth:identity,data}),run:(data={},identity=auth())=>sandbox.exports.pkClubDirectory.run({auth:identity,data:{clubId:'clubA',...data}}),requests,options,logs,documents,endpoint:sandbox.exports.pkClubDirectory.__endpoint};
 }
 const collections=f=>f.requests.filter(r=>r.method==='runQuery').map(r=>r.request.structuredQuery.from[0].collectionId);
 
@@ -199,4 +199,30 @@ test('legacy Firestore document IDs with punctuation, spaces and Unicode can con
  // The byte limit follows Firestore's UTF-8 bound, not JS character count.
  const boundary=await f.run({reportSection:'gameLog',cursor:'א'.repeat(750)});
  assert.equal(boundary.hasMore,false);
+});
+
+
+test('accounting-only reports enforce staff scope and GOD rake omission on the server',async()=>{
+ const f=fixture({records:0});f.documents.get('memberships/alice_clubA').status='approved';
+ f.documents.set('gameLog/profit',{clubId:'clubA',uid:'alice',profit:-340.17,rake:7,at:Date.now()-1000});
+ const agent=await f.run({accountingOnly:true},auth('agentA','agent@example.test'));
+ assert.equal(agent.accounting.players.alice.result,-340.17);
+ assert.equal(agent.accounting.players.bob,undefined);
+ assert.equal('rake' in agent.accounting.players.alice,false);
+ assert.equal('rake' in agent.accounting.agents.agentA,false);
+ const god=await f.run({accountingOnly:true});assert.equal(god.accounting.players.alice.rake,7);
+ const owner=await f.run({reportSection:'gameLog'},auth('owner','owner@example.test'));
+ assert.equal(owner.records[0].profit,-340.17);assert.equal('rake' in owner.records[0],false);
+});
+test('filtered history keeps own results accessible without exposing rake or another player',async()=>{
+ const f=fixture({records:0});f.documents.get('memberships/alice_clubA').status='approved';
+ f.documents.set('gameLog/alice',{uid:'alice',clubId:'clubA',profit:-3,rake:7,at:1});
+ f.documents.set('gameLog/bob',{uid:'bob',clubId:'clubA',profit:3,rake:8,at:1});
+ const alice=auth('alice','alice@example.test');
+ const own=await f.history({targetUid:'alice'},alice);assert.equal(own.records.length,1);assert.equal(own.records[0].profit,-3);assert.equal('rake' in own.records[0],false);
+ await assert.rejects(f.history({targetUid:'bob'},alice),e=>e.code==='permission-denied');
+ await assert.rejects(f.history({clubId:'clubA',targetUid:'bob'},alice),e=>e.code==='permission-denied');
+ const board=await f.history({clubId:'clubA',leaderboard:true},alice);assert.equal(board.records.length,2);assert.equal(JSON.stringify(board).includes('rake'),false);
+ const assigned=await f.history({clubId:'clubA',targetUid:'alice'},auth('agentA','agent@example.test'));assert.equal(assigned.records.length,1);
+ await assert.rejects(f.history({clubId:'clubA',targetUid:'bob'},auth('agentA','agent@example.test')),e=>e.code==='permission-denied');
 });

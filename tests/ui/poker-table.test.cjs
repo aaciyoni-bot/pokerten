@@ -115,7 +115,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    const bet=doc.querySelector('.poker-bet[data-player-uid="me"]');
    assert.ok(bet.querySelector('.casino-chip'),'CALL chips are already placed');
    assert.equal(bet.classList.contains('bet-fly'),false,'CALL does not fly in after the next turn');
-   assert.equal(bet.style.transform,'translate(-50%, -50%)');
+   assert.ok(bet.closest('.poker-seat-hero'),'accepted chips stay anchored beside their owner');
    // Moving street bets into the central pot is display bookkeeping, not a
    // second debit. There must be no delayed collection over the new turn.
    current.players.me.bet=0;current.players.other.bet=0;
@@ -171,6 +171,8 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','confirmation updates the stack without waiting for the listener');
  assert.equal(doc.querySelector('.poker-pot-amount').textContent,'2');
  assert.equal(doc.querySelector('.poker-bet[data-player-uid="me"]').textContent.includes('0.5'),false);
+ assert.ok(doc.querySelector('.poker-seat-hero .poker-bet[data-player-uid="me"]'),'hero chips follow the hero seat instead of a fixed right-side coordinate');
+ assert.equal(doc.querySelectorAll('.poker-bet[data-player-uid="me"]').length,1,'one chip stack per owner');
  assert.ok(doc.querySelector('.poker-seat:not(.poker-seat-hero) .active-glow'));
  await React.act(async()=>tableNext(snapshot()));
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','late pre-CALL snapshot cannot restore the old stack');
@@ -194,5 +196,23 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  await React.act(async()=>returnButton.click());
  assert.ok(returnCalls.some(c=>c.name==='pkSeat'&&c.args.op==='sitout'&&c.args.tableId==='test-table'),'seat button uses existing authoritative return command');
  w.requestAnimationFrame=originalRaf;
+ // Leaving a sparse cash/tournament seat compacts the visual ring only.
+ for(const tournament of [false,true]){
+  current.settings.maxPlayers=9;current.tournamentId=tournament?'visual-tournament':null;
+  current.players={me:{uid:'me',name:'Me',seatIndex:4,stack:100,bet:0,status:'active',cards:[]}};
+  for(const seat of [0,1,2,3,5,6,7,8])current.players['seat'+seat]={uid:'seat'+seat,name:'Seat '+seat,seatIndex:seat,stack:100,bet:0,status:'active',cards:[]};
+  for(const removed of [null,'seat3','seat0','seat2','seat1','seat8','seat5','seat7']){
+   if(removed)delete current.players[removed];
+   const before=Object.fromEntries(Object.values(current.players).map(p=>[p.uid,p.seatIndex]));
+   await React.act(async()=>tableNext(snapshot()));
+   const seats=[...doc.querySelectorAll('.poker-seat')];
+   assert.equal(Number(doc.querySelector('.poker-table').dataset.seatCount),seats.length);
+   const left=seats.filter(s=>s.dataset.seatSide==='left').length;
+   assert.ok(Math.abs(left-(seats.length-left))<=1,'occupied ring remains balanced after stand-up');
+   const ordered=Object.values(current.players).sort((a,b)=>a.seatIndex-b.seatIndex),my=ordered.findIndex(p=>p.uid==='me');
+   assert.deepEqual(seats.map(s=>s.dataset.playerUid),[...ordered.slice(my),...ordered.slice(0,my)].map(p=>p.uid),'clockwise order survives compaction');
+   assert.deepEqual(Object.fromEntries(Object.values(current.players).map(p=>[p.uid,p.seatIndex])),before,'visual compaction never changes physical/game seats');
+  }
+ }
  await React.act(async()=>root.unmount());w.close();console.log('PASS: cards, controls, authoritative CALL confirmation, fractional chips, delayed listener and snapshot recovery');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});

@@ -17,7 +17,8 @@ const render=props=>React.act(()=>root.render(React.createElement(w.ClubUI.Settl
   assert.match(w.document.querySelector('.club-lobby-facts').textContent,/Club tables2Occupied seats2Player ID123/);
   await React.act(()=>w.document.querySelector('.club-primary').click());assert.equal(resumed,tables[0]);
   const players=Array.from({length:14},(_,i)=>({uid:'p'+i,username:'Player '+i,playerId:'ID'+i,balance:100+i,agentUid:'a'}));
-  const props={players,results:{p0:-25},rakes:{p0:5},members:{a:{username:'Agent'}},logs:[{uid:'p0',at:100,game:'Poker',profit:-25}],period:'Current week'};
+  const props={players,showRake:true,results:{p0:-25},rakes:{p0:5},members:{a:{username:'Agent'}},logs:[{uid:'p0',at:100,game:'Poker',profit:-25}],period:'Current week'};
+  await render({...props,showRake:false});assert.doesNotMatch(w.document.body.textContent,/Period rake/);
   await render(props);assert.equal(w.document.querySelectorAll('.club-account-card').length,12);
   assert.match(w.document.querySelector('.club-account-card').textContent,/Period result\u200e?-25\.00Current balance100\.00Period rake5\.00/);
   const next=[...w.document.querySelectorAll('nav button')].find(b=>b.textContent==='Next');

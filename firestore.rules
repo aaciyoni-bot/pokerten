@@ -17,8 +17,8 @@ service cloud.firestore {
     function clubOwnerOf(cid) {
       return signedIn() && request.auth.uid == get(/databases/$(database)/documents/clubs/$(cid)).data.ownerUid;
     }
-    match /gameLog/{id} { allow read: if signedIn(); allow create: if superAdmin(); allow update, delete: if false; }
-    match /agentLog/{id} { allow read: if superAdmin() || clubOwnerOf(resource.data.clubId); allow create: if superAdmin(); allow update, delete: if false; }
+    match /gameLog/{id} { allow read: if superAdmin(); allow create: if superAdmin(); allow update, delete: if false; }
+    match /agentLog/{id} { allow read: if superAdmin(); allow create: if superAdmin(); allow update, delete: if false; }
 
     // Existing canonical identities are preserved. Self-service profile edits
     // cannot change balances, roles, approval, agent percentages or identities.

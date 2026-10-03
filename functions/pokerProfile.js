@@ -1,6 +1,7 @@
 'use strict';
 const {onCall}=require('firebase-functions/v2/https');
 const A=require('./pokerAuthority');
+const Accounting=require('./pokerAccounting');
 const opts={region:'us-central1'};
 const text=(value,max,label)=>{if(typeof value!=='string'||value.length>max)A.fail('invalid-argument','Invalid '+label);return value.trim();};
 
@@ -73,7 +74,7 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
    const page=await tx.get(query.limit(pageSize+1)),docs=page.docs.slice(0,pageSize),hasMore=page.docs.length>pageSize;
    if(reportSection==='agentLog')diagnostic.agentLogCount=page.docs.length;
    if(reportSection==='gameLog')diagnostic.gameLogCount=page.docs.length;
-   const records=docs.filter(d=>!visible||visible.has(d.data().uid)).map(d=>({id:d.id,...d.data()}));
+   const records=docs.filter(d=>!visible||visible.has(d.data().uid)).map(d=>({id:d.id,...d.data()})).map(row=>reportSection==='gameLog'?Accounting.publicGameLog(row,A.root(r)):reportSection==='agentLog'?Accounting.publicAgentLog(row,A.root(r)):row);
    // Advance using the scanned page, even if agent scoping hides every row.
    return{records,hasMore,nextCursor:hasMore?docs[docs.length-1].id:null};
   }
@@ -83,6 +84,12 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
   const members=await tx.get(query),rows=members.docs.map(d=>({id:d.id,...d.data()}));
   if(!rows.some(m=>m.uid===uid)&&me.exists)rows.push({id:me.id,...me.data()});
   diagnostic.memberCount=rows.length;
+  if(r.data?.accountingOnly===true){
+   diagnostic.stage='game-history';
+   const games=await tx.get(db.collection('gameLog').where('clubId','==',cid));
+   const tables=await tx.get(db.collection('tables').where('clubId','==',cid));
+   return{accounting:Accounting.buildAccounting(rows,games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:A.root(r)})};
+  }
   const treasury=manager?rows.find(m=>m.uid===club.data().ownerUid):null;
   let agentLog=[],gameLog=[],securityAlerts=[];
   // The member list and approvals must load independently of financial history.
@@ -104,7 +111,7 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
     const alerts=await tx.get(db.collection('securityAlerts').where('clubId','==',cid));securityAlerts=alerts.docs.map(d=>({id:d.id,...d.data()}));
    }
   }
-  return{members:rows,agentLog,gameLog,securityAlerts,historyIncluded:!directoryOnly,treasury:treasury?{uid:treasury.uid,balance:treasury.balance,clubProfits:treasury.clubProfits||0}:null};
+  return{members:rows,agentLog:agentLog.map(row=>Accounting.publicAgentLog(row,A.root(r))),gameLog:gameLog.map(row=>Accounting.publicGameLog(row,A.root(r))),securityAlerts,historyIncluded:!directoryOnly,treasury:treasury?{uid:treasury.uid,balance:treasury.balance,clubProfits:treasury.clubProfits||0}:null};
  },{readOnly:true});}catch(error){
   // Only stage, standard status code and counts: never log user data or raw errors.
   const code=error?.code,known=['cancelled','unknown','invalid-argument','deadline-exceeded','not-found','already-exists','permission-denied','resource-exhausted','failed-precondition','aborted','out-of-range','unimplemented','internal','unavailable','data-loss','unauthenticated'];
@@ -123,3 +130,26 @@ exports.pkAgentLookup=onCall(opts,async r=>{
  return{agent:agent?{uid:agent.uid,name:agent.username||'Agent',pct:agent.agentSharePct??50}:null};
 });
 
+
+// Financial history is served through a field-filtered endpoint. Raw gameLog
+// includes per-player rake and is readable directly only by the GOD allowlist.
+exports.pkGameHistory=onCall({...opts,memory:'512MiB'},async r=>{
+ const uid=A.uid(r),cid=r.data?.clubId?A.key(r.data.clubId):null,target=r.data?.targetUid?A.key(r.data.targetUid):uid;
+ const {getFirestore,FieldPath}=require('firebase-admin/firestore'),db=getFirestore();
+ const leaderboard=r.data?.leaderboard===true;if(leaderboard&&!cid)A.fail('invalid-argument','Club required');
+ const cursor=r.data?.cursor;if(cursor!=null&&(typeof cursor!=='string'||!cursor.length||cursor.includes('/')||cursor==='.'||cursor==='..'||Buffer.byteLength(cursor)>1500))A.fail('invalid-argument','Invalid cursor');
+ return db.runTransaction(async tx=>{
+  if(!cid&&target!==uid)A.fail('permission-denied','Own history only');
+  if(cid){
+   const club=await tx.get(db.doc('clubs/'+cid)),me=await tx.get(db.doc(`memberships/${uid}_${cid}`));
+   if(!club.exists)A.fail('not-found','Club missing');
+   const manager=A.root(r)||club.data().ownerUid===uid||(me.data()?.status==='approved'&&me.data()?.role==='manager');
+   if(!manager&&me.data()?.status!=='approved')A.fail('permission-denied','Approved membership required');
+   if(target!==uid&&!manager){const member=await tx.get(db.doc(`memberships/${target}_${cid}`));if(me.data()?.role!=='agent'||member.data()?.agentUid!==uid)A.fail('permission-denied','Assigned player history only');}
+  }
+  let query=db.collection('gameLog');if(!leaderboard)query=query.where('uid','==',target);if(cid)query=query.where('clubId','==',cid);
+  query=query.orderBy(FieldPath.documentId());if(cursor)query=query.startAfter(cursor);
+  const page=await tx.get(query.limit(201)),docs=page.docs.slice(0,200),more=page.docs.length>200;
+  return{records:docs.map(d=>leaderboard?{id:d.id,uid:d.data().uid,username:d.data().username||'',game:d.data().game||'',profit:Number(d.data().profit)||0,at:Number(d.data().at)||0}:Accounting.publicGameLog({id:d.id,...d.data()},A.root(r))),nextCursor:more?docs[docs.length-1].id:null};
+ },{readOnly:true});
+});

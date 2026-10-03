@@ -71,7 +71,7 @@ function directoryFixture(){
   return{docs:rows.filter(value=>ref.filters.every(([key,op,expected])=>op==='=='&&value[key]===expected)).map((value,i)=>({id:String(i),data:()=>value}))};
  },set(){assert.fail('Management report must not write');},update(){assert.fail('Management report must not write');}};
  const db={doc:path=>({path}),collection:name=>new Query(name),runTransaction:fn=>fn(tx)};
- const context={exports:{},require:name=>name==='firebase-functions/v2/https'?{onCall:(_,handler)=>handler}:name==='./pokerAuthority'?A:name==='firebase-admin/firestore'?{getFirestore:()=>db}:(()=>{throw Error('Unexpected module '+name);})(),Date,Intl,console};
+ const context={exports:{},require:name=>name==='firebase-functions/v2/https'?{onCall:(_,handler)=>handler}:name==='./pokerAuthority'?A:name==='./pokerAccounting'?require('../pokerAccounting'):name==='firebase-admin/firestore'?{getFirestore:()=>db}:(()=>{throw Error('Unexpected module '+name);})(),Date,Intl,console};
  vm.runInNewContext(profileSource,context);
  return{run:auth=>context.exports.pkClubDirectory({auth,data:{clubId:'clubA',includeReports:true}}),reads};
 }

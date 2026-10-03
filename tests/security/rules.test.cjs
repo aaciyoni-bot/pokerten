@@ -97,3 +97,14 @@ test('other application rule blocks remain byte-for-byte unchanged by poker reco
  assert.equal(hash(aviator),'fe9832de8a7a9250f5d8af316d494b8200d9bcf0512b9a2761a2ad0a92f07674');
  assert.equal(hash(others),'ea381621c7e0c4bb6ad951684253172322decd04eedbe0bc23f0c3cc06fe74ac');
 });
+
+test('raw rake receipts cannot be read by players, owners or forged GOD claims',async()=>{
+ for(const [uid,claims] of [['player',{}],['owner',{}],['forged',{god:true,role:'super_admin'}],['unverified',{email:'aaci.yoni@gmail.com',email_verified:false}]]){
+  const db=env.authenticatedContext(uid,claims).firestore();
+  await assertFails(getDoc(doc(db,'gameLog/log')));
+  await assertFails(getDocs(query(collection(db,'gameLog'),where('uid','==','player'))));
+  await assertFails(getDocs(query(collection(db,'agentLog'),where('clubId','==','club'))));
+ }
+ const god=env.authenticatedContext('verified-admin',{email:'aaci.yoni@gmail.com',email_verified:true}).firestore();
+ await assertSucceeds(getDoc(doc(god,'gameLog/log')));
+});

@@ -1105,7 +1105,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=292">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=299">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -1113,7 +1113,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=296">
-<link rel="stylesheet" href="assets/css/poker-god-best.css?v=297">
+<link rel="stylesheet" href="assets/css/poker-god-best.css?v=299">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1202,6 +1202,17 @@ const loadClubDirectoryReport = async (options, scope='') => {
     result[reportSection]=records;
   }
   return result;
+};
+const loadGameHistory = async options => {
+  const records=[],seen=new Set();let cursor;
+  for(;;){
+    const page=await pokerCommand('pkGameHistory',{...options,...(cursor?{cursor}:{})});
+    if(!Array.isArray(page?.records))throw new Error('Invalid history response');
+    records.push(...page.records);if(!page.nextCursor)break;
+    if(seen.has(page.nextCursor))throw new Error('Incomplete history response');
+    seen.add(page.nextCursor);cursor=page.nextCursor;
+  }
+  return records;
 };
 // Surface only allowlisted transport codes, never raw server details.
 const clubRequestError = (error, fallback) => {
@@ -2946,13 +2957,30 @@ function botHandBody(cards, board, gameType) {
     } else {
       made = 0;
     }
-    if (board.length >= 5) return {made, outs: 0};
+    // A shared board pair is not a second independently made pair. KQ on
+    // Q-T-T is top pair with a shared pair, not a hand to build a huge pot.
+    // Omaha keeps its exact-two-hole-card evaluator and existing classification.
+    let sharedPair = false;
+    if (!(gameType || '').startsWith('Omaha') && sc >= 2000000 && sc < 4000000) {
+      const counts = {};
+      for (const c of board) { const rank=RV[c.val]||0; counts[rank]=(counts[rank]||0)+1; }
+      if (sc < 3000000) {
+        const high=Math.floor((sc-2000000)/10000), low=Math.floor((sc-2000000-high*10000)/100);
+        const privatePairs=[high,low].filter(rank=>(counts[rank]||0)<2);
+        sharedPair=privatePairs.length<2;
+        if(sharedPair)made=privatePairs.length ? (Math.max(...privatePairs)>=Math.max(...board.map(c=>RV[c.val]||0))?2:1) : 0;
+      } else {
+        const tripRank=Math.floor((sc-3000000)/10000);
+        if((counts[tripRank]||0)>=3)made=0;
+      }
+    }
+    if (board.length >= 5) return {made, outs: 0, sharedPair};
     const known = new Set([...board, ...cards].map((c) => c.id));
     let outs = 0;
     pokerDeck().filter((c) => !known.has(c.id)).forEach((c) => {
       if (bestScoreFull(cards, [...board, c], gameType) >= 4000000) outs++;
     });
-    return {made, outs};
+    return {made, outs, sharedPair};
   } catch (e) {
     return {made: 0, outs: 0};
   }
@@ -3057,7 +3085,8 @@ function botDecision(S, uid) {
   }
 
   // Read the opponents' strength from the bet we are facing, not from thin air.
-  const rng = botRangeFacing(toCall, potNow, bb);
+  const priorInvestment = Math.max(0,...botActives(S.players).filter(p=>p.uid!==uid).map(p=>g.investedStreets?.[p.uid]||0));
+  const rng = Math.max(botRangeFacing(toCall, potNow, bb), Math.min(3,1+priorInvestment));
   const eqRaw = botSampleEquity(cards, g.board || [], oppN, gt, rng,valuation);
   if(eqRaw==null)return{action:toCall>0?'fold':'call'};
   const eq=eqRaw;
@@ -3093,6 +3122,9 @@ function botDecision(S, uid) {
     // the generic random-bluff branch into a large bet with no direction.
     // This uses only our cards, the public board and number of opponents.
     if (oppN > 1 && body.made < 2 && body.outs < 4) return {action: "call"};
+    // Protect showdown value after calls: a board-assisted two pair must not
+    // keep barreling or masquerade as a river value monster.
+    if (body.sharedPair && (river || priorInvestment > 0) && body.outs < 8) return {action: "call"};
     if (eq > 0.9) return ((!river && r < 0.15) ? null : betPot(0.65 + r * 0.35)) || {action: "call"};
     if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(0.55 + r * 0.3)) || {action: "call"};
     if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || {action: "call"};
@@ -3112,7 +3144,7 @@ function botDecision(S, uid) {
   // Second pair or worse can pay off a small bet. It cannot play a big pot,
   // and it never calls off a stack — that is the 10-3 on A-K-3.
   if (!hasSomething() && toCall > potNow * 0.4) return {action: "fold"};
-  if (eq > potOdds + 0.18 && eq > 0.62) {
+  if (!body.sharedPair && eq > potOdds + 0.18 && eq > 0.62) {
     const valueFrequency = g.phase === 'river' && eq > .98 ? 1 : eq > .90 ? .8 : eq > .78 ? .5 : .3;
     if (r < valueFrequency) { const rr = raisePot(0.6 + Math.min(r, .4)); if (rr) return rr; }
     return {action: "call"};
@@ -4978,9 +5010,7 @@ function LeadersView({
     if (!needLog || logAll !== null) return;
     (async () => {
       try {
-        const q = window.fb.query(window.fb.collection(window.fb.db, "gameLog"), window.fb.where("clubId", "==", CLUB_ID));
-        const snap = await window.fb.getDocs(q);
-        setLogAll(snap.docs.map(d => d.data()));
+        setLogAll(await loadGameHistory({clubId:CLUB_ID,leaderboard:true}));
       } catch (e) {
         setLogAll([]);
       }
@@ -5112,9 +5142,7 @@ function PlayerFileModal({
   useEffect(() => {
     (async () => {
       try {
-        const q = window.fb.query(window.fb.collection(window.fb.db, "gameLog"), window.fb.where("uid", "==", mem.uid), window.fb.where("clubId", "==", CLUB_ID));
-        const snap = await window.fb.getDocs(q);
-        setLog(snap.docs.map(d => d.data()));
+        setLog(await loadGameHistory({clubId:CLUB_ID,targetUid:mem.uid}));
       } catch (e) {
         setLog([]);
       }
@@ -6126,9 +6154,7 @@ function ProfileView({
   const loadLogs = async () => {
     setLogsLoading(true);
     try {
-      const q = window.fb.query(window.fb.collection(window.fb.db, "gameLog"), window.fb.where("uid", "==", user.uid));
-      const s = await window.fb.getDocs(q);
-      setLogs(s.docs.map(d => d.data()).sort((a, b) => (b.at || 0) - (a.at || 0)));
+      setLogs((await loadGameHistory({targetUid:user.uid})).sort((a,b)=>(b.at||0)-(a.at||0)));
     } catch (e) {
       setLogs([]);
     }
@@ -8148,7 +8174,8 @@ function SettlementSection({
   const club = window.__club || {};
   const iOwn = club.ownerUid === user.uid;
   const isOwnerView = iOwn || canManageClub(user);
-  const showHouse = isGodUser(user) && iOwn;
+  const showRake=isGodUser(user);
+  const showHouse = showRake && iOwn;
   const houseCut = showHouse ? round2(verifiedRake * 0.10) : 0;
   const ownerNet = round2(houseGross - houseCut);
   const playersByAgent = {};
@@ -8414,7 +8441,7 @@ function SettlementSection({
     className: `px-3 py-1.5 rounded-lg font-bold text-xs border transition-colors ${cyc === k ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:text-white'}`
   }, l))), isOwnerView && React.createElement("div", {
     className: "settlement-metrics grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5"
-  }, React.createElement("div", {
+  }, showRake && React.createElement("div", {
     className: "glass-panel rounded-2xl p-3"
   }, React.createElement("div", {
     className: "text-[9px] text-slate-500 font-black uppercase"
@@ -8451,7 +8478,7 @@ function SettlementSection({
   }, "Agents"), React.createElement("div", {
     className: "text-lg font-black text-white",
     dir: "ltr"
-  }, agents.length))), isOwnerView && React.createElement('div',{className:'glass-panel rounded-2xl p-4 mb-5', 'aria-label':'Rake separation'},
+  }, agents.length))), showRake && isOwnerView && React.createElement('div',{className:'glass-panel rounded-2xl p-4 mb-5', 'aria-label':'Rake separation'},
     React.createElement('div',{className:'font-black text-sky-300'},'Bot rake · excluded from income: ',formatMoney(botRake)),
     React.createElement('p',{className:'text-xs text-slate-400 mt-2'},'Player rake comes from human game records. Verified owner income and agent cuts exclude bots. Bot-funded rake returns to its funding account without profit or commission.'),
     legacyRake>0&&React.createElement('div',{className:'text-amber-200 mt-3'},'Historical distributions · unclassified: ',formatMoney(legacyRake),React.createElement('p',{className:'text-xs mt-1'},'Older payouts have no human/bot split. They are excluded from verified income and commissions; historical wallet credits are unchanged.'))), (() => {
@@ -8512,7 +8539,7 @@ function SettlementSection({
       className: "fa-solid fa-table-list ml-1"
     }), " Players report (", rows.length, ") · ", cycLabel), React.createElement("div", {
       className: "flex items-center gap-1.5 flex-wrap"
-    }, [['result', 'Result'], ['balance', 'Balance'], ['rake', 'Rake'], ['agent', 'Agent']].map(([k, l]) => React.createElement("button", {
+    }, [['result', 'Result'], ['balance', 'Balance'], ...(showRake?[['rake','Rake']]:[]), ['agent', 'Agent']].map(([k, l]) => React.createElement("button", {
       key: k,
       onClick: () => setSortBy(k),
       className: `text-[10px] px-2.5 py-1.5 rounded-lg font-black border ${sortBy === k ? 'bg-amber-500/20 border-amber-400/60 text-amber-200' : 'bg-slate-900/60 border-white/10 text-slate-400'}`
@@ -8536,7 +8563,7 @@ function SettlementSection({
       className: "text-xs bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-200 px-2.5 py-1.5 rounded-lg font-black"
     }, React.createElement("i", {
       className: `fa-solid ${big ? 'fa-xmark' : 'fa-expand'}`
-    })))), !big && window.ClubUI && React.createElement(window.ClubUI.SettlementPlayerCards,{players:rows,results:pres,rakes,members:byUid,logs:gLog.filter(e=>inCyc(e.at)),period:cycLabel,formatAmount:formatMoney}), React.createElement(big ? "div" : "details", {className:big ? "" : "club-report-details"}, !big && React.createElement("summary",null,"Detailed player report"), React.createElement("div", {
+    })))), !big && window.ClubUI && React.createElement(window.ClubUI.SettlementPlayerCards,{players:rows,results:pres,rakes,showRake,members:byUid,logs:gLog.filter(e=>inCyc(e.at)),period:cycLabel,formatAmount:formatMoney}), React.createElement(big ? "div" : "details", {className:big ? "" : "club-report-details"}, !big && React.createElement("summary",null,"Detailed player report"), React.createElement("div", {
       className: "overflow-x-auto"
     }, React.createElement("table", {
       className: `w-full ${big ? 'text-sm' : 'text-xs'}`,
@@ -8554,7 +8581,7 @@ function SettlementSection({
       title: "Spin/scratch prizes included in the balance"
     }, "🎁 Bonus"), React.createElement("th", {
       className: `text-right ${cell(big)}`
-    }, cycLabel), React.createElement("th", {
+    }, cycLabel), showRake && React.createElement("th", {
       className: `text-right ${cell(big)}`
     }, "Rake"), React.createElement("th", {
       className: "text-right py-1.5"
@@ -8587,7 +8614,7 @@ function SettlementSection({
       className: `${cell(big)} text-right font-bold text-amber-500/80`
     }, bonusOf(m) > 0 ? formatMoney(bonusOf(m)) : '—'), React.createElement("td", {
       className: `${cell(big)} text-right font-black ${(pres[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
-    }, formatMoney(pres[m.uid] || 0)), React.createElement("td", {
+    }, formatMoney(pres[m.uid] || 0)), showRake && React.createElement("td", {
       className: `${cell(big)} text-right font-bold text-slate-200`
     }, (rakes[m.uid] || 0) > 0 ? formatMoney(rakes[m.uid]) : '—'), React.createElement("td", {
       className: `py-1.5 text-right font-black ${(presAll[m.uid] || 0) >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
@@ -8604,7 +8631,7 @@ function SettlementSection({
       className: `${cell(big)} text-right text-amber-500/80`
     }, formatMoney(tot.bon)), React.createElement("td", {
       className: `${cell(big)} text-right ${tot.cyc >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
-    }, formatMoney(tot.cyc)), React.createElement("td", {
+    }, formatMoney(tot.cyc)), showRake && React.createElement("td", {
       className: `${cell(big)} text-right text-slate-300`
     }, formatMoney(tot.rk)), React.createElement("td", {
       className: `py-2 text-right ${tot.all >= 0 ? 'text-emerald-300' : 'text-rose-300'}`
@@ -8670,7 +8697,7 @@ function SettlementSection({
     }, React.createElement("th", {className: "text-left py-2 pr-3"}, "Agent"),
       React.createElement("th", {className: "text-right py-2 pr-3"}, "Players"),
       React.createElement("th", {className: "text-right py-2 pr-3"}, "Result (P/L)"),
-      React.createElement("th", {className: "text-right py-2 pr-3"}, "Rake"),
+      showRake && React.createElement("th", {className: "text-right py-2 pr-3"}, "Rake"),
       React.createElement("th", {className: "text-right py-2 pr-3"}, "Agent cut"))),
     React.createElement("tbody", null, agRows.map(a => React.createElement(React.Fragment, {key: a.key},
       React.createElement("tr", {
@@ -8680,7 +8707,7 @@ function SettlementSection({
         React.createElement("i", {className: `fa-solid ${agOpen[a.key] ? 'fa-caret-down' : 'fa-caret-left'} text-slate-500 ml-1.5`}), a.name),
         React.createElement("td", {className: "py-2 pr-3 text-right text-slate-300 font-bold", dir: "ltr"}, a.players),
         React.createElement("td", {className: "py-2 pr-3 text-right"}, money(a.result)),
-        React.createElement("td", {className: "py-2 pr-3 text-right text-amber-300 font-black", dir: "ltr"}, formatMoney(a.rake)),
+        showRake && React.createElement("td", {className: "py-2 pr-3 text-right text-amber-300 font-black", dir: "ltr"}, formatMoney(a.rake)),
         React.createElement("td", {className: "py-2 pr-3 text-right text-purple-300 font-black", dir: "ltr"}, formatMoney(a.cut))),
       agOpen[a.key] && a.list.map(m => React.createElement("tr", {
         key: m.uid,
@@ -8689,13 +8716,13 @@ function SettlementSection({
         React.createElement("span", {className: "text-slate-600 text-[10px] mr-1.5", dir: "ltr"}, m.playerId || '')),
         React.createElement("td", {className: "py-1.5 pr-3"}, ""),
         React.createElement("td", {className: "py-1.5 pr-3 text-right"}, money(pres[m.uid] || 0)),
-        React.createElement("td", {className: "py-1.5 pr-3 text-right text-amber-300/80 font-bold", dir: "ltr"}, (rakes[m.uid] || 0) > 0 ? formatMoney(rakes[m.uid]) : '\u2014'),
+        showRake && React.createElement("td", {className: "py-1.5 pr-3 text-right text-amber-300/80 font-bold", dir: "ltr"}, (rakes[m.uid] || 0) > 0 ? formatMoney(rakes[m.uid]) : '\u2014'),
         React.createElement("td", {className: "py-1.5 pr-3"}, ""))))),
       React.createElement("tr", {className: "border-t-2 border-emerald-500/40"},
         React.createElement("td", {className: "py-2.5 pr-3 font-black text-emerald-300"}, "TOTAL"),
         React.createElement("td", {className: "py-2.5 pr-3 text-right font-black text-white", dir: "ltr"}, agTot.players),
         React.createElement("td", {className: "py-2.5 pr-3 text-right"}, money(agTot.result)),
-        React.createElement("td", {className: "py-2.5 pr-3 text-right text-amber-300 font-black", dir: "ltr"}, formatMoney(agTot.rake)),
+        showRake && React.createElement("td", {className: "py-2.5 pr-3 text-right text-amber-300 font-black", dir: "ltr"}, formatMoney(agTot.rake)),
         React.createElement("td", {className: "py-2.5 pr-3 text-right text-purple-300 font-black", dir: "ltr"}, formatMoney(agTot.cut)))))));
     return React.createElement(React.Fragment, null, settleBlock, panel(false), repFull && ReactDOM.createPortal(React.createElement("div", {
       className: "fixed inset-0 z-[600] bg-slate-950 overflow-auto p-3 sm:p-6"
@@ -8886,6 +8913,34 @@ function BackofficeView({
     }
   };
   const [search, setSearch] = useState('');
+  const [memberSort,setMemberSort]=useState('name');
+  const [accounting,setAccounting]=useState(null);
+  const [accountingError,setAccountingError]=useState('');
+  const [accountingAttempt,setAccountingAttempt]=useState(0);
+  const canSeeRake=isGodUser(user);
+  const accountingReady=accounting?.scope===directoryScope;
+  useEffect(()=>{
+    setAccounting(null);setAccountingError('');
+    if(!directoryLoaded)return;
+    let stopped=false,busy=false;
+    const load=async()=>{
+      if(busy)return;busy=true;
+      try{const report=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},directoryScope);
+        if(!report.accounting?.players)throw new Error('Accounting unavailable');
+        if(!stopped){setAccounting({...report.accounting,scope:directoryScope});setAccountingError('');}
+      }catch(e){if(!stopped)setAccountingError(clubRequestError(e,'לא ניתן לרענן תוצאות למחזור.'));}
+      finally{busy=false;}
+    };
+    load();const interval=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
+    return()=>{stopped=true;clearInterval(interval);window.removeEventListener('pk-club-changed',load);};
+  },[directoryScope,directoryLoaded,accountingAttempt]);
+  const accountNumbers=(value,balance)=>React.createElement('div',{className:'management-account-numbers'},
+    React.createElement('div',{dir:'ltr',className:'management-account-line'},
+      React.createElement(Coin,{amount:value?.balance??balance??0,className:'club-member-balance text-sm',title:'Current balance'}),
+      React.createElement('strong',{className:value?.result<0?'text-rose-400':'text-emerald-400','data-cycle-result':value?.result,title:'תוצאה במחזור, כולל סשנים פתוחים'},value?`(${value.result>0?'+':''}${formatMoney(value.result)})`:'(…)')),
+    value?.onTables>0&&React.createElement('small',null,'בשולחנות: ',formatMoney(value.onTables),' · סה״כ צ׳יפים: ',formatMoney(value.chips)),
+    canSeeRake&&accounting?.rakeVisible&&React.createElement('small',{'data-cycle-rake':value?.rake,className:'text-amber-300'},'רייק במחזור: ',value?formatMoney(value.rake):'…'));
+
   const [memFilter, setMemFilter] = useState('all'); // members directory: All / Agents / Managers / Banned
   const [roleEditUser, setRoleEditUser] = useState(null);
   const [roleDraft, setRoleDraft] = useState({
@@ -9249,7 +9304,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   const clubBalance=canAdmin ? Number(treasury?.balance)||0 : Number(user.balance)||0;
   const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
-  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true);
+  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>memberSort==='name'?(a.username||'').localeCompare(b.username||''):(Number(accountingReady?accounting.players[b.uid]?.[memberSort==='rake'&&canSeeRake?'rake':'chips']:b.balance)||0)-(Number(accountingReady?accounting.players[a.uid]?.[memberSort==='rake'&&canSeeRake?'rake':'chips']:a.balance)||0)||(a.username||'').localeCompare(b.username||''));
   const balanceMembers = usersList.filter(m => ["approved","banned"].includes(m.status) && !m.isBot && m.uid !== (canAdmin?clubOwnerUid:user.uid) && m.uid !== "bot_bank").filter(m => canManageAny || m.agentUid === user.uid);
   const statTiles = [{
     label: canAdmin ? 'Club treasury' : 'Your balance',
@@ -9497,7 +9552,12 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     title: "The signed-in account that actually performed the write (" + (a.authType || "?") + ")"
   }, "by ", a.byUid ? (usersList.find(m => m.uid === a.byUid) || {}).username || a.byUid.slice(0, 10) : "unknown"), (a.count || 1) > 1 && React.createElement("span", {
     className: "text-slate-500"
-  }, "×", a.count, " today, +", formatMoney(a.total || 0), " total"))))), React.createElement("div", {
+  }, "×", a.count, " today, +", formatMoney(a.total || 0), " total"))))), React.createElement('section',{className:'management-cycle-summary','aria-label':'סיכום המחזור'},
+    React.createElement('h3',null,canAdmin?'כל שחקני הקלאב':'כל השחקנים שלי'),
+    accountNumbers(accountingReady?(canAdmin?accounting.club:accounting.agents[user.uid]):null),
+    React.createElement('p',null,'מחזור נוכחי: מיום שני 00:01 (ישראל). כולל תוצאת הסשנים הפתוחים; יד פעילה מתעדכנת בסיומה.'),
+    accountingReady&&React.createElement('small',null,'עודכן: ',new Date(accounting.asOf).toLocaleTimeString('he-IL')),
+    accountingError&&React.createElement('div',{role:'alert'},accountingError,React.createElement('button',{onClick:()=>setAccountingAttempt(x=>x+1)},'נסה שוב'))), React.createElement("div", {
     className: "club-admin-metrics grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
   }, statTiles.map((t, i) => React.createElement("div", {
     key: i,
@@ -9831,7 +9891,8 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       dir: "ltr"
     }), React.createElement("div", {
       className: "text-[9px] text-slate-500 font-bold text-center mt-0.5"
-    }, "% of rake"))), React.createElement("div", {
+    }, "% of rake"))), React.createElement('div',{className:'management-agent-totals','aria-label':'סיכום שחקני הסוכן'},
+      React.createElement('small',null,'סך כל שחקני הסוכן'),accountNumbers(accountingReady?accounting.agents[a.uid]:null)), React.createElement("div", {
       className: "grid grid-cols-3 gap-2 text-center mb-2.5"
     }, React.createElement("div", {
       className: "bg-slate-950/60 rounded-xl py-1.5"
@@ -9843,7 +9904,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       className: "bg-slate-950/60 rounded-xl py-1.5"
     }, React.createElement("div", {
       className: "text-[9px] text-slate-500 font-bold"
-    }, "This cycle"), React.createElement("div", {
+    }, "עמלת הסוכן במחזור"), React.createElement("div", {
       className: "text-emerald-400 font-black text-sm",
       dir: "ltr"
     }, activityLoaded ? formatMoney(agentCycle[a.uid] || 0) : '…')), React.createElement("div", {
@@ -9886,7 +9947,9 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     onChange: e => setSearch(e.target.value),
     placeholder: "Search player...",
     className: "bg-slate-900/80 border border-white/10 rounded-full pr-9 pl-4 py-2 text-sm text-white w-52 outline-none focus:border-emerald-500/50"
-  }))), React.createElement("div", {
+  })), React.createElement('select',{value:memberSort,onChange:e=>setMemberSort(e.target.value),'aria-label':'סידור שחקנים',className:'management-sort',disabled:!accountingReady},
+    React.createElement('option',{value:'name'},'לפי שם'),React.createElement('option',{value:'chips'},'צ׳יפים — מהגבוה לנמוך'),
+    canSeeRake&&accounting?.rakeVisible&&React.createElement('option',{value:'rake'},'רייק — מהגבוה לנמוך'))), React.createElement("div", {
     className: "flex gap-1.5 mb-3 flex-wrap"
   }, [['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
     key: k2,
@@ -9932,11 +9995,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "text-[10px] text-purple-300/90 font-bold truncate"
   }, "🤝 ", agentName(u.agentUid), " (", u.agentPct || 0, "%)"))), React.createElement("div", {
     className: "club-member-actions flex items-center gap-2 sm:gap-3 shrink-0"
-  }, React.createElement(Coin, {
-    amount: u.balance,
-    className: "club-member-balance text-sm",
-    title: "Current balance"
-  }), React.createElement("button", {
+  }, accountNumbers(accountingReady?accounting.players[u.uid]:null,u.balance), React.createElement("button", {
     onClick: () => adjustBalance(u, true),
     className: "w-9 h-9 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-800 hover:from-emerald-400 text-white font-black shadow-md",
     title: "Deposit chips"
@@ -10611,10 +10670,11 @@ function PokerFullscreenButton({showToast, onToggle}) {
     React.createElement('i', {className:active ? 'fa-solid fa-compress' : 'fa-solid fa-expand', 'aria-hidden':true}),
     React.createElement('span', null, active ? 'Exit fullscreen' : 'Fullscreen'));
 }
-// A current made-hand comparison: no future deck/runout and no prediction.
-const pokerCurrentHandLeaders = (players, board, gameType, phase, privateHands) => {
+// GOD display only: compare the same complete runout shown in the preview.
+// Never substitute the current street while the atomic private snapshot loads.
+const pokerFinalHandLeaders = (players, board, gameType, phase, privateHands) => {
   const empty = {uids:[],score:null};
-  if (!['flop','turn','river','showdown'].includes(phase) || !Array.isArray(board) || board.length < 3 || board.length > 5) return empty;
+  if (!['preflop','flop','turn','river','showdown'].includes(phase) || !Array.isArray(board) || board.length !== 5) return empty;
   const eligible = Object.values(players || {}).filter(p => p && !p.left && (p.status === 'active' || phase === 'showdown' && p.status === 'busted'));
   if (eligible.length < 2) return empty;
   const omaha = String(gameType || '').startsWith('Omaha');
@@ -10639,6 +10699,17 @@ const pokerCurrentHandLeaders = (players, board, gameType, phase, privateHands) 
     else if (score === best) uids.push(p.uid);
   }
   return {uids,score:best};
+};
+
+const pokerFullRunout = (board, deck) => {
+  const full = [...(board || [])], remaining = [...(deck || [])];
+  if (full.length === 0 && remaining.length >= 4) {
+    remaining.pop(); full.push(remaining.pop(), remaining.pop(), remaining.pop());
+  }
+  while (full.length >= 3 && full.length < 5 && remaining.length >= 2) {
+    remaining.pop(); full.push(remaining.pop());
+  }
+  return full.length === 5 && full.every(Boolean) ? full : [];
 };
 
 function PokerTable({
@@ -12281,7 +12352,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }
   const N = Math.max(displayList.length, 2);
   // Stable rail rows leave room for cards, avatars and the lower-left hero hand.
-  // Capacity, not occupancy, determines the ring so joining never moves others.
+  // Compact occupied seats for seated viewers; retain clockwise game order.
   const SEAT_LAYOUTS = {
     2: [[16.125,76.875],[74.797,18]],
     3: [[16.125,76.875],[25.339,18],[89.16,59.188]],
@@ -12289,51 +12360,30 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     5: [[16.125,76.875],[10.84,31.25],[25.339,18],[74.797,18],[89.16,59.188]],
     6: [[16.125,76.875],[10.84,31.25],[25.339,18],[74.797,18],[89.16,31.25],[89.16,59.188]],
     7: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[25.339,18],[74.797,18],[89.16,31.25],[89.16,59.188]],
-    8: [[16.125,76.875],[10,64],[10,30],[25.339,14],[74.797,14],[90,30],[90,49],[90,64]],
-    9: [[16.125,76.875],[10,64],[10,49],[10,30],[25.339,14],[74.797,14],[90,30],[90,49],[90,64]]
+    8: [[16.125,76.875],[10,58],[10,30],[25.339,14],[74.797,14],[90,30],[90,49],[90,64]],
+    9: [[16.125,76.875],[10,58],[10,44],[10,30],[25.339,14],[74.797,14],[90,30],[90,49],[90,64]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
   // every real seatIndex so two players can never share a slot.
   const maxSeatIx = list.reduce((m, p) => Math.max(m, Number(p.seatIndex) || 0), 0);
   const capN = Math.max(2, Math.min(10, Math.max(Number(setts.maxPlayers) || 0, maxSeatIx + 1, N)));
-  const heroSeatIx = isSeated ? Number(players[user.uid]?.seatIndex) || 0 : 0;
+  const compactVacancy = !isSeated && displayList.length < capN;
+  const layoutN = !isSeated && !displayList.length ? capN : Math.max(2, displayList.length + (compactVacancy ? 1 : 0));
   const slotXY = s => {
-    const ring = SEAT_LAYOUTS[Math.min(9, Math.max(2, capN))] || SEAT_LAYOUTS[6];
+    const ring = SEAT_LAYOUTS[Math.min(9, Math.max(2, layoutN))] || SEAT_LAYOUTS[6];
     if (ring[s]) return ring[s];
     // Overflow slot (10+): place on the table ellipse instead of stacking
     // players in the middle / off-screen.
     const ang = Math.PI / 2 + s / Math.max(capN, 2) * Math.PI * 2;
     return [Math.round(50 + 42 * Math.cos(ang)), Math.round(45 + 30 * Math.sin(ang))];
   };
-  // Slot assignment is COLLISION-PROOF by construction. The natural mapping is
-  // (seatIndex - heroSeat) mod capN, but that maps two players onto the same
-  // physical slot whenever a seatIndex is missing (reads as 0), duplicated, or
-  // capN apart — and then two pods render exactly on top of each other, which
-  // is what a player saw: his own 0-chip pod stacked over another player's.
-  // Whatever the data does, every seated player now gets a slot of their own:
-  // the hero claims the bottom slot first, the rest take their natural slot or
-  // the next free one going round the ring.
-  const slotMap = (() => {
-    const m = new Array(displayList.length).fill(0);
-    const used = new Set();
-    const natural = i => {
-      const p = displayList[i];
-      return p ? (((Number(p.seatIndex) || 0) - heroSeatIx) % capN + capN) % capN : 0;
-    };
-    const order = displayList.map((p, i) => i)
-        .sort((a, b) => (displayList[a].uid === user.uid ? -1 : displayList[b].uid === user.uid ? 1 : 0) ||
-            natural(a) - natural(b) || String(displayList[a].uid).localeCompare(String(displayList[b].uid)));
-    order.forEach(i => {
-      let s = natural(i);
-      for (let g = 0; g < capN && used.has(s); g++) s = (s + 1) % capN;
-      used.add(s);
-      m[i] = s;
-    });
-    return m;
-  })();
+  // Compact the occupied ring in clockwise order. This is presentation only:
+  // seatIndex, dealer, blinds and tournament balancing stay server-owned.
+  // A spectator gets one join position for the next available physical seat.
+  const slotMap = displayList.map((p,i)=>i+(compactVacancy?1:0));
   const slotOf = i => slotMap[i] || 0;
-  const seatXY = i => isSeated && displayList[i]?.uid === user.uid ? [50,78] : slotXY(slotOf(i));
+  const seatXY = i => isSeated && displayList[i]?.uid === user.uid ? [16.125,76.875] : slotXY(slotOf(i));
   const seatPos = i => {
     const [x, y] = seatXY(i);
     return {
@@ -12346,21 +12396,35 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     // Bets stay beside their owner's rail, outside all inward-facing hands.
     const [sx, sy] = seatXY(i);
     const hero = isSeated && displayList[i]?.uid === user.uid;
-    const x = sy <= 22 ? (sx < 50 ? 10 : 90) : capN <= 7 ? (sx < 50 ? (sy >= 40 ? 30 : 25) : (sy >= 40 ? 70 : 75)) : sy < 40 ? (sx < 50 ? 42 : 58) : (sx < 50 ? 34 : 66);
-    const resultGap = capN <= 7 && sy > 22 && sy < 40 && (gs.allInReveal || gs.phase === 'showdown') ? 12 : 0;
+    const x = sy <= 22 ? (sx < 50 ? 10 : 90) : layoutN <= 7 ? (sx < 50 ? (sy >= 40 ? 30 : 25) : (sy >= 40 ? 70 : 75)) : sy < 40 ? (sx < 50 ? 42 : 58) : (sx < 50 ? 34 : 66);
+    const resultGap = layoutN <= 7 && sy > 22 && sy < 40 && (gs.allInReveal || gs.phase === 'showdown') ? 12 : 0;
     const pod = podWidthFor(sy);
     return {
-      left: hero ? 'calc(100% - 55px)' : `${x}%`,
+      left: hero ? '24%' : `${x}%`,
       '--poker-top-bet-x': sx < 50 ? '35%' : '65%',
-      top: hero ? 'calc(100% - var(--poker-hero-bottom, 158px) - 20px)' : capN >= 8 && sy >= 40 ? `calc(${sy}% - 34px)` : `calc(${sy}% + clamp(22px, min(${(pod / 2).toFixed(3)}cqw, ${(pod * .46125 / 2).toFixed(3)}cqh), 44px) + ${(sy <= 22 ? 23 : 39) + resultGap}px)`
+      top: hero ? 'calc(100% - var(--poker-hero-bottom, 158px) - 20px)' : layoutN >= 8 && sy >= 40 ? `calc(${sy}% - 34px)` : `calc(${sy}% + clamp(22px, min(${(pod / 2).toFixed(3)}cqw, ${(pod * .46125 / 2).toFixed(3)}cqh), 44px) + ${(sy <= 22 ? 23 : 39) + resultGap}px)`
     };
   };
 
   const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
   const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
-  const godCurrentLeaders = godView && isGodUser(user) && (!srvEngine || godSnapshotReady)
-    ? pokerCurrentHandLeaders(players,gs.board || [],gs.currentGameType || setts.baseGameType,gs.phase,srvEngine ? godHands : null)
+  const godRunout = godView && (!srvEngine || godSnapshotReady)
+    ? srvEngine ? godFinal : pokerFullRunout(gs.board, gs.deck)
+    : [];
+  const godFinalLeaders = godView && isGodUser(user) && (!srvEngine || godSnapshotReady)
+    ? pokerFinalHandLeaders(players,godRunout,gs.currentGameType || setts.baseGameType,gs.phase,srvEngine ? godHands : null)
     : {uids:[],score:null};
+  const heroHandStatus = isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
+    className: "poker-hand-status"
+  }, !gs.allInReveal && myHand && React.createElement("span", {
+    className: "bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg"
+  }, myHand), !gs.allInReveal && myEquity !== null && React.createElement("span", {
+    className: "bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[11px] font-black px-3 py-1 rounded-lg",
+    dir: "ltr"
+  }, "🎯 ", myEquity, "%"), gs.allInReveal && realEq && realEq[user.uid] !== undefined && React.createElement("span", {
+    className: "bg-amber-900/80 border border-amber-500/50 text-amber-300 text-[11px] font-black px-3 py-1 rounded-lg animate-pulse",
+    dir: "ltr"
+  }, "ALL-IN · ", realEq[user.uid], "%"));
   const potLimited = String(gs.currentGameType || '').startsWith('Omaha') && setts.omahaPotLimit !== false;
   const potCapTo = round2((gs.highestBet || 0) + totalPot + toCallMe);
   const myMaxBet = round2(Math.min((myPlayer?.bet || 0) + (myPlayer?.stack || 0), potLimited ? potCapTo : Infinity));
@@ -12387,7 +12451,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
   const tableClubName = String(clubSettings?.name || window.__club?.name || '').trim();
   return React.createElement("div", {
-    className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (isSeated ? " is-seated" : " is-spectating"),
+    className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (isSeated ? " is-seated" : " is-spectating") + (godView ? " is-god-view" : ""),
     dir: "ltr",
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
@@ -12555,23 +12619,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, "Add")))), document.body), godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (() => {
     const board = gs.board || [];
     const bl = board.length;
-    let fin = null;
-    if (srvEngine) {
-      if ((godFinal || []).length === 5) fin = godFinal;
-    } else if ((gs.deck || []).length >= 8) {
-      const d = [...gs.deck];
-      const p2 = [...board];
-      if (p2.length === 0) {
-        d.pop();
-        p2.push(d.pop(), d.pop(), d.pop());
-      }
-      while (p2.length >= 3 && p2.length < 5 && d.length >= 2) {
-        d.pop();
-        p2.push(d.pop());
-      }
-      if (p2.length === 5) fin = p2;
-    }
-    if (!fin || fin.some(c => !c)) return null;
+    const fin = godRunout;
+    if (fin.length !== 5) return null;
     const nxt = [];
     if (bl < 3) nxt.push(['Flop', fin.slice(bl, 3)]);
     if (bl < 4) nxt.push(['Turn', [fin[3]]]);
@@ -12600,7 +12649,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   })(), React.createElement("div", {
     className: "pt-stage flex-1 relative flex items-center justify-center px-0 pt-0 pb-0 sm:p-5 min-h-0"
   }, React.createElement("div", {
-    'data-seat-count': capN,
+    'data-seat-count': layoutN,
+    'data-seat-capacity': capN,
     'data-felt': skin.felt || 'auto',
     className: "poker-table w-full max-w-none sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
     ref: tableVisualRef,
@@ -12769,16 +12819,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, React.createElement('strong', {className:'poker-felt-wordmark'}, 'POKERTEN'),
     tableClubName && React.createElement('span', {className:'poker-felt-club-name',dir:'auto',title:tableClubName}, tableClubName),
     React.createElement('div', {className:'poker-felt-details'}, React.createElement('span', {className:'poker-felt-variant'}, tableVariant), React.createElement('span', {className:'poker-felt-stakes'}, tableStakes)))), totalPot > 0 && gs.phase !== 'waiting' && React.createElement('div', {className:'poker-collected-pot', 'aria-label':'Collected pot',dir:'ltr'}, (gs.pots || []).map((pot,i)=>React.createElement(CasinoChipStack,{key:i,amount:pot.amount,scale:.7,showLabel:false,unit:chipUnit})),React.createElement('span',null,formatShort(totalPot))), !isSeated && !tableState?.tournamentId && (() => {
-    // Vacant seats: tap a "+" to pick THAT seat, then confirm the buy-in.
-    // Hidden the moment you are seated (owner request).
-    const occ = new Set(displayList.map((p, i) => slotOf(i)));
+    // A single vacant visual slot keeps occupied players evenly distributed.
     const taken = new Set(Object.values(players).map(p => Number(p.seatIndex) || 0));
     const out = [];
-    for (let s = 0; s < capN && s < 9; s++) {
-      if (occ.has(s)) continue;
-      const [ex, ey] = slotXY(s);
-      const realSeat = (s + heroSeatIx) % capN;
-      if (taken.has(realSeat)) continue;
+    for (let s=0;s<(compactVacancy?(displayList.length?1:capN):0);s++) {
+      const [ex,ey]=slotXY(s);
+      let realSeat=s;while(taken.has(realSeat)&&realSeat<capN)realSeat++;
       out.push(React.createElement("button", {
         key: 'es' + s,
         onClick: () => {
@@ -12837,9 +12883,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const folded = p.status === 'folded';
     const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
     const isWinner = gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name);
-    const godLeading = godView && isGodUser(user) && godCurrentLeaders.uids.includes(p.uid);
-    const godTied = godCurrentLeaders.uids.length > 1;
-    const godLeaderLabel = (godTied ? 'Tied best current hand' : 'Best current hand') + ((gs.board2 || []).length ? ' on board 1' : '') + ': ' + handName(godCurrentLeaders.score);
+    const godLeading = godView && isGodUser(user) && godFinalLeaders.uids.includes(p.uid);
+    const godTied = godFinalLeaders.uids.length > 1;
+    const godLeaderLabel = (godTied ? 'Tied best hand on full board' : 'Best hand on full board') + ((gs.board2 || []).length ? ' 1' : '') + ': ' + handName(godFinalLeaders.score);
+    const godBadge = godLeading && React.createElement('span',{className:'poker-god-best-badge',role:'img','aria-label':godLeaderLabel,title:godLeaderLabel+' · GOD view only'},
+      React.createElement('i',{className:'fa-solid fa-crown','aria-hidden':true}),
+      React.createElement('span',{'aria-hidden':true},godTied?'TIED BEST':(gs.board2 || []).length?'BEST B1':'BEST HAND'));
     const muckCls = gs.phase === 'showdown' && !isWinner ? ' card-mucked' : '';
     return React.createElement("div", {
       key: p.uid,
@@ -12869,8 +12918,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         '--poker-short-seat-x': seatXv < 50 ? '10%' : '90%',
         '--poker-reveal-shift': seatXv < 25 ? '7px' : seatXv > 75 ? '-7px' : '0px',
         '--poker-card-shift': seatXv < 40 ? 'calc(var(--gg-pod) * .6)' : seatXv > 60 ? 'calc(var(--gg-pod) * -.6)' : '0px',
-        '--poker-card-side-top': capN >= 8 && seatYv >= 40 && seatYv < 60 ? '-75px' : '0px',
-        '--gg-pod': capN >= 8 ? '44px' : `clamp(44px, min(${podWidth.toFixed(3)}cqw, ${(podWidth * .46125).toFixed(3)}cqh), 88px)`,
+        '--poker-card-side-top': layoutN >= 8 && seatYv >= 40 && seatYv < 60 ? '-75px' : '0px',
+        '--gg-pod': layoutN >= 8 ? '44px' : `clamp(44px, min(${podWidth.toFixed(3)}cqw, ${(podWidth * .46125).toFixed(3)}cqh), 88px)`,
         transform: 'translate(-50%, -50%)'
       }
     }, isTurn && React.createElement("div", {
@@ -12994,11 +13043,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }
-    }, godLeading && React.createElement(React.Fragment,null,
-      React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true}),
-      React.createElement('span',{className:'poker-god-best-badge',role:'img','aria-label':godLeaderLabel,title:godLeaderLabel+' · GOD view only'},
-        React.createElement('i',{className:'fa-solid fa-crown','aria-hidden':true}),
-        React.createElement('span',{'aria-hidden':true},godTied?'TIED BEST':(gs.board2 || []).length?'BEST B1':'BEST NOW'))), isTurn && React.createElement("svg", {
+    }, godLeading && React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true}), isTurn && React.createElement("svg", {
       className: "absolute inset-0 w-full h-full timer-ring",
       viewBox: "0 0 40 40"
     }, React.createElement("circle", {
@@ -13017,7 +13062,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       style: {
         // far pods slimmer (spec: 72px far / 88px near = 0.24T);
         // centered under the avatar (GG) — no inward shift, bets clear it
-        width: farPod ? '72px' : capN >= 8 ? '80px' : '88px'
+        width: farPod ? '72px' : layoutN >= 8 ? '80px' : '88px'
       }
     }, React.createElement("div", {
       className: "poker-player-name text-[10px] font-bold text-white leading-tight",
@@ -13044,7 +13089,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         right: 'auto',
         transform: 'translateX(-50%)'
       }
-    }, p.actionText)), isMe && p.sitOut && React.createElement("button", {
+    }, p.actionText), godBadge), isMe && heroHandStatus, isMe && p.bet > 0 && React.createElement('div', {
+      className:'poker-bet poker-bet-hero', 'data-player-uid':p.uid, 'data-bet-row':'hero'
+    }, React.createElement(CasinoChipStack,{amount:p.bet,scale:0.55,unit:chipUnit})), isMe && p.sitOut && React.createElement("button", {
       type: "button",
       className: "poker-return-to-game",
       "aria-label": "Return to game",
@@ -13113,13 +13160,13 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     betLayoutRef.current.now = now;
     return null;
   })(), displayList.map((p, i) => {
-    if (!((p.bet || 0) > 0)) return null;
+    if (!((p.bet || 0) > 0) || isSeated && p.uid === user.uid) return null;
     const bp = betPos(i);
     return React.createElement("div", {
       key: 'bet' + p.uid,
       className: "poker-bet absolute z-[35]",
       "data-player-uid": p.uid,
-      "data-bet-row": seatXY(i)[1] <= 22 ? "top" : capN <= 7 && seatXY(i)[1] < 40 ? "upper" : "side",
+      "data-bet-row": seatXY(i)[1] <= 22 ? "top" : layoutN <= 7 && seatXY(i)[1] < 40 ? "upper" : "side",
       style: {
         ...bp,
         transform: 'translate(-50%, -50%)'
@@ -13217,17 +13264,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
     className: "poker-action-dock"
-  }, isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
-    className: "poker-hand-status"
-  }, !gs.allInReveal && myHand && React.createElement("span", {
-    className: "bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg"
-  }, myHand), !gs.allInReveal && myEquity !== null && React.createElement("span", {
-    className: "bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[11px] font-black px-3 py-1 rounded-lg",
-    dir: "ltr"
-  }, "🎯 ", myEquity, "%"), gs.allInReveal && realEq && realEq[user.uid] !== undefined && React.createElement("span", {
-    className: "bg-amber-900/80 border border-amber-500/50 text-amber-300 text-[11px] font-black px-3 py-1 rounded-lg animate-pulse",
-    dir: "ltr"
-  }, "ALL-IN · ", realEq[user.uid], "%")), isMyTurn && React.createElement("div", {
+  }, isMyTurn && React.createElement("div", {
     className: "poker-action-buttons"
   }, (() => {
     const minRaiseTo = Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet);
@@ -19227,7 +19264,7 @@ if(tor.game==='poker')return showToast('Completed tournaments remain in the hist
   }, React.createElement("span", null, "🎚 Blind structure · ", structRows.length, " levels", opts.structure ? ' · CUSTOM' : ' · auto', Number(opts.breakEvery) > 0 ? ` · ☕ break ${opts.breakMins}m every ${opts.breakEvery} levels` : ''), React.createElement("i", {
     className: `fa-solid fa-chevron-${structOpen ? 'up' : 'down'} text-purple-300`
   })), structOpen && React.createElement("div", {
-    className: "mt-2 bg-slate-950/60 border border-white/10 rounded-xl p-3"
+    className: "tournament-blind-editor mt-2 bg-slate-950/60 border border-white/10 rounded-xl p-3"
   }, React.createElement("div", {
     className: "flex flex-wrap items-center gap-3 mb-3"
   }, React.createElement("span", {
@@ -19278,25 +19315,26 @@ if(tor.game==='poker')return showToast('Completed tournaments remain in the hist
     }),
     className: "text-[11px] font-black text-amber-300 underline mr-auto"
   }, "↺ Reset to system structure")), React.createElement("div", {
-    className: "grid gap-1",
+    className: "tournament-blind-rows grid gap-1",
+    "aria-label": "Tournament blind levels",
     dir: "ltr"
   }, React.createElement("div", {
-    className: "grid grid-cols-[2rem_1fr_1fr_1fr_3.5rem_3.5rem] gap-1 text-[10px] font-black text-slate-500 uppercase px-1"
+    className: "tournament-blind-header text-[10px] font-black text-slate-500 uppercase"
   }, React.createElement("span", null, "Lvl"), React.createElement("span", null, "SB"), React.createElement("span", null, "BB"), React.createElement("span", null, "Ante"), React.createElement("span", null, "Min"), React.createElement("span", null, "")), structRows.map((r, i) => React.createElement(React.Fragment, {
     key: i
   }, React.createElement("div", {
-    className: "grid grid-cols-[2rem_1fr_1fr_1fr_3.5rem_3.5rem] gap-1 items-center"
+    className: "tournament-blind-row"
   }, React.createElement("span", {
-    className: "text-[11px] font-black text-purple-300 text-center"
-  }, i + 1), ['sb', 'bb', 'ante', 'mins'].map(k => React.createElement("input", {
-    key: k,
+    className: "tournament-blind-level text-[11px] font-black text-purple-300 text-center"
+  }, i + 1), ['sb', 'bb', 'ante', 'mins'].map(k => React.createElement('label',{key:k,className:'tournament-blind-field'},React.createElement('span',null,({sb:'SB',bb:'BB',ante:'Ante',mins:'Min'})[k]),React.createElement("input", {
+    'aria-label': `Level ${i+1} ${k}`,
     type: "number",
     min: "0",
     value: r[k],
     onChange: e => setStructRow(i, k, e.target.value),
     className: "bg-slate-900 text-white border border-white/10 rounded-lg p-1.5 text-xs font-bold text-center"
-  })), React.createElement("span", {
-    className: "flex gap-1 justify-center"
+  }))), React.createElement("span", {
+    className: "tournament-blind-actions flex gap-1 justify-center"
   }, React.createElement("button", {
     type: "button",
     title: "Add a level after this one",

@@ -201,6 +201,7 @@ function executeDeal(S, gameType) {
   const g = S.gameState;
   g.handSB=sbAmt;g.handBB=bbAmt;
   g.handStartStacks=Object.fromEntries(actives.map(p=>[p.uid,round2(p.stack+(S.tor&&S.tor.anteType==='each'?Math.min(tourRow.ante,S.raw.players[p.uid]?.stack||0):0))]));
+  g.investedStreets = {};
   g.currentGameType = gameType;
   g.board = [];
   g.pots = anteTotal > 0 ? [{amount: anteTotal, eligible: actives.map((p) => p.uid)}] : [];
@@ -403,6 +404,13 @@ function resolveRitIfDue(S) {
 function advancePhase(S) {
   const g = S.gameState;
   const pl = S.players;
+  // Public action history only. Retain continued investment across streets
+  // instead of treating a caller as a random fresh hand on every street.
+  if (g.phase === 'flop' || g.phase === 'turn') {
+    g.investedStreets = {...g.investedStreets};
+    for (const p of activesOf(pl)) if ((p.bet || 0) > 0)
+      g.investedStreets[p.uid] = (g.investedStreets[p.uid] || 0) + 1;
+  }
   C.gatherBetsToPots(g, pl);
   g.highestBet = 0;
   g.minRaise = g.handBB || bbOf(S.settings);
@@ -931,13 +939,30 @@ function handBody(cards, board, gameType) {
     } else {
       made = 0;
     }
-    if (board.length >= 5) return {made, outs: 0};
+    // A shared board pair is not a second independently made pair. KQ on
+    // Q-T-T is top pair with a shared pair, not a hand to build a huge pot.
+    // Omaha keeps its exact-two-hole-card evaluator and existing classification.
+    let sharedPair = false;
+    if (!(gameType || '').startsWith('Omaha') && sc >= 2000000 && sc < 4000000) {
+      const counts = {};
+      for (const c of board) { const rank=RV[c.val]||0; counts[rank]=(counts[rank]||0)+1; }
+      if (sc < 3000000) {
+        const high=Math.floor((sc-2000000)/10000), low=Math.floor((sc-2000000-high*10000)/100);
+        const privatePairs=[high,low].filter(rank=>(counts[rank]||0)<2);
+        sharedPair=privatePairs.length<2;
+        if(sharedPair)made=privatePairs.length ? (Math.max(...privatePairs)>=Math.max(...board.map(c=>RV[c.val]||0))?2:1) : 0;
+      } else {
+        const tripRank=Math.floor((sc-3000000)/10000);
+        if((counts[tripRank]||0)>=3)made=0;
+      }
+    }
+    if (board.length >= 5) return {made, outs: 0, sharedPair};
     const known = new Set([...board, ...cards].map((c) => c.id));
     let outs = 0;
     C.pokerDeck().filter((c) => !known.has(c.id)).forEach((c) => {
       if (C.bestScoreFull(cards, [...board, c], gameType) >= 4000000) outs++;
     });
-    return {made, outs};
+    return {made, outs, sharedPair};
   } catch (e) {
     return {made: 0, outs: 0};
   }
@@ -1046,7 +1071,8 @@ function botAction(S, uid) {
   }
 
   // Read the opponents' strength from the bet we are facing, not from thin air.
-  const rng = rangeFacing(toCall, potNow, bb);
+  const priorInvestment = Math.max(0,...activesOf(S.players).filter(p=>p.uid!==uid).map(p=>g.investedStreets?.[p.uid]||0));
+  const rng = Math.max(rangeFacing(toCall, potNow, bb), Math.min(3,1+priorInvestment));
   const eqRaw = equityOf(cards, g.board || [], oppN, gt, rng,valuation);
   if(eqRaw==null)return{action:toCall>0?'fold':'call'};
   const eq=eqRaw;
@@ -1099,6 +1125,9 @@ function botAction(S, uid) {
     // the generic random-bluff branch into a large bet with no direction.
     // This uses only our cards, the public board and number of opponents.
     if (oppN > 1 && body.made < 2 && body.outs < 4) return {action: "call"};
+    // Protect showdown value after calls: a board-assisted two pair must not
+    // keep barreling or masquerade as a river value monster.
+    if (body.sharedPair && (river || priorInvestment > 0) && body.outs < 8) return {action: "call"};
     if (eq > 0.9) return ((!river && r < 0.15) ? null : betPot(0.65 + r * 0.35)) || {action: "call"};
     if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(0.55 + r * 0.3)) || {action: "call"};
     if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || {action: "call"};
@@ -1118,7 +1147,7 @@ function botAction(S, uid) {
   // Second pair or worse can pay off a small bet. It cannot play a big pot,
   // and it never calls off a stack — that is the 10-3 on A-K-3.
   if (!hasSomething() && toCall > potNow * 0.4) return {action: "fold"};
-  if (eq > potOdds + 0.18 && eq > 0.62) {
+  if (!body.sharedPair && eq > potOdds + 0.18 && eq > 0.62) {
     const valueFrequency = g.phase === 'river' && eq > .98 ? 1 : eq > .90 ? .8 : eq > .78 ? .5 : .3;
     if (r < valueFrequency) { const rr = raisePot(0.6 + Math.min(r, .4)); if (rr) return rr; }
     return {action: "call"};

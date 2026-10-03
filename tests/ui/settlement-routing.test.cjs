@@ -46,6 +46,7 @@ function firebaseFixture(email,membershipStatus,role='player'){
   onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;fn(snapshot(target));return()=>{};},
   fx:async(name,args)=>{
    calls.push({name,args});
+   if(name==='pkGameHistory')return{records:[{uid:identity.uid,game:'NLH',clubId:'main',profit:25,at:Date.now()}],nextCursor:null};
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
    if(name==='pkClubDirectory'&&reportDenied)throw Object.assign(new Error('Club staff only'),{code:'functions/permission-denied'});
    if(name==='pkClubDirectory'&&args.reportSection)return{records:[],hasMore:false,nextCursor:null};
@@ -96,8 +97,9 @@ async function assertPlayerLinks(fixture){
   assert.match(doc.body.textContent,/My game report/);
   assert.equal(doc.querySelector('.club-admin'),null);
   assert.equal(fixture.calls.some(c=>c.name==='pkClubDirectory'),false);
-  const query=fixture.queries.findLast(q=>q.path==='gameLog');
-  assert.deepEqual(query.filters,[['uid','==',fixture.identity.uid]],'existing personal history stays scoped to the signed-in user');
+  const request=fixture.calls.findLast(c=>c.name==='pkGameHistory');
+  assert.equal(request.args.targetUid,fixture.identity.uid,'personal history stays scoped to the signed-in user');
+  assert.equal(fixture.queries.some(q=>q.path==='gameLog'),false,'raw rake-bearing history is no longer read in the browser');
   assert.doesNotMatch(doc.body.textContent,/Other human player/);
   await back();
  }

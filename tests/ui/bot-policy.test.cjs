@@ -122,3 +122,26 @@ assert.equal(client.botPreflopTier([c('K','♠'),c('K','♥'),c('K','♦'),c('K'
 assert.equal(client.botRangeFacing(100,200,1),4);
 const short={uid:'short',stack:10,bet:0};
 assert.equal(client.botCallPrice({highestBet:1000,pots:[]},{short,opponent:{uid:'opponent',bet:1000}},short).odds,.5);
+
+// User's KQ / Q-T-T-3-5 screenshot: board-assisted two pair has showdown
+// value, but is not an excuse for another river barrel or a value re-raise.
+const reportedBoard=[c('Q','♥'),c('10','♦'),c('10','♠'),c('3','♥'),c('5','♥')];
+for(const style of ['tight','balanced','aggressive'])for(const draw of [.001,.05,.2,.5,.95]){
+ const bot={uid:'reported',isBot:true,botStyle:style,status:'active',stack:185.64,bet:0,cards:[c('K','♥'),c('Q','♠')]};
+ const opponent={uid:'opponent',isBot:false,status:'active',stack:302.19,bet:0};
+ const t={settings:{blinds:1,baseGameType:'NLH'},players:{reported:bot,opponent}};
+ const g={phase:'river',currentGameType:'NLH',board:reportedBoard,highestBet:0,minRaise:2,handBB:2,pots:[{amount:161}],investedStreets:{opponent:2}};
+ assert.equal(withDecisionDraw(draw,()=>client.botPokerMove(g,t,bot)).type,'call','KQ must check this river');
+ assert.equal(serverMoveWithDraw(draw,g,t,bot).type,'call');
+ for(const wager of [20,60]){
+  const facing={...g,highestBet:wager},faced={...t,players:{...t.players,opponent:{...opponent,bet:wager}}};
+  assert.notEqual(withDecisionDraw(draw,()=>client.botPokerMove(facing,faced,bot)).type,'raise','Do not re-raise board-assisted two pair');
+  assert.notEqual(serverMoveWithDraw(draw,facing,faced,bot).type,'raise');
+ }
+ const turn={...g,phase:'turn',board:reportedBoard.slice(0,4),investedStreets:{opponent:1}};
+ assert.equal(withDecisionDraw(draw,()=>client.botPokerMove(turn,t,bot)).type,'call','A prior caller stops automatic second barreling without a strong draw');
+}
+assert.equal(client.botHandBody([c('K','♥'),c('Q','♠')],reportedBoard,'NLH').made,2);
+assert.equal(client.botHandBody([c('2','♥'),c('4','♠')],[c('Q','♥'),c('Q','♦'),c('10','♠'),c('10','♥'),c('5','♣')],'NLH').made,0);
+assert.equal(client.botHandBody([c('Q','♣'),c('3','♣')],[c('Q','♥'),c('10','♦'),c('3','♠'),c('5','♥'),c('9','♣')],'NLH').made,3);
+console.log('PASS: KQ paired-board screenshot, repeated investment, shared board pairs and genuine private two pair');

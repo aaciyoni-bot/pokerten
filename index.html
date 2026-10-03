@@ -1105,7 +1105,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=305">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=306">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -1176,7 +1176,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-auth.js?v=265"></script>
     <script src="assets/js/club-ui.js?v=1"></script>
     <link rel="stylesheet" href="assets/css/settlement.css?v=303">
-    <script src="assets/js/poker-settlement-ui.js?v=305"></script>
+    <script src="assets/js/poker-settlement-ui.js?v=306"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=286"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
@@ -3830,7 +3830,7 @@ const positionPokerCommunity = field => {
   // Reset before measuring so repeated renders/resizes never accumulate a shift.
   community.style.setProperty('--poker-board-shift','0px');
   community.removeAttribute('data-caption-obscured');
-  const rows = [...community.querySelectorAll('.poker-board')].map(node => node.getBoundingClientRect()).filter(r => r.width && r.height);
+  const rows = [...community.querySelectorAll('.poker-board,.poker-total-pot')].map(node => node.getBoundingClientRect()).filter(r => r.width && r.height);
   if (!rows.length) return;
   const rect = r => ({left:r.left-base.left,right:r.right-base.left,top:r.top-base.top,bottom:r.bottom-base.top,height:r.height});
   const board = {left:Math.min(...rows.map(r=>r.left))-base.left,right:Math.max(...rows.map(r=>r.right))-base.left,top:Math.min(...rows.map(r=>r.top))-base.top,bottom:Math.max(...rows.map(r=>r.bottom))-base.top};
@@ -3843,6 +3843,18 @@ const positionPokerCommunity = field => {
   const shift = Math.round((next.top-board.top)*10)/10;
   community.style.setProperty('--poker-board-shift',shift+'px');
   community.dataset.boardClear = next.overlap < .5 ? 'true' : 'false';
+  // Collected chips are outside .poker-community for motion effects, but their
+  // resting position belongs beside its pot label and follows the same shift.
+  const pot=community.querySelector('.poker-total-pot'),chips=field.querySelector('.poker-collected-pot');
+  if(pot&&chips){const pr=pot.getBoundingClientRect(),cr=chips.getBoundingClientRect();chips.style.left=(pr.right-base.left+cr.width/2+6)+'px';chips.style.top=(pr.top-base.top+(pr.height-cr.height)/2)+'px';}
+  // A compact lower rail on short phones moves as a unit with its live bet.
+  field.querySelectorAll('.poker-bet[data-player-uid]').forEach(bet=>{
+    const seat=[...field.querySelectorAll('.poker-seat[data-player-uid]')].find(n=>n.dataset.playerUid===bet.dataset.playerUid);
+    if(!seat||seat.classList.contains('poker-seat-hero'))return;
+    const moved=getComputedStyle(seat).getPropertyValue('--poker-compact-moved').trim()==='1';
+    if(moved){const sr=seat.getBoundingClientRect(),originalY=parseFloat(seat.style.getPropertyValue('--poker-seat-y'));bet.style.translate='0 '+(sr.top+sr.height/2-base.top-originalY*base.height/100)+'px';}
+    else bet.style.removeProperty('translate');
+  });
   // Branding is decorative. Never let it paint on a player's rank/suit.
   const caption=community.querySelector('.poker-table-caption');
   if(caption){const r=rect(caption.getBoundingClientRect());if(holes.some(h=>r.left<h.right+4&&r.right>h.left-4&&r.top<h.bottom+4&&r.bottom>h.top-4))community.setAttribute('data-caption-obscured','true');}
@@ -12566,6 +12578,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-stage flex-1 relative flex items-center justify-center px-0 pt-0 pb-0 sm:p-5 min-h-0"
   }, React.createElement("div", {
     'data-seat-count': layoutN,
+    'data-hand-phase': gs.phase,
     'data-seat-capacity': capN,
     'data-felt': skin.felt || 'auto',
     className: "poker-table w-full max-w-none sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),

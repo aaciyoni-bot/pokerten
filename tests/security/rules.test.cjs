@@ -115,3 +115,9 @@ test("settlement journal, terms, balances and statements have no direct client a
  await env.withSecurityRulesDisabled(async ctx=>{for(const p of paths)await setDoc(doc(ctx.firestore(),p),{uid:'player',rake:100,agentPct:70});});
  for(const uid of ['player','other','owner','agent']){const db=env.authenticatedContext(uid,{email:uid+'@example.test',email_verified:true}).firestore();for(const p of paths){await assertFails(getDoc(doc(db,p)));await assertFails(setDoc(doc(db,p),{rake:0}));}await assertFails(getDocs(collection(db,'settlementClubs/club/sessions')));}
 });
+
+test('opponent profiles and bot decision diagnostics are server-private even for club owners',async()=>{
+ const paths=['_pkOpponentModels/test-profile','_pkBotDecisions/test-decision'];
+ await env.withSecurityRulesDisabled(async ctx=>{for(const p of paths)await setDoc(doc(ctx.firestore(),p),{clubId:'club',uid:'player',equity:.5});});
+ for(const uid of ['player','owner','agent','forged']){const db=env.authenticatedContext(uid,{god:true}).firestore();for(const p of paths){await assertFails(getDoc(doc(db,p)));await assertFails(setDoc(doc(db,p),{equity:1}));}}
+});

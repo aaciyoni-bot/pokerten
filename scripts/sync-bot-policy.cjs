@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path');
 const babel=require('../tests/ui/node_modules/@babel/core');
 const root=path.join(__dirname,'..');
 const server=fs.readFileSync(path.join(root,'functions/pokerEngine.js'),'utf8');
-const names={RANK_V:'BOT_RANK_V',activesOf:'botActives',preflopTier:'botPreflopTier',rangeHandStrength:'botRangeHandStrength',botDiscardIndex:'botDiscardIndex',equityOf:'botSampleEquity',rangeFacing:'botRangeFacing',handBody:'botHandBody',botCallPrice:'botCallPrice',botAction:'botDecision'};
+const names={RANK_V:'BOT_RANK_V',activesOf:'botActives',preflopTier:'botPreflopTier',rangeHandStrength:'botRangeHandStrength',botDiscardIndex:'botDiscardIndex',equityOf:'botSampleEquity',rangeFacing:'botRangeFacing',handBody:'botHandBody',botCallPrice:'botCallPrice',botActionCore:'botDecisionCore',botAction:'botDecision'};
 const found=new Map();
 for(const node of babel.parseSync(server).program.body){
   if(node.type==='FunctionDeclaration'&&names[node.id.name])found.set(node.id.name,server.slice(node.start,node.end));
@@ -15,8 +15,8 @@ let code=Object.keys(names).map(name=>{if(!found.has(name))throw Error('Missing 
 const guardStart=code.indexOf('  // The god guard only exists');
 const guardEnd=code.indexOf('  // Sizing is priced off the POT',guardStart);
 if(guardStart<0||guardEnd<0)throw Error('Server demo-guard boundary changed; review browser information boundary');
-code=code.slice(0,guardStart)+'  const hasSomething = () => hasBody;\n'+code.slice(guardEnd);
-code=code.replaceAll('blindsOf(S).bb',"((Number(S.settings.blinds) || .5) * 2)").replaceAll('rnd()', 'Math.random()');
+code=code.slice(0,guardStart)+code.slice(guardEnd);
+code=code.replaceAll('blindsOf(S).bb',"((Number(S.settings.blinds) || .5) * 2)").replaceAll('rnd()', 'Math.random()').replaceAll('random:rnd','random:Math.random').replaceAll('RangeModel.','globalThis.PokerRangeModel.');
 for(const name of ['bestScoreFull','getCombinations','pokerDeck','SUITS'])code=code.replaceAll('C.'+name,name);
 for(const [from,to] of Object.entries(names))code=code.replace(new RegExp('\\b'+from+'\\b','g'),to);
 if(/\bC\.|GOD_FLOOR|trueEquityVs|\brnd\(/.test(code))throw Error('Unexpected server-only dependency in client policy');

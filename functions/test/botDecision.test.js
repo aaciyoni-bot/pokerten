@@ -36,7 +36,8 @@ test('Dana screenshot: bottom pair does not become a random 59-chip multiway riv
 });
 test('multiway Holdem river air is checked without disabling heads-up bluffing',()=>{
  const settings={hole:['7♣','2♦'],board:['A♠','K♥','J♦','9♣','4♥'],stack:100,pot:50};
- const multi=state({...settings,opponents:2}),head=state({...settings,opponents:1});
+ const multi=state({...settings,opponents:2}),head=state({hole:['A♠','J♦'],board:['Q♠','9♠','6♠','2♦','3♣'],stack:100,pot:50,opponents:1});
+ assert.equal(seeded(.05,()=>E.botAction(state({...settings,opponents:1}),'hero')).action,'call','Unblocked air is no longer an automatic random bluff');
  assert.equal(seeded(.05,()=>E.botAction(multi,'hero')).action,'call');
  assert.equal(seeded(.05,()=>E.botAction(head,'hero')).action,'raise');
 });

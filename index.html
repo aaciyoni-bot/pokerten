@@ -12301,8 +12301,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     5: [[16.125,76.875],[10.84,31.25],[25.339,18],[74.797,18],[89.16,59.188]],
     6: [[16.125,76.875],[10.84,31.25],[25.339,18],[74.797,18],[89.16,31.25],[89.16,59.188]],
     7: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[25.339,18],[74.797,18],[89.16,31.25],[89.16,59.188]],
-    8: [[16.125,76.875],[10,64],[10,30],[25.339,14],[74.797,14],[90,30],[90,49],[90,64]],
-    9: [[16.125,76.875],[10,64],[10,49],[10,30],[25.339,14],[74.797,14],[90,30],[90,49],[90,64]]
+    8: [[16.125,76.875],[10,58],[10,30],[25.339,14],[74.797,14],[90,30],[90,49],[90,64]],
+    9: [[16.125,76.875],[10,58],[10,49],[10,30],[25.339,14],[74.797,14],[90,30],[90,49],[90,64]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -12376,6 +12376,17 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const godFinalLeaders = godView && isGodUser(user) && (!srvEngine || godSnapshotReady)
     ? pokerFinalHandLeaders(players,godRunout,gs.currentGameType || setts.baseGameType,gs.phase,srvEngine ? godHands : null)
     : {uids:[],score:null};
+  const heroHandStatus = isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
+    className: "poker-hand-status"
+  }, !gs.allInReveal && myHand && React.createElement("span", {
+    className: "bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg"
+  }, myHand), !gs.allInReveal && myEquity !== null && React.createElement("span", {
+    className: "bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[11px] font-black px-3 py-1 rounded-lg",
+    dir: "ltr"
+  }, "🎯 ", myEquity, "%"), gs.allInReveal && realEq && realEq[user.uid] !== undefined && React.createElement("span", {
+    className: "bg-amber-900/80 border border-amber-500/50 text-amber-300 text-[11px] font-black px-3 py-1 rounded-lg animate-pulse",
+    dir: "ltr"
+  }, "ALL-IN · ", realEq[user.uid], "%"));
   const potLimited = String(gs.currentGameType || '').startsWith('Omaha') && setts.omahaPotLimit !== false;
   const potCapTo = round2((gs.highestBet || 0) + totalPot + toCallMe);
   const myMaxBet = round2(Math.min((myPlayer?.bet || 0) + (myPlayer?.stack || 0), potLimited ? potCapTo : Infinity));
@@ -13043,7 +13054,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         right: 'auto',
         transform: 'translateX(-50%)'
       }
-    }, p.actionText), godBadge), isMe && p.bet > 0 && React.createElement('div', {
+    }, p.actionText), godBadge), isMe && heroHandStatus, isMe && p.bet > 0 && React.createElement('div', {
       className:'poker-bet poker-bet-hero', 'data-player-uid':p.uid, 'data-bet-row':'hero'
     }, React.createElement(CasinoChipStack,{amount:p.bet,scale:0.55,unit:chipUnit})), isMe && p.sitOut && React.createElement("button", {
       type: "button",
@@ -13218,17 +13229,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
     className: "poker-action-dock"
-  }, isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {
-    className: "poker-hand-status"
-  }, !gs.allInReveal && myHand && React.createElement("span", {
-    className: "bg-slate-950 border border-white/15 text-white text-[11px] font-black px-3 py-1 rounded-lg"
-  }, myHand), !gs.allInReveal && myEquity !== null && React.createElement("span", {
-    className: "bg-emerald-900/80 border border-emerald-500/40 text-emerald-300 text-[11px] font-black px-3 py-1 rounded-lg",
-    dir: "ltr"
-  }, "🎯 ", myEquity, "%"), gs.allInReveal && realEq && realEq[user.uid] !== undefined && React.createElement("span", {
-    className: "bg-amber-900/80 border border-amber-500/50 text-amber-300 text-[11px] font-black px-3 py-1 rounded-lg animate-pulse",
-    dir: "ltr"
-  }, "ALL-IN · ", realEq[user.uid], "%")), isMyTurn && React.createElement("div", {
+  }, isMyTurn && React.createElement("div", {
     className: "poker-action-buttons"
   }, (() => {
     const minRaiseTo = Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet);

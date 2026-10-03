@@ -38,10 +38,10 @@
  if(query.has('longname')&&players[state.gameState.activeTurnUid])players[state.gameState.activeTurnUid].name='ליאת שפירא — Very long player name';
  if(query.has('phase'))state.gameState.phase=query.get('phase');
  if(['preflop','discard'].includes(state.gameState.phase))state.gameState.board=[];
- if(state.gameState.phase==='showdown'){state.gameState.activeTurnUid=null;state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});}
+ if(state.gameState.phase==='showdown'){state.gameState.activeTurnUid=null;state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});const winner=Object.values(players).at(-1);if(winner){state.gameState.lastWinners=winner.name;winner.actionText='WINNER';}}
  if(query.has('actions'))Object.values(players).forEach(p=>p.actionText='All-in');
  if(query.has('rit'))state.gameState.board2=[{val:'A',suit:'♣'},{val:'K',suit:'♠'},{val:'3',suit:'♦'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}];
- const uid=mode==='reference'?'viewer':'me';
+ const uid=query.has('spectator')||mode==='reference'?'viewer':'me';
  const demoMembers=[
    {uid:'owner',username:'Yoni',playerId:'2854',role:'club_owner',status:'approved',balance:12500.5,stats:{gamesPlayed:28,gamesWon:12,totalProfit:580}},
    {uid:'p1',username:'Maya Cohen',playerId:'2307',role:'player',balance:12450.5,status:'approved',stats:{gamesPlayed:35,gamesWon:18,totalProfit:350}},
@@ -100,10 +100,23 @@
    return React.createElement(React.Fragment,null,React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'player',balance:500},clubSettings:{name:'Netabel'},onLeave:()=>{},showToast:()=>{}}),controls,host&&moving&&ReactDOM.createPortal(moving,host));
  }
  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(MotionPreview));`;
+ const diagnostics=`
+ window.__previewLayoutReport=()=>{
+  const table=document.querySelector('.poker-table'),community=table?.querySelector('.poker-community');
+  if(!table)return {ready:false};
+  const box=n=>{const r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+  const boards=[...table.querySelectorAll('.poker-board')].map(box).filter(r=>r.height>0);
+  const holes=[...table.querySelectorAll('.poker-hole-cards > *')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,...box(n)}));
+  const overlaps=[];for(let b=0;b<boards.length;b++)for(let h=0;h<holes.length;h++){const a=boards[b],c=holes[h];if(a.left<c.right-.5&&a.right>c.left+.5&&a.top<c.bottom-.5&&a.bottom>c.top+.5)overlaps.push({board:b,card:h,uid:c.uid});}
+  return{ready:true,viewport:[innerWidth,innerHeight],seats:table.dataset.seatCount,boards,holes,overlaps,boardClear:community?.dataset.boardClear,shift:community?.style.getPropertyValue('--poker-board-shift')};
+ };
+ setTimeout(()=>{const report=window.__previewLayoutReport();window.parent.postMessage({pokerLayoutReport:report},'*');},1800);
+ `;
+ window.addEventListener('message',event=>{if(event.source!==frame.contentWindow||!event.data?.pokerLayoutReport)return;window.__layoutReport=event.data.pokerLayoutReport;let out=document.querySelector('#layout-diagnostic');if(!out){out=document.createElement('output');out.id='layout-diagnostic';document.body.append(out);}out.textContent=JSON.stringify(window.__layoutReport);out.style.cssText='display:block;max-width:100%;padding:8px;font:12px monospace;overflow-wrap:anywhere';});
  const tag=code=>'<scr'+'ipt>'+code+'</scr'+'ipt>';
  // Disallow network calls from the preview; SDK initialization is removed above.
  const isolation='<meta http-equiv="Content-Security-Policy" content="connect-src \'none\'; form-action \'none\'">';
- frame.srcdoc='<!doctype html><html><head><base href="https://pokerten.com/">'+isolation+head+runtimeTags+'</head><body class="poker-theme" style="margin:0;width:100vw;height:100dvh"><div id="root" style="height:100%"></div>'+definitions+tag(stub)+tag(code)+tag(renderPreview)+'</body></html>';
+ frame.srcdoc='<!doctype html><html><head><base href="https://pokerten.com/">'+isolation+head+runtimeTags+'</head><body class="poker-theme" style="margin:0;width:100vw;height:100dvh"><div id="root" style="height:100%"></div>'+definitions+tag(stub)+tag(code)+tag(renderPreview)+tag(diagnostics)+'</body></html>';
  document.documentElement.dataset.previewSource=new URL('index.html',projectRoot).href;
  document.documentElement.dataset.previewMode=mode;
  document.documentElement.dataset.previewRuntime=localAsset(html.match(/src="(assets\/js\/poker-runtime\.js[^"]*)"/)?.[1]||'assets/js/poker-runtime.js');

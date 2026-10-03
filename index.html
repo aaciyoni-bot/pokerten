@@ -1105,7 +1105,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=302">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=306">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -1176,7 +1176,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-auth.js?v=265"></script>
     <script src="assets/js/club-ui.js?v=1"></script>
     <link rel="stylesheet" href="assets/css/settlement.css?v=303">
-    <script src="assets/js/poker-settlement-ui.js?v=303"></script>
+    <script src="assets/js/poker-settlement-ui.js?v=306"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=286"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
@@ -2175,6 +2175,28 @@ const Coin = ({
 }, React.createElement("i", {
   className: "fa-solid fa-coins text-gold-400 drop-shadow-[0_0_5px_rgba(245,200,96,0.5)]"
 }), formatMoney(amount));
+// Wallet chips and poker profit are separate quantities: moving chips into a
+// seat or receiving a top-up must never look like a win/loss.
+function AccountNumbers({value,balance,compact=false,loading=false,showRake=false}) {
+  const result=value?.totalResult,known=Number.isFinite(result),signed=n=>(n>0?'+':'')+formatMoney(n);
+  return React.createElement('div',{className:'management-account-numbers'+(compact?' account-numbers-compact':''),dir:'rtl'},
+    React.createElement('div',{className:'management-account-line',dir:'ltr'},
+      value||balance!=null?React.createElement(Coin,{amount:value?.chips??balance??0,className:'club-member-balance'}):React.createElement('span',null,'—'),
+      known&&React.createElement('strong',{className:result<0?'text-rose-400':result>0?'text-emerald-400':'text-slate-400','data-player-result':true,'aria-label':'תוצאת משחק כוללת '+signed(result),title:'הרווח או ההפסד הכולל. אינו מתאפס עם פתיחת מחזור חדש.'},'('+signed(result)+')')),
+    React.createElement('small',{className:'text-slate-400'},known?'סה״כ צ׳יפים (תוצאה כוללת)':loading?'טוען תוצאה…':'התוצאה אינה זמינה כרגע'),
+    !compact&&known&&value.result!==result&&React.createElement('small',{className:'text-slate-400'},'במחזור הנוכחי: ',React.createElement('bdi',null,signed(value.result))),
+    value?.onTables>0&&React.createElement('small',{className:'text-sky-300'},'בחשבון: ',React.createElement('bdi',null,formatMoney(value.balance)),' · בשולחנות: ',React.createElement('bdi',null,formatMoney(value.onTables))),
+    !compact&&showRake&&Number.isFinite(value?.totalRake)&&React.createElement('small',{className:'text-amber-300'},'רייק כולל: ',React.createElement('bdi',null,formatMoney(value.totalRake))));
+}
+function OwnBalanceNumbers({user,compact=false}) {
+  const [loaded,setLoaded]=useState(null),[loading,setLoading]=useState(true),scope=`${user.uid}:${user.role}:${user.status}:${CLUB_ID}`;
+  useEffect(()=>{let stopped=false,busy=false;setLoaded(null);setLoading(true);
+    const load=async()=>{if(busy)return;busy=true;try{const r=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},scope);if(!stopped)setLoaded({scope,value:r.accounting?.players?.[user.uid]||null});}catch(e){if(!stopped)setLoaded(null);}finally{busy=false;if(!stopped)setLoading(false);}};
+    load();const timer=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
+    return()=>{stopped=true;clearInterval(timer);window.removeEventListener('pk-club-changed',load);};
+  },[scope,user.balance]);
+  return React.createElement(AccountNumbers,{value:loaded?.scope===scope?loaded.value:null,balance:user.balance||0,compact,loading});
+}
 const QUICK_EMOJIS = ['😀', '😂', '😡', '😭', '👍', '🔥', '🎉', '🤡', '😱', '🙏'];
 const GIFT_ITEMS = [{
   id: 'champ',
@@ -3787,6 +3809,56 @@ const pokerVisualPoint = (table, element, fallback) => {
     top: `${100 * (item.top + item.height / 2 - field.top) / field.height}%`
   };
 };
+// Choose a clear board lane from rendered geometry, without changing card sizes,
+// seat order, game state or visibility. Candidate edges are sufficient because
+// an obstacle's collision interval changes only at its top/bottom boundaries.
+const pokerBoardLane = ({board, obstacles, top, bottom, gap = 8}) => {
+  const overlapsX = r => board.left < r.right + gap && board.right > r.left - gap;
+  const blocks = obstacles.filter(overlapsX);
+  const maximum = Math.max(top, bottom - board.height);
+  const clamp = y => Math.max(top, Math.min(maximum, y));
+  const candidates = [clamp(board.top), top, maximum];
+  for (const r of blocks) candidates.push(clamp(r.top - board.height - gap), clamp(r.bottom + gap));
+  const overlap = y => blocks.reduce((sum, r) => sum + Math.max(0, Math.min(y + board.height + gap, r.bottom) - Math.max(y - gap, r.top)), 0);
+  return candidates.map(y => ({top:y, overlap:overlap(y)})).sort((a,b) => a.overlap - b.overlap || Math.abs(a.top-board.top) - Math.abs(b.top-board.top))[0];
+};
+const positionPokerCommunity = field => {
+  const community = field?.querySelector('.poker-community');
+  if (!community) return;
+  const base = field.getBoundingClientRect();
+  if (!(base.width > 0 && base.height > 0)) return;
+  // Reset before measuring so repeated renders/resizes never accumulate a shift.
+  community.style.setProperty('--poker-board-shift','0px');
+  community.removeAttribute('data-caption-obscured');
+  const rows = [...community.querySelectorAll('.poker-board,.poker-total-pot')].map(node => node.getBoundingClientRect()).filter(r => r.width && r.height);
+  if (!rows.length) return;
+  const rect = r => ({left:r.left-base.left,right:r.right-base.left,top:r.top-base.top,bottom:r.bottom-base.top,height:r.height});
+  const board = {left:Math.min(...rows.map(r=>r.left))-base.left,right:Math.max(...rows.map(r=>r.right))-base.left,top:Math.min(...rows.map(r=>r.top))-base.top,bottom:Math.max(...rows.map(r=>r.bottom))-base.top};
+  board.height=board.bottom-board.top;
+  const holes = [...field.querySelectorAll('.poker-hole-cards > *')].map(node=>rect(node.getBoundingClientRect())).filter(r=>r.right>r.left&&r.height>0);
+  const controls = [...field.closest('.poker-room').querySelectorAll('.poker-action-buttons,.poker-action-meta')].map(node=>rect(node.getBoundingClientRect())).filter(r=>r.height>0&&r.top>base.height*.5);
+  const upperLimit = Math.max(8, base.height*.23);
+  const lowerLimit = Math.min(base.height*.76,...controls.map(r=>r.top-8));
+  const next = pokerBoardLane({board,obstacles:holes,top:upperLimit,bottom:lowerLimit,gap:9});
+  const shift = Math.round((next.top-board.top)*10)/10;
+  community.style.setProperty('--poker-board-shift',shift+'px');
+  community.dataset.boardClear = next.overlap < .5 ? 'true' : 'false';
+  // Collected chips are outside .poker-community for motion effects, but their
+  // resting position belongs beside its pot label and follows the same shift.
+  const pot=community.querySelector('.poker-total-pot'),chips=field.querySelector('.poker-collected-pot');
+  if(pot&&chips){const pr=pot.getBoundingClientRect(),cr=chips.getBoundingClientRect();chips.style.left=(pr.right-base.left+cr.width/2+6)+'px';chips.style.top=(pr.top-base.top+(pr.height-cr.height)/2)+'px';}
+  // A compact lower rail on short phones moves as a unit with its live bet.
+  field.querySelectorAll('.poker-bet[data-player-uid]').forEach(bet=>{
+    const seat=[...field.querySelectorAll('.poker-seat[data-player-uid]')].find(n=>n.dataset.playerUid===bet.dataset.playerUid);
+    if(!seat||seat.classList.contains('poker-seat-hero'))return;
+    const moved=getComputedStyle(seat).getPropertyValue('--poker-compact-moved').trim()==='1';
+    if(moved){const sr=seat.getBoundingClientRect(),originalY=parseFloat(seat.style.getPropertyValue('--poker-seat-y'));bet.style.translate='0 '+(sr.top+sr.height/2-base.top-originalY*base.height/100)+'px';}
+    else bet.style.removeProperty('translate');
+  });
+  // Branding is decorative. Never let it paint on a player's rank/suit.
+  const caption=community.querySelector('.poker-table-caption');
+  if(caption){const r=rect(caption.getBoundingClientRect());if(holes.some(h=>r.left<h.right+4&&r.right>h.left-4&&r.top<h.bottom+4&&r.bottom>h.top-4))community.setAttribute('data-caption-obscured','true');}
+};
 const usePokerFlightPoints = (ref, from, to, options = {}) => {
   const [points, setPoints] = React.useState({from, to});
   React.useLayoutEffect(() => {
@@ -3971,10 +4043,11 @@ const PotAward = ({
     }))))
   );
 };
-function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onRanks, onProfile, onInstall, showInstall}) {
+function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onSettlement, onRanks, onProfile, onInstall, showInstall}) {
   const buttons = [
     {key:'clubs', icon:'fa-building-columns', label:'Clubs', action:onClubs, show:true},
     {key:'backoffice', icon:'fa-chart-line', label:'Manage', action:onManage, show:canOpenBackoffice(user)},
+    {key:'settlement', icon:'fa-file-invoice-dollar', label:'התחשבנות', action:onSettlement, show:true},
     {key:'leaders', icon:'fa-ranking-star', label:'Ranks', action:onRanks, show:true},
     {key:'install', icon:'fa-circle-down', label:'Install', action:onInstall, show:showInstall}
   ];
@@ -4517,6 +4590,7 @@ function App() {
     user:effUser, club:{...activeClub,...clubSettings,id:activeClub.id}, currentView,
     onClubs:leaveToClubs, onLobby:()=>changeView('lobby'),
     onManage:()=>changeView(currentView==='backoffice'?'lobby':'backoffice'),
+    onSettlement:()=>changeView('settlement'),
     onRanks:()=>changeView(currentView==='leaders'?'lobby':'leaders'),
     onProfile:()=>changeView(currentView==='profile'?'lobby':'profile'),
     onInstall:triggerInstall, showInstall:!isStandaloneApp
@@ -6308,10 +6382,10 @@ function ProfileView({
     className: "profile-wallet glass-panel p-6 rounded-3xl mb-4 border border-emerald-500/25"
   }, React.createElement("div", {
     className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1"
-  }, "💰 Wallet — yours at settlement"), React.createElement("div", {
+  }, "💰 יתרת צ׳יפים ותוצאת משחק"), React.createElement("div", {
     className: "text-4xl font-black text-emerald-400",
     dir: "ltr"
-  }, formatMoney(cashableOf(user))), React.createElement("div", {
+  }, React.createElement(OwnBalanceNumbers,{user})), React.createElement("div", {
     className: "mt-3 space-y-1.5"
   }, React.createElement("div", {
     className: "flex justify-between text-[12px] font-bold"
@@ -7172,9 +7246,9 @@ function LobbyView({
     className: "lw-coin"
   }, React.createElement("i",{className:"fa-solid fa-coins", "aria-hidden":true})), React.createElement("div", null, React.createElement("div", {
     className: "lw-label"
-  }, "YOUR BALANCE"), React.createElement("div", {
+  }, "YOUR CHIPS"), React.createElement("div", {
     className: "lw-val"
-  }, formatMoney(user.balance || 0))), React.createElement("button", {
+  }, React.createElement(OwnBalanceNumbers,{user,compact:true}))), React.createElement("button", {
     onClick: () => setCashierOpen(true),
     className: "btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
   }, React.createElement("i",{className:"fa-solid fa-wallet", "aria-hidden":true}), " Cashier"), React.createElement("button", {
@@ -8814,7 +8888,7 @@ function BackofficeView({
   showToast
 }) {
   const [usersList, setUsersList] = useState([]);
-  const directoryScope = `${user.uid}:${user.role}:${user.status}:${CLUB_ID}`;
+  const directoryScope = `${user.uid}:${user.role}:${user.status}:${CLUB_ID}:${isGodUser(user)}`;
   const [loadedDirectoryScope, setLoadedDirectoryScope] = useState('');
   const directoryLoaded = loadedDirectoryScope === directoryScope;
   const [directoryLoading, setDirectoryLoading] = useState(true);
@@ -8828,6 +8902,10 @@ function BackofficeView({
   const [memberBusy, setMemberBusy] = useState('');
   const memberActionRef = useRef(false);
   const [treasury,setTreasury]=useState(null);
+  const [accounting,setAccounting]=useState(null);
+  const [accountingError,setAccountingError]=useState('');
+  const [accountingLoading,setAccountingLoading]=useState(false);
+  const [accountingAttempt,setAccountingAttempt]=useState(0);
   const [rakeTotals,setRakeTotals]=useState({club:0,agents:{}});
   const [botsList, setBotsList] = useState([]);
   const [bcText, setBcText] = useState('');
@@ -8887,7 +8965,8 @@ function BackofficeView({
   };
   const [search, setSearch] = useState('');
   const [memberSort,setMemberSort]=useState('name');
-  const accountNumbers=(value,balance)=>React.createElement(Coin,{amount:balance??0,className:'club-member-balance text-sm',title:'Current balance'});
+  const currentAccounting=accounting?.scope===directoryScope?accounting.data:null;
+  const accountNumbers=(value,balance)=>React.createElement(AccountNumbers,{value,balance,loading:accountingLoading,showRake:isGodUser(user)});
 
   const [memFilter, setMemFilter] = useState('all'); // members directory: All / Agents / Managers / Banned
   const [roleEditUser, setRoleEditUser] = useState(null);
@@ -8967,7 +9046,7 @@ function BackofficeView({
     setRakeDraft(clubSettings.rakePct);
   }, [clubSettings.rakePct]);
   useEffect(() => {
-    setUsersList([]);setTreasury(null);setDirectoryError('');setActivityError('');
+    setUsersList([]);setTreasury(null);setDirectoryError('');setActivityError('');setAccounting(null);setAccountingError('');
     setLoadedDirectoryScope('');setLoadedActivityScope('');setSecAlerts([]);
     setAgentCycle({});setRakeTotals({club:0,agents:{}});setAssignFor(null);setPlayerFile(null);
   }, [directoryScope]);
@@ -8989,6 +9068,17 @@ function BackofficeView({
     const interval=setInterval(load,15000);
     return()=>{stopped=true;clearInterval(interval);window.removeEventListener('pk-club-changed',load);};
   }, [directoryScope,directoryAttempt]);
+  useEffect(()=>{
+    if(!directoryLoaded)return;
+    let stopped=false,busy=false;
+    const load=async()=>{if(busy)return;busy=true;setAccountingLoading(true);
+      try{const result=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},directoryScope);if(stopped)return;setAccounting({scope:directoryScope,data:result.accounting||null});setAccountingError('');}
+      catch(e){if(!stopped)setAccountingError(clubRequestError(e,'לא ניתן לעדכן את תוצאות השחקנים כרגע.'))}
+      finally{busy=false;if(!stopped)setAccountingLoading(false);}
+    };
+    load();const timer=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
+    return()=>{stopped=true;clearInterval(timer);window.removeEventListener('pk-club-changed',load);};
+  },[directoryLoaded,directoryScope,accountingAttempt]);
   useEffect(() => {
     if(!directoryLoaded)return;
     let stopped=false,busy=false;
@@ -9245,7 +9335,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   const clubBalance=canAdmin ? Number(treasury?.balance)||0 : Number(user.balance)||0;
   const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
-  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>memberSort==='name'?(a.username||'').localeCompare(b.username||''):(Number(b.balance)||0)-(Number(a.balance)||0)||(a.username||'').localeCompare(b.username||''));
+  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>{const metric=m=>memberSort==='result'?currentAccounting?.players?.[m.uid]?.totalResult||0:memberSort==='rake'?currentAccounting?.players?.[m.uid]?.totalRake||0:currentAccounting?.players?.[m.uid]?.chips??(Number(m.balance)||0);return memberSort==='name'?(a.username||'').localeCompare(b.username||''):metric(b)-metric(a)||(a.username||'').localeCompare(b.username||'');});
   const balanceMembers = usersList.filter(m => ["approved","banned"].includes(m.status) && !m.isBot && m.uid !== (canAdmin?clubOwnerUid:user.uid) && m.uid !== "bot_bank").filter(m => canManageAny || m.agentUid === user.uid);
   const statTiles = [{
     label: canAdmin ? 'Club treasury' : 'Your balance',
@@ -9503,7 +9593,12 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   })), React.createElement("p", {
     className: `text-xl sm:text-2xl font-black ${t.color}`,
     dir: "ltr"
-  }, t.value)))), canAdmin && React.createElement("div", {
+  }, t.value)))), React.createElement('section',{className:'management-cycle-summary',dir:'rtl'},
+    React.createElement('h3',null,canAdmin?'סך שחקני הקלאב':'סך השחקנים שלי'),
+    accountingError&&React.createElement('div',{role:'alert',className:'text-amber-300 text-sm'},accountingError,React.createElement('button',{type:'button',disabled:accountingLoading,onClick:()=>setAccountingAttempt(n=>n+1)},'נסה שוב')),
+    accountNumbers(canAdmin?currentAccounting?.club:currentAccounting?.agents?.[user.uid],canAdmin?currentAccounting?.club?.balance:currentAccounting?.agents?.[user.uid]?.balance),
+    React.createElement('p',null,'הסכום בסוגריים הוא תוצאת השחקנים במשחק. הוא אינו חוב או סכום נטו לתשלום אחרי עמלות.')),
+    canAdmin && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6 border border-amber-500/20"
   }, React.createElement("span", {
     id: "bo-settings",
@@ -9766,7 +9861,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
       className: "text-purple-300 text-xs font-black tracking-widest hover:text-purple-200",
       dir: "ltr",
       title: "Copy code"
-    }, "🎟️ ", a.agentCode || '...'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3'},'שחקנים משויכים: ',linked.length), React.createElement("button", {
+    }, "🎟️ ", a.agentCode || '...'))), React.createElement('div',{className:'management-agent-totals',dir:'rtl'},React.createElement('small',null,'כל השחקנים המשויכים'),accountNumbers(currentAccounting?.agents?.[a.uid],currentAccounting?.agents?.[a.uid]?.balance)), React.createElement('p',{className:'text-sm text-slate-400 mb-3'},'שחקנים משויכים: ',linked.length), React.createElement("button", {
       onClick: () => copyText(inviteLink, 'Invite link copied - send it to Players!'),
       className: "w-full bg-gradient-to-b from-purple-600 to-purple-800 hover:from-purple-500 text-white py-2 rounded-xl font-black text-xs shadow-md"
     }, "🔗 Copy invite link (auto-assign)"), (isAgentOnly || canAdmin) && linked.length > 0 && React.createElement("div", {
@@ -9800,7 +9895,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     placeholder: "Search player...",
     className: "bg-slate-900/80 border border-white/10 rounded-full pr-9 pl-4 py-2 text-sm text-white w-52 outline-none focus:border-emerald-500/50"
   })), React.createElement('select',{value:memberSort,onChange:e=>setMemberSort(e.target.value),'aria-label':'סידור שחקנים',className:'management-sort'},
-    React.createElement('option',{value:'name'},'לפי שם'),React.createElement('option',{value:'chips'},'צ׳יפים — מהגבוה לנמוך'))), React.createElement("div", {
+    React.createElement('option',{value:'name'},'לפי שם'),React.createElement('option',{value:'chips'},'צ׳יפים — מהגבוה לנמוך'),React.createElement('option',{value:'result'},'תוצאה כוללת — מהגבוה לנמוך'),currentAccounting?.rakeVisible&&React.createElement('option',{value:'rake'},'רייק — מהגבוה לנמוך'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3',dir:'rtl'},'ליד היתרה: רווח או הפסד כולל בסוגריים. טעינת צ׳יפים אינה רווח. המחזור החדש אינו מוחק את התוצאה הכוללת.'), React.createElement("div", {
     className: "flex gap-1.5 mb-3 flex-wrap"
   }, [['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
     key: k2,
@@ -9846,7 +9941,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "text-[10px] text-purple-300/90 font-bold truncate"
   }, "🤝 ", agentName(u.agentUid), " (", u.agentPct || 0, "%)"))), React.createElement("div", {
     className: "club-member-actions flex items-center gap-2 sm:gap-3 shrink-0"
-  }, accountNumbers(null,u.balance), React.createElement("button", {
+  }, accountNumbers(currentAccounting?.players?.[u.uid],u.balance), React.createElement("button", {
     onClick: () => adjustBalance(u, true),
     className: "w-9 h-9 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-800 hover:from-emerald-400 text-white font-black shadow-md",
     title: "Deposit chips"
@@ -10525,7 +10620,8 @@ function PokerFullscreenButton({showToast, onToggle}) {
 // Never substitute the current street while the atomic private snapshot loads.
 const pokerFinalHandLeaders = (players, board, gameType, phase, privateHands) => {
   const empty = {uids:[],score:null};
-  if (!['preflop','flop','turn','river','showdown'].includes(phase) || !Array.isArray(board) || board.length !== 5) return empty;
+  const pineapple = gameType === 'Pineapple';
+  if ((!['preflop','flop','turn','river','showdown'].includes(phase) && !(pineapple && phase === 'discard')) || !Array.isArray(board) || board.length !== 5) return empty;
   const eligible = Object.values(players || {}).filter(p => p && !p.left && (p.status === 'active' || phase === 'showdown' && p.status === 'busted'));
   if (eligible.length < 2) return empty;
   const omaha = String(gameType || '').startsWith('Omaha');
@@ -10538,18 +10634,23 @@ const pokerFinalHandLeaders = (players, board, gameType, phase, privateHands) =>
     seen.add(key); return true;
   });
   if (!validCards(board)) return empty;
-  let best = -1, uids = [];
+  let best = -1, uids = [], pendingDiscard = false;
   for (const p of eligible) {
     const cards = privateHands ? privateHands[p.uid] : p.cards;
-    // Unknown hands cannot be silently omitted, nor can a Pineapple hand
-    // waiting to discard be treated as a legal two-card Hold'em hand.
-    if (!Array.isArray(cards) || cards.length !== expected || !validCards(cards)) return empty;
-    const score = bestScoreFull(cards,board,gameType);
+    const needsDiscard = pineapple && ['preflop','flop','discard'].includes(phase) && cards?.length === 3;
+    // Until the actual discard, show only the best POTENTIAL legal two-card
+    // hand. Never play all three cards or imply the future choice is known.
+    // Unknown opponents and stale post-discard three-card hands invalidate it.
+    if (!Array.isArray(cards) || (cards.length !== expected && !needsDiscard) || !validCards(cards)) return empty;
+    const score = needsDiscard
+      ? Math.max(...getCombinations(cards,2).map(kept => bestScoreFull(kept,board,gameType)))
+      : bestScoreFull(cards,board,gameType);
+    pendingDiscard = pendingDiscard || needsDiscard;
     if (!Number.isFinite(score)) return empty;
     if (score > best) { best = score; uids = [p.uid]; }
     else if (score === best) uids.push(p.uid);
   }
-  return {uids,score:best};
+  return {uids,score:best,pendingDiscard};
 };
 
 const pokerFullRunout = (board, deck) => {
@@ -10664,6 +10765,17 @@ function PokerTable({
     now: {}
   });
   const tableVisualRef = useRef(null);
+  // Synchronous measurement prevents a one-frame board/rank overlap on reveal.
+  // ResizeObserver watches the table only; moving its absolutely positioned
+  // community cannot resize the observer target or create feedback.
+  React.useLayoutEffect(() => { positionPokerCommunity(tableVisualRef.current); });
+  React.useLayoutEffect(() => {
+    const field=tableVisualRef.current;if(!field)return;
+    const update=()=>positionPokerCommunity(field);
+    const observer=typeof ResizeObserver!=='undefined'?new ResizeObserver(update):null;
+    observer?.observe(field);window.addEventListener('resize',update);
+    return()=>{observer?.disconnect();window.removeEventListener('resize',update);};
+  }, [!!tableState, tableDocId]);
   // Remember the chips' rendered centers while they are still on the rail.
   // Responsive CSS can move them away from betPos's fallback coordinates.
   React.useLayoutEffect(() => {
@@ -12472,6 +12584,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-stage flex-1 relative flex items-center justify-center px-0 pt-0 pb-0 sm:p-5 min-h-0"
   }, React.createElement("div", {
     'data-seat-count': layoutN,
+    'data-hand-phase': gs.phase,
     'data-seat-capacity': capN,
     'data-felt': skin.felt || 'auto',
     className: "poker-table w-full max-w-none sm:max-w-[470px] h-full max-h-none sm:max-h-[calc(100dvh-135px)] relative" + (tableState.tournament && tableState.tournament.final ? " final-table" : ""),
@@ -12711,11 +12824,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const isWinner = gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name);
     const godLeading = godView && isGodUser(user) && godFinalLeaders.uids.includes(p.uid);
     const godTied = godFinalLeaders.uids.length > 1;
-    const godLeaderLabel = (godTied ? 'Tied best hand on full board' : 'Best hand on full board') + ((gs.board2 || []).length ? ' 1' : '') + ': ' + handName(godFinalLeaders.score);
+    const godLeaderLabel = (godFinalLeaders.pendingDiscard ? (godTied ? 'Tied best potential hand on full board' : 'Best potential hand on full board') : (godTied ? 'Tied best hand on full board' : 'Best hand on full board')) + ((gs.board2 || []).length ? ' 1' : '') + ': ' + handName(godFinalLeaders.score) + (godFinalLeaders.pendingDiscard ? ' · Assuming each player keeps their best two cards; the actual discard can change the winner' : '');
     const godBadge = godLeading && React.createElement('span',{className:'poker-god-best-badge',role:'img','aria-label':godLeaderLabel,title:godLeaderLabel+' · GOD view only'},
       React.createElement('i',{className:'fa-solid fa-crown','aria-hidden':true}),
-      React.createElement('span',{'aria-hidden':true},godTied?'TIED BEST':(gs.board2 || []).length?'BEST B1':'BEST HAND'));
-    const muckCls = gs.phase === 'showdown' && !isWinner ? ' card-mucked' : '';
+      React.createElement('span',{'aria-hidden':true},godFinalLeaders.pendingDiscard ? (godTied?'TIED POTENTIAL':'BEST POTENTIAL') : godTied?'TIED BEST':(gs.board2 || []).length?'BEST B1':'BEST HAND'));
+    // A losing exposed hand is still part of the result; keep it fully readable.
+    const muckCls = gs.phase === 'showdown' && hidden && (p.mucked || folded) ? ' card-mucked' : '';
     return React.createElement("div", {
       key: p.uid,
       // a talking player's whole seat lifts above the bet stacks (z-35) —

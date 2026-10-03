@@ -636,6 +636,10 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 
 .management-account-numbers{display:flex;flex-direction:column;gap:4px;min-width:0}
 .management-account-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
+.management-account-line>strong{white-space:nowrap;font-size:inherit}
+.account-numbers-compact .management-account-line{gap:5px}
+.lobby-wallet:has(.account-numbers-compact){flex-wrap:wrap;max-width:100%}
+.lobby-wallet .account-numbers-compact .club-member-balance>i{display:none}
 .management-account-numbers small{font-size:11px;line-height:1.5;white-space:normal}
 .management-cycle-summary{padding:18px;margin:0 0 18px;border:1px solid #475569;border-radius:18px;background:#0f172a}
 .management-cycle-summary h3{font-size:16px;font-weight:800;margin-bottom:8px}
@@ -681,3 +685,38 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
  .tournament-blind-actions{grid-column:1/-1;justify-content:flex-end;gap:8px}
  .tournament-blind-actions button{min-width:36px;min-height:32px}
 }
+
+/* A community board owns a measured clear lane. Translation moves both boards,
+   their pot label and caption together, leaving seats and card widths intact. */
+.poker-room .poker-community{translate:0 var(--poker-board-shift,0px)}
+.poker-room .poker-community[data-caption-obscured="true"] .poker-table-caption{visibility:hidden}
+/* At dense tables / two boards, six wide faces cannot share the centre lane.
+   Two rows keep the existing large faces and every upper rank/suit visible. */
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])){--poker-fan-span:calc(var(--poker-fan-width) * 2.2)}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero) .poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"]){display:grid!important;grid-template-columns:repeat(2,calc(var(--poker-fan-width) * .6)) var(--poker-fan-width);grid-template-rows:calc(var(--poker-fan-width) * .9) calc(var(--poker-fan-width) * 1.4);width:var(--poker-fan-span);top:calc(var(--gg-pod) * .54 - var(--poker-fan-width) * 1.85 - 5px)!important;align-items:start}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])>span{margin-left:0!important;transform:none!important}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-community:not(.has-second-board){width:min(40%,170px)}
+
+/* Compact faces keep their exact width; remove inline baseline space so the
+   second row cannot push the next player's upper card indices down. */
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])>span{line-height:0}
+/* Name on the first line; stack and shown hand strength share the second.
+   This keeps result metadata out of the next compact hand's rank/suit row. */
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) .poker-player-info{position:absolute;top:calc(var(--gg-pod) * .82);left:50%;transform:translateX(-50%);width:100px!important;height:24px;min-height:24px;margin:0!important;padding:1px 2px!important;display:grid;grid-template-columns:55% 45%;grid-template-rows:10px 12px;overflow:hidden;z-index:25}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) .poker-player-name{grid-column:1/-1;font-size:9px!important;line-height:10px!important}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) .poker-stack-amount{grid-column:1;grid-row:2;font-size:10px!important;line-height:12px!important;text-align:left}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) .poker-result-meta{position:absolute!important;top:calc(var(--gg-pod) * .82 + 11px)!important;bottom:auto!important;left:50%!important;right:auto!important;transform:translateX(-50%);width:100px;max-width:100px;height:12px;margin:0;padding:0 2px 0 55%;justify-content:flex-end;box-sizing:border-box;z-index:26}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) .poker-result-meta>div{font-size:8px;line-height:10px;padding:0 1px;max-width:100%;overflow:hidden;text-overflow:ellipsis;border:0}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board))[data-hand-phase="showdown"] .poker-seat:has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) .poker-seat-action{display:none}
+.poker-room .poker-collected-pot>span{display:none}
+@media(max-height:720px){
+ .poker-room .poker-table.poker-table[data-seat-count="9"] .poker-seat[data-seat-row="lower"][data-seat-side="left"]:has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])){top:61%!important;--poker-compact-moved:1}
+}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero)[data-seat-side="left"]:has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) :is(.poker-player-info,.poker-result-meta){left:max(50%,calc(var(--poker-fan-span) / 2 + 16px - var(--poker-seat-x) + var(--gg-pod) / 2))!important}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero)[data-seat-side="right"]:has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) :is(.poker-player-info,.poker-result-meta){left:min(50%,calc(100cqw - var(--poker-seat-x) + var(--gg-pod) / 2 - var(--poker-fan-span) / 2 - 16px))!important}
+/* Both board runs share one pot header in the clear central lane. */
+.poker-room .poker-community.has-second-board .poker-total-pot{left:50%;right:auto;top:auto;bottom:calc(100% + 7px);transform:translateX(-50%)}
+/* A 100px metadata panel uses the spare rail gutter without shrinking money.
+   Equity uses the name line; hand class stays beside the full stack below. */
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])):has(.poker-result-meta>div:not(.poker-hand-name)) .poker-player-name{padding-right:28px}
+.poker-room .poker-table.poker-table:is([data-seat-count="8"],[data-seat-count="9"],:has(.has-second-board)) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand:is([data-card-count="4"],[data-card-count="5"],[data-card-count="6"])) .poker-result-meta>div:not(.poker-hand-name){position:absolute;top:-11px;right:2px;max-width:28px}

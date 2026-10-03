@@ -45,6 +45,7 @@ function firebaseFixture(email,membershipStatus){
    calls.push({name,args});
    if(name==='pkSettlementTerms')return{role:'owner',members:[]};
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
+   if(name==='pkClubDirectory'&&args.accountingOnly)return{accounting:{players:{[membership.uid]:{balance:membership.balance,chips:membership.balance,totalResult:-200,result:-200,onTables:0}}}};
    if(name==='pkClubDirectory'&&args.reportSection)return{records:[],hasMore:false,nextCursor:null};
    if(name==='pkClubDirectory')return{members:[owner,membership,other],treasury:{uid:'owner',balance:1000},securityAlerts:[],agentLog:[],gameLog:[]};
    throw Error('Unexpected callable during management navigation: '+name);
@@ -94,7 +95,7 @@ async function assertFullManagement(fixture){
  await mountAndEnter(ordinary);
  assert.equal(manage(),null,'an ordinary approved player gets no Manage button from HAIM profile name/email');
  assert.equal(doc.querySelector('.club-admin'),null);
- assert.equal(ordinary.calls.some(call=>call.name==='pkClubDirectory'),false,'ordinary club entry does not load management reports');
+ assert.equal(ordinary.calls.some(call=>call.name==='pkClubDirectory'&&!call.args.accountingOnly),false,'ordinary club entry loads only its own totals, never management reports');
  // A verified identity refresh must update access without signing out/remounting.
  ordinary.identity.email=HAIM;
  await React.act(async()=>ordinary.refresh());

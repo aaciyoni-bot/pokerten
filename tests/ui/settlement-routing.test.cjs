@@ -1,5 +1,5 @@
 'use strict';
-// Exercise the real App -> club entry -> both report links -> internal report/back flow.
+// Exercise the real App -> club entry -> visible navigation and both report links -> internal report/back flow.
 // Only Firebase is simulated; no UI component or access predicate is replaced.
 const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;
@@ -47,9 +47,10 @@ function firebaseFixture(email,membershipStatus,role='player'){
   onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;fn(snapshot(target));return()=>{};},
   fx:async(name,args)=>{
    calls.push({name,args});
-   if(name==='pkSettlementReport'){if(reportDenied)throw Object.assign(new Error('אין הרשאה להתחשבנות'),{code:'functions/permission-denied'});return require('./settlement-fixture.cjs')(email===HAIM||role==='manager'?'owner':'player',identity.uid);}
+   if(name==='pkSettlementReport'){if(reportDenied)throw Object.assign(new Error('אין הרשאה להתחשבנות'),{code:'functions/permission-denied'});return require('./settlement-fixture.cjs')(email===HAIM||role==='manager'?'owner':role==='agent'?'agent':'player',identity.uid);}
    if(name==='pkGameHistory')return{records:[{uid:identity.uid,game:'NLH',clubId:'main',profit:25,at:Date.now()}],nextCursor:null};
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
+   if(name==='pkClubDirectory'&&args.accountingOnly)return{accounting:{players:{[membership.uid]:{balance:membership.balance,chips:membership.balance,totalResult:-200,result:-200,onTables:0}}}};
    if(name==='pkClubDirectory'&&reportDenied)throw Object.assign(new Error('Club staff only'),{code:'functions/permission-denied'});
    if(name==='pkClubDirectory'&&args.reportSection)return{records:[],hasMore:false,nextCursor:null};
    if(name==='pkClubDirectory')return{members:[owner,membership,other],treasury:{uid:'owner',balance:1000},securityAlerts:[],agentLog:[],gameLog:[]};
@@ -60,6 +61,7 @@ function firebaseFixture(email,membershipStatus,role='player'){
  return{identity,membership,calls,writes,queries,denyReports:value=>{reportDenied=value;},refresh:()=>tokenChanged(identity)};
 }
 const manage=()=>[...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Manage')||null;
+const settlementNav=()=>[...doc.querySelectorAll('.blue-nav-tabs button')].find(button=>button.textContent.trim()==='התחשבנות')||null;
 async function mountAndEnter(fixture){
  w.localStorage.clear();
  await React.act(async()=>root.render(React.createElement(w.ManagementAppTest)));
@@ -68,17 +70,20 @@ async function mountAndEnter(fixture){
  assert.ok(enter,'the real club directory offers an authorized entry');
  await React.act(async()=>enter.click());
  assert.ok([...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Clubs'),'club entry reaches the real app navigation');
+ assert.ok(settlementNav(),'every approved club member has a visible Hebrew settlement entry in the main navigation');
+ assert.notEqual(settlementNav().getAttribute('aria-current'),'page');
 }
 const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const reportLink=label=>doc.querySelector('button[aria-label="'+label+'"]');
 const back=async()=>{assert.ok(button('Back to lobby'));await React.act(async()=>button('Back to lobby').click());assert.ok(button('Cashier'));};
 async function assertStaffLinks(fixture){
- for(const source of ['lobby','cashier']){
+ for(const source of ['navigation','lobby','cashier']){
   if(source==='cashier')await React.act(async()=>button('Cashier').click());
   const links=[...doc.querySelectorAll('button[aria-label="Club settlement"]')];
   assert.equal(links.length,source==='cashier'?2:1);
-  await React.act(async()=>links.at(source==='cashier'?-1:0).click());
+  await React.act(async()=>(source==='navigation'?settlementNav():links.at(source==='cashier'?-1:0)).click());
   assert.equal(new URL(w.location.href).searchParams.get('v'),'settlement');
+  assert.equal(settlementNav().getAttribute('aria-current'),'page','the visible navigation marks the current report');
   assert.match(doc.body.textContent,/פירוט שחקנים/);
   assert.match(doc.body.textContent,/Other human player/);
   const call=fixture.calls.findLast(c=>c.name==='pkSettlementReport');
@@ -90,15 +95,16 @@ async function assertStaffLinks(fixture){
 }
 async function assertPlayerLinks(fixture){
  assert.equal(manage(),null,'card viewing or a profile claim must not grant club management');
- for(const source of ['lobby','cashier']){
+ for(const source of ['navigation','lobby','cashier']){
   if(source==='cashier')await React.act(async()=>button('Cashier').click());
   const links=[...doc.querySelectorAll('button[aria-label="My results"]')];
   assert.equal(links.length,source==='cashier'?2:1);
-  await React.act(async()=>links.at(source==='cashier'?-1:0).click());
+  await React.act(async()=>(source==='navigation'?settlementNav():links.at(source==='cashier'?-1:0)).click());
   assert.equal(new URL(w.location.href).searchParams.get('v'),'settlement');
+  assert.equal(settlementNav().getAttribute('aria-current'),'page');
   assert.match(doc.body.textContent,/המשחקים שלי/);
   assert.doesNotMatch(doc.body.textContent,/ניהול מחזורים|רייקבק/);
-  assert.equal(fixture.calls.some(c=>c.name==='pkClubDirectory'),false);
+  assert.equal(fixture.calls.some(c=>c.name==='pkClubDirectory'&&!c.args.accountingOnly),false);
   const request=fixture.calls.findLast(c=>c.name==='pkSettlementReport');
   assert.equal(request.args.clubId,'main','server scopes personal history to the authenticated user');assert.equal(request.args.targetUid,undefined);
   assert.equal(fixture.queries.some(q=>q.path==='gameLog'),false,'raw rake-bearing history is no longer read in the browser');
@@ -116,7 +122,9 @@ async function assertPlayerLinks(fixture){
  await React.act(()=>root.render(null));
  const godOnly=firebaseFixture('info.bagso@gmail.com','approved');await mountAndEnter(godOnly);await assertPlayerLinks(godOnly);await React.act(()=>root.render(null));
  const ordinary=firebaseFixture('ordinary@example.invalid','approved');await mountAndEnter(ordinary);await assertPlayerLinks(ordinary);await React.act(()=>root.render(null));
- const manager=firebaseFixture('manager@example.invalid','approved','manager');await mountAndEnter(manager);await assertStaffLinks(manager);
+ const manager=firebaseFixture('manager@example.invalid','approved','manager');await mountAndEnter(manager);await assertStaffLinks(manager);await React.act(()=>root.render(null));
+ const agent=firebaseFixture('agent@example.invalid','approved','agent');await mountAndEnter(agent);await assertStaffLinks(agent);
+ await React.act(async()=>settlementNav().click());assert.match(doc.body.textContent,/העמלה שלי/);assert.doesNotMatch(doc.body.textContent,/ניהול מחזורים/);await back();
  await React.act(()=>root.unmount());w.close();
- console.log('PASS: both report links keep the session, show staff club settlement or own-player history, retain back/retry, and never promote GOD card access into management');
+ console.log('PASS: visible settlement navigation and both report links keep the session, show scoped owner/manager/agent/player reports, retain back/retry, and never promote GOD card access into management');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

@@ -171,6 +171,8 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','confirmation updates the stack without waiting for the listener');
  assert.equal(doc.querySelector('.poker-pot-amount').textContent,'2');
  assert.equal(doc.querySelector('.poker-bet[data-player-uid="me"]').textContent.includes('0.5'),false);
+ assert.ok(doc.querySelector('.poker-seat-hero .poker-bet[data-player-uid="me"]'),'hero chips follow the hero seat instead of a fixed right-side coordinate');
+ assert.equal(doc.querySelectorAll('.poker-bet[data-player-uid="me"]').length,1,'one chip stack per owner');
  assert.ok(doc.querySelector('.poker-seat:not(.poker-seat-hero) .active-glow'));
  await React.act(async()=>tableNext(snapshot()));
  assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'99','late pre-CALL snapshot cannot restore the old stack');
@@ -196,5 +198,3 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  w.requestAnimationFrame=originalRaf;
  await React.act(async()=>root.unmount());w.close();console.log('PASS: cards, controls, authoritative CALL confirmation, fractional chips, delayed listener and snapshot recovery');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});
- assert.ok(doc.querySelector('.poker-seat-hero .poker-bet[data-player-uid="me"]'),'hero chips follow the hero seat instead of a fixed right-side coordinate');
- assert.equal(doc.querySelectorAll('.poker-bet[data-player-uid="me"]').length,1,'one chip stack per owner');

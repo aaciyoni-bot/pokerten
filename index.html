@@ -10642,6 +10642,17 @@ const pokerFinalHandLeaders = (players, board, gameType, phase, privateHands) =>
   return {uids,score:best};
 };
 
+const pokerFullRunout = (board, deck) => {
+  const full = [...(board || [])], remaining = [...(deck || [])];
+  if (full.length === 0 && remaining.length >= 4) {
+    remaining.pop(); full.push(remaining.pop(), remaining.pop(), remaining.pop());
+  }
+  while (full.length >= 3 && full.length < 5 && remaining.length >= 2) {
+    remaining.pop(); full.push(remaining.pop());
+  }
+  return full.length === 5 && full.every(Boolean) ? full : [];
+};
+
 function PokerTable({
   tableDocId,
   user,
@@ -19821,14 +19832,3 @@ root.render(React.createElement(PokerLaunch));
 </script>
 </body>
 </html>
-};
-
-const pokerFullRunout = (board, deck) => {
-  const full = [...(board || [])], remaining = [...(deck || [])];
-  if (full.length === 0 && remaining.length >= 4) {
-    remaining.pop(); full.push(remaining.pop(), remaining.pop(), remaining.pop());
-  }
-  while (full.length >= 3 && full.length < 5 && remaining.length >= 2) {
-    remaining.pop(); full.push(remaining.pop());
-  }
-  return full.length === 5 && full.every(Boolean) ? full : [];

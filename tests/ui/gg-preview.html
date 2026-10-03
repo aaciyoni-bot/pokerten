@@ -49,6 +49,8 @@
  if(query.has('pending'))demoMembers.push({uid:'new_player',username:'New player · pending approval',playerId:'9001',role:'player',status:'pending',balance:0});
  demoMembers.forEach(m=>{m.id=m.uid+'_main';m.clubId='main';});
  const directory={members:demoMembers,gameLog:demoLogs,agentLog:[],treasury:{uid:'owner',balance:2000,clubProfits:500},securityAlerts:[]};
+ const previewDeck=['♠','♥','♦','♣'].flatMap(suit=>['2','3','4','5','6','7','8','9','10','J','Q','K','A'].map(val=>({val,suit}))).filter(c=>![{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}].some(b=>b.val===c.val&&b.suit===c.suit));
+ const previewHands=Object.fromEntries(Object.keys(players).map(k=>[k,previewDeck.splice(0,players[k].cardCount||0)]));
  const stub=`window.__pkMuted=true;window.__previewMode=true;
  if(window.Worker){const PreviewWorker=window.Worker;window.Worker=class extends PreviewWorker{constructor(url,options){super(new URL(String(url),${JSON.stringify(projectRoot.href)}),options);}};}
 
@@ -102,5 +104,3 @@
 
 })().catch(e=>document.body.append(String(e)));
 </script></body></html>
- const previewDeck=['♠','♥','♦','♣'].flatMap(suit=>['2','3','4','5','6','7','8','9','10','J','Q','K','A'].map(val=>({val,suit}))).filter(c=>![{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}].some(b=>b.val===c.val&&b.suit===c.suit));
- const previewHands=Object.fromEntries(Object.keys(players).map(k=>[k,previewDeck.splice(0,players[k].cardCount||0)]));

@@ -621,6 +621,10 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 .poker-room .poker-table-caption .poker-felt-wordmark,
 .poker-room .poker-table-caption .poker-felt-logo{position:static!important;inset:auto!important;flex:none;max-width:100%;font-size:clamp(16px,4.5cqw,25px)!important}
 .poker-room .poker-action-meta [role="status"]{position:static!important;inset:auto!important;transform:none!important;width:auto;max-width:100%;line-height:14px}
+/* Keep waiting text inside the lower felt, clear of the iPhone home area.
+   The action row keeps its own layout; a long/bidi name cannot expand it. */
+.poker-room .poker-action-meta [role="status"]{min-width:0;overflow:hidden;text-overflow:ellipsis;unicode-bidi:plaintext}
+.poker-room .poker-action-dock:not(:has(.poker-action-buttons)) .poker-action-meta [role="status"]{position:absolute!important;left:50%!important;bottom:calc(max(12px,env(safe-area-inset-bottom,0px)) + 40px)!important;transform:translateX(-50%)!important;width:max-content;max-width:calc(100% - 120px);box-sizing:border-box;padding:6px 10px;border-radius:10px;background:#101e2de8;color:#e2e8f0;line-height:18px;z-index:1}
 
 /* Keep the local hand, bet and strength together on the left at every capacity. */
 .poker-room .poker-seat-hero .poker-hand-status{position:absolute;left:calc(100% + 10px);top:calc(var(--poker-hero-size,64px) * .9 + 17px);width:max-content;max-width:calc(70cqw - 24px);justify-content:flex-start;gap:4px;overflow:visible;pointer-events:none}
@@ -654,7 +658,9 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat:not(.poker-seat-hero):has(.poker-revealed-hand){--poker-fan-width:clamp(32px,9.5cqw,40px);--poker-fan-overlap:-.42;--poker-fan-span:calc(var(--poker-fan-width) * (1 + (var(--poker-card-count,2) - 1) * .58))}
 /* Result labels must not push the upper players' revealed cards onto their names. */
 .poker-room .poker-table .poker-seat[data-seat-row="upper"]:has(.poker-result-meta:not(:empty)) .poker-opponent-fan.poker-revealed-hand{top:calc(var(--gg-pod) * .54 - var(--poker-fan-width) * 1.4 - 5px)!important}
-.poker-room.is-god-view .poker-seat[data-seat-row="top"]{margin-top:30px}
+.poker-room .poker-god-future-card{position:relative;display:inline-flex;flex-shrink:0;pointer-events:none;outline:1px dashed #c7a5f899;outline-offset:1px;border-radius:6px}
+.poker-room .poker-god-future-card .card-face{opacity:.52;filter:saturate(.7);box-shadow:none!important}
+.poker-room .poker-god-future-card>small{position:absolute;bottom:2px;right:2px;padding:1px 3px;border-radius:3px;color:#eee2ff;background:#593a78;font:700 7px/10px Arial,sans-serif;letter-spacing:.04em}
 @media(max-width:350px){.poker-room.is-god-view>.poker-god-runout{left:52px;right:4px;gap:5px;padding:4px}.poker-room.is-god-view>.poker-god-runout .card-face{width:33px!important;height:46.2px!important;min-height:46.2px!important}}
 
 /* Blind inputs must not contribute their browser intrinsic width to the grid. */

@@ -1081,6 +1081,17 @@ function botAction(S, uid) {
   const body = handBody(cards, g.board || [], gt);
   const hasBody = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
   const hasAnything = body.made >= 1 || body.outs >= 4; // may call a small one
+  // A board-assisted pair on a paired, three-flush river is a bluff-catcher,
+  // not a stack-off hand. Sampling the best of a few random hands still puts
+  // too many weak holdings into a large river bettor's range on this texture.
+  // Price the actual callable chips; a nearly free call and genuine trips,
+  // flushes/full houses keep their normal equity decision. No private reads.
+  const publicSuits = {};
+  for (const c of g.board || []) publicSuits[c.suit] = (publicSuits[c.suit] || 0) + 1;
+  const riverBluffCatcher = g.phase === 'river' && body.sharedPair && body.made <= 2 && Math.max(0, ...Object.values(publicSuits)) >= 3;
+  const facingShove = activesOf(S.players).some(p => p.uid !== uid && p.stack === 0 && p.bet > (b.bet || 0));
+  if (riverBluffCatcher && toCall > 0 && actualOdds >= .12 &&
+      (facingShove || callCost >= stack * .35 || actualOdds >= .20)) return {action:'fold'};
   // The god guard only exists on a table where every seat is a bot. One real
   // player sits down and it is off for the whole table, permanently.
   const botsOnly = Object.values(S.players).every((p) => p.isBot);

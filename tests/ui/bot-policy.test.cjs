@@ -145,3 +145,29 @@ assert.equal(client.botHandBody([c('K','♥'),c('Q','♠')],reportedBoard,'NLH')
 assert.equal(client.botHandBody([c('2','♥'),c('4','♠')],[c('Q','♥'),c('Q','♦'),c('10','♠'),c('10','♥'),c('5','♣')],'NLH').made,0);
 assert.equal(client.botHandBody([c('Q','♣'),c('3','♣')],[c('Q','♥'),c('10','♦'),c('3','♠'),c('5','♥'),c('9','♣')],'NLH').made,3);
 console.log('PASS: KQ paired-board screenshot, repeated investment, shared board pairs and genuine private two pair');
+
+// iPhone report: A-K on A-9-9-6-3 with three spades cannot call a meaningful
+// river shove as if its board-assisted second pair were independent strength.
+const acePairedRiver=[c('A','♠'),c('9','♠'),c('9','♣'),c('6','♣'),c('3','♠')];
+for(const style of ['tight','balanced','aggressive'])for(const draw of [.01,.5,.99])for(const stack of [134.84,600]){
+ const b={uid:'aceReport',isBot:true,botStyle:style,status:'active',bet:0,stack,cards:[c('A','♦'),c('K','♣')]};
+ for(const wager of [40,180]){
+  const o={uid:'human',isBot:false,status:'active',stack:0,bet:wager};
+  Object.defineProperty(o,'cards',{get(){throw Error('River decision read private opponent cards');}});
+  const t={settings:{blinds:1,baseGameType:'NLH',botGodGuard:true},players:{aceReport:b,human:o}};
+  const g={phase:'river',currentGameType:'NLH',board:acePairedRiver,highestBet:wager,minRaise:2,handBB:2,pots:[{amount:173}]};
+  assert.equal(withDecisionDraw(draw,()=>client.botPokerMove(g,t,b)).type,'fold','A-K must release this river bluff-catcher against a meaningful shove');
+  assert.equal(serverMoveWithDraw(draw,g,t,b).type,'fold');
+ }
+}
+const priceBot={uid:'priceBot',isBot:true,status:'active',bet:0,stack:200,cards:[c('A','♦'),c('K','♣')]};
+const priceOpp={uid:'priceOpp',isBot:false,status:'active',bet:1,stack:0};
+const priceGame={phase:'river',currentGameType:'NLH',board:acePairedRiver,highestBet:1,minRaise:2,handBB:2,pots:[{amount:173}]};
+const priceTable={settings:{blinds:1,baseGameType:'NLH'},players:{priceBot,priceOpp}};
+assert.equal(withDecisionDraw(.5,()=>client.botPokerMove(priceGame,priceTable,priceBot)).type,'call','Do not fold top pair to a nearly free one-chip all-in');
+assert.equal(serverMoveWithDraw(.5,priceGame,priceTable,priceBot).type,'call');
+const quads={...priceBot,cards:[c('9','♦'),c('9','♥')]};
+const bigPrice={...priceGame,highestBet:180},quadsTable={...priceTable,players:{priceBot:quads,priceOpp:{...priceOpp,bet:180}}};
+assert.equal(withDecisionDraw(.5,()=>client.botPokerMove(bigPrice,quadsTable,quads)).type,'call','Real river nuts still call the shove on this same board');
+assert.equal(serverMoveWithDraw(.5,bigPrice,quadsTable,quads).type,'call');
+console.log('PASS: A-K paired three-flush river shove, covering stack, cheap call, actual nuts and private-card boundary');

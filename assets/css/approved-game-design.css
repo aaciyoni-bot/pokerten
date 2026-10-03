@@ -652,3 +652,22 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 .poker-room.is-god-view .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat:not(.poker-seat-hero){--poker-fan-width:clamp(32px,9.5cqw,40px);--poker-fan-overlap:-.42}
 .poker-room.is-god-view .poker-seat[data-seat-row="top"]{margin-top:30px}
 @media(max-width:350px){.poker-room.is-god-view>.poker-god-runout{left:52px;right:4px;gap:5px;padding:4px}.poker-room.is-god-view>.poker-god-runout .card-face{width:33px!important;height:46.2px!important;min-height:46.2px!important}}
+
+/* Blind inputs must not contribute their browser intrinsic width to the grid. */
+.tournament-blind-editor,.tournament-blind-rows{min-width:0;max-width:100%;box-sizing:border-box}
+.tournament-blind-editor select{min-width:0;max-width:100%;width:100%;text-overflow:ellipsis}
+.tournament-blind-rows{max-height:58dvh;overflow-y:auto;overscroll-behavior:contain;padding:2px}
+.tournament-blind-header,.tournament-blind-row{display:grid;grid-template-columns:26px repeat(3,minmax(0,1fr)) minmax(38px,.7fr) 54px;gap:4px;align-items:center;min-width:0}
+.tournament-blind-field{min-width:0;display:block;margin:0}
+.tournament-blind-field>span{display:none}
+.tournament-blind-field input{min-width:0!important;max-width:100%!important;width:100%!important;box-sizing:border-box;padding:7px 2px!important}
+@media(max-width:600px){
+ .tournament-blind-header{display:none}
+ .tournament-blind-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:10px;margin-bottom:6px;border:1px solid #64748b55;border-radius:10px;background:#0f172a99}
+ .tournament-blind-level{grid-column:1/-1;text-align:left;font-size:12px}
+ .tournament-blind-level:before{content:'Level '}
+ .tournament-blind-field>span{display:block;color:#b8c3d4;font-size:11px;margin-bottom:3px}
+ .tournament-blind-field input{font-size:16px!important;min-height:36px}
+ .tournament-blind-actions{grid-column:1/-1;justify-content:flex-end;gap:8px}
+ .tournament-blind-actions button{min-width:36px;min-height:32px}
+}

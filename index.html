@@ -19264,7 +19264,7 @@ if(tor.game==='poker')return showToast('Completed tournaments remain in the hist
   }, React.createElement("span", null, "🎚 Blind structure · ", structRows.length, " levels", opts.structure ? ' · CUSTOM' : ' · auto', Number(opts.breakEvery) > 0 ? ` · ☕ break ${opts.breakMins}m every ${opts.breakEvery} levels` : ''), React.createElement("i", {
     className: `fa-solid fa-chevron-${structOpen ? 'up' : 'down'} text-purple-300`
   })), structOpen && React.createElement("div", {
-    className: "mt-2 bg-slate-950/60 border border-white/10 rounded-xl p-3"
+    className: "tournament-blind-editor mt-2 bg-slate-950/60 border border-white/10 rounded-xl p-3"
   }, React.createElement("div", {
     className: "flex flex-wrap items-center gap-3 mb-3"
   }, React.createElement("span", {
@@ -19315,25 +19315,26 @@ if(tor.game==='poker')return showToast('Completed tournaments remain in the hist
     }),
     className: "text-[11px] font-black text-amber-300 underline mr-auto"
   }, "↺ Reset to system structure")), React.createElement("div", {
-    className: "grid gap-1",
+    className: "tournament-blind-rows grid gap-1",
+    "aria-label": "Tournament blind levels",
     dir: "ltr"
   }, React.createElement("div", {
-    className: "grid grid-cols-[2rem_1fr_1fr_1fr_3.5rem_3.5rem] gap-1 text-[10px] font-black text-slate-500 uppercase px-1"
+    className: "tournament-blind-header text-[10px] font-black text-slate-500 uppercase"
   }, React.createElement("span", null, "Lvl"), React.createElement("span", null, "SB"), React.createElement("span", null, "BB"), React.createElement("span", null, "Ante"), React.createElement("span", null, "Min"), React.createElement("span", null, "")), structRows.map((r, i) => React.createElement(React.Fragment, {
     key: i
   }, React.createElement("div", {
-    className: "grid grid-cols-[2rem_1fr_1fr_1fr_3.5rem_3.5rem] gap-1 items-center"
+    className: "tournament-blind-row"
   }, React.createElement("span", {
-    className: "text-[11px] font-black text-purple-300 text-center"
-  }, i + 1), ['sb', 'bb', 'ante', 'mins'].map(k => React.createElement("input", {
-    key: k,
+    className: "tournament-blind-level text-[11px] font-black text-purple-300 text-center"
+  }, i + 1), ['sb', 'bb', 'ante', 'mins'].map(k => React.createElement('label',{key:k,className:'tournament-blind-field'},React.createElement('span',null,({sb:'SB',bb:'BB',ante:'Ante',mins:'Min'})[k]),React.createElement("input", {
+    'aria-label': `Level ${i+1} ${k}`,
     type: "number",
     min: "0",
     value: r[k],
     onChange: e => setStructRow(i, k, e.target.value),
     className: "bg-slate-900 text-white border border-white/10 rounded-lg p-1.5 text-xs font-bold text-center"
-  })), React.createElement("span", {
-    className: "flex gap-1 justify-center"
+  }))), React.createElement("span", {
+    className: "tournament-blind-actions flex gap-1 justify-center"
   }, React.createElement("button", {
     type: "button",
     title: "Add a level after this one",

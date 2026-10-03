@@ -20,7 +20,7 @@ const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
 let source=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]).sort((a,b)=>b.length-a.length)[0];
 source=source.replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.SettlementTest=SettlementSection;');
 w.eval(source);w.__club={ownerUid:'owner',closedWeeks:{}};const root=ReactDOM.createRoot(w.document.getElementById('root'));
-const render=uid=>React.act(async()=>root.render(React.createElement(w.SettlementTest,{key:uid,user:{uid,email:uid+'@example.invalid',role:uid==='owner'?'club_owner':uid==='manager'?'manager':'agent'},showToast:()=>{}})));
+const render=uid=>{w.fb.auth.currentUser={uid,email:uid==='owner'?'aaci.yoni@gmail.com':uid+'@example.invalid',emailVerified:true};return React.act(async()=>root.render(React.createElement(w.SettlementTest,{key:uid,user:{uid,email:uid+'@example.invalid',role:uid==='owner'?'club_owner':uid==='manager'?'manager':'agent'},showToast:()=>{}})));};
 (async()=>{
   await render('owner');assert.equal(w.document.querySelectorAll('.club-account-card').length,4);
   assert.match(w.document.body.textContent,/Player rake12\.00/);assert.match(w.document.body.textContent,/Agent cuts \(verified\)3\.00/);assert.match(w.document.body.textContent,/Owner rake \(verified\)9\.00/);
@@ -32,7 +32,7 @@ const render=uid=>React.act(async()=>root.render(React.createElement(w.Settlemen
   assert.ok(w.document.querySelector('details.club-report-details'),'the original detailed report remains available');
   const search=w.document.querySelector('input[placeholder="Search…"]');await React.act(()=>Simulate.change(search,{target:{value:'Alice'}}));
   assert.equal(w.document.querySelectorAll('.club-account-card').length,1);
-  await render('manager');assert.equal(w.document.querySelectorAll('.club-account-card').length,4);assert.match(w.document.body.textContent,/Bob/);
+  await render('manager');assert.doesNotMatch(w.document.body.textContent,/Period rake|Player rake/);assert.equal(w.document.querySelectorAll('.club-account-card').length,4);assert.match(w.document.body.textContent,/Bob/);
   await render('agent');assert.equal(w.document.querySelectorAll('.club-account-card').length,1);assert.doesNotMatch(w.document.body.textContent,/Bob/);
   assert.equal(writes,0,'reading account cards must never mutate finances');
   await React.act(()=>root.unmount());w.close();console.log('PASS: actual settlement cards, current-period entries, original report, filters and agent scope with zero writes');

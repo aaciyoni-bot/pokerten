@@ -1089,6 +1089,7 @@ function botAction(S, uid) {
   const publicSuits = {};
   for (const c of g.board || []) publicSuits[c.suit] = (publicSuits[c.suit] || 0) + 1;
   const riverBluffCatcher = g.phase === 'river' && body.sharedPair && body.made <= 2 && Math.max(0, ...Object.values(publicSuits)) >= 3;
+  // A covering stack still faces a shove even when toCall is below its stack.
   const facingShove = activesOf(S.players).some(p => p.uid !== uid && p.stack === 0 && p.bet > (b.bet || 0));
   if (riverBluffCatcher && toCall > 0 && actualOdds >= .12 &&
       (facingShove || callCost >= stack * .35 || actualOdds >= .20)) return {action:'fold'};

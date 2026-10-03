@@ -18,15 +18,11 @@ const render=key=>React.act(async()=>root.render(React.createElement(w.BO,{key,u
 (async()=>{
  await render('ordinary');
  const card=name=>[...doc.querySelectorAll('.club-player-card')].find(c=>c.textContent.includes(name));
- assert.match(card('Alice').textContent,/159\.83.*\(-340\.17\)/);assert.match(card('Bob').textContent,/1,000\.00.*\(\+500\.00\)/);
- assert.equal(doc.querySelectorAll('[data-cycle-rake]').length,0);
- let sort=doc.querySelector('[aria-label="סידור שחקנים"]');assert.equal([...sort.options].some(o=>o.value==='rake'),false);
+ assert.match(card('Alice').textContent,/159\.83/);assert.match(card('Bob').textContent,/1,000\.00/);
+ assert.doesNotMatch(card('Alice').textContent,/-340\.17/,'cycle results belong in the settlement area');
+ assert.equal(doc.querySelector('.management-cycle-summary'),null);assert.equal(doc.querySelector('.management-agent-totals'),null);
+ const sort=doc.querySelector('[aria-label="סידור שחקנים"]');assert.equal(sort.disabled,false);assert.equal([...sort.options].some(o=>o.value==='rake'),false);
  await React.act(()=>Simulate.change(sort,{target:{value:'chips'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
- assert.match(doc.querySelector('.management-agent-totals').textContent,/1,159\.83.*\(\+159\.83\)/);
- assert.match(doc.querySelector('.management-cycle-summary').textContent,/1,159\.83.*\(\+159\.83\)/);
- god=true;w.fb.auth.currentUser={uid:'owner',email:'aaci.yoni@gmail.com',emailVerified:true};await render('god');
- sort=doc.querySelector('[aria-label="סידור שחקנים"]');assert.ok([...sort.options].some(o=>o.value==='rake'));
- await React.act(()=>Simulate.change(sort,{target:{value:'rake'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Alice/);
- assert.equal(card('Alice').querySelector('[data-cycle-rake]').dataset.cycleRake,'8');
- await React.act(()=>root.unmount());w.close();console.log('PASS: exact requested balance/result pairs, agent/club totals, chip/rake sorting and GOD-only rake controls');
+ assert.doesNotMatch(doc.body.textContent,/Weekly Settlement|Export full club report|Club rake/);
+ await React.act(()=>root.unmount());w.close();console.log('PASS: management preserves wallet balances and chip sorting while settlement reports stay separate');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

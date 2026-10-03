@@ -9,6 +9,7 @@ w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-
 w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
 const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManagementAppTest=App;');
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js'),'utf8'));
 w.eval(script);w.__pkMuted=true;
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const HAIM='haim29071994@gmail.com';
@@ -42,6 +43,7 @@ function firebaseFixture(email,membershipStatus){
   onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;fn(snapshot(target));return()=>{};},
   fx:async(name,args)=>{
    calls.push({name,args});
+   if(name==='pkSettlementTerms')return{role:'owner',members:[]};
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
    if(name==='pkClubDirectory'&&args.reportSection)return{records:[],hasMore:false,nextCursor:null};
    if(name==='pkClubDirectory')return{members:[owner,membership,other],treasury:{uid:'owner',balance:1000},securityAlerts:[],agentLog:[],gameLog:[]};
@@ -67,13 +69,13 @@ async function assertFullManagement(fixture){
  assert.ok(doc.querySelector('.club-admin'),'the Manage button opens BackofficeView');
  assert.ok(doc.getElementById('bo-settings'),'full Club Settings are mounted');
  assert.ok(doc.getElementById('bo-players'),'member management is mounted');
- assert.ok(doc.getElementById('bo-settlement'),'settlement is mounted');
+ assert.ok(doc.getElementById('bo-terms'),'terms management is mounted');
  assert.match(doc.body.textContent,/Club Settings/);
- assert.match(doc.body.textContent,/Export full club report/);
+ assert.doesNotMatch(doc.body.textContent,/Export full club report|Weekly Settlement/);
  assert.match(doc.body.textContent,/Other human player/);
  assert.ok(doc.querySelector('[title="Set role and agent assignment"]'),'management includes member-role controls');
  assert.ok(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.reportSection==='securityAlerts'));
- assert.ok(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.reportSection==='gameLog'));
+ assert.equal(fixture.calls.some(call=>call.name==='pkClubDirectory'&&call.args.reportSection==='gameLog'),false);
  assert.equal(fixture.writes.length,0,'oversight entry must not create or promote a membership');
 }
 (async()=>{

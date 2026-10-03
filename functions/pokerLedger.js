@@ -29,10 +29,11 @@ async function prepareLedger(db,tx,clubId,effects,source,now){
     if(cents){add(d.agentUid,cents/100,{agentProfits:cents/100});agentLogs.push({agentUid:d.agentUid,playerUid:p.uid,amount:cents/100,rakeSource:'human',accountingVersion:2});left-=cents;}
    }
    if(left){add(club.data().ownerUid,left/100,{clubProfits:left/100});agentLogs.push({kind:'club',amount:left/100,rakeSource:'human',accountingVersion:2});}
-  }else if(e.type!=='rake')fail('failed-precondition','Unknown ledger effect');
+  }else if(!['rake','settlementHands'].includes(e.type))fail('failed-precondition','Unknown ledger effect');
  }
  const ids=[...deltas.keys()],snaps=ids.length?await tx.getAll(...ids.map(id=>db.doc(`memberships/${id}_${clubId}`))):[];
  const writes=snaps.map((s,i)=>{if(!s.exists)fail('failed-precondition','Funding account missing');const d=deltas.get(ids[i]),old=s.data(),balance=cash(Number(old.balance)+d.amount);if(!Number.isFinite(balance)||balance<0)fail('failed-precondition','Insufficient balance');const patch={balance};for(const [k,v]of Object.entries(d.fields))patch[k]=cash((Number(old[k])||0)+v);return{ref:s.ref,patch};});
- return()=>{for(const w of writes)tx.update(w.ref,w.patch);for(const e of logs){if(!e.uid||e.uid.startsWith('bot_'))continue;tx.set(db.collection('gameLog').doc(),{uid:key(e.uid),username:String(e.username||''),game:'poker',clubId,tableId:source,profit:cash(e.profit||0),rake:cash(e.rake||0),...(e.accountingVersion?{rakeSource:e.rakeSource,accountingVersion:e.accountingVersion}:{}),at:now});}for(const e of agentLogs)tx.set(db.collection('agentLog').doc(),{...e,clubId,tableId:source,at:now});if(ids.length)tx.set(db.collection('_pkLedger').doc(),{clubId,source,at:now,movements:ids.map(uid=>({uid,...deltas.get(uid)}))});};
+ const writeSettlement=await require('./settlementStore').prepareJournal(db,tx,clubId,effects,source,now);
+ return()=>{writeSettlement();for(const w of writes)tx.update(w.ref,w.patch);for(const e of logs){if(!e.uid||e.uid.startsWith('bot_'))continue;tx.set(db.collection('gameLog').doc(),{uid:key(e.uid),username:String(e.username||''),game:'poker',clubId,tableId:source,profit:cash(e.profit||0),rake:cash(e.rake||0),...(e.accountingVersion?{rakeSource:e.rakeSource,accountingVersion:e.accountingVersion}:{}),at:now});}for(const e of agentLogs)tx.set(db.collection('agentLog').doc(),{...e,clubId,tableId:source,at:now});if(ids.length)tx.set(db.collection('_pkLedger').doc(),{clubId,source,at:now,movements:ids.map(uid=>({uid,...deltas.get(uid)}))});};
 }
 module.exports={prepareLedger};

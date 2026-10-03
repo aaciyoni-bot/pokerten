@@ -26,6 +26,7 @@ const BONUS_GAMES_OFF = true;
 Object.assign(exports, require("./pokerEngine"));
 Object.assign(exports, require("./personalCode"));
 Object.assign(exports, require("./pokerProfile"));
+Object.assign(exports, require("./pokerSettlement"));
 
 // AVIATORIZIS — server-authoritative crash game (avJoin/avTick/avBet/
 // avCancelBet/avCashout/avCredit) — see aviator.js.

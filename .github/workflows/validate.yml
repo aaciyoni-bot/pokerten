@@ -25,7 +25,9 @@ jobs:
       - name: Check mandatory game invariants
         run: node predeploy-check.js
       - name: Verify generated poker worker matches client policy
-        run: node scripts/build-poker-worker.cjs --check
+        run: |
+          node scripts/build-poker-worker.cjs --check
+          node scripts/build-settlement-ui.cjs --check
       - name: Check read-only live-table status parsing
         run: node --test scripts/verify-bot-lobby-variety.test.cjs
       - name: Check actual client and server bot decisions

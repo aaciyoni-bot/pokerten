@@ -50,12 +50,16 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  await React.act(async()=>tableNext(snapshot()));
  let opponent=doc.querySelector('.poker-seat:not(.poker-seat-hero) .poker-opponent-fan');
  assert.equal(opponent.querySelectorAll('.card-back').length,6,'opponents have six distinct backs in a compact fan');
+ assert.equal(opponent.classList.contains('poker-revealed-hand'),false,'hidden hands do not receive the enlarged public reveal style');
  assert.equal(opponent.children.length,6);
  assert.equal(doc.querySelector('.poker-seat-hero .poker-opponent-fan'),null,'own hand stays separate and fully readable');
  current.gameState.allInReveal=true;
  await React.act(async()=>tableNext(snapshot()));
  opponent=doc.querySelector('.poker-seat:not(.poker-seat-hero) .poker-opponent-fan');
  assert.equal(opponent.querySelectorAll('.card-face').length,6,'revealed opponent hands keep all six cards');
+ assert.ok(opponent.classList.contains('poker-revealed-hand'),'ordinary all-in reveals receive the enlarged face style');
+ assert.equal(doc.querySelector('.is-god-view'),null,'public reveal does not enable GOD');
+ assert.equal(doc.querySelector('.poker-god-runout'),null,'public reveal never exposes future cards');
  assert.equal(opponent.children.length,6,'revealing cards keeps a single fan');
  assert.ok([...opponent.children].every(c=>c.style.transform.includes('rotate(')),'revealed cards retain their fan angles');
  current.gameState.allInReveal=false;

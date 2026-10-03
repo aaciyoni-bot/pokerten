@@ -1,5 +1,15 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const source=html.slice(html.indexOf('const SFX = {'),html.indexOf('const playSnd ='));
+test('all-in and both pot wins use distinct soft buffers, once, through the mute gate',()=>{
+ const played=[];const ctx={sampleRate:24000,currentTime:0,state:'running',createBuffer:(_,n)=>{const data=new Float32Array(n);return{getChannelData:()=>data};},createBufferSource:()=>{const src={playbackRate:{value:1},connect(){},start(){played.push(src.buffer);}};return src;},createGain:()=>({gain:{value:1},connect(){}})};
+ const w={addEventListener(){}};const c={window:w,localStorage:{getItem:()=>null},setTimeout(){},document:{hidden:false}};vm.createContext(c);
+ vm.runInContext(html.slice(html.indexOf('const SFX = {'),html.indexOf('const creditRakeToClub ='))+'\nwindow.audioTest={SFX,playSnd};',c);
+ const {SFX,playSnd}=w.audioTest;SFX.ctx=ctx;SFX.bus={};
+ playSnd('allin');playSnd('win');playSnd('bigwin');assert.equal(played.length,3);assert.notEqual(played[0],played[1]);assert.equal(played[1],played[2]);
+ for(const b of played){const samples=b.getChannelData(0);assert.ok(samples.some(x=>Math.abs(x)>.05));assert.ok(samples.every(x=>Number.isFinite(x)&&Math.abs(x)<1),'no clipping');assert.equal(samples[0],0);assert.ok(Math.abs(samples.at(-1))<.001,'quiet tail');}
+ w.__pkMuted=true;playSnd('allin');playSnd('win');assert.equal(played.length,3);
+ w.__pkMuted=false;w.__pkVolume=0;playSnd('bigwin');assert.equal(played.length,3);
+});
 test('master level persists, clamps and immediately silences scheduled sounds',()=>{const values=[],storage={};const w={addEventListener(){}};const c={window:w,localStorage:{getItem:k=>storage[k]??null,setItem:(k,v)=>storage[k]=v},setTimeout(){},document:{hidden:false}};vm.createContext(c);vm.runInContext(source+'\nwindow.audioTest={SFX,setSfxLevel};',c);const {SFX,setSfxLevel}=w.audioTest;SFX.ctx={currentTime:4};SFX.master={gain:{setTargetAtTime:v=>values.push(v)}};setSfxLevel(.2);assert.equal(values.at(-1),.2);assert.equal(storage.pkVolume,'0.2');w.__pkMuted=true;setSfxLevel(.8);assert.equal(values.at(-1),0);w.__pkMuted=false;setSfxLevel(9);assert.equal(values.at(-1),1);});
 test('trimmed winner cue starts before its stop is scheduled',()=>{let started=false,stopAt=null;const param={value:1,setValueAtTime(){},linearRampToValueAtTime(){}};const ctx={currentTime:1,state:'running',createBufferSource:()=>({playbackRate:{value:1},connect(){},start(){started=true;},stop(t){assert.ok(started,'cannot stop an unstarted source');stopAt=t;}}),createGain:()=>({gain:param,connect(){}})};const w={addEventListener(){}};const c={window:w,localStorage:{getItem:()=>null},setTimeout(){},document:{hidden:false}};vm.createContext(c);vm.runInContext(source+'\nwindow.audioTest={SFX,sfxPlay};',c);const {SFX,sfxPlay}=w.audioTest;SFX.ctx=ctx;SFX.bus={};SFX.buf.win={};assert.equal(sfxPlay('win',0,.5,1,.7),true);assert.ok(started);assert.equal(stopAt,1.73);});

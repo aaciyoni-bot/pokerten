@@ -1105,7 +1105,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=299">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=300">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -1584,11 +1584,11 @@ const SFX_FILES = {
   fold: ['fold_toss_1', 'fold_toss_2'],
   tick: ['timer_tick_1', 'timer_tick_2'],
   turn: ['timer_tick_1'],
-  win: ['chips_slide_1', 'chips_slide_2', 'chips_slide_3'],
-  bigwin: ['all_in', 'chips_slide_2'],
+  win: ['soft_pot_win'],
+  bigwin: ['soft_pot_win'],
   msg: ['chat_msg'],
   shuffle: ['shuffle'],
-  allin: ['all_in'],
+  allin: ['soft_all_in'],
   bust: ['chips_slide_1'],
   tile: ['chip_single_1'],
   dice: ['chips_slide_2']
@@ -1625,11 +1625,33 @@ const sfxLoad = () => {
   const ctx = sfxCtx();
   if (!ctx || SFX.loading) return;
   SFX.loading = true;
-  [...new Set(Object.values(SFX_FILES).flat())].forEach(f => {
+  sfxPrepareCues(ctx);
+  [...new Set(Object.values(SFX_FILES).flat())].filter(f => !f.startsWith('soft_')).forEach(f => {
     fetch(`assets/sounds/${f}.wav`).then(r => r.arrayBuffer()).then(ab => ctx.decodeAudioData(ab)).then(b => {
       SFX.buf[f] = b;
     }).catch(() => {});
   });
+};
+// Locally rendered, soft acoustic cues: two low wood taps for a commitment,
+// three warm piano-like notes for a won pot. No metallic FM or network fallback.
+const sfxPrepareCues = ctx => {
+  if (!ctx || SFX.buf.soft_all_in && SFX.buf.soft_pot_win) return;
+  for (const [name, duration, notes] of [
+    ['soft_all_in', .48, [[0, 165, .11, .62], [.16, 130.81, .14, .48]]],
+    ['soft_pot_win', 1.12, [[0, 261.63, .52, .36], [.15, 329.63, .55, .32], [.30, 392, .76, .30]]]
+  ]) {
+    const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
+    const samples = buffer.getChannelData(0);
+    for (const [start, hz, length, level] of notes) {
+      const offset = Math.round(start * ctx.sampleRate);
+      for (let i = 0; i < Math.floor(length * ctx.sampleRate) && offset + i < samples.length; i++) {
+        const t = i / ctx.sampleRate, phase = 2 * Math.PI * hz * t;
+        const envelope = Math.min(1, t / .009) * Math.exp(-5 * t / length) * Math.min(1, (length - t) / .035);
+        samples[offset + i] += level * envelope * (Math.sin(phase) + .22 * Math.sin(2 * phase) * Math.exp(-12*t) + .06 * Math.sin(3 * phase) * Math.exp(-20*t));
+      }
+    }
+    SFX.buf[name] = buffer;
+  }
 };
 try {
   ['touchstart', 'mousedown', 'keydown'].forEach(ev => window.addEventListener(ev, () => {
@@ -1731,21 +1753,13 @@ const playSnd = (type, times = 1, gapSec = 0) => {
   // Keep chat/join quiet; turn and countdown cues are gameplay feedback.
   if (['msg', 'join'].includes(type)) return;
   try {
+    if (['allin', 'win', 'bigwin'].includes(type)) {
+      sfxPrepareCues(sfxCtx());
+      sfxPlay(SFX_FILES[type][0], 0, type === 'allin' ? .8 : .85, 1);
+      return;
+    }
     const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
     if (variants.length) {
-      // Winner takes the pot: ONE short chip-slide, natural speed, trimmed to
-      // ~0.7s with a fade — owner request (the slowed 1.4s version was grating).
-      // bigwin adds a single "all in" hit in front as the celebration accent.
-      if (type === 'win' || type === 'bigwin') {
-        const slide = (SFX_FILES.win || []).filter(x => SFX.buf[x]);
-        if (type === 'bigwin' && SFX.buf['all_in']) {
-          sfxPlay('all_in', 0, SFX_GAIN.bigwin);
-          if (slide.length) sfxPlay(slide[0], 0.3, SFX_GAIN.win * 0.75, 1, 0.7);
-        } else if (slide.length) {
-          sfxPlay(slide[0], 0, SFX_GAIN.win * 0.85, 1, 0.7);
-        }
-        return;
-      }
       // check = two real knuckle-knocks on the rail, second one a touch softer
       const reps = type === 'check' ? 2 : Math.floor(times) || 1;
       const n = Math.max(1, Math.min(type === 'deal' ? 36 : 9, reps));

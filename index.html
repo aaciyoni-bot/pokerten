@@ -10620,7 +10620,8 @@ function PokerFullscreenButton({showToast, onToggle}) {
 // Never substitute the current street while the atomic private snapshot loads.
 const pokerFinalHandLeaders = (players, board, gameType, phase, privateHands) => {
   const empty = {uids:[],score:null};
-  if (!['preflop','flop','turn','river','showdown'].includes(phase) || !Array.isArray(board) || board.length !== 5) return empty;
+  const pineapple = gameType === 'Pineapple';
+  if (!['preflop','flop','turn','river','showdown'].includes(phase) && !(pineapple && phase === 'discard') || !Array.isArray(board) || board.length !== 5) return empty;
   const eligible = Object.values(players || {}).filter(p => p && !p.left && (p.status === 'active' || phase === 'showdown' && p.status === 'busted'));
   if (eligible.length < 2) return empty;
   const omaha = String(gameType || '').startsWith('Omaha');
@@ -10633,18 +10634,23 @@ const pokerFinalHandLeaders = (players, board, gameType, phase, privateHands) =>
     seen.add(key); return true;
   });
   if (!validCards(board)) return empty;
-  let best = -1, uids = [];
+  let best = -1, uids = [], pendingDiscard = false;
   for (const p of eligible) {
     const cards = privateHands ? privateHands[p.uid] : p.cards;
-    // Unknown hands cannot be silently omitted, nor can a Pineapple hand
-    // waiting to discard be treated as a legal two-card Hold'em hand.
-    if (!Array.isArray(cards) || cards.length !== expected || !validCards(cards)) return empty;
-    const score = bestScoreFull(cards,board,gameType);
+    const needsDiscard = pineapple && ['preflop','flop','discard'].includes(phase) && cards?.length === 3;
+    // Until the actual discard, show only the best POTENTIAL legal two-card
+    // hand. Never play all three cards or imply the future choice is known.
+    // Unknown opponents and stale post-discard three-card hands invalidate it.
+    if (!Array.isArray(cards) || cards.length !== expected && !needsDiscard || !validCards(cards)) return empty;
+    const score = needsDiscard
+      ? Math.max(...getCombinations(cards,2).map(kept => bestScoreFull(kept,board,gameType)))
+      : bestScoreFull(cards,board,gameType);
+    pendingDiscard = pendingDiscard || needsDiscard;
     if (!Number.isFinite(score)) return empty;
     if (score > best) { best = score; uids = [p.uid]; }
     else if (score === best) uids.push(p.uid);
   }
-  return {uids,score:best};
+  return {uids,score:best,pendingDiscard};
 };
 
 const pokerFullRunout = (board, deck) => {
@@ -12818,10 +12824,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const isWinner = gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name);
     const godLeading = godView && isGodUser(user) && godFinalLeaders.uids.includes(p.uid);
     const godTied = godFinalLeaders.uids.length > 1;
-    const godLeaderLabel = (godTied ? 'Tied best hand on full board' : 'Best hand on full board') + ((gs.board2 || []).length ? ' 1' : '') + ': ' + handName(godFinalLeaders.score);
+    const godLeaderLabel = (godFinalLeaders.pendingDiscard ? (godTied ? 'Tied best potential hand on full board' : 'Best potential hand on full board') : (godTied ? 'Tied best hand on full board' : 'Best hand on full board')) + ((gs.board2 || []).length ? ' 1' : '') + ': ' + handName(godFinalLeaders.score) + (godFinalLeaders.pendingDiscard ? ' · Assuming each player keeps their best two cards; the actual discard can change the winner' : '');
     const godBadge = godLeading && React.createElement('span',{className:'poker-god-best-badge',role:'img','aria-label':godLeaderLabel,title:godLeaderLabel+' · GOD view only'},
       React.createElement('i',{className:'fa-solid fa-crown','aria-hidden':true}),
-      React.createElement('span',{'aria-hidden':true},godTied?'TIED BEST':(gs.board2 || []).length?'BEST B1':'BEST HAND'));
+      React.createElement('span',{'aria-hidden':true},godFinalLeaders.pendingDiscard ? (godTied?'TIED POTENTIAL':'BEST POTENTIAL') : godTied?'TIED BEST':(gs.board2 || []).length?'BEST B1':'BEST HAND'));
     // A losing exposed hand is still part of the result; keep it fully readable.
     const muckCls = gs.phase === 'showdown' && hidden && (p.mucked || folded) ? ' card-mucked' : '';
     return React.createElement("div", {

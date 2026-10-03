@@ -24,6 +24,20 @@ assert.deepEqual(leaders(simplePlayers,omahaBoard,'Omaha 6','flop',omahaHands).u
 const flushBoard=[c('A','♥'),c('K','♥'),c('Q','♥'),c('9','♥'),c('2','♠')],flushHands={a:[c('J','♥'),c('10','♥'),c('3','♦'),c('4','♦'),c('5','♣'),c('6','♣')],b:[c('8','♥'),c('7','♣'),c('A','♦'),c('A','♠'),c('K','♣'),c('K','♠')]};
 assert.deepEqual(leaders(simplePlayers,flushBoard,'Omaha 6','river',flushHands).uids,['a'],'one heart in an Omaha hand is never a flush');
 assert.deepEqual(leaders(simplePlayers,current.gameState.board,'Pineapple','discard',{a:[...hands.alpha,c('3','♣')],b:[...hands.beta,c('4','♣')]}).uids,[],'unresolved Pineapple discard cannot claim a legal leader');
+const pineappleBoard=[c('2','♠'),c('3','♠'),c('4','♠'),c('9','♦'),c('J','♥')];
+const pineappleHands={a:[c('A','♠'),c('K','♠'),c('Q','♦')],b:[c('9','♣'),c('9','♥'),c('J','♣')]};
+for(const phase of ['preflop','flop','discard']){
+ const predicted=leaders(simplePlayers,pineappleBoard,'Pineapple',phase,pineappleHands);
+ assert.deepEqual(predicted.uids,['a'],'Pineapple projects the best legal two-card choice before discards');
+ assert.equal(predicted.pendingDiscard,true,'an unknown discard is explicitly a conditional forecast');
+}
+assert.deepEqual(leaders(simplePlayers,[c('2','♥'),c('9','♦'),c('J','♣'),c('Q','♠'),c('A','♥')],'Pineapple','preflop',{a:[c('3','♣'),c('4','♦'),c('5','♠')],b:[c('K','♠'),c('K','♦'),c('7','♣')]}).uids,['b'],'Pineapple never uses all three hole cards to create an illegal wheel');
+const afterDiscard={a:[pineappleHands.a[0],pineappleHands.a[2]],b:pineappleHands.b.slice(0,2)};
+assert.deepEqual(leaders(simplePlayers,pineappleBoard,'Pineapple','flop',afterDiscard).uids,['b'],'the actual discard replaces the potential winner');
+assert.equal(leaders(simplePlayers,pineappleBoard,'Pineapple','flop',afterDiscard).pendingDiscard,false,'completed discards restore an exact full-board comparison');
+assert.equal(leaders(simplePlayers,pineappleBoard,'Pineapple','discard',{a:afterDiscard.a,b:pineappleHands.b}).pendingDiscard,true,'one unresolved player keeps the forecast conditional');
+assert.deepEqual(leaders(simplePlayers,pineappleBoard,'Pineapple','preflop',{a:pineappleHands.a}).uids,[],'an unknown Pineapple opponent is not ignored');
+assert.deepEqual(leaders(simplePlayers,pineappleBoard,'Pineapple','turn',pineappleHands).uids,[],'stale three-card hands after the discard phase cannot claim a winner');
 // UI coverage below runs the actual PokerTable and its signed-in GOD guard.
 function peekResponse(args){return {tableId:args.tableId,contextKey:args.contextKey,hands:structuredClone(hands),finalBoard:current.gameState.board.length===5?current.gameState.board:finalBoard};}
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;

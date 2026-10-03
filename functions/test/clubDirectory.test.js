@@ -226,3 +226,18 @@ test('filtered history keeps own results accessible without exposing rake or ano
  const assigned=await f.history({clubId:'clubA',targetUid:'alice'},auth('agentA','agent@example.test'));assert.equal(assigned.records.length,1);
  await assert.rejects(f.history({clubId:'clubA',targetUid:'bob'},auth('agentA','agent@example.test')),e=>e.code==='permission-denied');
 });
+
+test('ordinary players receive only own chip totals and lifetime P/L without staff or rake fields',async()=>{
+ const f=fixture({records:0});f.documents.get('memberships/alice_clubA').status='approved';
+ f.documents.get('memberships/alice_clubA').balance=800;
+ f.documents.set('gameLog/alice',{clubId:'clubA',uid:'alice',profit:-200,rake:7,at:1});
+ f.documents.set('gameLog/bob',{clubId:'clubA',uid:'bob',profit:200,rake:8,at:1});
+ const who=auth('alice','alice@example.test'),r=await f.run({accountingOnly:true},who);
+ assert.deepEqual(Object.keys(r.accounting.players),['alice']);assert.equal(r.accounting.players.alice.totalResult,-200);assert.equal(r.accounting.players.alice.chips,800);
+ assert.equal('club'in r.accounting,false);assert.equal('agents'in r.accounting,false);assert.equal('rake'in r.accounting.players.alice,false);assert.equal('totalRake'in r.accounting.players.alice,false);
+ await assert.rejects(f.run({accountingOnly:true,targetUid:'bob'},who),e=>e.code==='permission-denied');
+ await assert.rejects(f.run({accountingOnly:true,directoryOnly:true},who),e=>e.code==='permission-denied');
+ await assert.rejects(f.run({accountingOnly:true,reportSection:'gameLog'},who),e=>e.code==='permission-denied');
+ await assert.rejects(f.run({directoryOnly:true},who),e=>e.code==='permission-denied');
+ f.documents.get('memberships/alice_clubA').status='pending';await assert.rejects(f.run({accountingOnly:true},who),e=>e.code==='permission-denied');
+});

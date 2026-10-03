@@ -8,7 +8,7 @@ const options={now,ownerUid:'owner',god:true};
 test('requested decimal examples, agent and club totals use one arithmetic source',()=>{
  const r=buildAccounting(members,logs,[],options);
  assert.equal(r.players.loss.result,-340.17);assert.equal(r.players.win.result,500);
- assert.deepEqual(r.agents.agent,{players:2,balance:1159.83,onTables:0,chips:1159.83,result:159.83,openResult:0,openSessions:0,rake:8.41});
+ assert.deepEqual(r.agents.agent,{players:2,balance:1159.83,onTables:0,chips:1159.83,result:159.83,totalResult:149.83,openResult:0,openSessions:0,rake:8.41,totalRake:28.41});
  assert.equal(r.club.result,159.83);assert.equal(r.club.balance,1179.83);assert.equal(r.club.rake,8.41);
  assert.equal(r.players.bot_x,undefined);assert.equal(r.players.ghost,undefined);
 });
@@ -33,4 +33,16 @@ test('cycles use Monday 00:01 Israel across daylight saving, never browser timez
  assert.equal(new Date(cycleStart(now)).toISOString(),'2026-09-27T21:01:00.000Z');
  assert.equal(new Date(cycleStart(Date.parse('2026-10-26T00:00:00Z'))).toISOString(),'2026-10-25T22:01:00.000Z');
  assert.equal(new Date(cycleStart(Date.parse('2026-09-27T21:00:30Z'))).toISOString(),'2026-09-20T21:01:00.000Z');
+});
+
+test('total result survives cycle boundaries and chip transfers without resetting old history',()=>{
+ const oldAt=cycleStart(now)-1000, m={uid:'p',status:'approved',balance:800};
+ const before=buildAccounting([m],[{uid:'p',profit:-200,at:oldAt}],[],options).players.p;
+ assert.equal(before.chips,800);assert.equal(before.totalResult,-200);assert.equal(before.result,0);
+ const loaded=buildAccounting([{...m,balance:1300}],[{uid:'p',profit:-200,at:oldAt}],[],options).players.p;
+ assert.equal(loaded.totalResult,-200,'chip load is not profit');assert.equal(loaded.chips,1300);
+ const inPlay=buildAccounting([{...m,balance:300}],[{uid:'p',profit:-200,at:oldAt}],[{players:{p:{uid:'p',stack:550,buyTotal:500}},gameState:{phase:'showdown'}}],options).players.p;
+ assert.equal(inPlay.balance,300);assert.equal(inPlay.onTables,550);assert.equal(inPlay.chips,850);assert.equal(inPlay.totalResult,-150);assert.equal(inPlay.result,50);
+ assert.equal(buildAccounting([{...m,balance:1200}],[{uid:'p',profit:200,at:now}],[],options).players.p.totalResult,200);
+ const legacy=buildAccounting([m],[{uid:'p',profit:-200}],[],options).players.p;assert.equal(legacy.totalResult,-200,'legacy rows without a timestamp remain in total history');assert.equal(legacy.result,0,'undated legacy rows cannot be assigned to a current cycle');
 });

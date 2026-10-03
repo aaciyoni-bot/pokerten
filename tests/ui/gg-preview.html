@@ -53,14 +53,14 @@
  if(window.Worker){const PreviewWorker=window.Worker;window.Worker=class extends PreviewWorker{constructor(url,options){super(new URL(String(url),${JSON.stringify(projectRoot.href)}),options);}};}
 
  ${query.has('install')?"window.__installEvt={prompt:()=>{},userChoice:Promise.resolve({outcome:'dismissed'})};":''}
- const previewState=${JSON.stringify(state)},privateCards=${JSON.stringify(cards.slice(0,holeCount))},previewDirectory=${JSON.stringify(directory)};
+ const previewState=${JSON.stringify(state)},privateCards=${JSON.stringify(previewHands[uid]||cards.slice(0,holeCount))},previewHands=${JSON.stringify(previewHands)},previewDirectory=${JSON.stringify(directory)};
  const previewRef=(...a)=>({id:a.at(-1),path:a.slice(1).join('/')});
  const previewSnap=()=>({id:'preview',exists:()=>true,data:()=>structuredClone(previewState),metadata:{fromCache:false}});
  const previewDocs=(rows)=>{const docs=rows.map((row,i)=>({id:row.uid||String(i),data:()=>structuredClone(row)}));return{docs,empty:!docs.length,size:docs.length,forEach:cb=>docs.forEach(cb)};};
  const denyWrite=async()=>{throw Error('Design preview only: data changes are disabled');};
  window.fb={db:{},auth:{currentUser:{uid:'${uid}',email:'preview@example.invalid',emailVerified:true}},doc:previewRef,collection:previewRef,
  query:(r,...filters)=>({...r,filters}),where:(field,op,value)=>({field,op,value}),
- fx:async(name,args={})=>{if(name==='pkClubDirectory'){if(args.reportSection){if(${query.has('reporterror')})throw Object.assign(new Error('Simulated report failure'),{code:'functions/unavailable'});const rows=previewDirectory[args.reportSection]||[],start=Number(args.cursor)||0,end=start+2;return{records:structuredClone(rows.slice(start,end)),hasMore:end<rows.length,nextCursor:end<rows.length?String(end):null};}return structuredClone(previewDirectory);}if(name==='pkTick')return{};if(name==='godPeek')return{hands:Object.fromEntries(Object.keys(previewState.players).map(k=>[k,privateCards])),finalBoard:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}]};return denyWrite();},
+ fx:async(name,args={})=>{if(name==='pkClubDirectory'){if(args.reportSection){if(${query.has('reporterror')})throw Object.assign(new Error('Simulated report failure'),{code:'functions/unavailable'});const rows=previewDirectory[args.reportSection]||[],start=Number(args.cursor)||0,end=start+2;return{records:structuredClone(rows.slice(start,end)),hasMore:end<rows.length,nextCursor:end<rows.length?String(end):null};}return structuredClone(previewDirectory);}if(name==='pkTick')return{};if(name==='godPeek')return{tableId:args.tableId,contextKey:args.contextKey,hands:previewHands,finalBoard:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}]};return denyWrite();},
  getDoc:async()=>({exists:()=>false}),getDocs:async(r)=>{let rows=r.path==='memberships'?previewDirectory.members:r.path==='gameLog'?previewDirectory.gameLog:[];for(const f of r.filters||[])if(f.op==='=='&&f.field!=='clubId')rows=rows.filter(row=>row[f.field]===f.value);return previewDocs(rows);},
  onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;let done=false;queueMicrotask(()=>{if(done)return;if(r.path==='tables/preview')cb(previewSnap());else if(r.path.includes('/priv/'))cb({exists:()=>true,data:()=>({cards:privateCards})});else cb({exists:()=>false,...previewDocs([])});});return()=>{done=true;};},
  updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite,signIn:denyWrite,signInCode:denyWrite,signOut:denyWrite};`;
@@ -102,3 +102,5 @@
 
 })().catch(e=>document.body.append(String(e)));
 </script></body></html>
+ const previewDeck=['♠','♥','♦','♣'].flatMap(suit=>['2','3','4','5','6','7','8','9','10','J','Q','K','A'].map(val=>({val,suit}))).filter(c=>![{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}].some(b=>b.val===c.val&&b.suit===c.suit));
+ const previewHands=Object.fromEntries(Object.keys(players).map(k=>[k,previewDeck.splice(0,players[k].cardCount||0)]));

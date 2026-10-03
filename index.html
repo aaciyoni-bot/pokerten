@@ -1105,7 +1105,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=292">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=299">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -1113,7 +1113,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=296">
-<link rel="stylesheet" href="assets/css/poker-god-best.css?v=297">
+<link rel="stylesheet" href="assets/css/poker-god-best.css?v=299">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -10611,10 +10611,11 @@ function PokerFullscreenButton({showToast, onToggle}) {
     React.createElement('i', {className:active ? 'fa-solid fa-compress' : 'fa-solid fa-expand', 'aria-hidden':true}),
     React.createElement('span', null, active ? 'Exit fullscreen' : 'Fullscreen'));
 }
-// A current made-hand comparison: no future deck/runout and no prediction.
-const pokerCurrentHandLeaders = (players, board, gameType, phase, privateHands) => {
+// GOD display only: compare the same complete runout shown in the preview.
+// Never substitute the current street while the atomic private snapshot loads.
+const pokerFinalHandLeaders = (players, board, gameType, phase, privateHands) => {
   const empty = {uids:[],score:null};
-  if (!['flop','turn','river','showdown'].includes(phase) || !Array.isArray(board) || board.length < 3 || board.length > 5) return empty;
+  if (!['preflop','flop','turn','river','showdown'].includes(phase) || !Array.isArray(board) || board.length !== 5) return empty;
   const eligible = Object.values(players || {}).filter(p => p && !p.left && (p.status === 'active' || phase === 'showdown' && p.status === 'busted'));
   if (eligible.length < 2) return empty;
   const omaha = String(gameType || '').startsWith('Omaha');
@@ -12350,7 +12351,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const resultGap = capN <= 7 && sy > 22 && sy < 40 && (gs.allInReveal || gs.phase === 'showdown') ? 12 : 0;
     const pod = podWidthFor(sy);
     return {
-      left: hero ? 'calc(100% - 55px)' : `${x}%`,
+      left: hero ? '24%' : `${x}%`,
       '--poker-top-bet-x': sx < 50 ? '35%' : '65%',
       top: hero ? 'calc(100% - var(--poker-hero-bottom, 158px) - 20px)' : capN >= 8 && sy >= 40 ? `calc(${sy}% - 34px)` : `calc(${sy}% + clamp(22px, min(${(pod / 2).toFixed(3)}cqw, ${(pod * .46125 / 2).toFixed(3)}cqh), 44px) + ${(sy <= 22 ? 23 : 39) + resultGap}px)`
     };
@@ -12358,8 +12359,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
 
   const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
   const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
-  const godCurrentLeaders = godView && isGodUser(user) && (!srvEngine || godSnapshotReady)
-    ? pokerCurrentHandLeaders(players,gs.board || [],gs.currentGameType || setts.baseGameType,gs.phase,srvEngine ? godHands : null)
+  const godRunout = godView && (!srvEngine || godSnapshotReady)
+    ? srvEngine ? godFinal : pokerFullRunout(gs.board, gs.deck)
+    : [];
+  const godFinalLeaders = godView && isGodUser(user) && (!srvEngine || godSnapshotReady)
+    ? pokerFinalHandLeaders(players,godRunout,gs.currentGameType || setts.baseGameType,gs.phase,srvEngine ? godHands : null)
     : {uids:[],score:null};
   const potLimited = String(gs.currentGameType || '').startsWith('Omaha') && setts.omahaPotLimit !== false;
   const potCapTo = round2((gs.highestBet || 0) + totalPot + toCallMe);
@@ -12555,23 +12559,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, "Add")))), document.body), godView && ['preflop', 'discard', 'flop', 'turn', 'river'].includes(gs.phase) && (() => {
     const board = gs.board || [];
     const bl = board.length;
-    let fin = null;
-    if (srvEngine) {
-      if ((godFinal || []).length === 5) fin = godFinal;
-    } else if ((gs.deck || []).length >= 8) {
-      const d = [...gs.deck];
-      const p2 = [...board];
-      if (p2.length === 0) {
-        d.pop();
-        p2.push(d.pop(), d.pop(), d.pop());
-      }
-      while (p2.length >= 3 && p2.length < 5 && d.length >= 2) {
-        d.pop();
-        p2.push(d.pop());
-      }
-      if (p2.length === 5) fin = p2;
-    }
-    if (!fin || fin.some(c => !c)) return null;
+    const fin = godRunout;
+    if (fin.length !== 5) return null;
     const nxt = [];
     if (bl < 3) nxt.push(['Flop', fin.slice(bl, 3)]);
     if (bl < 4) nxt.push(['Turn', [fin[3]]]);
@@ -12837,9 +12826,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const folded = p.status === 'folded';
     const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
     const isWinner = gs.phase === 'showdown' && gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name);
-    const godLeading = godView && isGodUser(user) && godCurrentLeaders.uids.includes(p.uid);
-    const godTied = godCurrentLeaders.uids.length > 1;
-    const godLeaderLabel = (godTied ? 'Tied best current hand' : 'Best current hand') + ((gs.board2 || []).length ? ' on board 1' : '') + ': ' + handName(godCurrentLeaders.score);
+    const godLeading = godView && isGodUser(user) && godFinalLeaders.uids.includes(p.uid);
+    const godTied = godFinalLeaders.uids.length > 1;
+    const godLeaderLabel = (godTied ? 'Tied best hand on full board' : 'Best hand on full board') + ((gs.board2 || []).length ? ' 1' : '') + ': ' + handName(godFinalLeaders.score);
+    const godBadge = godLeading && React.createElement('span',{className:'poker-god-best-badge',role:'img','aria-label':godLeaderLabel,title:godLeaderLabel+' · GOD view only'},
+      React.createElement('i',{className:'fa-solid fa-crown','aria-hidden':true}),
+      React.createElement('span',{'aria-hidden':true},godTied?'TIED BEST':(gs.board2 || []).length?'BEST B1':'BEST HAND'));
     const muckCls = gs.phase === 'showdown' && !isWinner ? ' card-mucked' : '';
     return React.createElement("div", {
       key: p.uid,
@@ -12994,11 +12986,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }
-    }, godLeading && React.createElement(React.Fragment,null,
-      React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true}),
-      React.createElement('span',{className:'poker-god-best-badge',role:'img','aria-label':godLeaderLabel,title:godLeaderLabel+' · GOD view only'},
-        React.createElement('i',{className:'fa-solid fa-crown','aria-hidden':true}),
-        React.createElement('span',{'aria-hidden':true},godTied?'TIED BEST':(gs.board2 || []).length?'BEST B1':'BEST NOW'))), isTurn && React.createElement("svg", {
+    }, godLeading && React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true}), isTurn && React.createElement("svg", {
       className: "absolute inset-0 w-full h-full timer-ring",
       viewBox: "0 0 40 40"
     }, React.createElement("circle", {
@@ -13044,7 +13032,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         right: 'auto',
         transform: 'translateX(-50%)'
       }
-    }, p.actionText)), isMe && p.sitOut && React.createElement("button", {
+    }, p.actionText), godBadge), isMe && p.bet > 0 && React.createElement('div', {
+      className:'poker-bet poker-bet-hero', 'data-player-uid':p.uid, 'data-bet-row':'hero'
+    }, React.createElement(CasinoChipStack,{amount:p.bet,scale:0.55,unit:chipUnit})), isMe && p.sitOut && React.createElement("button", {
       type: "button",
       className: "poker-return-to-game",
       "aria-label": "Return to game",
@@ -13113,7 +13103,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     betLayoutRef.current.now = now;
     return null;
   })(), displayList.map((p, i) => {
-    if (!((p.bet || 0) > 0)) return null;
+    if (!((p.bet || 0) > 0) || isSeated && p.uid === user.uid) return null;
     const bp = betPos(i);
     return React.createElement("div", {
       key: 'bet' + p.uid,
@@ -19831,3 +19821,14 @@ root.render(React.createElement(PokerLaunch));
 </script>
 </body>
 </html>
+};
+
+const pokerFullRunout = (board, deck) => {
+  const full = [...(board || [])], remaining = [...(deck || [])];
+  if (full.length === 0 && remaining.length >= 4) {
+    remaining.pop(); full.push(remaining.pop(), remaining.pop(), remaining.pop());
+  }
+  while (full.length >= 3 && full.length < 5 && remaining.length >= 2) {
+    remaining.pop(); full.push(remaining.pop());
+  }
+  return full.length === 5 && full.every(Boolean) ? full : [];

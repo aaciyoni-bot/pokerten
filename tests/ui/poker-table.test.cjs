@@ -115,7 +115,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    const bet=doc.querySelector('.poker-bet[data-player-uid="me"]');
    assert.ok(bet.querySelector('.casino-chip'),'CALL chips are already placed');
    assert.equal(bet.classList.contains('bet-fly'),false,'CALL does not fly in after the next turn');
-   assert.equal(bet.style.transform,'translate(-50%, -50%)');
+   assert.ok(bet.closest('.poker-seat-hero'),'accepted chips stay anchored beside their owner');
    // Moving street bets into the central pot is display bookkeeping, not a
    // second debit. There must be no delayed collection over the new turn.
    current.players.me.bet=0;current.players.other.bet=0;
@@ -196,3 +196,5 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  w.requestAnimationFrame=originalRaf;
  await React.act(async()=>root.unmount());w.close();console.log('PASS: cards, controls, authoritative CALL confirmation, fractional chips, delayed listener and snapshot recovery');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});
+ assert.ok(doc.querySelector('.poker-seat-hero .poker-bet[data-player-uid="me"]'),'hero chips follow the hero seat instead of a fixed right-side coordinate');
+ assert.equal(doc.querySelectorAll('.poker-bet[data-player-uid="me"]').length,1,'one chip stack per owner');

@@ -446,4 +446,10 @@ test('frequent ticks do not shorten thinking time or duplicate a bot move, while
  const created=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:'full',settings:{minBuyIn:100,maxBuyIn:100,blinds:.5,maxPlayers:2}});await Engine.__engineInternals.tickTable(created.tableId);table=await get('tables/'+created.tableId);g=table.gameState;
  await Engine.__engineInternals.tickTable(created.tableId,g.turnStartedAt+2100);assert.equal((await get('tables/'+created.tableId)).gameState.__seq,g.__seq);
  await Promise.all([1,2,3].map(()=>Engine.__engineInternals.tickTable(created.tableId,g.turnStartedAt+2300)));assert.equal((await get('tables/'+created.tableId)).gameState.__seq,g.__seq+1,'only one due bot move commits across racing viewers');
+ const afterBot=await get('tables/'+created.tableId),modelId=crypto.createHash('sha256').update(JSON.stringify([club,g.activeTurnUid])).digest('hex');
+ const model=await get('_pkOpponentModels/'+modelId);assert.equal(model.hands,1,'racing ticks do not double-count the dealt hand');
+ assert.equal(model.street.preflop.opportunities,1,'one committed action updates the private model once');
+ const traces=(await db.collection('_pkBotDecisions').where('tableId','==',created.tableId).get()).docs.map(d=>d.data());assert.equal(traces.length,1);assert.ok(traces[0].ranges.length);assert.equal(traces[0].actorUid,g.activeTurnUid);
+ assert.equal(afterBot.publicModels,undefined);assert.equal(afterBot.botDecisionDebug,undefined);assert.equal(afterBot.gameState.botDecisionDebug,undefined);
+ assert.doesNotMatch(JSON.stringify(traces),/"cards"|"deck"|finalBoard/);
 });

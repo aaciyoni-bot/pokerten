@@ -86,6 +86,10 @@ service cloud.firestore {
     // Admin-only config (e.g. the GOD list) — no client access whatsoever.
     match /admin/{doc=**} { allow read, write: if false; }
 
+    // Settlement responses are field-filtered and role-scoped by callables.
+    // No browser (including an owner) reads raw terms, counters or journals.
+    match /settlementClubs/{document=**} { allow read, write: if false; }
+
     // ═══ AVIATORIZIS — server-authoritative crash game ═══
     // All chip movement goes through Cloud Functions (admin SDK bypasses
     // rules); clients only read. aviator/_engine holds the secret crash
@@ -264,10 +268,6 @@ service cloud.firestore {
     // signed-in (anonymous) session for now; role/company hardening lands with
     // the unified-shell rework, alongside fleet_.
     match /d1_data/{doc}      { allow read, write: if signedIn(); }
-
-    // Settlement responses are field-filtered and role-scoped by callables.
-    // No browser (including an owner) reads raw terms, counters or journals.
-    match /settlementClubs/{document=**} { allow read, write: if false; }
 
     // Anything not explicitly matched above — denied.
     match /{document=**}     { allow read, write: if false; }

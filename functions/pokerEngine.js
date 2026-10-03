@@ -20,6 +20,8 @@ const crypto = require("crypto");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {getFirestore} = require("firebase-admin/firestore");
 const C = require("./pokerCore");
+const RangeModel = require("./pokerRangeModel");
+const OpponentModel = require("./pokerOpponentModel");
 const round2 = C.round2;
 const A = require('./pokerAuthority');
 const Tours = require('./pokerTournaments');
@@ -101,6 +103,7 @@ function tournamentReady(S) {
   return !S.tor || S.tor.status==='running' && !S.raw.tournament?.finished && !(S.raw.tournament?.balanceHoldUntil>S.now) && !Tours.clock(S.tor,S.now).inBreak;
 }
 function startHand(S, forcedGameType) {
+  OpponentModel.showdown(S);
   if (S.raw.closeRequested) return 'waiting';
   if (!tournamentReady(S)) return 'waiting';
   const g0 = S.gameState || {};
@@ -268,6 +271,7 @@ function executeDeal(S, gameType) {
   g.activeTurnUid = firstUid;
   g.turnStartedAt = S.now;
   S.deck = deck;
+  OpponentModel.start(S);
   if(!pl[firstUid] || pl[firstUid].stack<=0)afterAction(S,firstUid);
 }
 
@@ -288,6 +292,7 @@ function applyAction(S, actorUid, action, amount, auto) {
   if (g.activeTurnUid !== actorUid) throw new HttpsError("failed-precondition", "Not your turn");
   const p = pl[actorUid];
   if (!p || p.status !== "active") throw new HttpsError("failed-precondition", "You are not in the hand");
+  const observedBefore={street:g.phase,board:(g.board||[]).map(c=>({...c})),stack:p.stack,bet:p.bet||0,highestBet:g.highestBet||0,call:Math.max(0,(g.highestBet||0)-(p.bet||0)),pot:(g.pots||[]).reduce((n,p)=>n+(p.amount||0),0)+Object.values(pl).reduce((n,p)=>n+(p.bet||0),0)};
   p.missed = auto ? (p.missed || 0) + 1 : 0;
   if (auto && p.missed >= 2 && !p.sitOut && !p.sitOutNext) {
     p.sitOutNext = true;
@@ -331,6 +336,7 @@ function applyAction(S, actorUid, action, amount, auto) {
   } else {
     throw new HttpsError("invalid-argument", "Unknown action");
   }
+  OpponentModel.action(S,actorUid,observedBefore);
   afterAction(S, actorUid);
 }
 
@@ -637,6 +643,7 @@ function runShowdown(S) {
     p.mucked = !(mustRevealAll || winnerUids.has(p.uid) || p.reveal || p.uid === g.lastRiverAggressorUid);
     p.cards = p.mucked ? [] : [...(S.priv[p.uid] || [])];
   });
+  OpponentModel.showdown(S);
   settleAfterHand(S, rakeTotal, winnerUids);
 }
 
@@ -1003,6 +1010,21 @@ function botCallPrice(g, players, b, includePots = false) {
 }
 
 function botAction(S, uid) {
+  delete S.botDecisionDebug;
+  const move=botActionCore(S,uid);
+  if(!S.botDecisionDebug){
+    const g=S.gameState,b=S.players[uid],cards=S.priv?.[uid]||b.cards||[],gt=g.currentGameType||S.settings.baseGameType||'NLH',price=botCallPrice(g,S.players,b,true);
+    try {
+      const core={score:C.bestScoreFull,deck:C.pokerDeck(),random:rnd,preflop:preflopTier,discard:botDiscardIndex};
+      const ranges=activesOf(S.players).filter(p=>p.uid!==uid).map(p=>RangeModel.buildRange({uid:p.uid,hero:cards,board:g.board||[],gameType:gt,history:g.publicActions||[],model:S.publicModels?.[p.uid]||{},holeCount:cards.length},core));
+      const ev=RangeModel.equity({hero:cards,board:g.board||[],gameType:gt,pots:price.equityPots},ranges,core);
+      S.botDecisionDebug={actorUid:uid,version:1,street:g.phase,handClass:['air','playable','strong','premium'][preflopTier(cards)],equity:ev.equity,callEquity:ev.callEquity,requiredEquity:price.odds,action:move.action,frequencies:null,reason:'preflop-policy-preserved',method:ev.method,samples:ev.samples,ranges:ranges.map(r=>({uid:r.uid,categories:r.categories,combos:r.combos.length,exact:r.exact}))};
+    }catch(error){S.botDecisionDebug={actorUid:uid,version:1,street:g.phase,handClass:'unknown',equity:null,requiredEquity:price.odds,action:move.action,frequencies:null,reason:'preflop-diagnostic-unavailable'};}
+  }
+  return move;
+}
+
+function botActionCore(S, uid) {
   const g = S.gameState;
   const b = S.players[uid];
   const cards = (S.priv && S.priv[uid]) || b.cards || [];
@@ -1071,106 +1093,26 @@ function botAction(S, uid) {
     return r < 0.7 ? {action: "raise", amount: raiseTo((g.highestBet || bb) * (2.7 + r * 0.8))} : {action: "call"};
   }
 
-  // Read the opponents' strength from the bet we are facing, not from thin air.
-  const priorInvestment = Math.max(0,...activesOf(S.players).filter(p=>p.uid!==uid).map(p=>g.investedStreets?.[p.uid]||0));
-  const rng = Math.max(rangeFacing(toCall, potNow, bb), Math.min(3,1+priorInvestment));
-  const eqRaw = equityOf(cards, g.board || [], oppN, gt, rng,valuation);
-  if(eqRaw==null)return{action:toCall>0?'fold':'call'};
-  const eq=eqRaw;
-  const callEquity=valuation.callEquity;
-  const potOdds=actualOdds;
-  const body = handBody(cards, g.board || [], gt);
-  const hasBody = body.made >= 2 || body.outs >= 8;   // may play a BIG pot
-  const hasAnything = body.made >= 1 || body.outs >= 4; // may call a small one
-  // A board-assisted pair on a paired, three-flush river is a bluff-catcher,
-  // not a stack-off hand. Sampling the best of a few random hands still puts
-  // too many weak holdings into a large river bettor's range on this texture.
-  // Price the actual callable chips; a nearly free call and genuine trips,
-  // flushes/full houses keep their normal equity decision. No private reads.
-  const publicSuits = {};
-  for (const c of g.board || []) publicSuits[c.suit] = (publicSuits[c.suit] || 0) + 1;
-  const riverBluffCatcher = g.phase === 'river' && body.sharedPair && body.made <= 2 && Math.max(0, ...Object.values(publicSuits)) >= 3;
-  // A covering stack still faces a shove even when toCall is below its stack.
-  const facingShove = activesOf(S.players).some(p => p.uid !== uid && p.stack === 0 && p.bet > (b.bet || 0));
-  if (riverBluffCatcher && toCall > 0 && actualOdds >= .12 &&
-      (facingShove || callCost >= stack * .35 || actualOdds >= .20)) return {action:'fold'};
-  // The god guard only exists on a table where every seat is a bot. One real
-  // player sits down and it is off for the whole table, permanently.
-  const botsOnly = Object.values(S.players).every((p) => p.isBot);
-  const guardOn = botsOnly && S.settings.demoOnly===true && S.settings.botGodGuard===true && (!S.tor || S.tor.demoOnly===true && Object.values(S.tor.players).every(p=>p.isBot));
-  let godSeen = null;
-  const godOK = () => {
-    if (!guardOn) return true;
-    if (godSeen === null) {
-      const opps = activesOf(S.players).filter((p) => p.uid !== uid)
-          .map((p) => ((S.priv || {})[p.uid] || []))
-          .filter((c) => c.length === (cards || []).length);
-      const real = opps.length ? trueEquityVs(cards, opps, g.board || [], gt) : null;
-      godSeen = real == null ? true : real >= GOD_FLOOR;
+  const opponents=activesOf(S.players).filter(p=>p.uid!==uid).map(p=>({uid:p.uid,stack:p.stack||0,bet:p.bet||0,seatIndex:p.seatIndex,position:g.dealerUid===p.uid?'late':'early'}));
+  try {
+    const result=RangeModel.decide({uid,hero:cards,board:g.board||[],gameType:gt,opponents,history:g.publicActions||[],models:S.publicModels||{},price,pots:price.equityPots,stack,bet:b.bet||0,highestBet:g.highestBet||0,minRaise:g.minRaise||bb,bb,pot:potNow,maxRaise},
+      {score:C.bestScoreFull,deck:C.pokerDeck(),random:rnd,decisionRandom:r,decisionScale:style==='aggressive'?1.35:style==='tight'?.75:1,preflop:preflopTier,discard:botDiscardIndex});
+    S.botDecisionDebug={...result.debug,actorUid:uid};
+    // The god guard only exists on explicitly isolated all-bot demonstrations.
+    // Its historical protection remains separate from ordinary range decisions.
+    const botsOnly=Object.values(S.players).every(p=>p.isBot);
+    const guardOn=botsOnly&&S.settings.demoOnly===true&&S.settings.botGodGuard===true&&(!S.tor||S.tor.demoOnly===true&&Object.values(S.tor.players).every(p=>p.isBot));
+    if(guardOn&&callCost>=stack*.35&&result.action!=='fold'){
+      const opps=activesOf(S.players).filter(p=>p.uid!==uid).map(p=>(S.priv||{})[p.uid]||[]).filter(c=>c.length===cards.length);
+      const real=opps.length?trueEquityVs(cards,opps,g.board||[],gt):null;
+      if(real!=null&&real<GOD_FLOOR){S.botDecisionDebug.action='fold';S.botDecisionDebug.reason='isolated-demo-guard';return{action:'fold'};}
     }
-    return godSeen;
-  };
-  // Every gate below asks this before a stack goes in.
-  const hasSomething = () => hasBody && godOK();
-  // Sizing is priced off the POT, never off the opponent's bet.
-  const canValueRaise = activesOf(S.players).some(p => p.uid !== uid && p.stack > 0);
-  const raisePot = (frac) => {
-    if (!canValueRaise) return null;
-    const potAfterCall = potNow + toCall;
-    const target = raiseTo(g.highestBet + Math.max(bb * 2, potAfterCall * frac));
-    const allIn = target >= round2(stack + (b.bet || 0)) - 0.01;
-    if (allIn && !hasSomething()) return null;
-    if (!allIn && target - g.highestBet < potAfterCall * 0.25) return null;
-    return {action: "raise", amount: target};
-  };
-  const betPot = (frac) => {
-    const target = raiseTo((b.bet || 0) + potNow * frac);
-    if (target >= round2(stack + (b.bet || 0)) - 0.01 && !hasSomething()) return null;
-    return {action: "raise", amount: target};
-  };
-
-  if (toCall <= 0) {
-    const river = g.phase === "river";
-    if (!activesOf(S.players).some(p => p.uid !== uid && p.stack > 0)) return {action: "call"};
-    if (river && !gt.startsWith("Omaha") && C.bestScoreFull(cards, g.board, gt) === C.bestScoreFull([], g.board, gt)) return {action: "call"};
-    // In a multiway pot, a weak pair or air needs a real draw to justify
-    // aggression. Keep semi-bluffs with four or more outs, but do not turn
-    // the generic random-bluff branch into a large bet with no direction.
-    // This uses only our cards, the public board and number of opponents.
-    if (oppN > 1 && body.made < 2 && body.outs < 4) return {action: "call"};
-    // Protect showdown value after calls: a board-assisted two pair must not
-    // keep barreling or masquerade as a river value monster.
-    if (body.sharedPair && (river || priorInvestment > 0) && body.outs < 8) return {action: "call"};
-    if (eq > 0.9) return ((!river && r < 0.15) ? null : betPot(0.65 + r * 0.35)) || {action: "call"};
-    if (eq > 0.78) return ((river ? r < 0.12 : r < 0.25) ? null : betPot(0.55 + r * 0.3)) || {action: "call"};
-    if (eq > 0.55) return (r < 0.5 ? betPot(0.4 + r * 0.25) : null) || {action: "call"};
-    return (r < 0.11 ? betPot(0.55) : null) || {action: "call"};
+    // Sizing is priced off the POT and capped by the existing variant limit.
+    return{action:result.action,...(result.amount==null?{}:{amount:result.amount})};
+  } catch(error) {
+    S.botDecisionDebug={actorUid:uid,version:1,street:g.phase,handClass:'unknown',equity:null,requiredEquity:actualOdds,action:toCall>0?'fold':'call',frequencies:{fold:toCall>0?1:0,call:toCall>0?0:1,raise:0},reason:'range-unavailable'};
+    return{action:toCall>0?'fold':'call'};
   }
-  // A tiny wager may offer a profitable call even to a weak hand. It must
-  // not force the river nuts to flat-call and forgo every possible value raise.
-  if (actualOdds <= .025 && callEquity >= actualOdds && !(g.phase === 'river' && eq > .90)) return {action:'call'};
-  // Facing a shove, or a bet that costs most of the stack: a hand with neither
-  // a pair nor a real draw folds. No exceptions, no miracle river.
-  if (toCall >= stack) return hasSomething() && callEquity > potOdds + .025 ? {action: "call"} : {action: "fold"};
-  // No pair, no draw, facing a bet: fold at any price — client parity.
-  if (!hasAnything) {
-    const peek = body.outs >= 4 && (g.board || []).length < 5 && toCall <= potNow * 0.1;
-    if (!peek) return {action: "fold"};
-  }
-  // Second pair or worse can pay off a small bet. It cannot play a big pot,
-  // and it never calls off a stack — that is the 10-3 on A-K-3.
-  if (!hasSomething() && toCall > potNow * 0.4) return {action: "fold"};
-  if (!body.sharedPair && eq > potOdds + 0.18 && eq > 0.62) {
-    const valueFrequency = g.phase === 'river' && eq > .98 ? 1 : eq > .90 ? .8 : eq > .78 ? .5 : .3;
-    if (r < valueFrequency) { const rr = raisePot(0.6 + Math.min(r, .4)); if (rr) return rr; }
-    return {action: "call"};
-  }
-  if (callEquity > potOdds + 0.02) return {action: "call"};
-  // A failed call-price test is not rescued by money already invested.
-  // Raise as a semi-bluff only with a live strong draw and foldable opponents.
-  const canFold = activesOf(S.players).some(p => p.uid !== uid && p.stack > toCall);
-  if (g.phase !== 'river' && body.outs >= 8 && eq > .25 && canFold && r < .12) { const rr = raisePot(0.7); if (rr) return rr; }
-  return {action: "fold"};
 }
 
 /* ============================ Firestore plumbing ============================ */
@@ -1188,7 +1130,8 @@ async function loadState(tx, id, opts) {
   if(t.authorityVersion!==2 || !t.settings?.serverEngine)throw new HttpsError('failed-precondition','Open a protected table from the lobby');
   if(opts?.skipUndueAt!=null&&!tickMayAdvance(t,opts.skipUndueAt))return null;
   const cardUids=opts?.withCards?Object.keys(t.players||{}).filter(uid=>(t.players[uid].cardCount||0)>0):[];
-  const refs=[...(t.tournamentId?[db().doc('tournaments/'+A.key(t.tournamentId))]:[]),...(opts?.withCards?[privRef(id,'_engine'),...cardUids.map(uid=>privRef(id,uid))]:[])];
+  const modelUids=opts?.withCards?Object.keys(t.players||{}):[];
+  const refs=[...(t.tournamentId?[db().doc('tournaments/'+A.key(t.tournamentId))]:[]),...(opts?.withCards?[privRef(id,'_engine'),...cardUids.map(uid=>privRef(id,uid)),...modelUids.map(uid=>db().doc('_pkOpponentModels/'+crypto.createHash('sha256').update(JSON.stringify([t.clubId,uid])).digest('hex')))]:[])];
   const related=refs.length?await tx.getAll(...refs):[];
   let offset=0,tor=null;
   if(t.tournamentId){const ts=related[offset++];if(!ts.exists||ts.data().authorityVersion!==2||ts.data().clubId!==(t.clubId||'main'))throw new HttpsError('failed-precondition','Tournament authority missing');tor={...ts.data(),id:t.tournamentId};}
@@ -1209,6 +1152,8 @@ async function loadState(tx, id, opts) {
     S.deck=engSnap.exists?(engSnap.data().deck||[]):[];
     cardUids.forEach(uid=>{const snap=related[offset++];S.priv[uid]=snap.exists?(snap.data().cards||[]):[];});
   }
+  S.publicModels={};
+  if(opts?.withCards)modelUids.forEach(uid=>{const snap=related[offset++];if(snap?.exists)S.publicModels[uid]=snap.data();});
   S._deckBefore=JSON.stringify(S.deck);S._privBefore=JSON.stringify(S.priv);
   S.namesChanged=renameGenericBots(S.players,S.tor?.players);
   if(S.namesChanged&&S.tor)S.torDirty=true;
@@ -1223,6 +1168,8 @@ async function commitState(tx, S, extraTop) {
   const write=await prepareLedger(db(),tx,S.table.clubId,S.effects,S.id,S.now);
   S.gameState.__seq=(S.raw.gameState?.__seq||0)+1;
   write();S.effects=[];
+  for(const uid of S.modelsDirty||[])tx.set(db().doc('_pkOpponentModels/'+crypto.createHash('sha256').update(JSON.stringify([S.table.clubId,uid])).digest('hex')),{...S.publicModels[uid],updatedAt:S.now});
+  if(S.botDecisionDebug)tx.set(db().doc('_pkBotDecisions/'+S.id+'_'+(S.gameState.__seq%256)),{...S.botDecisionDebug,tableId:S.id,clubId:S.table.clubId,handN:S.gameState.handN||0,at:S.now});
   if(S.botRotation)tx.set(db().collection("_pkAudit").doc(),S.botRotation);
   for(const uid of S.privateDeletes||[])tx.delete(privRef(S.id,uid));
   if(S.torDirty){const {id,...doc}=S.tor;tx.set(db().doc('tournaments/'+id),doc);}

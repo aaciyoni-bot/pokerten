@@ -53,8 +53,18 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
   const club=await tx.get(db.doc('clubs/'+cid)),me=await tx.get(db.doc(`memberships/${uid}_${cid}`));
   if(!club.exists)A.fail('not-found','Club missing');
   const owner=A.root(r)||club.data().ownerUid===uid,role=me.data()?.role;
-  if(!owner&&(me.data()?.status!=='approved'||!['manager','agent'].includes(role)))A.fail('permission-denied','Club staff only');
+  const ownAccounting=r.data?.accountingOnly===true&&!owner&&!['manager','agent'].includes(role);
+  if(!owner&&(me.data()?.status!=='approved'||!['manager','agent'].includes(role)&&!ownAccounting))A.fail('permission-denied','Club staff only');
   const manager=owner||role==='manager';
+  if(ownAccounting){
+   // Players may request their own totals, never a directory/report section or
+   // another UID. The response contains no rake, staff totals or private terms.
+   if(reportSection!==undefined||directoryOnly||r.data.targetUid&&r.data.targetUid!==uid)A.fail('permission-denied','Own accounting only');
+   const games=await tx.get(db.collection('gameLog').where('clubId','==',cid).where('uid','==',uid));
+   const tables=await tx.get(db.collection('tables').where('clubId','==',cid));
+   const summary=Accounting.buildAccounting([{uid,...me.data()}],games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:false});
+   return{accounting:{start:summary.start,asOf:summary.asOf,basis:summary.basis,rakeVisible:false,players:summary.players}};
+  }
   if(reportSection!==undefined){
    // Each page rechecks staff authority. Paging by document ID preserves legacy
    // records without timestamps and uses existing equality/name indexes.

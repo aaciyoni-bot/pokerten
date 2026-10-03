@@ -12,8 +12,10 @@ function cycleStart(now=Date.now()) {
 function buildAccounting(members,logs,tables,{now=Date.now(),ownerUid,god=false}={}) {
  const start=cycleStart(now),players={};
  const included=members.filter(m=>!m.isBot&&!String(m.uid).startsWith('bot_')&&['approved','banned'].includes(m.status)&&!(m.role==='super_admin'&&m.uid!==ownerUid));
- for(const m of included)players[m.uid]={balance:cash(m.balance),onTables:0,chips:cash(m.balance),result:0,openResult:0,openSessions:0,...(god?{rake:0}:{})};
- for(const e of logs){const p=players[e.uid];if(!p||e.at<start||e.at>now||!Number.isFinite(e.at)||e.rakeSource==='bot')continue;p.result=cash(p.result+cash(e.profit));if(god)p.rake=cash(p.rake+cash(e.rake));}
+ for(const m of included)players[m.uid]={name:String(m.username||m.uid),balance:cash(m.balance),onTables:0,chips:cash(m.balance),result:0,totalResult:0,openResult:0,openSessions:0,...(god?{rake:0,totalRake:0}:{})};
+ // Lifetime P/L is independent of settlement cycle activation/closing and chip
+ // transfers. Reuse the original history, never infer it from wallet balance.
+ for(const e of logs){const p=players[e.uid];if(!p||e.at>now||e.rakeSource==='bot')continue;p.totalResult=cash(p.totalResult+cash(e.profit));if(god)p.totalRake=cash(p.totalRake+cash(e.rake));if(!Number.isFinite(e.at)||e.at<start)continue;p.result=cash(p.result+cash(e.profit));if(god)p.rake=cash(p.rake+cash(e.rake));}
  for(const t of tables){
   if(t.settings?.spinMode||t.tournamentId)continue; // tournament stacks are not redeemable chips
   const g=t.gameState||{},live=['preflop','flop','discard','turn','river'].includes(g.phase);
@@ -28,10 +30,10 @@ function buildAccounting(members,logs,tables,{now=Date.now(),ownerUid,god=false}
     held=cash(g.handStartStacks[seat.uid]+ante+cash(seat.pendingTopUp));
    }
    const gain=cash(held-cash(seat.buyTotal??held));
-   p.onTables=cash(p.onTables+held);p.chips=cash(p.balance+p.onTables);p.openResult=cash(p.openResult+gain);p.result=cash(p.result+gain);p.openSessions++;
+   p.onTables=cash(p.onTables+held);p.chips=cash(p.balance+p.onTables);p.openResult=cash(p.openResult+gain);p.result=cash(p.result+gain);p.totalResult=cash(p.totalResult+gain);p.openSessions++;
   }
  }
- const sum=ids=>ids.reduce((out,id)=>{const p=players[id];if(!p)return out;for(const k of ['balance','onTables','chips','result','openResult','openSessions',...(god?['rake']:[])])out[k]=cash((out[k]||0)+p[k]);out.players++;return out;},{players:0,balance:0,onTables:0,chips:0,result:0,openResult:0,openSessions:0,...(god?{rake:0}:{})});
+ const sum=ids=>ids.reduce((out,id)=>{const p=players[id];if(!p)return out;for(const k of ['balance','onTables','chips','result','totalResult','openResult','openSessions',...(god?['rake','totalRake']:[])])out[k]=cash((out[k]||0)+p[k]);out.players++;return out;},{players:0,balance:0,onTables:0,chips:0,result:0,totalResult:0,openResult:0,openSessions:0,...(god?{rake:0,totalRake:0}:{})});
  const agents={};for(const m of included)if(['agent','manager'].includes(m.role))agents[m.uid]=sum(included.filter(p=>p.agentUid===m.uid&&p.uid!==m.uid).map(p=>p.uid));
  return{start,asOf:now,basis:'cycle-cashouts-and-open-sessions',rakeVisible:god,players,agents,club:sum(included.filter(m=>m.uid!==ownerUid).map(m=>m.uid))};
 }

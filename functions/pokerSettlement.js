@@ -3,23 +3,31 @@ const {onCall}=require('firebase-functions/v2/https');
 const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {getFirestore}=require('firebase-admin/firestore');
 const A=require('./pokerAuthority'),E=require('./settlementEngine'),S=require('./settlementStore');
+const Legacy=require('./legacySettlement');
 const opts={region:'us-central1',memory:'512MiB',timeoutSeconds:120};
 const audit=(tx,ref,uid,action,details,now)=>tx.set(ref.collection('audit').doc(),{uid,action,details,at:now});
 const requireManager=a=>{if(!a.manager)A.fail('permission-denied','פעולה למנהל הקלאב בלבד');};
-const meta=c=>({id:c.id,number:c.number,startAt:c.startAt,endAt:c.endAt,status:c.status,autoClose:!!c.autoClose,closedAt:c.closedAt||null});
+const meta=c=>({id:c.id,...(c.legacy?{legacy:true}:{}),number:c.number,startAt:c.startAt,endAt:c.endAt,status:c.status,autoClose:!!c.autoClose,closedAt:c.closedAt||null});
+async function legacyData(tx,db,cid,auth,now=Date.now()){
+ const [members,games,tables,agentLogs]=await Promise.all(['memberships','gameLog','tables','agentLog'].map(name=>tx.get(db.collection(name).where('clubId','==',cid))));
+ return Legacy.buildLegacy(members.docs.map(d=>d.data()),games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),agentLogs.docs.map(d=>d.data()),{ownerUid:auth.club.ownerUid,now});
+}
+function legacyReport(auth,full,cycle){return{active:false,legacy:true,role:auth.role,canClose:auth.manager&&cycle.status==='open',cycle:meta(cycle),legacyReport:Legacy.projectLegacy(full,auth)};}
 async function initialize(tx,db,cid,auth,now){
  requireManager(auth);const ref=S.root(db,cid),existing=await tx.get(ref);if(existing.exists)return{ok:true};
  const [members,tables]=await Promise.all([tx.get(db.collection('memberships').where('clubId','==',cid)),tx.get(db.collection('tables').where('clubId','==',cid))]);
  if(members.size+tables.docs.reduce((n,d)=>n+Object.values(d.data().players||{}).filter(p=>!p.isBot).length,0)>450)A.fail('resource-exhausted','יש לפנות למנהל המערכת להפעלת קלאב גדול');
- const games=await tx.get(db.collection('gameLog').where('clubId','==',cid));
+ const [games,agentLogs]=await Promise.all([tx.get(db.collection('gameLog').where('clubId','==',cid)),tx.get(db.collection('agentLog').where('clubId','==',cid))]);
+ const legacy=Legacy.buildLegacy(members.docs.map(d=>d.data()),games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),agentLogs.docs.map(d=>d.data()),{ownerUid:auth.club.ownerUid,now});
  const accounting=require('./pokerAccounting').buildAccounting(members.docs.map(d=>d.data()),games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:auth.club.ownerUid,god:true,now});
  const snapshots=members.docs.map(d=>({uid:d.data().uid,balance:d.data().balance||0,agentProfits:d.data().agentProfits||0,clubProfits:d.data().clubProfits||0,name:d.data().username||d.data().uid,agentUid:d.data().agentUid||null,role:d.data().role||'player',accounting:accounting.players[d.data().uid]||null}));
  // A preservation snapshot, never applied back over live balances.
  tx.create(ref,{currentCycleId:'cycle_1',activatedAt:now,revision:0,resetOpening:true,ownerUid:auth.club.ownerUid});
+ tx.create(S.cycleRef(db,cid,'legacy_current'),{id:'legacy_current',number:0,legacy:true,status:'closed',startAt:legacy.start,endAt:now,closedAt:now,closedBy:auth.uid,report:legacy});
  tx.create(S.cycleRef(db,cid,'cycle_1'),{id:'cycle_1',number:1,status:'open',startAt:now,endAt:now+7*86400000,autoClose:false,openings:{pairs:[],agents:[]}});
  for(const m of snapshots)tx.create(ref.collection('activationBalances').doc(m.uid),{...m,at:now});
- for(const table of tables.docs){const t=table.data();if(t.settings?.spinMode||t.tournamentId)continue;for(const p of Object.values(t.players||{})){if(p.isBot)continue;tx.set(ref.collection('sittings').doc(S.hash(table.id,p.uid)),{uid:p.uid,source:table.id,baseline:E.cents((p.stack||0)+(p.bet||0)+(p.pendingTopUp||0)-(p.buyTotal??p.stack??0)),rake:0,hands:0,tableName:t.name||t.settings?.name||table.id,gameType:t.settings?.pokerType||'poker',updatedAt:now});}}
- audit(tx,ref,auth.uid,'initialize-zero',{preservedMembers:snapshots.length},now);return{ok:true};
+ for(const table of tables.docs){const t=table.data();if(t.settings?.spinMode||t.tournamentId)continue;const sittingAccounting=require('./pokerAccounting').buildAccounting(members.docs.map(d=>d.data()),[],[t],{ownerUid:auth.club.ownerUid,now});for(const p of Object.values(t.players||{})){if(p.isBot)continue;tx.set(ref.collection('sittings').doc(S.hash(table.id,p.uid)),{uid:p.uid,source:table.id,baseline:E.cents(sittingAccounting.players[p.uid]?.openResult??((p.stack||0)+(p.bet||0)+(p.pendingTopUp||0)-(p.buyTotal??p.stack??0))),rake:0,hands:0,tableName:t.name||t.settings?.name||table.id,gameType:t.settings?.pokerType||'poker',updatedAt:now});}}
+ audit(tx,ref,auth.uid,'close-legacy-open-zero',{preservedMembers:snapshots.length,closedCycleId:'legacy_current'},now);return{ok:true,cycleId:'cycle_1'};
 }
 async function close(tx,db,cid,ctx,now,uid='scheduler'){
  const full=await S.calculate(tx,db,cid,ctx.config.currentCycleId),old=full.cycle;
@@ -34,10 +42,11 @@ async function close(tx,db,cid,ctx,now,uid='scheduler'){
 exports.pkSettlementReport=onCall(opts,async r=>{
  const db=getFirestore(),cid=A.key(r.data?.clubId);return db.runTransaction(async tx=>{
   const auth=await S.authority(tx,db,cid,r),ctx=await S.context(tx,db,cid);
-  if(!ctx.config)return{active:false,role:auth.role,canInitialize:auth.manager};
+  if(!ctx.config){const full=await legacyData(tx,db,cid,auth);return{...legacyReport(auth,full,{id:'legacy_current',number:0,legacy:true,status:'open',startAt:full.start,endAt:null}),cycles:[],currentCycleId:'legacy_current'};}
   const cyclesSnap=await tx.get(ctx.ref.collection('cycles')),cycles=cyclesSnap.docs.map(d=>d.data()).filter(c=>c.status!=='void').sort((a,b)=>b.number-a.number);
   const requested=r.data?.cycleId||ctx.config.currentCycleId;
   let result;
+  if(requested==='legacy_current'){const legacy=cycles.find(c=>c.id===requested&&c.legacy);if(!legacy?.report)A.fail('not-found','המחזור הקודם לא נמצא');return{...legacyReport(auth,legacy.report,legacy),cycles:cycles.map(meta),currentCycleId:ctx.config.currentCycleId};}
   if(requested==='all'){
    // Aggregate activity across immutable records without summing carried balances.
    const sessions=await tx.get(ctx.ref.collection('sessions')),payments=await tx.get(ctx.ref.collection('payments')),members=await tx.get(db.collection('memberships').where('clubId','==',cid));
@@ -45,6 +54,13 @@ exports.pkSettlementReport=onCall(opts,async r=>{
    const calculated=E.computeCycle({sessions:sessions.docs.map(d=>d.data()),payments:payments.docs.map(d=>d.data()).filter(p=>p.status==='confirmed'),names});
    result=S.publicReport(auth,{calculated,members:members.docs.map(d=>d.data()),cycle:{id:'all',number:0,startAt:ctx.config.activatedAt,endAt:ctx.cycle.endAt,status:'all'},payments:payments.docs.map(d=>({id:d.id,...d.data()}))});
   }else result=S.publicReport(auth,await S.calculate(tx,db,cid,A.key(requested)));
+  // Current wallet/P&L stays visible beside the selected-cycle statement. Scope
+  // these fields after calculation; never send another player's data to a player.
+  const [currentMembers,currentGames,currentTables]=await Promise.all(['memberships','gameLog','tables'].map(name=>tx.get(db.collection(name).where('clubId','==',cid))));
+  const currentAccounting=require('./pokerAccounting').buildAccounting(currentMembers.docs.map(d=>d.data()),currentGames.docs.map(d=>d.data()),currentTables.docs.map(d=>d.data()),{ownerUid:auth.club.ownerUid,now:Date.now()});
+  const currentMoney=p=>({chips:E.cents(p?.chips||0),totalResult:E.cents(p?.totalResult||0)});
+  if(auth.role==='player')Object.assign(result,currentMoney(currentAccounting.players[auth.uid]));
+  else {result.funds=result.funds.map(p=>({...p,...currentMoney(currentAccounting.players[p.uid])}));result.currentTotals=currentMoney(auth.role==='owner'?currentAccounting.club:currentAccounting.agents[auth.uid]);}
   const approvals=await tx.get(ctx.ref.collection('approvals').where('cycleId','==',requested));
   return{active:true,...result,clubPartyId:auth.club.ownerUid,cycles:cycles.map(meta),currentCycleId:ctx.config.currentCycleId,activatedAt:ctx.config.activatedAt,approvals:approvals.docs.map(d=>d.data()).filter(a=>auth.manager||a.uid===auth.uid)};
  },{readOnly:true});
@@ -59,7 +75,7 @@ exports.pkSettlementArchive=onCall(opts,async r=>{
 });
 exports.pkSettlement=onCall(opts,async r=>A.command(r,'settlement',async(tx,db,uid,now)=>{
  const d=r.data,cid=A.key(d.clubId),auth=await S.authority(tx,db,cid,r),action=d.action;
- if(action==='initialize')return initialize(tx,db,cid,auth,now);
+ if(action==='initialize'||action==='closeLegacy')return initialize(tx,db,cid,auth,now);
  const ctx=await S.context(tx,db,cid);if(!ctx.config)A.fail('failed-precondition','יש לפתוח את המחזור החדש תחילה');
  if(action==='close'){requireManager(auth);return close(tx,db,cid,ctx,now,uid);}
  if(action==='setEnd'){

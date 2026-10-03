@@ -80,6 +80,10 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    assert.ok(doc.querySelector('.poker-seat-hero.poker-seat-winner .winner-glow'));
    assert.match(doc.querySelector('.poker-seat-hero .poker-hand-name').textContent,/Straight Flush/i);
    assert.equal(doc.querySelector('.poker-seat-winner .card-mucked'),null,'winning cards never fade into the muck');
+   const loser=doc.querySelector('.poker-seat:not(.poker-seat-hero)');
+   assert.equal(loser.querySelectorAll('.card-face').length,6,'every exposed losing card stays visible through the result');
+   assert.ok(loser.querySelector('.poker-hand-name'),'the losing hand is labeled for comparison');
+   assert.equal(loser.querySelector('.card-mucked'),null,'exposed losing cards never dim during the result pause');
  }
  current.players.other.mucked=true;
  await React.act(async()=>tableNext(snapshot()));
@@ -91,6 +95,12 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  await React.act(async()=>tableNext(snapshot()));
  assert.equal(doc.querySelectorAll('.poker-seat-hero .card-face').length,6,'server private hand remains visible');
  assert.equal(doc.querySelectorAll('.poker-seat-hero [data-winning-card]').length,2,'server private winner hand stays highlighted');
+ current.gameState.lastWinners='Other';
+ current.players.me.mucked=true;
+ await React.act(async()=>tableNext(snapshot()));
+ assert.equal(doc.querySelectorAll('.poker-seat-hero .card-face').length,6,'a losing player still sees their own private cards');
+ assert.ok(doc.querySelector('.poker-seat-hero .poker-hand-name'),'a losing player sees their own hand class');
+ assert.equal(doc.querySelector('.poker-seat-hero .card-mucked'),null,'own losing cards are not faded');
  current=structuredClone(saved);
  await React.act(async()=>tableNext(snapshot()));
  privateHand=[{val:'2',suit:'♠'},{val:'A',suit:'♥'},{val:'K',suit:'♦'}];

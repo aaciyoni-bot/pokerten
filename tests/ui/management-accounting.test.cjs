@@ -12,17 +12,20 @@ w.fb={db:{},auth:{currentUser:{uid:'owner',email:'owner@example.test',emailVerif
  if(name==='pkClubDirectory'){if(args.accountingOnly)return{accounting:report()};if(args.reportSection)return{records:[],hasMore:false,nextCursor:null};return{members,treasury:{uid:'owner',balance:5000}};}
  throw Error('Unexpected callable '+name);
 },setDoc:deny,updateDoc:deny,addDoc:deny,runTransaction:deny};
-const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;'));
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.OwnNumbers=OwnBalanceNumbers;'));
 w.__club={id:'main',ownerUid:'owner'};const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const render=key=>React.act(async()=>root.render(React.createElement(w.BO,{key,user:members[0],clubSettings:{rakePct:6},showToast(){}})));
 (async()=>{
  await render('ordinary');
  const card=name=>[...doc.querySelectorAll('.club-player-card')].find(c=>c.textContent.includes(name));
  assert.match(card('Alice').textContent,/159\.83/);assert.match(card('Bob').textContent,/1,000\.00/);
- assert.doesNotMatch(card('Alice').textContent,/-340\.17/,'cycle results belong in the settlement area');
- assert.equal(doc.querySelector('.management-cycle-summary'),null);assert.equal(doc.querySelector('.management-agent-totals'),null);
+ assert.match(card('Alice').textContent,/\(-340\.17\)/);assert.match(card('Bob').textContent,/\(\+500\.00\)/);
+ assert.match(card('Alice').querySelector('[data-player-result]').getAttribute('aria-label'),/תוצאת משחק כוללת/);
+ assert.match(doc.querySelector('.management-cycle-summary').textContent,/159\.83/);assert.match(doc.querySelector('.management-agent-totals').textContent,/159\.83/);
  const sort=doc.querySelector('[aria-label="סידור שחקנים"]');assert.equal(sort.disabled,false);assert.equal([...sort.options].some(o=>o.value==='rake'),false);
  await React.act(()=>Simulate.change(sort,{target:{value:'chips'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
  assert.doesNotMatch(doc.body.textContent,/Weekly Settlement|Export full club report|Club rake/);
- await React.act(()=>root.unmount());w.close();console.log('PASS: management preserves wallet balances and chip sorting while settlement reports stay separate');
+ god=true;w.fb.auth.currentUser.email='haim29071994@gmail.com';await render('god');assert.match(card('Alice').textContent,/רייק כולל: 8\.00/);assert.ok([...doc.querySelector('[aria-label="סידור שחקנים"]').options].some(o=>o.value==='rake'));
+ god=false;await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user:members[2],compact:true})));assert.match(doc.body.textContent,/159\.83\(-340\.17\)/);assert.doesNotMatch(doc.body.textContent,/רייק|Bob|Owner/);
+ await React.act(()=>root.unmount());w.close();console.log('PASS: adjacent signed lifetime P/L, player/agent/club chip totals, sorting, and GOD-only rake');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

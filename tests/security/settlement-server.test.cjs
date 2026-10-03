@@ -15,7 +15,10 @@ const members=[['owner','club_owner',5000,null],['agentA','agent',100,null],['ag
 before(async()=>{
  await db.recursiveDelete(ref());await db.doc('clubs/'+cid).set({ownerUid:'owner',name:'Settlement isolated test'});
  for(const [uid,role,balance,agentUid] of members)await db.doc(`memberships/${uid}_${cid}`).set({uid,clubId:cid,role,balance,agentUid:agentUid||'',agentPct:uid==='D'?40:50,agentSharePct:role==='agent'?uid==='agentB'?40:50:0,status:'approved',username:uid,agentProfits:role==='agent'?75:0});
- await db.doc('tables/settlement_legacy_table').set({clubId:cid,name:'Existing sitting',players:{legacy:{uid:'legacy',stack:159.83,bet:0,buyTotal:500}},settings:{serverEngine:true,pokerType:'NLH'}});
+ await db.doc('tables/settlement_legacy_table').set({clubId:cid,name:'Existing sitting',gameState:{phase:'flop',handStartStacks:{legacy:158.83}},players:{legacy:{uid:'legacy',stack:100,bet:20,buyTotal:500}},settings:{serverEngine:true,pokerType:'NLH',ante:1}});
+ await db.doc('gameLog/settlement_current_a').set({clubId:cid,uid:'A',profit:-200,rake:20,at:Date.now()});
+ await db.doc('gameLog/settlement_current_b').set({clubId:cid,uid:'B',profit:500,rake:10,at:Date.now()});
+ await db.doc('agentLog/settlement_current_agent').set({clubId:cid,agentUid:'agentA',playerUid:'A',amount:14,rakeSource:'human',accountingVersion:2,at:Date.now()});
  await db.doc('gameLog/settlement_old_history').set({clubId:cid,uid:'legacy',profit:-80,rake:2,at:Date.now()});
  await db.doc('clubs/settlement_other').set({ownerUid:'outsider'});
  await db.doc('memberships/outsider_settlement_other').set({uid:'outsider',clubId:'settlement_other',role:'club_owner',status:'approved',balance:99});
@@ -26,10 +29,18 @@ async function record(uid,result,rake,hands,source='session_'+crypto.randomUUID(
 test('settlement lifecycle, permissions, preserved balances and payment confirmation',async()=>{
  await assert.rejects(cmd('A','initialize'),/מנהל/);
  const beforeBalances=await db.collection('memberships').where('clubId','==',cid).get();
- await cmd('owner','initialize');const afterBalances=await db.collection('memberships').where('clubId','==',cid).get();assert.deepEqual(afterBalances.docs.map(d=>d.data()),beforeBalances.docs.map(d=>d.data()));
+ const live=await report('owner'),ownLive=await report('A'),agentLive=await report('agentA');
+ assert.equal(live.legacy,true);assert.equal(live.cycle.status,'open');assert.equal(live.canClose,true);
+ assert.equal(live.legacyReport.players.find(p=>p.uid==='A').result,-20000);assert.equal(live.legacyReport.players.find(p=>p.uid==='B').result,50000);
+ assert.equal(agentLive.legacyReport.totals.commission,1400);assert.equal(agentLive.legacyReport.players.some(p=>p.uid==='D'),false);assert.equal(agentLive.canClose,false);
+ assert.equal(ownLive.legacyReport.players.length,1);assert.equal(ownLive.legacyReport.totals.result,-20000);assert.doesNotMatch(JSON.stringify(ownLive),/rake|commission|agentUid|agentProfits|Pct/);
+ assert.equal((await ref().get()).exists,false,'reading the legacy cycle must never initialize it');await assert.rejects(report('outsider'),/חברות/);
+ await cmd('owner','closeLegacy');const afterBalances=await db.collection('memberships').where('clubId','==',cid).get();assert.deepEqual(afterBalances.docs.map(d=>d.data()),beforeBalances.docs.map(d=>d.data()));
  assert.equal((await db.doc('gameLog/settlement_old_history').get()).data().profit,-80);
+ const archived=await report('A','legacy_current');assert.equal(archived.legacy,true);assert.equal(archived.cycle.status,'closed');assert.equal(archived.canClose,false);assert.equal(archived.legacyReport.totals.result,-20000);assert.doesNotMatch(JSON.stringify(archived),/rake|commission|agentUid|agentProfits|Pct/);
+ assert.ok((await report('owner')).cycles.find(c=>c.id==='legacy_current'));
  assert.equal((await report('owner')).club.totals.closing,0);assert.equal((await report('A')).player.opening,0);
- const initialPlayer=await report('A');assert.doesNotMatch(JSON.stringify(initialPlayer),/rakeback|"rake"|Pct|agentProfits|secondary/i);
+ const initialPlayer=await report('A');assert.equal(initialPlayer.chips,15983);assert.equal(initialPlayer.totalResult,-20000);assert.equal((await ref().collection('sittings').doc(require('../../functions/settlementStore').hash('settlement_legacy_table','legacy')).get()).data().baseline,-34017);assert.doesNotMatch(JSON.stringify(initialPlayer),/rakeback|"rake"|Pct|agentProfits|secondary/i);
  await assert.rejects(report('outsider'),/חברות/);await assert.rejects(call('pkSettlementTerms','A',{action:'list'}),/הרשאה/);
  await call('pkSettlementTerms','owner',{targetUid:'A',patch:{rakebackPct:30}});
  await call('pkSettlementTerms','owner',{targetUid:'agentA',patch:{agentType:'rake',agentPct:50}});

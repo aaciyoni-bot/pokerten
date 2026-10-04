@@ -1,3 +1,32 @@
+# POKERTEN v310 larger player presentation — 2026-10-04
+
+## Scope and measured scale
+
+The follow-up reference is `01-1000503394.jpg`: two opponents occupy a large, mostly empty table but their units still look small. The community card size already matches GG (about 80 × 112px versus 80 × 114px in the 709px-wide reference), so the board remains at 60% width. Opponent pods grow by 22% on 2–6 visual-seat layouts when room is available; faces increase from 34px to about 40.6px at 369px width. The local fan grows approximately 5%. Nameplates grow from 68px to 82px, minimum name text from about 9.54px to 12px, and balance text from about 11.13px to 14px.
+
+Seven-to-nine-seat layouts keep the v309 dimensions. Short two-runout layouts also retain the existing card/pod sizes, while their result rows shed surplus padding. Tall two-runout layouts with 2–6 visual seats receive the larger scale. Existing artwork, clockwise seat order, public/private card visibility, game rules, bots, GOD authorization and cycle balances are unchanged.
+
+## Concrete spacing corrections
+
+- Upper/lower rail positions make room for the larger units. Labels are clamped inside the viewport.
+- Readable one-line result labels use available horizontal space instead of wrapping into the board or the local hand.
+- On enlarged layouts, live bets clear the measured owner label or local fan by 4px. Corrections reset before each measurement, preserving stable resize/re-render placement and existing chip-flight origins.
+- The board continues to avoid actual card, pot, name, result and bet geometry without shrinking its cards.
+
+## Verification
+
+- All 20 mandatory predeploy checks passed; shell cache and stylesheet query are v310.
+- The full local UI suite passed after the final changes, including GOD privacy/revocation, Pineapple forecasting, cycle-only reporting and full-size board placement.
+- The 369 × 650 Pineapple discard fixture has all three cards, separate 4px selection gaps, and no card/board/panel/viewport collisions.
+- Final combined preview `8d48a74c1e1b1af6d972f2dae10b099ec8793c36`, workflow `37227761867`: validation and deployment passed.
+- Browser verification passed for the exact two-opponent spectator scene, five/six-player PLO6 showdown at 369 × 650, six-player live flop bets, Pineapple discard, and six-player two runouts at 390 × 844. Cards remain complete, readable and inside the viewport. Inspected card/board/name/result/bet intersections are empty. Local bet-to-fan clearance is 4px; the hand-status label remains below the bet without overlap.
+- Nine-player Omaha4 two runouts at 369 × 650 retains the verified v309 geometry and clear board. Short six-player two-runout result collisions were removed without shrinking cards. This exceptionally tight layout has no actual intersections but only about 0.63–0.83px between the upper/lower fans and boards, so its conservative 7px `boardClear` diagnostic remains false. The limit is documented rather than suppressed.
+- Proof image is a genuine final-preview capture of the two-opponent synthetic scene, cropped to the complete table viewport.
+
+All browser play states use the isolated synthetic fixture with network writes disabled. No authenticated cash/Spin hand was played; the live behavioural smoke checklist remains a user-session check.
+
+---
+
 # POKERTEN v309 GG fan and spacing verification — 2026-10-04
 
 ## Reference and scope

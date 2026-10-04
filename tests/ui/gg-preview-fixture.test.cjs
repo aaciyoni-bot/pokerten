@@ -30,6 +30,13 @@ const key=c=>c.val+c.suit;
   const dealt=Object.values(f.hands).flat().map(key);
   assert.equal(new Set(dealt).size,dealt.length,'realistic fixture uses a unique deck');
  }
+ for(const menuRole of ['player','manager','super_admin','god']){
+  const f=await fixture('mode=nlh&menuRole='+menuRole);
+  assert.equal(f.scenario.menuRole,menuRole);
+  assert.equal(f.scenario.god,menuRole==='god','menu roles do not implicitly enable GOD');
+  assert.ok(f.source.includes("user:{uid:'me',role:'"+(menuRole==='god'?'player':menuRole)+"',status:'approved',balance:500}"));
+ }
+ assert.equal((await fixture('mode=nlh&menuRole=unsupported')).scenario.menuRole,'player','unknown preview roles fall back to ordinary player');
  const shown=await fixture('mode=omaha&seats=6&full&opponents=revealed&phase=showdown&bets');
  assert.equal(shown.state.gameState.lastWinners,undefined,'layout fixture does not invent a winner inconsistent with the dealt hands');
  assert.ok(Object.values(shown.state.players).every(p=>p.actionText!=='WINNER'),'no fabricated winner badge');

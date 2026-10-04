@@ -1105,7 +1105,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=310">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=311">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -10646,9 +10646,9 @@ function PokerFullscreenButton({showToast, onToggle}) {
   };
   return React.createElement('button', {type:'button', onClick:toggle, disabled:pending,
     'aria-label':active ? 'Exit fullscreen' : 'Enter fullscreen', 'aria-pressed':active,
-    title:active ? 'יציאה ממסך מלא' : 'מסך מלא', className:'poker-fullscreen-button poker-menu-tile'},
-    React.createElement('i', {className:active ? 'fa-solid fa-compress' : 'fa-solid fa-expand', 'aria-hidden':true}),
-    React.createElement('span', null, active ? 'Exit fullscreen' : 'Fullscreen'));
+    title:active ? 'יציאה ממסך מלא' : 'מסך מלא', className:'poker-fullscreen-button poker-menu-tile','data-menu-tone':'cyan'},
+    React.createElement('i', {className:active ? 'poker-menu-icon fa-solid fa-compress' : 'poker-menu-icon fa-solid fa-expand', 'aria-hidden':true}),
+    React.createElement('span', {className:'poker-menu-label'}, active ? 'Exit fullscreen' : 'Fullscreen'));
 }
 // GOD display only: compare the same complete runout shown in the preview.
 // Never substitute the current street while the atomic private snapshot loads.
@@ -12293,13 +12293,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const handKey = gs.handN || (dealAnimRef.current || {}).t0 || 0;
   // Losing hands may fade; the winning hand must remain readable.
   // the table menu: every tile carries a word, not just a glyph
-  const menuTile = (icon, label) => [React.createElement("span", {
-    key: 'i',
-    className: "text-xl leading-none"
-  }, icon), React.createElement("span", {
-    key: 'l',
-    className: "text-[10px] font-black tracking-wide text-slate-200 leading-none"
-  }, label)];
+  const menuTile = (icon, label) => [
+    icon === 'bot-group' ? React.createElement('span',{key:'i',className:'poker-menu-icon-cluster','aria-hidden':true},...[0,1,2].map(i=>React.createElement('img',{key:i,src:'assets/menu/bot.png',alt:'',draggable:false}))) :
+    icon.startsWith('fa-') ? React.createElement('i', {key:'i',className:'poker-menu-icon fa-solid '+icon,'aria-hidden':true}) :
+      React.createElement('img', {key:'i',className:'poker-menu-icon',src:'assets/menu/'+icon+'.png',width:44,height:44,alt:'',draggable:false}),
+    React.createElement('span', {key:'l',className:'poker-menu-label'}, label)
+  ];
   // one chip = one small blind (see CasinoChipStack)
   const chipUnit = ((Number(gs.handBB) || 0) > 0 ? Number(gs.handBB) / 2 : Number(setts.blinds)) || 0.5;
   // Showdown: the winning 5-card combination gets a gold highlight (board +
@@ -13734,11 +13733,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }), !toolsOpen && (myPlayer?.sitOut || myPlayer?.sitOutNext || (myPlayer?.pendingTopUp || 0) > 0) && React.createElement("span", {
     className: "absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border border-slate-900 animate-pulse"
   })), waitlist.length > 0 && React.createElement('span', {className:'poker-menu-wait-count', 'aria-label':'Waitlist: '+waitlist.length}, waitlist.length)), toolsOpen && ReactDOM.createPortal(React.createElement("div", {
-    className: "fixed inset-0 z-[230]",
+    className: "poker-menu-overlay fixed inset-0 z-[230]",
     onClick: closeTableMenu
   }, React.createElement("div", {
-    className: "absolute inset-0 bg-black/70 backdrop-blur-[3px]"
-  }), React.createElement("div", {
+    className: "poker-menu-backdrop absolute inset-0 bg-black/70 backdrop-blur-[3px]"
+  }), React.createElement('div',{className:'poker-menu-brand','aria-hidden':true},React.createElement('img',{src:'assets/brand/blue-icon192.png',width:84,height:84,alt:'',draggable:false}),React.createElement('span',null,'POKERTEN')), React.createElement("div", {
     className: "poker-menu-panel absolute inset-x-3 bottom-[max(18px,env(safe-area-inset-bottom))] animate-pop-in",
     role: 'dialog', 'aria-modal':true, 'aria-label':'Table menu',
     onClick: e => e.stopPropagation(),
@@ -13753,26 +13752,25 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     }
   }, React.createElement('div', {className:'poker-menu-heading'},
     React.createElement('div',null,React.createElement('strong',null,tableTitle),React.createElement('span',null,tableClubName || 'POKERTEN'),React.createElement('span',{dir:'ltr'},tableState.closeRequested?'Closing after this hand':tableStakes)),
-    React.createElement('button',{type:'button',autoFocus:true,onClick:closeTableMenu,'aria-label':'Close table menu'},'✕')),
-  !tableState.tournamentId && !setts.spinMode && (isFull || waitlist.length > 0) && React.createElement('div', {className:'poker-waitlist-status'},
+    React.createElement('button',{type:'button',autoFocus:true,onClick:closeTableMenu,'aria-label':'Close table menu'},React.createElement('i',{className:'fa-solid fa-xmark','aria-hidden':true}))),
+  !tableState.tournamentId && !setts.spinMode && ((!isSeated && isFull) || waitlist.length > 0) && React.createElement('div', {className:'poker-waitlist-status'},
     React.createElement(PokerWaitlistIndicator, {table:tableState, uid:user.uid, className:'poker-waitlist-summary', showEmpty:true}),
     !isSeated && onWaitlist && React.createElement('button', {type:'button', onClick:()=>{setToolsOpen(false);leaveWaitlist();}}, 'Leave waitlist'),
     spectate && !isSeated && !onWaitlist && requiresWaitlist && !tableState.closeRequested && React.createElement('button', {type:'button', onClick:()=>{setToolsOpen(false);setSpectate(false);}}, 'Join waitlist')),
   React.createElement("div", {
-    className: "text-[10px] text-slate-400/80 font-bold text-center mb-2 tracking-widest"
-  }, "GPS \u00b7 ON \u00b7 IP \u00b7 ON"), React.createElement("div", {
-    className: "poker-menu-grid grid grid-cols-4 gap-3"
-  }, React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setTableInfoOpen(true);},'aria-label':'Table details',className:'poker-menu-tile'},...menuTile('ⓘ','Details')),
-  React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setHistoryOpen(true);setHistExpand(null);},title:'Hand history',className:'poker-menu-tile'},...menuTile('↶','Hand history')),
-  React.createElement(PokerFullscreenButton,{showToast,onToggle:closeTableMenu}),
+    className: "poker-menu-status"
+  }, (tableState.tournamentId ? 'TOURNAMENT' : setts.spinMode ? 'SPIN & CASH' : 'CASH TABLE') + ' · ' + (setts.maxPlayers || 6) + ' SEATS'), React.createElement("div", {
+    className: "poker-menu-grid"
+  }, React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setTableInfoOpen(true);},'aria-label':'Table details',className:'poker-menu-tile','data-menu-tone':'cyan'},...menuTile('details','Details')),
+  React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setHistoryOpen(true);setHistExpand(null);},title:'Hand history',className:'poker-menu-tile','data-menu-tone':'purple'},...menuTile('history','Hand history')),
   React.createElement("button", {
     onClick: () => {
       setToolsOpen(false); // picking an item folds the menu back to ☰
       setSkinOpen(true);
     },
     title: "My table look — only you see it",
-    className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-slate-300 hover:text-amber-300 shadow-xl text-lg"
-  }, ...menuTile("🎨", "My look")), React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'gold'
+  }, ...menuTile("look", "My look")), React.createElement("button", {
     onClick: () => {
       const m = !window.__pkMuted;
       window.__pkMuted = m;
@@ -13784,11 +13782,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       setToolsOpen(false);
     },
     title: "Sound on/off",
-    className: `aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 shadow-xl text-lg border ${window.__pkMuted ? 'bg-rose-900/60 border-rose-500/50 text-rose-300' : 'glass-panel border-transparent text-slate-300 hover:text-white'}`
-  }, ...menuTile(window.__pkMuted ? '🔇' : '🔊', window.__pkMuted ? 'Sound off' : 'Sound on')),
-  React.createElement('label', {className:'col-span-2 rounded-[20px] bg-slate-900/95 border border-slate-600 p-3 text-slate-100 flex flex-col justify-center gap-3'},
-    'עוצמת צלילים · ' + Math.round(window.__pkVolume * 100) + '%',
-    React.createElement('input', {type:'range',min:0,max:100,value:Math.round(window.__pkVolume*100),'aria-label':'עוצמת צלילים',className:'w-full accent-amber-400',onChange:e=>{setSfxLevel(Number(e.target.value)/100);setMuteTick(x=>x+1);}})), isSeated && setts.straddle && !tableState?.tournamentId && React.createElement("button", {
+    'aria-pressed':!window.__pkMuted,
+    className:'poker-menu-tile','data-menu-tone':'green'
+  }, ...menuTile(window.__pkMuted ? 'muted' : 'sound', window.__pkMuted ? 'Sound off' : 'Sound on')),
+  React.createElement('label', {className:'poker-menu-volume','data-menu-tone':'cyan'},
+    React.createElement('span',null,'Volume · ',React.createElement('strong',null,Math.round(window.__pkVolume * 100)+'%')),
+    React.createElement('input', {type:'range',min:0,max:100,value:Math.round(window.__pkVolume*100),'aria-label':'עוצמת צלילים',className:'poker-menu-volume-control',onChange:e=>{setSfxLevel(Number(e.target.value)/100);setMuteTick(x=>x+1);}})), isSeated && setts.straddle && !setts.spinMode && !tableState?.tournamentId && React.createElement("button", {
     onClick: async () => {
       setToolsOpen(false);
       try {
@@ -13796,22 +13795,23 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       } catch (e) {}
     },
     title: "Straddle when eligible (2×BB blind — you act last preflop)",
-    className: `aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 shadow-xl text-[10px] font-black border ${myPlayer?.straddleNext ? 'bg-amber-500 text-slate-900 border-amber-300' : 'glass-panel border-transparent text-slate-300 hover:text-amber-300'}`
-  }, ...menuTile("⏫", myPlayer?.straddleNext ? "Straddle on" : "Straddle")), isSeated && React.createElement("button", {
+    'aria-pressed':!!myPlayer?.straddleNext,
+    className:'poker-menu-tile','data-menu-tone':'gold'
+  }, ...menuTile("fa-angles-up", myPlayer?.straddleNext ? "Straddle on" : "Straddle")), isSeated && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       toggleSitOut();
     },
     title: myPlayer?.sitOut ? 'Take a seat 🪑' : myPlayer?.sitOutNext ? 'Cancel sit-out (queued for end of hand)' : 'Sit out',
-    className: `aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border shadow-xl text-lg ${myPlayer?.sitOut ? 'bg-amber-500 text-slate-900 border-amber-300 animate-pulse' : myPlayer?.sitOutNext ? 'bg-amber-500/40 text-amber-200 border-amber-400/60 animate-pulse' : 'bg-slate-900/90 border-white/10 text-slate-300 hover:text-amber-300'}`
-  }, ...menuTile(myPlayer?.sitOut ? '✋' : '☕', myPlayer?.sitOut ? 'Back in' : myPlayer?.sitOutNext ? 'Sit-out queued' : 'Sit out')), isSeated && !tableState?.tournamentId && React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'gold','aria-pressed':!!(myPlayer?.sitOut||myPlayer?.sitOutNext)
+  }, ...menuTile(myPlayer?.sitOut ? 'fa-hand' : 'sit-out', myPlayer?.sitOut ? 'Back in' : myPlayer?.sitOutNext ? 'Sit-out queued' : 'Sit out')), isSeated && !setts.spinMode && !tableState?.tournamentId && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       topUpChips();
     },
     title: "Add chips",
-    className: "relative aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-slate-300 hover:text-emerald-300 shadow-xl text-lg"
-  }, ...menuTile("💰", "Add chips"), (myPlayer?.pendingTopUp || 0) > 0 && React.createElement("span", {
+    className:'poker-menu-tile','data-menu-tone':'gold'
+  }, ...menuTile("chips", "Add chips"), (myPlayer?.pendingTopUp || 0) > 0 && React.createElement("span", {
     className: "absolute -top-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full shadow",
     dir: "ltr",
     title: "Queued — added at end of hand"
@@ -13821,35 +13821,36 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       setGodView(!godView);
     },
     title: "GOD view",
-    className: `aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border shadow-xl text-lg ${godView ? 'bg-purple-600 text-white border-purple-400' : 'glass-panel border-transparent text-purple-300'}`
-  }, ...menuTile("👁", godView ? "GOD view on" : "GOD view")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
+    'aria-pressed':godView,
+    className:'poker-menu-tile','data-menu-tone':'orange'
+  }, ...menuTile("god", godView ? "GOD view on" : "GOD view")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       handleAddBot();
     },
     title: "Add bot",
     disabled: addingBots || Object.keys(players).length >= (setts.maxPlayers||6),
-    className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-purple-300 hover:text-white shadow-xl text-lg"
-  }, ...menuTile("🤖", "Add bot")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'cyan'
+  }, ...menuTile("bot", "Add bot")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
     onClick:()=>{setToolsOpen(false);handleAddBot(true);},title:"Fill empty seats with bots",disabled:addingBots||Object.keys(players).length>=(setts.maxPlayers||6),
-    className:"aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-purple-300 hover:text-white shadow-xl text-lg disabled:opacity-40"
-  },...menuTile("🤖","Fill bots")), !isSeated && onCreateTable && canManageGame(user,'poker') && React.createElement("button", {
-    onClick:()=>{setToolsOpen(false);onCreateTable();},title:"Create a new table",className:"aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-emerald-300 shadow-xl text-lg"
-  },...menuTile("➕","New table")), isSuperAdmin && ['waiting', 'showdown'].includes(gs.phase) && eligibleCount >= 2 && React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'cyan'
+  },...menuTile("bot-group","Fill bots")), !isSeated && onCreateTable && canManageGame(user,'poker') && React.createElement("button", {
+    onClick:()=>{setToolsOpen(false);onCreateTable();},title:"Create a new table",className:'poker-menu-tile','data-menu-tone':'green'
+  },...menuTile("fa-plus","New table")), isSuperAdmin && canManageClub(user) && ['waiting', 'showdown'].includes(gs.phase) && eligibleCount >= 2 && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       startHand();
     },
     title: "Deal now",
-    className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-emerald-500 bg-emerald-700 text-white shadow-xl text-[10px] font-black"
-  }, ...menuTile("▶", "Deal now")), isSuperAdmin && React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'green'
+  }, ...menuTile("fa-play", "Deal now")), isSuperAdmin && canManageClub(user) && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       forceUnstick();
     },
     title: "Force-unstick a frozen table",
-    className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-rose-400 bg-rose-700 text-white shadow-xl text-lg"
-  }, ...menuTile("🔧", "Unstick")), canManageGame(user, 'poker') && !tableState?.tournamentId && !setts.spinMode && !tableState.closeRequested && React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'orange'
+  }, ...menuTile("unstick", "Unstick")), canManageGame(user, 'poker') && !tableState?.tournamentId && !setts.spinMode && !tableState.closeRequested && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       setBuyinEdit({
@@ -13857,8 +13858,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       });
     },
     title: "Edit table settings",
-    className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-amber-300 hover:text-white shadow-xl text-lg"
-  }, ...menuTile("🪙", "Settings")), onManage && React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'purple'
+  }, ...menuTile("settings", "Settings")), onManage && canManageClub(user) && React.createElement("button", {
     onClick: async () => {
       setToolsOpen(false);
       try {
@@ -13870,16 +13871,16 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       onManage();
     },
     title: "Sit out and open Club Management",
-    className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 glass-panel text-blue-300 hover:text-white shadow-xl text-lg"
-  }, ...menuTile("📊", "Manage")), React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'pink'
+  }, ...menuTile("manage", "Manage")), React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       if (!isSeated) onLeave();else handleStandUp();
     },
     title: tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave',
     'aria-label': isSeated ? 'Stand up' : 'Leave table',
-    className: "aspect-square rounded-[20px] flex flex-col items-center justify-center gap-2 border border-rose-500/40 bg-slate-900/90 text-rose-300 hover:bg-rose-800 hover:text-white shadow-xl text-lg"
-  }, ...menuTile("🚪", tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave'))))), document.body), isSeated && gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
+    className:'poker-menu-tile','data-menu-tone':'pink'
+  }, ...menuTile("leave", tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave')), React.createElement(PokerFullscreenButton,{showToast,onToggle:closeTableMenu})))), document.body), isSeated && gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
     onClick: async () => {
       try {
         if (srvEngine) {

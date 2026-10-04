@@ -1,3 +1,43 @@
+# POKERTEN v311 role-aware neon table menu — 2026-10-04
+
+## Reference and comparison
+
+Source: user attachment `01-1000503588.jpg`, 709 × 1536px. Inspected locally at `/workspace/scratch/d59203ac15fb/upload/01-1000503588.jpg`; the attachment is not shipped as an application asset. Compared the full source and final real browser capture at a normalized 369 × 800 portrait size, then compared the focused button region. Proof `/workspace/scratch/pokerten-menu-v311.jpg` is the complete synthetic table viewport, cropped from the browser screenshot (365 × 791 raster pixels for a 369 × 800 CSS-pixel fixture). Supporting full comparison: `/workspace/scratch/pokerten-menu311-comparison-final.jpg`; focused comparison: `/workspace/scratch/pokerten-menu311-buttons-comparison.jpg`.
+
+## Fidelity and deliberate adaptations
+
+| Surface | Final implementation |
+| --- | --- |
+| Layout and spacing | Four columns, 9px gaps, 78 × 84px tiles at 369px width, two-column volume control, generous close target. The full privileged menu fits a 369 × 650 screen; shorter viewports retain scrolling and safe-area padding. |
+| Typography and content | Readable existing typography, one-line Hand history label, real table title, club, blinds and seat count. Sound and sit-out labels reflect current state. Hardcoded GPS/IP status was removed because no supporting implementation exists. |
+| Colour and effects | Dark blue translucent overlay over the blurred current table; cyan, purple, gold, green, orange and pink tile outlines and restrained glow. Existing POKERTEN shell artwork remains. |
+| Assets and icons | Consistent 44px 3D PNG icons from official Microsoft Fluent Emoji, with MIT licence and pinned provenance in `assets/menu`. Three bot images form Fill bots. Existing POKERTEN brand is retained. Library icons are close adaptations, not exact copies of the user's artwork. |
+| Responsive and interaction states | Active/disabled states, keyboard focus, Escape and close behaviour retained. Decorative branding hides on short screens. Fullscreen is retained as an extra final tile; the accessible volume slider uses the existing native control. |
+
+Reference tiles are approximately 71px high at the normalized width; the implemented 84px height deliberately prioritizes legibility and mobile targets. Different live table data, the existing brand mark, icon-library pictograms and slider styling are intentional adaptations rather than pixel-identical claims.
+
+## Findings resolved
+
+- P1: the first preview fixture resolved new icons against production, where they were not yet published. Its base now resolves against the tested project root; all final menu images load, with a regression assertion for preview-origin asset resolution.
+- P2: a Tailwind utility overrode the intended gap and wrapped Hand history. Removed the conflicting utility; labels and controls fit their bounds.
+- P2: an empty seated-player waitlist strip interrupted the composition. Zero-waiting strips are hidden for seated players while real queues and spectator waitlist access remain.
+- Role guards were strengthened: Manage requires actual management permission as well as a callback; Deal now/Unstick require an approved management identity; Spin excludes unsupported Add chips and Straddle actions. No GOD entitlement or server authorization was broadened.
+
+## Verification
+
+- Mandatory predeploy checks: 20/20. Cache and stylesheet version: v311. `git diff --check` passed.
+- Full UI suite and final combined preview CI passed, including new role tests for ordinary/pending/banned identities, approved staff, forged GOD profiles, verified same-UID authorization, demotion/revocation and Spin/tournament/closing-table restrictions.
+- Final preview commit `3f0a05280217a6871886e203cd20c8cf0938ef4d`, workflow `37237635403`: validation and preview deployment succeeded.
+- Browser role checks at 369 × 650 and 390 × 844 passed for player, manager and GOD-only views. Full GOD plus administrator view passed at 369 × 800 and 369 × 650: all images loaded, no label/control clipping, all 15 tiles and volume control visible on the short viewport.
+- Actual menu interactions verified: open/close, Details, Hand history, My look/Done, sound toggle, volume adjustment and Escape. Console review showed browser-extension metadata errors only; no application exception was observed.
+- Gameplay, bot decisions, balances, accounting calculations and private-card authorization logic are unchanged.
+
+All browser play states use the isolated synthetic fixture with network writes disabled. No authenticated cash/Spin hand was played; the live behavioural smoke checklist remains a user-session check.
+
+final result: passed
+
+---
+
 # POKERTEN v310 larger player presentation — 2026-10-04
 
 ## Scope and measured scale

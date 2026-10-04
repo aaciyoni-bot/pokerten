@@ -1,6 +1,8 @@
 <!doctype html><html><head><meta charset="utf-8"><title>POKERTEN layout verification</title><style>body{margin:0;background:#232624;color:#fff;font:14px Arial}nav{min-height:40px;display:flex;gap:16px;align-items:center;padding:0 20px}a{color:white}iframe{display:block;border:0;margin:auto;background:#0b0d0c}</style></head><body><nav>Design verification · simulated chips <a href="?mode=reference">Reference</a><a href="?mode=nlh">NLH</a><a href="?mode=omaha">Omaha 6</a><a href="?mode=omaha&size=desktop">Desktop</a></nav><iframe title="Poker preview"></iframe><script>
 (async()=>{
  const query=new URLSearchParams(location.search),mode=query.get('mode')||'reference';
+ const menuRole=['player','manager','super_admin','god'].includes(query.get('menuRole'))?query.get('menuRole'):'player';
+ if(menuRole==='god')query.set('god','');
  const capacity=Math.min(9,Math.max(2,Number(query.get('seats'))||7));
  const frame=document.querySelector('iframe');frame.width=Number(query.get('width'))||(query.get('size')==='desktop'?1100:369);frame.height=Number(query.get('height'))||800;
  const projectRoot=new URL('../../',location.href),reviewStamp=Date.now();
@@ -12,8 +14,8 @@
    .replace(/<script\b[^>]*type=["']module["'][^>]*>[\s\S]*?<\/script>/g,'')
    .replace(/<link\b[^>]*rel=["']manifest["'][^>]*>/g,'')
    .replace(/href=["'](assets\/css\/[^"']+)["']/g,(_,path)=>'href="'+localAsset(path)+'"');
- // The application, every stylesheet and the poker runtime come from this checkout.
- // The production base is only a fallback for unchanged image/font/vendor assets.
+ // Application code, styles and all relative images come from this checkout.
+ // New menu assets must be visible before they exist in production.
  const runtimeTags=[...html.matchAll(/<script\b[^>]*src=["'](assets\/js\/[^"']+)["'][^>]*><\/script>/g)].map(([,path])=>{
    const src=localAsset(path);
    return '<scr'+'ipt src="'+src+'"></scr'+'ipt>';
@@ -77,7 +79,7 @@
    // Publicly exposed cards and the GOD/private snapshot describe one hand.
    if(players[id].reveal)players[id].cards=previewHands[id].map(c=>({...c}));
  }
- const scenario={mode,uid,holeCount,capacity,phase:state.gameState.phase,god:query.has('god'),geometryOnly,heroExpected:players[uid]?.cardCount||0,cardsNeeded,availableHoleCards:pool.length};
+ const scenario={mode,uid,holeCount,capacity,menuRole,phase:state.gameState.phase,god:query.has('god'),geometryOnly,heroExpected:players[uid]?.cardCount||0,cardsNeeded,availableHoleCards:pool.length};
  if(geometryOnly){const note=document.createElement('p');note.textContent='Geometry stress only: this combination of seats and hole cards exceeds a 52-card deck.';note.style.cssText='text-align:center;color:#ffd88a';document.body.insertBefore(note,frame);}
  const stub=`window.__pkMuted=true;window.__previewMode=true;
  if(window.Worker){const PreviewWorker=window.Worker;window.Worker=class extends PreviewWorker{constructor(url,options){super(new URL(String(url),${JSON.stringify(projectRoot.href)}),options);}};}
@@ -105,7 +107,7 @@
  let component=mode==='tournaments'?'PreviewTournaments':mode==='auth'?'PreviewAuth':mode==='lobby'?'PreviewLobby':mode==='admin'?'PreviewAdmin':mode==='settlement'?'PreviewSettlement':mode==='profile'?'PreviewProfile':mode==='ranks'?'PreviewRanks':mode==='create'?'PreviewCreate':mode==='clubs'?'PreviewClubs':'PreviewTable';
  let propsCode=mode==='clubs'?JSON.stringify(clubProps):JSON.stringify(props);
  let renderPreview=`window.__club={id:'main',name:'Netabel',ownerUid:'owner',closedWeeks:{}}; const noop=()=>{}; const demo=React.createElement(window.${component},{...${propsCode},tableDocId:'preview',onClose:noop,onEnter:noop,onBack:noop,onJoinPoker:noop,onJoinOfc:noop,onJoinDurak:noop,onCreatePoker:noop,onCreated:noop,onLeave:noop,setTab:noop,showToast:noop}); ReactDOM.createRoot(document.getElementById('root')).render(React.createElement('div',{className:'pt-theme h-full w-full flex flex-col'},${mode==='settlement'?"React.createElement('div',{className:'club-admin scrollable-content p-4'},demo)":"demo"}));`;
- if(component==='PreviewTable')renderPreview=`ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'player',balance:500},clubSettings:{name:'Netabel'},onLeave:()=>{},showToast:()=>{}}));`;
+ if(component==='PreviewTable')renderPreview=`ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'${menuRole==='god'?'player':menuRole}',status:'approved',balance:500},clubSettings:{name:'Netabel'},onManage:()=>{},onCreateTable:()=>{},onLeave:()=>{},showToast:()=>{}}));`;
  if(component==='PreviewTable'&&query.has('motion'))renderPreview=`
  const M=window.PreviewMotion;
  function MotionPreview(){
@@ -119,7 +121,7 @@
      ...['collect','award','discard'].map(kind=>React.createElement('button',{key:kind,type:'button',style:buttonStyle,onClick:()=>replay(kind),disabled:!host},'Replay '+kind)),
      React.createElement('button',{type:'button',style:buttonStyle,onClick:()=>setEffect(null)},'Clear motion'));
    let moving=null;if(effect&&host){const common={key:effect.id,unit:.5,amount:125,snd:false};moving=effect.kind==='collect'?React.createElement(M.BetCollect,{...common,from:effect.from,to:{left:'50%',top:'35%'}}):effect.kind==='award'?React.createElement(M.PotAward,{...common,to:{left:'50%',top:'78%'},toUid:'${uid}',dur:.6}):React.createElement(M.DiscardFly,{key:effect.id,card:{val:'A',suit:'♠'}});}
-   return React.createElement(React.Fragment,null,React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'player',balance:500},clubSettings:{name:'Netabel'},onLeave:()=>{},showToast:()=>{}}),controls,host&&moving&&ReactDOM.createPortal(moving,host));
+   return React.createElement(React.Fragment,null,React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'${menuRole==='god'?'player':menuRole}',status:'approved',balance:500},clubSettings:{name:'Netabel'},onManage:()=>{},onCreateTable:()=>{},onLeave:()=>{},showToast:()=>{}}),controls,host&&moving&&ReactDOM.createPortal(moving,host));
  }
  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(MotionPreview));`;
  const diagnostics=`
@@ -146,7 +148,7 @@
  const tag=code=>'<scr'+'ipt>'+code+'</scr'+'ipt>';
  // Disallow network calls from the preview; SDK initialization is removed above.
  const isolation='<meta http-equiv="Content-Security-Policy" content="connect-src \'none\'; form-action \'none\'">';
- frame.srcdoc='<!doctype html><html><head><base href="https://pokerten.com/">'+isolation+head+runtimeTags+'</head><body class="poker-theme" style="margin:0;width:100vw;height:100dvh"><div id="root" style="height:100%"></div>'+definitions+tag(stub)+tag(code)+tag(renderPreview)+tag(diagnostics)+'</body></html>';
+ frame.srcdoc='<!doctype html><html><head><base href="'+projectRoot.href+'">'+isolation+head+runtimeTags+'</head><body class="poker-theme" style="margin:0;width:100vw;height:100dvh"><div id="root" style="height:100%"></div>'+definitions+tag(stub)+tag(code)+tag(renderPreview)+tag(diagnostics)+'</body></html>';
  document.documentElement.dataset.previewSource=new URL('index.html',projectRoot).href;
  document.documentElement.dataset.previewMode=mode;
  document.documentElement.dataset.previewRuntime=localAsset(html.match(/src="(assets\/js\/poker-runtime\.js[^"]*)"/)?.[1]||'assets/js/poker-runtime.js');

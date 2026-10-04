@@ -544,11 +544,47 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 .poker-room .poker-table-tools>div>button{width:40px;height:40px;border-radius:12px;background:#111b24e8;border:1px solid #71858c66;box-shadow:0 2px 9px #0005}
 .poker-room>.poker-god-runout{top:calc(env(safe-area-inset-top,0px) + 10px);left:58px;right:8px}
 .poker-menu-wait-count{position:absolute;right:-5px;top:-4px;min-width:16px;height:16px;padding:0 4px;border-radius:10px;background:#f1ce81;color:#152127;font:bold 10px/16px Arial,sans-serif;text-align:center;pointer-events:none}
-.poker-menu-panel{max-width:600px;margin-inline:auto;max-height:calc(100dvh - max(24px,env(safe-area-inset-top)) - max(24px,env(safe-area-inset-bottom)));overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 2px 8px}
-.poker-menu-heading{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;padding:14px;border:1px solid #71858c66;border-radius:16px;background:#101b27f5;color:#f2f5fa}
-.poker-menu-heading>div{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px}.poker-menu-heading strong{font-size:17px;line-height:1.3;overflow-wrap:anywhere}.poker-menu-heading span{font-size:12px;color:#c4d6e4}.poker-menu-heading button{width:36px;height:36px;flex:0 0 36px;border:1px solid #8193a166;border-radius:10px;background:#233443;color:#f1f5f9;font-size:18px}
-.poker-menu-grid{gap:9px}.poker-menu-grid>button,.poker-menu-tile{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:76px;aspect-ratio:auto;border:1px solid #71858c66;border-radius:15px;background:#152331f5;color:#e6eef6;padding:10px 5px;box-shadow:0 4px 12px #0005;cursor:pointer}.poker-menu-tile>i{font-size:21px}.poker-menu-tile>span{font-size:10px;font-weight:800;text-align:center;line-height:1.25}.poker-menu-grid>button:focus-visible,.poker-menu-heading button:focus-visible{outline:2px solid #ffe7ab;outline-offset:2px}.poker-menu-panel .poker-waitlist-status{margin-bottom:12px;border:1px solid #8268a5;border-radius:12px}
-@media(max-width:380px){.poker-menu-grid{gap:7px}.poker-menu-grid>button{min-height:70px}}
+/* The table menu is a translucent sheet; every rule stays inside its own UI. */
+.poker-menu-overlay{isolation:isolate;color:#f4f8ff}
+.poker-menu-overlay::before{content:"";position:absolute;inset:0;z-index:1;background:url("../brand/sapphire-shell.webp") center/cover no-repeat;opacity:.24;pointer-events:none}
+.poker-menu-backdrop{z-index:0;background:#020712b8!important;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}
+.poker-menu-brand{position:absolute;z-index:2;top:max(36px,calc(env(safe-area-inset-top,0px) + 5dvh));left:50%;width:clamp(118px,37vw,170px);transform:translateX(-50%);pointer-events:none;filter:drop-shadow(0 4px 18px #0095ff30)}
+.poker-menu-brand img{display:block;width:64px;height:64px;margin-inline:auto;object-fit:contain}
+.poker-menu-brand>span{display:block;margin-top:4px;text-align:center;color:#e8f7ff;font-size:19px;font-weight:900;line-height:1.2;letter-spacing:.07em;text-shadow:0 2px 5px #000b}
+.poker-menu-panel{position:absolute;z-index:2;inset-inline:12px;bottom:max(18px,env(safe-area-inset-bottom,0px));width:auto;max-width:520px;margin-inline:auto;max-height:calc(100dvh - max(134px,calc(env(safe-area-inset-top,0px) + 112px)) - max(18px,env(safe-area-inset-bottom,0px)));overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#55bfff70 transparent;padding:3px 3px 10px;scroll-padding-block:8px;animation-duration:.18s}
+.poker-menu-heading{position:relative;display:flex;align-items:flex-start;gap:12px;margin:0 0 11px;padding:12px;border:1px solid #91c9f1b3;border-radius:14px;background:#041021eb;color:#f4f8ff;box-shadow:inset 0 1px 0 #d4efff33,0 0 14px #008cff17;overflow:hidden}
+.poker-menu-heading>div{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.poker-menu-heading strong{font-size:clamp(21px,5.8vw,27px);font-weight:800;line-height:1.16;overflow-wrap:anywhere;letter-spacing:-.025em}
+.poker-menu-heading span{font-size:clamp(13px,3.6vw,16px);font-weight:600;line-height:1.35;color:#b4c9ea}
+.poker-menu-heading button{display:grid;place-items:center;width:44px;height:44px;flex:0 0 44px;padding:0;border:1px solid #8fceffbd;border-radius:11px;background:#10283de8;color:#f1f7ff;font-size:24px;line-height:1;box-shadow:inset 0 1px 0 #d5f3ff24,0 0 9px #229bff1f;cursor:pointer}
+.poker-menu-status{margin:0 0 10px;text-align:center;color:#aec4e4;font-size:11px;font-weight:700;line-height:1.4;letter-spacing:.06em}
+.poker-menu-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;align-items:stretch}
+.poker-menu-grid>button,.poker-menu-tile,.poker-menu-volume{--menu-rgb:62,193,255;position:relative;display:flex;min-width:0;min-height:84px;aspect-ratio:auto;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:8px 3px;border:1px solid rgba(var(--menu-rgb),.85);border-radius:13px;background:#030b17e8;color:#f5f7fc;box-shadow:inset 0 1px 0 #ffffff10,0 0 9px rgba(var(--menu-rgb),.13),0 5px 12px #0005;cursor:pointer;transition:filter .16s ease,box-shadow .16s ease}
+.poker-menu-grid [data-menu-tone="cyan"]{--menu-rgb:43,207,255}
+.poker-menu-grid [data-menu-tone="purple"]{--menu-rgb:193,85,255}
+.poker-menu-grid [data-menu-tone="gold"]{--menu-rgb:246,195,86}
+.poker-menu-grid [data-menu-tone="green"]{--menu-rgb:110,230,141}
+.poker-menu-grid [data-menu-tone="orange"]{--menu-rgb:249,153,83}
+.poker-menu-grid [data-menu-tone="pink"]{--menu-rgb:248,113,157}
+.poker-menu-icon{display:block;flex:0 0 auto;width:44px;height:44px;object-fit:contain;line-height:1;filter:drop-shadow(0 3px 4px #0008);pointer-events:none}
+.poker-menu-icon img{display:block;width:100%;height:100%;object-fit:contain}
+.poker-menu-icon-cluster{display:flex;flex:0 0 auto;align-items:flex-end;justify-content:center;width:64px;height:44px;pointer-events:none;filter:drop-shadow(0 3px 4px #0008)}
+.poker-menu-icon-cluster img{display:block;position:relative;flex:0 0 auto;width:26px;height:26px;object-fit:contain}
+.poker-menu-icon-cluster img:nth-child(2){z-index:1;width:38px;height:38px;margin-inline:-11px}
+.poker-menu-tile>i,.poker-menu-grid>button>i{font-size:34px;line-height:1}
+.poker-menu-label{display:block;max-width:100%;font-size:clamp(11px,3.3vw,15px);font-weight:700;text-align:center;line-height:1.15;overflow-wrap:normal;text-wrap:balance;text-shadow:0 1px 2px #000b}
+.poker-menu-grid>button:disabled{opacity:.43;cursor:not-allowed;filter:saturate(.55)}
+.poker-menu-grid>button[aria-pressed="true"]{box-shadow:inset 0 0 14px rgba(var(--menu-rgb),.22),0 0 12px rgba(var(--menu-rgb),.3),0 5px 12px #0005}
+.poker-menu-grid>button:focus-visible,.poker-menu-heading button:focus-visible,.poker-menu-volume:focus-within{outline:2px solid #e2f6ff;outline-offset:3px}
+.poker-menu-volume{grid-column:span 2;align-items:stretch;justify-content:center;gap:3px;padding:8px 10px;cursor:default;font-size:clamp(13px,3.6vw,16px);font-weight:700;line-height:1.3}
+.poker-menu-volume .poker-menu-label{text-align:start;font-size:inherit}
+.poker-menu-volume strong,.poker-menu-volume output{color:#36c9ff;font-weight:800}
+.poker-menu-volume input[type="range"]{display:block;width:100%;height:44px;min-height:44px;margin:0;padding:0;background:transparent;accent-color:#29c9ff;cursor:pointer;touch-action:pan-y}
+.poker-menu-panel .poker-waitlist-status{margin-bottom:11px;padding:10px;border:1px solid #ad89da99;border-radius:12px;background:#11142be6;color:#e5ddf3}
+@media(hover:hover){.poker-menu-grid>button:not(:disabled):hover,.poker-menu-heading button:hover{filter:brightness(1.17)}}
+@media(max-width:350px){.poker-menu-panel{inset-inline:8px;padding-inline:2px}.poker-menu-grid{gap:7px}.poker-menu-label{font-size:11px}.poker-menu-heading{padding:10px}.poker-menu-volume{padding-inline:8px}}
+@media(max-height:720px){.poker-menu-brand{display:none}.poker-menu-panel{max-height:calc(100dvh - max(14px,env(safe-area-inset-top,0px)) - max(14px,env(safe-area-inset-bottom,0px)));bottom:max(14px,env(safe-area-inset-bottom,0px))}}
+@media(prefers-reduced-motion:reduce){.poker-menu-panel,.poker-menu-grid>button,.poker-menu-tile,.poker-menu-heading button{animation:none!important;transition:none!important}}
 
 /* Spacious tables use the large player scale from the reference. A single
    factor grows the pod, its seat wrapper and its labels together. Dense tables

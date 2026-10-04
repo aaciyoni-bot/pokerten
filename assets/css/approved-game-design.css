@@ -605,7 +605,7 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 .poker-room .poker-seat-hero .poker-hand-status>span{font-size:10px;line-height:15px;padding:3px 6px;white-space:nowrap}
 
 /* Keep long GOD-only winner labels readable inside their own nameplate. */
-.poker-room .poker-god-best-badge{white-space:normal}
+.poker-room .poker-player-info .poker-god-best-badge{white-space:normal}
 .poker-room .poker-god-best-badge>span{min-width:0;line-height:1.15}
 
 /* Reserve the GOD winner row above the action buttons. */
@@ -661,6 +661,18 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
    their pot label and caption together, leaving seats and card widths intact. */
 .poker-room .poker-community{translate:0 var(--poker-board-shift,0px)}
 .poker-room .poker-community[data-caption-obscured="true"] .poker-table-caption{visibility:hidden}
+/* Short dense tables use spare space above the upper rail. The lower rail
+   remains fixed so its labels never enter the private hero fan. Top GOD badges
+   sit above their own fan, with a separate gutter for the utility menu. */
+@media(max-height:720px){
+ .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat[data-seat-row="top"]{top:14.5%!important}
+ .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat[data-seat-row="top"] .poker-player-info{overflow:visible}
+ .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat[data-seat-row="top"] .poker-god-best-badge{position:absolute;bottom:calc(100% + var(--gg-pod) * .1 + var(--poker-fan-width) * 1.4 + 11px);left:50%;transform:translateX(-50%);width:68px;max-width:68px;margin:0}
+ .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]) .poker-seat[data-seat-row="top"][data-seat-side="left"] .poker-god-best-badge{left:max(50%,calc(122px - var(--poker-seat-x)))}
+ .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]):has(.has-second-board) .poker-seat[data-seat-row="upper"]{top:29.5%!important;--poker-compact-moved:1}
+ .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]):has(.has-second-board) .poker-seat:not(.poker-seat-hero) .poker-result-meta{margin-top:1px}
+ .poker-room .poker-table:is([data-seat-count="8"],[data-seat-count="9"]):has(.has-second-board) .poker-seat:not(.poker-seat-hero) .poker-result-meta>div{padding:0 2px}
+}
 /* Both board runs share one pot header in the clear central lane. */
 .poker-room .poker-community.has-second-board .poker-total-pot{left:50%;right:auto;top:auto;bottom:calc(100% + 7px);transform:translateX(-50%)}
 .poker-room .poker-collected-pot>span{display:none}

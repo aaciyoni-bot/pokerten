@@ -3836,6 +3836,14 @@ const positionPokerCommunity = field => {
     const labels=[...seat.querySelectorAll('.poker-player-info,.poker-result-meta')].map(n=>n.getBoundingClientRect()).filter(r=>r.height>0);
     if(labels.length)bet.style.top=(Math.max(...labels.map(r=>r.bottom))-base.top+bet.getBoundingClientRect().height/2+7)+'px';
   });
+  // Responsive rail rows move as a unit with their live bet.
+  field.querySelectorAll('.poker-bet[data-player-uid]').forEach(bet=>{
+    const seat=[...field.querySelectorAll('.poker-seat[data-player-uid]')].find(n=>n.dataset.playerUid===bet.dataset.playerUid);
+    if(!seat||seat.classList.contains('poker-seat-hero'))return;
+    const moved=getComputedStyle(seat).getPropertyValue('--poker-compact-moved').trim()==='1';
+    if(moved){const sr=seat.getBoundingClientRect(),originalY=parseFloat(seat.style.getPropertyValue('--poker-seat-y'));bet.style.translate='0 '+(sr.top+sr.height/2-base.top-originalY*base.height/100)+'px';}
+    else bet.style.removeProperty('translate');
+  });
   // Reset before measuring so repeated renders/resizes never accumulate a shift.
   community.style.setProperty('--poker-board-shift','0px');
   community.removeAttribute('data-caption-obscured');
@@ -3857,14 +3865,6 @@ const positionPokerCommunity = field => {
   // resting position belongs beside its pot label and follows the same shift.
   const pot=community.querySelector('.poker-total-pot'),chips=field.querySelector('.poker-collected-pot');
   if(pot&&chips){const pr=pot.getBoundingClientRect(),cr=chips.getBoundingClientRect();chips.style.left=(pr.right-base.left+cr.width/2+6)+'px';chips.style.top=(pr.top-base.top+(pr.height-cr.height)/2)+'px';}
-  // A compact lower rail on short phones moves as a unit with its live bet.
-  field.querySelectorAll('.poker-bet[data-player-uid]').forEach(bet=>{
-    const seat=[...field.querySelectorAll('.poker-seat[data-player-uid]')].find(n=>n.dataset.playerUid===bet.dataset.playerUid);
-    if(!seat||seat.classList.contains('poker-seat-hero'))return;
-    const moved=getComputedStyle(seat).getPropertyValue('--poker-compact-moved').trim()==='1';
-    if(moved){const sr=seat.getBoundingClientRect(),originalY=parseFloat(seat.style.getPropertyValue('--poker-seat-y'));bet.style.translate='0 '+(sr.top+sr.height/2-base.top-originalY*base.height/100)+'px';}
-    else bet.style.removeProperty('translate');
-  });
   // Branding is decorative. Never let it paint on a player's rank/suit.
   const caption=community.querySelector('.poker-table-caption');
   if(caption){const r=rect(caption.getBoundingClientRect());if(holes.some(h=>r.left<h.right+4&&r.right>h.left-4&&r.top<h.bottom+4&&r.bottom>h.top-4))community.setAttribute('data-caption-obscured','true');}

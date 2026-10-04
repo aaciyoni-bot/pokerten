@@ -12,7 +12,7 @@ async function fixture(query){
   assert.ok(match,'fixture reaches the isolated, local application document');
   const [state,privateCards,hands,directory,scenario]=match.slice(1).map(JSON.parse);
   assert.ok(source.includes("connect-src 'none'"),'preview cannot call the live data service');
-  return{state,privateCards,hands,directory,scenario};
+  return{state,privateCards,hands,directory,scenario,source};
  }finally{w.close();}
 }
 const key=c=>c.val+c.suit;
@@ -31,6 +31,8 @@ const key=c=>c.val+c.suit;
   assert.equal(new Set(dealt).size,dealt.length,'realistic fixture uses a unique deck');
  }
  const shown=await fixture('mode=omaha&seats=6&full&opponents=revealed&phase=showdown&bets');
+ assert.equal(shown.state.gameState.lastWinners,undefined,'layout fixture does not invent a winner inconsistent with the dealt hands');
+ assert.ok(Object.values(shown.state.players).every(p=>p.actionText!=='WINNER'),'no fabricated winner badge');
  for(const p of Object.values(shown.state.players)){
   assert.equal(p.bet,0,'showdown has no stale live bets');
   if(p.uid!=='me')assert.deepEqual(p.cards,shown.hands[p.uid],'public/GOD cards stay consistent');
@@ -51,5 +53,25 @@ const key=c=>c.val+c.suit;
  const seated=await fixture('mode=omaha&seats=6&full&opponents&bets&phase=river');
  assert.equal(seated.state.gameState.board.length,5);
  assert.ok(Object.values(seated.state.players).some(p=>p.bet>0),'ordinary betting fixture retains live bets');
- console.log('GG preview fixture: 2–6 local cards, unique realistic deals, consistent public/GOD hands, RIT reservation and explicit geometry stress passed');
+ // The browser report must catch a previous player's result badge covering
+ // the next player's cards, not only a nameplate/card collision.
+ const diagnosticDom=new JSDOM('<div class="poker-table" data-seat-count="9"><div class="poker-community" data-board-clear="true"></div><div data-player-uid="upper"><div class="poker-player-info"></div><div class="poker-result-meta"></div></div><div data-player-uid="lower"><div class="poker-hole-cards"><span></span></div></div></div>',{runScripts:'outside-only'});
+ try{
+  const w=diagnosticDom.window,rect=(left,top,width,height)=>({left,top,width,height,right:left+width,bottom:top+height});
+  w.document.querySelector('.poker-player-info').getBoundingClientRect=()=>rect(20,90,68,20);
+  w.document.querySelector('.poker-result-meta').getBoundingClientRect=()=>rect(20,115,68,30);
+  w.document.querySelector('.poker-hole-cards>span').getBoundingClientRect=()=>rect(15,130,40,55);
+  const start=shown.source.indexOf('window.__previewLayoutReport=()=>{');
+  const end=shown.source.indexOf('setTimeout(()=>{const report=window.__previewLayoutReport()',start);
+  assert.ok(start>=0&&end>start);
+  w.eval('const previewScenario={heroExpected:0};'+shown.source.slice(start,end));
+  const result=w.__previewLayoutReport();
+  assert.equal(result.cardPanelOverlaps.length,1,'result badge overlap is detected even when nameplate is clear');
+  assert.equal(result.cardPanelOverlaps[0].cardUid,'lower');
+  assert.equal(result.cardPanelOverlaps[0].panelUid,'upper');
+  assert.equal(result.cardPanelOverlaps[0].panelType,'result');
+  w.document.querySelector('.poker-result-meta').getBoundingClientRect=()=>rect(20,0,68,0);
+  assert.equal(w.__previewLayoutReport().cardPanelOverlaps.length,0,'hidden or empty result metadata does not report a collision');
+ }finally{diagnosticDom.window.close();}
+ console.log('GG preview fixture: 2–6 local cards, unique realistic deals, consistent public/GOD hands, RIT reservation, explicit geometry stress and cross-seat result overlap diagnostics passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

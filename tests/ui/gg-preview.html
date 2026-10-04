@@ -41,7 +41,7 @@
  if(state.gameState.phase==='river')state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});
  if(query.has('allin')){state.gameState.allInReveal=true;state.gameState.activeTurnUid=null;for(const p of Object.values(players)){p.cardCount=holeCount;p.reveal=true;}}
  if(['preflop','discard'].includes(state.gameState.phase))state.gameState.board=[];
- if(state.gameState.phase==='showdown'){state.gameState.activeTurnUid=null;state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});const winner=Object.values(players).at(-1);if(winner){state.gameState.lastWinners=winner.name;winner.actionText='WINNER';}}
+ if(state.gameState.phase==='showdown'){state.gameState.activeTurnUid=null;state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});}
  if(state.gameState.phase==='showdown')for(const p of Object.values(players))p.bet=0;
  if(query.has('actions'))Object.values(players).forEach(p=>p.actionText='All-in');
  if(query.has('rit'))state.gameState.board2=[{val:'A',suit:'♣'},{val:'K',suit:'♠'},{val:'3',suit:'♦'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}];
@@ -135,9 +135,9 @@
   const hero=table.querySelector('.poker-seat-hero');
   const heroFaces=hero?.querySelectorAll('.poker-own-fan .card-face').length||0;
   const outOfViewport=holes.map((r,i)=>({...r,card:i})).filter(r=>r.left<-.5||r.right>innerWidth+.5||r.top<-.5||r.bottom>innerHeight+.5);
-  const seatPanels=[...table.querySelectorAll('.poker-player-info')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,...box(n)}));
+  const seatPanels=[...table.querySelectorAll('.poker-player-info,.poker-result-meta')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,panelType:n.classList.contains('poker-result-meta')?'result':'player-info',...box(n)})).filter(r=>r.width>0&&r.height>0);
   const cardPanelOverlaps=[];
-  for(const [i,c] of holes.entries())for(const p of seatPanels)if(c.left<p.right-.5&&c.right>p.left+.5&&c.top<p.bottom-.5&&c.bottom>p.top+.5)cardPanelOverlaps.push({card:i,cardUid:c.uid,panelUid:p.uid});
+  for(const [i,c] of holes.entries())for(const p of seatPanels)if(c.left<p.right-.5&&c.right>p.left+.5&&c.top<p.bottom-.5&&c.bottom>p.top+.5)cardPanelOverlaps.push({card:i,cardUid:c.uid,panelUid:p.uid,panelType:p.panelType});
   return{ready:true,scenario:previewScenario,viewport:[innerWidth,innerHeight],seats:table.dataset.seatCount,boards,boardCards,holes,fans,heroFaces,heroComplete:heroFaces===previewScenario.heroExpected,outOfViewport,cardPanelOverlaps,overlaps,boardClear:community?.dataset.boardClear,shift:community?.style.getPropertyValue('--poker-board-shift')};
  };
  setTimeout(()=>{const report=window.__previewLayoutReport();window.parent.postMessage({pokerLayoutReport:report},'*');},1800);

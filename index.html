@@ -3817,9 +3817,10 @@ const pokerBoardLane = ({board, rows = [board], obstacles, top, bottom, gap = 8}
   const maximum = Math.max(top, bottom - board.height);
   const clamp = y => Math.max(top, Math.min(maximum, y));
   const candidates = [clamp(board.top), top, maximum];
-  const parts = rows.map(r => ({...r, offset:r.top-board.top, blocks:obstacles.filter(h=>r.left<h.right+gap&&r.right>h.left-gap)}));
-  for (const r of parts) for (const h of r.blocks) candidates.push(clamp(h.top-r.offset-r.height-gap),clamp(h.bottom+gap-r.offset));
-  const overlap = y => parts.reduce((sum,r)=>sum+r.blocks.reduce((n,h)=>n+Math.max(0,Math.min(y+r.offset+r.height+gap,h.bottom)-Math.max(y+r.offset-gap,h.top)),0),0);
+  const padded = obstacles.map(h=>({...h,gap:h.gap ?? gap}));
+  const parts = rows.map(r => ({...r, offset:r.top-board.top, blocks:padded.filter(h=>r.left<h.right+h.gap&&r.right>h.left-h.gap)}));
+  for (const r of parts) for (const h of r.blocks) candidates.push(clamp(h.top-r.offset-r.height-h.gap),clamp(h.bottom+h.gap-r.offset));
+  const overlap = y => Math.max(0,top-y)+Math.max(0,y+board.height-bottom)+parts.reduce((sum,r)=>sum+r.blocks.reduce((n,h)=>n+Math.max(0,Math.min(y+r.offset+r.height+h.gap,h.bottom)-Math.max(y+r.offset-h.gap,h.top)),0),0);
   return candidates.map(y => ({top:y, overlap:overlap(y)})).sort((a,b) => a.overlap - b.overlap || Math.abs(a.top-board.top) - Math.abs(b.top-board.top))[0];
 };
 const positionPokerCommunity = field => {
@@ -3827,6 +3828,14 @@ const positionPokerCommunity = field => {
   if (!community) return;
   const base = field.getBoundingClientRect();
   if (!(base.width > 0 && base.height > 0)) return;
+  // Far-rail bets follow their owner's actual name/result height, including
+  // a wrapped GOD badge. Tall chip stacks must not cover the balance above.
+  field.querySelectorAll('.poker-bet[data-player-uid]').forEach(bet=>{
+    const seat=[...field.querySelectorAll('.poker-seat[data-player-uid]')].find(n=>n.dataset.playerUid===bet.dataset.playerUid);
+    if(!seat||seat.classList.contains('poker-seat-hero')||parseFloat(seat.style.getPropertyValue('--poker-seat-y'))>22)return;
+    const labels=[...seat.querySelectorAll('.poker-player-info,.poker-result-meta')].map(n=>n.getBoundingClientRect()).filter(r=>r.height>0);
+    if(labels.length)bet.style.top=(Math.max(...labels.map(r=>r.bottom))-base.top+bet.getBoundingClientRect().height/2+7)+'px';
+  });
   // Reset before measuring so repeated renders/resizes never accumulate a shift.
   community.style.setProperty('--poker-board-shift','0px');
   community.removeAttribute('data-caption-obscured');
@@ -3839,7 +3848,7 @@ const positionPokerCommunity = field => {
   const controls = [...field.closest('.poker-room').querySelectorAll('.poker-action-buttons,.poker-action-meta')].map(node=>rect(node.getBoundingClientRect())).filter(r=>r.height>0&&r.top>base.height*.5);
   const upperLimit = Math.max(8, base.height*.23);
   const lowerLimit = Math.min(base.height*.76,...controls.map(r=>r.top-8));
-  const panels=[...field.querySelectorAll('.poker-player-info,.poker-result-meta,.poker-bet')].map(n=>rect(n.getBoundingClientRect())).filter(r=>r.right>r.left&&r.height>0);
+  const panels=[...field.querySelectorAll('.poker-player-info,.poker-result-meta,.poker-bet')].map(n=>({...rect(n.getBoundingClientRect()),gap:1})).filter(r=>r.right>r.left&&r.height>0);
   const next = pokerBoardLane({board,rows:rows.map(rect),obstacles:[...holes,...panels],top:upperLimit,bottom:lowerLimit,gap:7});
   const shift = Math.round((next.top-board.top)*10)/10;
   community.style.setProperty('--poker-board-shift',shift+'px');

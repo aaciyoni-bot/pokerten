@@ -1176,7 +1176,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-auth.js?v=265"></script>
     <script src="assets/js/club-ui.js?v=1"></script>
     <link rel="stylesheet" href="assets/css/settlement.css?v=303">
-    <script src="assets/js/poker-settlement-ui.js?v=306"></script>
+    <script src="assets/js/poker-settlement-ui.js?v=308"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=286"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
@@ -2177,25 +2177,26 @@ const Coin = ({
 }), formatMoney(amount));
 // Wallet chips and poker profit are separate quantities: moving chips into a
 // seat or receiving a top-up must never look like a win/loss.
-function AccountNumbers({value,balance,compact=false,loading=false,showRake=false}) {
-  const result=value?.totalResult,known=Number.isFinite(result),signed=n=>(n>0?'+':'')+formatMoney(n);
+function AccountNumbers({value,balance,compact=false,loading=false,showRake=false,showLifetime=false,completedSessions=false}) {
+  const result=value?.result,known=Number.isFinite(result),signed=n=>(n>0?'+':'')+formatMoney(n);
   return React.createElement('div',{className:'management-account-numbers'+(compact?' account-numbers-compact':''),dir:'rtl'},
     React.createElement('div',{className:'management-account-line',dir:'ltr'},
       value||balance!=null?React.createElement(Coin,{amount:value?.chips??balance??0,className:'club-member-balance'}):React.createElement('span',null,'—'),
-      known&&React.createElement('strong',{className:result<0?'text-rose-400':result>0?'text-emerald-400':'text-slate-400','data-player-result':true,'aria-label':'תוצאת משחק כוללת '+signed(result),title:'הרווח או ההפסד הכולל. אינו מתאפס עם פתיחת מחזור חדש.'},'('+signed(result)+')')),
-    React.createElement('small',{className:'text-slate-400'},known?'סה״כ צ׳יפים (תוצאה כוללת)':loading?'טוען תוצאה…':'התוצאה אינה זמינה כרגע'),
-    !compact&&known&&value.result!==result&&React.createElement('small',{className:'text-slate-400'},'במחזור הנוכחי: ',React.createElement('bdi',null,signed(value.result))),
+      known&&React.createElement('strong',{className:result<0?'text-rose-400':result>0?'text-emerald-400':'text-slate-400','data-player-result':true,'aria-label':'תוצאת המחזור הנוכחי '+signed(result),title:'הרווח או ההפסד במחזור הנוכחי בלבד. טעינת צ׳יפים אינה רווח.'},'('+signed(result)+')')),
+    React.createElement('small',{className:'text-slate-400'},known?'צ׳יפים כעת (תוצאת המחזור)':loading?'טוען תוצאת מחזור…':'תוצאת המחזור אינה זמינה כרגע'),
+    !compact&&showRake&&Number.isFinite(value?.rake)&&React.createElement('small',{className:'text-amber-300','data-cycle-rake':true},'רייק במחזור: ',React.createElement('bdi',null,formatMoney(value.rake))),
     value?.onTables>0&&React.createElement('small',{className:'text-sky-300'},'בחשבון: ',React.createElement('bdi',null,formatMoney(value.balance)),' · בשולחנות: ',React.createElement('bdi',null,formatMoney(value.onTables))),
-    !compact&&showRake&&Number.isFinite(value?.totalRake)&&React.createElement('small',{className:'text-amber-300'},'רייק כולל: ',React.createElement('bdi',null,formatMoney(value.totalRake))));
+    completedSessions&&value?.openSessions>0&&React.createElement('small',{className:'text-slate-400'},'תוצאת המשחק הפתוח תיכלל בסיום הישיבה'),
+    !compact&&showLifetime&&Number.isFinite(value?.totalResult)&&React.createElement('small',{className:'text-slate-400','data-lifetime-result':true},'כל הזמנים: ',React.createElement('bdi',null,signed(value.totalResult)),showRake&&Number.isFinite(value?.totalRake)&&React.createElement(React.Fragment,null,' · רייק: ',React.createElement('bdi',null,formatMoney(value.totalRake)))));
 }
 function OwnBalanceNumbers({user,compact=false}) {
   const [loaded,setLoaded]=useState(null),[loading,setLoading]=useState(true),scope=`${user.uid}:${user.role}:${user.status}:${CLUB_ID}`;
   useEffect(()=>{let stopped=false,busy=false;setLoaded(null);setLoading(true);
-    const load=async()=>{if(busy)return;busy=true;try{const r=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},scope);if(!stopped)setLoaded({scope,value:r.accounting?.players?.[user.uid]||null});}catch(e){if(!stopped)setLoaded(null);}finally{busy=false;if(!stopped)setLoading(false);}};
+    const load=async()=>{if(busy)return;busy=true;try{const r=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},scope);if(!stopped)setLoaded({scope,value:r.accounting?.players?.[user.uid]||null,basis:r.accounting?.basis});}catch(e){if(!stopped)setLoaded(null);}finally{busy=false;if(!stopped)setLoading(false);}};
     load();const timer=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
     return()=>{stopped=true;clearInterval(timer);window.removeEventListener('pk-club-changed',load);};
   },[scope,user.balance]);
-  return React.createElement(AccountNumbers,{value:loaded?.scope===scope?loaded.value:null,balance:user.balance||0,compact,loading});
+  return React.createElement(AccountNumbers,{value:loaded?.scope===scope?loaded.value:null,balance:user.balance||0,compact,loading,completedSessions:loaded?.scope===scope&&loaded.basis==='settlement-cycle-completed-sessions'});
 }
 const QUICK_EMOJIS = ['😀', '😂', '😡', '😭', '👍', '🔥', '🎉', '🤡', '😱', '🙏'];
 const GIFT_ITEMS = [{
@@ -8966,7 +8967,7 @@ function BackofficeView({
   const [search, setSearch] = useState('');
   const [memberSort,setMemberSort]=useState('name');
   const currentAccounting=accounting?.scope===directoryScope?accounting.data:null;
-  const accountNumbers=(value,balance)=>React.createElement(AccountNumbers,{value,balance,loading:accountingLoading,showRake:isGodUser(user)});
+  const accountNumbers=(value,balance)=>React.createElement(AccountNumbers,{value,balance,loading:accountingLoading,showRake:isGodUser(user),showLifetime:true,completedSessions:currentAccounting?.basis==='settlement-cycle-completed-sessions'});
 
   const [memFilter, setMemFilter] = useState('all'); // members directory: All / Agents / Managers / Banned
   const [roleEditUser, setRoleEditUser] = useState(null);
@@ -9335,7 +9336,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   const clubBalance=canAdmin ? Number(treasury?.balance)||0 : Number(user.balance)||0;
   const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
-  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>{const metric=m=>memberSort==='result'?currentAccounting?.players?.[m.uid]?.totalResult||0:memberSort==='rake'?currentAccounting?.players?.[m.uid]?.totalRake||0:currentAccounting?.players?.[m.uid]?.chips??(Number(m.balance)||0);return memberSort==='name'?(a.username||'').localeCompare(b.username||''):metric(b)-metric(a)||(a.username||'').localeCompare(b.username||'');});
+  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>{const metric=m=>memberSort==='result'?currentAccounting?.players?.[m.uid]?.result||0:memberSort==='rake'?currentAccounting?.players?.[m.uid]?.rake||0:currentAccounting?.players?.[m.uid]?.chips??(Number(m.balance)||0);return memberSort==='name'?(a.username||'').localeCompare(b.username||''):metric(b)-metric(a)||(a.username||'').localeCompare(b.username||'');});
   const balanceMembers = usersList.filter(m => ["approved","banned"].includes(m.status) && !m.isBot && m.uid !== (canAdmin?clubOwnerUid:user.uid) && m.uid !== "bot_bank").filter(m => canManageAny || m.agentUid === user.uid);
   const statTiles = [{
     label: canAdmin ? 'Club treasury' : 'Your balance',
@@ -9594,10 +9595,11 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: `text-xl sm:text-2xl font-black ${t.color}`,
     dir: "ltr"
   }, t.value)))), React.createElement('section',{className:'management-cycle-summary',dir:'rtl'},
-    React.createElement('h3',null,canAdmin?'סך שחקני הקלאב':'סך השחקנים שלי'),
+    React.createElement('h3',null,canAdmin?'סך שחקני הקלאב · המחזור הנוכחי':'סך השחקנים שלי · המחזור הנוכחי'),
+    Number.isFinite(currentAccounting?.start)&&React.createElement('small',null,'מ־',new Date(currentAccounting.start).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem'}),' עד עכשיו'),
     accountingError&&React.createElement('div',{role:'alert',className:'text-amber-300 text-sm'},accountingError,React.createElement('button',{type:'button',disabled:accountingLoading,onClick:()=>setAccountingAttempt(n=>n+1)},'נסה שוב')),
     accountNumbers(canAdmin?currentAccounting?.club:currentAccounting?.agents?.[user.uid],canAdmin?currentAccounting?.club?.balance:currentAccounting?.agents?.[user.uid]?.balance),
-    React.createElement('p',null,'הסכום בסוגריים הוא תוצאת השחקנים במשחק. הוא אינו חוב או סכום נטו לתשלום אחרי עמלות.')),
+    React.createElement('p',null,'הסכום בסוגריים הוא תוצאת השחקנים במחזור הנוכחי. הוא אינו חוב או סכום נטו לתשלום אחרי עמלות.')),
     canAdmin && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6 border border-amber-500/20"
   }, React.createElement("span", {
@@ -9895,7 +9897,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     placeholder: "Search player...",
     className: "bg-slate-900/80 border border-white/10 rounded-full pr-9 pl-4 py-2 text-sm text-white w-52 outline-none focus:border-emerald-500/50"
   })), React.createElement('select',{value:memberSort,onChange:e=>setMemberSort(e.target.value),'aria-label':'סידור שחקנים',className:'management-sort'},
-    React.createElement('option',{value:'name'},'לפי שם'),React.createElement('option',{value:'chips'},'צ׳יפים — מהגבוה לנמוך'),React.createElement('option',{value:'result'},'תוצאה כוללת — מהגבוה לנמוך'),currentAccounting?.rakeVisible&&React.createElement('option',{value:'rake'},'רייק — מהגבוה לנמוך'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3',dir:'rtl'},'ליד היתרה: רווח או הפסד כולל בסוגריים. טעינת צ׳יפים אינה רווח. המחזור החדש אינו מוחק את התוצאה הכוללת.'), React.createElement("div", {
+    React.createElement('option',{value:'name'},'לפי שם'),React.createElement('option',{value:'chips'},'צ׳יפים — מהגבוה לנמוך'),React.createElement('option',{value:'result'},'תוצאת המחזור — מהגבוה לנמוך'),currentAccounting?.rakeVisible&&React.createElement('option',{value:'rake'},'רייק במחזור — מהגבוה לנמוך'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3',dir:'rtl'},'ליד הצ׳יפים: הרווח או ההפסד במחזור הנוכחי בלבד. טעינת צ׳יפים אינה רווח.'), React.createElement("div", {
     className: "flex gap-1.5 mb-3 flex-wrap"
   }, [['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
     key: k2,

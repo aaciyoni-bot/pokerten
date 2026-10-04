@@ -4,28 +4,75 @@ const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScript
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')},{Simulate}=require('react-dom/test-utils');w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');
 const members=[{uid:'owner',username:'Owner',role:'club_owner',status:'approved',balance:5000},{uid:'agent',username:'Agent',role:'agent',status:'approved',balance:0,agentCode:'DEMO123'},{uid:'loss',username:'Alice',role:'player',status:'approved',agentUid:'agent',balance:159.83},{uid:'win',username:'Bob',role:'player',status:'approved',agentUid:'agent',balance:1000}].map(m=>({...m,id:m.uid+'_main',clubId:'main'}));
-const now=Date.now(),logs=[{uid:'loss',profit:-340.17,rake:8,at:now},{uid:'win',profit:500,rake:3,at:now}];
-let god=false;
+const now=Date.now(),logs=[{uid:'loss',profit:-20,rake:8,at:now},{uid:'loss',profit:-320.17,rake:92,at:now-8*86400000},{uid:'win',profit:500,rake:3,at:now},{uid:'win',profit:-1000,rake:100,at:now-8*86400000}];
+let god=false,accountingOverride=null,holdAccounting=false;const pendingAccounting=[];
 const report=()=>require('../../functions/pokerAccounting').buildAccounting(members,logs,[],{now,ownerUid:'owner',god});
 const deny=()=>{throw Error('Unexpected write in accounting UI');};
 w.fb={db:{},auth:{currentUser:{uid:'owner',email:'owner@example.test',emailVerified:true}},doc:()=>({}),collection:()=>({}),query:r=>r,where:()=>({}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),fx:async(name,args)=>{
- if(name==='pkClubDirectory'){if(args.accountingOnly)return{accounting:report()};if(args.reportSection)return{records:[],hasMore:false,nextCursor:null};return{members,treasury:{uid:'owner',balance:5000}};}
+ if(name==='pkClubDirectory'){if(args.accountingOnly){if(holdAccounting)return new Promise(resolve=>pendingAccounting.push(resolve));return{accounting:accountingOverride||report()};}if(args.reportSection)return{records:[],hasMore:false,nextCursor:null};return{members,treasury:{uid:'owner',balance:5000}};}
  throw Error('Unexpected callable '+name);
 },setDoc:deny,updateDoc:deny,addDoc:deny,runTransaction:deny};
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.OwnNumbers=OwnBalanceNumbers;'));
 w.__club={id:'main',ownerUid:'owner'};const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const render=key=>React.act(async()=>root.render(React.createElement(w.BO,{key,user:members[0],clubSettings:{rakePct:6},showToast(){}})));
+const own=(user,extra={})=>React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user,...extra})));
+const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cycle-summary','.management-agent-totals']){const section=doc.querySelector(selector);assert.equal(section.querySelector('[data-player-result]').textContent,result,selector+' leads with the current-cycle sum');assert.equal(section.querySelector('.club-member-balance').textContent,chips,selector+' retains actual current chips');}};
 (async()=>{
  await render('ordinary');
  const card=name=>[...doc.querySelectorAll('.club-player-card')].find(c=>c.textContent.includes(name));
  assert.match(card('Alice').textContent,/159\.83/);assert.match(card('Bob').textContent,/1,000\.00/);
- assert.match(card('Alice').textContent,/\(-340\.17\)/);assert.match(card('Bob').textContent,/\(\+500\.00\)/);
- assert.match(card('Alice').querySelector('[data-player-result]').getAttribute('aria-label'),/תוצאת משחק כוללת/);
- assert.match(doc.querySelector('.management-cycle-summary').textContent,/159\.83/);assert.match(doc.querySelector('.management-agent-totals').textContent,/159\.83/);
+ assert.equal(card('Alice').querySelector('[data-player-result]').textContent,'(-20.00)');assert.equal(card('Bob').querySelector('[data-player-result]').textContent,'(+500.00)');
+ assert.match(card('Alice').querySelector('[data-lifetime-result]').textContent,/-340\.17/);
+ assert.match(card('Alice').querySelector('[data-player-result]').getAttribute('aria-label'),/תוצאת המחזור הנוכחי/);
+ assertStaffTotals('(+480.00)','1,159.83');
+ assert.match(doc.querySelector('.management-cycle-summary [data-lifetime-result]').textContent,/-840\.17/);
+ assert.match(doc.querySelector('.management-agent-totals [data-lifetime-result]').textContent,/-840\.17/);
  const sort=doc.querySelector('[aria-label="סידור שחקנים"]');assert.equal(sort.disabled,false);assert.equal([...sort.options].some(o=>o.value==='rake'),false);
  await React.act(()=>Simulate.change(sort,{target:{value:'chips'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
+ await React.act(()=>Simulate.change(sort,{target:{value:'result'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
  assert.doesNotMatch(doc.body.textContent,/Weekly Settlement|Export full club report|Club rake/);
- god=true;w.fb.auth.currentUser.email='haim29071994@gmail.com';await render('god');assert.match(card('Alice').textContent,/רייק כולל: 8\.00/);assert.ok([...doc.querySelector('[aria-label="סידור שחקנים"]').options].some(o=>o.value==='rake'));
- god=false;await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user:members[2],compact:true})));assert.match(doc.body.textContent,/159\.83\(-340\.17\)/);assert.doesNotMatch(doc.body.textContent,/רייק|Bob|Owner/);
- await React.act(()=>root.unmount());w.close();console.log('PASS: adjacent signed lifetime P/L, player/agent/club chip totals, sorting, and GOD-only rake');
+ god=true;w.fb.auth.currentUser.email='haim29071994@gmail.com';await render('god');assert.match(card('Alice').textContent,/רייק במחזור: 8\.00/);assert.ok([...doc.querySelector('[aria-label="סידור שחקנים"]').options].some(o=>o.value==='rake'));
+ await React.act(()=>Simulate.change(doc.querySelector('[aria-label="סידור שחקנים"]'),{target:{value:'rake'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Alice/);
+ assert.equal(card('Bob').querySelector('[data-cycle-rake]').textContent,'רייק במחזור: 3.00');
+ for(const selector of ['.management-cycle-summary','.management-agent-totals'])assert.equal(doc.querySelector(selector+' [data-cycle-rake]').textContent,'רייק במחזור: 11.00');
+ god=false;await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user:members[2],compact:true})));assert.match(doc.body.textContent,/159\.83\(-20\.00\)/);assert.doesNotMatch(doc.body.textContent,/רייק|Bob|Owner|מצטבר|כוללת|-340\.17/);
+ await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{key:'expanded',user:members[2]})));assert.equal(doc.querySelector('[data-player-result]').textContent,'(-20.00)');assert.equal(doc.querySelector('[data-lifetime-result]'),null);
+ // A freshly opened cycle has real zeros even when historical losses are nonzero.
+ accountingOverride=report();
+ Object.assign(accountingOverride.players.loss,{balance:0,chips:0,result:0,totalResult:-196});
+ Object.assign(accountingOverride.players.win,{balance:47.57,chips:47.57,result:0,totalResult:-201.57});
+ for(const total of [accountingOverride.club,accountingOverride.agents.agent])Object.assign(total,{balance:47.57,chips:47.57,result:0,totalResult:-397.57});
+ await render('zero-cycle');
+ assert.equal(card('Alice').querySelector('[data-player-result]').textContent,'(0.00)');
+ assert.equal(card('Bob').querySelector('[data-player-result]').textContent,'(0.00)');
+ assertStaffTotals('(0.00)','47.57');
+ assert.match(card('Alice').querySelector('[data-lifetime-result]').textContent,/-196\.00/);
+ await own(members[2],{key:'zero-own'});
+ assert.equal(doc.querySelector('[data-player-result]').textContent,'(0.00)');
+ assert.equal(doc.querySelector('[data-lifetime-result]'),null);
+ assert.doesNotMatch(doc.body.textContent,/-196|201\.57|397\.57|כל הזמנים|רייק/);
+ // Missing cycle data must look unavailable, not fabricate zero or reuse lifetime.
+ delete accountingOverride.players.loss.result;
+ await own(members[2],{key:'missing-own'});
+ assert.equal(doc.querySelector('[data-player-result]'),null);
+ assert.match(doc.body.textContent,/תוצאת המחזור אינה זמינה כרגע/);
+ assert.doesNotMatch(doc.body.textContent,/-196|כל הזמנים|רייק/);
+ await render('missing-staff');
+ assert.equal(card('Alice').querySelector('[data-player-result]'),null);
+ assert.match(card('Alice').textContent,/תוצאת המחזור אינה זמינה כרגע/);
+ // A late old-user response cannot refill the next player's mounted view.
+ accountingOverride=null;holdAccounting=true;
+ await own(members[2],{key:'scope-change'});
+ assert.equal(pendingAccounting.length,1);
+ assert.equal(doc.querySelector('[data-player-result]'),null);
+ await own(members[3],{key:'scope-change'});
+ assert.equal(pendingAccounting.length,2);
+ assert.equal(doc.querySelector('[data-player-result]'),null);
+ await React.act(async()=>pendingAccounting[0]({accounting:report()}));
+ assert.equal(doc.querySelector('[data-player-result]'),null);
+ assert.doesNotMatch(doc.body.textContent,/159\.83|-20\.00|-340\.17/);
+ await React.act(async()=>pendingAccounting[1]({accounting:report()}));
+ assert.equal(doc.querySelector('[data-player-result]').textContent,'(+500.00)');
+ assert.doesNotMatch(doc.body.textContent,/-500\.00|-340\.17|כל הזמנים|רייק|Alice/);
+ await React.act(()=>root.unmount());w.close();console.log('PASS: current-cycle P/L and rake lead for player/agent/club, cycle sorting, staff-only lifetime context');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

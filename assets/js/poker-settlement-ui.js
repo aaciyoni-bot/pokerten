@@ -40,16 +40,28 @@
     value,
     note,
     plain = false,
-    result
+    result,
+    signed = false
   }) {
     return /*#__PURE__*/React.createElement("div", {
       className: "st-metric"
     }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, plain ? value : /*#__PURE__*/React.createElement(Amount, {
-      value: value
+      value: value,
+      signed: signed
     }), " ", result != null && /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
       value: result,
       signed: true
     }), ")")), note && /*#__PURE__*/React.createElement("small", null, note));
+  }
+  function LifetimeNote({
+    value
+  }) {
+    return value == null ? null : /*#__PURE__*/React.createElement("small", {
+      className: "st-lifetime-note"
+    }, "\u05EA\u05D5\u05E6\u05D0\u05D4 \u05DB\u05DC\u05DC\u05D9\u05EA: ", /*#__PURE__*/React.createElement(Amount, {
+      value: value,
+      signed: true
+    }));
   }
   function Net({
     value = 0,
@@ -200,7 +212,8 @@
     details = [],
     funds = [],
     onPay,
-    canPay
+    canPay,
+    periodLabel
   }) {
     const [query, setQuery] = useState(''),
       [sort, setSort] = useState('closing'),
@@ -210,7 +223,7 @@
       return {
         ...p,
         balance: f?.chips ?? f?.balance,
-        currentResult: f?.totalResult ?? p.totals.result
+        totalResult: f?.totalResult
       };
     }).sort((a, b) => sort === 'name' ? a.playerName.localeCompare(b.playerName) : sort === 'rake' ? b.totals.rake - a.totals.rake : sort === 'chips' ? (b.balance || 0) - (a.balance || 0) : Math.abs(b.closing) - Math.abs(a.closing));
     return /*#__PURE__*/React.createElement("section", {
@@ -239,7 +252,7 @@
       value: "name"
     }, "\u05E9\u05DD")))), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05D7\u05E7\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05DB\u05E2\u05EA (\u05EA\u05D5\u05E6\u05D0\u05D4 \u05DE\u05E6\u05D8\u05D1\u05E8\u05EA)"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7\u05D1\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05D9\u05EA\u05E8\u05D4 \u05DC\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA"), /*#__PURE__*/React.createElement("th", null, "\u05E4\u05E2\u05D5\u05DC\u05D5\u05EA"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05D7\u05E7\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05DB\u05E2\u05EA (\u05EA\u05D5\u05E6\u05D0\u05D4 ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7\u05D1\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05D9\u05EA\u05E8\u05D4 \u05DC\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA"), /*#__PURE__*/React.createElement("th", null, "\u05E4\u05E2\u05D5\u05DC\u05D5\u05EA"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
       const key = JSON.stringify([p.agentId, p.playerId]);
       return /*#__PURE__*/React.createElement(React.Fragment, {
         key: key
@@ -250,12 +263,11 @@
       }, p.playerName)), /*#__PURE__*/React.createElement("td", null, p.balance == null ? '—' : /*#__PURE__*/React.createElement(Amount, {
         value: p.balance
       }), " ", /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
-        value: p.currentResult,
-        signed: true
-      }), ")"), /*#__PURE__*/React.createElement("small", null, "\u05D1\u05DE\u05D7\u05D6\u05D5\u05E8 \u05E9\u05E0\u05D1\u05D7\u05E8: ", /*#__PURE__*/React.createElement(Amount, {
         value: p.totals.result,
         signed: true
-      }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
+      }), ")"), /*#__PURE__*/React.createElement(LifetimeNote, {
+        value: p.totalResult
+      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
         value: p.totals.rake
       })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
         value: p.totals.rakeback
@@ -392,7 +404,7 @@
     }, data.cycles.map(c => /*#__PURE__*/React.createElement("option", {
       key: c.id,
       value: c.id
-    }, c.legacy ? 'המחזור שהיה פתוח לפני המעבר' : 'מחזור ' + c.number, " \xB7 ", status[c.status])), /*#__PURE__*/React.createElement("option", {
+    }, c.legacy ? 'המחזור שהיה פתוח לפני המעבר' : 'מחזור ' + c.number, " \xB7 ", status[c.status])), data.role !== 'player' && /*#__PURE__*/React.createElement("option", {
       value: "all"
     }, "\u05DB\u05DC \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8\u05D9\u05DD \u05DE\u05D0\u05D6 \u05D4\u05DE\u05E2\u05D1\u05E8")));
   }
@@ -410,7 +422,8 @@
       t = r.totals,
       staff = data.role !== 'player',
       owner = data.role === 'owner',
-      closed = data.cycle.status !== 'open';
+      closed = data.cycle.status !== 'open',
+      periodLabel = closed ? 'במחזור שנבחר' : 'במחזור הנוכחי';
     const rows = r.players.filter(p => p.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'result' ? b.result - a.result : sort === 'rake' ? b.rake - a.rake : b.chips - a.chips);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("header", {
       className: "st-toolbar"
@@ -429,16 +442,19 @@
       className: "st-muted"
     }, closed ? 'זהו הדוח שנשמר בזמן הסגירה. היתרות וההיסטוריה המקוריות נשמרו.' : 'המחזור עדיין פתוח. מוצגות התוצאות הקיימות, כולל משחקים שעדיין מתנהלים. שום מחזור לא נסגר ולא אופס.'), /*#__PURE__*/React.createElement("div", {
       className: "st-net"
-    }, /*#__PURE__*/React.createElement("span", null, owner ? 'סך הצ׳יפים של שחקני הקלאב' : staff ? 'סך הצ׳יפים של השחקנים שלי' : 'הצ׳יפים שלי, כולל שולחנות'), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("span", null, owner ? 'סך הצ׳יפים של שחקני הקלאב' : staff ? 'סך הצ׳יפים של השחקנים שלי' : 'הצ׳יפים שלי, כולל שולחנות', closed ? ' · בזמן הסגירה' : ''), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
       value: t.chips
     }), " ", /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
-      value: t.totalResult,
+      value: t.result,
       signed: true
-    }), ")")), /*#__PURE__*/React.createElement("small", null, "\u05D1\u05E1\u05D5\u05D2\u05E8\u05D9\u05D9\u05DD: \u05D4\u05E8\u05D5\u05D5\u05D7 \u05D0\u05D5 \u05D4\u05D4\u05E4\u05E1\u05D3 \u05D4\u05DE\u05E6\u05D8\u05D1\u05E8 \u05DE\u05D4\u05DE\u05E9\u05D7\u05E7\u05D9\u05DD. \u05D8\u05E2\u05D9\u05E0\u05D5\u05EA \u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D0\u05D9\u05E0\u05DF \u05E8\u05D5\u05D5\u05D7.")), /*#__PURE__*/React.createElement("div", {
+    }), ")")), /*#__PURE__*/React.createElement("small", null, "\u05D1\u05E1\u05D5\u05D2\u05E8\u05D9\u05D9\u05DD: \u05D4\u05E8\u05D5\u05D5\u05D7 \u05D0\u05D5 \u05D4\u05D4\u05E4\u05E1\u05D3 ", periodLabel, ". \u05D8\u05E2\u05D9\u05E0\u05D5\u05EA \u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D0\u05D9\u05E0\u05DF \u05E8\u05D5\u05D5\u05D7."), staff && /*#__PURE__*/React.createElement(LifetimeNote, {
+      value: t.totalResult
+    })), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: staff ? 'תוצאות השחקנים במחזור הנוכחי' : 'התוצאה שלי במחזור הנוכחי',
-      value: t.result
+      label: (staff ? 'תוצאות השחקנים ' : 'התוצאה שלי ') + periodLabel,
+      value: t.result,
+      signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
       label: "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D1\u05D0\u05E8\u05E0\u05E7",
       value: t.balance
@@ -455,18 +471,17 @@
       className: "st-muted"
     }, "\u05E2\u05DE\u05DC\u05D5\u05EA \u05DE\u05D5\u05E6\u05D2\u05D5\u05EA \u05DC\u05E4\u05D9 \u05DE\u05D4 \u05E9\u05E0\u05E8\u05E9\u05DD \u05D1\u05E4\u05D5\u05E2\u05DC \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8. \u05D4\u05E8\u05D9\u05D9\u05E7 \u05DB\u05D1\u05E8 \u05DE\u05D2\u05D5\u05DC\u05DD \u05D1\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05D4\u05DE\u05E9\u05D7\u05E7.")), owner && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05D4\u05E1\u05D5\u05DB\u05E0\u05D9\u05DD \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05E0\u05D5\u05DB\u05D7\u05D9"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u05D4\u05E1\u05D5\u05DB\u05E0\u05D9\u05DD ", periodLabel), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E1\u05D5\u05DB\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD (\u05E8\u05D5\u05D5\u05D7 / \u05D4\u05E4\u05E1\u05D3 \u05DE\u05E6\u05D8\u05D1\u05E8)"), /*#__PURE__*/React.createElement("th", null, "\u05EA\u05D5\u05E6\u05D0\u05D4 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05E2\u05DE\u05DC\u05D4"), /*#__PURE__*/React.createElement("th", null, "\u05DE\u05D5\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1 \u05DC\u05E4\u05D9 \u05E4\u05E2\u05D9\u05DC\u05D5\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8"))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E1\u05D5\u05DB\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD (\u05EA\u05D5\u05E6\u05D0\u05D4 ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05E2\u05DE\u05DC\u05D4"), /*#__PURE__*/React.createElement("th", null, "\u05DE\u05D5\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1 \u05DC\u05E4\u05D9 \u05E4\u05E2\u05D9\u05DC\u05D5\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8"))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
       key: a.uid
     }, /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: a.chips
     }), " (", /*#__PURE__*/React.createElement(Amount, {
-      value: a.totalResult,
-      signed: true
-    }), ")"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: a.result,
       signed: true
+    }), ")", /*#__PURE__*/React.createElement(LifetimeNote, {
+      value: a.totalResult
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: a.rake
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
@@ -501,16 +516,15 @@
       value: "name"
     }, "\u05E9\u05DD")))), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05D7\u05E7\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD (\u05E8\u05D5\u05D5\u05D7 / \u05D4\u05E4\u05E1\u05D3 \u05DE\u05E6\u05D8\u05D1\u05E8)"), /*#__PURE__*/React.createElement("th", null, "\u05EA\u05D5\u05E6\u05D0\u05D4 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05D7\u05E7\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD (\u05EA\u05D5\u05E6\u05D0\u05D4 ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
       key: p.uid
     }, /*#__PURE__*/React.createElement("td", null, p.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: p.chips
     }), " (", /*#__PURE__*/React.createElement(Amount, {
-      value: p.totalResult,
-      signed: true
-    }), ")"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: p.result,
       signed: true
+    }), ")", /*#__PURE__*/React.createElement(LifetimeNote, {
+      value: p.totalResult
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: p.rake
     }))))))), !rows.length && /*#__PURE__*/React.createElement("p", {
@@ -623,7 +637,8 @@
       p = data.player,
       a = data.agent,
       c = data.club?.totals,
-      selectedCurrent = data.cycle.id === data.currentCycleId;
+      selectedCurrent = data.cycle.id === data.currentCycleId,
+      periodLabel = data.cycle.id === 'all' ? 'בכל המחזורים שנבחרו' : selectedCurrent ? 'במחזור הנוכחי' : 'במחזור שנבחר';
     const canPay = pair => selectedCurrent && (pair.agentId === user.uid || pair.playerId === user.uid || pair.agentId === 'club' && data.clubPartyId === user.uid);
     return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
@@ -663,17 +678,22 @@
     }, "\u05D4\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05E0\u05E8\u05E9\u05DE\u05D5\u05EA \u05D1\u05E1\u05D9\u05D5\u05DD \u05D4\u05E1\u05E9\u05DF \u05D0\u05D5 \u05D4\u05D8\u05D5\u05E8\u05E0\u05D9\u05E8. \u05EA\u05E9\u05DC\u05D5\u05DD \u05DE\u05DE\u05EA\u05D9\u05DF \u05D0\u05D9\u05E0\u05D5 \u05DE\u05E9\u05E0\u05D4 \u05D0\u05EA \u05D4\u05E1\u05DB\u05D5\u05DD \u05DC\u05EA\u05E9\u05DC\u05D5\u05DD."), (owner || agent) && data.currentTotals && /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: owner ? "כל שחקני הקלאב · צ׳יפים כעת (תוצאה מצטברת)" : "השחקנים שלי · צ׳יפים כעת (תוצאה מצטברת)",
+      label: (owner ? "כל שחקני הקלאב" : "השחקנים שלי") + " · צ׳יפים כעת (תוצאה " + periodLabel + ")",
       value: data.currentTotals.chips,
-      result: data.currentTotals.totalResult
+      result: owner ? c.playersResult : a.playersResult,
+      note: data.currentTotals.totalResult != null && /*#__PURE__*/React.createElement(React.Fragment, null, "\u05EA\u05D5\u05E6\u05D0\u05D4 \u05DB\u05DC\u05DC\u05D9\u05EA: ", /*#__PURE__*/React.createElement(Amount, {
+        value: data.currentTotals.totalResult,
+        signed: true
+      }))
     })), owner ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
       value: c.closing,
       kind: "club"
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05D4\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD",
-      value: c.playersResult
+      label: "תוצאות השחקנים " + periodLabel,
+      value: c.playersResult,
+      signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
       label: "\u05E8\u05D9\u05D9\u05E7 \u05E9\u05E0\u05D5\u05E6\u05E8",
       value: c.rake
@@ -722,8 +742,9 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05D4\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E9\u05DC\u05D9",
-      value: a.playersResult
+      label: "תוצאות השחקנים שלי " + periodLabel,
+      value: a.playersResult,
+      signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
       label: "\u05E8\u05D9\u05D9\u05E7 \u05E9\u05E0\u05D5\u05E6\u05E8",
       value: a.rake
@@ -757,12 +778,13 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05D4\u05EA\u05D5\u05E6\u05D0\u05D4 \u05E9\u05DC\u05D9",
-      value: p.totals.result
+      label: "התוצאה שלי " + periodLabel,
+      value: p.totals.result,
+      signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05DB\u05E2\u05EA (\u05EA\u05D5\u05E6\u05D0\u05D4 \u05DE\u05E6\u05D8\u05D1\u05E8\u05EA)",
+      label: "צ׳יפים כעת (תוצאה " + periodLabel + ")",
       value: data.chips ?? data.balance,
-      result: data.totalResult ?? p.totals.result
+      result: p.totals.result
     }), /*#__PURE__*/React.createElement(Metric, {
       label: "\u05D9\u05D3\u05D9\u05D9\u05DD \u05E9\u05E9\u05D9\u05D7\u05E7\u05EA\u05D9",
       value: p.totals.hands,
@@ -792,7 +814,8 @@
       details: data.details,
       funds: data.funds,
       onPay: setPayment,
-      canPay: canPay
+      canPay: canPay,
+      periodLabel: periodLabel
     }), /*#__PURE__*/React.createElement(Payments, {
       items: data.payments,
       act: act,

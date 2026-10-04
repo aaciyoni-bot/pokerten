@@ -1105,7 +1105,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=275">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=309">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=310">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -3843,6 +3843,29 @@ const positionPokerCommunity = field => {
     const moved=getComputedStyle(seat).getPropertyValue('--poker-compact-moved').trim()==='1';
     if(moved){const sr=seat.getBoundingClientRect(),originalY=parseFloat(seat.style.getPropertyValue('--poker-seat-y'));bet.style.translate='0 '+(sr.top+sr.height/2-base.top-originalY*base.height/100)+'px';}
     else bet.style.removeProperty('translate');
+  });
+  // Enlarged player labels and fans keep a measured gap from their own bet.
+  // Reset this correction before measuring so resize/re-render cannot drift.
+  const enlarged=parseFloat(getComputedStyle(field).getPropertyValue('--poker-opponent-scale'))>1;
+  field.querySelectorAll('.poker-bet[data-player-uid]').forEach(bet=>{
+    bet.style.removeProperty('--poker-bet-clear-x');
+    bet.style.removeProperty('--poker-bet-clear-y');
+    if(!enlarged)return;
+    const seat=[...field.querySelectorAll('.poker-seat[data-player-uid]')].find(n=>n.dataset.playerUid===bet.dataset.playerUid);
+    if(!seat)return;
+    const hero=seat.classList.contains('poker-seat-hero'),br=bet.getBoundingClientRect();
+    const nodes=seat.querySelectorAll(hero?'.poker-hole-cards > *':'.poker-player-info,.poker-result-meta');
+    const obstacles=[...nodes].map(n=>n.getBoundingClientRect()).filter(r=>r.width&&r.height);
+    let dx=0,dy=0;
+    for(const r of obstacles){
+      if(hero){if(br.left<r.right+4&&br.right>r.left-4&&br.top<r.bottom+4&&br.bottom>r.top-4)dy=Math.max(dy,r.bottom+4-br.top);}
+      else if(br.top<r.bottom+4&&br.bottom>r.top-4){
+        if(seat.dataset.seatSide==='left')dx=Math.max(dx,r.right+4-br.left);
+        if(seat.dataset.seatSide==='right')dx=Math.min(dx,r.left-4-br.right);
+      }
+    }
+    bet.style.setProperty('--poker-bet-clear-x',dx+'px');
+    bet.style.setProperty('--poker-bet-clear-y',dy+'px');
   });
   // Reset before measuring so repeated renders/resizes never accumulate a shift.
   community.style.setProperty('--poker-board-shift','0px');

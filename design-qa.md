@@ -1,4 +1,43 @@
-# POKERTEN v278 layout verification — 2026-09-21
+# POKERTEN v309 GG fan and spacing verification — 2026-10-04
+
+## Reference and scope
+
+The current request supersedes the old v278 separated-hand layout below: restore large community cards and the curved, overlapping GG fan above each avatar, with balanced visible seats. References inspected: `1000503171.jpg`, `1000503178.jpg`, `1000503181.jpg`, `1000503184.jpg` (GG) and `1000503293.jpg` (POKERTEN regression). The 709 × 1536 reference images were compared with portrait renders at 390 × 844 and 369 × 650. Five-seat hidden/revealed states provide the direct comparison; dense tables and two runouts are responsive adaptations.
+
+Existing POKERTEN table artwork, card assets, avatars, colours and controls are retained. No GG logos or assets were copied. Physical seat indices, turn order, dealing, bot policy, GOD authorization and cycle accounting are unchanged.
+
+## Fidelity checks
+
+| Surface | Verified implementation |
+| --- | --- |
+| Spacing | Five seats use four opposing side positions plus the lower-left local seat. Occupied seats retain clockwise order after a player leaves. |
+| Cards | One curved row for 2–6 cards; Pineapple discard uses three separate targets with 4px gaps. Community width is 60%, close to the approximately 59.5% reference. Faces measure 41.875 × 58.625px at 369px width and about 44.4 × 62.15px at 390px. No dense-table board shrinking. |
+| Typography | Existing rank/suit typography retained; 10 remains readable in overlapping fans. Result labels wrap or use available rail width instead of covering another hand. Full GOD potential labels remain readable. |
+| Colour/assets | Existing blue, green and gold felt, four-colour card faces, player avatars and POKERTEN branding retained. |
+| Copy | Existing names, amounts and hand classes retained. Synthetic preview no longer fabricates a winner inconsistent with its dealt cards. |
+
+## Iterations and corrections
+
+1. Removed two-row dense fans and the 40%/48%/230px board caps. Rebalanced 5/6/8/9-seat presentation and kept the hero's bet and hand status attached to the hero.
+2. Measured each board and the narrow pot separately. Hole cards retain 7px clearance; text/bet panels use 1px. Impossible bounds are reported as obstructed. Top bets follow the actual owner label height, keeping tall stacks below the balance.
+3. Browser QA found dense short-screen result text touching adjacent hands. Short dense top seats use unused upper space; two-runout upper seats move with their bets. A top GOD badge has its own lane above the fan and clears the menu.
+4. Cross-seat diagnostics were strengthened to include result metadata. Long top/lower result labels use the available horizontal rail space; card faces and font sizes remain unchanged.
+
+## Verification and limits
+
+- Mandatory predeploy check: 20/20. Generated poker worker is unchanged and matches its source policy.
+- Full UI suite passed, including table order/seat removal, GOD private-card consistency and revocation, Pineapple preflop forecasting, accounting and cycle-only player visibility.
+- Board tests cover full-size single/double rows, narrow-pot geometry, per-obstacle clearances, stable repeat placement and insufficient-height reporting.
+- Preview fixture tests cover complete 2–6-card local hands, realistic unique deals, public/GOD snapshot consistency, explicit impossible-deck geometry stress and cross-seat result-label detection.
+- Browser checks cover five-seat Omaha 6 showdown/hidden hands, six-seat Omaha 6 live bets, eight-seat Omaha 5, nine-seat NLH GOD, nine-seat Omaha 4 two runouts, Pineapple discard and the long GOD potential badge. Menu and raise-panel open/close were verified without submitting a game action.
+- Browser console showed the existing Tailwind CDN warning and browser-extension metadata errors; no application exception was observed.
+- All browser play states use an isolated synthetic fixture with network writes disabled. No authenticated cash/Spin session was played; the live behavioural smoke checklist in PREDEPLOY.md remains a post-deploy user-session check.
+
+Final result: passed for the inspected mobile render states. Final preview `48d75a4b872a58bb049834646d535adedb6462d1`, workflow `37225829715`, passed validation and preview deployment. The remaining eight-seat Omaha 5 all-in/two-runout and nine-seat Omaha 4 two-runout cases both report `boardClear=true`, complete hero hands and zero card/board/result-label/viewport collisions. The full-size community faces remain 41.875 × 58.625px at 369px width. The five-seat proof is a real browser capture of the synthetic fixture, cropped to the entire table viewport. Production deployment is verified separately in the release handoff.
+
+---
+
+# Archived: POKERTEN v278 layout verification — 2026-09-21
 
 ## Reference and scope
 

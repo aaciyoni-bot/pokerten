@@ -27,7 +27,7 @@
  const cards=['A','K','Q','J','10','9'].map((val,i)=>({val,suit:['♠','♥','♦','♣'][i%4]}));
  const players={};['Sharon',null,'Maya','MindStack','David',null,'Robin'].forEach((name,i)=>{if(name)players['p'+i]={uid:'p'+i,name,stack:[2225.60,0,354.77,437.91,1100.07,0,1692.11][i],bet:0,seatIndex:i,status:'active',cards:[],cardCount:i===3?2:0,photo:'/BearFace_2k.png',lastSeen:Date.now()};});
  if(query.has('full')){for(const id of Object.keys(players))if(players[id].seatIndex>=capacity)delete players[id];for(let i=0;i<capacity;i++)if(!players['p'+i])players['p'+i]={uid:'p'+i,name:'Player '+i,stack:100,bet:0,seatIndex:i,status:'active',cards:[],cardCount:0,photo:'/BearFace_2k.png',lastSeen:Date.now()};}
- if(mode!=='reference'){delete players.p0;players.me={uid:'me',name:'You',stack:99.5,bet:.5,seatIndex:0,status:'active',cards:[],cardCount:holeCount,photo:'/BearFace_2k.png',lastSeen:Date.now()};}
+ if(mode!=='reference'){for(const p of Object.values(players))p.cardCount=holeCount;delete players.p0;players.me={uid:'me',name:'You',stack:99.5,bet:.5,seatIndex:0,status:'active',cards:[],cardCount:holeCount,photo:'/BearFace_2k.png',lastSeen:Date.now()};}
  if(query.has('sparse'))for(const id of ['p1','p3','p5'])delete players[id];
  if(query.has('bots'))Object.values(players).forEach(p=>{p.isBot=p.uid!=='me'&&p.seatIndex%2===1;});
  if(query.has('opponents')){for(const p of Object.values(players)){if(p.uid==='me')continue;p.cardCount=holeCount;if(query.get('opponents')==='revealed'){p.cards=cards.slice(0,holeCount);p.reveal=true;}}}
@@ -37,8 +37,12 @@
  if(query.has('turn')&&players[query.get('turn')])state.gameState.activeTurnUid=query.get('turn');
  if(query.has('longname')&&players[state.gameState.activeTurnUid])players[state.gameState.activeTurnUid].name='ליאת שפירא — Very long player name';
  if(query.has('phase'))state.gameState.phase=query.get('phase');
+ if(state.gameState.phase==='turn')state.gameState.board.push({val:'2',suit:'♥'});
+ if(state.gameState.phase==='river')state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});
+ if(query.has('allin')){state.gameState.allInReveal=true;state.gameState.activeTurnUid=null;for(const p of Object.values(players)){p.cardCount=holeCount;p.reveal=true;}}
  if(['preflop','discard'].includes(state.gameState.phase))state.gameState.board=[];
- if(state.gameState.phase==='showdown'){state.gameState.activeTurnUid=null;state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});const winner=Object.values(players).at(-1);if(winner){state.gameState.lastWinners=winner.name;winner.actionText='WINNER';}}
+ if(state.gameState.phase==='showdown'){state.gameState.activeTurnUid=null;state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});}
+ if(state.gameState.phase==='showdown')for(const p of Object.values(players))p.bet=0;
  if(query.has('actions'))Object.values(players).forEach(p=>p.actionText='All-in');
  if(query.has('rit'))state.gameState.board2=[{val:'A',suit:'♣'},{val:'K',suit:'♠'},{val:'3',suit:'♦'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}];
  const uid=query.has('spectator')||mode==='reference'?'viewer':'me';
@@ -55,20 +59,38 @@
  const accountPlayers=Object.fromEntries(demoMembers.filter(m=>m.status==='approved').map(m=>[m.uid,{balance:m.balance,onTables:0,chips:m.balance,result:demoLogs.filter(e=>e.uid===m.uid).reduce((n,e)=>n+e.profit,0),...(query.has('god')?{rake:demoLogs.filter(e=>e.uid===m.uid).reduce((n,e)=>n+e.rake,0)}:{})}]));
  const sumAccount=rows=>({balance:rows.reduce((n,m)=>n+m.balance,0),onTables:0,chips:rows.reduce((n,m)=>n+m.balance,0),result:Math.round(rows.reduce((n,m)=>n+accountPlayers[m.uid].result,0)*100)/100,...(query.has('god')?{rake:rows.reduce((n,m)=>n+(accountPlayers[m.uid].rake||0),0)}:{})});
  directory.accounting={players:accountPlayers,agents:{agent:sumAccount(demoMembers.filter(m=>m.agentUid==='agent'))},club:sumAccount(demoMembers.filter(m=>m.uid!=='owner'&&m.status==='approved')),asOf:Date.now(),rakeVisible:query.has('god')};
- const previewDeck=['♠','♥','♦','♣'].flatMap(suit=>['2','3','4','5','6','7','8','9','10','J','Q','K','A'].map(val=>({val,suit}))).filter(c=>![{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}].some(b=>b.val===c.val&&b.suit===c.suit));
- const previewHands=Object.fromEntries(Object.keys(players).map(k=>[k,previewDeck.splice(0,players[k].cardCount||0)]));
+ // Allocate the local hand first. A nine-seat PLO6 geometry fixture cannot
+ // be dealt from 52 cards; it must never silently drop the hero's private hand.
+ const finalBoard=[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}];
+ const reservedBoard=[...finalBoard,...(state.gameState.board2||[])];
+ const previewDeck=['♠','♥','♦','♣'].flatMap(suit=>['2','3','4','5','6','7','8','9','10','J','Q','K','A'].map(val=>({val,suit}))).filter(c=>!reservedBoard.some(b=>b.val===c.val&&b.suit===c.suit));
+ const pool=previewDeck.map(c=>({...c})),previewHands={};let cardsNeeded=0,geometryOnly=false;
+ const dealOrder=Object.keys(players).sort((a,b)=>Number(b===uid)-Number(a===uid));
+ for(const id of dealOrder){
+   const count=players[id].cardCount||0;cardsNeeded+=count;previewHands[id]=[];
+   for(let i=0;i<count;i++){
+     const preferred=id===uid?cards[i]:null,index=preferred?previewDeck.findIndex(c=>c.val===preferred.val&&c.suit===preferred.suit):-1;
+     let next=index>=0?previewDeck.splice(index,1)[0]:previewDeck.shift();
+     if(!next){geometryOnly=true;next={...pool[(cardsNeeded+i)%pool.length]};}
+     previewHands[id].push(next);
+   }
+   // Publicly exposed cards and the GOD/private snapshot describe one hand.
+   if(players[id].reveal)players[id].cards=previewHands[id].map(c=>({...c}));
+ }
+ const scenario={mode,uid,holeCount,capacity,phase:state.gameState.phase,god:query.has('god'),geometryOnly,heroExpected:players[uid]?.cardCount||0,cardsNeeded,availableHoleCards:pool.length};
+ if(geometryOnly){const note=document.createElement('p');note.textContent='Geometry stress only: this combination of seats and hole cards exceeds a 52-card deck.';note.style.cssText='text-align:center;color:#ffd88a';document.body.insertBefore(note,frame);}
  const stub=`window.__pkMuted=true;window.__previewMode=true;
  if(window.Worker){const PreviewWorker=window.Worker;window.Worker=class extends PreviewWorker{constructor(url,options){super(new URL(String(url),${JSON.stringify(projectRoot.href)}),options);}};}
 
  ${query.has('install')?"window.__installEvt={prompt:()=>{},userChoice:Promise.resolve({outcome:'dismissed'})};":''}
- const previewState=${JSON.stringify(state)},privateCards=${JSON.stringify(previewHands[uid]||cards.slice(0,holeCount))},previewHands=${JSON.stringify(previewHands)},previewDirectory=${JSON.stringify(directory)};
+ const previewState=${JSON.stringify(state)},privateCards=${JSON.stringify(previewHands[uid]||cards.slice(0,holeCount))},previewHands=${JSON.stringify(previewHands)},previewDirectory=${JSON.stringify(directory)},previewScenario=${JSON.stringify(scenario)};
  const previewRef=(...a)=>({id:a.at(-1),path:a.slice(1).join('/')});
  const previewSnap=()=>({id:'preview',exists:()=>true,data:()=>structuredClone(previewState),metadata:{fromCache:false}});
  const previewDocs=(rows)=>{const docs=rows.map((row,i)=>({id:row.uid||String(i),data:()=>structuredClone(row)}));return{docs,empty:!docs.length,size:docs.length,forEach:cb=>docs.forEach(cb)};};
  const denyWrite=async()=>{throw Error('Design preview only: data changes are disabled');};
  window.fb={db:{},auth:{currentUser:{uid:'${uid}',email:'preview@example.invalid',emailVerified:true}},doc:previewRef,collection:previewRef,
  query:(r,...filters)=>({...r,filters}),where:(field,op,value)=>({field,op,value}),
- fx:async(name,args={})=>{if(name==='pkGameHistory')return{records:previewDirectory.gameLog,nextCursor:null};if(name==='pkClubDirectory'){if(args.accountingOnly)return{accounting:previewDirectory.accounting};if(args.reportSection){if(${query.has('reporterror')})throw Object.assign(new Error('Simulated report failure'),{code:'functions/unavailable'});const rows=previewDirectory[args.reportSection]||[],start=Number(args.cursor)||0,end=start+2;return{records:structuredClone(rows.slice(start,end)),hasMore:end<rows.length,nextCursor:end<rows.length?String(end):null};}return structuredClone(previewDirectory);}if(name==='pkTick')return{};if(name==='godPeek')return{tableId:args.tableId,contextKey:args.contextKey,hands:previewHands,finalBoard:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}]};return denyWrite();},
+ fx:async(name,args={})=>{if(name==='pkGameHistory')return{records:previewDirectory.gameLog,nextCursor:null};if(name==='pkClubDirectory'){if(args.accountingOnly)return{accounting:previewDirectory.accounting};if(args.reportSection){if(${query.has('reporterror')})throw Object.assign(new Error('Simulated report failure'),{code:'functions/unavailable'});const rows=previewDirectory[args.reportSection]||[],start=Number(args.cursor)||0,end=start+2;return{records:structuredClone(rows.slice(start,end)),hasMore:end<rows.length,nextCursor:end<rows.length?String(end):null};}return structuredClone(previewDirectory);}if(name==='pkTick')return{};if(name==='godPeek')return{tableId:args.tableId,contextKey:args.contextKey,hands:previewHands,finalBoard:${JSON.stringify(finalBoard)}};return denyWrite();},
  getDoc:async()=>({exists:()=>false}),getDocs:async(r)=>{let rows=r.path==='memberships'?previewDirectory.members:r.path==='gameLog'?previewDirectory.gameLog:[];for(const f of r.filters||[])if(f.op==='=='&&f.field!=='clubId')rows=rows.filter(row=>row[f.field]===f.value);return previewDocs(rows);},
  onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;let done=false;queueMicrotask(()=>{if(done)return;if(r.path==='tables/preview')cb(previewSnap());else if(r.path.includes('/priv/'))cb({exists:()=>true,data:()=>({cards:privateCards})});else cb({exists:()=>false,...previewDocs([])});});return()=>{done=true;};},
  updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite,signIn:denyWrite,signInCode:denyWrite,signOut:denyWrite};`;
@@ -108,7 +130,15 @@
   const boards=[...table.querySelectorAll('.poker-board')].map(box).filter(r=>r.height>0);
   const holes=[...table.querySelectorAll('.poker-hole-cards > *')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,...box(n)}));
   const overlaps=[];for(let b=0;b<boards.length;b++)for(let h=0;h<holes.length;h++){const a=boards[b],c=holes[h];if(a.left<c.right-.5&&a.right>c.left+.5&&a.top<c.bottom-.5&&a.bottom>c.top+.5)overlaps.push({board:b,card:h,uid:c.uid});}
-  return{ready:true,viewport:[innerWidth,innerHeight],seats:table.dataset.seatCount,boards,holes,overlaps,boardClear:community?.dataset.boardClear,shift:community?.style.getPropertyValue('--poker-board-shift')};
+  const fans=[...table.querySelectorAll('.poker-hole-cards')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,count:Number(n.dataset.cardCount),hidden:n.classList.contains('is-hidden'),faces:n.querySelectorAll('.card-face').length,...box(n)}));
+  const boardCards=[...table.querySelectorAll('.poker-board .card-face')].map(box);
+  const hero=table.querySelector('.poker-seat-hero');
+  const heroFaces=hero?.querySelectorAll('.poker-own-fan .card-face').length||0;
+  const outOfViewport=holes.map((r,i)=>({...r,card:i})).filter(r=>r.left<-.5||r.right>innerWidth+.5||r.top<-.5||r.bottom>innerHeight+.5);
+  const seatPanels=[...table.querySelectorAll('.poker-player-info,.poker-result-meta')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,panelType:n.classList.contains('poker-result-meta')?'result':'player-info',...box(n)})).filter(r=>r.width>0&&r.height>0);
+  const cardPanelOverlaps=[];
+  for(const [i,c] of holes.entries())for(const p of seatPanels)if(c.left<p.right-.5&&c.right>p.left+.5&&c.top<p.bottom-.5&&c.bottom>p.top+.5)cardPanelOverlaps.push({card:i,cardUid:c.uid,panelUid:p.uid,panelType:p.panelType});
+  return{ready:true,scenario:previewScenario,viewport:[innerWidth,innerHeight],seats:table.dataset.seatCount,boards,boardCards,holes,fans,heroFaces,heroComplete:heroFaces===previewScenario.heroExpected,outOfViewport,cardPanelOverlaps,overlaps,boardClear:community?.dataset.boardClear,shift:community?.style.getPropertyValue('--poker-board-shift')};
  };
  setTimeout(()=>{const report=window.__previewLayoutReport();window.parent.postMessage({pokerLayoutReport:report},'*');},1800);
  `;

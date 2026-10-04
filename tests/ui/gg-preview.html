@@ -14,8 +14,8 @@
    .replace(/<script\b[^>]*type=["']module["'][^>]*>[\s\S]*?<\/script>/g,'')
    .replace(/<link\b[^>]*rel=["']manifest["'][^>]*>/g,'')
    .replace(/href=["'](assets\/css\/[^"']+)["']/g,(_,path)=>'href="'+localAsset(path)+'"');
- // The application, every stylesheet and the poker runtime come from this checkout.
- // The production base is only a fallback for unchanged image/font/vendor assets.
+ // Application code, styles and all relative images come from this checkout.
+ // New menu assets must be visible before they exist in production.
  const runtimeTags=[...html.matchAll(/<script\b[^>]*src=["'](assets\/js\/[^"']+)["'][^>]*><\/script>/g)].map(([,path])=>{
    const src=localAsset(path);
    return '<scr'+'ipt src="'+src+'"></scr'+'ipt>';
@@ -148,7 +148,7 @@
  const tag=code=>'<scr'+'ipt>'+code+'</scr'+'ipt>';
  // Disallow network calls from the preview; SDK initialization is removed above.
  const isolation='<meta http-equiv="Content-Security-Policy" content="connect-src \'none\'; form-action \'none\'">';
- frame.srcdoc='<!doctype html><html><head><base href="https://pokerten.com/">'+isolation+head+runtimeTags+'</head><body class="poker-theme" style="margin:0;width:100vw;height:100dvh"><div id="root" style="height:100%"></div>'+definitions+tag(stub)+tag(code)+tag(renderPreview)+tag(diagnostics)+'</body></html>';
+ frame.srcdoc='<!doctype html><html><head><base href="'+projectRoot.href+'">'+isolation+head+runtimeTags+'</head><body class="poker-theme" style="margin:0;width:100vw;height:100dvh"><div id="root" style="height:100%"></div>'+definitions+tag(stub)+tag(code)+tag(renderPreview)+tag(diagnostics)+'</body></html>';
  document.documentElement.dataset.previewSource=new URL('index.html',projectRoot).href;
  document.documentElement.dataset.previewMode=mode;
  document.documentElement.dataset.previewRuntime=localAsset(html.match(/src="(assets\/js\/poker-runtime\.js[^"]*)"/)?.[1]||'assets/js/poker-runtime.js');

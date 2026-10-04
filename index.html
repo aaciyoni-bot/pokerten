@@ -13753,14 +13753,14 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, React.createElement('div', {className:'poker-menu-heading'},
     React.createElement('div',null,React.createElement('strong',null,tableTitle),React.createElement('span',null,tableClubName || 'POKERTEN'),React.createElement('span',{dir:'ltr'},tableState.closeRequested?'Closing after this hand':tableStakes)),
     React.createElement('button',{type:'button',autoFocus:true,onClick:closeTableMenu,'aria-label':'Close table menu'},React.createElement('i',{className:'fa-solid fa-xmark','aria-hidden':true}))),
-  !tableState.tournamentId && !setts.spinMode && (isFull || waitlist.length > 0) && React.createElement('div', {className:'poker-waitlist-status'},
+  !tableState.tournamentId && !setts.spinMode && ((!isSeated && isFull) || waitlist.length > 0) && React.createElement('div', {className:'poker-waitlist-status'},
     React.createElement(PokerWaitlistIndicator, {table:tableState, uid:user.uid, className:'poker-waitlist-summary', showEmpty:true}),
     !isSeated && onWaitlist && React.createElement('button', {type:'button', onClick:()=>{setToolsOpen(false);leaveWaitlist();}}, 'Leave waitlist'),
     spectate && !isSeated && !onWaitlist && requiresWaitlist && !tableState.closeRequested && React.createElement('button', {type:'button', onClick:()=>{setToolsOpen(false);setSpectate(false);}}, 'Join waitlist')),
   React.createElement("div", {
     className: "poker-menu-status"
   }, (tableState.tournamentId ? 'TOURNAMENT' : setts.spinMode ? 'SPIN & CASH' : 'CASH TABLE') + ' · ' + (setts.maxPlayers || 6) + ' SEATS'), React.createElement("div", {
-    className: "poker-menu-grid grid grid-cols-4 gap-3"
+    className: "poker-menu-grid"
   }, React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setTableInfoOpen(true);},'aria-label':'Table details',className:'poker-menu-tile','data-menu-tone':'cyan'},...menuTile('details','Details')),
   React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setHistoryOpen(true);setHistExpand(null);},title:'Hand history',className:'poker-menu-tile','data-menu-tone':'purple'},...menuTile('history','Hand history')),
   React.createElement("button", {

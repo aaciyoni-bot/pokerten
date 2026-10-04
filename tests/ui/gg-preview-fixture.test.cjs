@@ -12,6 +12,8 @@ async function fixture(query){
   assert.ok(match,'fixture reaches the isolated, local application document');
   const [state,privateCards,hands,directory,scenario]=match.slice(1).map(JSON.parse);
   assert.ok(source.includes("connect-src 'none'"),'preview cannot call the live data service');
+  const assetBase=source.match(/<base href="([^"]+)"/)[1];
+  assert.equal(new URL('assets/menu/bot.png',assetBase).href,'http://localhost/assets/menu/bot.png','new preview images resolve to this checkout before production deployment');
   return{state,privateCards,hands,directory,scenario,source};
  }finally{w.close();}
 }

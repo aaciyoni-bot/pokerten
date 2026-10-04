@@ -46,3 +46,13 @@ test('total result survives cycle boundaries and chip transfers without resettin
  assert.equal(buildAccounting([{...m,balance:1200}],[{uid:'p',profit:200,at:now}],[],options).players.p.totalResult,200);
  const legacy=buildAccounting([m],[{uid:'p',profit:-200}],[],options).players.p;assert.equal(legacy.totalResult,-200,'legacy rows without a timestamp remain in total history');assert.equal(legacy.result,0,'undated legacy rows cannot be assigned to a current cycle');
 });
+test('active cycle reports journal activity while open chips and lifetime results stay intact',()=>{
+ const m={uid:'p',status:'approved',balance:800},table={players:{p:{uid:'p',stack:450,buyTotal:500}},gameState:{phase:'showdown'}};
+ const cycle={id:'cycle_2',status:'open',startAt:now-500,sessions:[{cycleId:'cycle_1',playerId:'p',result:-90000,rake:9999,at:now-1000},{cycleId:'cycle_2',playerId:'p',result:2517,rake:417,at:now-100}]};
+ const report=buildAccounting([m],[{uid:'p',profit:-200,rake:50,at:now-1000}],[table],{...options,cycle}),p=report.players.p;
+ assert.equal(report.start,now-500);assert.equal(report.cycleId,'cycle_2');assert.equal(report.basis,'settlement-cycle-completed-sessions');
+ assert.equal(p.result,25.17);assert.equal(p.rake,4.17);assert.equal(p.totalResult,-250);assert.equal(p.totalRake,50);
+ assert.equal(p.chips,1250);assert.equal(p.onTables,450);assert.equal(p.openSessions,1);
+ const fresh=buildAccounting([m],[{uid:'p',profit:-200,at:now-1000}],[table],{...options,cycle:{...cycle,id:'cycle_3',sessions:[]}}).players.p;
+ assert.equal(fresh.result,0,'an unfinished sitting must not reintroduce old activity into a fresh cycle');assert.equal(fresh.rake,0);assert.equal(fresh.totalResult,-250);assert.equal(fresh.chips,1250);
+});

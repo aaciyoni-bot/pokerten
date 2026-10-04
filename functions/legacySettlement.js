@@ -16,7 +16,7 @@ function buildLegacy(members,games,tables,agentLogs,{ownerUid,now=Date.now()}={}
 }
 function projectLegacy(full,auth){
  const {uid,role}=auth;
- const publicPlayer=p=>({uid:p.uid,name:p.name,balance:p.balance,onTables:p.onTables,chips:p.chips,result:p.result,totalResult:p.totalResult,openSessions:p.openSessions});
+ const publicPlayer=p=>({uid:p.uid,name:p.name,balance:p.balance,onTables:p.onTables,chips:p.chips,result:p.result,openSessions:p.openSessions});
  if(role==='player'){
   const p=full.players.find(p=>p.uid===uid)||{uid,name:auth.me?.username||uid,balance:cents(auth.me?.balance),onTables:0,chips:cents(auth.me?.balance),result:0,totalResult:0,openSessions:0};
   return{players:[publicPlayer(p)],totals:publicPlayer(p),asOf:full.asOf};

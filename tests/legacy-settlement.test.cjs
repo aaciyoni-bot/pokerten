@@ -10,7 +10,7 @@ test('legacy current cycle keeps recorded commissions, signed cumulative result 
  const full=buildLegacy(members,games,[],commissions,{ownerUid:'owner',now}),p=full.players.find(p=>p.uid==='p'),a=full.agents.find(a=>a.uid==='agent');
  assert.equal(full.start,start);assert.equal(p.chips,80000);assert.equal(p.result,-20000);assert.equal(p.totalResult,-10000);assert.equal(a.commission,1400);assert.equal(a.toClub,18600);assert.equal(full.players.some(p=>p.uid==='bot_x'),false);
  // Financial projections must not expose another relationship or change books.
- const own=projectLegacy(full,{uid:'p',role:'player',me:members[2]});assert.equal(own.players.length,1);assert.doesNotMatch(JSON.stringify(own),/rake|commission|agentUid|other|Pct|owner/i);
+ const own=projectLegacy(full,{uid:'p',role:'player',me:members[2]});assert.equal(own.players.length,1);assert.equal(own.players[0].result,-20000);assert.doesNotMatch(JSON.stringify(own),/totalResult|rake|commission|agentUid|other|Pct|owner/i);
  const agent=projectLegacy(full,{uid:'agent',role:'agent',me:members[1]});assert.deepEqual(agent.players.map(p=>p.uid),['p']);assert.deepEqual(agent.agents.map(a=>a.uid),['agent']);assert.equal(agent.totals.commission,1400);
  const owner=projectLegacy(full,{uid:'owner',role:'owner'});assert.equal(owner.totals.result,30000);assert.equal(owner.totals.chips,230000);
 });

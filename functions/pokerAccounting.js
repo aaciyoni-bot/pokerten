@@ -6,11 +6,12 @@ function cycleStart(now=Date.now()) {
  const w=wall(now),d=new Date(w);let target=Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()-(d.getUTCDay()+6)%7,0,1);
  if(w<target)target-=7*86400000;let epoch=target;for(let i=0;i<3;i++)epoch=target-(wall(epoch)-epoch);return epoch;
 }
-// Existing settlement books a cash session on cash-out. Include the unsettled
-// session once, so joining, topping up and cashing out cannot change P/L.
+// Legacy and lifetime results include an unsettled sitting once, so joining,
+// topping up and cashing out cannot change those results. Explicit cycle results
+// below use the settlement journal's completed sessions instead.
 // An unfinished hand is held at its opening value until its pot is awarded.
-function buildAccounting(members,logs,tables,{now=Date.now(),ownerUid,god=false}={}) {
- const start=cycleStart(now),players={};
+function buildAccounting(members,logs,tables,{now=Date.now(),ownerUid,god=false,cycle=null}={}) {
+ const start=cycle?cycle.startAt:cycleStart(now),players={};
  const included=members.filter(m=>!m.isBot&&!String(m.uid).startsWith('bot_')&&['approved','banned'].includes(m.status)&&!(m.role==='super_admin'&&m.uid!==ownerUid));
  for(const m of included)players[m.uid]={name:String(m.username||m.uid),balance:cash(m.balance),onTables:0,chips:cash(m.balance),result:0,totalResult:0,openResult:0,openSessions:0,...(god?{rake:0,totalRake:0}:{})};
  // Lifetime P/L is independent of settlement cycle activation/closing and chip
@@ -33,10 +34,33 @@ function buildAccounting(members,logs,tables,{now=Date.now(),ownerUid,god=false}
    p.onTables=cash(p.onTables+held);p.chips=cash(p.balance+p.onTables);p.openResult=cash(p.openResult+gain);p.result=cash(p.result+gain);p.totalResult=cash(p.totalResult+gain);p.openSessions++;
   }
  }
+ // Once a club has an explicit cycle, its journal is the authority for cycle
+ // activity. Weekly cash-out history and live sitting gains are not a substitute:
+ // they can contain activity from before activation or a manually closed cycle.
+ // The journal already subtracts each sitting's activation baseline on cash-out.
+ if(cycle){
+  for(const p of Object.values(players)){p.result=0;if(god)p.rake=0;}
+  for(const entry of cycle.sessions||[]){
+   if(entry.cycleId!==cycle.id||entry.at>now)continue;
+   const p=players[entry.playerId];if(!p)continue;
+   p.result=cash(p.result+(Number(entry.result)||0)/100);
+   if(god)p.rake=cash(p.rake+(Number(entry.rake)||0)/100);
+  }
+ }
  const sum=ids=>ids.reduce((out,id)=>{const p=players[id];if(!p)return out;for(const k of ['balance','onTables','chips','result','totalResult','openResult','openSessions',...(god?['rake','totalRake']:[])])out[k]=cash((out[k]||0)+p[k]);out.players++;return out;},{players:0,balance:0,onTables:0,chips:0,result:0,totalResult:0,openResult:0,openSessions:0,...(god?{rake:0,totalRake:0}:{})});
  const agents={};for(const m of included)if(['agent','manager'].includes(m.role))agents[m.uid]=sum(included.filter(p=>p.agentUid===m.uid&&p.uid!==m.uid).map(p=>p.uid));
- return{start,asOf:now,basis:'cycle-cashouts-and-open-sessions',rakeVisible:god,players,agents,club:sum(included.filter(m=>m.uid!==ownerUid).map(m=>m.uid))};
+ return{start,asOf:now,basis:cycle?'settlement-cycle-completed-sessions':'cycle-cashouts-and-open-sessions',...(cycle?{cycleId:cycle.id,cycleStatus:cycle.status}:{}),rakeVisible:god,players,agents,club:sum(included.filter(m=>m.uid!==ownerUid).map(m=>m.uid))};
+}
+async function currentCycle(tx,db,cid){
+ const S=require('./settlementStore'),ctx=await S.context(tx,db,cid);
+ if(!ctx.config)return null;
+ const sessions=await tx.get(ctx.ref.collection('sessions').where('cycleId','==',ctx.config.currentCycleId));
+ return{...ctx.cycle,id:ctx.config.currentCycleId,sessions:sessions.docs.map(d=>d.data())};
+}
+function ownAccounting(summary,uid){
+ const p=summary.players[uid],own=p?{name:p.name,balance:p.balance,onTables:p.onTables,chips:p.chips,result:p.result,openSessions:p.openSessions}:null;
+ return{start:summary.start,asOf:summary.asOf,basis:summary.basis,...(summary.cycleId?{cycleId:summary.cycleId,cycleStatus:summary.cycleStatus}:{}),rakeVisible:false,players:p?{[uid]:own}:{}};
 }
 function publicGameLog(row,god){if(god)return row;const {rake,rakeSource,accountingVersion,...safe}=row;return safe;}
 function publicAgentLog(row,god){if(god)return row;const {playerUid,...safe}=row;return safe;}
-module.exports={cycleStart,buildAccounting,publicGameLog,publicAgentLog};
+module.exports={cycleStart,buildAccounting,currentCycle,ownAccounting,publicGameLog,publicAgentLog};

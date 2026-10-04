@@ -42,6 +42,7 @@ async function close(tx,db,cid,ctx,now,uid='scheduler'){
 exports.pkSettlementReport=onCall(opts,async r=>{
  const db=getFirestore(),cid=A.key(r.data?.clubId);return db.runTransaction(async tx=>{
   const auth=await S.authority(tx,db,cid,r),ctx=await S.context(tx,db,cid);
+  if(r.data?.cycleId==='all'&&auth.role==='player')A.fail('permission-denied','יש לבחור מחזור מסוים');
   if(!ctx.config){const full=await legacyData(tx,db,cid,auth);return{...legacyReport(auth,full,{id:'legacy_current',number:0,legacy:true,status:'open',startAt:full.start,endAt:null}),cycles:[],currentCycleId:'legacy_current'};}
   const cyclesSnap=await tx.get(ctx.ref.collection('cycles')),cycles=cyclesSnap.docs.map(d=>d.data()).filter(c=>c.status!=='void').sort((a,b)=>b.number-a.number);
   const requested=r.data?.cycleId||ctx.config.currentCycleId;
@@ -59,7 +60,7 @@ exports.pkSettlementReport=onCall(opts,async r=>{
   const [currentMembers,currentGames,currentTables]=await Promise.all(['memberships','gameLog','tables'].map(name=>tx.get(db.collection(name).where('clubId','==',cid))));
   const currentAccounting=require('./pokerAccounting').buildAccounting(currentMembers.docs.map(d=>d.data()),currentGames.docs.map(d=>d.data()),currentTables.docs.map(d=>d.data()),{ownerUid:auth.club.ownerUid,now:Date.now()});
   const currentMoney=p=>({chips:E.cents(p?.chips||0),totalResult:E.cents(p?.totalResult||0)});
-  if(auth.role==='player')Object.assign(result,currentMoney(currentAccounting.players[auth.uid]));
+  if(auth.role==='player')result.chips=E.cents(currentAccounting.players[auth.uid]?.chips||0);
   else {result.funds=result.funds.map(p=>({...p,...currentMoney(currentAccounting.players[p.uid])}));result.currentTotals=currentMoney(auth.role==='owner'?currentAccounting.club:currentAccounting.agents[auth.uid]);}
   const approvals=await tx.get(ctx.ref.collection('approvals').where('cycleId','==',requested));
   return{active:true,...result,clubPartyId:auth.club.ownerUid,cycles:cycles.map(meta),currentCycleId:ctx.config.currentCycleId,activatedAt:ctx.config.activatedAt,approvals:approvals.docs.map(d=>d.data()).filter(a=>auth.manager||a.uid===auth.uid)};

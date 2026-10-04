@@ -62,8 +62,9 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
    if(reportSection!==undefined||directoryOnly||r.data.targetUid&&r.data.targetUid!==uid)A.fail('permission-denied','Own accounting only');
    const games=await tx.get(db.collection('gameLog').where('clubId','==',cid).where('uid','==',uid));
    const tables=await tx.get(db.collection('tables').where('clubId','==',cid));
-   const summary=Accounting.buildAccounting([{uid,...me.data()}],games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:false});
-   return{accounting:{start:summary.start,asOf:summary.asOf,basis:summary.basis,rakeVisible:false,players:summary.players}};
+   const cycle=await Accounting.currentCycle(tx,db,cid);
+   const summary=Accounting.buildAccounting([{uid,...me.data()}],games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:false,cycle});
+   return{accounting:Accounting.ownAccounting(summary,uid)};
   }
   if(reportSection!==undefined){
    // Each page rechecks staff authority. Paging by document ID preserves legacy
@@ -98,7 +99,8 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
    diagnostic.stage='game-history';
    const games=await tx.get(db.collection('gameLog').where('clubId','==',cid));
    const tables=await tx.get(db.collection('tables').where('clubId','==',cid));
-   return{accounting:Accounting.buildAccounting(rows,games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:A.root(r)})};
+   const cycle=await Accounting.currentCycle(tx,db,cid);
+   return{accounting:Accounting.buildAccounting(rows,games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:A.root(r),cycle})};
   }
   const treasury=manager?rows.find(m=>m.uid===club.data().ownerUid):null;
   let agentLog=[],gameLog=[],securityAlerts=[];

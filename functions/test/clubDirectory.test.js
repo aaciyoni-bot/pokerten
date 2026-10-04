@@ -44,7 +44,8 @@ function fixture({failCollection,records=3}={}){
   assert.equal(method,'runQuery');
   const query=request.structuredQuery,collection=query.from[0].collectionId;
   if(collection===failCollection){const error=new Error('private-player@example.test and private financial data');error.code=4;throw error;}
-  let rows=[...documents].filter(([p,data])=>p.startsWith(collection+'/')&&match(data,query.where));
+  const parent=request.parent.split('/documents/')[1]||'',prefix=(parent?parent+'/':'')+collection+'/';
+  let rows=[...documents].filter(([p,data])=>p.startsWith(prefix)&&!p.slice(prefix.length).includes('/')&&match(data,query.where));
   if(query.orderBy?.length){
    assert.deepEqual(query.orderBy,[{field:{fieldPath:'__name__'},direction:'ASCENDING'}]);
    rows.sort(([a],[b])=>a<b?-1:a>b?1:0);
@@ -227,17 +228,45 @@ test('filtered history keeps own results accessible without exposing rake or ano
  await assert.rejects(f.history({clubId:'clubA',targetUid:'bob'},auth('agentA','agent@example.test')),e=>e.code==='permission-denied');
 });
 
-test('ordinary players receive only own chip totals and lifetime P/L without staff or rake fields',async()=>{
+test('ordinary players receive only own chip totals and cycle P/L without lifetime, staff or rake fields',async()=>{
  const f=fixture({records:0});f.documents.get('memberships/alice_clubA').status='approved';
  f.documents.get('memberships/alice_clubA').balance=800;
  f.documents.set('gameLog/alice',{clubId:'clubA',uid:'alice',profit:-200,rake:7,at:1});
  f.documents.set('gameLog/bob',{clubId:'clubA',uid:'bob',profit:200,rake:8,at:1});
  const who=auth('alice','alice@example.test'),r=await f.run({accountingOnly:true},who);
- assert.deepEqual(Object.keys(r.accounting.players),['alice']);assert.equal(r.accounting.players.alice.totalResult,-200);assert.equal(r.accounting.players.alice.chips,800);
+ assert.deepEqual(Object.keys(r.accounting.players),['alice']);assert.equal('totalResult'in r.accounting.players.alice,false);assert.equal(r.accounting.players.alice.result,0);assert.equal(r.accounting.players.alice.chips,800);
  assert.equal('club'in r.accounting,false);assert.equal('agents'in r.accounting,false);assert.equal('rake'in r.accounting.players.alice,false);assert.equal('totalRake'in r.accounting.players.alice,false);
  await assert.rejects(f.run({accountingOnly:true,targetUid:'bob'},who),e=>e.code==='permission-denied');
  await assert.rejects(f.run({accountingOnly:true,directoryOnly:true},who),e=>e.code==='permission-denied');
  await assert.rejects(f.run({accountingOnly:true,reportSection:'gameLog'},who),e=>e.code==='permission-denied');
  await assert.rejects(f.run({directoryOnly:true},who),e=>e.code==='permission-denied');
  f.documents.get('memberships/alice_clubA').status='pending';await assert.rejects(f.run({accountingOnly:true},who),e=>e.code==='permission-denied');
+});
+
+test('explicit active cycle overrides weekly and lifetime totals using only its scoped settlement journal',async()=>{
+ const f=fixture({records:0}),now=Date.now(),cycleStart=now-5000;
+ f.documents.get('memberships/alice_clubA').status='approved';f.documents.get('memberships/alice_clubA').balance=800;
+ f.documents.set('gameLog/old',{clubId:'clubA',uid:'alice',profit:-196,rake:143.96,at:now-6000});
+ f.documents.set('settlementClubs/clubA',{currentCycleId:'cycle_2',activatedAt:now-100000});
+ f.documents.set('settlementClubs/clubA/cycles/cycle_2',{id:'cycle_2',number:2,status:'open',startAt:cycleStart});
+ f.documents.set('settlementClubs/clubA/sessions/old',{playerId:'alice',cycleId:'cycle_1',result:-19600,rake:14396,at:now-6000});
+ f.documents.set('settlementClubs/clubA/sessions/current',{playerId:'alice',cycleId:'cycle_2',result:-2517,rake:417,at:now-1000});
+ f.documents.set('settlementClubs/other/sessions/foreign',{playerId:'alice',cycleId:'cycle_2',result:999900,rake:999900,at:now-1000});
+ f.documents.set('settlementClubs/clubA/sessions/bob',{playerId:'bob',cycleId:'cycle_2',result:50000,rake:10000,at:now-1000});
+ const god=(await f.run({accountingOnly:true})).accounting;
+ assert.equal(god.start,cycleStart);assert.equal(god.cycleId,'cycle_2');assert.equal(god.basis,'settlement-cycle-completed-sessions');
+ assert.equal(god.players.alice.result,-25.17);assert.equal(god.players.alice.rake,4.17);assert.equal(god.players.alice.totalResult,-196);assert.equal(god.players.alice.totalRake,143.96);
+ assert.equal(god.agents.agentA.result,-25.17);assert.equal(god.club.result,474.83);
+ const agent=(await f.run({accountingOnly:true},auth('agentA','agent@example.test'))).accounting;
+ assert.equal(agent.players.alice.result,-25.17);assert.equal(agent.players.bob,undefined);assert.equal('rake'in agent.players.alice,false);
+ const own=(await f.run({accountingOnly:true},auth('alice','alice@example.test'))).accounting;
+ assert.equal(own.players.alice.result,-25.17);assert.equal(own.players.alice.chips,800);assert.equal(own.cycleId,'cycle_2');assert.doesNotMatch(JSON.stringify(own),/totalResult|totalRake|"rake"|openResult|"club"|"agents"/);
+ // Starting another empty cycle is a real zero even with old gameLog and journal activity.
+ f.documents.set('settlementClubs/clubA',{currentCycleId:'cycle_3'});
+ f.documents.set('settlementClubs/clubA/cycles/cycle_3',{id:'cycle_3',number:3,status:'open',startAt:now});
+ const next=(await f.run({accountingOnly:true})).accounting;
+ assert.equal(next.players.alice.result,0);assert.equal(next.players.alice.rake,0);assert.equal(next.players.alice.totalResult,-196);assert.equal(next.players.alice.chips,800);
+ assert.equal(f.options.every(o=>o.readOnly),true);
+ f.documents.delete('settlementClubs/clubA/cycles/cycle_3');
+ await assert.rejects(f.run({accountingOnly:true}),e=>e.code==='failed-precondition','a missing active cycle must fail instead of silently substituting weekly history');
 });

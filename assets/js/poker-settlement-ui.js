@@ -105,7 +105,6 @@
     value,
     note,
     plain = false,
-    result,
     signed = false
   }) {
     return /*#__PURE__*/React.createElement("div", {
@@ -113,19 +112,40 @@
     }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, plain ? value : /*#__PURE__*/React.createElement(Amount, {
       value: value,
       signed: signed
-    }), " ", result != null && /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
-      value: result,
-      signed: true
-    }), ")")), note && /*#__PURE__*/React.createElement("small", null, note));
+    })), note && /*#__PURE__*/React.createElement("small", null, note));
   }
   function LifetimeNote({
     value
   }) {
-    return value == null ? null : /*#__PURE__*/React.createElement("small", {
+    return /*#__PURE__*/React.createElement("small", {
       className: "st-lifetime-note"
-    }, "Lifetime result: ", /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("span", null, "Lifetime profit/loss"), value == null ? /*#__PURE__*/React.createElement("span", null, "Unavailable") : /*#__PURE__*/React.createElement(Amount, {
       value: value,
       signed: true
+    }));
+  }
+  function FundsResult({
+    chips,
+    result,
+    totalResult,
+    canSeeLifetime = false,
+    periodLabel = 'in current cycle',
+    balanceLabel = 'Current chips'
+  }) {
+    const resultLabel = periodLabel === 'in selected dates' ? 'Recorded profit/loss' : periodLabel === 'in selected cycle' ? 'Selected cycle profit/loss' : periodLabel === 'across selected cycles' ? 'Selected cycles profit/loss' : 'Cycle profit/loss';
+    return /*#__PURE__*/React.createElement("div", {
+      className: "st-funds-result"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "st-balance-line"
+    }, /*#__PURE__*/React.createElement("span", null, balanceLabel), /*#__PURE__*/React.createElement("strong", null, chips == null ? 'Unavailable' : /*#__PURE__*/React.createElement(Amount, {
+      value: chips
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "st-cycle-line"
+    }, /*#__PURE__*/React.createElement("span", null, resultLabel), /*#__PURE__*/React.createElement("strong", null, result == null ? 'Awaiting cycle start' : /*#__PURE__*/React.createElement(Amount, {
+      value: result,
+      signed: true
+    }))), canSeeLifetime && /*#__PURE__*/React.createElement(LifetimeNote, {
+      value: totalResult
     }));
   }
   function ReportDates({
@@ -206,20 +226,18 @@
     const [start, setStart] = useState(''),
       [error, setError] = useState('');
     const t = data.legacyReport?.totals,
-      staff = data.role !== 'player';
+      owner = data.role === 'owner';
     return /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h2", null, "Current cycle start is required"), /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "The current cycle has no confirmed start date. Its result is unavailable until a manager selects the correct date."), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "Balances and game history are preserved. Setting the start date does not close a cycle or change anyone\u2019s chips. The confirmed start stays fixed until the cycle is closed manually."), t?.chips != null && /*#__PURE__*/React.createElement("div", {
-      className: "st-metrics"
-    }, /*#__PURE__*/React.createElement(Metric, {
-      label: staff ? 'Current player chips' : 'My current chips, including tables',
-      value: t.chips
-    })), staff && /*#__PURE__*/React.createElement(LifetimeNote, {
-      value: t?.totalResult
+    }, "Balances and game history are preserved. Setting the start date does not close a cycle or change anyone\u2019s chips. The confirmed start stays fixed until the cycle is closed manually."), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: t?.chips,
+      result: null,
+      totalResult: t?.totalResult,
+      canSeeLifetime: owner
     }), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
     }, "Chip balances are funds held, not profit or loss."), data.canSetPeriodStart ? /*#__PURE__*/React.createElement("form", {
@@ -405,7 +423,8 @@
     funds = [],
     onPay,
     canPay,
-    periodLabel
+    periodLabel,
+    canSeeLifetime = false
   }) {
     const [query, setQuery] = useState(''),
       [sort, setSort] = useState('closing'),
@@ -444,7 +463,7 @@
       value: "name"
     }, "Name")))), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Current chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Settlement balance"), /*#__PURE__*/React.createElement("th", null, "Actions"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Settlement balance"), /*#__PURE__*/React.createElement("th", null, "Actions"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
       const key = JSON.stringify([p.agentId, p.playerId]);
       return /*#__PURE__*/React.createElement(React.Fragment, {
         key: key
@@ -452,13 +471,12 @@
         className: "st-link",
         "aria-expanded": expanded === key,
         onClick: () => setExpanded(expanded === key ? '' : key)
-      }, p.playerName)), /*#__PURE__*/React.createElement("td", null, p.balance == null ? '—' : /*#__PURE__*/React.createElement(Amount, {
-        value: p.balance
-      }), " ", /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
-        value: p.totals.result,
-        signed: true
-      }), ")"), /*#__PURE__*/React.createElement(LifetimeNote, {
-        value: p.totalResult
+      }, p.playerName)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+        chips: p.balance,
+        result: p.totals.result,
+        totalResult: p.totalResult,
+        canSeeLifetime: canSeeLifetime,
+        periodLabel: periodLabel
       })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
         value: p.totals.rake
       })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
@@ -565,7 +583,7 @@
     }, data.cycles.map(c => /*#__PURE__*/React.createElement("option", {
       key: c.id,
       value: c.id
-    }, c.legacy ? "Cycle open before the transition" : "Cycle " + c.number, " \xB7 ", status[c.status])), data.role !== 'player' && /*#__PURE__*/React.createElement("option", {
+    }, c.legacy ? "Cycle open before the transition" : "Cycle " + c.number, " \xB7 ", status[c.status])), data.role === 'owner' && /*#__PURE__*/React.createElement("option", {
       value: "all"
     }, "All cycles since the transition")));
   }
@@ -602,22 +620,18 @@
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h2", null, range ? "Recorded results in selected dates" : closed ? "Cycle report saved at closing" : "Your current settlement"), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, range ? "Read-only report of cash-outs and completed tournaments recorded within the selected dates. Games still in progress are excluded. Amounts follow the recording date. Use a saved cycle report to review its final settlement. The current cycle and all balances stay unchanged." : closed ? "This report was saved when the cycle closed. Original balances and history have been preserved." : "This cycle stays open until a manager closes it manually. Results include games in progress. No cycle has been closed or reset."), /*#__PURE__*/React.createElement("div", {
+    }, range ? "Read-only report of cash-outs and completed tournaments recorded within the selected dates. Games still in progress are excluded. Amounts follow the recording date. Use a saved cycle report to review its final settlement. The current cycle and all balances stay unchanged." : closed ? "This report was saved when the cycle closed. Original balances and history have been preserved." : "This cycle stays open until a manager closes it manually. Completed hands count even while a session is still open. An unfinished hand counts after it finishes."), /*#__PURE__*/React.createElement("div", {
       className: "st-net"
-    }, /*#__PURE__*/React.createElement("span", null, owner ? "Total chips held by club players" : staff ? "Total chips held by my players" : "My chips, including tables", closed ? " · At closing" : range ? " · Current balance" : ''), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
-      value: t.chips
-    }), " ", /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
-      value: t.result,
-      signed: true
-    }), ")")), /*#__PURE__*/React.createElement("small", null, "In parentheses: profit or loss ", periodLabel, ". Chip top-ups are not profit."), staff && !range && /*#__PURE__*/React.createElement(LifetimeNote, {
-      value: t.totalResult
-    })), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, owner ? "All club players" : staff ? "My players" : "My chips, including tables"), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: t.chips,
+      result: t.result,
+      totalResult: t.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel,
+      balanceLabel: closed ? 'Chips at closing' : 'Current chips'
+    }), /*#__PURE__*/React.createElement("small", null, "Profit/loss ", periodLabel, ". Chip top-ups are not profit.")), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: (staff ? "Player results " : "My result ") + periodLabel,
-      value: t.result,
-      signed: true
-    }), /*#__PURE__*/React.createElement(Metric, {
       label: "Wallet chips",
       value: t.balance
     }), /*#__PURE__*/React.createElement(Metric, {
@@ -635,15 +649,15 @@
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "Agents ", periodLabel), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Agent"), /*#__PURE__*/React.createElement("th", null, "Chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Commission"), /*#__PURE__*/React.createElement("th", null, range ? 'Club settlement from selected dates' : 'Club settlement from cycle activity'))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Agent"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Commission"), /*#__PURE__*/React.createElement("th", null, range ? 'Club settlement from selected dates' : 'Club settlement from cycle activity'))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
       key: a.uid
-    }, /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: a.chips
-    }), " (", /*#__PURE__*/React.createElement(Amount, {
-      value: a.result,
-      signed: true
-    }), ")", /*#__PURE__*/React.createElement(LifetimeNote, {
-      value: a.totalResult
+    }, /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+      chips: a.chips,
+      result: a.result,
+      totalResult: a.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel,
+      balanceLabel: closed ? 'Chips at closing' : 'Current chips'
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: a.rake
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
@@ -678,15 +692,15 @@
       value: "name"
     }, "Name")))), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, range ? "Rake in selected dates" : "Cycle rake"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, range ? "Rake in selected dates" : "Cycle rake"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
       key: p.uid
-    }, /*#__PURE__*/React.createElement("td", null, p.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: p.chips
-    }), " (", /*#__PURE__*/React.createElement(Amount, {
-      value: p.result,
-      signed: true
-    }), ")", /*#__PURE__*/React.createElement(LifetimeNote, {
-      value: p.totalResult
+    }, /*#__PURE__*/React.createElement("td", null, p.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+      chips: p.chips,
+      result: p.result,
+      totalResult: p.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel,
+      balanceLabel: closed ? 'Chips at closing' : 'Current chips'
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: p.rake
     }))))))), !rows.length && /*#__PURE__*/React.createElement("p", {
@@ -878,16 +892,14 @@
       busy: busy
     }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "st-muted st-method"
-    }, !selectedCurrent && /*#__PURE__*/React.createElement("strong", null, "Historical report \xB7 Read only. "), "Results are recorded when the session or tournament ends. Pending payments do not change the amount due."), (owner || agent) && data.currentTotals && /*#__PURE__*/React.createElement("div", {
-      className: "st-metrics"
-    }, /*#__PURE__*/React.createElement(Metric, {
-      label: (owner ? "All club players" : "My players") + " · Current chips (result " + periodLabel + ")",
-      value: data.currentTotals.chips,
+    }, !selectedCurrent && /*#__PURE__*/React.createElement("strong", null, "Historical report \xB7 Read only. "), "Completed hands count toward the current cycle even while a session remains open. An unfinished hand counts after it finishes. Pending payments do not change the amount due."), (owner || agent) && data.currentTotals && /*#__PURE__*/React.createElement("section", {
+      className: "st-panel st-funds-panel"
+    }, /*#__PURE__*/React.createElement("h3", null, owner ? "All club players" : "My players"), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: data.currentTotals.chips,
       result: owner ? c.playersResult : a.playersResult,
-      note: data.currentTotals.totalResult != null && /*#__PURE__*/React.createElement(React.Fragment, null, "Lifetime result: ", /*#__PURE__*/React.createElement(Amount, {
-        value: data.currentTotals.totalResult,
-        signed: true
-      }))
+      totalResult: data.currentTotals.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel
     })), owner ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
       value: c.closing,
       kind: "club"
@@ -971,7 +983,13 @@
       key: l.playerId
     }, /*#__PURE__*/React.createElement("span", null, l.playerName), /*#__PURE__*/React.createElement(Amount, {
       value: l.commission
-    }))))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
+    }))))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", {
+      className: "st-panel st-funds-panel"
+    }, /*#__PURE__*/React.createElement("h3", null, "My balance and profit/loss"), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: data.chips ?? data.balance,
+      result: p.totals.result,
+      periodLabel: periodLabel
+    })), /*#__PURE__*/React.createElement(Net, {
       value: p.closing,
       kind: "player"
     }), /*#__PURE__*/React.createElement(Breakdown, {
@@ -981,14 +999,6 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "My result " + periodLabel,
-      value: p.totals.result,
-      signed: true
-    }), /*#__PURE__*/React.createElement(Metric, {
-      label: "Current chips (result " + periodLabel + ")",
-      value: data.chips ?? data.balance,
-      result: p.totals.result
-    }), /*#__PURE__*/React.createElement(Metric, {
       label: "Hands played",
       value: p.totals.hands,
       plain: true
@@ -1018,7 +1028,8 @@
       funds: data.funds,
       onPay: setPayment,
       canPay: canPay,
-      periodLabel: periodLabel
+      periodLabel: periodLabel,
+      canSeeLifetime: owner
     }), /*#__PURE__*/React.createElement(Payments, {
       items: data.payments,
       act: act,

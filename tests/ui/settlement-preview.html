@@ -6,6 +6,9 @@ const agents=[{agentId:'agentA',agentName:'Itay Marom',playersResult:-130000,rak
 const player={playerId:'A',playerName:'Jonathan Cohen',totals:{result:-200000,hands:685,games:3},opening:0,paid:0,closing:-182000,hasRakeback:true,rakebackTotal:18000,rows:[{tableId:'nlh',tableName:'NLH 1/2 — Table 4',kind:'cash',result:-120000,hands:410,games:1},{tableId:'plo',tableName:'PLO 2/5 — Table 7',kind:'cash',result:-100000,hands:180,games:1},{tableId:'mtt',tableName:'Thursday Tournament',kind:'tournament',result:20000,hands:95,games:1}],counterparties:[{id:'agentA',name:'Itay Marom',closing:-182000}]};
 if(new URLSearchParams(location.search).has('no-rb')){delete player.hasRakeback;delete player.rakebackTotal;player.closing=-200000;player.counterparties[0].closing=-200000;}
 const report={active:true,supportsDateRange:true,role,clubPartyId:'owner',cycle,cycles:[cycle],currentCycleId:cycle.id,activatedAt:at-86400000*2,payments:[],approvals:[],...(role==='player'?{player,balance:15983}:role==='agent'?{player,agent:agents[0],details:details.filter(p=>p.agentId===uid),funds:source.filter(p=>p[6]===uid).map(p=>({uid:p[0],balance:p[7]}))}:{club:{totals:{playersResult:170000,rake:325000,commission:142500,leadsIncome:0,hands:2305,toClub:-312500,closing:-312500}},agents,details,funds:source.map(p=>({uid:p[0],balance:p[7]}))})};
+if(role==='owner')report.currentTotals={chips:source.reduce((n,p)=>n+p[7],0),totalResult:source.reduce((n,p)=>n+p[2],0)-30000};
+if(role==='agent')report.currentTotals={chips:source.filter(p=>p[6]===uid).reduce((n,p)=>n+p[7],0)};
+if(role==='owner')report.funds=report.funds.map(p=>({...p,totalResult:source.find(row=>row[0]===p.uid)[2]-(p.uid==='A'?30000:0)}));
 const previewParams=new URLSearchParams(location.search),unknownStart=previewParams.get('needsPeriodStart')==='true'||previewParams.has('unknown-start'),legacyMode=previewParams.has('legacy')||unknownStart;
 let legacyStart=unknownStart?null:at-2*86400000;
 const legacyRows=source.map(([id,name,result,rake,hands,rb,agentUid,chips])=>({uid:id,name,agentUid,balance:legacyMode&&id==='A'?80000:chips,onTables:0,chips:legacyMode&&id==='A'?80000:chips,result:legacyMode&&id==='A'?-20000:result,totalResult:legacyMode&&id==='A'?-20000:result,rake,openSessions:0}));
@@ -21,10 +24,11 @@ const legacyReport=(dateRange=null)=>{
  const scopedAgents=agents.map(a=>{const sum=legacySum(allRows.filter(p=>p.agentUid===a.agentId)),commission=unknown?null:range?Math.round(sum.rake*(a.agentId==='agentA'?.5:.4)):a.commission;return{...sum,uid:a.agentId,name:a.agentName,result:unknown?null:sum.result,rake:unknown?null:sum.rake,commission,toClub:unknown?null:-sum.result-commission};});
  let totals=role==='agent'?scopedAgents.find(a=>a.uid===uid):role==='owner'?{...legacySum(rows),commission:unknown?null:scopedAgents.reduce((n,a)=>n+a.commission,0)}:rows[0];
  if(unknown)totals={...totals,result:null,rake:null,commission:null,toClub:null};
- const safe=p=>{const{rake,agentUid,commission,toClub,totalResult,...rest}=p;return rest;};
+ const withoutLifetime=p=>{const{totalResult,totalRake,...rest}=p;return rest;};
+ const safe=p=>{const{rake,agentUid,commission,toClub,...rest}=withoutLifetime(p);return rest;};
  return{active:false,legacy:true,role,needsPeriodStart:unknown,canSetPeriodStart:role==='owner'&&!range,supportsDateRange:true,readOnly:range,...(range?{dateRange}:{}),canClose:role==='owner'&&legacyOpen&&!unknown&&!range,
  cycle:{id:range?'date_range':'legacy_current',number:0,status:range?'range':legacyOpen?'open':'closed',startAt:range?dateRange.fromAt:legacyStart,endAt:range?dateRange.toAt:legacyOpen?null:at,legacy:true},cycles:legacyOpen?[]:[{...cycle},{id:'legacy_current',number:0,status:'closed',legacy:true}],currentCycleId:legacyOpen?'legacy_current':cycle.id,
- legacyReport:{players:role==='player'?rows.map(safe):rows,totals:role==='player'?safe(totals):totals,...(role==='player'?{}:{agents:role==='owner'?scopedAgents:scopedAgents.filter(a=>a.uid===uid)}),asOf:at}};
+ legacyReport:{players:role==='player'?rows.map(safe):role==='agent'?rows.map(withoutLifetime):rows,totals:role==='player'?safe(totals):role==='agent'?withoutLifetime(totals):totals,...(role==='player'?{}:{agents:role==='owner'?scopedAgents:scopedAgents.filter(a=>a.uid===uid).map(withoutLifetime)}),asOf:at}};
 };
 const call=async(name,args)=>{
  if(name==='pkSettlementReport'){

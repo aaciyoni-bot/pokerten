@@ -19,6 +19,13 @@ async function fixture(query){
 }
 const key=c=>c.val+c.suit;
 (async()=>{
+ const agentScope=await fixture('mode=admin&managementRole=agent');
+ assert.deepEqual(Object.keys(agentScope.directory.accounting.players).sort(),['agent','p1','p2']);
+ assert.equal(agentScope.directory.accounting.club,undefined,'agent preview has no whole-club accounting');
+ assert.ok(!JSON.stringify(agentScope.directory.accounting).includes('totalResult'),'agent preview models the server lifetime-data restriction');
+ assert.equal(agentScope.directory.members.some(m=>m.uid==='owner'),false);
+ const agentFile=await fixture('mode=player-file&managementRole=agent');
+ assert.equal(agentFile.directory.accounting.players.p1.totalResult,undefined);
  const unknownPeriod=await fixture('mode=player-file&needsPeriodStart=true');
  assert.equal(unknownPeriod.directory.accounting.start,null);
  assert.equal(unknownPeriod.directory.accounting.players.p1.result,null,'unknown-period preview must not fabricate zero');

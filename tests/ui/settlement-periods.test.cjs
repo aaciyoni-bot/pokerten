@@ -63,7 +63,7 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  const setStart=calls.findLast(c=>c.name==='pkSettlement');
  assert.deepEqual(JSON.parse(JSON.stringify(setStart.args)),{clubId:'example-club',action:'setLegacyPeriodStart',startAt:Date.parse('2025-02-01T07:30:00Z')});
  assert.equal(clubChanges,1,'confirmed start refreshes management and balance widgets');
- assert.match(doc.body.textContent,/Current cycle · Open/);assert.match(doc.querySelector('.st-net strong').textContent,/675\.43 \(-125\.00\)/);
+ assert.match(doc.body.textContent,/Current cycle · Open/);assert.equal(doc.querySelector('.st-net .st-balance-line strong').textContent,'675.43');assert.equal(doc.querySelector('.st-net .st-cycle-line strong').textContent,'-125.00');assert.match(doc.querySelector('.st-net .st-lifetime-note').textContent,/Lifetime profit\/loss/);
  assert.ok(!calls.some(c=>c.name==='pkSettlement'&&/close|activate|setEnd/i.test(c.args.action)),'setting the period does not close or reset anything');
 
  // Stale automatic settings cannot produce automatic controls or closing calls.
@@ -87,7 +87,7 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  await setDates('2025-02-01','2025-02-02');
  const request=calls.findLast(c=>c.name==='pkSettlementReport');
  assert.deepEqual(JSON.parse(JSON.stringify(request.args)),{clubId:'example-club',fromAt:Date.parse('2025-01-31T22:00:00Z'),toAt:Date.parse('2025-02-02T22:00:00Z')});
- assert.match(doc.body.textContent,/Date range · Read only|Recorded results in selected dates|Current balance/);assert.match(doc.body.textContent,/in selected dates/);
+ assert.match(doc.body.textContent,/Date range · Read only|Recorded results in selected dates|Current chips/);assert.match(doc.body.textContent,/in selected dates/);
  assert.doesNotMatch(doc.body.textContent,/At closing|Current cycle · Open/);assert.equal(button('Close cycle and start next'),undefined);assert.equal(button('Record payment'),undefined);assert.equal(button('Approve report'),undefined);
  assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writes);assertEnglishUi(doc.body,'Historical date range');
  assert.match(doc.body.textContent,/club time \(Asia\/Jerusalem\)/);
@@ -108,6 +108,6 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  assert.ok(button('Back to current cycle'));await React.act(async()=>button('Back to current cycle').click());
  assert.match(doc.body.textContent,/in current cycle/);
  current=legacy('player');rangeTrusted=true;await mount();await setDates('2025-02-01','2025-02-02');
- assert.match(doc.body.textContent,/Recorded results in selected dates/);assert.doesNotMatch(doc.body.textContent,/Lifetime result|Rakeback|Rake generated|Commission/i);assert.equal(button('Save cycle start'),undefined);assert.equal(button('Close cycle and start next'),undefined);
+ assert.match(doc.body.textContent,/Recorded results in selected dates/);assert.doesNotMatch(doc.body.textContent,/Lifetime profit\/loss|Rakeback|Rake generated|Commission/i);assert.equal(button('Save cycle start'),undefined);assert.equal(button('Close cycle and start next'),undefined);
  await React.act(()=>root.unmount());w.close();console.log('PASS: manual-only cycles, explicit missing start, funds preserved, club-time DST boundaries, refresh events, non-overlapping polling, read-only history and verified range responses');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

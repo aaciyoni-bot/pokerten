@@ -329,7 +329,7 @@ test('spectating managers fill all remaining seats atomically without sitting or
  await assert.rejects(call('pkSeat',uid,{tableId,op:'fillbots'}),e=>e.code==='permission-denied');
  const before=await bank(owner),request=req(manager,{tableId,op:'fillbots'});await Promise.all([Access.pkSeat.run(request),Access.pkSeat.run(request)]);
  const t=await get('tables/'+tableId),ps=Object.values(t.players),names=require('../../functions/botNames');assert.equal(ps.length,6);assert.equal(t.players[manager],undefined);assert.equal(await bank(owner),before-600);
- const families=ps.map(p=>names.familyKey(p.name)).filter(Boolean);assert.equal(new Set(families).size,families.length);assert.ok(ps.some(p=>names.language(p.name)==='en'));assert.ok(ps.some(p=>names.language(p.name)==='he'));assert.ok(ps.every(p=>p.botLeavesAt>p.botJoinedAt));
+ const families=ps.map(p=>names.familyKey(p.name)).filter(Boolean);assert.equal(new Set(families).size,families.length);assert.ok(ps.every(p=>names.language(p.name)==='en'));assert.ok(ps.every(p=>p.botLeavesAt>p.botJoinedAt));
  assert.equal((await call('pkSeat',manager,{tableId,op:'fillbots'})).added,0);assert.equal(await bank(owner),before-600);
  const six=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:'full',settings:{maxPlayers:9,baseGameType:'Omaha6',minBuyIn:40,maxBuyIn:100,blinds:1}});assert.equal(Object.keys((await get('tables/'+six.tableId)).players).length,7);
  const poor='unfunded-fill';await fresh(poor);const c=await call('pkClubCreate',poor,{name:'No funds'}),r=await call('pkTableCreate',poor,{manual:true,clubId:c.id,settings:{}});

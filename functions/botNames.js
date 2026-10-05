@@ -18,10 +18,11 @@ function familyKey(name){
 // the actual table. Tournament registration can contain hundreds of entrants.
 function botName(uid,used=[],options={}){
  const table=options.tableNames??used,names=new Set(used.map(normal)),keys=new Set(table.map(familyKey).filter(Boolean));
- const counts={he:0,en:0};for(const n of table){const l=language(n);if(l)counts[l]++;}
  for(let salt=0;salt<10000;salt++){
   const h=crypto.createHash('sha256').update(String(uid)+':'+salt).digest();
-  const lang=options.language||(counts.he===counts.en?(h[7]%2?'he':'en'):counts.he<counts.en?'he':'en'),ix=lang==='he'?0:1;
+  // New display names always use the Latin spelling. Hebrew aliases above
+  // remain only for matching historical names and preventing family duplicates.
+  const ix=1;
   const first=h[0]%2?women:men;
   const name=h[1]%4===0?nick[h.readUInt16BE(2)%nick.length][ix]:first[h.readUInt16BE(4)%first.length][ix]+' '+families[h.readUInt16BE(6)%families.length][ix];
   if(!names.has(normal(name))&&(!familyKey(name)||!keys.has(familyKey(name))))return name;
@@ -40,13 +41,6 @@ function renameGenericBots(players,roster,options={}){
   const conflict=generic(name)||used.some(n=>normal(n)===normal(name)||table&&familyKey(name)&&familyKey(n)===familyKey(name));
   if(conflict){const rosterNames=roster?Object.entries(roster).filter(([id])=>id!==uid).map(([,p])=>p.name):[];name=botName(uid,[...used,...rosterNames],{tableNames:table?used:[]});}
   save(uid,p,name);used.push(name);
- }
- if(table&&bots.length>=2){
-  const scripts=new Set(bots.map(([,p])=>language(p.name)));
-  if(!scripts.has('he')||!scripts.has('en')){
-   const [uid,p]=bots.at(-1),others=entries.filter(([id])=>id!==uid).map(([,p])=>p.name||p.username),rosterNames=roster?Object.entries(roster).filter(([id])=>id!==uid).map(([,p])=>p.name):[];
-   save(uid,p,botName(uid,[...others,...rosterNames],{tableNames:others,language:scripts.has('en')?'he':'en'}));
-  }
  }
  return changed;
 }

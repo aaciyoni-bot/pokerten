@@ -1,4 +1,5 @@
 'use strict';
+const assertEnglishUi=require('./english-ui.cjs');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
@@ -13,11 +14,11 @@ const render=props=>React.act(()=>root.render(React.createElement(w.ClubUI.Settl
 (async()=>{
   let resumed;
   const tables=[{id:'mine',players:{me:{},opponent:{}}},{id:'empty',players:{}}];
-  await React.act(()=>root.render(React.createElement(w.ClubUI.LobbyOverview,{user:{uid:'me',username:'Test',playerId:'123'},tables,brand:'TEST',locale:'en',onResume:t=>resumed=t})));
-  assert.match(w.document.querySelector('.club-lobby-facts').textContent,/Club tables2Occupied seats2Player ID123/);
+  await React.act(()=>root.render(React.createElement(w.ClubUI.LobbyOverview,{user:{uid:'me',username:'Test',playerId:'123'},tables,brand:'TEST',locale:'he',onResume:t=>resumed=t})));
+  assertEnglishUi(w.document.body,'Lobby with legacy Hebrew locale');assert.match(w.document.querySelector('.club-lobby-facts').textContent,/Club tables2Occupied seats2Player ID123/);
   await React.act(()=>w.document.querySelector('.club-primary').click());assert.equal(resumed,tables[0]);
   const players=Array.from({length:14},(_,i)=>({uid:'p'+i,username:'Player '+i,playerId:'ID'+i,balance:100+i,agentUid:'a'}));
-  const props={players,showRake:true,results:{p0:-25},rakes:{p0:5},members:{a:{username:'Agent'}},logs:[{uid:'p0',at:100,game:'Poker',profit:-25}],period:'Current week'};
+  const props={players,showRake:true,results:{p0:-25},rakes:{p0:5},members:{a:{username:'Agent'}},logs:[{uid:'p0',at:100,game:'Poker',profit:-25}],period:'Current week',locale:'he'};
   await render({...props,showRake:false});assert.doesNotMatch(w.document.body.textContent,/Period rake/);
   await render(props);assert.equal(w.document.querySelectorAll('.club-account-card').length,12);
   assert.match(w.document.querySelector('.club-account-card').textContent,/Period result\u200e?-25\.00Current balance100\.00Period rake5\.00/);
@@ -25,7 +26,7 @@ const render=props=>React.act(()=>root.render(React.createElement(w.ClubUI.Settl
   await React.act(()=>next.click());assert.equal(w.document.querySelectorAll('.club-account-card').length,2);
   await React.act(()=>[...w.document.querySelectorAll('nav button')].find(b=>b.textContent==='Previous').click());
   let card=w.document.querySelector('.club-account-card');card.focus();await React.act(()=>card.click());
-  let modal=w.document.querySelector('[role="dialog"]');assert.ok(modal);assert.match(modal.textContent,/Current balance100\.00Period result\u200e?-25\.00/);
+  let modal=w.document.querySelector('[role="dialog"]');assert.ok(modal);assertEnglishUi(w.document.body,'Account dialog with legacy Hebrew locale');assert.match(modal.textContent,/Current balance100\.00Period result\u200e?-25\.00/);
   assert.equal(w.document.activeElement,w.document.querySelector('.club-dialog-close'));
   await React.act(()=>modal.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));
   assert.equal(w.document.querySelector('[role="dialog"]'),null);assert.equal(w.document.activeElement,card);

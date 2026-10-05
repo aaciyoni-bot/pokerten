@@ -8,9 +8,9 @@ const {getAuth} = require('firebase-admin/auth');
 
 const WINDOW = 15 * 60 * 1000;
 const options = {maxInstances: 5, concurrency: 4, memory: '512MiB', timeoutSeconds: 30};
-const badLogin = () => new HttpsError('unauthenticated', 'מספר הכניסה או הקוד שגויים.');
+const badLogin = () => new HttpsError('unauthenticated', 'Incorrect player ID or PIN.');
 const validatePin = pin => {
-  if (typeof pin !== 'string' || !/^\d{8,12}$/.test(pin)) throw new HttpsError('invalid-argument', 'הקוד צריך להכיל 8–12 ספרות.');
+  if (typeof pin !== 'string' || !/^\d{8,12}$/.test(pin)) throw new HttpsError('invalid-argument', 'Your PIN must contain 8–12 digits.');
   return pin;
 };
 async function hashPin(pin, salt) {
@@ -34,10 +34,10 @@ async function consume(db, key, maximum, now = Date.now()) {
     tx.set(ref, {count: count + 1, until: fresh ? now + WINDOW : old.until});
     return true;
   });
-  if (!allowed) throw new HttpsError('resource-exhausted', 'יותר מדי ניסיונות. אפשר לנסות שוב בעוד 15 דקות.');
+  if (!allowed) throw new HttpsError('resource-exhausted', 'Too many attempts. Please try again in 15 minutes.');
 }
 function currentUid(request) {
-  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'צריך להתחבר לחשבון קודם.');
+  if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Please sign in to your account first.');
   return request.auth.uid;
 }
 // Report a bounded operational reason without exposing provider messages,
@@ -63,7 +63,7 @@ async function ensurePlayerId(db, uid, profile = null, randomId = () => 'P' + cr
       const userRef = db.doc('users/' + uid);
       const user = await tx.get(userRef);
       if (claim.exists && claim.data().uid !== uid) {
-        if (mapped.exists) throw new HttpsError('failed-precondition', 'לא ניתן לאמת את קוד השחקן.');
+        if (mapped.exists) throw new HttpsError('failed-precondition', 'Unable to verify your player ID.');
         return null;
       }
       tx.set(ref, {playerId});
@@ -77,7 +77,7 @@ async function ensurePlayerId(db, uid, profile = null, randomId = () => 'P' + cr
     });
     if (result) return result;
   }
-  throw new HttpsError('unavailable', 'לא ניתן ליצור קוד שחקן כרגע. נסה שוב.');
+  throw new HttpsError('unavailable', 'Unable to create a player ID right now. Please try again.');
 }
 async function enroll(db, uid, pin, requireEmpty = false, profile = null) {
   const playerId = await ensurePlayerId(db, uid, profile);
@@ -88,19 +88,19 @@ async function enroll(db, uid, pin, requireEmpty = false, profile = null) {
     const candidate = playerId;
     const result = await db.runTransaction(async tx => {
       const account = await tx.get(accountRef);
-      if (requireEmpty && account.exists) throw new HttpsError('already-exists', 'כבר הוגדר קוד לחשבון.');
+      if (requireEmpty && account.exists) throw new HttpsError('already-exists', 'A PIN has already been set for this account.');
       const loginId = account.exists ? account.data().loginId : candidate;
       const credentialRef = db.doc('_pkPinCredentials/' + loginId);
       const credential = await tx.get(credentialRef);
       if (!account.exists && credential.exists) return null;
-      if (account.exists && (!credential.exists || credential.data().uid !== uid)) throw new HttpsError('failed-precondition', 'לא ניתן לעדכן את הקוד. יש לפנות לתמיכה.');
+      if (account.exists && (!credential.exists || credential.data().uid !== uid)) throw new HttpsError('failed-precondition', 'Unable to update your PIN. Please contact support.');
       tx.set(accountRef, {loginId});
       tx.set(credentialRef, {uid, salt, hash, changedAt: Date.now()});
       return loginId;
     });
     if (result) return result;
   }
-  throw new HttpsError('unavailable', 'נסה שוב.');
+  throw new HttpsError('unavailable', 'Please try again.');
 }
 
 exports.pkPinStatus = onCall(options, async request => {
@@ -147,9 +147,9 @@ exports.pkEnsurePlayer = onCall(options, async request => {
 exports.pkPinEnroll = onCall(options, async request => {
   const uid = currentUid(request);
   const pin = validatePin(request.data?.pin);
-  if (request.auth.token?.firebase?.sign_in_provider === 'anonymous') throw new HttpsError('failed-precondition', 'יש להיכנס קודם עם Google או עם אמצעי הכניסה הקיים.');
+  if (request.auth.token?.firebase?.sign_in_provider === 'anonymous') throw new HttpsError('failed-precondition', 'Please sign in with Google or your existing sign-in method first.');
   const age = Date.now() / 1000 - Number(request.auth.token?.auth_time || 0);
-  if (age > 600 || age < 0) throw new HttpsError('failed-precondition', 'כדי להגדיר קוד, צא והיכנס שוב לחשבון ואז חזור לכאן.');
+  if (age > 600 || age < 0) throw new HttpsError('failed-precondition', 'To set a PIN, sign out, sign in again, and return here.');
   const db = getFirestore();
   await consume(db, 'enroll:' + uid, 5);
   // Check signing availability before storing a new login method.
@@ -158,10 +158,10 @@ exports.pkPinEnroll = onCall(options, async request => {
 });
 
 exports.pkPinRegister = onCall(options, async request => {
-  if (request.auth) throw new HttpsError('failed-precondition', 'יש להגדיר קוד בפרופיל של החשבון הקיים.');
+  if (request.auth) throw new HttpsError('failed-precondition', 'Set a PIN from your existing account profile.');
   const pin = validatePin(request.data?.pin);
   const name = String(request.data?.name || '').trim();
-  if (name.length < 2 || name.length > 20) throw new HttpsError('invalid-argument', 'השם צריך להכיל 2–20 תווים.');
+  if (name.length < 2 || name.length > 20) throw new HttpsError('invalid-argument', 'Your name must contain 2–20 characters.');
   const db = getFirestore(), auth = getAuth();
   await consume(db, 'register-ip:' + (request.rawRequest?.ip || 'unknown'), 3);
   const uid = 'pk_' + crypto.randomBytes(16).toString('hex');

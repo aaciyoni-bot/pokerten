@@ -1,4 +1,5 @@
 'use strict';
+const assertEnglishUi=require('./english-ui.cjs');
 const fs=require('fs'),path=require('path'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom'),babel=require('@babel/core');
 const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
 const source=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function AuthView('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.AuthTest=AuthView; window.AppTest=App;');
@@ -10,17 +11,17 @@ w.eval(babel.transformSync(source,{plugins:[[require('@babel/plugin-transform-re
 const root=ReactDOM.createRoot(w.document.getElementById('root'));
 const button=text=>[...w.document.querySelectorAll('button')].find(b=>b.textContent===text || b.textContent.includes(text));
 const fill=async(label,value)=>React.act(()=>{const el=w.document.querySelector(`input[aria-label="${label}"]`);assert.ok(el,label);Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value').set.call(el,value);el.dispatchEvent(new w.Event('input',{bubbles:true}));});
-const click=async text=>React.act(async()=>{const el=button(text);assert.ok(el,text);el.click();});
+const click=async text=>{await React.act(async()=>{const el=button(text);assert.ok(el,text);el.click();});assertEnglishUi(w.document.body,'Auth '+text);};
 (async()=>{
  let googleCalls=0;const commands=[],tokens=[];
  w.fb={auth:{},signIn:async()=>{googleCalls++;throw {code:'auth/network-request-failed'};},fx:async(name,data)=>{commands.push({name,data});return {token:'test-token',loginId:'P123456789'};},signInCode:async token=>tokens.push(token)};
- await React.act(()=>root.render(React.createElement(w.AuthTest)));
+ await React.act(()=>root.render(React.createElement(w.AuthTest)));assertEnglishUi(w.document.body,'Initial sign-in');
  await click('Google');assert.equal(googleCalls,1);assert.ok(w.document.querySelector('[role=alert]'));assert.equal(button('Google').disabled,false);
- assert.equal(button('מספר טלפון'),undefined,'SMS entry is absent');assert.equal(w.document.querySelector('input[type=tel]'),null);
- await click('כניסה עם קוד אישי');await fill('מספר שחקן','p123456789');await fill('קוד אישי','83492716');
+ assert.equal(button('Phone number'),undefined,'SMS entry is absent');assert.equal(w.document.querySelector('input[type=tel]'),null);
+ await click('Sign in with player code');await fill('Player ID','p123456789');await fill('Personal code','83492716');
  await React.act(async()=>w.document.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true})));
  assert.deepEqual(JSON.parse(JSON.stringify(commands[0])),{name:'pkPinLogin',data:{loginId:'P123456789',pin:'83492716'}});assert.deepEqual(tokens,['test-token']);
- await click('שחקן חדש?');await fill('השם שלך','New Player');await fill('קוד אישי','39182647');await fill('אימות קוד אישי','39182647');
+ await click('New player?');await fill('Your name','New Player');await fill('Personal code','39182647');await fill('Confirm personal code','39182647');
  await React.act(async()=>w.document.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true})));
  assert.equal(commands[1].name,'pkPinRegister');assert.equal(tokens.length,2);
  await React.act(()=>root.render(null));
@@ -42,7 +43,7 @@ const click=async text=>React.act(async()=>{const el=button(text);assert.ok(el,t
    };
    await React.act(()=>root.render(React.createElement(w.AppTest)));
    await React.act(async()=>callback(user));
-   if(mode==='retry'){assert.ok(w.document.querySelector('[role=alert]'));assert.equal(w.document.querySelector('[data-testid=clubs]'),null);failed=false;await click('ניסיון נוסף');assert.equal(ensures,2);}
+   if(mode==='retry'){assert.ok(w.document.querySelector('[role=alert]'));assert.equal(w.document.querySelector('[data-testid=clubs]'),null);failed=false;await click('Try again');assert.equal(ensures,2);}
    assert.ok(w.document.querySelector('[data-testid=clubs]'),mode+' reaches clubs without selecting a club');
    assert.match(w.document.querySelector('[data-testid=clubs]').textContent,mode==='new'?/New\|0\|P987654321/:/Existing\|425\|P123456789/);
    assert.ok(subscriptions.includes('users/'+user.uid),'profile listens before club selection');

@@ -1,3 +1,37 @@
+# POKERTEN v313 manual settlement periods — 2026-10-05
+
+## Scope
+
+Settlement cycles remain open until an authorized manager closes them. Calendar passage and previously saved automatic-close flags cannot close a cycle. Existing balances and historical records are preserved. The release does not automatically select a production start date or close a production cycle; an authorized manager confirms a legacy start explicitly.
+
+## Interface
+
+- The settlement screen has a read-only From / To history report and a clear return to the current cycle.
+- Player File uses the same authoritative current-period result as management. The old Monday-based current/previous result cards are removed.
+- A legacy period without a recorded start requires an explicit manager-selected date. Its result is unavailable rather than guessed or displayed as zero; chip balances remain visible. Confirming this date does not move chips or close a cycle.
+- Ordinary players cannot set the period, see other players, or receive hidden lifetime/rake information. Existing conditional rakeback visibility is retained.
+- Financial summaries use separate rows in order: Current balance, Cycle profit/loss, and manager-only Lifetime profit/loss. Ordinary agents and players do not receive lifetime fields from the server; GOD status alone does not grant a management row.
+- Dates are interpreted in club time, including daylight-saving transitions, with an inclusive selected end date.
+- Current results include completed hands in open cash sittings. An unfinished hand stays at its exact pre-ante opening wealth, with queued top-ups accounted for. A same-table rejoin cannot inherit the former seat's opening snapshot. Tournament results remain recorded upon completion.
+- Manual closing atomically records open sitting contributions and rebases each sitting without changing chips or game state. Later cash-outs replace the provisional segment without double-counting; closed reports stay fixed. Historical date-range reports explicitly use recorded cash-outs and completed tournaments.
+
+## Verification
+
+- Mandatory predeploy checks: 20/20, cache v313.
+- Unit regressions: 65/65 passed. Focused backend contract/accounting/period regressions: 37/37 passed; directory/privacy suite: 18/18 passed.
+- Settlement emulator lifecycle verified missing-start handling, authorized start confirmation, unchanged wallet records, fixed-period accounting, exclusive range end, role privacy, manual closing and archiving, and inert automatic-close flags.
+- Final emulator lifecycle also passed after equivalent commission-query filtering and field projection. This reduces unrelated reads without changing archived commissions or wallet records.
+- Date regressions cover 23-hour and 25-hour days and reject nonexistent or ambiguous start times; successful changes refresh balance widgets, and report polling cannot overlap a pending request.
+- Full UI suite passed, including the final balance-label alignment, ordered rows, manager/agent/player/GOD-only visibility, history and period tests.
+- The exact server emulator CI chain passed 42/42 tests. It includes the new live-session lifecycle, concurrent close versus cash-out, multiple tables, top-ups, exact partial antes, zero-result hands, immutable previous reports, reopening, and unchanged wallets/table state. CI runs the emulator files sequentially to avoid cross-file collection-lock interference.
+- The narrow engine change only adds the public pre-ante opening wealth map; existing handStartStacks, cards, turn logic and bot decisions remain unchanged. Six new engine/accounting tests, existing runout tests and engine smoke passed. No real-money gameplay smoke was performed.
+- Preview commit `6e33618194e7198dd10c19fe0d049e8781ba071e`, workflow `37265829091`: validation and preview deployment passed. At 369px, browser checks verified the management and Player File three-row presentation, the agent's two-row display, no dialog/body horizontal overflow, contained report-table scrolling, explicit cycle-start confirmation on synthetic data, and inclusive read-only history navigation with close controls absent. Custom history leaves the current result intact. The final copy changes Current chips to Current balance and is covered by the full UI suite.
+- Production publication and the authorized legacy date confirmation are verified separately after deployment; browser preview actions use isolated synthetic records only.
+
+final result: passed
+
+---
+
 # POKERTEN v312 custom menu artwork and English-only interface — 2026-10-05
 
 ## Scope and visual targets

@@ -24,4 +24,4 @@ jobs:
       - run: npm ci --prefix functions --ignore-scripts
       - run: npm test --prefix tests/security
       - name: Check server-authoritative cash and tournament lifecycle
-        run: tests/security/node_modules/.bin/firebase emulators:exec --config firebase.security.json --project demo-pokerten-security --only firestore 'node --test tests/security/poker-server.test.cjs tests/security/settlement-server.test.cjs'
+        run: tests/security/node_modules/.bin/firebase emulators:exec --config firebase.security.json --project demo-pokerten-security --only firestore 'node --test --test-concurrency=1 tests/security/poker-server.test.cjs tests/security/settlement-server.test.cjs tests/security/settlement-live.test.cjs'

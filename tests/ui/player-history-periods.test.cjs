@@ -1,0 +1,46 @@
+'use strict';
+const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom'),assertEnglishUi=require('./english-ui.cjs');
+const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;
+global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
+const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')},{Simulate}=require('react-dom/test-utils');w.React=React;w.ReactDOM=ReactDOM;
+const calls=[],start=Date.parse('2026-03-27T12:00:00Z'),member={uid:'player',username:'Example Player',balance:675.43,stats:{gamesPlayed:5,gamesWon:1,totalProfit:-4321}};
+// The spring DST day has 23 hours in club time. Include both boundaries and
+// adjacent records so an exclusive To date or UTC-date filter fails visibly.
+const records=[['before','2026-03-26T21:59:59.999Z',999],['first','2026-03-26T22:00:00Z',10],['middle','2026-03-27T12:00:00Z',20],['last','2026-03-27T20:59:59.999Z',-5],['next','2026-03-27T21:00:00Z',100]].map(([id,at,profit])=>({id,at:Date.parse(at),profit,game:'poker',tableId:id,uid:member.uid}));
+w.fb={auth:{currentUser:{uid:'owner'}},fx:async(name,args)=>{calls.push({name,args});assert.equal(name,'pkGameHistory','history navigation must never mutate balances or cycles');return{records:structuredClone(records),nextCursor:null};}};
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PlayerFileModal('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.PlayerFileTest=PlayerFileModal;');w.eval(script);
+w.__club={id:'main'};const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
+let openedSettlement=0;
+const known={start,end:null,needsPeriodStart:false,basis:'settlement-cycle-live-sessions',players:{player:{chips:675.43,result:-27.5,totalResult:-999,rake:4}}};
+const mount=async(accounting,canManagePeriod=false,viewer={uid:'owner',role:'club_owner',status:'approved'})=>{await React.act(async()=>root.render(React.createElement(w.PlayerFileTest,{key:String(canManagePeriod)+accounting.start,mem:member,viewer,accounting,canManagePeriod,onSettlement(){openedSettlement++;},canEdit:false,agentName:()=>'',onClose(){},showToast(){}})));assertEnglishUi(doc.body,'Player file period');};
+const change=async(label,value)=>React.act(()=>Simulate.change(doc.querySelector('[aria-label="'+label+'"]'),{target:{value}}));
+const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent===text);
+const overview=()=>doc.querySelector('[aria-label="Current cycle account"]');
+(async()=>{
+ const unknown={start:null,end:null,needsPeriodStart:true,basis:'legacy-period-start-required',players:{player:{chips:675.43,result:null,rake:null}}};
+ await mount(unknown,false,{uid:'player',role:'player',status:'approved'});
+ assert.match(overview().textContent,/675\.43/);assert.match(overview().textContent,/must confirm the cycle start date/);
+ assert.equal(doc.querySelector('[data-player-result]'),null);assert.equal(doc.querySelector('[data-history-summary]'),null);
+ assert.equal(button('Set cycle start in Settlement'),undefined,'a callback does not grant ordinary users period-management access');
+ assert.doesNotMatch(doc.body.textContent,/Previous cycle|Last week|0\.00|Lifetime profit|4,321|All-time/);
+ await mount(unknown,true);await React.act(()=>button('Set cycle start in Settlement').click());assert.equal(openedSettlement,1);
+ await mount(known);
+ assert.equal(overview().querySelector('[data-player-result]').textContent,'-27.50','current result comes from the accounting journal, not the history sum');
+ assert.match(doc.querySelector('[data-history-summary]').textContent,/3 recorded sessions/);
+ assert.equal(doc.querySelector('[data-history-result]'),null,'current history does not introduce a second competing cycle result');
+ assert.deepEqual([...doc.querySelector('[aria-label="Player history period"]').options].map(o=>o.value),['current','custom']);
+ assert.deepEqual([...overview().querySelectorAll('[data-account-row]')].map(n=>n.dataset.accountRow),['balance','cycle','lifetime']);
+ assert.equal(overview().querySelector('[data-lifetime-result]').textContent,'-999.00');
+ const before=calls.length;
+ await change('Player history period','custom');
+ assert.equal(doc.querySelector('[data-history-result]'),null,'empty dates must not guess a historical interval');
+ await change('Player history from','2026-03-27');await change('Player history to','2026-03-27');
+ assert.equal(doc.querySelector('[data-history-result]').textContent,'+25.00');assert.match(doc.querySelector('[data-history-summary]').textContent,/3 recorded sessions/);
+ assert.equal(overview().querySelector('[data-player-result]').textContent,'-27.50','custom history never replaces the live cycle result');
+ await change('Player history to','2026-03-26');assert.match(doc.querySelector('[role="alert"]').textContent,/on or after the start date/);assert.equal(doc.querySelector('[data-history-result]'),null);
+ await change('Player history period','current');assert.match(doc.querySelector('[data-history-summary]').textContent,/3 recorded sessions/);assert.equal(doc.querySelector('[data-history-result]'),null);
+ assert.equal(calls.length,before,'date changes filter the already loaded, scoped read-only history');
+ assert.ok(calls.every(c=>c.name==='pkGameHistory'&&c.args.targetUid==='player'&&c.args.clubId==='main'));
+ await mount(known,false,{uid:'agent',role:'agent',status:'approved'});assert.deepEqual([...overview().querySelectorAll('[data-account-row]')].map(n=>n.dataset.accountRow),['balance','cycle']);assert.doesNotMatch(doc.body.textContent,/999\.00|Lifetime|4,321|All-time/);
+ await React.act(()=>root.unmount());w.close();console.log('PASS: player history uses authoritative cycle P/L, unknown start, role-limited setup, inclusive DST dates and read-only custom ranges');
+})().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

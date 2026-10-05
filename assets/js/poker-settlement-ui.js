@@ -13,8 +13,9 @@
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format((Number(n) || 0) / 100);
+  const CLUB_TIME_ZONE = 'Asia/Jerusalem';
   const date = n => n ? new Date(n).toLocaleString('en-US', {
-    timeZone: 'Asia/Jerusalem',
+    timeZone: CLUB_TIME_ZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -25,8 +26,61 @@
     open: "Open",
     closed: "Closed",
     locked: "Locked",
-    all: "All cycles"
+    all: "All cycles",
+    range: "Date range · Read only"
   };
+  const clubClock = new Intl.DateTimeFormat('en-GB', {
+    timeZone: CLUB_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23'
+  });
+  const clubParts = epoch => Object.fromEntries(clubClock.formatToParts(new Date(epoch)).filter(p => p.type !== 'literal').map(p => [p.type, Number(p.value)]));
+  const clubWall = epoch => {
+    const p = clubParts(epoch);
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  };
+  // Resolve calendar inputs in the same club timezone as report timestamps.
+  // Checking both sides of a transition rejects nonexistent and repeated wall times.
+  function clubEpoch(target) {
+    const offsets = new Set([-36, 0, 36].map(hours => {
+      const epoch = target + hours * 3600000;
+      return clubWall(epoch) - epoch;
+    }));
+    const matches = [...offsets].map(offset => target - offset).filter(epoch => clubWall(epoch) === target);
+    return matches.length === 1 ? matches[0] : null;
+  }
+  function clubDayStart(value, nextDay = false) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+    const [year, month, day] = value.split('-').map(Number),
+      check = new Date(Date.UTC(year, month - 1, day));
+    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
+    return clubEpoch(Date.UTC(year, month - 1, day + (nextDay ? 1 : 0)));
+  }
+  function clubDateTime(value) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value || '')) return null;
+    const [day, time] = value.split('T'),
+      [year, month, date] = day.split('-').map(Number),
+      [hour, minute] = time.split(':').map(Number),
+      target = Date.UTC(year, month - 1, date, hour, minute),
+      check = new Date(target);
+    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== date || hour > 23 || minute > 59) return null;
+    return clubEpoch(target);
+  }
+  const clubDay = n => {
+    if (!Number.isFinite(n)) return '';
+    const p = clubParts(n);
+    return `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`;
+  };
+  const rangeDates = r => `${new Date(r.fromAt).toLocaleDateString('en-US', {
+    timeZone: CLUB_TIME_ZONE
+  })} – ${new Date(r.toAt - 1).toLocaleDateString('en-US', {
+    timeZone: CLUB_TIME_ZONE
+  })}`;
   function settlementError(error, fallback = 'Could not load settlement') {
     const message = typeof error?.message === 'string' ? error.message.trim() : '';
     if (message && !/[\u0590-\u05ff]/.test(message)) return message;
@@ -51,7 +105,6 @@
     value,
     note,
     plain = false,
-    result,
     signed = false
   }) {
     return /*#__PURE__*/React.createElement("div", {
@@ -59,20 +112,165 @@
     }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, plain ? value : /*#__PURE__*/React.createElement(Amount, {
       value: value,
       signed: signed
-    }), " ", result != null && /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
-      value: result,
-      signed: true
-    }), ")")), note && /*#__PURE__*/React.createElement("small", null, note));
+    })), note && /*#__PURE__*/React.createElement("small", null, note));
   }
   function LifetimeNote({
     value
   }) {
-    return value == null ? null : /*#__PURE__*/React.createElement("small", {
+    return /*#__PURE__*/React.createElement("small", {
       className: "st-lifetime-note"
-    }, "Lifetime result: ", /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("span", null, "Lifetime profit/loss"), value == null ? /*#__PURE__*/React.createElement("span", null, "Unavailable") : /*#__PURE__*/React.createElement(Amount, {
       value: value,
       signed: true
     }));
+  }
+  function FundsResult({
+    chips,
+    result,
+    totalResult,
+    canSeeLifetime = false,
+    periodLabel = 'in current cycle',
+    balanceLabel = 'Current balance'
+  }) {
+    const resultLabel = periodLabel === 'in selected dates' ? 'Recorded profit/loss' : periodLabel === 'in selected cycle' ? 'Selected cycle profit/loss' : periodLabel === 'across selected cycles' ? 'Selected cycles profit/loss' : 'Cycle profit/loss';
+    return /*#__PURE__*/React.createElement("div", {
+      className: "st-funds-result"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "st-balance-line"
+    }, /*#__PURE__*/React.createElement("span", null, balanceLabel), /*#__PURE__*/React.createElement("strong", null, chips == null ? 'Unavailable' : /*#__PURE__*/React.createElement(Amount, {
+      value: chips
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "st-cycle-line"
+    }, /*#__PURE__*/React.createElement("span", null, resultLabel), /*#__PURE__*/React.createElement("strong", null, result == null ? 'Awaiting cycle start' : /*#__PURE__*/React.createElement(Amount, {
+      value: result,
+      signed: true
+    }))), canSeeLifetime && /*#__PURE__*/React.createElement(LifetimeNote, {
+      value: totalResult
+    }));
+  }
+  function ReportDates({
+    data,
+    range,
+    onRange,
+    onCurrent,
+    busy
+  }) {
+    const [from, setFrom] = useState(''),
+      [to, setTo] = useState(''),
+      [error, setError] = useState('');
+    useEffect(() => {
+      if (range) {
+        setFrom(clubDay(range.fromAt));
+        setTo(clubDay(range.toAt - 1));
+      }
+    }, [range?.fromAt, range?.toAt]);
+    if (!data.supportsDateRange) return null;
+    return /*#__PURE__*/React.createElement("details", {
+      className: "st-panel",
+      open: !!range
+    }, /*#__PURE__*/React.createElement("summary", {
+      style: {
+        minHeight: 44,
+        cursor: 'pointer',
+        fontWeight: 750
+      }
+    }, "Report dates \xB7 View history"), /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, "The current cycle stays open until a manager closes it manually. Viewing history does not reset the cycle or change balances."), /*#__PURE__*/React.createElement("form", {
+      className: "st-filters",
+      "aria-label": "Report date range",
+      onSubmit: e => {
+        e.preventDefault();
+        const fromAt = clubDayStart(from),
+          toAt = clubDayStart(to, true);
+        if (!Number.isFinite(fromAt) || !Number.isFinite(toAt) || fromAt >= toAt) {
+          setError('Choose a valid start and end date. The end date must be on or after the start date.');
+          return;
+        }
+        setError('');
+        onRange({
+          fromAt,
+          toAt
+        });
+      }
+    }, /*#__PURE__*/React.createElement("label", null, "From date", /*#__PURE__*/React.createElement("input", {
+      type: "date",
+      required: true,
+      value: from,
+      onChange: e => setFrom(e.target.value)
+    })), /*#__PURE__*/React.createElement("label", null, "To date (inclusive)", /*#__PURE__*/React.createElement("input", {
+      type: "date",
+      required: true,
+      value: to,
+      onChange: e => setTo(e.target.value)
+    })), /*#__PURE__*/React.createElement("button", {
+      disabled: busy,
+      className: "st-primary"
+    }, "View date range")), error && /*#__PURE__*/React.createElement("p", {
+      role: "alert",
+      className: "st-error"
+    }, error), /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, "All dates use club time (Asia/Jerusalem). Both selected dates are included. Historical reports use cash-outs and completed tournaments recorded within the selected dates. Chips shown are the current balance."), range && /*#__PURE__*/React.createElement("div", {
+      className: "st-actions"
+    }, /*#__PURE__*/React.createElement("strong", null, "Date range \xB7 Read only \xB7 ", rangeDates(range)), /*#__PURE__*/React.createElement("button", {
+      disabled: busy,
+      onClick: onCurrent
+    }, "Back to current cycle")));
+  }
+  function PeriodStartRequired({
+    data,
+    act,
+    busy
+  }) {
+    const [start, setStart] = useState(''),
+      [error, setError] = useState('');
+    const t = data.legacyReport?.totals,
+      owner = data.role === 'owner';
+    return /*#__PURE__*/React.createElement("section", {
+      className: "st-panel"
+    }, /*#__PURE__*/React.createElement("h2", null, "Current cycle start is required"), /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "The current cycle has no confirmed start date. Its result is unavailable until a manager selects the correct date."), /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, "Balances and game history are preserved. Setting the start date does not close a cycle or change anyone\u2019s chips. The confirmed start stays fixed until the cycle is closed manually."), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: t?.chips,
+      result: null,
+      totalResult: t?.totalResult,
+      canSeeLifetime: owner
+    }), /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, "Chip balances are funds held, not profit or loss."), data.canSetPeriodStart ? /*#__PURE__*/React.createElement("form", {
+      className: "st-filters",
+      "aria-label": "Set current cycle start",
+      onSubmit: async e => {
+        e.preventDefault();
+        const startAt = clubDateTime(start);
+        if (!Number.isFinite(startAt)) {
+          setError('Choose a valid, unambiguous club time. Times skipped or repeated by daylight saving cannot be used.');
+          return;
+        }
+        if (startAt > Date.now()) {
+          setError('Choose the confirmed cycle start date and time. It cannot be in the future.');
+          return;
+        }
+        setError('');
+        await act('setLegacyPeriodStart', {
+          startAt
+        });
+      }
+    }, /*#__PURE__*/React.createElement("label", null, "Current cycle start \xB7 Club time (Asia/Jerusalem)", /*#__PURE__*/React.createElement("input", {
+      type: "datetime-local",
+      required: true,
+      value: start,
+      onChange: e => setStart(e.target.value)
+    })), /*#__PURE__*/React.createElement("button", {
+      disabled: busy || !start,
+      className: "st-primary"
+    }, "Save cycle start"), error && /*#__PURE__*/React.createElement("p", {
+      role: "alert",
+      className: "st-error"
+    }, error)) : /*#__PURE__*/React.createElement("p", null, "Please ask your club manager to confirm the cycle start date."));
   }
   function Net({
     value = 0,
@@ -121,7 +319,7 @@
       value: r.rake
     })), /*#__PURE__*/React.createElement("td", null, r.hands), /*#__PURE__*/React.createElement("td", null, r.games))))), !rows.length && /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
-    }, "No completed sessions have been recorded in this cycle."));
+    }, "No activity has been recorded in this cycle."));
   }
   function PaymentForm({
     spec,
@@ -193,7 +391,8 @@
     items,
     act,
     busy,
-    userId
+    userId,
+    readOnly = false
   }) {
     return /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
@@ -206,13 +405,13 @@
       className: "st-payment"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
       value: p.amount
-    })), /*#__PURE__*/React.createElement("span", null, p.status === 'pending' ? "Awaiting confirmation" : p.status === 'confirmed' ? "Confirmed" : "Cancelled", " \xB7 ", date(p.at)), p.note && /*#__PURE__*/React.createElement("small", null, p.note)), p.canConfirm && /*#__PURE__*/React.createElement("button", {
+    })), /*#__PURE__*/React.createElement("span", null, p.status === 'pending' ? "Awaiting confirmation" : p.status === 'confirmed' ? "Confirmed" : "Cancelled", " \xB7 ", date(p.at)), p.note && /*#__PURE__*/React.createElement("small", null, p.note)), !readOnly && p.canConfirm && /*#__PURE__*/React.createElement("button", {
       className: "st-primary",
       disabled: busy,
       onClick: () => act('confirmPayment', {
         paymentId: p.id
       })
-    }, "Confirm payment"), p.status === 'pending' && p.createdBy === userId && /*#__PURE__*/React.createElement("button", {
+    }, "Confirm payment"), !readOnly && p.status === 'pending' && p.createdBy === userId && /*#__PURE__*/React.createElement("button", {
       disabled: busy,
       onClick: () => act('cancelPayment', {
         paymentId: p.id
@@ -224,7 +423,8 @@
     funds = [],
     onPay,
     canPay,
-    periodLabel
+    periodLabel,
+    canSeeLifetime = false
   }) {
     const [query, setQuery] = useState(''),
       [sort, setSort] = useState('closing'),
@@ -263,7 +463,7 @@
       value: "name"
     }, "Name")))), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Current chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Settlement balance"), /*#__PURE__*/React.createElement("th", null, "Actions"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Settlement balance"), /*#__PURE__*/React.createElement("th", null, "Actions"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
       const key = JSON.stringify([p.agentId, p.playerId]);
       return /*#__PURE__*/React.createElement(React.Fragment, {
         key: key
@@ -271,13 +471,12 @@
         className: "st-link",
         "aria-expanded": expanded === key,
         onClick: () => setExpanded(expanded === key ? '' : key)
-      }, p.playerName)), /*#__PURE__*/React.createElement("td", null, p.balance == null ? '—' : /*#__PURE__*/React.createElement(Amount, {
-        value: p.balance
-      }), " ", /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
-        value: p.totals.result,
-        signed: true
-      }), ")"), /*#__PURE__*/React.createElement(LifetimeNote, {
-        value: p.totalResult
+      }, p.playerName)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+        chips: p.balance,
+        result: p.totals.result,
+        totalResult: p.totalResult,
+        canSeeLifetime: canSeeLifetime,
+        periodLabel: periodLabel
       })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
         value: p.totals.rake
       })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
@@ -310,51 +509,20 @@
     act,
     busy
   }) {
-    const open = data.cycles.find(c => c.id === data.currentCycleId),
-      [end, setEnd] = useState(''),
-      [auto, setAuto] = useState(false);
-    useEffect(() => {
-      if (open) {
-        const d = new Date(open.endAt);
-        setEnd(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
-        setAuto(open.autoClose);
-      }
-    }, [open?.id, open?.endAt, open?.autoClose]);
+    const open = data.cycles.find(c => c.id === data.currentCycleId);
     return /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "Cycle management"), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "Closing carries the remaining settlement balance into the next cycle. Chip balances and history are preserved."), /*#__PURE__*/React.createElement("form", {
-      className: "st-filters",
-      onSubmit: e => {
-        e.preventDefault();
-        act('setEnd', {
-          endAt: new Date(end).getTime(),
-          autoClose: auto
-        });
-      }
-    }, /*#__PURE__*/React.createElement("label", null, "Scheduled end (local time)", /*#__PURE__*/React.createElement("input", {
-      type: "datetime-local",
-      required: true,
-      value: end,
-      onChange: e => setEnd(e.target.value)
-    })), /*#__PURE__*/React.createElement("label", {
-      className: "st-check"
-    }, /*#__PURE__*/React.createElement("input", {
-      type: "checkbox",
-      checked: auto,
-      onChange: e => setAuto(e.target.checked)
-    }), "Close automatically"), /*#__PURE__*/React.createElement("button", {
-      disabled: busy
-    }, "Save end time")), /*#__PURE__*/React.createElement("div", {
+    }, "Cycles never close or reset automatically. Only a manager can close the current cycle. Chip balances and history are preserved."), open && /*#__PURE__*/React.createElement("p", null, "Current cycle started: ", /*#__PURE__*/React.createElement("strong", null, date(open.startAt)), " \xB7 Open until manually closed"), /*#__PURE__*/React.createElement("div", {
       className: "st-actions"
     }, /*#__PURE__*/React.createElement("button", {
       disabled: busy,
       onClick: () => {
-        if (global.confirm("Close this cycle and open the next one now? Chip balances will be preserved.")) act('close');
+        if (global.confirm("Close this cycle and open the next one now? The closed report, chip balances and history will be preserved.")) act('close');
       }
     }, "Close cycle now"), /*#__PURE__*/React.createElement("button", {
-      disabled: busy || open?.number <= 1,
+      disabled: busy || !open || open.number <= 1,
       onClick: () => {
         if (global.confirm("Reopen the previous cycle? This is only possible while the new cycle is empty.")) act('reopen');
       }
@@ -415,7 +583,7 @@
     }, data.cycles.map(c => /*#__PURE__*/React.createElement("option", {
       key: c.id,
       value: c.id
-    }, c.legacy ? "Cycle open before the transition" : "Cycle " + c.number, " \xB7 ", status[c.status])), data.role !== 'player' && /*#__PURE__*/React.createElement("option", {
+    }, c.legacy ? "Cycle open before the transition" : "Cycle " + c.number, " \xB7 ", status[c.status])), data.role === 'owner' && /*#__PURE__*/React.createElement("option", {
       value: "all"
     }, "All cycles since the transition")));
   }
@@ -433,66 +601,63 @@
       t = r.totals,
       staff = data.role !== 'player',
       owner = data.role === 'owner',
-      closed = data.cycle.status !== 'open',
-      periodLabel = closed ? "in selected cycle" : "in current cycle";
+      range = data.dateRange,
+      closed = !range && data.cycle.status !== 'open',
+      periodLabel = range ? "in selected dates" : closed ? "in selected cycle" : "in current cycle";
     const rows = r.players.filter(p => p.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'result' ? b.result - a.result : sort === 'rake' ? b.rake - a.rake : b.chips - a.chips);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("header", {
       className: "st-toolbar"
-    }, data.cycles.length > 0 && /*#__PURE__*/React.createElement(CyclePicker, {
+    }, !range && data.cycles.length > 0 && /*#__PURE__*/React.createElement(CyclePicker, {
       data: data,
       cycleId: cycleId,
       setCycleId: setCycleId
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-period"
-    }, /*#__PURE__*/React.createElement("strong", null, closed ? "Previous cycle · Closed" : "Current cycle · Open"), /*#__PURE__*/React.createElement("span", null, date(data.cycle.startAt), " \u2013 ", closed ? date(data.cycle.endAt) : "Now")), /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("strong", null, range ? "Date range · Read only" : closed ? "Previous cycle · Closed" : "Current cycle · Open"), /*#__PURE__*/React.createElement("span", null, range ? rangeDates(range) : /*#__PURE__*/React.createElement(React.Fragment, null, date(data.cycle.startAt), " \u2013 ", closed ? date(data.cycle.endAt) : "Open until manually closed"))), /*#__PURE__*/React.createElement("button", {
       disabled: busy,
       onClick: retry
     }, "Refresh")), /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h2", null, closed ? "Cycle report saved at closing" : "Your current settlement"), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("h2", null, range ? "Recorded results in selected dates" : closed ? "Cycle report saved at closing" : "Your current settlement"), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, closed ? "This report was saved when the cycle closed. Original balances and history have been preserved." : "This cycle is still open. Results include games in progress. No cycle has been closed or reset."), /*#__PURE__*/React.createElement("div", {
+    }, range ? "Read-only report of cash-outs and completed tournaments recorded within the selected dates. Games still in progress are excluded. Amounts follow the recording date. Use a saved cycle report to review its final settlement. The current cycle and all balances stay unchanged." : closed ? "This report was saved when the cycle closed. Original balances and history have been preserved." : "This cycle stays open until a manager closes it manually. Completed hands count even while a session is still open. An unfinished hand counts after it finishes."), /*#__PURE__*/React.createElement("div", {
       className: "st-net"
-    }, /*#__PURE__*/React.createElement("span", null, owner ? "Total chips held by club players" : staff ? "Total chips held by my players" : "My chips, including tables", closed ? " · At closing" : ''), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
-      value: t.chips
-    }), " ", /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
-      value: t.result,
-      signed: true
-    }), ")")), /*#__PURE__*/React.createElement("small", null, "In parentheses: profit or loss ", periodLabel, ". Chip top-ups are not profit."), staff && /*#__PURE__*/React.createElement(LifetimeNote, {
-      value: t.totalResult
-    })), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("span", null, owner ? "All club players" : staff ? "My players" : "My chips, including tables"), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: t.chips,
+      result: t.result,
+      totalResult: t.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel,
+      balanceLabel: closed ? 'Chips at closing' : 'Current balance'
+    }), /*#__PURE__*/React.createElement("small", null, "Profit/loss ", periodLabel, ". Chip top-ups are not profit.")), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: (staff ? "Player results " : "My result ") + periodLabel,
-      value: t.result,
-      signed: true
-    }), /*#__PURE__*/React.createElement(Metric, {
       label: "Wallet chips",
       value: t.balance
     }), /*#__PURE__*/React.createElement(Metric, {
       label: "Chips at tables",
       value: t.onTables
     }), staff && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Metric, {
-      label: "Rake generated this cycle",
+      label: range ? "Rake generated in selected dates" : "Rake generated this cycle",
       value: t.rake
     }), /*#__PURE__*/React.createElement(Metric, {
       label: owner ? "Recorded agent commissions" : "My recorded commission",
       value: t.commission
     }))), staff && /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "Commissions reflect amounts recorded in this cycle. Rake is already included in game results.")), owner && /*#__PURE__*/React.createElement("section", {
+    }, "Commissions reflect amounts recorded in the displayed period. Rake is already included in game results.")), owner && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "Agents ", periodLabel), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Agent"), /*#__PURE__*/React.createElement("th", null, "Chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Commission"), /*#__PURE__*/React.createElement("th", null, "Club settlement from cycle activity"))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Agent"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Commission"), /*#__PURE__*/React.createElement("th", null, range ? 'Club settlement from selected dates' : 'Club settlement from cycle activity'))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
       key: a.uid
-    }, /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: a.chips
-    }), " (", /*#__PURE__*/React.createElement(Amount, {
-      value: a.result,
-      signed: true
-    }), ")", /*#__PURE__*/React.createElement(LifetimeNote, {
-      value: a.totalResult
+    }, /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+      chips: a.chips,
+      result: a.result,
+      totalResult: a.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel,
+      balanceLabel: closed ? 'Chips at closing' : 'Current balance'
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: a.rake
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
@@ -501,7 +666,7 @@
       value: Math.abs(a.toClub)
     }), /*#__PURE__*/React.createElement("small", null, a.toClub > 0 ? "Agent pays the club" : a.toClub < 0 ? "Club pays the agent" : "Balanced", " \xB7 After commission")))))))), data.role === 'agent' && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "Club settlement from cycle activity"), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("h3", null, range ? 'Club settlement from selected dates' : 'Club settlement from cycle activity'), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(t.toClub)
     })), /*#__PURE__*/React.createElement("p", null, t.toClub > 0 ? "Agent pays the club" : t.toClub < 0 ? "Club pays the agent" : "Balanced", " \xB7 After recorded commission")), staff && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
@@ -523,24 +688,24 @@
       value: "rake"
     }, "Rake amount"), /*#__PURE__*/React.createElement("option", {
       value: "result"
-    }, "Cycle result"), /*#__PURE__*/React.createElement("option", {
+    }, range ? "Result in selected dates" : "Cycle result"), /*#__PURE__*/React.createElement("option", {
       value: "name"
     }, "Name")))), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "Cycle rake"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, range ? "Rake in selected dates" : "Cycle rake"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
       key: p.uid
-    }, /*#__PURE__*/React.createElement("td", null, p.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: p.chips
-    }), " (", /*#__PURE__*/React.createElement(Amount, {
-      value: p.result,
-      signed: true
-    }), ")", /*#__PURE__*/React.createElement(LifetimeNote, {
-      value: p.totalResult
+    }, /*#__PURE__*/React.createElement("td", null, p.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+      chips: p.chips,
+      result: p.result,
+      totalResult: p.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel,
+      balanceLabel: closed ? 'Chips at closing' : 'Current balance'
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: p.rake
     }))))))), !rows.length && /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
-    }, "No players found.")), data.canClose && /*#__PURE__*/React.createElement("section", {
+    }, "No players found.")), data.canClose && !data.readOnly && !range && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "Close the current cycle"), /*#__PURE__*/React.createElement("p", null, "When settlement is complete, save this cycle as closed and start the next one at zero. Chip balances and history will stay the same."), /*#__PURE__*/React.createElement("button", {
       className: "st-primary",
@@ -563,34 +728,57 @@
       [busy, setBusy] = useState(false),
       [payment, setPayment] = useState(null),
       [tab, setTab] = useState('report'),
-      [remark, setRemark] = useState('');
+      [remark, setRemark] = useState(''),
+      [range, setRange] = useState(null);
     const actionRef = useRef(false);
     useEffect(() => {
-      let live = true;
+      let live = true,
+        inFlight = false;
       setData(null);
       setError('');
-      const load = () => call('pkSettlementReport', {
-        clubId,
-        ...(cycleId ? {
-          cycleId
-        } : {})
-      }).then(r => {
-        if (live) {
-          setData(r);
-          setError('');
-        }
-      }).catch(e => {
-        if (live) setError(settlementError(e));
-      });
+      const load = () => {
+        if (!live || inFlight) return;
+        inFlight = true;
+        return call('pkSettlementReport', {
+          clubId,
+          ...(range ? range : cycleId ? {
+            cycleId
+          } : {})
+        }).then(r => {
+          if (range && (!r.readOnly || r.dateRange?.fromAt !== range.fromAt || r.dateRange?.toAt !== range.toAt)) throw Error('The requested date range could not be verified. Please try again.');
+          if (live) {
+            setData(r);
+            setError('');
+          }
+        }).catch(e => {
+          if (live) setError(settlementError(e));
+        }).finally(() => {
+          inFlight = false;
+        });
+      };
       load();
-      const timer = setInterval(load, 30000);
+      const timer = range ? null : setInterval(load, 30000);
       return () => {
         live = false;
-        clearInterval(timer);
+        if (timer) clearInterval(timer);
       };
-    }, [user.uid, user.role, clubId, cycleId, attempt]);
+    }, [user.uid, user.role, clubId, cycleId, range, attempt]);
+    const applyRange = value => {
+      setRange(value);
+      setCycleId('');
+      setPayment(null);
+      setTab('report');
+      setRemark('');
+    };
+    const currentCycle = () => {
+      setRange(null);
+      setCycleId('');
+      setPayment(null);
+      setTab('report');
+      setRemark('');
+    };
     const act = async (action, fields = {}) => {
-      if (actionRef.current) return false;
+      if (actionRef.current || range || data?.readOnly) return false;
       actionRef.current = true;
       setBusy(true);
       setError('');
@@ -602,6 +790,7 @@
         });
         if (result.cycleId) setCycleId(result.cycleId);
         setAttempt(n => n + 1);
+        if (typeof global.dispatchEvent === 'function' && typeof global.Event === 'function') global.dispatchEvent(new global.Event('pk-club-changed'));
         showToast("Changes saved", 'success');
         return true;
       } catch (e) {
@@ -623,11 +812,28 @@
       dir: "ltr"
     }, errorBox || /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "Loading your settlement\u2026"));
+    }, "Loading your settlement\u2026"), range && /*#__PURE__*/React.createElement("button", {
+      onClick: currentCycle
+    }, "Back to current cycle"));
+    const reportDates = /*#__PURE__*/React.createElement(ReportDates, {
+      data: data,
+      range: range,
+      onRange: applyRange,
+      onCurrent: currentCycle,
+      busy: busy
+    });
+    if (data.needsPeriodStart) return /*#__PURE__*/React.createElement("div", {
+      className: "settlement-app",
+      dir: "ltr"
+    }, errorBox, reportDates, /*#__PURE__*/React.createElement(PeriodStartRequired, {
+      data: data,
+      act: act,
+      busy: busy
+    }));
     if (data.legacy) return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
       dir: "ltr"
-    }, errorBox, /*#__PURE__*/React.createElement(LegacyCurrent, {
+    }, errorBox, reportDates, /*#__PURE__*/React.createElement(LegacyCurrent, {
       data: data,
       cycleId: cycleId,
       setCycleId: setCycleId,
@@ -648,13 +854,13 @@
       p = data.player,
       a = data.agent,
       c = data.club?.totals,
-      selectedCurrent = data.cycle.id === data.currentCycleId,
+      selectedCurrent = !range && !data.readOnly && data.cycle.id === data.currentCycleId,
       periodLabel = data.cycle.id === 'all' ? "across selected cycles" : selectedCurrent ? "in current cycle" : "in selected cycle";
     const canPay = pair => selectedCurrent && (pair.agentId === user.uid || pair.playerId === user.uid || pair.agentId === 'club' && data.clubPartyId === user.uid);
     return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
       dir: "ltr"
-    }, errorBox, /*#__PURE__*/React.createElement("header", {
+    }, errorBox, reportDates, /*#__PURE__*/React.createElement("header", {
       className: "st-toolbar"
     }, /*#__PURE__*/React.createElement(CyclePicker, {
       data: data,
@@ -662,7 +868,7 @@
       setCycleId: setCycleId
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-period"
-    }, /*#__PURE__*/React.createElement("strong", null, status[data.cycle.status]), /*#__PURE__*/React.createElement("span", null, date(data.cycle.startAt), " \u2013 ", date(data.cycle.endAt))), /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("strong", null, status[data.cycle.status]), /*#__PURE__*/React.createElement("span", null, date(data.cycle.startAt), " \u2013 ", data.cycle.status === 'open' ? 'Open until manually closed' : date(data.cycle.endAt))), /*#__PURE__*/React.createElement("button", {
       onClick: () => setAttempt(n => n + 1),
       disabled: busy
     }, "Refresh")), /*#__PURE__*/React.createElement("nav", {
@@ -686,16 +892,14 @@
       busy: busy
     }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "st-muted st-method"
-    }, "Results are recorded when the session or tournament ends. Pending payments do not change the amount due."), (owner || agent) && data.currentTotals && /*#__PURE__*/React.createElement("div", {
-      className: "st-metrics"
-    }, /*#__PURE__*/React.createElement(Metric, {
-      label: (owner ? "All club players" : "My players") + " · Current chips (result " + periodLabel + ")",
-      value: data.currentTotals.chips,
+    }, !selectedCurrent && /*#__PURE__*/React.createElement("strong", null, "Historical report \xB7 Read only. "), "Completed hands count toward the current cycle even while a session remains open. An unfinished hand counts after it finishes. Pending payments do not change the amount due."), (owner || agent) && data.currentTotals && /*#__PURE__*/React.createElement("section", {
+      className: "st-panel st-funds-panel"
+    }, /*#__PURE__*/React.createElement("h3", null, owner ? "All club players" : "My players"), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: data.currentTotals.chips,
       result: owner ? c.playersResult : a.playersResult,
-      note: data.currentTotals.totalResult != null && /*#__PURE__*/React.createElement(React.Fragment, null, "Lifetime result: ", /*#__PURE__*/React.createElement(Amount, {
-        value: data.currentTotals.totalResult,
-        signed: true
-      }))
+      totalResult: data.currentTotals.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel
     })), owner ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
       value: c.closing,
       kind: "club"
@@ -779,7 +983,13 @@
       key: l.playerId
     }, /*#__PURE__*/React.createElement("span", null, l.playerName), /*#__PURE__*/React.createElement(Amount, {
       value: l.commission
-    }))))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
+    }))))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", {
+      className: "st-panel st-funds-panel"
+    }, /*#__PURE__*/React.createElement("h3", null, "My balance and profit/loss"), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: data.chips ?? data.balance,
+      result: p.totals.result,
+      periodLabel: periodLabel
+    })), /*#__PURE__*/React.createElement(Net, {
       value: p.closing,
       kind: "player"
     }), /*#__PURE__*/React.createElement(Breakdown, {
@@ -789,14 +999,6 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "My result " + periodLabel,
-      value: p.totals.result,
-      signed: true
-    }), /*#__PURE__*/React.createElement(Metric, {
-      label: "Current chips (result " + periodLabel + ")",
-      value: data.chips ?? data.balance,
-      result: p.totals.result
-    }), /*#__PURE__*/React.createElement(Metric, {
       label: "Hands played",
       value: p.totals.hands,
       plain: true
@@ -826,13 +1028,15 @@
       funds: data.funds,
       onPay: setPayment,
       canPay: canPay,
-      periodLabel: periodLabel
+      periodLabel: periodLabel,
+      canSeeLifetime: owner
     }), /*#__PURE__*/React.createElement(Payments, {
       items: data.payments,
       act: act,
       busy: busy,
-      userId: user.uid
-    }), data.cycle.id !== 'all' && data.cycle.status !== 'locked' && /*#__PURE__*/React.createElement("section", {
+      userId: user.uid,
+      readOnly: !selectedCurrent
+    }), selectedCurrent && data.cycle.status !== 'locked' && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "Approve report or add a note"), /*#__PURE__*/React.createElement("label", null, "Report note", /*#__PURE__*/React.createElement("textarea", {
       maxLength: "1000",

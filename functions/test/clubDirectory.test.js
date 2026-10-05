@@ -204,7 +204,7 @@ test('legacy Firestore document IDs with punctuation, spaces and Unicode can con
 
 
 test('accounting-only reports enforce staff scope and GOD rake omission on the server',async()=>{
- const f=fixture({records:0});f.documents.get('memberships/alice_clubA').status='approved';
+ const f=fixture({records:0});f.documents.set('settlementClubs/clubA/state/legacyPeriod',{startAt:Date.now()-86400000,source:'manager-confirmed',confirmedAt:Date.now()-100,confirmedBy:'owner'});f.documents.get('memberships/alice_clubA').status='approved';
  f.documents.set('gameLog/profit',{clubId:'clubA',uid:'alice',profit:-340.17,rake:7,at:Date.now()-1000});
  const agent=await f.run({accountingOnly:true},auth('agentA','agent@example.test'));
  assert.equal(agent.accounting.players.alice.result,-340.17);
@@ -234,7 +234,7 @@ test('ordinary players receive only own chip totals and cycle P/L without lifeti
  f.documents.set('gameLog/alice',{clubId:'clubA',uid:'alice',profit:-200,rake:7,at:1});
  f.documents.set('gameLog/bob',{clubId:'clubA',uid:'bob',profit:200,rake:8,at:1});
  const who=auth('alice','alice@example.test'),r=await f.run({accountingOnly:true},who);
- assert.deepEqual(Object.keys(r.accounting.players),['alice']);assert.equal('totalResult'in r.accounting.players.alice,false);assert.equal(r.accounting.players.alice.result,0);assert.equal(r.accounting.players.alice.chips,800);
+ assert.deepEqual(Object.keys(r.accounting.players),['alice']);assert.equal('totalResult'in r.accounting.players.alice,false);assert.equal(r.accounting.players.alice.result,null);assert.equal(r.accounting.needsPeriodStart,true);assert.equal(r.accounting.start,null);assert.equal(r.accounting.players.alice.chips,800);
  assert.equal('club'in r.accounting,false);assert.equal('agents'in r.accounting,false);assert.equal('rake'in r.accounting.players.alice,false);assert.equal('totalRake'in r.accounting.players.alice,false);
  await assert.rejects(f.run({accountingOnly:true,targetUid:'bob'},who),e=>e.code==='permission-denied');
  await assert.rejects(f.run({accountingOnly:true,directoryOnly:true},who),e=>e.code==='permission-denied');
@@ -254,11 +254,11 @@ test('explicit active cycle overrides weekly and lifetime totals using only its 
  f.documents.set('settlementClubs/other/sessions/foreign',{playerId:'alice',cycleId:'cycle_2',result:999900,rake:999900,at:now-1000});
  f.documents.set('settlementClubs/clubA/sessions/bob',{playerId:'bob',cycleId:'cycle_2',result:50000,rake:10000,at:now-1000});
  const god=(await f.run({accountingOnly:true})).accounting;
- assert.equal(god.start,cycleStart);assert.equal(god.cycleId,'cycle_2');assert.equal(god.basis,'settlement-cycle-completed-sessions');
+ assert.equal(god.start,cycleStart);assert.equal(god.cycleId,'cycle_2');assert.equal(god.basis,'settlement-cycle-live-sessions');
  assert.equal(god.players.alice.result,-25.17);assert.equal(god.players.alice.rake,4.17);assert.equal(god.players.alice.totalResult,-196);assert.equal(god.players.alice.totalRake,143.96);
  assert.equal(god.agents.agentA.result,-25.17);assert.equal(god.club.result,474.83);
  const agent=(await f.run({accountingOnly:true},auth('agentA','agent@example.test'))).accounting;
- assert.equal(agent.players.alice.result,-25.17);assert.equal(agent.players.bob,undefined);assert.equal('rake'in agent.players.alice,false);
+ assert.equal(agent.players.alice.result,-25.17);assert.equal(agent.players.bob,undefined);assert.equal('rake'in agent.players.alice,false);assert.doesNotMatch(JSON.stringify(agent),/totalResult|totalRake/);
  const own=(await f.run({accountingOnly:true},auth('alice','alice@example.test'))).accounting;
  assert.equal(own.players.alice.result,-25.17);assert.equal(own.players.alice.chips,800);assert.equal(own.cycleId,'cycle_2');assert.doesNotMatch(JSON.stringify(own),/totalResult|totalRake|"rake"|openResult|"club"|"agents"/);
  // Starting another empty cycle is a real zero even with old gameLog and journal activity.
@@ -269,4 +269,33 @@ test('explicit active cycle overrides weekly and lifetime totals using only its 
  assert.equal(f.options.every(o=>o.readOnly),true);
  f.documents.delete('settlementClubs/clubA/cycles/cycle_3');
  await assert.rejects(f.run({accountingOnly:true}),e=>e.code==='failed-precondition','a missing active cycle must fail instead of silently substituting weekly history');
+});
+
+
+test('lifetime accounting is manager-only while agents retain current-cycle results and assigned balances',async()=>{
+ const f=fixture({records:0}),now=Date.now(),startAt=now-10000;
+ f.documents.set('settlementClubs/clubA/state/legacyPeriod',{startAt,source:'manager-confirmed',confirmedAt:now-100,confirmedBy:'owner'});
+ Object.assign(f.documents.get('memberships/alice_clubA'),{status:'approved',balance:79});
+ f.documents.set('gameLog/previous',{clubId:'clubA',uid:'alice',profit:-500,rake:12,at:startAt-1000});
+ f.documents.set('gameLog/current',{clubId:'clubA',uid:'alice',profit:-25.01,rake:3,at:now-1000});
+ const agentIdentity=auth('agentA','agent@example.test');
+ const ordinary=(await f.run({accountingOnly:true,role:'manager',isGod:true},agentIdentity)).accounting;
+ assert.equal(ordinary.players.alice.result,-25.01);assert.equal(ordinary.players.alice.chips,79);
+ assert.equal(ordinary.agents.agentA.result,-25.01);assert.equal(ordinary.club.result,-25.01);
+ assert.deepEqual(Object.keys(ordinary.players).sort(),['agentA','alice']);
+ assert.doesNotMatch(JSON.stringify(ordinary),/totalResult|totalRake|"rake"/);
+ const owner=(await f.run({accountingOnly:true},auth('owner','owner@example.test'))).accounting;
+ assert.equal(owner.players.alice.totalResult,-525.01);assert.equal(owner.agents.agentA.totalResult,-525.01);assert.equal(owner.club.totalResult,-525.01);assert.equal('totalRake'in owner.players.alice,false);
+ f.documents.get('memberships/agentA_clubA').role='manager';
+ const manager=(await f.run({accountingOnly:true},agentIdentity)).accounting;
+ assert.equal(manager.players.alice.totalResult,-525.01);assert.equal(manager.players.alice.result,-25.01);assert.equal('rake'in manager.players.alice,false);assert.equal('totalRake'in manager.players.alice,false);
+ const root=(await f.run({accountingOnly:true})).accounting;
+ assert.equal(root.players.alice.totalResult,-525.01);assert.equal(root.players.alice.totalRake,15);assert.equal(root.players.alice.rake,3);
+ // Every request rechecks the stored role; a prior manager result grants no rights.
+ f.documents.get('memberships/agentA_clubA').role='agent';
+ const demoted=(await f.run({accountingOnly:true},agentIdentity)).accounting;assert.doesNotMatch(JSON.stringify(demoted),/totalResult|totalRake/);
+ f.documents.delete('settlementClubs/clubA/state/legacyPeriod');
+ const unknown=(await f.run({accountingOnly:true},agentIdentity)).accounting;
+ assert.equal(unknown.needsPeriodStart,true);assert.equal(unknown.players.alice.result,null);assert.equal(unknown.players.alice.chips,79);assert.doesNotMatch(JSON.stringify(unknown),/totalResult|totalRake/);
+ assert.equal(f.options.every(o=>o.readOnly),true);
 });

@@ -7,25 +7,31 @@ const React=require('react'),ReactDOM={...require('react-dom'),...require('react
 const members=[{uid:'owner',username:'Owner',role:'club_owner',status:'approved',balance:5000},{uid:'agent',username:'Agent',role:'agent',status:'approved',balance:0,agentCode:'DEMO123'},{uid:'loss',username:'Alice',role:'player',status:'approved',agentUid:'agent',balance:159.83},{uid:'win',username:'Bob',role:'player',status:'approved',agentUid:'agent',balance:1000}].map(m=>({...m,id:m.uid+'_main',clubId:'main'}));
 const now=Date.now(),logs=[{uid:'loss',profit:-20,rake:8,at:now},{uid:'loss',profit:-320.17,rake:92,at:now-8*86400000},{uid:'win',profit:500,rake:3,at:now},{uid:'win',profit:-1000,rake:100,at:now-8*86400000}];
 let god=false,accountingOverride=null,holdAccounting=false;const pendingAccounting=[];
-const report=()=>require('../../functions/pokerAccounting').buildAccounting(members,logs,[],{now,ownerUid:'owner',god});
+const report=()=>require('../../functions/pokerAccounting').buildAccounting(members,logs,[],{now,ownerUid:'owner',god,cycle:{id:'legacy_current',legacy:true,status:'open',startAt:now-7*86400000,endAt:null}});
 const deny=()=>{throw Error('Unexpected write in accounting UI');};
 w.fb={db:{},auth:{currentUser:{uid:'owner',email:'owner@example.test',emailVerified:true}},doc:()=>({}),collection:()=>({}),query:r=>r,where:()=>({}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),fx:async(name,args)=>{
  if(name==='pkClubDirectory'){if(args.accountingOnly){if(holdAccounting)return new Promise(resolve=>pendingAccounting.push(resolve));return{accounting:accountingOverride||report()};}if(args.reportSection)return{records:[],hasMore:false,nextCursor:null};return{members,treasury:{uid:'owner',balance:5000}};}
  throw Error('Unexpected callable '+name);
 },setDoc:deny,updateDoc:deny,addDoc:deny,runTransaction:deny};
-const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.OwnNumbers=OwnBalanceNumbers;'));
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.OwnNumbers=OwnBalanceNumbers;window.AccountNumbersTest=AccountNumbers;'));
 w.__club={id:'main',ownerUid:'owner'};const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const render=async key=>{await React.act(async()=>root.render(React.createElement(w.BO,{key,user:members[0],clubSettings:{rakePct:6},showToast(){}})));assertEnglishUi(doc.body,'Management '+key);};
 const own=async(user,extra={})=>{await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user,...extra})));assertEnglishUi(doc.body,'Player balance '+extra.key);};
+const accountRows=node=>[...node.querySelectorAll('[data-account-row]')].map(n=>n.dataset.accountRow);
 const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cycle-summary','.management-agent-totals']){const section=doc.querySelector(selector);assert.equal(section.querySelector('[data-player-result]').textContent,result,selector+' leads with the current-cycle sum');assert.equal(section.querySelector('.club-member-balance').textContent,chips,selector+' retains actual current chips');}};
 (async()=>{
  await render('ordinary');
  const card=name=>[...doc.querySelectorAll('.club-player-card')].find(c=>c.textContent.includes(name));
  assert.match(card('Alice').textContent,/159\.83/);assert.match(card('Bob').textContent,/1,000\.00/);
- assert.equal(card('Alice').querySelector('[data-player-result]').textContent,'(-20.00)');assert.equal(card('Bob').querySelector('[data-player-result]').textContent,'(+500.00)');
+ assert.equal(card('Alice').querySelector('[data-player-result]').textContent,'-20.00');assert.equal(card('Bob').querySelector('[data-player-result]').textContent,'+500.00');
  assert.match(card('Alice').querySelector('[data-lifetime-result]').textContent,/-340\.17/);
+ assert.deepEqual(accountRows(card('Alice')),['balance','cycle','lifetime']);
+ assert.equal(card('Alice').querySelector('[data-account-row=balance] [data-player-result]'),null,'cycle P/L has its own row');
+ assert.match(card('Alice').querySelector('[data-account-row=balance]').textContent,/Current balance/);
+ assert.match(card('Alice').querySelector('[data-account-row=cycle]').textContent,/Cycle profit \/ loss/);
+ assert.match(card('Alice').querySelector('[data-account-row=lifetime]').textContent,/Lifetime profit \/ loss/);
  assert.match(card('Alice').querySelector('[data-player-result]').getAttribute('aria-label'),/Current cycle result/);
- assertStaffTotals('(+480.00)','1,159.83');
+ assertStaffTotals('+480.00','1,159.83');
  assert.match(doc.querySelector('.management-cycle-summary [data-lifetime-result]').textContent,/-840\.17/);
  assert.match(doc.querySelector('.management-agent-totals [data-lifetime-result]').textContent,/-840\.17/);
  const sort=doc.querySelector('[aria-label="Sort players"]');assert.equal(sort.disabled,false);assert.equal([...sort.options].some(o=>o.value==='rake'),false);
@@ -36,20 +42,20 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  await React.act(()=>Simulate.change(doc.querySelector('[aria-label="Sort players"]'),{target:{value:'rake'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Alice/);
  assert.equal(card('Bob').querySelector('[data-cycle-rake]').textContent,'Cycle rake: 3.00');
  for(const selector of ['.management-cycle-summary','.management-agent-totals'])assert.equal(doc.querySelector(selector+' [data-cycle-rake]').textContent,'Cycle rake: 11.00');
- god=false;await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user:members[2],compact:true})));assert.match(doc.body.textContent,/159\.83\(-20\.00\)/);assert.doesNotMatch(doc.body.textContent,/Rake|Bob|Owner|Cumulative|Lifetime|-340\.17/i);
- await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{key:'expanded',user:members[2]})));assert.equal(doc.querySelector('[data-player-result]').textContent,'(-20.00)');assert.equal(doc.querySelector('[data-lifetime-result]'),null);
+ god=false;await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user:members[2],compact:true})));assert.equal(doc.querySelector('[data-current-balance]').textContent,'159.83');assert.equal(doc.querySelector('[data-player-result]').textContent,'-20.00');assert.doesNotMatch(doc.body.textContent,/Rake|Bob|Owner|Cumulative|Lifetime|-340\.17/i);
+ await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{key:'expanded',user:members[2]})));assert.equal(doc.querySelector('[data-player-result]').textContent,'-20.00');assert.equal(doc.querySelector('[data-lifetime-result]'),null);
  // A freshly opened cycle has real zeros even when historical losses are nonzero.
  accountingOverride=report();
  Object.assign(accountingOverride.players.loss,{balance:0,chips:0,result:0,totalResult:-196});
  Object.assign(accountingOverride.players.win,{balance:47.57,chips:47.57,result:0,totalResult:-201.57});
  for(const total of [accountingOverride.club,accountingOverride.agents.agent])Object.assign(total,{balance:47.57,chips:47.57,result:0,totalResult:-397.57});
  await render('zero-cycle');
- assert.equal(card('Alice').querySelector('[data-player-result]').textContent,'(0.00)');
- assert.equal(card('Bob').querySelector('[data-player-result]').textContent,'(0.00)');
- assertStaffTotals('(0.00)','47.57');
+ assert.equal(card('Alice').querySelector('[data-player-result]').textContent,'0.00');
+ assert.equal(card('Bob').querySelector('[data-player-result]').textContent,'0.00');
+ assertStaffTotals('0.00','47.57');
  assert.match(card('Alice').querySelector('[data-lifetime-result]').textContent,/-196\.00/);
  await own(members[2],{key:'zero-own'});
- assert.equal(doc.querySelector('[data-player-result]').textContent,'(0.00)');
+ assert.equal(doc.querySelector('[data-player-result]').textContent,'0.00');
  assert.equal(doc.querySelector('[data-lifetime-result]'),null);
  assert.doesNotMatch(doc.body.textContent,/-196|201\.57|397\.57|All time|Rake/i);
  // Missing cycle data must look unavailable, not fabricate zero or reuse lifetime.
@@ -61,6 +67,20 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  await render('missing-staff');
  assert.equal(card('Alice').querySelector('[data-player-result]'),null);
  assert.match(card('Alice').textContent,/Cycle result is currently unavailable/);
+ // No confirmed start is distinct from a genuine zero-result cycle.
+ accountingOverride=require('../../functions/pokerAccounting').buildAccounting(members,logs,[],{now,ownerUid:'owner',god:true});
+ assert.equal(accountingOverride.start,null);assert.equal(accountingOverride.needsPeriodStart,true);
+ await render('unconfirmed-cycle');
+ assert.equal(card('Alice').querySelector('[data-player-result]'),null);
+ assert.equal(card('Alice').querySelector('[data-cycle-rake]'),null);
+ assert.match(card('Alice').textContent,/159\.83/);
+ assert.match(card('Alice').textContent,/must confirm the cycle start date/);
+ for(const selector of ['.management-cycle-summary','.management-agent-totals'])assert.equal(doc.querySelector(selector+' [data-player-result]'),null);
+ assert.ok(doc.querySelector('[data-period-start-required]'));
+ await own(members[2],{key:'unconfirmed-player'});
+ assert.equal(doc.querySelector('[data-player-result]'),null);assert.equal(doc.querySelector('[data-lifetime-result]'),null);
+ assert.match(doc.body.textContent,/159\.83/);assert.match(doc.body.textContent,/must confirm the cycle start date/);
+ assert.doesNotMatch(doc.body.textContent,/Rake|Lifetime|-340\.17/i);
  // A late old-user response cannot refill the next player's mounted view.
  accountingOverride=null;holdAccounting=true;
  await own(members[2],{key:'scope-change'});
@@ -73,7 +93,21 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  assert.equal(doc.querySelector('[data-player-result]'),null);
  assert.doesNotMatch(doc.body.textContent,/159\.83|-20\.00|-340\.17/);
  await React.act(async()=>pendingAccounting[1]({accounting:report()}));
- assert.equal(doc.querySelector('[data-player-result]').textContent,'(+500.00)');
+ assert.equal(doc.querySelector('[data-player-result]').textContent,'+500.00');
  assert.doesNotMatch(doc.body.textContent,/-500\.00|-340\.17|All time|Rake|Alice/i);
+ // Presentation remains restricted even if an old response leaks lifetime data.
+ const leaked={chips:123.45,result:7.89,totalResult:-987.65,rake:9,totalRake:99};
+ w.fb.auth.currentUser={uid:'viewer',email:'ordinary@example.test',emailVerified:true};
+ const numbers=async viewer=>React.act(()=>root.render(React.createElement(w.AccountNumbersTest,{value:leaked,viewer,showLifetime:true,showRake:true,compact:true})));
+ for(const role of ['club_owner','manager','super_admin']){
+   await numbers({uid:'viewer',role,status:'approved'});
+   assert.deepEqual(accountRows(doc),['balance','cycle','lifetime'],role+' receives exactly the ordered three financial rows');
+   assert.equal(doc.querySelector('[data-current-balance]').textContent,'123.45');assert.equal(doc.querySelector('[data-player-result]').textContent,'+7.89');assert.equal(doc.querySelector('[data-lifetime-result]').textContent,'-987.65');
+ }
+ for(const viewer of [{uid:'viewer',role:'agent',status:'approved'},{uid:'viewer',role:'player',status:'approved'},{uid:'viewer',role:'manager',status:'pending'}]){
+   await numbers(viewer);assert.deepEqual(accountRows(doc),['balance','cycle']);assert.equal(doc.querySelector('[data-lifetime-result]'),null);assert.doesNotMatch(doc.body.textContent,/987\.65|Lifetime profit/);
+ }
+ w.fb.auth.currentUser={uid:'viewer',email:'info.bagso@gmail.com',emailVerified:true};
+ await numbers({uid:'viewer',role:'player',status:'approved'});assert.deepEqual(accountRows(doc),['balance','cycle'],'GOD-only access does not confer manager lifetime access');
  await React.act(()=>root.unmount());w.close();console.log('PASS: current-cycle P/L and rake lead for player/agent/club, cycle sorting, staff-only lifetime context');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

@@ -1175,8 +1175,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
     <script src="assets/js/poker-auth.js?v=312"></script>
     <script src="assets/js/club-ui.js?v=312"></script>
-    <link rel="stylesheet" href="assets/css/settlement.css?v=312">
-    <script src="assets/js/poker-settlement-ui.js?v=312"></script>
+    <link rel="stylesheet" href="assets/css/settlement.css?v=313">
+    <script src="assets/js/poker-settlement-ui.js?v=313"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=286"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
@@ -2177,26 +2177,32 @@ const Coin = ({
 }), formatMoney(amount));
 // Wallet chips and poker profit are separate quantities: moving chips into a
 // seat or receiving a top-up must never look like a win/loss.
-function AccountNumbers({value,balance,compact=false,loading=false,showRake=false,showLifetime=false,completedSessions=false}) {
-  const result=value?.result,known=Number.isFinite(result),signed=n=>(n>0?'+':'')+formatMoney(n);
+function AccountNumbers({value,balance,viewer,compact=false,loading=false,showRake=false,showLifetime=false,needsPeriodStart=false}) {
+  const result=value?.result,known=!needsPeriodStart&&Number.isFinite(result),signed=n=>(n>0?'+':'')+formatMoney(n);
+  const maySeeLifetime=showLifetime&&canManageClub(viewer),maySeeRake=showRake&&isGodUser(viewer);
+  const resultClass=n=>n<0?'text-rose-400':n>0?'text-emerald-400':'text-slate-400';
   return React.createElement('div',{className:'management-account-numbers'+(compact?' account-numbers-compact':''),dir:'ltr'},
-    React.createElement('div',{className:'management-account-line',dir:'ltr'},
-      value||balance!=null?React.createElement(Coin,{amount:value?.chips??balance??0,className:'club-member-balance'}):React.createElement('span',null,'—'),
-      known&&React.createElement('strong',{className:result<0?'text-rose-400':result>0?'text-emerald-400':'text-slate-400','data-player-result':true,'aria-label':'Current cycle result '+signed(result),title:'Profit or loss for the current cycle only. Chip top-ups are not winnings.'},'('+signed(result)+')')),
-    React.createElement('small',{className:'text-slate-400'},known?'Current chips (cycle result)':loading?'Loading cycle result…':'Cycle result is currently unavailable'),
-    !compact&&showRake&&Number.isFinite(value?.rake)&&React.createElement('small',{className:'text-amber-300','data-cycle-rake':true},'Cycle rake: ',React.createElement('bdi',null,formatMoney(value.rake))),
-    value?.onTables>0&&React.createElement('small',{className:'text-sky-300'},'Wallet: ',React.createElement('bdi',null,formatMoney(value.balance)),' · At tables: ',React.createElement('bdi',null,formatMoney(value.onTables))),
-    completedSessions&&value?.openSessions>0&&React.createElement('small',{className:'text-slate-400'},'An open session is included when it ends'),
-    !compact&&showLifetime&&Number.isFinite(value?.totalResult)&&React.createElement('small',{className:'text-slate-400','data-lifetime-result':true},'All time: ',React.createElement('bdi',null,signed(value.totalResult)),showRake&&Number.isFinite(value?.totalRake)&&React.createElement(React.Fragment,null,' · Rake: ',React.createElement('bdi',null,formatMoney(value.totalRake)))));
+    React.createElement('div',{className:'management-account-line management-account-balance','data-account-row':'balance',dir:'ltr'},
+      React.createElement('small',{className:'management-account-label text-slate-400'},'Current balance'),
+      React.createElement('span',{'data-current-balance':true,title:value?.onTables>0?'Wallet: '+formatMoney(value.balance)+' · At tables: '+formatMoney(value.onTables):undefined},value||balance!=null?React.createElement(Coin,{amount:value?.chips??balance??0,className:'club-member-balance'}):'—')),
+    React.createElement('div',{className:'management-account-line management-account-cycle','data-account-row':'cycle',dir:'ltr'},
+      React.createElement('small',{className:'management-account-label text-slate-400'},'Cycle profit / loss'),
+      known?React.createElement('strong',{className:resultClass(result),'data-player-result':true,'aria-label':'Current cycle result '+signed(result),title:'Profit or loss for the current cycle only. Chip top-ups are not winnings.'},signed(result)):
+        React.createElement('small',{className:'text-slate-400','data-cycle-unavailable':true},loading?'Loading cycle result…':needsPeriodStart?'Cycle result unavailable — the club must confirm the cycle start date':'Cycle result is currently unavailable')),
+    maySeeLifetime&&React.createElement('div',{className:'management-account-line management-account-lifetime','data-account-row':'lifetime',dir:'ltr'},
+      React.createElement('small',{className:'management-account-label text-slate-400'},'Lifetime profit / loss'),
+      Number.isFinite(value?.totalResult)?React.createElement('strong',{className:resultClass(value.totalResult),'data-lifetime-result':true},signed(value.totalResult)):React.createElement('small',{className:'text-slate-400'},loading?'Loading…':'Unavailable')),
+    !compact&&maySeeRake&&!needsPeriodStart&&Number.isFinite(value?.rake)&&React.createElement('small',{className:'text-amber-300','data-cycle-rake':true},'Cycle rake: ',React.createElement('bdi',null,formatMoney(value.rake))),
+    !compact&&maySeeRake&&Number.isFinite(value?.totalRake)&&React.createElement('small',{className:'text-slate-400','data-lifetime-rake':true},'Lifetime rake: ',React.createElement('bdi',null,formatMoney(value.totalRake))));
 }
 function OwnBalanceNumbers({user,compact=false}) {
   const [loaded,setLoaded]=useState(null),[loading,setLoading]=useState(true),scope=`${user.uid}:${user.role}:${user.status}:${CLUB_ID}`;
   useEffect(()=>{let stopped=false,busy=false;setLoaded(null);setLoading(true);
-    const load=async()=>{if(busy)return;busy=true;try{const r=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},scope);if(!stopped)setLoaded({scope,value:r.accounting?.players?.[user.uid]||null,basis:r.accounting?.basis});}catch(e){if(!stopped)setLoaded(null);}finally{busy=false;if(!stopped)setLoading(false);}};
+    const load=async()=>{if(busy)return;busy=true;try{const r=await pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},scope);if(!stopped)setLoaded({scope,value:r.accounting?.players?.[user.uid]||null,basis:r.accounting?.basis,needsPeriodStart:r.accounting?.needsPeriodStart===true});}catch(e){if(!stopped)setLoaded(null);}finally{busy=false;if(!stopped)setLoading(false);}};
     load();const timer=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
     return()=>{stopped=true;clearInterval(timer);window.removeEventListener('pk-club-changed',load);};
   },[scope,user.balance]);
-  return React.createElement(AccountNumbers,{value:loaded?.scope===scope?loaded.value:null,balance:user.balance||0,compact,loading,completedSessions:loaded?.scope===scope&&loaded.basis==='settlement-cycle-completed-sessions'});
+  return React.createElement(AccountNumbers,{value:loaded?.scope===scope?loaded.value:null,balance:user.balance||0,viewer:user,showLifetime:true,compact,loading,needsPeriodStart:loaded?.scope===scope&&loaded.needsPeriodStart===true});
 }
 const QUICK_EMOJIS = ['😀', '😂', '😡', '😭', '👍', '🔥', '🎉', '🤡', '😱', '🙏'];
 const GIFT_ITEMS = [{
@@ -4671,6 +4677,7 @@ function App() {
     user: effUser,
     clubSettings: clubSettings,
     tables: tablesDB,
+    onSettlement: () => changeView('settlement'),
     showToast: showToast
   }), currentView === 'poker-create' && React.createElement(PokerCreateView, {
     user: effUser,
@@ -5209,181 +5216,94 @@ function LeadersView({
     className: "text-center py-6 text-slate-600 font-bold text-sm"
   }, "Only three on the podium so far 🏆")))));
 }
+// Historical date inputs use club time, including daylight-saving transitions.
+function playerHistoryDate(epoch) {
+  if (!Number.isFinite(epoch)) return '';
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(epoch)).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+function playerHistoryDayStart(value, nextDay=false) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const [year,month,day] = value.split('-').map(Number), check = new Date(Date.UTC(year,month-1,day));
+  if (check.getUTCFullYear()!==year || check.getUTCMonth()!==month-1 || check.getUTCDate()!==day) return null;
+  const target = Date.UTC(year,month-1,day+(nextDay?1:0));
+  const formatter = new Intl.DateTimeFormat('en-GB', {timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+  let epoch = target;
+  for(let i=0;i<3;i++) {
+    const parts = Object.fromEntries(formatter.formatToParts(new Date(epoch)).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]));
+    epoch = target - (Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute,parts.second)-epoch);
+  }
+  return epoch;
+}
 function PlayerFileModal({
-  mem,
-  agentName,
-  canEdit,
-  onClose,
-  showToast
+  mem, agentName, canEdit, onClose, showToast, viewer,
+  accounting=null, accountingLoading=false, onSettlement, canManagePeriod=false, showRake=false
 }) {
-  const [log, setLog] = useState(null);
-  const [phone, setPhone] = useState(mem.phone || '');
-  const [notes, setNotes] = useState(mem.notes || '');
+  const [log, setLog] = useState(null), [logError,setLogError] = useState(''), [logAttempt,setLogAttempt] = useState(0);
+  const [phone, setPhone] = useState(mem.phone || ''), [notes, setNotes] = useState(mem.notes || '');
+  const [historyMode,setHistoryMode] = useState('current'), [historyFrom,setHistoryFrom] = useState(''), [historyTo,setHistoryTo] = useState('');
+  const currentStart = Number.isFinite(accounting?.start) && !accounting?.needsPeriodStart ? accounting.start : null;
+  const currentValue = accounting?.players?.[mem.uid] || null;
   useEffect(() => {
+    let stopped=false; setLog(null);setLogError('');
     (async () => {
-      try {
-        setLog(await loadGameHistory({clubId:CLUB_ID,targetUid:mem.uid}));
-      } catch (e) {
-        setLog([]);
-      }
+      try { const rows=await loadGameHistory({clubId:CLUB_ID,targetUid:mem.uid});if(!stopped)setLog(rows); }
+      catch(e) { if(!stopped)setLogError(clubRequestError(e,'Game history could not load. Please try again.')); }
     })();
-  }, [mem.uid]);
+    return()=>{stopped=true;};
+  }, [mem.uid,logAttempt]);
   const saveDetails = async () => {
     try {
       await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:mem.uid,op:'details',phone:phone.trim(),notes:notes.trim()});
-      showToast("Details saved", "success");
-    } catch (e) {
-      showToast("Error saving", "error");
-    }
+      showToast('Details saved','success');
+    } catch(e) { showToast('Error saving','error'); }
   };
-  const periodStats = (from, to) => {
-    const rows = (log || []).filter(e => (e.at || 0) >= from && (!to || e.at < to));
-    const profit = round2(rows.reduce((a, e) => a + (Number(e.profit) || 0), 0));
-    const byGame = {};
-    rows.forEach(e => {
-      const g = e.game || '?';
-      byGame[g] = byGame[g] || {
-        n: 0,
-        p: 0
-      };
-      byGame[g].n++;
-      byGame[g].p = round2(byGame[g].p + (Number(e.profit) || 0));
-    });
-    return {
-      games: rows.length,
-      profit,
-      wins: rows.filter(e => (e.profit || 0) > 0).length,
-      byGame
-    };
-  };
-  const cyc0 = cycleStartIL(0),
-    cyc1 = cycleStartIL(1);
-  const periods = log === null ? null : [['Current cycle (from Mon 00:01)', periodStats(cyc0, null)], ['Previous cycle', periodStats(cyc1, cyc0)], ['Last 30 days', periodStats(Date.now() - 30 * 24 * 3600 * 1000, null)]];
-  const lifetime = mem.stats || {};
-  const GAME_HEB = {
-    poker: 'Poker',
-    durak: 'Durak',
-    ofc: 'Chinese Poker (OFC)',
-    tournament: 'Tournament'
-  };
-  return ReactDOM.createPortal(React.createElement("div", {
-    dir: "ltr",
-    className: "blue-secondary-backdrop fixed inset-0 z-[320] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3",
-    onClick: onClose
-  }, React.createElement("div", {
-    onClick: e => e.stopPropagation(),
-    role: "dialog",
-    "aria-modal": true,
-    "aria-label": "Player file: " + (mem.username || "Player"),
-    className: "blue-secondary-dialog club-player-file glass-panel rounded-3xl p-5 max-w-lg w-full max-h-[88vh] overflow-y-auto"
-  }, React.createElement("div", {
-    className: "flex items-center gap-3 mb-4"
-  }, React.createElement("img", {
-    src: avatarUrl({
-      ...mem,
-      uid: mem.uid
-    }),
-    className: "w-14 h-14 rounded-full bg-slate-800 border border-white/10"
-  }), React.createElement("div", {
-    className: "min-w-0 flex-1"
-  }, React.createElement("div", {
-    className: "text-white font-black text-lg truncate"
-  }, mem.username, " ", React.createElement("span", {
-    className: "text-slate-500 text-xs font-bold"
-  }, mem.playerId || '')), React.createElement("div", {
-    className: "text-slate-400 text-xs font-bold truncate",
-    dir: "ltr"
-  }, mem.email || ''), React.createElement("div", {
-    className: "text-[11px] font-bold mt-0.5"
-  }, mem.agentUid ? React.createElement("span", {
-    className: "text-purple-300"
-  }, "🤝 Agent: ", agentName(mem.agentUid), " (", mem.agentPct || 0, "%)") : React.createElement("span", {
-    className: "text-slate-500"
-  }, "No agent assigned"), React.createElement("span", {
-    className: "text-emerald-400 mr-2",
-    dir: "ltr"
-  }, formatMoney(mem.balance || 0)))), React.createElement("button", {
-    onClick: onClose,
-    "aria-label": "Close player file",
-    className: "text-slate-500 hover:text-white shrink-0"
-  }, React.createElement("i", {
-    className: "fa-solid fa-xmark text-lg"
-  }))), canEdit && React.createElement("div", {
-    className: "grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4"
-  }, React.createElement("input", {
-    value: phone,
-    onChange: e => setPhone(e.target.value),
-    placeholder: "📞 Phone",
-    className: "bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold text-sm outline-none focus:border-emerald-500/60",
-    dir: "ltr"
-  }), React.createElement("div", {
-    className: "flex gap-2"
-  }, React.createElement("input", {
-    value: notes,
-    onChange: e => setNotes(e.target.value),
-    placeholder: "📝 Notes",
-    className: "flex-1 min-w-0 bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold text-sm outline-none focus:border-gold-400/50"
-  }), React.createElement("button", {
-    onClick: saveDetails,
-    className: "bg-emerald-700 hover:bg-emerald-600 text-white px-4 rounded-xl font-black text-xs shrink-0"
-  }, "Save"))), log === null ? React.createElement("div", {
-    className: "text-center py-10 text-emerald-500"
-  }, React.createElement("i", {
-    className: "fa-solid fa-spinner fa-spin text-2xl"
-  })) : React.createElement("div", {
-    className: "space-y-3"
-  }, periods.map(([label, st]) => React.createElement("div", {
-    key: label,
-    className: "bg-slate-950/60 border border-white/5 rounded-2xl p-3"
-  }, React.createElement("div", {
-    className: "flex items-center justify-between mb-1.5"
-  }, React.createElement("span", {
-    className: "text-slate-300 font-black text-xs"
-  }, label), React.createElement("span", {
-    className: `font-black text-sm ${st.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`,
-    dir: "ltr"
-  }, st.profit > 0 ? '+' : '', formatMoney(st.profit))), React.createElement("div", {
-    className: "text-[11px] text-slate-500 font-bold"
-  }, st.games, " games · ", st.wins, " in profit"), Object.keys(st.byGame).length > 0 && React.createElement("div", {
-    className: "flex flex-wrap gap-1.5 mt-2"
-  }, Object.entries(st.byGame).map(([g, v]) => React.createElement("span", {
-    key: g,
-    className: `text-[10px] font-bold px-2 py-0.5 rounded-full border ${v.p >= 0 ? 'border-emerald-500/30 text-emerald-300 bg-emerald-500/5' : 'border-rose-500/30 text-rose-300 bg-rose-500/5'}`,
-    dir: "ltr"
-  }, GAME_HEB[g] || g, ": ", v.n, " · ", v.p > 0 ? '+' : '', formatMoney(v.p)))))), React.createElement("div", {
-    className: "bg-slate-950/60 border border-amber-500/20 rounded-2xl p-3 flex items-center justify-between"
-  }, React.createElement("span", {
-    className: "text-amber-300 font-black text-xs"
-  }, "All time"), React.createElement("span", {
-    className: "text-[11px] text-slate-400 font-bold"
-  }, lifetime.gamesPlayed || 0, " games · ", lifetime.gamesWon || 0, " wins · ", React.createElement("span", {
-    className: `${(lifetime.totalProfit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-black`,
-    dir: "ltr"
-  }, (lifetime.totalProfit || 0) > 0 ? '+' : '', formatMoney(lifetime.totalProfit || 0)))), /*#__PURE__*/React.createElement("div", {
-  className: "bg-slate-950/60 border border-white/5 rounded-2xl p-3"
-}, /*#__PURE__*/React.createElement("div", {
-  className: "text-slate-300 font-black text-xs mb-2"
-}, "Game log (", (log || []).length, ") · table & result"), /*#__PURE__*/React.createElement("div", {
-  className: "flex flex-col gap-1 max-h-60 overflow-y-auto"
-}, [...(log || [])].sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 300).map((e, i) => /*#__PURE__*/React.createElement("div", {
-  key: i,
-  className: "flex items-center justify-between text-[11px] bg-slate-900/50 rounded-lg px-2.5 py-1.5 border border-white/5"
-}, /*#__PURE__*/React.createElement("span", {
-  className: "text-slate-400 font-bold"
-}, /*#__PURE__*/React.createElement("span", {
-  className: "text-slate-500 ml-1.5"
-}, new Date(e.at).toLocaleDateString('en-GB'), " ", new Date(e.at).toLocaleTimeString('en-GB', {
-  hour: '2-digit',
-  minute: '2-digit'
-})), GAME_HEB[e.game] || e.game, /*#__PURE__*/React.createElement("span", {
-  className: "text-slate-400 font-mono font-black mr-1.5",
-  dir: "ltr"
-}, tableCode(e.tableId))), /*#__PURE__*/React.createElement("span", {
-  className: `font-black ${(e.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`,
-  dir: "ltr"
-}, (e.profit || 0) >= 0 ? '+' : '', formatMoney(e.profit)))), (log || []).length === 0 && /*#__PURE__*/React.createElement("div", {
-  className: "text-slate-500 text-[11px] font-bold py-2"
-}, "No games yet.")))))), document.body);
+  const from = historyMode==='current' ? currentStart : playerHistoryDayStart(historyFrom);
+  const to = historyMode==='current' ? (Number.isFinite(accounting?.end)?accounting.end:null) : playerHistoryDayStart(historyTo,true);
+  const rangeReady = Number.isFinite(from) && (historyMode==='current' || Number.isFinite(to)&&to>from);
+  const rangeError = historyMode==='custom' && historyFrom && historyTo && !rangeReady ? 'Choose an end date on or after the start date.' : '';
+  const rows = rangeReady && log ? log.filter(e=>Number.isFinite(Number(e.at))&&Number(e.at)>=from&&(!Number.isFinite(to)||Number(e.at)<to)).sort((a,b)=>(b.at||0)-(a.at||0)) : [];
+  const profit = round2(rows.reduce((sum,e)=>sum+(Number(e.profit)||0),0));
+  const h=React.createElement;
+  const signed = n => (n>0?'+':'')+formatMoney(n);
+  const fieldClass='w-full min-w-0 bg-slate-950 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold text-sm outline-none focus:border-emerald-500/60';
+  const gameNames={poker:'Poker',durak:'Durak',ofc:'Chinese Poker (OFC)',tournament:'Tournament'};
+  return ReactDOM.createPortal(h('div',{dir:'ltr',className:'blue-secondary-backdrop fixed inset-0 z-[320] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-3',onClick:onClose},
+    h('div',{onClick:e=>e.stopPropagation(),role:'dialog','aria-modal':true,'aria-label':'Player file: '+(mem.username||'Player'),className:'blue-secondary-dialog club-player-file glass-panel rounded-3xl p-5 max-w-lg w-full max-h-[88vh] overflow-y-auto'},
+      h('div',{className:'flex items-center gap-3 mb-4'},
+        h('img',{src:avatarUrl({...mem,uid:mem.uid}),className:'w-14 h-14 rounded-full bg-slate-800 border border-white/10'}),
+        h('div',{className:'min-w-0 flex-1'},
+          h('div',{className:'text-white font-black text-lg truncate'},mem.username,' ',h('span',{className:'text-slate-500 text-xs font-bold'},mem.playerId||'')),
+          h('div',{className:'text-slate-400 text-xs font-bold truncate',dir:'ltr'},mem.email||''),
+          h('div',{className:'text-[11px] font-bold mt-0.5'},mem.agentUid?h('span',{className:'text-purple-300'},'Agent: ',agentName(mem.agentUid),' (',mem.agentPct||0,'%)'):h('span',{className:'text-slate-500'},'No agent assigned'))),
+        h('button',{onClick:onClose,'aria-label':'Close player file',className:'text-slate-500 hover:text-white shrink-0'},h('i',{className:'fa-solid fa-xmark text-lg'}))),
+      canEdit&&h('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4'},
+        h('input',{value:phone,onChange:e=>setPhone(e.target.value),placeholder:'Phone','aria-label':'Player phone',className:fieldClass,dir:'ltr'}),
+        h('div',{className:'flex gap-2'},h('input',{value:notes,onChange:e=>setNotes(e.target.value),placeholder:'Notes','aria-label':'Player notes',className:'flex-1 min-w-0 '+fieldClass}),h('button',{onClick:saveDetails,className:'bg-emerald-700 hover:bg-emerald-600 text-white px-4 rounded-xl font-black text-xs shrink-0'},'Save'))),
+      h('section',{className:'bg-slate-950/60 border border-white/10 rounded-2xl p-3 mb-4','aria-label':'Current cycle account'},
+        h('h3',{className:'text-white font-black text-sm mb-2'},'Current cycle'),
+        Number.isFinite(currentStart)&&h('p',{className:'text-xs text-slate-400 mb-2'},'From ',new Date(currentStart).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem'}),' · Open until manually closed'),
+        h(AccountNumbers,{value:currentValue,balance:mem.balance,viewer,showLifetime:true,loading:accountingLoading,showRake,needsPeriodStart:accounting?.needsPeriodStart===true}),
+        accounting?.needsPeriodStart&&canManagePeriod&&onSettlement&&h('button',{type:'button',onClick:onSettlement,className:'btn-outline rounded-xl px-3 py-2 mt-3 text-sm'},'Set cycle start in Settlement')),
+      h('section',{className:'bg-slate-950/60 border border-white/5 rounded-2xl p-3','aria-label':'Player game history'},
+        h('h3',{className:'text-white font-black text-sm mb-2'},'Game history'),
+        h('p',{className:'text-xs text-slate-400 mb-3'},'View recorded sessions by date. This report does not open or close a cycle.'),
+        h('label',{className:'block text-xs text-slate-300 font-bold mb-3'},'History period',h('select',{'aria-label':'Player history period',value:historyMode,onChange:e=>setHistoryMode(e.target.value),className:fieldClass+' mt-1'},h('option',{value:'current'},'Current cycle'),h('option',{value:'custom'},'Custom dates'))),
+        historyMode==='custom'&&h('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3'},
+          h('label',{className:'block min-w-0 text-xs text-slate-300 font-bold'},'From',h('input',{type:'date','aria-label':'Player history from',value:historyFrom,onChange:e=>setHistoryFrom(e.target.value),className:fieldClass+' mt-1'})),
+          h('label',{className:'block min-w-0 text-xs text-slate-300 font-bold'},'To',h('input',{type:'date','aria-label':'Player history to',value:historyTo,onChange:e=>setHistoryTo(e.target.value),className:fieldClass+' mt-1'}))),
+        historyMode==='custom'&&h('p',{className:'text-xs text-slate-500 mb-2'},'Both dates are included, in club time (Asia/Jerusalem).'),
+        rangeError&&h('p',{role:'alert',className:'text-amber-300 text-xs mb-3'},rangeError),
+        logError?h('div',{role:'alert',className:'text-amber-300 text-sm'},logError,h('button',{type:'button',onClick:()=>setLogAttempt(n=>n+1),className:'block btn-outline rounded-xl px-3 py-2 mt-2'},'Retry history')):
+        log===null?h('p',{role:'status',className:'text-slate-400 text-sm py-4'},'Loading game history…'):
+        !rangeReady?h('p',{className:'text-slate-400 text-sm py-3'},historyMode==='current'?'Current-cycle history is unavailable until its start date is confirmed.':'Choose a From and To date to view history.'):
+        h(React.Fragment,null,
+          h('div',{className:'flex flex-wrap items-center justify-between gap-2 mb-3','data-history-summary':true},h('span',{className:'text-slate-300 text-xs'},rows.length,' recorded sessions'),historyMode==='custom'&&h('strong',{className:profit<0?'text-rose-400':'text-emerald-400','data-history-result':true},signed(profit))),
+          historyMode==='current'&&h('p',{className:'text-xs text-slate-500 mb-2'},'The current-cycle result is shown above.'),
+          h('div',{className:'flex flex-col gap-1 max-h-72 overflow-y-auto'},rows.map((e,i)=>h('div',{key:e.id||`${e.at}-${i}`,className:'flex items-center justify-between gap-2 text-[11px] bg-slate-900/50 rounded-lg px-2.5 py-2 border border-white/5'},
+            h('span',{className:'min-w-0 text-slate-400 font-bold'},h('span',{className:'block text-slate-500'},new Date(e.at).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'})),gameNames[e.game]||e.game,' · ',tableCode(e.tableId)),
+            h('span',{className:'shrink-0 font-black '+((Number(e.profit)||0)<0?'text-rose-400':'text-emerald-400'),dir:'ltr'},signed(Number(e.profit)||0)))),rows.length===0&&h('p',{className:'text-slate-500 text-xs py-3'},'No recorded sessions in this date range.')))),
+      null)),document.body);
 }
 function PendingView({
   clubName,
@@ -8918,7 +8838,8 @@ function BackofficeView({
   user,
   clubSettings,
   tables = [],
-  showToast
+  showToast,
+  onSettlement
 }) {
   const [usersList, setUsersList] = useState([]);
   const directoryScope = `${user.uid}:${user.role}:${user.status}:${CLUB_ID}:${isGodUser(user)}`;
@@ -8999,7 +8920,7 @@ function BackofficeView({
   const [search, setSearch] = useState('');
   const [memberSort,setMemberSort]=useState('name');
   const currentAccounting=accounting?.scope===directoryScope?accounting.data:null;
-  const accountNumbers=(value,balance)=>React.createElement(AccountNumbers,{value,balance,loading:accountingLoading,showRake:isGodUser(user),showLifetime:true,completedSessions:currentAccounting?.basis==='settlement-cycle-completed-sessions'});
+  const accountNumbers=(value,balance)=>React.createElement(AccountNumbers,{value,balance,viewer:user,loading:accountingLoading,showRake:isGodUser(user),showLifetime:true,needsPeriodStart:currentAccounting?.needsPeriodStart===true});
 
   const [memFilter, setMemFilter] = useState('all'); // members directory: All / Agents / Managers / Banned
   const [roleEditUser, setRoleEditUser] = useState(null);
@@ -9629,9 +9550,10 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   }, t.value)))), React.createElement('section',{className:'management-cycle-summary',dir:'ltr'},
     React.createElement('h3',null,canAdmin?'Club player totals · Current cycle':'My player totals · Current cycle'),
     Number.isFinite(currentAccounting?.start)&&React.createElement('small',null,'From ',new Date(currentAccounting.start).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem'}),' to now'),
+    currentAccounting?.needsPeriodStart&&React.createElement('p',{className:'text-amber-300 text-sm','data-period-start-required':true},'The current cycle has no confirmed start date. Balances are preserved; results will appear after the start is confirmed.',canManageClub(user)&&onSettlement&&React.createElement('button',{type:'button',onClick:onSettlement,className:'block btn-outline rounded-xl px-3 py-2 mt-2'},'Set cycle start in Settlement')),
     accountingError&&React.createElement('div',{role:'alert',className:'text-amber-300 text-sm'},accountingError,React.createElement('button',{type:'button',disabled:accountingLoading,onClick:()=>setAccountingAttempt(n=>n+1)},'Try again')),
     accountNumbers(canAdmin?currentAccounting?.club:currentAccounting?.agents?.[user.uid],canAdmin?currentAccounting?.club?.balance:currentAccounting?.agents?.[user.uid]?.balance),
-    React.createElement('p',null,'The amount in brackets is the player result for the current cycle. It is not a debt or the net settlement after commissions.')),
+    React.createElement('p',null,'Cycle profit / loss shows the player result for the current cycle. It is not a debt or the net settlement after commissions.')),
     canAdmin && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6 border border-amber-500/20"
   }, React.createElement("span", {
@@ -9820,6 +9742,12 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "fa-solid fa-xmark"
   }))) : React.createElement("span",{className:"text-xs text-amber-300"},"Awaiting manager approval"))))), playerFile && React.createElement(PlayerFileModal, {
     mem: playerFile,
+    viewer: user,
+    accounting: currentAccounting,
+    accountingLoading,
+    canManagePeriod: canManageClub(user),
+    showRake: isGodUser(user),
+    onSettlement: onSettlement ? () => {setPlayerFile(null);onSettlement();} : undefined,
     agentName: agentName,
     canEdit: canAdmin || canManageAny || playerFile.agentUid === user.uid,
     onClose: () => setPlayerFile(null),
@@ -9929,7 +9857,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     placeholder: "Search player...",
     className: "bg-slate-900/80 border border-white/10 rounded-full pr-9 pl-4 py-2 text-sm text-white w-52 outline-none focus:border-emerald-500/50"
   })), React.createElement('select',{value:memberSort,onChange:e=>setMemberSort(e.target.value),'aria-label':'Sort players',className:'management-sort'},
-    React.createElement('option',{value:'name'},'Name'),React.createElement('option',{value:'chips'},'Chips — high to low'),React.createElement('option',{value:'result'},'Cycle result — high to low'),currentAccounting?.rakeVisible&&React.createElement('option',{value:'rake'},'Cycle rake — high to low'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3',dir:'ltr'},'Next to chips: profit or loss for the current cycle only. Chip top-ups are not winnings.'), React.createElement("div", {
+    React.createElement('option',{value:'name'},'Name'),React.createElement('option',{value:'chips'},'Chips — high to low'),React.createElement('option',{value:'result'},'Cycle result — high to low'),currentAccounting?.rakeVisible&&React.createElement('option',{value:'rake'},'Cycle rake — high to low'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3',dir:'ltr'},'Balance and cycle profit / loss are shown separately. Chip top-ups are not winnings.'), React.createElement("div", {
     className: "flex gap-1.5 mb-3 flex-wrap"
   }, [['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
     key: k2,

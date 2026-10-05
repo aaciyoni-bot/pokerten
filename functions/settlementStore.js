@@ -32,9 +32,10 @@ async function frozenTerms(tx,db,cid,uid){
  const secondaryAgentId=t.secondaryAgentId||null;
  return{primaryAgentId,agentType:at.agentType||'rake',agentPct:primaryAgentId?(at.agentPct??Number(m.agentPct||0)):0,secondaryAgentId,secondaryPct:secondaryAgentId?(t.secondaryPct||0):0,rakebackPct:t.rakebackPct||0};
 }
-// A sitting is booked when it ends. Hand/rake counters are accumulated on the
-// server. The activation baseline excludes pre-existing sitting profits without
-// editing those seats or cash-out logs. Tournament fees come from the engine.
+// Live cash sittings contribute provisionally to the current report. Their
+// immutable rows are recorded on cash-out or a manual cycle boundary. Server
+// hand/rake counters and sitting baselines prevent prior segments being booked
+// twice without editing chip stacks or cash-out history.
 async function prepareJournal(db,tx,cid,effects,source,now){
  const results=effects.filter(e=>e.type==='gameLog').flatMap(e=>e.entries||[]).filter(e=>e.uid&&!e.uid.startsWith('bot_'));
  const hands=effects.filter(e=>e.type==='settlementHands').flatMap(e=>e.entries||[]);
@@ -61,13 +62,45 @@ async function prepareJournal(db,tx,cid,effects,source,now){
  // with the game's commit or place activity in a closed cycle.
  return()=>{for(const write of writes)write();};
 }
+// Read settled wealth from public table state only. A live hand remains at its
+// opening value until it is awarded. Baselines are per sitting, never per UID.
+async function openContributions(tx,db,cid,cycle,now=Date.now()){
+ if(cycle.status!=='open')return{sessions:[],sittings:[]};
+ const [tables,counters]=await Promise.all([
+  tx.get(db.collection('tables').where('clubId','==',cid).select('type','name','players','settings','tournamentId','gameState.phase','gameState.handStartWealth','gameState.handStartStacks','gameState.bombPot','gameState.handBB')),
+  tx.get(root(db,cid).collection('sittings'))]);
+ const byId=new Map(counters.docs.map(d=>[d.id,d.data()])),sittings=[],terms=new Map();
+ for(const table of tables.docs){const t=table.data();if(t.tournamentId||t.settings?.spinMode||t.type&&t.type!=='poker')continue;
+  const human=Object.values(t.players||{}).filter(p=>p.uid&&!p.isBot&&!p.uid.startsWith('bot_'));
+  const totals=require('./pokerAccounting').buildAccounting(human.map(p=>({uid:p.uid,status:'approved',balance:0})),[],[t],{now});
+  for(const p of human){const source=table.id,old=byId.get(hash(source,p.uid))||{},cumulativeResult=E.cents(totals.players[p.uid]?.openResult||0);
+   sittings.push({uid:p.uid,source,old,cumulativeResult,row:{playerId:p.uid,playerName:String(p.name||p.username||p.uid),tableId:source,tableName:old.tableName||t.name||t.settings?.name||source,gameType:old.gameType||t.settings?.pokerType||'poker',kind:'cash',result:cumulativeResult-(old.baseline||0),rake:old.rake||0,hands:old.hands||0,cycleId:cycle.id,at:now,provisional:true}});
+  }
+ }
+ const active=sittings.filter(s=>s.row.result!==0||s.row.rake!==0||s.row.hands!==0);
+ await Promise.all([...new Set(active.map(s=>s.uid))].map(async uid=>terms.set(uid,await frozenTerms(tx,db,cid,uid))));
+ for(const s of active)s.row={...s.row,...terms.get(s.uid)};
+ return{sessions:active.map(s=>s.row),sittings};
+}
+// Called only after every close transaction read. Replace each live provisional
+// segment by its immutable old-cycle row, then start the remaining sitting at 0.
+function preserveOpenContributions(tx,db,cid,cycle,sittings,now){
+ for(const s of sittings){
+  if(s.row.result!==0||s.row.rake!==0||s.row.hands!==0){
+   const {provisional,...row}=s.row;
+   tx.create(root(db,cid).collection('sessions').doc(hash('cycle-boundary',cycle.id,s.source,s.uid,now)),{...row,at:now,cycleBoundary:true});
+  }
+  tx.set(root(db,cid).collection('sittings').doc(hash(s.source,s.uid)),{...s.old,uid:s.uid,source:s.source,baseline:s.cumulativeResult,rake:0,hands:0,tableName:s.row.tableName,gameType:s.row.gameType,updatedAt:now});
+ }
+}
 async function calculate(tx,db,cid,cycleId){
  const ref=cycleRef(db,cid,cycleId),cycle=data(await tx.get(ref));if(!cycle||cycle.status==='void')A.fail('not-found','Cycle not found.');
  const [sessions,payments]=await Promise.all([tx.get(root(db,cid).collection('sessions').where('cycleId','==',cycleId)),tx.get(root(db,cid).collection('payments').where('cycleId','==',cycleId))]);
  const names=Object.fromEntries(sessions.docs.map(s=>[s.data().playerId,s.data().playerName]));
  const members=await tx.get(db.collection('memberships').where('clubId','==',cid));for(const m of members.docs)names[m.data().uid]=m.data().username||m.data().uid;
- const calculated=E.computeCycle({sessions:sessions.docs.map(s=>s.data()),payments:payments.docs.map(s=>s.data()).filter(p=>p.status==='confirmed'),openings:cycle.openings||{},names});
- return{cycle,calculated,payments:payments.docs.map(d=>({id:d.id,...d.data()})),members:members.docs.map(d=>d.data()),sessionCount:sessions.size};
+ const live=await openContributions(tx,db,cid,cycle);
+ const calculated=E.computeCycle({sessions:[...sessions.docs.map(s=>s.data()),...live.sessions],payments:payments.docs.map(s=>s.data()).filter(p=>p.status==='confirmed'),openings:cycle.openings||{},names});
+ return{cycle,calculated,payments:payments.docs.map(d=>({id:d.id,...d.data()})),members:members.docs.map(d=>d.data()),sessionCount:sessions.size+live.sessions.length,liveSessions:live.sessions,liveSittings:live.sittings};
 }
 function publicReport(ctx,full){
  const {calculated:c,cycle}=full,{uid,role}=ctx;
@@ -79,4 +112,4 @@ function publicReport(ctx,full){
  if(role==='agent')return{role,cycle:metadata,funds,player:own,agent:c.agents[uid]||{agentId:uid,agentName:ctx.me?.username||uid,players:[],leads:[],playersResult:0,rake:0,hands:0,commission:0,earnings:0,toClub:0,opening:0,paid:0,closing:0},details:Object.values(c.pairs).filter(p=>p.agentId===uid),payments};
  return{role,cycle:metadata,funds,club:c.club,agents:Object.values(c.agents),details:Object.values(c.pairs),payments};
 }
-module.exports={hash,root,cycleRef,data,authority,context,approvedAgent,frozenTerms,prepareJournal,calculate,publicReport};
+module.exports={hash,root,cycleRef,data,authority,context,approvedAgent,frozenTerms,prepareJournal,openContributions,preserveOpenContributions,calculate,publicReport};

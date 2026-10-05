@@ -193,6 +193,9 @@ function executeDeal(S, gameType) {
   const anteAmt = bombOn ? round2((Number(S.settings.bombAnte) || 2) * bbAmt) : round2(Number(S.settings.ante) || 0);
   const tourRow=S.tor?Tours.clock(S.tor,S.now).row:null;
   const actualAnte=S.tor?(S.tor.anteType==='each'?tourRow.ante:0):anteAmt;
+  // Accounting holds an unfinished hand at its exact opening value. Capture it
+  // before antes/blinds; a short stack may pay less than the configured ante.
+  const handStartWealth=Object.fromEntries(actives.map(p=>[p.uid,round2(p.stack)]));
   let anteTotal = 0;
   if (actualAnte > 0) {
     actives.forEach((p) => {
@@ -203,6 +206,7 @@ function executeDeal(S, gameType) {
   }
   const g = S.gameState;
   g.handSB=sbAmt;g.handBB=bbAmt;
+  g.handStartWealth=handStartWealth;
   g.handStartStacks=Object.fromEntries(actives.map(p=>[p.uid,round2(p.stack+(S.tor&&S.tor.anteType==='each'?Math.min(tourRow.ante,S.raw.players[p.uid]?.stack||0):0))]));
   g.investedStreets = {};
   g.currentGameType = gameType;

@@ -100,7 +100,16 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
    const games=await tx.get(db.collection('gameLog').where('clubId','==',cid));
    const tables=await tx.get(db.collection('tables').where('clubId','==',cid));
    const cycle=await Accounting.currentCycle(tx,db,cid);
-   return{accounting:Accounting.buildAccounting(rows,games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:A.root(r),cycle})};
+   const summary=Accounting.buildAccounting(rows,games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:A.root(r),cycle});
+   if(!manager){
+    // Agents receive cycle results and current funds only. Lifetime results are
+    // manager-only data and must not merely be hidden by the client.
+    const withoutLifetime=({totalResult,totalRake,...visible})=>visible;
+    summary.players=Object.fromEntries(Object.entries(summary.players).map(([id,row])=>[id,withoutLifetime(row)]));
+    summary.agents=Object.fromEntries(Object.entries(summary.agents).map(([id,row])=>[id,withoutLifetime(row)]));
+    summary.club=withoutLifetime(summary.club);
+   }
+   return{accounting:summary};
   }
   const treasury=manager?rows.find(m=>m.uid===club.data().ownerUid):null;
   let agentLog=[],gameLog=[],securityAlerts=[];

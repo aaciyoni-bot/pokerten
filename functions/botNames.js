@@ -29,7 +29,8 @@ function botName(uid,used=[],options={}){
  }
  throw Error('No unused bot display name available');
 }
-// Repair existing seats too, without changing identities, stacks or cards.
+// Repair generic or conflicting names without changing identities, stacks or cards.
+// Existing unique display names remain as authored, including historical aliases.
 // A supplied tournament roster is updated so moves and results keep the name.
 function renameGenericBots(players,roster,options={}){
  let changed=false;const entries=Object.entries(players||{}),table=options.table!==false;

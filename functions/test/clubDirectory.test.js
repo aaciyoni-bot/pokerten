@@ -204,7 +204,7 @@ test('legacy Firestore document IDs with punctuation, spaces and Unicode can con
 
 
 test('accounting-only reports enforce staff scope and GOD rake omission on the server',async()=>{
- const f=fixture({records:0});f.documents.get('memberships/alice_clubA').status='approved';
+ const f=fixture({records:0});f.documents.set('settlementClubs/clubA/state/legacyPeriod',{startAt:Date.now()-86400000,source:'manager-confirmed',confirmedAt:Date.now()-100,confirmedBy:'owner'});f.documents.get('memberships/alice_clubA').status='approved';
  f.documents.set('gameLog/profit',{clubId:'clubA',uid:'alice',profit:-340.17,rake:7,at:Date.now()-1000});
  const agent=await f.run({accountingOnly:true},auth('agentA','agent@example.test'));
  assert.equal(agent.accounting.players.alice.result,-340.17);
@@ -234,7 +234,7 @@ test('ordinary players receive only own chip totals and cycle P/L without lifeti
  f.documents.set('gameLog/alice',{clubId:'clubA',uid:'alice',profit:-200,rake:7,at:1});
  f.documents.set('gameLog/bob',{clubId:'clubA',uid:'bob',profit:200,rake:8,at:1});
  const who=auth('alice','alice@example.test'),r=await f.run({accountingOnly:true},who);
- assert.deepEqual(Object.keys(r.accounting.players),['alice']);assert.equal('totalResult'in r.accounting.players.alice,false);assert.equal(r.accounting.players.alice.result,0);assert.equal(r.accounting.players.alice.chips,800);
+ assert.deepEqual(Object.keys(r.accounting.players),['alice']);assert.equal('totalResult'in r.accounting.players.alice,false);assert.equal(r.accounting.players.alice.result,null);assert.equal(r.accounting.needsPeriodStart,true);assert.equal(r.accounting.start,null);assert.equal(r.accounting.players.alice.chips,800);
  assert.equal('club'in r.accounting,false);assert.equal('agents'in r.accounting,false);assert.equal('rake'in r.accounting.players.alice,false);assert.equal('totalRake'in r.accounting.players.alice,false);
  await assert.rejects(f.run({accountingOnly:true,targetUid:'bob'},who),e=>e.code==='permission-denied');
  await assert.rejects(f.run({accountingOnly:true,directoryOnly:true},who),e=>e.code==='permission-denied');

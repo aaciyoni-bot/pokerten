@@ -4,7 +4,7 @@ const {buildAccounting,cycleStart,publicGameLog}=require('../functions/pokerAcco
 const now=Date.parse('2026-10-03T14:00:00Z');
 const members=[{uid:'owner',role:'club_owner',status:'approved',balance:8000},{uid:'agent',role:'agent',status:'approved',balance:20},{uid:'loss',agentUid:'agent',status:'approved',balance:159.83},{uid:'win',agentUid:'agent',status:'approved',balance:1000},{uid:'bot_x',isBot:true,status:'approved',balance:900},{uid:'ghost',role:'super_admin',status:'approved',balance:9999}];
 const logs=[{uid:'loss',profit:-340.17,rake:3.41,at:now-100},{uid:'win',profit:500,rake:5,at:now-100},{uid:'loss',profit:-10,rake:20,at:cycleStart(now)-1},{uid:'bot_x',profit:900,rake:100,at:now-100}];
-const options={now,ownerUid:'owner',god:true};
+const options={now,ownerUid:'owner',god:true,cycle:{id:'legacy_current',legacy:true,status:'open',startAt:cycleStart(now),endAt:null}};
 test('requested decimal examples, agent and club totals use one arithmetic source',()=>{
  const r=buildAccounting(members,logs,[],options);
  assert.equal(r.players.loss.result,-340.17);assert.equal(r.players.win.result,500);
@@ -29,7 +29,7 @@ test('rake never enters a non-GOD report or sanitized player history',()=>{
  assert.equal(report.rakeVisible,false);assert.equal(JSON.stringify(report).includes('"rake":'),false);
  assert.deepEqual(publicGameLog({uid:'p',profit:-3,rake:7,rakeSource:'human',accountingVersion:2},false),{uid:'p',profit:-3});
 });
-test('cycles use Monday 00:01 Israel across daylight saving, never browser timezone',()=>{
+test('historical week utility keeps stable Israel offsets; it is not a current cycle resolver',()=>{
  assert.equal(new Date(cycleStart(now)).toISOString(),'2026-09-27T21:01:00.000Z');
  assert.equal(new Date(cycleStart(Date.parse('2026-10-26T00:00:00Z'))).toISOString(),'2026-10-25T22:01:00.000Z');
  assert.equal(new Date(cycleStart(Date.parse('2026-09-27T21:00:30Z'))).toISOString(),'2026-09-20T21:01:00.000Z');

@@ -7,7 +7,7 @@ const React=require('react'),ReactDOM={...require('react-dom'),...require('react
 const members=[{uid:'owner',username:'Owner',role:'club_owner',status:'approved',balance:5000},{uid:'agent',username:'Agent',role:'agent',status:'approved',balance:0,agentCode:'DEMO123'},{uid:'loss',username:'Alice',role:'player',status:'approved',agentUid:'agent',balance:159.83},{uid:'win',username:'Bob',role:'player',status:'approved',agentUid:'agent',balance:1000}].map(m=>({...m,id:m.uid+'_main',clubId:'main'}));
 const now=Date.now(),logs=[{uid:'loss',profit:-20,rake:8,at:now},{uid:'loss',profit:-320.17,rake:92,at:now-8*86400000},{uid:'win',profit:500,rake:3,at:now},{uid:'win',profit:-1000,rake:100,at:now-8*86400000}];
 let god=false,accountingOverride=null,holdAccounting=false;const pendingAccounting=[];
-const report=()=>require('../../functions/pokerAccounting').buildAccounting(members,logs,[],{now,ownerUid:'owner',god});
+const report=()=>require('../../functions/pokerAccounting').buildAccounting(members,logs,[],{now,ownerUid:'owner',god,cycle:{id:'legacy_current',legacy:true,status:'open',startAt:now-7*86400000,endAt:null}});
 const deny=()=>{throw Error('Unexpected write in accounting UI');};
 w.fb={db:{},auth:{currentUser:{uid:'owner',email:'owner@example.test',emailVerified:true}},doc:()=>({}),collection:()=>({}),query:r=>r,where:()=>({}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),fx:async(name,args)=>{
  if(name==='pkClubDirectory'){if(args.accountingOnly){if(holdAccounting)return new Promise(resolve=>pendingAccounting.push(resolve));return{accounting:accountingOverride||report()};}if(args.reportSection)return{records:[],hasMore:false,nextCursor:null};return{members,treasury:{uid:'owner',balance:5000}};}
@@ -61,6 +61,20 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  await render('missing-staff');
  assert.equal(card('Alice').querySelector('[data-player-result]'),null);
  assert.match(card('Alice').textContent,/Cycle result is currently unavailable/);
+ // No confirmed start is distinct from a genuine zero-result cycle.
+ accountingOverride=require('../../functions/pokerAccounting').buildAccounting(members,logs,[],{now,ownerUid:'owner',god:true});
+ assert.equal(accountingOverride.start,null);assert.equal(accountingOverride.needsPeriodStart,true);
+ await render('unconfirmed-cycle');
+ assert.equal(card('Alice').querySelector('[data-player-result]'),null);
+ assert.equal(card('Alice').querySelector('[data-cycle-rake]'),null);
+ assert.match(card('Alice').textContent,/159\.83/);
+ assert.match(card('Alice').textContent,/must confirm the cycle start date/);
+ for(const selector of ['.management-cycle-summary','.management-agent-totals'])assert.equal(doc.querySelector(selector+' [data-player-result]'),null);
+ assert.ok(doc.querySelector('[data-period-start-required]'));
+ await own(members[2],{key:'unconfirmed-player'});
+ assert.equal(doc.querySelector('[data-player-result]'),null);assert.equal(doc.querySelector('[data-lifetime-result]'),null);
+ assert.match(doc.body.textContent,/159\.83/);assert.match(doc.body.textContent,/must confirm the cycle start date/);
+ assert.doesNotMatch(doc.body.textContent,/Rake|Lifetime|-340\.17/i);
  // A late old-user response cannot refill the next player's mounted view.
  accountingOverride=null;holdAccounting=true;
  await own(members[2],{key:'scope-change'});

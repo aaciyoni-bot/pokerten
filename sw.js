@@ -1,7 +1,7 @@
 /* PokerTen - Service Worker
-   אסטרטגיה: רשת-קודם. תמיד מנסים להביא את הגרסה הטרייה מהשרת,
-   והמטמון משמש רק כגיבוי לחוסר-חיבור. כך פריסות חדשות מגיעות מיידית. */
-const CACHE = 'pokerten-shell-v312';
+   Network first: fetch the latest release from the server.
+   The cache is only an offline fallback so deployments appear immediately. */
+const CACHE = 'pokerten-shell-v313';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
@@ -16,7 +16,7 @@ self.addEventListener('fetch', (e) => {
     const req = e.request;
     if (req.method !== 'GET') return;
     const url = new URL(req.url);
-    // לא נוגעים בתקשורת של Firebase/גוגל - עוברת ישירות
+    // Firebase and Google requests pass through directly.
     if (url.hostname.includes('googleapis.com') || url.hostname.includes('firebaseapp.com') || url.hostname.includes('gstatic.com') && url.pathname.includes('firebasejs')) return;
     // Page/document loads must always come fresh from the network (never the HTTP cache),
     // so a new deploy shows up immediately instead of a stale cached shell.

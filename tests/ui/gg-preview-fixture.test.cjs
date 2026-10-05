@@ -19,6 +19,14 @@ async function fixture(query){
 }
 const key=c=>c.val+c.suit;
 (async()=>{
+ const unknownPeriod=await fixture('mode=player-file&needsPeriodStart=true');
+ assert.equal(unknownPeriod.directory.accounting.start,null);
+ assert.equal(unknownPeriod.directory.accounting.players.p1.result,null,'unknown-period preview must not fabricate zero');
+ assert.equal(unknownPeriod.directory.accounting.players.p1.chips,12450.5,'unknown-period preview preserves the wallet');
+ const knownPeriod=await fixture('mode=player-file');
+ assert.ok(Number.isFinite(knownPeriod.directory.accounting.start));
+ assert.equal(knownPeriod.directory.accounting.players.p1.result,350);
+ assert.equal(knownPeriod.directory.accounting.players.p1.totalResult,230,'preview distinguishes current-cycle result from prior history');
  for(const [mode,count,seats] of [['nlh',2,9],['pineapple',3,9],['omaha4',4,9],['omaha5',5,9],['omaha',6,6]]){
   const f=await fixture(`mode=${mode}&seats=${seats}&full&opponents`);
   assert.equal(f.privateCards.length,count,`${mode}: the local private hand is present`);

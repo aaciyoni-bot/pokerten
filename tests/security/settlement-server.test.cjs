@@ -21,6 +21,7 @@ before(async()=>{
  await db.doc('gameLog/settlement_current_a').set({clubId:cid,uid:'A',profit:-200,rake:20,at:Date.now()});
  await db.doc('gameLog/settlement_current_b').set({clubId:cid,uid:'B',profit:500,rake:10,at:Date.now()});
  await db.doc('agentLog/settlement_current_agent').set({clubId:cid,agentUid:'agentA',playerUid:'A',amount:14,rakeSource:'human',accountingVersion:2,at:Date.now()});
+ for(const [id,rakeSource,accountingVersion,at] of [['bot','bot',2,Date.now()],['old','human',1,Date.now()],['text-version','human','2',Date.now()],['unclassified','unclassified',2,Date.now()],['outside-period','human',2,Date.now()-3*86400000]])await db.doc('agentLog/settlement_excluded_'+id).set({clubId:cid,agentUid:'agentA',amount:999,rakeSource,accountingVersion,at});
  await db.doc('gameLog/settlement_old_history').set({clubId:cid,uid:'legacy',profit:-80,rake:2,at:Date.now()});
  await db.doc('clubs/settlement_other').set({ownerUid:'outsider'});
  await db.doc('memberships/outsider_settlement_other').set({uid:'outsider',clubId:'settlement_other',role:'club_owner',status:'approved',balance:99});
@@ -31,6 +32,17 @@ async function record(uid,result,rake,hands,source='session_'+crypto.randomUUID(
 test('settlement lifecycle, permissions, preserved balances and payment confirmation',async()=>{
  await assert.rejects(cmd('A','initialize'),/club manager/);
  const beforeBalances=await db.collection('memberships').where('clubId','==',cid).get();
+ const unknown=await report('owner'),unknownOwn=await report('A'),unknownAccounting=await accounting('A');
+ assert.equal(unknown.needsPeriodStart,true);assert.equal(unknown.canSetPeriodStart,true);assert.equal(unknown.canClose,false);assert.equal(unknown.cycle.startAt,null);assert.equal(unknown.legacyReport.totals.result,null);assert.equal(unknownOwn.legacyReport.totals.result,null);assert.equal(unknownAccounting.players.A.result,null);assert.equal(unknownAccounting.needsPeriodStart,true);
+ assert.equal((await ref().get()).exists,false);await assert.rejects(cmd('owner','closeLegacy'),/Confirm the current cycle start/);
+ const startAt=Date.now()-86400000;await assert.rejects(cmd('A','setLegacyPeriodStart',{startAt}),/club manager/);await assert.rejects(cmd('owner','setLegacyPeriodStart',{startAt:Date.now()+86400000}),/numeric/);
+ await cmd('owner','setLegacyPeriodStart',{startAt});assert.equal((await ref().get()).exists,false,'confirming a legacy start does not initialize or close a cycle');
+ await assert.rejects(cmd('owner','setLegacyPeriodStart',{startAt:startAt-1000}),/cannot be changed/);
+ assert.deepEqual((await db.collection('memberships').where('clubId','==',cid).get()).docs.map(d=>d.data()),beforeBalances.docs.map(d=>d.data()));
+ const manual=await accounting('A');assert.equal(manual.start,startAt);assert.equal(manual.players.A.result,-200);
+ const range=await call('pkSettlementReport','A',{fromAt:startAt,toAt:Date.now()+1000});assert.equal(range.readOnly,true);assert.equal(range.cycle.status,'range');assert.equal(range.legacyReport.totals.result,-20000);assert.equal(range.canClose,false);assert.doesNotMatch(JSON.stringify(range),/totalResult|rake|commission|agentUid|Pct/);
+ const openRange=await call('pkSettlementReport','legacy',{fromAt:startAt,toAt:Date.now()+1000});assert.equal(openRange.legacyReport.totals.result,-8000,'current open-sitting loss is excluded from historical range');
+ await assert.rejects(call('pkSettlementReport','A',{fromAt:5,toAt:5}),/valid From/);
  const live=await report('owner'),ownLive=await report('A'),agentLive=await report('agentA');
  assert.equal(live.legacy,true);assert.equal(live.cycle.status,'open');assert.equal(live.canClose,true);
  assert.equal(live.legacyReport.players.find(p=>p.uid==='A').result,-20000);assert.equal(live.legacyReport.players.find(p=>p.uid==='B').result,50000);
@@ -41,8 +53,10 @@ test('settlement lifecycle, permissions, preserved balances and payment confirma
  await cmd('owner','closeLegacy');const afterBalances=await db.collection('memberships').where('clubId','==',cid).get();assert.deepEqual(afterBalances.docs.map(d=>d.data()),beforeBalances.docs.map(d=>d.data()));
  assert.equal((await db.doc('gameLog/settlement_old_history').get()).data().profit,-80);
  const archived=await report('A','legacy_current');assert.equal(archived.legacy,true);assert.equal(archived.cycle.status,'closed');assert.equal(archived.canClose,false);assert.equal(archived.legacyReport.totals.result,-20000);assert.doesNotMatch(JSON.stringify(archived),/rake|commission|agentUid|agentProfits|Pct/);
+ const archivedOwner=await report('owner','legacy_current');assert.equal(archivedOwner.legacyReport.agents.find(a=>a.uid==='agentA').commission,1400,'manual closing uses the same verified commission filter as the live report');
+ const archiveStaff=await call('pkSettlementArchive','owner');assert.equal(archiveStaff.rows.find(m=>m.uid==='agentA').agentProfits,75,'projected activation read preserves existing commission balances');
  assert.ok((await report('owner')).cycles.find(c=>c.id==='legacy_current'));
- assert.equal((await report('owner')).club.totals.closing,0);assert.equal((await report('A')).player.opening,0);
+ assert.equal((await report('owner')).cycle.endAt,null);assert.equal((await report('owner')).cycle.autoClose,false);assert.equal((await report('owner')).club.totals.closing,0);assert.equal((await report('A')).player.opening,0);
  const initialPlayer=await report('A');assert.equal(initialPlayer.chips,15983);assert.equal('totalResult'in initialPlayer,false);assert.equal((await ref().collection('sittings').doc(require('../../functions/settlementStore').hash('settlement_legacy_table','legacy')).get()).data().baseline,-34017);assert.doesNotMatch(JSON.stringify(initialPlayer),/rakeback|"rake"|Pct|agentProfits|secondary/i);
  const initialAccounting=await accounting('A');assert.equal(initialAccounting.cycleId,'cycle_1');assert.equal(initialAccounting.basis,'settlement-cycle-completed-sessions');assert.equal(initialAccounting.players.A.result,0);assert.equal('totalResult'in initialAccounting.players.A,false);
  const openAccounting=await accounting('legacy');assert.equal(openAccounting.players.legacy.result,0);assert.equal(openAccounting.players.legacy.openSessions,1);assert.equal(openAccounting.players.legacy.chips,209.83);
@@ -81,6 +95,10 @@ test('settlement lifecycle, permissions, preserved balances and payment confirma
  await assert.rejects(cmd('owner','reopen'),/empty|locked/);await assert.rejects(cmd('A','close'),/club manager/);
  await assert.rejects(report('A','all'),/specific cycle/);assert.equal((await report('A','cycle_1')).player.closing,-182000,'individual historical cycles remain authorized');
  await cmd('owner','close');await cmd('owner','reopen');assert.equal((await report('owner')).cycle.id,'cycle_2');
+ // Even a legacy persisted autoClose flag cannot trigger a scheduled close.
+ const currentId=(await ref().get()).data().currentCycleId,currentRef=ref().collection('cycles').doc(currentId);
+ await currentRef.update({autoClose:true,endAt:Date.now()-1000});const beforeTick=(await currentRef.get()).data();await api.pkSettlementTick.run({});assert.deepEqual((await currentRef.get()).data(),beforeTick);assert.equal((await ref().get()).data().currentCycleId,currentId);
+ await assert.rejects(cmd('owner','setEnd',{endAt:Date.now()+86400000,autoClose:true}),/only be closed manually/);
  const requestId=crypto.randomUUID();await call('pkSettlement','owner',{action:'setEnd',requestId,endAt:Date.now()+86400000,autoClose:false});
  await assert.rejects(call('pkSettlement','owner',{action:'close',requestId}),/already used/);
 });

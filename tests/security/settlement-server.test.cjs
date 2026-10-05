@@ -29,15 +29,15 @@ async function record(uid,result,rake,hands,source='session_'+crypto.randomUUID(
  await db.runTransaction(async tx=>{const write=await prepareLedger(db,tx,cid,[{type:'settlementHands',entries:[{uid,hands,tableName:source,gameType:'NLH'}]},{type:'gameLog',entries:[{uid,username:uid,profit:result,rake:0}]},...(rake?[{type:'rake',rake,allocations:[{uid,amount:rake}]}]:[])],source,Date.now());write();});
 }
 test('settlement lifecycle, permissions, preserved balances and payment confirmation',async()=>{
- await assert.rejects(cmd('A','initialize'),/מנהל/);
+ await assert.rejects(cmd('A','initialize'),/club manager/);
  const beforeBalances=await db.collection('memberships').where('clubId','==',cid).get();
  const live=await report('owner'),ownLive=await report('A'),agentLive=await report('agentA');
  assert.equal(live.legacy,true);assert.equal(live.cycle.status,'open');assert.equal(live.canClose,true);
  assert.equal(live.legacyReport.players.find(p=>p.uid==='A').result,-20000);assert.equal(live.legacyReport.players.find(p=>p.uid==='B').result,50000);
  assert.equal(agentLive.legacyReport.totals.commission,1400);assert.equal(agentLive.legacyReport.players.some(p=>p.uid==='D'),false);assert.equal(agentLive.canClose,false);
  assert.equal(ownLive.legacyReport.players.length,1);assert.equal(ownLive.legacyReport.totals.result,-20000);assert.doesNotMatch(JSON.stringify(ownLive),/totalResult|rake|commission|agentUid|agentProfits|Pct/);
- await assert.rejects(report('A','all'),/מחזור מסוים/);
- assert.equal((await ref().get()).exists,false,'reading the legacy cycle must never initialize it');await assert.rejects(report('outsider'),/חברות/);
+ await assert.rejects(report('A','all'),/specific cycle/);
+ assert.equal((await ref().get()).exists,false,'reading the legacy cycle must never initialize it');await assert.rejects(report('outsider'),/club membership/);
  await cmd('owner','closeLegacy');const afterBalances=await db.collection('memberships').where('clubId','==',cid).get();assert.deepEqual(afterBalances.docs.map(d=>d.data()),beforeBalances.docs.map(d=>d.data()));
  assert.equal((await db.doc('gameLog/settlement_old_history').get()).data().profit,-80);
  const archived=await report('A','legacy_current');assert.equal(archived.legacy,true);assert.equal(archived.cycle.status,'closed');assert.equal(archived.canClose,false);assert.equal(archived.legacyReport.totals.result,-20000);assert.doesNotMatch(JSON.stringify(archived),/rake|commission|agentUid|agentProfits|Pct/);
@@ -46,12 +46,12 @@ test('settlement lifecycle, permissions, preserved balances and payment confirma
  const initialPlayer=await report('A');assert.equal(initialPlayer.chips,15983);assert.equal('totalResult'in initialPlayer,false);assert.equal((await ref().collection('sittings').doc(require('../../functions/settlementStore').hash('settlement_legacy_table','legacy')).get()).data().baseline,-34017);assert.doesNotMatch(JSON.stringify(initialPlayer),/rakeback|"rake"|Pct|agentProfits|secondary/i);
  const initialAccounting=await accounting('A');assert.equal(initialAccounting.cycleId,'cycle_1');assert.equal(initialAccounting.basis,'settlement-cycle-completed-sessions');assert.equal(initialAccounting.players.A.result,0);assert.equal('totalResult'in initialAccounting.players.A,false);
  const openAccounting=await accounting('legacy');assert.equal(openAccounting.players.legacy.result,0);assert.equal(openAccounting.players.legacy.openSessions,1);assert.equal(openAccounting.players.legacy.chips,209.83);
- await assert.rejects(report('outsider'),/חברות/);await assert.rejects(call('pkSettlementTerms','A',{action:'list'}),/הרשאה/);
+ await assert.rejects(report('outsider'),/club membership/);await assert.rejects(call('pkSettlementTerms','A',{action:'list'}),/permission/);
  await call('pkSettlementTerms','owner',{targetUid:'A',patch:{rakebackPct:30}});
  await call('pkSettlementTerms','owner',{targetUid:'agentA',patch:{agentType:'rake',agentPct:50}});
  await call('pkSettlementTerms','owner',{targetUid:'agentB',patch:{agentType:'rake',agentPct:40}});
- await assert.rejects(call('pkSettlementTerms','agentB',{targetUid:'A',patch:{rakebackPct:20}}),/רייקבק/);
- await assert.rejects(call('pkSettlementTerms','agentA',{targetUid:'A',patch:{rakebackPct:51}}),/גבוהים/);
+ await assert.rejects(call('pkSettlementTerms','agentB',{targetUid:'A',patch:{rakebackPct:20}}),/rakeback/);
+ await assert.rejects(call('pkSettlementTerms','agentA',{targetUid:'A',patch:{rakebackPct:51}}),/exceed the agent share/);
  await record('A',-1200,350,410);await record('A',-1000,200,180);await record('A',200,50,95,'tournament:regression');await record('B',1200,400,520);await record('C',-500,250,300);await record('D',3000,2000,800);
  let owner=await report('owner'),a=await report('agentA'),p=await report('A');
  assert.equal(p.player.closing,-182000);assert.equal(p.player.totals.hands,685);assert.equal(p.player.rakebackTotal,18000);assert.doesNotMatch(JSON.stringify(p),/"rake"|Pct|agentType|agentProfits/);
@@ -70,7 +70,7 @@ test('settlement lifecycle, permissions, preserved balances and payment confirma
  const archive=await call('pkSettlementArchive','A');assert.equal(archive.rows.length,1);assert.equal(archive.rows[0].balance,159.83);assert.doesNotMatch(JSON.stringify(archive),/rake|Pct/i);
  // An initiator cannot approve their own payment, even the club owner.
  await cmd('agentA','payment',{type:'agent',agentId:'agentA',fromId:'agentA',toId:'owner',amount:50});let pending=(await report('agentA')).payments.find(p=>p.status==='pending');
- await assert.rejects(cmd('agentA','confirmPayment',{paymentId:pending.id}),/הצד/);await assert.rejects(cmd('agentB','confirmPayment',{paymentId:pending.id}),/הצד/);
+ await assert.rejects(cmd('agentA','confirmPayment',{paymentId:pending.id}),/authorized party/);await assert.rejects(cmd('agentB','confirmPayment',{paymentId:pending.id}),/authorized party/);
  const oldA=(await report('A')).player.closing;
  await cmd('owner','close');assert.equal((await report('A')).player.opening,oldA);assert.equal((await report('A')).player.closing,oldA);
  const nextAccounting=await accounting('A');assert.equal(nextAccounting.cycleId,'cycle_2');assert.equal(nextAccounting.players.A.result,0,'previous-cycle games and carried settlement balance do not become new-cycle profit/loss');
@@ -78,8 +78,8 @@ test('settlement lifecycle, permissions, preserved balances and payment confirma
  await cmd('owner','confirmPayment',{paymentId:pending.id});assert.equal((await report('agentA','cycle_1')).agent.closing,frozen);
  await cmd('A','payment',{type:'player',agentId:'agentA',playerId:'A',fromId:'A',toId:'agentA',amount:1000});pending=(await report('A')).payments.find(p=>p.status==='pending');assert.equal((await report('A')).player.closing,-182000);
  await cmd('agentA','confirmPayment',{paymentId:pending.id});assert.equal((await report('A')).player.closing,-82000);
- await assert.rejects(cmd('owner','reopen'),/ריק|נעול/);await assert.rejects(cmd('A','close'),/מנהל/);
- await assert.rejects(report('A','all'),/מחזור מסוים/);assert.equal((await report('A','cycle_1')).player.closing,-182000,'individual historical cycles remain authorized');
+ await assert.rejects(cmd('owner','reopen'),/empty|locked/);await assert.rejects(cmd('A','close'),/club manager/);
+ await assert.rejects(report('A','all'),/specific cycle/);assert.equal((await report('A','cycle_1')).player.closing,-182000,'individual historical cycles remain authorized');
  await cmd('owner','close');await cmd('owner','reopen');assert.equal((await report('owner')).cycle.id,'cycle_2');
  const requestId=crypto.randomUUID();await call('pkSettlement','owner',{action:'setEnd',requestId,endAt:Date.now()+86400000,autoClose:false});
  await assert.rejects(call('pkSettlement','owner',{action:'close',requestId}),/already used/);

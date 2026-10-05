@@ -10,16 +10,16 @@ const cycleRef=(db,cid,id)=>root(db,cid).collection('cycles').doc(A.key(id));
 const data=s=>s.exists?s.data():null;
 async function authority(tx,db,cid,r){
  const uid=A.uid(r),club=data(await tx.get(db.doc('clubs/'+A.key(cid)))),me=data(await tx.get(db.doc(`memberships/${uid}_${cid}`)));
- if(!club)A.fail('not-found','הקלאב לא נמצא');
+ if(!club)A.fail('not-found','Club not found.');
  const owner=A.root(r)||club.ownerUid===uid,manager=owner||me?.status==='approved'&&me.role==='manager';
- if(!manager&&me?.status!=='approved')A.fail('permission-denied','נדרשת חברות מאושרת בקלאב');
+ if(!manager&&me?.status!=='approved')A.fail('permission-denied','Approved club membership is required.');
  return{uid,club,me,owner,manager,role:manager?'owner':me.role==='agent'?'agent':'player'};
 }
 async function context(tx,db,cid){
  const ref=root(db,cid),config=data(await tx.get(ref));
  if(!config)return{ref,config:null};
  const current=cycleRef(db,cid,config.currentCycleId),cycle=data(await tx.get(current));
- if(!cycle||cycle.status!=='open')A.fail('failed-precondition','לא נמצא מחזור פתוח');
+ if(!cycle||cycle.status!=='open')A.fail('failed-precondition','No open cycle was found.');
  return{ref,config,current,cycle};
 }
 const approvedAgent=m=>m?.status==='approved'&&['agent','manager','club_owner'].includes(m.role);
@@ -62,7 +62,7 @@ async function prepareJournal(db,tx,cid,effects,source,now){
  return()=>{for(const write of writes)write();};
 }
 async function calculate(tx,db,cid,cycleId){
- const ref=cycleRef(db,cid,cycleId),cycle=data(await tx.get(ref));if(!cycle||cycle.status==='void')A.fail('not-found','המחזור לא נמצא');
+ const ref=cycleRef(db,cid,cycleId),cycle=data(await tx.get(ref));if(!cycle||cycle.status==='void')A.fail('not-found','Cycle not found.');
  const [sessions,payments]=await Promise.all([tx.get(root(db,cid).collection('sessions').where('cycleId','==',cycleId)),tx.get(root(db,cid).collection('payments').where('cycleId','==',cycleId))]);
  const names=Object.fromEntries(sessions.docs.map(s=>[s.data().playerId,s.data().playerName]));
  const members=await tx.get(db.collection('memberships').where('clubId','==',cid));for(const m of members.docs)names[m.data().uid]=m.data().username||m.data().uid;

@@ -37,7 +37,7 @@
  const state={authorityVersion:2,settings:{serverEngine:true,maxPlayers:capacity,baseGameType:variant,actionTime:30,blinds:.5,buyIn:100},gameState:{__seq:1,phase:'flop',activeTurnUid:mode==='reference'?'p3':'me',turnStartedAt:Date.now(),highestBet:1,minRaise:1,pots:[{amount:115}],board:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'}],currentGameType:variant,handN:1,dealerUid:'p3'},players};
  if(query.has('sitout')&&players.me){players.me.sitOut=true;players.me.sitOutAt=Date.now()-90000;players.me.status='sitout';players.me.cardCount=0;}
  if(query.has('turn')&&players[query.get('turn')])state.gameState.activeTurnUid=query.get('turn');
- if(query.has('longname')&&players[state.gameState.activeTurnUid])players[state.gameState.activeTurnUid].name='ליאת שפירא — Very long player name';
+ if(query.has('longname')&&players[state.gameState.activeTurnUid])players[state.gameState.activeTurnUid].name='Liat Shapira — Very long player name';
  if(query.has('phase'))state.gameState.phase=query.get('phase');
  if(state.gameState.phase==='turn')state.gameState.board.push({val:'2',suit:'♥'});
  if(state.gameState.phase==='river')state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});
@@ -99,7 +99,7 @@
 
  const definitions=html.match(/<svg[^>]*>[\s\S]*?pcGBlk[\s\S]*?<\/svg>/)?.[0]||'';
  const clubCount=Number(query.get('clubs'))||3;
- const previewClubs=Array.from({length:clubCount},(_,i)=>({id:'club'+i,name:i===0?'POKERTEN':i===1?'מועדון החברים של יוני':'Poker Club '+(i+1),ownerUid:'owner',logo:i===0?'icon-192.png':undefined}));
+ const previewClubs=Array.from({length:clubCount},(_,i)=>({id:'club'+i,name:i===0?'POKERTEN':i===1?'Yoni’s Friends Club':'Poker Club '+(i+1),ownerUid:'owner',logo:i===0?'icon-192.png':undefined}));
  const clubProps={user:{uid:'player',username:'Yoni',role:'player'},clubs:previewClubs,myMems:previewClubs.map(c=>({clubId:c.id,status:'approved',balance:1234567.89})),directoryReady:true};
 
  const tables=[['NLH',.5,50,0],['NLH',.5,50,6],['Pineapple',.5,100,0],['Omaha 6',1,100,0],['Omaha 6',.5,10000000,0]].map(([baseGameType,blinds,minBuyIn,seated],i)=>({docId:'test'+i,type:'poker',settings:{baseGameType,blinds,minBuyIn,maxPlayers:6,serverEngine:true},players:Object.fromEntries(Array.from({length:seated},(_,j)=>['p'+j,{uid:'p'+j,name:'Player '+j,stack:100}])),gameState:{phase:seated?'flop':'waiting'},history:seated?[{at:Date.now()}]:[]}));

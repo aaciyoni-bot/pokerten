@@ -40,7 +40,7 @@ const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent.tri
  assert.equal(doc.querySelectorAll('.club-account-card').length,0);
  assert.doesNotMatch(doc.body.textContent,/Weekly Settlement|Export CSV/,'failed middle page cannot expose partial totals or export');
  mode='complete';
- await React.act(async()=>button('נסה שוב').click());
+ await React.act(async()=>button('Try again').click());
  const alice=[...doc.querySelectorAll('.club-account-card')].find(card=>card.textContent.includes('Alice'));
  assert.ok(alice);assert.match(alice.textContent,/Period result405\.00/,'all 405 entries across three pages contribute exactly once');
  assert.match(doc.body.textContent,/Owner rake \(verified\)205\.00/,'all commission pages contribute exactly once');

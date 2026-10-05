@@ -1,4 +1,5 @@
 'use strict';
+const assertEnglishUi=require('./english-ui.cjs');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
@@ -25,15 +26,16 @@ async function render(patch={}){
  await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'menu-test',user,clubSettings:{name:'Club'},onManage(){managed++;},onCreateTable(){created++;},onLeave(){},showToast(){}})));
  const watch=[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table');if(watch)await React.act(()=>watch.click());
  if(!doc.querySelector('.poker-menu-panel'))await React.act(()=>title('Table menu').click());
+ assertEnglishUi(doc.querySelector('.poker-menu-panel'),'Table menu '+user.role+' '+user.status);
 }
-async function update(){await React.act(async()=>{current.gameState.__seq++;tableNext(snapshot());});}
+async function update(){await React.act(async()=>{current.gameState.__seq++;tableNext(snapshot());});assertEnglishUi(doc.querySelector('.poker-menu-panel'),'Updated table menu');}
 function absent(titles,label){for(const t of titles)assert.equal(!!title(t),false,label+': '+t+' stays absent from the DOM');}
 function present(titles,label){for(const t of titles)assert.ok(title(t),label+': '+t+' is available');}
 (async()=>{try{
  for(const role of ['player','agent']){
   await render({role});absent(privileged,role);
   assert.ok(doc.querySelector('[aria-label="Table details"]'));present(['Hand history','My table look — only you see it','Sound on/off'],role);
-  assert.ok(doc.querySelector('[aria-label="עוצמת צלילים"]'));assert.ok(doc.querySelector('[aria-label="Leave table"]'));
+  assert.ok(doc.querySelector('[aria-label="Sound volume"]'));assert.ok(doc.querySelector('[aria-label="Leave table"]'));
  }
  for(const status of ['pending','banned'])for(const role of ['manager','club_owner','super_admin']){
   await render({role,status});absent(privileged,status+' '+role);

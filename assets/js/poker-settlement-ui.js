@@ -9,11 +9,11 @@
     useEffect,
     useRef
   } = React;
-  const money = n => new Intl.NumberFormat('he-IL', {
+  const money = n => new Intl.NumberFormat('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format((Number(n) || 0) / 100);
-  const date = n => n ? new Date(n).toLocaleString('he-IL', {
+  const date = n => n ? new Date(n).toLocaleString('en-US', {
     timeZone: 'Asia/Jerusalem',
     day: '2-digit',
     month: '2-digit',
@@ -22,11 +22,22 @@
     minute: '2-digit'
   }) : '—';
   const status = {
-    open: 'פתוח',
-    closed: 'סגור',
-    locked: 'נעול',
-    all: 'כל המחזורים'
+    open: "Open",
+    closed: "Closed",
+    locked: "Locked",
+    all: "All cycles"
   };
+  function settlementError(error, fallback = 'Could not load settlement') {
+    const message = typeof error?.message === 'string' ? error.message.trim() : '';
+    if (message && !/[\u0590-\u05ff]/.test(message)) return message;
+    const code = String(error?.code || '').split('/').pop();
+    return {
+      'permission-denied': 'You do not have permission to view or change this settlement.',
+      'unauthenticated': 'Please sign in again to continue.',
+      'unavailable': 'The service is temporarily unavailable. Please try again.',
+      'deadline-exceeded': 'The request timed out. Please try again.'
+    }[code] || fallback;
+  }
   function Amount({
     value = 0,
     signed = false
@@ -58,7 +69,7 @@
   }) {
     return value == null ? null : /*#__PURE__*/React.createElement("small", {
       className: "st-lifetime-note"
-    }, "\u05EA\u05D5\u05E6\u05D0\u05D4 \u05DB\u05DC\u05DC\u05D9\u05EA: ", /*#__PURE__*/React.createElement(Amount, {
+    }, "Lifetime result: ", /*#__PURE__*/React.createElement(Amount, {
       value: value,
       signed: true
     }));
@@ -67,12 +78,12 @@
     value = 0,
     kind = 'agent'
   }) {
-    const label = kind === 'player' ? value < 0 ? 'עליך להעביר לסוכן / לקלאב' : value > 0 ? 'הסוכן / הקלאב יעבירו אליך' : 'ההתחשבנות מאוזנת' : kind === 'club' ? value > 0 ? 'הקלאב מקבל נטו' : value < 0 ? 'הקלאב מעביר נטו' : 'ההתחשבנות מאוזנת' : value > 0 ? 'הסוכן מעביר לקלאב' : value < 0 ? 'הקלאב מעביר לסוכן' : 'ההתחשבנות מאוזנת';
+    const label = kind === 'player' ? value < 0 ? "You pay your agent / club" : value > 0 ? "Your agent / club pays you" : "Settlement is balanced" : kind === 'club' ? value > 0 ? "Net amount the club receives" : value < 0 ? "Net amount the club pays" : "Settlement is balanced" : value > 0 ? "Agent pays the club" : value < 0 ? "Club pays the agent" : "Settlement is balanced";
     return /*#__PURE__*/React.createElement("div", {
       className: "st-net"
     }, /*#__PURE__*/React.createElement("span", null, label), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(value)
-    })), /*#__PURE__*/React.createElement("small", null, "\u05DB\u05D5\u05DC\u05DC \u05D9\u05EA\u05E8\u05EA \u05E4\u05EA\u05D9\u05D7\u05D4 \u05D5\u05EA\u05E9\u05DC\u05D5\u05DE\u05D9\u05DD \u05E9\u05D0\u05D5\u05E9\u05E8\u05D5"));
+    })), /*#__PURE__*/React.createElement("small", null, "Includes opening balance and confirmed payments"));
   }
   function Breakdown({
     opening,
@@ -82,13 +93,13 @@
   }) {
     return /*#__PURE__*/React.createElement("div", {
       className: "st-breakdown"
-    }, /*#__PURE__*/React.createElement("span", null, "\u05D9\u05EA\u05E8\u05EA \u05E4\u05EA\u05D9\u05D7\u05D4 ", /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("span", null, "Opening balance ", /*#__PURE__*/React.createElement(Amount, {
       value: opening,
       signed: true
-    })), /*#__PURE__*/React.createElement("span", null, kind === 'agent' ? 'מול הקלאב במחזור' : 'פעילות במחזור', " ", /*#__PURE__*/React.createElement(Amount, {
+    })), /*#__PURE__*/React.createElement("span", null, kind === 'agent' ? "Club settlement this cycle" : "Cycle activity", " ", /*#__PURE__*/React.createElement(Amount, {
       value: activity,
       signed: true
-    })), /*#__PURE__*/React.createElement("span", null, "\u05EA\u05E9\u05DC\u05D5\u05DE\u05D9\u05DD \u05DE\u05D0\u05D5\u05E9\u05E8\u05D9\u05DD \u05E0\u05D8\u05D5 ", /*#__PURE__*/React.createElement(Amount, {
+    })), /*#__PURE__*/React.createElement("span", null, "Net confirmed payments ", /*#__PURE__*/React.createElement(Amount, {
       value: paid,
       signed: true
     })));
@@ -100,17 +111,17 @@
     return /*#__PURE__*/React.createElement("div", {
       className: "st-scroll",
       tabIndex: "0",
-      "aria-label": "\u05E4\u05D9\u05E8\u05D5\u05D8 \u05E9\u05D5\u05DC\u05D7\u05E0\u05D5\u05EA"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05D5\u05DC\u05D7\u05DF / \u05D8\u05D5\u05E8\u05E0\u05D9\u05E8"), /*#__PURE__*/React.createElement("th", null, "\u05EA\u05D5\u05E6\u05D0\u05D4"), financial && /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05D9\u05D3\u05D9\u05D9\u05DD"), /*#__PURE__*/React.createElement("th", null, "\u05E1\u05E9\u05E0\u05D9\u05DD"))), /*#__PURE__*/React.createElement("tbody", null, rows.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+      "aria-label": "Table breakdown"
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Table / Tournament"), /*#__PURE__*/React.createElement("th", null, "Result"), financial && /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Hands"), /*#__PURE__*/React.createElement("th", null, "Sessions"))), /*#__PURE__*/React.createElement("tbody", null, rows.map((r, i) => /*#__PURE__*/React.createElement("tr", {
       key: r.tableId + '_' + i
-    }, /*#__PURE__*/React.createElement("td", null, r.tableName, /*#__PURE__*/React.createElement("small", null, r.kind === 'tournament' ? 'טורניר' : r.gameType)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("td", null, r.tableName, /*#__PURE__*/React.createElement("small", null, r.kind === 'tournament' ? "Tournament" : r.gameType)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: r.result,
       signed: true
     })), financial && /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: r.rake
     })), /*#__PURE__*/React.createElement("td", null, r.hands), /*#__PURE__*/React.createElement("td", null, r.games))))), !rows.length && /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
-    }, "\u05D8\u05E8\u05DD \u05E0\u05E8\u05E9\u05DE\u05D5 \u05E1\u05E9\u05E0\u05D9\u05DD \u05E9\u05D4\u05E1\u05EA\u05D9\u05D9\u05DE\u05D5 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05D6\u05D4."));
+    }, "No completed sessions have been recorded in this cycle."));
   }
   function PaymentForm({
     spec,
@@ -132,7 +143,7 @@
       className: "st-dialog",
       role: "dialog",
       "aria-modal": "true",
-      "aria-label": "\u05E8\u05D9\u05E9\u05D5\u05DD \u05EA\u05E9\u05DC\u05D5\u05DD",
+      "aria-label": "Record payment",
       onSubmit: async e => {
         e.preventDefault();
         if (await act('payment', {
@@ -143,17 +154,17 @@
           note
         })) onClose();
       }
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05E8\u05D9\u05E9\u05D5\u05DD \u05EA\u05E9\u05DC\u05D5\u05DD \xB7 ", spec.name), error && /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Record payment \xB7 ", spec.name), error && /*#__PURE__*/React.createElement("p", {
       role: "alert",
       className: "st-error"
-    }, error), /*#__PURE__*/React.createElement("p", null, "\u05D4\u05EA\u05E9\u05DC\u05D5\u05DD \u05D9\u05D9\u05DB\u05E0\u05E1 \u05DC\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA \u05DC\u05D0\u05D7\u05E8 \u05D0\u05D9\u05E9\u05D5\u05E8 \u05D4\u05E6\u05D3 \u05D4\u05E9\u05E0\u05D9. \u05D9\u05EA\u05E8\u05EA \u05D4\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D0\u05D9\u05E0\u05D4 \u05DE\u05E9\u05EA\u05E0\u05D4."), /*#__PURE__*/React.createElement("label", null, "\u05DB\u05D9\u05D5\u05D5\u05DF", /*#__PURE__*/React.createElement("select", {
+    }, error), /*#__PURE__*/React.createElement("p", null, "The payment is included in settlement after the other party confirms it. Your chip balance stays the same."), /*#__PURE__*/React.createElement("label", null, "Direction", /*#__PURE__*/React.createElement("select", {
       value: direction,
       onChange: e => setDirection(e.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: "out"
-    }, "\u05D0\u05E0\u05D9 \u05D4\u05E2\u05D1\u05E8\u05EA\u05D9"), /*#__PURE__*/React.createElement("option", {
+    }, "I sent a payment"), /*#__PURE__*/React.createElement("option", {
       value: "in"
-    }, "\u05E7\u05D9\u05D1\u05DC\u05EA\u05D9 \u05EA\u05E9\u05DC\u05D5\u05DD"))), /*#__PURE__*/React.createElement("label", null, "\u05E1\u05DB\u05D5\u05DD", /*#__PURE__*/React.createElement("input", {
+    }, "I received a payment"))), /*#__PURE__*/React.createElement("label", null, "Amount", /*#__PURE__*/React.createElement("input", {
       type: "number",
       inputMode: "decimal",
       min: "0.01",
@@ -162,7 +173,7 @@
       autoFocus: true,
       value: amount,
       onChange: e => setAmount(e.target.value)
-    })), /*#__PURE__*/React.createElement("label", null, "\u05D4\u05E2\u05E8\u05D4", /*#__PURE__*/React.createElement("input", {
+    })), /*#__PURE__*/React.createElement("label", null, "Note", /*#__PURE__*/React.createElement("input", {
       maxLength: "300",
       value: note,
       onChange: e => setNote(e.target.value)
@@ -172,11 +183,11 @@
       disabled: busy || !other || Number(amount) <= 0,
       type: "submit",
       className: "st-primary"
-    }, "\u05E9\u05DC\u05D9\u05D7\u05D4 \u05DC\u05D0\u05D9\u05E9\u05D5\u05E8 \u05D4\u05E6\u05D3 \u05D4\u05E9\u05E0\u05D9"), /*#__PURE__*/React.createElement("button", {
+    }, "Send for confirmation"), /*#__PURE__*/React.createElement("button", {
       type: "button",
       onClick: onClose,
       disabled: busy
-    }, "\u05D1\u05D9\u05D8\u05D5\u05DC"))));
+    }, "Cancel"))));
   }
   function Payments({
     items,
@@ -186,27 +197,27 @@
   }) {
     return /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05EA\u05E9\u05DC\u05D5\u05DE\u05D9\u05DD \u05D5\u05D0\u05D9\u05E9\u05D5\u05E8\u05D9\u05DD"), !items.length ? /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Payments and confirmations"), !items.length ? /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "\u05D0\u05D9\u05DF \u05EA\u05E9\u05DC\u05D5\u05DE\u05D9\u05DD \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8 \u05E9\u05E0\u05D1\u05D7\u05E8.") : /*#__PURE__*/React.createElement("div", {
+    }, "No payments in the selected cycle.") : /*#__PURE__*/React.createElement("div", {
       className: "st-payment-list"
     }, items.map(p => /*#__PURE__*/React.createElement("div", {
       key: p.id,
       className: "st-payment"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
       value: p.amount
-    })), /*#__PURE__*/React.createElement("span", null, p.status === 'pending' ? 'ממתין לאישור הצד השני' : p.status === 'confirmed' ? 'אושר' : 'בוטל', " \xB7 ", date(p.at)), p.note && /*#__PURE__*/React.createElement("small", null, p.note)), p.canConfirm && /*#__PURE__*/React.createElement("button", {
+    })), /*#__PURE__*/React.createElement("span", null, p.status === 'pending' ? "Awaiting confirmation" : p.status === 'confirmed' ? "Confirmed" : "Cancelled", " \xB7 ", date(p.at)), p.note && /*#__PURE__*/React.createElement("small", null, p.note)), p.canConfirm && /*#__PURE__*/React.createElement("button", {
       className: "st-primary",
       disabled: busy,
       onClick: () => act('confirmPayment', {
         paymentId: p.id
       })
-    }, "\u05D0\u05D9\u05E9\u05D5\u05E8 \u05D4\u05EA\u05E9\u05DC\u05D5\u05DD"), p.status === 'pending' && p.createdBy === userId && /*#__PURE__*/React.createElement("button", {
+    }, "Confirm payment"), p.status === 'pending' && p.createdBy === userId && /*#__PURE__*/React.createElement("button", {
       disabled: busy,
       onClick: () => act('cancelPayment', {
         paymentId: p.id
       })
-    }, "\u05D1\u05D9\u05D8\u05D5\u05DC \u05D4\u05E8\u05D9\u05E9\u05D5\u05DD")))));
+    }, "Cancel record")))));
   }
   function People({
     details = [],
@@ -230,29 +241,29 @@
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("div", {
       className: "st-section-head"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05E4\u05D9\u05E8\u05D5\u05D8 \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD"), /*#__PURE__*/React.createElement("span", null, details.length, " \u05E9\u05D5\u05E8\u05D5\u05EA \u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA")), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Player breakdown"), /*#__PURE__*/React.createElement("span", null, details.length, " settlement entries")), /*#__PURE__*/React.createElement("div", {
       className: "st-filters"
     }, /*#__PURE__*/React.createElement("label", {
       className: "st-search"
-    }, "\u05D7\u05D9\u05E4\u05D5\u05E9 \u05E9\u05D7\u05E7\u05DF", /*#__PURE__*/React.createElement("input", {
+    }, "Search players", /*#__PURE__*/React.createElement("input", {
       type: "search",
       value: query,
       onChange: e => setQuery(e.target.value),
-      placeholder: "\u05E9\u05DD \u05D4\u05E9\u05D7\u05E7\u05DF"
-    })), /*#__PURE__*/React.createElement("label", null, "\u05E1\u05D9\u05D3\u05D5\u05E8 \u05DC\u05E4\u05D9", /*#__PURE__*/React.createElement("select", {
+      placeholder: "Player name"
+    })), /*#__PURE__*/React.createElement("label", null, "Sort by", /*#__PURE__*/React.createElement("select", {
       value: sort,
       onChange: e => setSort(e.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: "closing"
-    }, "\u05D9\u05EA\u05E8\u05D4 \u05DC\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA"), /*#__PURE__*/React.createElement("option", {
+    }, "Settlement balance"), /*#__PURE__*/React.createElement("option", {
       value: "rake"
-    }, "\u05E8\u05D9\u05D9\u05E7 \u2014 \u05DE\u05D4\u05D2\u05D1\u05D5\u05D4 \u05DC\u05E0\u05DE\u05D5\u05DA"), /*#__PURE__*/React.createElement("option", {
+    }, "Rake \u2014 highest first"), /*#__PURE__*/React.createElement("option", {
       value: "chips"
-    }, "\u05D9\u05EA\u05E8\u05EA \u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u2014 \u05DE\u05D4\u05D2\u05D1\u05D5\u05D4 \u05DC\u05E0\u05DE\u05D5\u05DA"), /*#__PURE__*/React.createElement("option", {
+    }, "Chip balance \u2014 highest first"), /*#__PURE__*/React.createElement("option", {
       value: "name"
-    }, "\u05E9\u05DD")))), /*#__PURE__*/React.createElement("div", {
+    }, "Name")))), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05D7\u05E7\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05DB\u05E2\u05EA (\u05EA\u05D5\u05E6\u05D0\u05D4 ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7\u05D1\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05D9\u05EA\u05E8\u05D4 \u05DC\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA"), /*#__PURE__*/React.createElement("th", null, "\u05E4\u05E2\u05D5\u05DC\u05D5\u05EA"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Current chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Settlement balance"), /*#__PURE__*/React.createElement("th", null, "Actions"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
       const key = JSON.stringify([p.agentId, p.playerId]);
       return /*#__PURE__*/React.createElement(React.Fragment, {
         key: key
@@ -273,14 +284,14 @@
         value: p.totals.rakeback
       })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
         value: Math.abs(p.closing)
-      }), /*#__PURE__*/React.createElement("small", null, p.closing < 0 ? 'השחקן מעביר' : p.closing > 0 ? 'השחקן מקבל' : 'מאוזן')), /*#__PURE__*/React.createElement("td", null, canPay(p) && /*#__PURE__*/React.createElement("button", {
+      }), /*#__PURE__*/React.createElement("small", null, p.closing < 0 ? "Player pays" : p.closing > 0 ? "Player receives" : "Balanced")), /*#__PURE__*/React.createElement("td", null, canPay(p) && /*#__PURE__*/React.createElement("button", {
         onClick: () => onPay({
           type: 'player',
           agentId: p.agentId,
           playerId: p.playerId,
           name: p.playerName
         })
-      }, "\u05E8\u05D9\u05E9\u05D5\u05DD \u05EA\u05E9\u05DC\u05D5\u05DD"))), expanded === key && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+      }, "Record payment"))), expanded === key && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
         colSpan: "6"
       }, /*#__PURE__*/React.createElement(Breakdown, {
         opening: p.opening,
@@ -292,7 +303,7 @@
       }))));
     })))), !list.length && /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
-    }, "\u05DC\u05D0 \u05E0\u05DE\u05E6\u05D0\u05D5 \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD \u05E2\u05DD \u05E4\u05E2\u05D9\u05DC\u05D5\u05EA \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8 \u05E9\u05E0\u05D1\u05D7\u05E8."));
+    }, "No players with activity in the selected cycle."));
   }
   function CycleControls({
     data,
@@ -311,9 +322,9 @@
     }, [open?.id, open?.endAt, open?.autoClose]);
     return /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05E0\u05D9\u05D4\u05D5\u05DC \u05DE\u05D7\u05D6\u05D5\u05E8\u05D9\u05DD"), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Cycle management"), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "\u05E1\u05D2\u05D9\u05E8\u05D4 \u05DE\u05E2\u05D1\u05D9\u05E8\u05D4 \u05D0\u05EA \u05D4\u05D9\u05EA\u05E8\u05D4 \u05E9\u05E0\u05D5\u05EA\u05E8\u05D4 \u05DC\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05D1\u05D0. \u05D4\u05D9\u05D0 \u05D0\u05D9\u05E0\u05D4 \u05DE\u05D0\u05E4\u05E1\u05EA \u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D0\u05D5 \u05DE\u05D5\u05D7\u05E7\u05EA \u05D4\u05D9\u05E1\u05D8\u05D5\u05E8\u05D9\u05D4."), /*#__PURE__*/React.createElement("form", {
+    }, "Closing carries the remaining settlement balance into the next cycle. Chip balances and history are preserved."), /*#__PURE__*/React.createElement("form", {
       className: "st-filters",
       onSubmit: e => {
         e.preventDefault();
@@ -322,7 +333,7 @@
           autoClose: auto
         });
       }
-    }, /*#__PURE__*/React.createElement("label", null, "\u05E1\u05D9\u05D5\u05DD \u05DE\u05EA\u05D5\u05DB\u05E0\u05DF (\u05D4\u05E9\u05E2\u05D4 \u05D4\u05DE\u05E7\u05D5\u05DE\u05D9\u05EA)", /*#__PURE__*/React.createElement("input", {
+    }, /*#__PURE__*/React.createElement("label", null, "Scheduled end (local time)", /*#__PURE__*/React.createElement("input", {
       type: "datetime-local",
       required: true,
       value: end,
@@ -333,28 +344,28 @@
       type: "checkbox",
       checked: auto,
       onChange: e => setAuto(e.target.checked)
-    }), "\u05E1\u05D2\u05D9\u05E8\u05D4 \u05D0\u05D5\u05D8\u05D5\u05DE\u05D8\u05D9\u05EA"), /*#__PURE__*/React.createElement("button", {
+    }), "Close automatically"), /*#__PURE__*/React.createElement("button", {
       disabled: busy
-    }, "\u05E9\u05DE\u05D9\u05E8\u05EA \u05DE\u05D5\u05E2\u05D3 \u05D4\u05E1\u05D9\u05D5\u05DD")), /*#__PURE__*/React.createElement("div", {
+    }, "Save end time")), /*#__PURE__*/React.createElement("div", {
       className: "st-actions"
     }, /*#__PURE__*/React.createElement("button", {
       disabled: busy,
       onClick: () => {
-        if (global.confirm('לסגור כעת את המחזור ולפתוח את הבא? יתרות הצ׳יפים יישמרו.')) act('close');
+        if (global.confirm("Close this cycle and open the next one now? Chip balances will be preserved.")) act('close');
       }
-    }, "\u05E1\u05D2\u05D9\u05E8\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05DB\u05E2\u05EA"), /*#__PURE__*/React.createElement("button", {
+    }, "Close cycle now"), /*#__PURE__*/React.createElement("button", {
       disabled: busy || open?.number <= 1,
       onClick: () => {
-        if (global.confirm('לפתוח מחדש את המחזור הקודם? הפעולה אפשרית רק כשהמחזור החדש ריק.')) act('reopen');
+        if (global.confirm("Reopen the previous cycle? This is only possible while the new cycle is empty.")) act('reopen');
       }
-    }, "\u05E4\u05EA\u05D9\u05D7\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05E7\u05D5\u05D3\u05DD \u05DE\u05D7\u05D3\u05E9"), data.cycle.status === 'closed' && /*#__PURE__*/React.createElement("button", {
+    }, "Reopen previous cycle"), data.cycle.status === 'closed' && /*#__PURE__*/React.createElement("button", {
       disabled: busy,
       onClick: () => {
-        if (global.confirm('לנעול את המחזור הזה? לא ניתן יהיה לפתוח אותו מחדש.')) act('lock', {
+        if (global.confirm("Lock this cycle? It cannot be reopened after locking.")) act('lock', {
           cycleId: data.cycle.id
         });
       }
-    }, "\u05E0\u05E2\u05D9\u05DC\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05E9\u05E0\u05D1\u05D7\u05E8")));
+    }, "Lock selected cycle")));
   }
   function Archive({
     call,
@@ -366,20 +377,20 @@
       let live = true;
       call('pkSettlementArchive', {
         clubId
-      }).then(r => live && setData(r)).catch(e => live && setError(e.message));
+      }).then(r => live && setData(r)).catch(e => live && setError(settlementError(e)));
       return () => {
         live = false;
       };
     }, [clubId]);
     return /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05D4\u05DE\u05E6\u05D1 \u05E9\u05E0\u05E9\u05DE\u05E8 \u05DC\u05E4\u05E0\u05D9 \u05EA\u05D7\u05D9\u05DC\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05D7\u05D3\u05E9"), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Balances saved before the new cycle"), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "\u05E6\u05D9\u05DC\u05D5\u05DD \u05D4\u05E1\u05DB\u05D5\u05DE\u05D9\u05DD \u05D1\u05D6\u05DE\u05DF \u05D4\u05DE\u05E2\u05D1\u05E8. \u05D4\u05E0\u05EA\u05D5\u05E0\u05D9\u05DD \u05D4\u05DE\u05E7\u05D5\u05E8\u05D9\u05D9\u05DD \u05D5\u05D4\u05D9\u05E1\u05D8\u05D5\u05E8\u05D9\u05D9\u05EA \u05D4\u05DE\u05E9\u05D7\u05E7\u05D9\u05DD \u05E0\u05E9\u05DE\u05E8\u05D9\u05DD. \u05E1\u05DB\u05D5\u05DE\u05D9\u05DD \u05D0\u05DC\u05D4 \u05D0\u05D9\u05E0\u05DD \u05D9\u05EA\u05E8\u05EA \u05E4\u05EA\u05D9\u05D7\u05D4 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05D7\u05D3\u05E9."), error && /*#__PURE__*/React.createElement("p", {
+    }, "A snapshot of balances at the transition. Original data and game history are preserved. These amounts are not the opening balance of the new cycle."), error && /*#__PURE__*/React.createElement("p", {
       role: "alert"
     }, error), data ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, date(data.at)), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05DD"), /*#__PURE__*/React.createElement("th", null, "\u05D9\u05EA\u05E8\u05D4 \u05E9\u05E0\u05E9\u05DE\u05E8\u05D4"), /*#__PURE__*/React.createElement("th", null, "\u05EA\u05D5\u05E6\u05D0\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05E7\u05D5\u05D3\u05DD"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05DB\u05D5\u05DC\u05DC \u05E9\u05D5\u05DC\u05D7\u05E0\u05D5\u05EA"))), /*#__PURE__*/React.createElement("tbody", null, data.rows.map(r => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Saved balance"), /*#__PURE__*/React.createElement("th", null, "Previous cycle result"), /*#__PURE__*/React.createElement("th", null, "Chips including tables"))), /*#__PURE__*/React.createElement("tbody", null, data.rows.map(r => /*#__PURE__*/React.createElement("tr", {
       key: r.uid
     }, /*#__PURE__*/React.createElement("td", null, r.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: Math.round(r.balance * 100)
@@ -390,23 +401,23 @@
       value: Math.round(r.chips * 100)
     })))))))) : /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u05D8\u05D5\u05E2\u05DF \u05E1\u05DB\u05D5\u05DE\u05D9\u05DD \u05E9\u05DE\u05D5\u05E8\u05D9\u05DD\u2026"));
+    }, "Loading saved balances\u2026"));
   }
   function CyclePicker({
     data,
     cycleId,
     setCycleId
   }) {
-    return /*#__PURE__*/React.createElement("label", null, "\u05DE\u05D7\u05D6\u05D5\u05E8", /*#__PURE__*/React.createElement("select", {
-      "aria-label": "\u05D1\u05D7\u05D9\u05E8\u05EA \u05DE\u05D7\u05D6\u05D5\u05E8",
+    return /*#__PURE__*/React.createElement("label", null, "Cycle", /*#__PURE__*/React.createElement("select", {
+      "aria-label": "Select cycle",
       value: cycleId || data.currentCycleId,
       onChange: e => setCycleId(e.target.value)
     }, data.cycles.map(c => /*#__PURE__*/React.createElement("option", {
       key: c.id,
       value: c.id
-    }, c.legacy ? 'המחזור שהיה פתוח לפני המעבר' : 'מחזור ' + c.number, " \xB7 ", status[c.status])), data.role !== 'player' && /*#__PURE__*/React.createElement("option", {
+    }, c.legacy ? "Cycle open before the transition" : "Cycle " + c.number, " \xB7 ", status[c.status])), data.role !== 'player' && /*#__PURE__*/React.createElement("option", {
       value: "all"
-    }, "\u05DB\u05DC \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8\u05D9\u05DD \u05DE\u05D0\u05D6 \u05D4\u05DE\u05E2\u05D1\u05E8")));
+    }, "All cycles since the transition")));
   }
   function LegacyCurrent({
     data,
@@ -423,7 +434,7 @@
       staff = data.role !== 'player',
       owner = data.role === 'owner',
       closed = data.cycle.status !== 'open',
-      periodLabel = closed ? 'במחזור שנבחר' : 'במחזור הנוכחי';
+      periodLabel = closed ? "in selected cycle" : "in current cycle";
     const rows = r.players.filter(p => p.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'result' ? b.result - a.result : sort === 'rake' ? b.rake - a.rake : b.chips - a.chips);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("header", {
       className: "st-toolbar"
@@ -433,47 +444,47 @@
       setCycleId: setCycleId
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-period"
-    }, /*#__PURE__*/React.createElement("strong", null, closed ? 'המחזור הקודם · סגור' : 'המחזור הנוכחי · פתוח'), /*#__PURE__*/React.createElement("span", null, date(data.cycle.startAt), " \u2013 ", closed ? date(data.cycle.endAt) : 'עד עכשיו')), /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("strong", null, closed ? "Previous cycle · Closed" : "Current cycle · Open"), /*#__PURE__*/React.createElement("span", null, date(data.cycle.startAt), " \u2013 ", closed ? date(data.cycle.endAt) : "Now")), /*#__PURE__*/React.createElement("button", {
       disabled: busy,
       onClick: retry
-    }, "\u05E8\u05E2\u05E0\u05D5\u05DF")), /*#__PURE__*/React.createElement("section", {
+    }, "Refresh")), /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h2", null, closed ? 'דוח המחזור שנשמר בסגירה' : 'ההתחשבנות הנוכחית שלך'), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("h2", null, closed ? "Cycle report saved at closing" : "Your current settlement"), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, closed ? 'זהו הדוח שנשמר בזמן הסגירה. היתרות וההיסטוריה המקוריות נשמרו.' : 'המחזור עדיין פתוח. מוצגות התוצאות הקיימות, כולל משחקים שעדיין מתנהלים. שום מחזור לא נסגר ולא אופס.'), /*#__PURE__*/React.createElement("div", {
+    }, closed ? "This report was saved when the cycle closed. Original balances and history have been preserved." : "This cycle is still open. Results include games in progress. No cycle has been closed or reset."), /*#__PURE__*/React.createElement("div", {
       className: "st-net"
-    }, /*#__PURE__*/React.createElement("span", null, owner ? 'סך הצ׳יפים של שחקני הקלאב' : staff ? 'סך הצ׳יפים של השחקנים שלי' : 'הצ׳יפים שלי, כולל שולחנות', closed ? ' · בזמן הסגירה' : ''), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("span", null, owner ? "Total chips held by club players" : staff ? "Total chips held by my players" : "My chips, including tables", closed ? " · At closing" : ''), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
       value: t.chips
     }), " ", /*#__PURE__*/React.createElement("span", null, "(", /*#__PURE__*/React.createElement(Amount, {
       value: t.result,
       signed: true
-    }), ")")), /*#__PURE__*/React.createElement("small", null, "\u05D1\u05E1\u05D5\u05D2\u05E8\u05D9\u05D9\u05DD: \u05D4\u05E8\u05D5\u05D5\u05D7 \u05D0\u05D5 \u05D4\u05D4\u05E4\u05E1\u05D3 ", periodLabel, ". \u05D8\u05E2\u05D9\u05E0\u05D5\u05EA \u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D0\u05D9\u05E0\u05DF \u05E8\u05D5\u05D5\u05D7."), staff && /*#__PURE__*/React.createElement(LifetimeNote, {
+    }), ")")), /*#__PURE__*/React.createElement("small", null, "In parentheses: profit or loss ", periodLabel, ". Chip top-ups are not profit."), staff && /*#__PURE__*/React.createElement(LifetimeNote, {
       value: t.totalResult
     })), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: (staff ? 'תוצאות השחקנים ' : 'התוצאה שלי ') + periodLabel,
+      label: (staff ? "Player results " : "My result ") + periodLabel,
       value: t.result,
       signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D1\u05D0\u05E8\u05E0\u05E7",
+      label: "Wallet chips",
       value: t.balance
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D1\u05E9\u05D5\u05DC\u05D7\u05E0\u05D5\u05EA",
+      label: "Chips at tables",
       value: t.onTables
     }), staff && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05E8\u05D9\u05D9\u05E7 \u05E9\u05E0\u05D5\u05E6\u05E8 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8",
+      label: "Rake generated this cycle",
       value: t.rake
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: owner ? 'עמלות הסוכנים שנרשמו' : 'העמלה שלי שנרשמה',
+      label: owner ? "Recorded agent commissions" : "My recorded commission",
       value: t.commission
     }))), staff && /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "\u05E2\u05DE\u05DC\u05D5\u05EA \u05DE\u05D5\u05E6\u05D2\u05D5\u05EA \u05DC\u05E4\u05D9 \u05DE\u05D4 \u05E9\u05E0\u05E8\u05E9\u05DD \u05D1\u05E4\u05D5\u05E2\u05DC \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8. \u05D4\u05E8\u05D9\u05D9\u05E7 \u05DB\u05D1\u05E8 \u05DE\u05D2\u05D5\u05DC\u05DD \u05D1\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05D4\u05DE\u05E9\u05D7\u05E7.")), owner && /*#__PURE__*/React.createElement("section", {
+    }, "Commissions reflect amounts recorded in this cycle. Rake is already included in game results.")), owner && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05D4\u05E1\u05D5\u05DB\u05E0\u05D9\u05DD ", periodLabel), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Agents ", periodLabel), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E1\u05D5\u05DB\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD (\u05EA\u05D5\u05E6\u05D0\u05D4 ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05E2\u05DE\u05DC\u05D4"), /*#__PURE__*/React.createElement("th", null, "\u05DE\u05D5\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1 \u05DC\u05E4\u05D9 \u05E4\u05E2\u05D9\u05DC\u05D5\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8"))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Agent"), /*#__PURE__*/React.createElement("th", null, "Chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Commission"), /*#__PURE__*/React.createElement("th", null, "Club settlement from cycle activity"))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
       key: a.uid
     }, /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: a.chips
@@ -488,35 +499,35 @@
       value: a.commission
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(a.toClub)
-    }), /*#__PURE__*/React.createElement("small", null, a.toClub > 0 ? 'הסוכן מעביר לקלאב' : a.toClub < 0 ? 'הקלאב מעביר לסוכן' : 'מאוזן', " \xB7 \u05DC\u05D0\u05D7\u05E8 \u05D4\u05E2\u05DE\u05DC\u05D4")))))))), data.role === 'agent' && /*#__PURE__*/React.createElement("section", {
+    }), /*#__PURE__*/React.createElement("small", null, a.toClub > 0 ? "Agent pays the club" : a.toClub < 0 ? "Club pays the agent" : "Balanced", " \xB7 After commission")))))))), data.role === 'agent' && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05DE\u05D5\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1 \u05DC\u05E4\u05D9 \u05E4\u05E2\u05D9\u05DC\u05D5\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8"), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("h3", null, "Club settlement from cycle activity"), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(t.toClub)
-    })), /*#__PURE__*/React.createElement("p", null, t.toClub > 0 ? 'הסוכן מעביר לקלאב' : t.toClub < 0 ? 'הקלאב מעביר לסוכן' : 'מאוזן', " \xB7 \u05DC\u05D0\u05D7\u05E8 \u05D4\u05E2\u05DE\u05DC\u05D4 \u05E9\u05E0\u05E8\u05E9\u05DE\u05D4")), staff && /*#__PURE__*/React.createElement("section", {
+    })), /*#__PURE__*/React.createElement("p", null, t.toClub > 0 ? "Agent pays the club" : t.toClub < 0 ? "Club pays the agent" : "Balanced", " \xB7 After recorded commission")), staff && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05E4\u05D9\u05E8\u05D5\u05D8 \u05D4\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Player breakdown"), /*#__PURE__*/React.createElement("div", {
       className: "st-filters"
     }, /*#__PURE__*/React.createElement("label", {
       className: "st-search"
-    }, "\u05D7\u05D9\u05E4\u05D5\u05E9 \u05E9\u05D7\u05E7\u05DF", /*#__PURE__*/React.createElement("input", {
+    }, "Search players", /*#__PURE__*/React.createElement("input", {
       type: "search",
       value: query,
       onChange: e => setQuery(e.target.value),
-      placeholder: "\u05E9\u05DD \u05D4\u05E9\u05D7\u05E7\u05DF"
-    })), /*#__PURE__*/React.createElement("label", null, "\u05E1\u05D9\u05D3\u05D5\u05E8 \u05DC\u05E4\u05D9", /*#__PURE__*/React.createElement("select", {
+      placeholder: "Player name"
+    })), /*#__PURE__*/React.createElement("label", null, "Sort by", /*#__PURE__*/React.createElement("select", {
       value: sort,
       onChange: e => setSort(e.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: "chips"
-    }, "\u05DB\u05DE\u05D5\u05EA \u05E6\u05F3\u05D9\u05E4\u05D9\u05DD"), /*#__PURE__*/React.createElement("option", {
+    }, "Chip amount"), /*#__PURE__*/React.createElement("option", {
       value: "rake"
-    }, "\u05D2\u05D5\u05D1\u05D4 \u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("option", {
+    }, "Rake amount"), /*#__PURE__*/React.createElement("option", {
       value: "result"
-    }, "\u05EA\u05D5\u05E6\u05D0\u05D4 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8"), /*#__PURE__*/React.createElement("option", {
+    }, "Cycle result"), /*#__PURE__*/React.createElement("option", {
       value: "name"
-    }, "\u05E9\u05DD")))), /*#__PURE__*/React.createElement("div", {
+    }, "Name")))), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05D7\u05E7\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD (\u05EA\u05D5\u05E6\u05D0\u05D4 ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7 \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Chips (result ", periodLabel, ")"), /*#__PURE__*/React.createElement("th", null, "Cycle rake"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
       key: p.uid
     }, /*#__PURE__*/React.createElement("td", null, p.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: p.chips
@@ -529,15 +540,15 @@
       value: p.rake
     }))))))), !rows.length && /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
-    }, "\u05DC\u05D0 \u05E0\u05DE\u05E6\u05D0\u05D5 \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD.")), data.canClose && /*#__PURE__*/React.createElement("section", {
+    }, "No players found.")), data.canClose && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05E1\u05D9\u05D5\u05DD \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05E0\u05D5\u05DB\u05D7\u05D9"), /*#__PURE__*/React.createElement("p", null, "\u05E8\u05E7 \u05DB\u05E9\u05EA\u05E1\u05D9\u05D9\u05DD \u05D0\u05EA \u05D4\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA: \u05E9\u05DE\u05D9\u05E8\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05E0\u05D5\u05DB\u05D7\u05D9 \u05DB\u05E1\u05D2\u05D5\u05E8 \u05D5\u05E4\u05EA\u05D9\u05D7\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05D1\u05D0 \u05D1\u05D0\u05E4\u05E1. \u05D9\u05EA\u05E8\u05D5\u05EA \u05D4\u05E6\u05F3\u05D9\u05E4\u05D9\u05DD \u05D5\u05D4\u05D4\u05D9\u05E1\u05D8\u05D5\u05E8\u05D9\u05D4 \u05D9\u05D9\u05E9\u05D0\u05E8\u05D5 \u05DB\u05E4\u05D9 \u05E9\u05D4\u05DF."), /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Close the current cycle"), /*#__PURE__*/React.createElement("p", null, "When settlement is complete, save this cycle as closed and start the next one at zero. Chip balances and history will stay the same."), /*#__PURE__*/React.createElement("button", {
       className: "st-primary",
       disabled: busy,
       onClick: () => {
-        if (global.confirm('לסגור את המחזור הנוכחי ולפתוח את הבא באפס? הדוח הנוכחי יישמר לעיון. יתרות הצ׳יפים וההיסטוריה לא ישתנו, וחובות או זיכויים מהמחזור הנוכחי לא יועברו למחזור הבא.')) act('closeLegacy');
+        if (global.confirm("Close the current cycle and start the next one at zero? The current report will be saved for reference. Chip balances and history will stay the same. Debts and credits from this cycle will not carry over.")) act('closeLegacy');
       }
-    }, "\u05E1\u05D2\u05D9\u05E8\u05EA \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D5\u05E4\u05EA\u05D9\u05D7\u05EA \u05D4\u05D1\u05D0")));
+    }, "Close cycle and start next")));
   }
   function Settlement({
     user,
@@ -569,7 +580,7 @@
           setError('');
         }
       }).catch(e => {
-        if (live) setError(e.message || 'טעינת ההתחשבנות נכשלה');
+        if (live) setError(settlementError(e));
       });
       load();
       const timer = setInterval(load, 30000);
@@ -591,10 +602,10 @@
         });
         if (result.cycleId) setCycleId(result.cycleId);
         setAttempt(n => n + 1);
-        showToast('הפעולה נשמרה', 'success');
+        showToast("Changes saved", 'success');
         return true;
       } catch (e) {
-        setError(e.message || 'הפעולה לא נשמרה');
+        setError(settlementError(e, "Could not save changes"));
         return false;
       } finally {
         actionRef.current = false;
@@ -606,16 +617,16 @@
       className: "st-error"
     }, error, /*#__PURE__*/React.createElement("button", {
       onClick: () => setAttempt(n => n + 1)
-    }, "\u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1"));
+    }, "Try again"));
     if (!data) return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
-      dir: "rtl"
+      dir: "ltr"
     }, errorBox || /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u05D8\u05D5\u05E2\u05DF \u05D0\u05EA \u05D4\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA \u05E9\u05DC\u05DA\u2026"));
+    }, "Loading your settlement\u2026"));
     if (data.legacy) return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
-      dir: "rtl"
+      dir: "ltr"
     }, errorBox, /*#__PURE__*/React.createElement(LegacyCurrent, {
       data: data,
       cycleId: cycleId,
@@ -626,23 +637,23 @@
     }));
     if (!data.active) return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
-      dir: "rtl"
+      dir: "ltr"
     }, errorBox, /*#__PURE__*/React.createElement("p", {
       role: "alert"
-    }, "\u05DC\u05D0 \u05D4\u05EA\u05E7\u05D1\u05DC \u05D3\u05D5\u05D7 \u05D4\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05E0\u05D5\u05DB\u05D7\u05D9. \u05D9\u05E9 \u05DC\u05E8\u05E2\u05E0\u05DF \u05DB\u05D3\u05D9 \u05DC\u05E0\u05E1\u05D5\u05EA \u05E9\u05D5\u05D1."), /*#__PURE__*/React.createElement("button", {
+    }, "The current cycle report is unavailable. Refresh to try again."), /*#__PURE__*/React.createElement("button", {
       onClick: () => setAttempt(n => n + 1)
-    }, "\u05E8\u05E2\u05E0\u05D5\u05DF"));
+    }, "Refresh"));
     const owner = data.role === 'owner',
       agent = data.role === 'agent',
       p = data.player,
       a = data.agent,
       c = data.club?.totals,
       selectedCurrent = data.cycle.id === data.currentCycleId,
-      periodLabel = data.cycle.id === 'all' ? 'בכל המחזורים שנבחרו' : selectedCurrent ? 'במחזור הנוכחי' : 'במחזור שנבחר';
+      periodLabel = data.cycle.id === 'all' ? "across selected cycles" : selectedCurrent ? "in current cycle" : "in selected cycle";
     const canPay = pair => selectedCurrent && (pair.agentId === user.uid || pair.playerId === user.uid || pair.agentId === 'club' && data.clubPartyId === user.uid);
     return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
-      dir: "rtl"
+      dir: "ltr"
     }, errorBox, /*#__PURE__*/React.createElement("header", {
       className: "st-toolbar"
     }, /*#__PURE__*/React.createElement(CyclePicker, {
@@ -654,19 +665,19 @@
     }, /*#__PURE__*/React.createElement("strong", null, status[data.cycle.status]), /*#__PURE__*/React.createElement("span", null, date(data.cycle.startAt), " \u2013 ", date(data.cycle.endAt))), /*#__PURE__*/React.createElement("button", {
       onClick: () => setAttempt(n => n + 1),
       disabled: busy
-    }, "\u05E8\u05E2\u05E0\u05D5\u05DF")), /*#__PURE__*/React.createElement("nav", {
+    }, "Refresh")), /*#__PURE__*/React.createElement("nav", {
       className: "st-tabs",
-      "aria-label": "\u05DE\u05D9\u05D3\u05E2 \u05D5\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA"
+      "aria-label": "Settlement information"
     }, /*#__PURE__*/React.createElement("button", {
       "aria-pressed": tab === 'report',
       onClick: () => setTab('report')
-    }, "\u05D3\u05D5\u05D7 \u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA"), owner && /*#__PURE__*/React.createElement("button", {
+    }, "Settlement report"), owner && /*#__PURE__*/React.createElement("button", {
       "aria-pressed": tab === 'cycles',
       onClick: () => setTab('cycles')
-    }, "\u05E0\u05D9\u05D4\u05D5\u05DC \u05DE\u05D7\u05D6\u05D5\u05E8\u05D9\u05DD"), /*#__PURE__*/React.createElement("button", {
+    }, "Cycle management"), /*#__PURE__*/React.createElement("button", {
       "aria-pressed": tab === 'archive',
       onClick: () => setTab('archive')
-    }, "\u05E1\u05DB\u05D5\u05DE\u05D9\u05DD \u05DC\u05E4\u05E0\u05D9 \u05D4\u05DE\u05E2\u05D1\u05E8")), tab === 'archive' ? /*#__PURE__*/React.createElement(Archive, {
+    }, "Pre-transition balances")), tab === 'archive' ? /*#__PURE__*/React.createElement(Archive, {
       call: call,
       clubId: clubId
     }) : tab === 'cycles' && owner ? /*#__PURE__*/React.createElement(CycleControls, {
@@ -675,13 +686,13 @@
       busy: busy
     }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "st-muted st-method"
-    }, "\u05D4\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05E0\u05E8\u05E9\u05DE\u05D5\u05EA \u05D1\u05E1\u05D9\u05D5\u05DD \u05D4\u05E1\u05E9\u05DF \u05D0\u05D5 \u05D4\u05D8\u05D5\u05E8\u05E0\u05D9\u05E8. \u05EA\u05E9\u05DC\u05D5\u05DD \u05DE\u05DE\u05EA\u05D9\u05DF \u05D0\u05D9\u05E0\u05D5 \u05DE\u05E9\u05E0\u05D4 \u05D0\u05EA \u05D4\u05E1\u05DB\u05D5\u05DD \u05DC\u05EA\u05E9\u05DC\u05D5\u05DD."), (owner || agent) && data.currentTotals && /*#__PURE__*/React.createElement("div", {
+    }, "Results are recorded when the session or tournament ends. Pending payments do not change the amount due."), (owner || agent) && data.currentTotals && /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: (owner ? "כל שחקני הקלאב" : "השחקנים שלי") + " · צ׳יפים כעת (תוצאה " + periodLabel + ")",
+      label: (owner ? "All club players" : "My players") + " · Current chips (result " + periodLabel + ")",
       value: data.currentTotals.chips,
       result: owner ? c.playersResult : a.playersResult,
-      note: data.currentTotals.totalResult != null && /*#__PURE__*/React.createElement(React.Fragment, null, "\u05EA\u05D5\u05E6\u05D0\u05D4 \u05DB\u05DC\u05DC\u05D9\u05EA: ", /*#__PURE__*/React.createElement(Amount, {
+      note: data.currentTotals.totalResult != null && /*#__PURE__*/React.createElement(React.Fragment, null, "Lifetime result: ", /*#__PURE__*/React.createElement(Amount, {
         value: data.currentTotals.totalResult,
         signed: true
       }))
@@ -691,24 +702,24 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "תוצאות השחקנים " + periodLabel,
+      label: "Player results " + periodLabel,
       value: c.playersResult,
       signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05E8\u05D9\u05D9\u05E7 \u05E9\u05E0\u05D5\u05E6\u05E8",
+      label: "Rake generated",
       value: c.rake
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05E2\u05DE\u05DC\u05D5\u05EA \u05E1\u05D5\u05DB\u05E0\u05D9\u05DD",
+      label: "Agent commissions",
       value: c.commission + c.leadsIncome
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05D9\u05D3\u05D9\u05D9\u05DD",
+      label: "Hands",
       value: c.hands,
       plain: true
     })), /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05D4\u05EA\u05D7\u05E9\u05D1\u05E0\u05D5\u05EA \u05DE\u05D5\u05DC \u05D4\u05E1\u05D5\u05DB\u05E0\u05D9\u05DD"), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Agent settlement"), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E1\u05D5\u05DB\u05DF"), /*#__PURE__*/React.createElement("th", null, "\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05E9\u05D7\u05E7\u05E0\u05D9\u05DD"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05E2\u05DE\u05DC\u05D4"), /*#__PURE__*/React.createElement("th", null, "\u05D9\u05EA\u05E8\u05D4 \u05DE\u05D5\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1"), /*#__PURE__*/React.createElement("th", null, "\u05EA\u05E9\u05DC\u05D5\u05DD"))), /*#__PURE__*/React.createElement("tbody", null, data.agents.map(x => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Agent"), /*#__PURE__*/React.createElement("th", null, "Player results"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Commission"), /*#__PURE__*/React.createElement("th", null, "Balance with club"), /*#__PURE__*/React.createElement("th", null, "Payment"))), /*#__PURE__*/React.createElement("tbody", null, data.agents.map(x => /*#__PURE__*/React.createElement("tr", {
       key: x.agentId
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, x.agentName), /*#__PURE__*/React.createElement(Breakdown, {
       opening: x.opening,
@@ -724,15 +735,15 @@
       value: x.commission + x.leadsIncome
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(x.closing)
-    }), /*#__PURE__*/React.createElement("small", null, x.closing > 0 ? 'הסוכן מעביר לקלאב' : x.closing < 0 ? 'הקלאב מעביר לסוכן' : 'מאוזן')), /*#__PURE__*/React.createElement("td", null, selectedCurrent && user.uid === data.clubPartyId && /*#__PURE__*/React.createElement("button", {
+    }), /*#__PURE__*/React.createElement("small", null, x.closing > 0 ? "Agent pays the club" : x.closing < 0 ? "Club pays the agent" : "Balanced")), /*#__PURE__*/React.createElement("td", null, selectedCurrent && user.uid === data.clubPartyId && /*#__PURE__*/React.createElement("button", {
       onClick: () => setPayment({
         type: 'agent',
         agentId: x.agentId,
         name: x.agentName
       })
-    }, "\u05E8\u05D9\u05E9\u05D5\u05DD \u05EA\u05E9\u05DC\u05D5\u05DD"))))))), !data.agents.length && /*#__PURE__*/React.createElement("p", {
+    }, "Record payment"))))))), !data.agents.length && /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
-    }, "\u05D0\u05D9\u05DF \u05E4\u05E2\u05D9\u05DC\u05D5\u05EA \u05E1\u05D5\u05DB\u05E0\u05D9\u05DD \u05D1\u05DE\u05D7\u05D6\u05D5\u05E8 \u05D4\u05D6\u05D4."))) : agent ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
+    }, "No agent activity in this cycle."))) : agent ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
       value: a.closing
     }), /*#__PURE__*/React.createElement(Breakdown, {
       opening: a.opening,
@@ -742,28 +753,28 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "תוצאות השחקנים שלי " + periodLabel,
+      label: "My players’ results " + periodLabel,
       value: a.playersResult,
       signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05E8\u05D9\u05D9\u05E7 \u05E9\u05E0\u05D5\u05E6\u05E8",
+      label: "Rake generated",
       value: a.rake
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05D4\u05E2\u05DE\u05DC\u05D4 \u05E9\u05DC\u05D9",
+      label: "My commission",
       value: a.commission
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05E0\u05E9\u05D0\u05E8 \u05DC\u05D9 \u05DC\u05D0\u05D7\u05E8 \u05E8\u05D9\u05D9\u05E7\u05D1\u05E7",
+      label: "My earnings after rakeback",
       value: a.earnings
     })), selectedCurrent && /*#__PURE__*/React.createElement("button", {
       className: "st-primary",
       onClick: () => setPayment({
         type: 'agent',
         agentId: user.uid,
-        name: 'הקלאב'
+        name: "Club"
       })
-    }, "\u05E8\u05D9\u05E9\u05D5\u05DD \u05EA\u05E9\u05DC\u05D5\u05DD \u05DE\u05D5\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1"), a.leads.length > 0 && /*#__PURE__*/React.createElement("section", {
+    }, "Record payment with club"), a.leads.length > 0 && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05E2\u05DE\u05DC\u05D5\u05EA \u05D4\u05E4\u05E0\u05D9\u05D4"), a.leads.map(l => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Referral commissions"), a.leads.map(l => /*#__PURE__*/React.createElement("div", {
       className: "st-payment",
       key: l.playerId
     }, /*#__PURE__*/React.createElement("span", null, l.playerName), /*#__PURE__*/React.createElement(Amount, {
@@ -778,39 +789,39 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "התוצאה שלי " + periodLabel,
+      label: "My result " + periodLabel,
       value: p.totals.result,
       signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "צ׳יפים כעת (תוצאה " + periodLabel + ")",
+      label: "Current chips (result " + periodLabel + ")",
       value: data.chips ?? data.balance,
       result: p.totals.result
     }), /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05D9\u05D3\u05D9\u05D9\u05DD \u05E9\u05E9\u05D9\u05D7\u05E7\u05EA\u05D9",
+      label: "Hands played",
       value: p.totals.hands,
       plain: true
     }), p.hasRakeback && /*#__PURE__*/React.createElement(Metric, {
-      label: "\u05D4\u05E8\u05D9\u05D9\u05E7\u05D1\u05E7 \u05E9\u05DC\u05D9",
+      label: "My rakeback",
       value: p.rakebackTotal
     })), /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05D4\u05DE\u05E9\u05D7\u05E7\u05D9\u05DD \u05E9\u05DC\u05D9"), /*#__PURE__*/React.createElement(TableRows, {
+    }, /*#__PURE__*/React.createElement("h3", null, "My games"), /*#__PURE__*/React.createElement(TableRows, {
       rows: p.rows
     })), p.counterparties.map(x => /*#__PURE__*/React.createElement("div", {
       className: "st-payment",
       key: x.id
-    }, /*#__PURE__*/React.createElement("span", null, x.name === 'club' ? 'הקלאב' : x.name, " \xB7 ", x.closing < 0 ? 'עליך להעביר' : 'עליך לקבל', " ", /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("span", null, x.name === 'club' ? "Club" : x.name, " \xB7 ", x.closing < 0 ? "You pay" : "You receive", " ", /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(x.closing)
     })), selectedCurrent && /*#__PURE__*/React.createElement("button", {
       onClick: () => setPayment({
         type: 'player',
         agentId: x.id,
         playerId: user.uid,
-        name: x.name === 'club' ? 'הקלאב' : x.name
+        name: x.name === 'club' ? "Club" : x.name
       })
-    }, "\u05E8\u05D9\u05E9\u05D5\u05DD \u05EA\u05E9\u05DC\u05D5\u05DD")))), (owner || agent) && /*#__PURE__*/React.createElement("p", {
+    }, "Record payment")))), (owner || agent) && /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "\u05D4\u05E8\u05D9\u05D9\u05E7 \u05DB\u05D1\u05E8 \u05DE\u05D2\u05D5\u05DC\u05DD \u05D1\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05D4\u05DE\u05E9\u05D7\u05E7. \u05D4\u05E1\u05DB\u05D5\u05DD \u05DE\u05D5\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1 \u05DE\u05D7\u05D5\u05E9\u05D1 \u05DC\u05D0\u05D7\u05E8 \u05E7\u05D9\u05D6\u05D5\u05D6 \u05D4\u05E2\u05DE\u05DC\u05D4; \u05D0\u05D9\u05DF \u05DC\u05D4\u05E4\u05D7\u05D9\u05EA \u05D0\u05EA \u05D4\u05E8\u05D9\u05D9\u05E7 \u05E9\u05D5\u05D1."), (owner || agent) && /*#__PURE__*/React.createElement(People, {
+    }, "Rake is already included in game results. The amount due to or from the club is calculated after commission; do not deduct rake again."), (owner || agent) && /*#__PURE__*/React.createElement(People, {
       details: data.details,
       funds: data.funds,
       onPay: setPayment,
@@ -823,11 +834,11 @@
       userId: user.uid
     }), data.cycle.id !== 'all' && data.cycle.status !== 'locked' && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05D0\u05D9\u05E9\u05D5\u05E8 \u05D4\u05D3\u05D5\u05D7 \u05D0\u05D5 \u05D4\u05E2\u05E8\u05D4"), /*#__PURE__*/React.createElement("label", null, "\u05D4\u05E2\u05E8\u05D4 \u05DC\u05D3\u05D5\u05D7", /*#__PURE__*/React.createElement("textarea", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Approve report or add a note"), /*#__PURE__*/React.createElement("label", null, "Report note", /*#__PURE__*/React.createElement("textarea", {
       maxLength: "1000",
       value: remark,
       onChange: e => setRemark(e.target.value),
-      placeholder: "\u05D0\u05E4\u05E9\u05E8 \u05DC\u05D4\u05E9\u05D0\u05D9\u05E8 \u05D4\u05E2\u05E8\u05D4 \u05DC\u05DE\u05E0\u05D4\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1"
+      placeholder: "Leave a note for the club manager"
     })), /*#__PURE__*/React.createElement("div", {
       className: "st-actions"
     }, /*#__PURE__*/React.createElement("button", {
@@ -838,17 +849,17 @@
         approved: true,
         remark
       })
-    }, "\u05D4\u05D3\u05D5\u05D7 \u05DE\u05D0\u05D5\u05E9\u05E8 \u05DE\u05D1\u05D7\u05D9\u05E0\u05EA\u05D9"), /*#__PURE__*/React.createElement("button", {
+    }, "Approve report"), /*#__PURE__*/React.createElement("button", {
       disabled: busy || !remark.trim(),
       onClick: () => act('approve', {
         cycleId: data.cycle.id,
         approved: false,
         remark
       })
-    }, "\u05E9\u05DC\u05D9\u05D7\u05EA \u05D4\u05E2\u05E8\u05D4")), data.approvals.map(x => /*#__PURE__*/React.createElement("p", {
+    }, "Send note")), data.approvals.map(x => /*#__PURE__*/React.createElement("p", {
       key: x.uid,
       className: "st-muted"
-    }, x.uid === user.uid ? 'האישור שלי' : x.uid, ": ", x.approved ? 'אושר' : 'הערה', " \xB7 ", x.remark, " \xB7 ", date(x.at))))), payment && /*#__PURE__*/React.createElement(PaymentForm, {
+    }, x.uid === user.uid ? "My approval" : x.uid, ": ", x.approved ? "Confirmed" : "Note", " \xB7 ", x.remark, " \xB7 ", date(x.at))))), payment && /*#__PURE__*/React.createElement(PaymentForm, {
       spec: payment,
       userId: user.uid,
       clubPartyId: data.clubPartyId,
@@ -897,48 +908,48 @@
         };
         if (await save(member.uid, patch)) onClose();
       }
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05EA\u05E0\u05D0\u05D9\u05DD \xB7 ", member.name), /*#__PURE__*/React.createElement("p", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Terms \xB7 ", member.name), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "\u05D4\u05EA\u05E0\u05D0\u05D9\u05DD \u05D4\u05D7\u05D3\u05E9\u05D9\u05DD \u05D9\u05D7\u05D5\u05DC\u05D5 \u05E2\u05DC \u05E1\u05E9\u05E0\u05D9\u05DD \u05E9\u05D9\u05D9\u05E8\u05E9\u05DE\u05D5 \u05DC\u05D0\u05D7\u05E8 \u05D4\u05E9\u05DE\u05D9\u05E8\u05D4. \u05E1\u05E9\u05E0\u05D9\u05DD \u05E7\u05D5\u05D3\u05DE\u05D9\u05DD \u05E0\u05E9\u05D0\u05E8\u05D9\u05DD \u05DC\u05E4\u05D9 \u05D4\u05EA\u05E0\u05D0\u05D9\u05DD \u05D4\u05DE\u05E7\u05D5\u05E8\u05D9\u05D9\u05DD."), /*#__PURE__*/React.createElement("div", {
+    }, "New terms apply to sessions recorded after saving. Previous sessions keep their original terms."), /*#__PURE__*/React.createElement("div", {
       className: "st-filters"
-    }, manager && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u05E1\u05D5\u05DB\u05DF \u05D0\u05D7\u05E8\u05D0\u05D9", /*#__PURE__*/React.createElement("select", {
+    }, manager && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "Primary agent", /*#__PURE__*/React.createElement("select", {
       value: draft.primaryAgentId,
       onChange: e => field('primaryAgentId', e.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u05D9\u05E9\u05D9\u05E8\u05D5\u05EA \u05DE\u05D5\u05DC \u05D4\u05E7\u05DC\u05D0\u05D1"), agents.filter(a => a.uid !== member.uid).map(a => /*#__PURE__*/React.createElement("option", {
+    }, "Directly with club"), agents.filter(a => a.uid !== member.uid).map(a => /*#__PURE__*/React.createElement("option", {
       key: a.uid,
       value: a.uid
-    }, a.name)))), /*#__PURE__*/React.createElement("label", null, "\u05E1\u05D5\u05DB\u05DF \u05DE\u05E9\u05E0\u05D9", /*#__PURE__*/React.createElement("select", {
+    }, a.name)))), /*#__PURE__*/React.createElement("label", null, "Secondary agent", /*#__PURE__*/React.createElement("select", {
       value: draft.secondaryAgentId,
       onChange: e => field('secondaryAgentId', e.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
-    }, "\u05DC\u05DC\u05D0"), agents.filter(a => a.uid !== member.uid && a.uid !== draft.primaryAgentId).map(a => /*#__PURE__*/React.createElement("option", {
+    }, "None"), agents.filter(a => a.uid !== member.uid && a.uid !== draft.primaryAgentId).map(a => /*#__PURE__*/React.createElement("option", {
       key: a.uid,
       value: a.uid
-    }, a.name)))), draft.secondaryAgentId && /*#__PURE__*/React.createElement("label", null, "\u05E2\u05DE\u05DC\u05EA \u05D4\u05E4\u05E0\u05D9\u05D4 (%)", /*#__PURE__*/React.createElement("input", {
+    }, a.name)))), draft.secondaryAgentId && /*#__PURE__*/React.createElement("label", null, "Referral commission (%)", /*#__PURE__*/React.createElement("input", {
       type: "number",
       min: "0",
       max: "100",
       step: "0.01",
       value: draft.secondaryPct,
       onChange: e => field('secondaryPct', e.target.value)
-    }))), /*#__PURE__*/React.createElement("label", null, "\u05E8\u05D9\u05D9\u05E7\u05D1\u05E7 \u05DC\u05E9\u05D7\u05E7\u05DF (%)", /*#__PURE__*/React.createElement("input", {
+    }))), /*#__PURE__*/React.createElement("label", null, "Player rakeback (%)", /*#__PURE__*/React.createElement("input", {
       type: "number",
       min: "0",
       max: "100",
       step: "0.01",
       value: draft.rakebackPct,
       onChange: e => field('rakebackPct', e.target.value)
-    })), manager && isAgent && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u05E1\u05D5\u05D2 \u05D4\u05E1\u05DB\u05DD", /*#__PURE__*/React.createElement("select", {
+    })), manager && isAgent && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "Agreement type", /*#__PURE__*/React.createElement("select", {
       value: draft.agentType,
       onChange: e => field('agentType', e.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: "rake"
-    }, "\u05D0\u05D7\u05D5\u05D6 \u05DE\u05D4\u05E8\u05D9\u05D9\u05E7"), /*#__PURE__*/React.createElement("option", {
+    }, "Percentage of rake"), /*#__PURE__*/React.createElement("option", {
       value: "result"
-    }, "\u05D0\u05D7\u05D5\u05D6 \u05DE\u05EA\u05D5\u05E6\u05D0\u05D5\u05EA \u05D4\u05E9\u05D7\u05E7\u05E0\u05D9\u05DD"))), /*#__PURE__*/React.createElement("label", null, "\u05D7\u05DC\u05E7 \u05D4\u05E1\u05D5\u05DB\u05DF (%)", /*#__PURE__*/React.createElement("input", {
+    }, "Percentage of player results"))), /*#__PURE__*/React.createElement("label", null, "Agent share (%)", /*#__PURE__*/React.createElement("input", {
       type: "number",
       min: "0",
       max: "100",
@@ -950,11 +961,11 @@
     }, /*#__PURE__*/React.createElement("button", {
       className: "st-primary",
       disabled: busy
-    }, "\u05E9\u05DE\u05D9\u05E8\u05EA \u05D4\u05EA\u05E0\u05D0\u05D9\u05DD"), /*#__PURE__*/React.createElement("button", {
+    }, "Save terms"), /*#__PURE__*/React.createElement("button", {
       type: "button",
       disabled: busy,
       onClick: onClose
-    }, "\u05D1\u05D9\u05D8\u05D5\u05DC")));
+    }, "Cancel")));
   }
   function SettlementMembers({
     clubId,
@@ -977,7 +988,7 @@
           setData(r);
           setError('');
         }
-      }).catch(e => alive && setError(e.message));
+      }).catch(e => alive && setError(settlementError(e, 'Could not load member terms')));
       return () => {
         alive = false;
       };
@@ -996,7 +1007,7 @@
         global.dispatchEvent(new Event('pk-club-changed'));
         return true;
       } catch (e) {
-        setError(e.message);
+        setError(settlementError(e, 'Could not save member terms'));
         return false;
       } finally {
         lock.current = false;
@@ -1006,29 +1017,29 @@
     const agents = (data?.members || []).filter(m => ['agent', 'manager', 'club_owner'].includes(m.role) && m.status === 'approved');
     return /*#__PURE__*/React.createElement("section", {
       className: "settlement-app",
-      dir: "rtl",
+      dir: "ltr",
       id: "bo-terms"
     }, /*#__PURE__*/React.createElement("div", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u05E1\u05D5\u05DB\u05E0\u05D9\u05DD \u05D5\u05D0\u05D7\u05D5\u05D6\u05D9\u05DD"), error && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Agents and rates"), error && /*#__PURE__*/React.createElement("div", {
       role: "alert",
       className: "st-error"
     }, error, /*#__PURE__*/React.createElement("button", {
       onClick: () => setAttempt(n => n + 1)
-    }, "\u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1")), !data && !error ? /*#__PURE__*/React.createElement("p", {
+    }, "Try again")), !data && !error ? /*#__PURE__*/React.createElement("p", {
       role: "status"
-    }, "\u05D8\u05D5\u05E2\u05DF \u05EA\u05E0\u05D0\u05D9\u05DD\u2026") : data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u05D7\u05D9\u05E4\u05D5\u05E9 \u05D7\u05D1\u05E8 \u05E7\u05DC\u05D0\u05D1", /*#__PURE__*/React.createElement("input", {
+    }, "Loading terms\u2026") : data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "Search club members", /*#__PURE__*/React.createElement("input", {
       type: "search",
       value: search,
       onChange: e => setSearch(e.target.value),
-      placeholder: "\u05E9\u05DD \u05D4\u05E9\u05D7\u05E7\u05DF \u05D0\u05D5 \u05D4\u05E1\u05D5\u05DB\u05DF"
+      placeholder: "Player or agent name"
     })), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u05E9\u05DD"), /*#__PURE__*/React.createElement("th", null, "\u05E1\u05D5\u05DB\u05DF \u05D0\u05D7\u05E8\u05D0\u05D9"), /*#__PURE__*/React.createElement("th", null, "\u05E8\u05D9\u05D9\u05E7\u05D1\u05E7"), /*#__PURE__*/React.createElement("th", null, "\u05E2\u05E8\u05D9\u05DB\u05D4"))), /*#__PURE__*/React.createElement("tbody", null, data.members.filter(m => m.status === 'approved' && m.name.toLowerCase().includes(search.toLowerCase())).map(m => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Primary agent"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Edit"))), /*#__PURE__*/React.createElement("tbody", null, data.members.filter(m => m.status === 'approved' && m.name.toLowerCase().includes(search.toLowerCase())).map(m => /*#__PURE__*/React.createElement("tr", {
       key: m.uid
-    }, /*#__PURE__*/React.createElement("td", null, m.name, /*#__PURE__*/React.createElement("small", null, ['agent', 'manager', 'club_owner'].includes(m.role) ? 'סוכן / מנהל' : 'שחקן')), /*#__PURE__*/React.createElement("td", null, agents.find(a => a.uid === m.primaryAgentId)?.name || 'הקלאב'), /*#__PURE__*/React.createElement("td", null, m.rakebackPct || 0, "%"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("td", null, m.name, /*#__PURE__*/React.createElement("small", null, ['agent', 'manager', 'club_owner'].includes(m.role) ? "Agent / Manager" : "Player")), /*#__PURE__*/React.createElement("td", null, agents.find(a => a.uid === m.primaryAgentId)?.name || "Club"), /*#__PURE__*/React.createElement("td", null, m.rakebackPct || 0, "%"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
       onClick: () => setEdit(m)
-    }, "\u05EA\u05E0\u05D0\u05D9\u05DD"))))))))), edit && /*#__PURE__*/React.createElement(TermsEditor, {
+    }, "Terms"))))))))), edit && /*#__PURE__*/React.createElement(TermsEditor, {
       key: edit.uid,
       member: edit,
       agents: agents,

@@ -51,9 +51,9 @@ function cycleStartIL() {
 
 exports.spinDailyBonus = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
   const clubId = request.data && request.data.clubId;
-  if (!clubId) throw new HttpsError("invalid-argument", "חסר מזהה קלאב");
+  if (!clubId) throw new HttpsError("invalid-argument", "Club ID is required.");
 
   const memRef = db.doc(`memberships/${uid}_${clubId}`);
   const clubRef = db.doc(`clubs/${clubId}`);
@@ -61,19 +61,19 @@ exports.spinDailyBonus = onCall(async (request) => {
   return await db.runTransaction(async (tx) => {
     // --- כל הקריאות לפני כל הכתיבות ---
     const memSnap = await tx.get(memRef);
-    if (!memSnap.exists) throw new HttpsError("permission-denied", "אינך חבר בקלאב הזה");
+    if (!memSnap.exists) throw new HttpsError("permission-denied", "You are not a member of this club.");
     const mem = memSnap.data();
 
     const clubSnap = await tx.get(clubRef);
     const club = clubSnap.exists ? clubSnap.data() : {};
     const bw = club.bonusWheel || {};
-    if (BONUS_GAMES_OFF || bw.enabled !== true) throw new HttpsError("failed-precondition", "גלגל הבונוס כבוי");
+    if (BONUS_GAMES_OFF || bw.enabled !== true) throw new HttpsError("failed-precondition", "The bonus wheel is disabled.");
 
     const now = Date.now();
     const last = Number(mem.lastBonusAt) || 0;
     if (now - last < BONUS_COOLDOWN_MS) {
       const hrs = Math.ceil((BONUS_COOLDOWN_MS - (now - last)) / 3600000);
-      throw new HttpsError("failed-precondition", `הבונוס הבא בעוד ${hrs} שעות`);
+      throw new HttpsError("failed-precondition", `Your next bonus is available in ${hrs} hours.`);
     }
 
     // הגרלה משוקללת — בצד השרת, לא ניתן לזיוף
@@ -95,7 +95,7 @@ exports.spinDailyBonus = onCall(async (request) => {
       const ownSnap = await tx.get(ownRef);
       const ownBal = ownSnap.exists ? (Number(ownSnap.data().balance) || 0) : 0;
       if (!ownSnap.exists || ownBal < prize) {
-        throw new HttpsError("resource-exhausted", "קופת הקלאב ריקה כרגע - נסה מאוחר יותר");
+        throw new HttpsError("resource-exhausted", "The club bank is currently empty. Please try again later.");
       }
       tx.update(ownRef, {
         balance: round2(ownBal - prize),
@@ -125,26 +125,26 @@ exports.spinDailyBonus = onCall(async (request) => {
  */
 exports.claimWeeklyScratch = onCall(async (request) => {
   const uid = request.auth && request.auth.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "צריך להתחבר");
+  if (!uid) throw new HttpsError("unauthenticated", "Please sign in.");
   const clubId = request.data && request.data.clubId;
-  if (!clubId) throw new HttpsError("invalid-argument", "חסר מזהה קלאב");
+  if (!clubId) throw new HttpsError("invalid-argument", "Club ID is required.");
 
   const memRef = db.doc(`memberships/${uid}_${clubId}`);
   const clubRef = db.doc(`clubs/${clubId}`);
 
   return await db.runTransaction(async (tx) => {
     const memSnap = await tx.get(memRef);
-    if (!memSnap.exists) throw new HttpsError("permission-denied", "אינך חבר בקלאב הזה");
+    if (!memSnap.exists) throw new HttpsError("permission-denied", "You are not a member of this club.");
     const mem = memSnap.data();
 
     const clubSnap = await tx.get(clubRef);
     const club = clubSnap.exists ? clubSnap.data() : {};
     const bw = club.bonusWheel || {};
-    if (BONUS_GAMES_OFF || bw.enabled !== true) throw new HttpsError("failed-precondition", "התכונה כבויה");
+    if (BONUS_GAMES_OFF || bw.enabled !== true) throw new HttpsError("failed-precondition", "This feature is disabled.");
 
     const now = Date.now();
     const lastS = Number(mem.lastScratchAt) || 0;
-    if (now - lastS < SCR_COOLDOWN_MS) throw new HttpsError("failed-precondition", "כבר גירדת השבוע");
+    if (now - lastS < SCR_COOLDOWN_MS) throw new HttpsError("failed-precondition", "You have already claimed your scratch card this week.");
 
     // מעקב מגבלת פרסים לפי מחזור שבועי (זהה ללקוח)
     const cycleKey = String(cycleStartIL());
@@ -167,7 +167,7 @@ exports.claimWeeklyScratch = onCall(async (request) => {
       const ownSnap = await tx.get(ownRef);
       const ownBal = ownSnap.exists ? (Number(ownSnap.data().balance) || 0) : 0;
       if (!ownSnap.exists || ownBal < prize) {
-        throw new HttpsError("resource-exhausted", "קופת הקלאב ריקה כרגע - נסה מאוחר יותר");
+        throw new HttpsError("resource-exhausted", "The club bank is currently empty. Please try again later.");
       }
       tx.update(ownRef, {
         balance: round2(ownBal - prize),

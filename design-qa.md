@@ -1,3 +1,46 @@
+# POKERTEN v312 custom menu artwork and English-only interface — 2026-10-05
+
+## Scope and visual targets
+
+The user rejected the v311 emoji-like menu icons and requested a more polished, colorful set, then required all POKERTEN interface copy to be English. The source menu composition remains `01-1000503588.jpg` (709 × 1536); the custom icon atlas was generated specifically for the revised visual request. The prior screen structure, actual game state, access permissions and accounting calculations are retained.
+
+The built-in Image Gen output is a 1402 × 1122 transparent atlas with 20 consistent sculpted, jewel-colored icons. Its WebP delivery asset preserves the original dimensions and alpha, reduces transfer size to 570,314 bytes and uses a documented 5 × 4 grid. The menu uses 48px decorative image slots, accessible text labels and the existing colored borders. Sound/mute, return-to-seat and fullscreen states have corresponding artwork.
+
+## Evidence and findings
+
+- Source: `/workspace/scratch/d59203ac15fb/upload/01-1000503588.jpg`.
+- Initial rendered menu: `/workspace/scratch/pokerten-v312-menu-full.jpg`, 1348 × 926 browser raster. The complete iframe crop is 365 × 791px for its 369 × 800 CSS viewport; comparison normalizes both reference and implementation to 369 × 800.
+- Initial full-view comparison: `/workspace/scratch/pokerten-v312-design-comparison-before.jpg`.
+- Authentication: `/workspace/scratch/pokerten-v312-auth.jpg`; management: `/workspace/scratch/pokerten-v312-admin.jpg`; settlement: `/workspace/scratch/pokerten-v312-settlement-mobile.jpg`.
+- P2: the English management tab "Agents & commissions" truncated at 369px (143px content in a 101px label). Shortened the tab to "Agents"; the full section heading retains the meaning.
+- P2: the generated atlas had a few edge pixels from an adjacent cell visible beside the single bot icon. Applied a 3% inset to the decorative sprite viewport; this trims only the cell gutter without changing button layout or icon identity.
+
+## Required fidelity surfaces
+
+| Surface | Review |
+| --- | --- |
+| Typography | Existing app typography and hierarchy retained; English labels and accessibility copy replace Hebrew, with LTR form alignment and appropriate wrapping. |
+| Spacing | Four-column menu and two-column volume tile retained. 78 × 84.98px buttons at 369px width; 9px gaps; no menu label overflow. Mobile reports retain contained horizontal table scrolling. |
+| Color | Sapphire/cyan, amethyst, gold, emerald and ruby artwork matches the colorful outline palette. Existing table color, shell and brand remain. |
+| Image quality | Real generated raster artwork, transparent alpha, consistent lighting and metallic/enamel depth. No emoji or hand-drawn substitutes for menu icons. The sprite gutter correction removes neighbor bleed. |
+| Copy | English throughout authentication, lobby, clubs, player records, management, settlements, tournaments, chat controls, loading/error messages and server responses. User-entered names/messages and historical records remain as authored. Future generated bot names/chatter use English/Latin spelling. |
+
+## Verification
+
+- Mandatory predeploy checks: 20/20; cache and updated UI asset queries v312. Generated poker-worker and settlement-bundle synchronization passed.
+- Full UI suite: 33 suites passed, including role guards, GOD privacy/revocation, cycle-only results and rakeback visibility. Added rendered-English checks for text, aria-label, title, placeholder and alt on controlled English fixtures. Bot-name tests: 4/4 passed, including historical-name preservation.
+- Initial combined preview `160c06b3f89a26156323ec7007e5e3f2ed1aba75`, workflow `37259572277`: validation and deployment passed.
+- Browser at 369 × 800: authentication, clubs, lobby, management, tournaments (including expanded blind structure), table creation and custom table menu. All inspected interface strings are English and pages remain LTR with no document horizontal overflow. The blind editor fits within 293px and has no horizontal content overflow.
+- Settlement browser at 369px: owner/agent/player, no-rakeback player, current legacy cycle, archive, cycle controls, search and expanded details, rake sorting, agent terms and payment-dialog cancellation. Signed results remain visible; player privacy remains intact.
+- Menu open/close and sound toggle verified; the muted state selects the matching custom sprite. All interaction tests use synthetic fixtures with real network writes disabled. No authenticated live hand or financial action was performed.
+- Browser console reviews found existing extension metadata errors only; no application exception.
+
+Final preview `e6e2045d366f3b1b062b1fad503e263cb63da402`, workflow `37260251222`: validation and deployment passed. The final complete viewport and focused button-region comparisons were opened and inspected against the source: `/workspace/scratch/pokerten-v312-design-comparison-final.jpg` and `/workspace/scratch/pokerten-v312-buttons-comparison-final.jpg`. Final proof: `/workspace/scratch/pokerten-v312-menu-final.jpg`. All custom icons render clearly without adjacent-cell bleed. The shortened Agents tab has matching client/scroll widths of 101px at 369px; all three management tabs remain legible. No remaining visual blocker.
+
+final result: passed
+
+---
+
 # POKERTEN v311 role-aware neon table menu — 2026-10-04
 
 ## Reference and comparison

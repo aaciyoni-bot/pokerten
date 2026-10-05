@@ -1,4 +1,5 @@
 'use strict';
+const assertEnglishUi=require('./english-ui.cjs');
 const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
@@ -14,8 +15,8 @@ w.fb={db:{},auth:{currentUser:{uid:'owner',email:'owner@example.test',emailVerif
 },setDoc:deny,updateDoc:deny,addDoc:deny,runTransaction:deny};
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.OwnNumbers=OwnBalanceNumbers;'));
 w.__club={id:'main',ownerUid:'owner'};const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
-const render=key=>React.act(async()=>root.render(React.createElement(w.BO,{key,user:members[0],clubSettings:{rakePct:6},showToast(){}})));
-const own=(user,extra={})=>React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user,...extra})));
+const render=async key=>{await React.act(async()=>root.render(React.createElement(w.BO,{key,user:members[0],clubSettings:{rakePct:6},showToast(){}})));assertEnglishUi(doc.body,'Management '+key);};
+const own=async(user,extra={})=>{await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user,...extra})));assertEnglishUi(doc.body,'Player balance '+extra.key);};
 const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cycle-summary','.management-agent-totals']){const section=doc.querySelector(selector);assert.equal(section.querySelector('[data-player-result]').textContent,result,selector+' leads with the current-cycle sum');assert.equal(section.querySelector('.club-member-balance').textContent,chips,selector+' retains actual current chips');}};
 (async()=>{
  await render('ordinary');
@@ -23,19 +24,19 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  assert.match(card('Alice').textContent,/159\.83/);assert.match(card('Bob').textContent,/1,000\.00/);
  assert.equal(card('Alice').querySelector('[data-player-result]').textContent,'(-20.00)');assert.equal(card('Bob').querySelector('[data-player-result]').textContent,'(+500.00)');
  assert.match(card('Alice').querySelector('[data-lifetime-result]').textContent,/-340\.17/);
- assert.match(card('Alice').querySelector('[data-player-result]').getAttribute('aria-label'),/תוצאת המחזור הנוכחי/);
+ assert.match(card('Alice').querySelector('[data-player-result]').getAttribute('aria-label'),/Current cycle result/);
  assertStaffTotals('(+480.00)','1,159.83');
  assert.match(doc.querySelector('.management-cycle-summary [data-lifetime-result]').textContent,/-840\.17/);
  assert.match(doc.querySelector('.management-agent-totals [data-lifetime-result]').textContent,/-840\.17/);
- const sort=doc.querySelector('[aria-label="סידור שחקנים"]');assert.equal(sort.disabled,false);assert.equal([...sort.options].some(o=>o.value==='rake'),false);
+ const sort=doc.querySelector('[aria-label="Sort players"]');assert.equal(sort.disabled,false);assert.equal([...sort.options].some(o=>o.value==='rake'),false);
  await React.act(()=>Simulate.change(sort,{target:{value:'chips'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
  await React.act(()=>Simulate.change(sort,{target:{value:'result'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
  assert.doesNotMatch(doc.body.textContent,/Weekly Settlement|Export full club report|Club rake/);
- god=true;w.fb.auth.currentUser.email='haim29071994@gmail.com';await render('god');assert.match(card('Alice').textContent,/רייק במחזור: 8\.00/);assert.ok([...doc.querySelector('[aria-label="סידור שחקנים"]').options].some(o=>o.value==='rake'));
- await React.act(()=>Simulate.change(doc.querySelector('[aria-label="סידור שחקנים"]'),{target:{value:'rake'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Alice/);
- assert.equal(card('Bob').querySelector('[data-cycle-rake]').textContent,'רייק במחזור: 3.00');
- for(const selector of ['.management-cycle-summary','.management-agent-totals'])assert.equal(doc.querySelector(selector+' [data-cycle-rake]').textContent,'רייק במחזור: 11.00');
- god=false;await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user:members[2],compact:true})));assert.match(doc.body.textContent,/159\.83\(-20\.00\)/);assert.doesNotMatch(doc.body.textContent,/רייק|Bob|Owner|מצטבר|כוללת|-340\.17/);
+ god=true;w.fb.auth.currentUser.email='haim29071994@gmail.com';await render('god');assert.match(card('Alice').textContent,/Cycle rake: 8\.00/);assert.ok([...doc.querySelector('[aria-label="Sort players"]').options].some(o=>o.value==='rake'));
+ await React.act(()=>Simulate.change(doc.querySelector('[aria-label="Sort players"]'),{target:{value:'rake'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Alice/);
+ assert.equal(card('Bob').querySelector('[data-cycle-rake]').textContent,'Cycle rake: 3.00');
+ for(const selector of ['.management-cycle-summary','.management-agent-totals'])assert.equal(doc.querySelector(selector+' [data-cycle-rake]').textContent,'Cycle rake: 11.00');
+ god=false;await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user:members[2],compact:true})));assert.match(doc.body.textContent,/159\.83\(-20\.00\)/);assert.doesNotMatch(doc.body.textContent,/Rake|Bob|Owner|Cumulative|Lifetime|-340\.17/i);
  await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{key:'expanded',user:members[2]})));assert.equal(doc.querySelector('[data-player-result]').textContent,'(-20.00)');assert.equal(doc.querySelector('[data-lifetime-result]'),null);
  // A freshly opened cycle has real zeros even when historical losses are nonzero.
  accountingOverride=report();
@@ -50,16 +51,16 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  await own(members[2],{key:'zero-own'});
  assert.equal(doc.querySelector('[data-player-result]').textContent,'(0.00)');
  assert.equal(doc.querySelector('[data-lifetime-result]'),null);
- assert.doesNotMatch(doc.body.textContent,/-196|201\.57|397\.57|כל הזמנים|רייק/);
+ assert.doesNotMatch(doc.body.textContent,/-196|201\.57|397\.57|All time|Rake/i);
  // Missing cycle data must look unavailable, not fabricate zero or reuse lifetime.
  delete accountingOverride.players.loss.result;
  await own(members[2],{key:'missing-own'});
  assert.equal(doc.querySelector('[data-player-result]'),null);
- assert.match(doc.body.textContent,/תוצאת המחזור אינה זמינה כרגע/);
- assert.doesNotMatch(doc.body.textContent,/-196|כל הזמנים|רייק/);
+ assert.match(doc.body.textContent,/Cycle result is currently unavailable/);
+ assert.doesNotMatch(doc.body.textContent,/-196|All time|Rake/i);
  await render('missing-staff');
  assert.equal(card('Alice').querySelector('[data-player-result]'),null);
- assert.match(card('Alice').textContent,/תוצאת המחזור אינה זמינה כרגע/);
+ assert.match(card('Alice').textContent,/Cycle result is currently unavailable/);
  // A late old-user response cannot refill the next player's mounted view.
  accountingOverride=null;holdAccounting=true;
  await own(members[2],{key:'scope-change'});
@@ -73,6 +74,6 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  assert.doesNotMatch(doc.body.textContent,/159\.83|-20\.00|-340\.17/);
  await React.act(async()=>pendingAccounting[1]({accounting:report()}));
  assert.equal(doc.querySelector('[data-player-result]').textContent,'(+500.00)');
- assert.doesNotMatch(doc.body.textContent,/-500\.00|-340\.17|כל הזמנים|רייק|Alice/);
+ assert.doesNotMatch(doc.body.textContent,/-500\.00|-340\.17|All time|Rake|Alice/i);
  await React.act(()=>root.unmount());w.close();console.log('PASS: current-cycle P/L and rake lead for player/agent/club, cycle sorting, staff-only lifetime context');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

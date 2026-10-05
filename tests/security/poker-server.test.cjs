@@ -431,7 +431,7 @@ test('built-in cash variants open with a full funded bot roster without seating 
  for(const game of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple']){
   const before=await bank(owner),{tableId}=await call('pkTableCreate',manager,{manual:true,clubId:club,botCount:'full',settings:{baseGameType:game,blinds:.5,minBuyIn:250,maxBuyIn:250,rakePercent:4,maxPlayers:6,autoStart:2}});
   const table=await get('tables/'+tableId);assert.equal(table.settings.baseGameType,game);assert.equal(table.settings.rakePercent,4);assert.equal(Object.keys(table.players).length,6);assert.equal(table.players[manager],undefined);assert.ok(Object.values(table.players).every(p=>p.isBot&&p.stack===250&&p.fundingUid===owner));assert.equal(await bank(owner),before-1500);assert.equal(await bank(manager),0);
-  const names=Object.values(table.players).map(p=>p.name);assert.ok(names.some(n=>/[A-Za-z]/.test(n)));assert.ok(names.some(n=>/[א-ת]/.test(n)));
+  const names=Object.values(table.players).map(p=>p.name);assert.ok(names.every(n=>/[A-Za-z]/.test(n)&&!/[\u0590-\u05ff]/u.test(n)),'new bot rosters use English names');
   await call('pkTableManage',manager,{tableId,op:'delete'});assert.equal(await bank(owner),before);
  }
 });

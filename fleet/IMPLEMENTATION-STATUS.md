@@ -27,7 +27,7 @@ Implemented next-service date and mileage fields, monthly Hebrew service calenda
 ## Remaining activation and verification
 - Users must choose their own passwords through the supplied private activation links. No password has been chosen or entered on their behalf. Live authenticated login/save/reload, cross-session sync and mobile operation remain unverified until activation.
 - The roster is staged privately. The first editor login imports 31 unique vehicles; a viewer cannot execute this write.
-- Storage rules are prepared but not yet published; uploads and CORS still need live validation.
+- Created the previously absent default Storage bucket `pokerten.firebasestorage.app` in the console-selected no-cost US-EAST1 location with default-deny rules. The Fleet-only Storage rules are prepared, but publication is paused at Firebase’s “Provision cross-service rules” dialog requesting the Storage service account’s additional IAM permission to consult Firestore. No cross-service IAM grant was made; uploads/CORS remain unverified.
 - Google Calendar/Sheets API enablement, OAuth consent and the short preview hostname authorization require live configuration/validation before exports can be claimed operational. No Google calendar or spreadsheet has been created yet.
 - Git-to-Vercel automatic deployment is disabled pending connection and production-branch verification. Preview is deployed from an exact Git commit.
 - Public short preview alias: https://derech1894.vercel.app/ . Production promotion remains prohibited until explicit user approval.

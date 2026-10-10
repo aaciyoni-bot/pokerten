@@ -302,6 +302,7 @@ body:has(#app.hidden){padding-bottom:0}.login .p{font-size:14px;line-height:1.7}
 </style>
 <link rel="stylesheet" href="assets/brand.css">
 <link rel="stylesheet" href="assets/fleet-dark.css">
+<link rel="stylesheet" href="assets/fleet-mobile.css">
 <script defer src="assets/fleet-presentation.js"></script>
 
 <!-- ===== LOGIN ===== -->
@@ -453,14 +454,15 @@ function renderQR(){
 /* ===== FLEET (officer full control) ===== */
 let fleetFilter='all', fleetStatus='all', fleetSearch='';
 function fleetMatches(v){
-  if(fleetFilter!=='all'&&v.unit!==fleetFilter&&v.secondaryUnit!==fleetFilter)return false;
-  if(fleetStatus==='nodriver'){if(v.drivers&&v.drivers.length)return false;}
+  if(fleetFilter!=='all'&&v.unit!==fleetFilter)return false;
+  if(fleetStatus==='serviceToday'){if(nextService(v)!==dateIL())return false;}
+  else if(fleetStatus==='nodriver'){if(v.drivers&&v.drivers.length)return false;}
   else if(fleetStatus==='attention'){if(!needsAttention(v))return false;}
   else if(fleetStatus!=='all'&&STAT[v.status]!==fleetStatus)return false;
   const q=fleetSearch.trim().toLocaleLowerCase('he');
   if(!q)return true;
   const digits=q.replace(/\D/g,'');
-  return [v.type,v.commander,v.slot,FRBY[v.unit]?.name,FRBY[v.secondaryUnit]?.name].some(x=>String(x||'').toLocaleLowerCase('he').includes(q))||!!(digits&&String(v.number).replace(/\D/g,'').includes(digits));
+  return [v.type,v.commander,v.slot,FRBY[v.unit]?.name].some(x=>String(x||'').toLocaleLowerCase('he').includes(q))||!!(digits&&String(v.number).replace(/\D/g,'').includes(digits));
 }
 function fleetEmpty(){
   if(!scopeVehicles().length)return `<div class="empty"><strong>עדיין אין רכבים בתצוגה</strong>לא ניתן לחשב מוכנות לפני שמופיעים רכבים.${canEdit()?'<br><button class="btn primary" onclick="openIntake()">קליטת רכב ראשון</button>':''}</div>`;
@@ -487,7 +489,7 @@ function renderFleet(){
   let h=`<div class="fleet-layout"><div class="fleet-main"><div class="page-heading"><div><h2>שליטה בצי<span class="accent">.</span></h2><p>מצב הרכבים והטיפול הנדרש</p></div>${canEdit()?`<button class="btn primary" onclick="openIntake()">${uiIcon('plus')} קליטת רכב</button>`:''}</div>`;
   h+=fleetAttentionBanner(all);
   h+=`<section class="fleet-workspace" aria-label="חיפוש וסינון רכבים"><label class="fleet-search" for="fleetSearchInput">${uiIcon('search')}<span class="ux-sr-only">חיפוש רכב</span><input id="fleetSearchInput" placeholder="חיפוש לפי מספר רכב, סוג או מסגרת…" value="${esc(fleetSearch)}" oninput="fleetSearch=this.value;renderFleetList()"></label>`;
-  h+=`<div class="fleet-filters"><div class="chips">${[['all','כל הרכבים'],['ok','כשירים'],['bad','לא כשירים'],['service','בטיפול'],['nodriver','ללא נהג']].map(([key,label])=>chip(key,label,fleetStatus===key,`setStatusFilter('${key}')`)).join('')}</div><select class="framework-picker" aria-label="סינון לפי מסגרת" onchange="setFleetFilter(this.value)"><option value="all">כל המסגרות</option>${FR.map(f=>`<option value="${esc(f.id)}" ${fleetFilter===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select></div>`;
+  h+=`<div class="fleet-filters"><div class="chips">${[['all','כל הרכבים'],['ok','כשירים'],['bad','לא כשירים'],['service','בטיפול'],['nodriver','ללא נהג'],['serviceToday','טיפול היום ('+all.filter(v=>nextService(v)===dateIL()).length+')']].map(([key,label])=>chip(key,label,fleetStatus===key,`setStatusFilter('${key}')`)).join('')}</div><select class="framework-picker" aria-label="סינון לפי מסגרת" onchange="setFleetFilter(this.value)"><option value="all">כל המסגרות</option>${FR.map(f=>`<option value="${esc(f.id)}" ${fleetFilter===f.id?'selected':''}>${esc(f.name)}</option>`).join('')}</select></div>`;
   h+=`<div class="fleet-table-head" aria-hidden="true"><span>מספר רכב</span><span>סוג רכב</span><span>מסגרת</span><span>סטטוס</span><span>פעולות</span></div><p id="fleetSearchStatus" class="ux-sr-only" role="status" aria-live="polite">${vs.length} רכבים מוצגים</p><div class="fleet-table" id="fleetGrid">${vs.map(fleetVehicleRow).join('')||fleetEmpty()}</div><div class="table-footer"><span>רכבים בתצוגה <b id="fleetResultCount">(${vs.length})</b></span><button class="text-action" onclick="shareSummary(scopeVehicles(),'צי הרכב הגדודי')">שיתוף תמונת מצב</button></div></section>`;
   h+=`<details class="fleet-secondary"><summary>חריגים, טיפולים ומבט לפי מסגרת</summary>${attentionCard(all)}${timelineCard(all)}${frameworkOverview()}${safetyCard(DRIVERS,'תדריך בטיחות חודשי',false)}</details>`;
   h+='</div>'+fleetReadinessPanel(all)+'</div>';
@@ -559,8 +561,8 @@ function timelineCard(vs){
     ${due.map(x=>`<div class="tl-row ${x.n<0?'late':x.n<=2?'soon':''}"><span class="tl-when">${x.n<0?('באיחור '+Math.abs(x.n)+'י'):x.n===0?'היום':('בעוד '+x.n+'י')}</span>${plate(x.v)}<span>${esc(x.v.type)} · ${isCivil(x.v)?'טסט':'טיפול'} ${fmtHe(x.t)}</span></div>`).join('')}</div>`;
 }
 function frameworkOverview(){
-  return `<div class="card"><div class="section-h"><h2>🧭 מבט לפי מסגרת</h2></div><p>כולל שיוכים נוספים. רכב עשוי להופיע בשתי מסגרות; בסך הגדודי נספר פעם אחת.</p>
-    ${FR.map(f=>{const vs=scopeVehicles().filter(v=>v.unit===f.id||v.secondaryUnit===f.id);const ok=vs.filter(v=>v.status==='כשיר').length;const bad=vs.filter(v=>['תקול','מושבת','לא כשיר'].includes(v.status)).length;
+  return `<div class="card"><div class="section-h"><h2>🧭 מבט לפי מסגרת</h2></div>
+    ${FR.map(f=>{const vs=scopeVehicles().filter(v=>v.unit===f.id);const ok=vs.filter(v=>v.status==='כשיר').length;const bad=vs.filter(v=>['תקול','מושבת','לא כשיר'].includes(v.status)).length;
       return `<div class="fov-row" onclick="setFleetFilter('${f.id}')"><span class="fov-n">${esc(f.name)}</span>
       <span class="fov-stats"><b>${vs.length}</b> רכבים${vs.length?` · <span style="color:var(--ok)">${ok} כשירים</span>${bad?` · <span style="color:var(--bad)">${bad} מושבתים</span>`:''}`:''} ›</span></div>`;}).join('')}</div>`;
 }
@@ -774,11 +776,11 @@ function shareSergeant(){ openSheet('🔐 ניהול הרשאות גישה',`<di
 let sheetReturnFocus=null,sheetPreviousOverflow='';
 function openSheet(title,body,onSave,extra){
   if(!$('#modal').classList.contains('show')){sheetReturnFocus=document.activeElement;sheetPreviousOverflow=document.body.style.overflow;}
-  $('#sheet').innerHTML=`<h3 id="sheetTitle">${esc(title)}</h3>${body}<div class="srow ux-actions"><button class="btn primary" id="_sv">שמור</button><button class="btn ghost" onclick="closeSheet()">ביטול</button></div>${extra?`<button class="btn" style="width:100%;margin-top:8px;background:var(--badbg);color:var(--bad)" id="_ex">${esc(extra.label)}</button>`:''}`;
+  $('#sheet').innerHTML=`<div class="sheet-heading"><h3 id="sheetTitle">${esc(title)}</h3><button type="button" class="sheet-close" aria-label="סגירת החלון" onclick="closeSheet()">×</button></div>${body}<div class="srow ux-actions"><button class="btn primary" id="_sv">שמור</button><button class="btn ghost" onclick="closeSheet()">ביטול</button></div>${extra?`<button class="btn" style="width:100%;margin-top:8px;background:var(--badbg);color:var(--bad)" id="_ex">${esc(extra.label)}</button>`:''}`;
   $('#sheet').setAttribute('role','dialog');$('#sheet').setAttribute('aria-modal','true');$('#sheet').setAttribute('aria-labelledby','sheetTitle');$('#sheet').tabIndex=-1;
   $('#modal').classList.add('show');document.body.style.overflow='hidden';$('#app').inert=true;$('#nav').inert=true;
   if(onSave)$('#_sv').onclick=async()=>{const btn=$('#_sv');btn.disabled=true;try{await onSave();}catch(e){toast(e.message||'השמירה נכשלה');}finally{if(btn.isConnected)btn.disabled=false;}};if(extra)$('#_ex').onclick=async()=>{try{await extra.fn();}catch(e){toast(e.message||'הפעולה נכשלה');}};
-  requestAnimationFrame(()=>($('#sheet').querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])')||$('#sheet')).focus());
+  requestAnimationFrame(()=>{const target=window.matchMedia('(max-width:960px)').matches?$('#sheet'):($('#sheet').querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])')||$('#sheet'));target.focus({preventScroll:true});});
 }
 function closeSheet(){
   $('#modal').classList.remove('show');document.body.style.overflow=sheetPreviousOverflow;$('#app').inert=false;$('#nav').inert=false;
@@ -848,6 +850,7 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 <script src="assets/firebase-config.js"></script>
 <script src="assets/fleet-actions.js"></script>
 <script src="assets/fleet-frameworks.js"></script>
+<script src="assets/fleet-mobile.js"></script>
 <script src="assets/fleet-planner.js"></script>
 <script type="module" src="assets/fleet-cloud.js"></script>
 

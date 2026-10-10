@@ -61,3 +61,5 @@ test('an empty fleet has no readiness percentage or all-clear claim', () => {
   assert.doesNotMatch(c.readinessCard([],'מוכנות'),/0%|הכול תקין/);
   assert.equal(c.readiness(vehicles).pct,25);
 });
+
+test('service today combines with framework filtering and excludes yesterday, tomorrow and undated vehicles',()=>{const {context:c,vehicles,ids}=fleetContext();c.nextService=v=>v.nextServiceDate||'';c.dateIL=()=> '2026-10-11';vehicles[0].nextServiceDate='2026-10-11';vehicles[1].nextServiceDate='2026-10-10';vehicles[2].nextServiceDate='2026-10-12';c.fleetStatus='serviceToday';assert.deepEqual(ids(),[1]);c.fleetFilter='b';assert.deepEqual(ids(),[]);vehicles[0].nextServiceDate='2026-10-12';c.fleetFilter='all';assert.deepEqual(ids(),[]);});

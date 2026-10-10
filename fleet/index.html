@@ -298,6 +298,7 @@ body:has(#app.hidden){padding-bottom:0}.login .p{font-size:14px;line-height:1.7}
 #nav:empty{display:none}.login-note{font-size:13px;line-height:1.7;color:var(--ink2);margin-top:18px}
 @media(max-width:640px){.wrap{padding:18px 14px}.head{padding:12px 14px;gap:8px}.head h1{font-size:17px}.head .sub{font-size:12px;white-space:normal}.rolechip{font-size:11px;padding:6px 9px}.head .role{gap:5px;flex-wrap:wrap;justify-content:flex-end}.page-heading{align-items:flex-start;gap:12px}.page-heading h2{font-size:24px}.page-heading .btn{font-size:14px;padding:10px 12px}.kpis{grid-template-columns:repeat(2,1fr)}.kpi{padding:16px}.kpi .n{font-size:28px}.gauge{padding:18px}.bottom{border-radius:0}.bottom button{font-size:12px;min-height:66px}.bottom button .bi{font-size:20px}.modal{padding:0;align-items:flex-end}.sheet{border-radius:22px 22px 0 0;max-height:90dvh;padding:22px 18px calc(20px + env(safe-area-inset-bottom))}.sheet .srow.ux-actions{bottom:-20px}.sheet h3{font-size:21px}.chips{gap:7px}.chip{font-size:13px;padding:9px 12px}}
 
+[hidden]{display:none!important}
 </style>
 <link rel="stylesheet" href="assets/brand.css">
 <link rel="stylesheet" href="assets/fleet-dark.css">
@@ -309,7 +310,14 @@ body:has(#app.hidden){padding-bottom:0}.login .p{font-size:14px;line-height:1.7}
     <div class="biglogo"><img src="assets/derech-eretz-emblem-dark.webp" alt="" aria-hidden="true"></div>
     <h2>דרך ארץ</h2>
     <div class="p">גדוד 1894 · התחברות למערכת</div>
-    <button class="go" id="googleLogin" onclick="doLogin()" disabled>טוען חיבור מאובטח…</button>
+    <form id="loginForm" onsubmit="event.preventDefault();doLogin()">
+      <label class="ux-field-label" for="loginNumber">מספר אישי</label>
+      <input id="loginNumber" name="username" inputmode="numeric" pattern="[0-9]{6,8}" autocomplete="username" required aria-label="מספר אישי">
+      <label class="ux-field-label" for="loginPassword">סיסמה</label>
+      <input id="loginPassword" name="password" type="password" autocomplete="current-password" required aria-label="סיסמה">
+      <div id="activationConfirm" class="hidden"><label class="ux-field-label" for="confirmPassword">אימות סיסמה חדשה</label><input id="confirmPassword" type="password" autocomplete="new-password" aria-label="אימות סיסמה חדשה"><p class="login-note">בחרו סיסמה אישית באורך 10 תווים לפחות. קישור ההפעלה משמש פעם אחת.</p></div>
+      <button class="go" id="passwordLogin" type="submit" disabled>טוען חיבור מאובטח…</button>
+    </form>
     <div class="err" id="lgErr" role="alert" aria-live="polite"></div>
     <div class="login-note">ניהול רכבים, נהגים ותזקיקים · גדוד 1894</div>
   </div>
@@ -338,14 +346,14 @@ body:has(#app.hidden){padding-bottom:0}.login .p{font-size:14px;line-height:1.7}
     <button onclick="closeMenu();go('company')">🎖️ <span>תצוגת פלוגה</span></button>
     <button onclick="closeMenu();go('qr')">🖨️ <span>קודי QR לפלוגות (הדפסה)</span></button>
     <div class="sep"></div>
-    <button onclick="closeMenu();openIntake()">➕ <span>קליטת רכב חדש</span></button>
+    <button data-edit-only="true" onclick="closeMenu();openIntake()">➕ <span>קליטת רכב חדש</span></button>
     <button onclick="closeMenu();shareCommander()">📲 <span>לוח מפקד</span></button>
-    <button onclick="closeMenu();shareSergeant()">🔐 <span>ניהול הרשאות גישה</span></button>
+    
     <div class="sep"></div>
     <button onclick="closeMenu();go('maintenance')">🗓️ <span>יומן טיפולים</span></button>
-    <button onclick="closeMenu();exportGoogleReport()">📗 <span>דוח מלא ל־Google Sheets</span></button>
-    <button onclick="closeMenu();downloadBackup()">💾 <span>גיבוי נתונים</span></button>
-    <button onclick="closeMenu();openImport()">♻️ <span>ייבוא רכבים מקובץ</span></button>
+    <button data-edit-only="true" onclick="closeMenu();exportGoogleReport()">📗 <span>דוח מלא ל־Google Sheets</span></button>
+    <button data-edit-only="true" onclick="closeMenu();downloadBackup()">💾 <span>גיבוי נתונים</span></button>
+    <button data-edit-only="true" onclick="closeMenu();openImport()">♻️ <span>ייבוא רכבים מקובץ</span></button>
     <button class="danger" onclick="closeMenu();logout()">🚪 <span>התנתקות</span></button>
   </div>
 
@@ -370,7 +378,7 @@ let S=emptyState(), DRIVERS=[], fbOn=false, saving=false;
 const FR=SEED.frameworks, FRBY={}; FR.forEach(f=>FRBY[f.id]=f);
 let sess={role:'viewer',name:'',scope:null};
 const ROLE_SUB={officer:'ניהול צי הרכבים',sergeant:'ניהול צי הרכבים',commander:'צפייה במסגרת',viewer:'צפייה בצי הרכבים'};
-const ROLE_CHIP={officer:'קצין רכב',sergeant:'סמל רכב',commander:'מפקד',viewer:'צפייה'};
+const ROLE_CHIP={officer:'עריכה',sergeant:'עריכה',commander:'צפייה',viewer:'צפייה בלבד'};
 const firstName=n=>String(n||'').split(' ').slice(0,3).join(' ');
 function getDriver(pn){return {...DRIVERS.find(d=>d.pn===pn),...(S.driverOverrides[pn]||{})};}
 function setSync(text){const e=$('#syncDot');e.textContent=text||(fbOn?'● מסונכרן':'○ אין חיבור לשרת');e.style.color=fbOn?'#c3ee78':'#f3ba64';}
@@ -389,11 +397,11 @@ window.fleetSession=function(member){
  go(member.role==='commander'?'company':'fleet');
  const vehicle=Number(new URLSearchParams(location.search).get('vehicle'));if(vehicle)setTimeout(()=>openEdit(vehicle),600);
 };
-async function doLogin(){try{$('#lgErr').textContent='';await window.FleetIO.login();}catch(e){$('#lgErr').textContent=e.message;}}
+async function doLogin(){const btn=$('#passwordLogin');btn.disabled=true;try{$('#lgErr').textContent='';const number=$('#loginNumber').value.trim(),password=$('#loginPassword').value;if(window.FleetIO.hasInvitation()){if(password!==$('#confirmPassword').value)throw new Error('הסיסמאות אינן זהות');await window.FleetIO.activate(number,password);}else await window.FleetIO.login(number,password);$('#loginPassword').value='';$('#confirmPassword').value='';}catch(e){$('#lgErr').textContent=window.FleetIO.loginError(e);}finally{btn.disabled=false;}}
 async function logout(){await window.FleetIO.logout();closeSheet();}
 function homeView(){go(sess.role==='commander'?'company':'fleet');}
 function backToUnified(){homeView();}
-function applyRole(){$('#hdrTitle').textContent='דרך ארץ';$('#hdrSub').textContent=sess.name+' · '+ROLE_SUB[sess.role];$('#roleChip').textContent=ROLE_CHIP[sess.role]+(sess.scope?' · '+FRBY[sess.scope]?.name:'');buildNav();}
+function applyRole(){$('#hdrTitle').textContent='דרך ארץ';$('#hdrSub').textContent='ברוך הבא, '+sess.name+' · '+ROLE_SUB[sess.role];$('#roleChip').textContent=ROLE_CHIP[sess.role]+(sess.scope?' · '+FRBY[sess.scope]?.name:'');document.querySelectorAll('[data-edit-only]').forEach(b=>b.hidden=sess.role!=='officer');buildNav();}
 // ── nav ──
 let view='fleet';
 function buildNav(){
@@ -716,7 +724,7 @@ function renderFuel(){
 }
 
 /* ===== ACTIONS ===== */
-function canEdit(){return fbOn&&(sess.role==='officer'||sess.role==='sergeant');}
+function canEdit(){return fbOn&&sess.role==='officer';}
 function guard(){if(saving){toast('ממתין לסיום שמירה');return false;} if(!canEdit()){ toast('מצב צפייה בלבד'); return false;} return true; }
 function hideCard(id){ if(!guard())return; const v=S.vehicles.find(x=>x.id===id);
   if(confirm(`להסיר את הקובייה של ${fullNum(v)} מהתצוגה?\nהרכב וכל נתוניו יישארו במאגר.`)){ v.hiddenCard=true; save(); toast('הקובייה הוסרה'); render(); } }

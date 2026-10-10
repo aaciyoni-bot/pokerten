@@ -1,9 +1,34 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import {getAuth,GoogleAuthProvider,signInWithPopup,reauthenticateWithPopup,onAuthStateChanged,signOut,browserSessionPersistence,setPersistence} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {getAuth,GoogleAuthProvider,signInWithPopup,signInWithEmailAndPassword,createUserWithEmailAndPassword,inMemoryPersistence,onAuthStateChanged,signOut,browserSessionPersistence,setPersistence} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {getFirestore,doc,collection,query,where,getDoc,getDocs,onSnapshot,runTransaction,writeBatch,serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {getStorage,ref,uploadBytes,getBlob} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 const app=initializeApp(window.FLEET_FIREBASE_CONFIG,'derech-eretz-1894');
 const auth=getAuth(app),db=getFirestore(app),storage=getStorage(app);
+const googleApp=initializeApp(window.FLEET_FIREBASE_CONFIG,'derech-eretz-google-export'),googleAuth=getAuth(googleApp);
+let activating=false,invitationToken=new URLSearchParams(location.hash.slice(1)).get('activate')||'';
+if(invitationToken){history.replaceState(null,'',location.pathname+location.search);document.getElementById('activationConfirm').classList.remove('hidden');document.getElementById('loginPassword').autocomplete='new-password';}
+const loginEmail=number=>{number=String(number).trim();if(!/^\d{6,8}$/.test(number))throw new Error('יש להזין מספר אישי תקין');return 'p'+number+'@fleet1894.invalid';};
+const loginError=e=>({'auth/invalid-credential':'מספר אישי או סיסמה שגויים','auth/wrong-password':'מספר אישי או סיסמה שגויים','auth/user-not-found':'מספר אישי או סיסמה שגויים','auth/email-already-in-use':'החשבון כבר קיים. היכנסו עם הסיסמה האישית כדי להשלים הפעלה, או פנו למנהל.','auth/too-many-requests':'בוצעו ניסיונות רבים. המתינו לפני ניסיון נוסף.','auth/operation-not-allowed':'הכניסה בסיסמה עדיין לא הופעלה. יש לפנות למנהל המערכת.','auth/weak-password':'הסיסמה אינה עומדת בדרישות. בחרו סיסמה חזקה יותר.'})[e.code]||friendly(e);
+async function activate(number,password){
+ if(!/^[a-f0-9]{64}$/.test(invitationToken))throw new Error('קישור ההפעלה אינו תקין');
+ if(password.length<10)throw new Error('יש לבחור סיסמה בת 10 תווים לפחות');
+ const email=loginEmail(number);activating=true;
+ try{
+  await setPersistence(auth,browserSessionPersistence);
+  let result;try{result=await createUserWithEmailAndPassword(auth,email,password);}catch(e){if(e.code!=='auth/email-already-in-use')throw e;result=await signInWithEmailAndPassword(auth,email,password);}
+  const uid=result.user.uid,inviteRef=path('invitations',invitationToken),memberRef=path('members',uid);
+  await runTransaction(db,async tx=>{
+   const invitation=await tx.get(inviteRef),existing=await tx.get(memberRef),i=invitation.data();
+   if(!i||i.loginEmail!==email||(i.usedBy&&i.usedBy!==uid))throw new Error('קישור ההפעלה אינו מתאים למספר האישי או שכבר נוצל');
+   if(existing.exists()){if(i.usedBy===uid)return;throw new Error('החשבון כבר הופעל');}
+   tx.set(memberRef,{name:i.name,role:i.role,active:true,loginEmail:email,invitationId:invitationToken});
+   tx.update(inviteRef,{usedBy:uid,usedAt:serverTimestamp()});
+  });
+  invitationToken='';document.getElementById('activationConfirm').classList.add('hidden');document.getElementById('loginPassword').autocomplete='current-password';document.getElementById('passwordLogin').textContent='כניסה';
+  activating=false;await loadUser(result.user);
+ }catch(e){await signOut(auth);throw e;}finally{activating=false;}
+}
+
 const ROOT=['fleet1894','preview'];
 const path=(c,id)=>doc(db,...ROOT,c,String(id));
 const col=c=>collection(db,...ROOT,c);
@@ -16,7 +41,7 @@ function friendly(e){return ({'auth/popup-closed-by-user':'חלון ההתחבר
 function stop(){unsubs.forEach(f=>f());unsubs=[];records={};ready=new Set();online=false;state={vehicles:[],fuel:[],cards:[],driverOverrides:{}};}
 function subscribe(){
  stop();const current=epoch;
- const groups=member.role==='commander'?['vehicles']:['vehicles','fuel','cards',...(['officer','sergeant'].includes(member.role)?['drivers']:[])];
+ const groups=member.role==='commander'?['vehicles']:['vehicles','fuel','cards','drivers'];
  groups.forEach(c=>{
   const q=member.role==='commander'?query(col(c),where('unit','==',member.scope)):col(c);
   unsubs.push(onSnapshot(q,{includeMetadataChanges:true},snap=>{
@@ -31,7 +56,7 @@ function subscribe(){
  });
 }
 async function commitState(next){
- if(!online||!member||!['officer','sergeant'].includes(member.role))throw new Error('אין חיבור או הרשאת עריכה');
+ if(!online||!member||member.role!=='officer')throw new Error('אין חיבור או הרשאת עריכה');
  const changes=[];
  for(const c of ['vehicles','fuel','cards','drivers']){
   const desired=c==='drivers'?Object.entries(next.driverOverrides||{}).map(([id,v])=>[id,v]):(next[c]||[]).map(v=>[String(v.id),v]);
@@ -75,7 +100,7 @@ async function commitState(next){
 }
 function rebuild(){for(const c of ['vehicles','fuel','cards'])state[c]=Object.values(records[c]||{}).sort((a,b)=>Number(a.id)-Number(b.id));state.driverOverrides={...(records.drivers||{})};emit();}
 async function importVehicles(input){
- if(!member||!['officer','sergeant'].includes(member.role))throw new Error('נדרשת הרשאת עריכה');
+ if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');
  const items=Array.isArray(input)?input:input.vehicles;
  if(!Array.isArray(items)||items.length>200)throw new Error('קובץ הייבוא אינו תקין');
  const numbers=items.map(v=>String(v.number||'').replace(/\D/g,''));
@@ -98,37 +123,35 @@ async function importVehicles(input){
  return {added,skipped};
 }
 async function importBootstrap(){
- if(!member?.owner)return;
+ if(!member||member.role!=='officer')return;
  const seed=await getDoc(path('bootstrap','initial-fleet'));
  if(!seed.exists()||seed.data().completed)return;
  const result=await importVehicles(JSON.parse(seed.data().payload));
  await runTransaction(db,async tx=>{const current=await tx.get(path('bootstrap','initial-fleet'));if(current.exists())tx.update(path('bootstrap','initial-fleet'),{completed:true,completedAt:serverTimestamp(),...result});});
  window.toast('רשימת הרכבים נטענה: '+result.added+' נוספו');
 }
-onAuthStateChanged(auth,async user=>{
+async function loadUser(user){
  epoch++;if(memberUnsub){memberUnsub();memberUnsub=null;}stop();member=null;window.fleetSession(null);
  if(!user)return;
- if(!user.emailVerified){document.getElementById('lgErr').textContent='נדרש חשבון Google עם דוא״ל מאומת';return;}
  const current=epoch;
- memberUnsub=onSnapshot(path('access',user.email.toLowerCase()),snap=>{
+ memberUnsub=onSnapshot(path('members',user.uid),snap=>{
   if(current!==epoch)return;
-  const m=snap.data();if(!snap.exists()||!m.active){stop();member=null;window.fleetSession(null);document.getElementById('lgErr').textContent='החשבון '+user.email+' ממתין להרשאת גישה ממנהל המערכת';return;}
-  const next={role:m.role,name:m.name||user.displayName||'משתמש',scope:m.scope||null,owner:m.owner===true};
-  if(!['officer','sergeant','commander','viewer'].includes(next.role)||(next.role==='commander'&&!FRBY[next.scope])){fail(new Error('הרשאת הגישה אינה תקינה'));return;}
+  const m=snap.data();if(!snap.exists()||!m.active||m.loginEmail!==user.email){stop();member=null;window.fleetSession(null);document.getElementById('lgErr').textContent='לחשבון זה אין הרשאת גישה פעילה';return;}
+  const next={role:m.role,name:m.name,scope:null,owner:false};
+  if(!['officer','viewer'].includes(next.role)){fail(new Error('הרשאת הגישה אינה תקינה'));return;}
   const same=member&&JSON.stringify(member)===JSON.stringify(next);member=next;
   if(!same){window.fleetSession(member);subscribe();importBootstrap().catch(fail);}
  },fail);
-});
+}
+onAuthStateChanged(auth,user=>{if(!activating)loadUser(user).catch(fail);});
 window.FleetIO={
- login:async()=>{await setPersistence(auth,browserSessionPersistence);await signInWithPopup(auth,new GoogleAuthProvider());},
- async googleToken(kind){if(!member||!['officer','sergeant'].includes(member.role))throw new Error('נדרשת הרשאת עריכה');const provider=new GoogleAuthProvider();provider.addScope(kind==='calendar'?'https://www.googleapis.com/auth/calendar.app.created':'https://www.googleapis.com/auth/drive.file');provider.setCustomParameters({login_hint:auth.currentUser.email});const result=await reauthenticateWithPopup(auth.currentUser,provider);return GoogleAuthProvider.credentialFromResult(result).accessToken;},
+ login:async(number,password)=>{await setPersistence(auth,browserSessionPersistence);await signInWithEmailAndPassword(auth,loginEmail(number),password);},activate,hasInvitation:()=>!!invitationToken,loginError,
+ async googleToken(kind){if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');const provider=new GoogleAuthProvider();provider.addScope(kind==='calendar'?'https://www.googleapis.com/auth/calendar.app.created':'https://www.googleapis.com/auth/drive.file');await setPersistence(googleAuth,inMemoryPersistence);const result=await signInWithPopup(googleAuth,provider);const token=GoogleAuthProvider.credentialFromResult(result).accessToken;await signOut(googleAuth);return token;},
  async getCalendarSettings(){if(!member||!auth.currentUser)throw new Error('נדרשת התחברות');const r=await getDoc(path('preferences',auth.currentUser.uid));return r.data()||{};},
- async setCalendarSettings(value){if(!member||!['officer','sergeant'].includes(member.role))throw new Error('נדרשת הרשאת עריכה');await runTransaction(db,async tx=>{tx.set(path('preferences',auth.currentUser.uid),{calendarId:value.calendarId,lastSync:value.lastSync||'',updatedAt:serverTimestamp()});});},
+ async setCalendarSettings(value){if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');await runTransaction(db,async tx=>{tx.set(path('preferences',auth.currentUser.uid),{calendarId:value.calendarId,lastSync:value.lastSync||'',updatedAt:serverTimestamp()});});},
  logout:()=>signOut(auth),save:commitState,refreshState:rebuild,importVehicles,
- async listAccess(){const r=await getDocs(col('access'));return r.docs.map(d=>({email:d.id,...d.data()}));},
- async grant(email,data){if(!member?.owner)throw new Error('רק מנהל המערכת יכול לנהל גישה');email=email.trim().toLowerCase();if(!/^[^/@\s]+@[^/@\s]+\.[^/@\s]+$/.test(email))throw new Error('כתובת דוא״ל אינה תקינה');const auditRef=doc(col('audit'));await runTransaction(db,async tx=>{const r=await tx.get(path('access',email));if(r.data()?.owner)throw new Error('אין לשנות את בעל המערכת');tx.set(path('access',email),{...data,owner:false});tx.set(auditRef,{actor:auth.currentUser.uid,at:serverTimestamp(),action:'access',email,role:data.role,scope:data.scope||null,active:data.active});});},
- async upload(vehicle,file){if(!online||!member||!['officer','sergeant'].includes(member.role))throw new Error('אין הרשאת העלאה');if(!/^(image\/|video\/|application\/pdf$)/.test(file.type)||file.size>30*1024*1024)throw new Error('ניתן להעלות תמונה, וידאו או PDF עד 30MB');const p=ROOT.join('/')+'/vehicles/'+vehicle.id+'/'+crypto.randomUUID();await uploadBytes(ref(storage,p),file,{contentType:file.type});return {path:p,name:file.name,type:file.type,at:new Date().toISOString()};},
+ async upload(vehicle,file){if(!online||!member||member.role!=='officer')throw new Error('אין הרשאת העלאה');if(!/^(image\/|video\/|application\/pdf$)/.test(file.type)||file.size>30*1024*1024)throw new Error('ניתן להעלות תמונה, וידאו או PDF עד 30MB');const p=ROOT.join('/')+'/vehicles/'+vehicle.id+'/'+crypto.randomUUID();await uploadBytes(ref(storage,p),file,{contentType:file.type});return {path:p,name:file.name,type:file.type,at:new Date().toISOString()};},
  async mediaBlob(p){if(!p.startsWith(ROOT.join('/')+'/vehicles/'))throw new Error('נתיב קובץ אינו תקין');return getBlob(ref(storage,p),30*1024*1024);}
 };
-const button=document.getElementById('googleLogin');button.disabled=false;button.textContent='כניסה באמצעות Google';
+const button=document.getElementById('passwordLogin');button.disabled=false;button.textContent=invitationToken?'הפעלה וקביעת סיסמה':'כניסה';
 window.addEventListener('offline',()=>{online=false;emit();});

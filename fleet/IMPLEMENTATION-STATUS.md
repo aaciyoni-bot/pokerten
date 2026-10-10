@@ -6,9 +6,11 @@ The imported roster is staged privately in Firestore at `fleet1894/preview/boots
 
 The application uses the existing `pokerten` Firebase project used by GREENEYES95. New data and rules are isolated under `fleet1894/preview`. Existing Firestore rules were preserved byte-for-byte; an additive preview block was compiled and published in Firebase Console. No production application deployment or domain alias has been changed.
 
+User update: editable vehicle fields and vehicle deletion/restoration are available separately from returning to the pool. Deletion retains history and removes the vehicle from active counts.
+
 Implemented: Google authentication, server-side membership/scope enforcement, realtime Firestore subscriptions, transactional revision checks, normalized unique number reservations, vehicle editing, transfers with history, central pool intake, service history, handover/return, faults, fuel entries/cards, driver management, vehicle QR, internal commander summary, copy/print, private bootstrap import, backup export, and Storage upload UI. No localStorage fleet database, anonymous login, role-switch demo or URL-based login remains.
 
-Validation: JavaScript syntax, 4 retained regression cases and 6 transaction/import regression cases pass. Vehicle counts and unique identities validated. Public runtime code scanned for the supplied plates and embedded roster.
+Validation: JavaScript syntax, 4 retained regression cases, 6 transaction/import regression cases and 5 planner/report/deletion regression cases pass. Vehicle counts and unique identities validated. Public runtime code scanned for the supplied plates and embedded roster.
 
 ## Explicit blockers / incomplete verification
 - Automatic approval review rejected saving owner membership for `aaci.yoni@gmail.com` at `fleet1894/preview/access/aaci.yoni@gmail.com`. The dialog was cancelled. No membership was saved. It requires explicit user approval for this exact grant. The requested role is `officer`, `active: true`, `owner: true`, solely in this Fleet preview.
@@ -17,3 +19,8 @@ Validation: JavaScript syntax, 4 retained regression cases and 6 transaction/imp
 - The Vercel preview hostname must be added to Firebase Authentication authorized domains before Google login.
 - Git-to-Vercel automatic deployment remains intentionally disabled pending connection and production-branch verification. Preview can be deployed from the exact Git commit via Vercel's API.
 - Production promotion is prohibited until the user explicitly approves the tested preview.
+
+## Service diary and Google integration update
+Implemented next-service date and mileage fields, monthly Hebrew service calendar, framework filtering, overdue/mileage alerts, service completion history with next target, recoverable deletion and restoration. Direct Google Sheets export creates a private 11-tab snapshot using typed literal cells (no formula interpretation, leading zero preservation). Google Calendar sync explicitly pushes current dated service targets to a dedicated calendar on demand; it is one-way, not background or bidirectional. No OAuth tokens are persisted. Calendar IDs are stored per authenticated user in a dedicated preferences document.
+
+Pending activation: the additional preferences rule in the checked-in snippet has not yet been published. Google Calendar and Sheets APIs and OAuth scopes/consent require configuration/approval and a live end-to-end check; no external calendar or spreadsheet has yet been created. All Google export controls report API/permission failures rather than simulating successful sync.

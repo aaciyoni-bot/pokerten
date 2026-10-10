@@ -53,6 +53,13 @@
         allow create: if kind in ['fuel','cards'] && fEditor() && request.resource.data._rev == 1 && request.resource.data._updatedAt == request.time;
         allow update: if kind in ['fuel','cards'] && fEditor() && request.resource.data._rev == resource.data._rev + 1 && request.resource.data._updatedAt == request.time;
       }
+      match /preferences/{uid} {
+        allow get: if fEditor() && request.auth.uid == uid;
+        allow create, update: if fEditor() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['calendarId','lastSync','updatedAt'])
+          && request.resource.data.calendarId is string && request.resource.data.calendarId.size() < 300
+          && request.resource.data.lastSync is string && request.resource.data.updatedAt == request.time;
+      }
       match /bootstrap/{id} { allow read, write: if fOwner(); }
       match /audit/{id} {
         allow read: if fOwner();

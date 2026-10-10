@@ -342,6 +342,8 @@ body:has(#app.hidden){padding-bottom:0}.login .p{font-size:14px;line-height:1.7}
     <button onclick="closeMenu();shareCommander()">📲 <span>לוח מפקד</span></button>
     <button onclick="closeMenu();shareSergeant()">🔐 <span>ניהול הרשאות גישה</span></button>
     <div class="sep"></div>
+    <button onclick="closeMenu();go('maintenance')">🗓️ <span>יומן טיפולים</span></button>
+    <button onclick="closeMenu();exportGoogleReport()">📗 <span>דוח מלא ל־Google Sheets</span></button>
     <button onclick="closeMenu();downloadBackup()">💾 <span>גיבוי נתונים</span></button>
     <button onclick="closeMenu();openImport()">♻️ <span>ייבוא רכבים מקובץ</span></button>
     <button class="danger" onclick="closeMenu();logout()">🚪 <span>התנתקות</span></button>
@@ -423,7 +425,7 @@ function needsAttention(v){ const t=trackDate(v),n=daysUntil(t);
   return (!v.drivers||!v.drivers.length)||['תקול','מושבת','לא כשיר'].includes(v.status)||(t&&n!=null&&n<=7)||v.deliveryVideo==='לא צולם'; }
 
 // ── render dispatcher ──
-function render(){ ({fleet:renderFleet,company:renderCompany,drivers:renderDrivers,fuel:renderFuel,qr:renderQR})[view]?.(); }
+function render(){ ({fleet:renderFleet,company:renderCompany,drivers:renderDrivers,fuel:renderFuel,qr:renderQR,maintenance:renderMaintenance})[view]?.(); }
 
 /* ===== QR — printable code per framework ===== */
 function renderQR(){
@@ -550,7 +552,7 @@ function timelineCard(vs){
 }
 function frameworkOverview(){
   return `<div class="card"><div class="section-h"><h2>🧭 מבט לפי מסגרת</h2></div>
-    ${FR.map(f=>{const vs=S.vehicles.filter(v=>v.unit===f.id&&!v.hiddenCard);const ok=vs.filter(v=>v.status==='כשיר').length;const bad=vs.filter(v=>['תקול','מושבת','לא כשיר'].includes(v.status)).length;
+    ${FR.map(f=>{const vs=scopeVehicles().filter(v=>v.unit===f.id);const ok=vs.filter(v=>v.status==='כשיר').length;const bad=vs.filter(v=>['תקול','מושבת','לא כשיר'].includes(v.status)).length;
       return `<div class="fov-row" onclick="setFleetFilter('${f.id}')"><span class="fov-n">${esc(f.name)}</span>
       <span class="fov-stats"><b>${vs.length}</b> רכבים${vs.length?` · <span style="color:var(--ok)">${ok} כשירים</span>${bad?` · <span style="color:var(--bad)">${bad} מושבתים</span>`:''}`:''} ›</span></div>`;}).join('')}</div>`;
 }
@@ -837,6 +839,7 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 
 <script src="assets/firebase-config.js"></script>
 <script src="assets/fleet-actions.js"></script>
+<script src="assets/fleet-planner.js"></script>
 <script type="module" src="assets/fleet-cloud.js"></script>
 
 </html>

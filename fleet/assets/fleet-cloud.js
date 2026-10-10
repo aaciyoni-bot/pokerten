@@ -1,5 +1,5 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut,browserSessionPersistence,setPersistence} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {getAuth,GoogleAuthProvider,signInWithPopup,reauthenticateWithPopup,onAuthStateChanged,signOut,browserSessionPersistence,setPersistence} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {getFirestore,doc,collection,query,where,getDoc,getDocs,onSnapshot,runTransaction,writeBatch,serverTimestamp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import {getStorage,ref,uploadBytes,getBlob} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 const app=initializeApp(window.FLEET_FIREBASE_CONFIG,'derech-eretz-1894');
@@ -121,6 +121,9 @@ onAuthStateChanged(auth,async user=>{
 });
 window.FleetIO={
  login:async()=>{await setPersistence(auth,browserSessionPersistence);await signInWithPopup(auth,new GoogleAuthProvider());},
+ async googleToken(kind){if(!member||!['officer','sergeant'].includes(member.role))throw new Error('נדרשת הרשאת עריכה');const provider=new GoogleAuthProvider();provider.addScope(kind==='calendar'?'https://www.googleapis.com/auth/calendar.app.created':'https://www.googleapis.com/auth/drive.file');provider.setCustomParameters({login_hint:auth.currentUser.email});const result=await reauthenticateWithPopup(auth.currentUser,provider);return GoogleAuthProvider.credentialFromResult(result).accessToken;},
+ async getCalendarSettings(){if(!member||!auth.currentUser)throw new Error('נדרשת התחברות');const r=await getDoc(path('preferences',auth.currentUser.uid));return r.data()||{};},
+ async setCalendarSettings(value){if(!member||!['officer','sergeant'].includes(member.role))throw new Error('נדרשת הרשאת עריכה');await runTransaction(db,async tx=>{tx.set(path('preferences',auth.currentUser.uid),{calendarId:value.calendarId,lastSync:value.lastSync||'',updatedAt:serverTimestamp()});});},
  logout:()=>signOut(auth),save:commitState,refreshState:rebuild,importVehicles,
  async listAccess(){const r=await getDocs(col('access'));return r.docs.map(d=>({email:d.id,...d.data()}));},
  async grant(email,data){if(!member?.owner)throw new Error('רק מנהל המערכת יכול לנהל גישה');email=email.trim().toLowerCase();if(!/^[^/@\s]+@[^/@\s]+\.[^/@\s]+$/.test(email))throw new Error('כתובת דוא״ל אינה תקינה');const auditRef=doc(col('audit'));await runTransaction(db,async tx=>{const r=await tx.get(path('access',email));if(r.data()?.owner)throw new Error('אין לשנות את בעל המערכת');tx.set(path('access',email),{...data,owner:false});tx.set(auditRef,{actor:auth.currentUser.uid,at:serverTimestamp(),action:'access',email,role:data.role,scope:data.scope||null,active:data.active});});},

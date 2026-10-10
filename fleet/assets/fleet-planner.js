@@ -8,8 +8,8 @@ const FleetPlanner = (()=>{
   const vs=state.vehicles,active=vs.filter(v=>!v.deleted),fr=id=>frameworks[id]?.name||id,driver=v=>v.driverName||(v.drivers||[]).map(p=>state.driverOverrides[p]?.name||p).join(', ');
   const base=['מספר רכב','סוג','מסגרת'];const nested=(key,headers,values)=>[base.concat(headers),...vs.flatMap(v=>(v[key]||[]).map(r=>[v.number,v.type,fr(v.unit),...values(r)]))];
   const generic=items=>{const keys=[...new Set(items.flatMap(x=>Object.keys(x)))].filter(k=>!k.startsWith('_'));return [keys.length?keys:['אין רשומות'],...items.map(x=>keys.map(k=>typeof x[k]==='object'?JSON.stringify(x[k]):x[k]??''))];};
-  const head=['מספר רכב','סוג מזהה','סוג רכב','מסגרת','נהג','אחראי','ק״מ','סטטוס','הערות','טיפול אחרון','טיפול הבא','ק״מ טיפול הבא','טסט','מחזור טיפול בימים','מוסתר','נמחק'];
-  const row=v=>[v.number,v.prefix,v.type,fr(v.unit),driver(v),v.commander||'',v.km??'',v.status,v.notes||'',v.lastService||'',dueDate(v),v.nextServiceKm??'',v.testExpiry||'',v.frequency||'',v.hiddenCard?'כן':'לא',v.deleted?'כן':'לא'];
+  const head=['מספר רכב','סוג מזהה','סוג רכב','מסגרת','שיוך נוסף','נהג','אחראי','ק״מ','סטטוס','הערות','טיפול אחרון','טיפול הבא','ק״מ טיפול הבא','טסט','מחזור טיפול בימים','מוסתר','נמחק'];
+  const row=v=>[v.number,v.prefix,v.type,fr(v.unit),fr(v.secondaryUnit||''),driver(v),v.commander||'',v.km??'',v.status,v.notes||'',v.lastService||'',dueDate(v),v.nextServiceKm??'',v.testExpiry||'',v.frequency||'',v.hiddenCard?'כן':'לא',v.deleted?'כן':'לא'];
   return [
    {title:'סיכום',rows:[['מדד','ערך'],['תאריך דוח',today],['רכבים פעילים',active.length],['כשירים',active.filter(v=>v.status==='כשיר').length],['בטיפול',active.filter(v=>v.status==='בטיפול').length],['לא כשירים',active.filter(v=>['לא כשיר','תקול','מושבת'].includes(v.status)).length],['טיפול באיחור או ק״מ הגיע',active.filter(v=>{const d=due(v,today);return d.late||d.kmDue;}).length],...Object.entries(frameworks).map(([id,f])=>[f.name,active.filter(v=>v.unit===id).length])]},
    {title:'רכבים',rows:[head,...active.map(row)]},{title:'רכבים שנמחקו',rows:[head,...vs.filter(v=>v.deleted).map(row)]},
@@ -23,14 +23,14 @@ const FleetPlanner = (()=>{
   ];
  }
  function spreadsheet(tabs,title){return {properties:{title,locale:'he_IL',timeZone:'Asia/Jerusalem'},sheets:tabs.map((tab,i)=>({properties:{sheetId:i,title:tab.title,rightToLeft:true,gridProperties:{rowCount:Math.max(50,tab.rows.length+1),columnCount:Math.max(1,...tab.rows.map(r=>r.length)),frozenRowCount:1}},data:[{startRow:0,startColumn:0,rowData:tab.rows.map((row,n)=>({values:row.map(value=>{if(String(value??'').length>49000)throw new Error('שדה גדול מדי ל־Google Sheets; יש להשתמש בגיבוי המלא');return {userEnteredValue:typeof value==='number'?{numberValue:value}:{stringValue:String(value??'')},userEnteredFormat:{wrapStrategy:'WRAP',textFormat:{bold:n===0},...(n===0?{backgroundColor:{red:.78,green:.9,blue:.65}}:{})}};})}))}]}))};}
- function calendarEvent(v,frameworks){const date=dueDate(v);if(v.deleted||!date)return null;return {id:'f1894'+String(v.id)+'d'+date.replace(/-/g,''),summary:'טיפול · '+v.type+' '+v.number,description:(frameworks[v.unit]?.name||v.unit)+(v.nextServiceKm!=null?'\nק״מ יעד: '+v.nextServiceKm:'')+'\nהנתונים מתעדכנים ממערכת דרך ארץ. שינוי מועד יש לבצע במערכת.',start:{date},end:{date:addDays(date,1)},extendedProperties:{private:{fleetApp:'derech-eretz-preview',vehicleId:String(v.id)}},reminders:{useDefault:false,overrides:[{method:'popup',minutes:1440}]}};}
+ function calendarEvent(v,frameworks){const date=dueDate(v);if(v.deleted||!date)return null;return {id:'f1894'+String(v.id)+'d'+date.replace(/-/g,''),summary:'טיפול · '+v.type+' '+v.number,description:(frameworks[v.unit]?.name||v.unit)+(v.secondaryUnit?'\nשיוך נוסף: '+(frameworks[v.secondaryUnit]?.name||v.secondaryUnit):'')+(v.nextServiceKm!=null?'\nק״מ יעד: '+v.nextServiceKm:'')+'\nהנתונים מתעדכנים ממערכת דרך ארץ. שינוי מועד יש לבצע במערכת.',start:{date},end:{date:addDays(date,1)},extendedProperties:{private:{fleetApp:'derech-eretz-preview',vehicleId:String(v.id)}},reminders:{useDefault:false,overrides:[{method:'popup',minutes:1440}]}};}
  return {validDate,addDays,dueDate,due,report,spreadsheet,calendarEvent};
 })();
 if(typeof module!=='undefined')module.exports=FleetPlanner;
 if(typeof window!=='undefined'){
  nextService=FleetPlanner.dueDate;
  let plannerMonth=dateIL().slice(0,7),plannerFramework='all',googleBusy=false;
- const plannerVehicles=()=>S.vehicles.filter(v=>!v.deleted&&(!sess.scope||sess.role!=='commander'||v.unit===sess.scope)&&(plannerFramework==='all'||v.unit===plannerFramework));
+ const plannerVehicles=()=>S.vehicles.filter(v=>!v.deleted&&(!sess.scope||sess.role!=='commander'||v.unit===sess.scope)&&(plannerFramework==='all'||(v.unit===plannerFramework||v.secondaryUnit===plannerFramework)));
  window.renderMaintenance=function(){
   const vs=plannerVehicles(),today=dateIL(),[y,m]=plannerMonth.split('-').map(Number),first=new Date(Date.UTC(y,m-1,1)),count=new Date(Date.UTC(y,m,0)).getUTCDate();
   let cells=Array(first.getUTCDay()).fill('<div class="calendar-day muted"></div>');

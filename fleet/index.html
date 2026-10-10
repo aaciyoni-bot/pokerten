@@ -453,14 +453,14 @@ function renderQR(){
 /* ===== FLEET (officer full control) ===== */
 let fleetFilter='all', fleetStatus='all', fleetSearch='';
 function fleetMatches(v){
-  if(fleetFilter!=='all'&&v.unit!==fleetFilter)return false;
+  if(fleetFilter!=='all'&&v.unit!==fleetFilter&&v.secondaryUnit!==fleetFilter)return false;
   if(fleetStatus==='nodriver'){if(v.drivers&&v.drivers.length)return false;}
   else if(fleetStatus==='attention'){if(!needsAttention(v))return false;}
   else if(fleetStatus!=='all'&&STAT[v.status]!==fleetStatus)return false;
   const q=fleetSearch.trim().toLocaleLowerCase('he');
   if(!q)return true;
   const digits=q.replace(/\D/g,'');
-  return [v.type,v.commander,v.slot,FRBY[v.unit]?.name].some(x=>String(x||'').toLocaleLowerCase('he').includes(q))||!!(digits&&String(v.number).replace(/\D/g,'').includes(digits));
+  return [v.type,v.commander,v.slot,FRBY[v.unit]?.name,FRBY[v.secondaryUnit]?.name].some(x=>String(x||'').toLocaleLowerCase('he').includes(q))||!!(digits&&String(v.number).replace(/\D/g,'').includes(digits));
 }
 function fleetEmpty(){
   if(!scopeVehicles().length)return `<div class="empty"><strong>עדיין אין רכבים בתצוגה</strong>לא ניתן לחשב מוכנות לפני שמופיעים רכבים.${canEdit()?'<br><button class="btn primary" onclick="openIntake()">קליטת רכב ראשון</button>':''}</div>`;
@@ -559,8 +559,8 @@ function timelineCard(vs){
     ${due.map(x=>`<div class="tl-row ${x.n<0?'late':x.n<=2?'soon':''}"><span class="tl-when">${x.n<0?('באיחור '+Math.abs(x.n)+'י'):x.n===0?'היום':('בעוד '+x.n+'י')}</span>${plate(x.v)}<span>${esc(x.v.type)} · ${isCivil(x.v)?'טסט':'טיפול'} ${fmtHe(x.t)}</span></div>`).join('')}</div>`;
 }
 function frameworkOverview(){
-  return `<div class="card"><div class="section-h"><h2>🧭 מבט לפי מסגרת</h2></div>
-    ${FR.map(f=>{const vs=scopeVehicles().filter(v=>v.unit===f.id);const ok=vs.filter(v=>v.status==='כשיר').length;const bad=vs.filter(v=>['תקול','מושבת','לא כשיר'].includes(v.status)).length;
+  return `<div class="card"><div class="section-h"><h2>🧭 מבט לפי מסגרת</h2></div><p>כולל שיוכים נוספים. רכב עשוי להופיע בשתי מסגרות; בסך הגדודי נספר פעם אחת.</p>
+    ${FR.map(f=>{const vs=scopeVehicles().filter(v=>v.unit===f.id||v.secondaryUnit===f.id);const ok=vs.filter(v=>v.status==='כשיר').length;const bad=vs.filter(v=>['תקול','מושבת','לא כשיר'].includes(v.status)).length;
       return `<div class="fov-row" onclick="setFleetFilter('${f.id}')"><span class="fov-n">${esc(f.name)}</span>
       <span class="fov-stats"><b>${vs.length}</b> רכבים${vs.length?` · <span style="color:var(--ok)">${ok} כשירים</span>${bad?` · <span style="color:var(--bad)">${bad} מושבתים</span>`:''}`:''} ›</span></div>`;}).join('')}</div>`;
 }
@@ -847,6 +847,7 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 
 <script src="assets/firebase-config.js"></script>
 <script src="assets/fleet-actions.js"></script>
+<script src="assets/fleet-frameworks.js"></script>
 <script src="assets/fleet-planner.js"></script>
 <script type="module" src="assets/fleet-cloud.js"></script>
 

@@ -21,7 +21,7 @@ test('full report preserves leading-zero identifiers and literal formulas, inclu
  const state={vehicles:[{id:1,number:'00123456',unit:'A',type:'רכב',status:'כשיר',notes:'=IMPORTXML("bad")',services:[]},{id:2,number:'00123457',unit:'A',deleted:true,services:[{date:'2026-01-01',km:3}]}],fuel:[],cards:[],driverOverrides:{}};
  const tabs=p.report(state,{A:{name:'א'}},'2026-10-11');assert.equal(tabs.find(t=>t.title==='רכבים').rows.length,2);assert.equal(tabs.find(t=>t.title==='טיפולים').rows.length,2);
  const book=p.spreadsheet(tabs,'דוח'),row=book.sheets[1].data[0].rowData[1].values;
- assert.deepEqual(row[0].userEnteredValue,{stringValue:'00123456'});assert.deepEqual(row[8].userEnteredValue,{stringValue:'=IMPORTXML("bad")'});
+ assert.deepEqual(row[0].userEnteredValue,{stringValue:'00123456'});assert.deepEqual(row[tabs[1].rows[0].indexOf('הערות')].userEnteredValue,{stringValue:'=IMPORTXML("bad")'});
  assert.equal(book.sheets.length,11);
 });
 test('deleted vehicles stay outside active scope and restoration returns them without losing history',()=>{

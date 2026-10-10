@@ -33,3 +33,8 @@ Implemented next-service date and mileage fields, monthly Hebrew service calenda
 - Public short preview alias: https://derech1894.vercel.app/ . Production promotion remains prohibited until explicit user approval.
 
 Credential update: the client minimum was changed from ten to eight characters. An activation regression verifies an eight-character credential while preserving the invited viewer role. No existing Firebase credential was created, reset, or modified by this code deployment.
+
+## Custom frameworks and additional assignment
+Implemented editor-only framework creation with deterministic normalized identifiers and transactional duplicate prevention, realtime shared framework subscriptions, and one optional additional framework per vehicle. The primary assignment stays separate; changing/removing the additional assignment is audited. Vehicle lists and the maintenance filter include either assignment, while battalion totals and grouped commander reports retain a single row per vehicle. The additional assignment is included in Google Sheets and calendar descriptions. Existing members and roles are unchanged.
+
+Validation: 28 regression cases pass, including viewer denial, assignment removal, invalid/duplicate assignment rejection, normalized framework IDs, additional-frame search, and unique report totals. Firestore rules restrict custom framework creation to existing editors and require vehicle assignments to reference a built-in or existing custom framework. End-to-end authenticated creation and multi-session refresh remain pending user account activation.

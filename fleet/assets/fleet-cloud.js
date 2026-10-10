@@ -33,22 +33,23 @@ const ROOT=['fleet1894','preview'];
 const path=(c,id)=>doc(db,...ROOT,c,String(id));
 const col=c=>collection(db,...ROOT,c);
 const clone=x=>JSON.parse(JSON.stringify(x));
-let member=null,unsubs=[],state={vehicles:[],fuel:[],cards:[],driverOverrides:{}},records={},ready=new Set(),online=false,epoch=0,memberUnsub=null;
+let member=null,unsubs=[],state={vehicles:[],fuel:[],cards:[],driverOverrides:{},frameworks:[]},records={},ready=new Set(),online=false,epoch=0,memberUnsub=null;
 const clean=o=>{const r={...o};delete r._rev;delete r._updatedAt;return r;};
-function emit(){window.fleetStateChanged(clone(state),online);}
+function emit(){window.updateFrameworks?.(state.frameworks||[]);window.fleetStateChanged(clone(state),online);}
 function fail(e){online=false;emit();document.getElementById('lgErr').textContent='לא ניתן לטעון את הנתונים: '+friendly(e);}
 function friendly(e){return ({'auth/popup-closed-by-user':'חלון ההתחברות נסגר. אפשר לנסות שוב.','auth/unauthorized-domain':'הכתובת עדיין אינה מאושרת להתחברות ב־Firebase.','auth/popup-blocked':'הדפדפן חסם את חלון ההתחברות. יש לאפשר חלונות קופצים לאתר.','permission-denied':'אין הרשאה לפעולה זו.','unavailable':'אין חיבור לשרת. השינוי לא נשמר.'})[e.code]||e.message||'הפעולה לא הושלמה';}
-function stop(){unsubs.forEach(f=>f());unsubs=[];records={};ready=new Set();online=false;state={vehicles:[],fuel:[],cards:[],driverOverrides:{}};}
+function stop(){unsubs.forEach(f=>f());unsubs=[];records={};ready=new Set();online=false;state={vehicles:[],fuel:[],cards:[],driverOverrides:{},frameworks:[]};}
 function subscribe(){
  stop();const current=epoch;
- const groups=member.role==='commander'?['vehicles']:['vehicles','fuel','cards','drivers'];
+ const groups=member.role==='commander'?['vehicles']:['vehicles','fuel','cards','drivers','frameworks'];
  groups.forEach(c=>{
   const q=member.role==='commander'?query(col(c),where('unit','==',member.scope)):col(c);
   unsubs.push(onSnapshot(q,{includeMetadataChanges:true},snap=>{
    if(current!==epoch)return;
    records[c]=Object.fromEntries(snap.docs.map(d=>[d.id,d.data()]));
    const items=snap.docs.map(d=>d.data());
-   if(c==='drivers')state.driverOverrides=Object.fromEntries(snap.docs.map(d=>[d.id,d.data()]));
+   if(c==='frameworks')state.frameworks=items;
+   else if(c==='drivers')state.driverOverrides=Object.fromEntries(snap.docs.map(d=>[d.id,d.data()]));
    else state[c]=items.sort((a,b)=>Number(a.id)-Number(b.id));
    ready.add(c);online=ready.size===groups.length&&!snap.metadata.fromCache;emit();
    if(c==='vehicles'&&!snap.metadata.fromCache){const id=Number(new URLSearchParams(location.search).get('vehicle'));if(id&&state.vehicles.some(v=>v.id===id)&&!window.__fleetDeepLinked){window.__fleetDeepLinked=true;window.openEdit(id);}}
@@ -143,13 +144,25 @@ async function loadUser(user){
   if(!same){window.fleetSession(member);subscribe();importBootstrap().catch(fail);}
  },fail);
 }
+async function createFramework(rawName){
+ if(!online||!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה וחיבור לשרת');
+ const name=FleetFrameworks.name(rawName),id=FleetFrameworks.id(name);
+ if(FR.some(f=>FleetFrameworks.name(f.name).toLocaleLowerCase('he')===name.toLocaleLowerCase('he')))throw new Error('מסגרת בשם זה כבר קיימת');
+ const target=path('frameworks',id),auditRef=doc(col('audit'));
+ await runTransaction(db,async tx=>{
+  if((await tx.get(target)).exists())throw new Error('מסגרת בשם זה כבר קיימת');
+  tx.set(target,{id,name,createdAt:serverTimestamp(),createdBy:auth.currentUser.uid});
+  tx.set(auditRef,{actor:auth.currentUser.uid,at:serverTimestamp(),action:'create-framework',frameworkId:id,name});
+ });
+ const saved=(await getDoc(target)).data();state.frameworks=(state.frameworks||[]).filter(f=>f.id!==id).concat(saved);emit();return id;
+}
 onAuthStateChanged(auth,user=>{if(!activating)loadUser(user).catch(fail);});
 window.FleetIO={
  login:async(number,password)=>{await setPersistence(auth,browserSessionPersistence);await signInWithEmailAndPassword(auth,loginEmail(number),password);},activate,hasInvitation:()=>!!invitationToken,loginError,
  async googleToken(kind){if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');const provider=new GoogleAuthProvider();provider.addScope(kind==='calendar'?'https://www.googleapis.com/auth/calendar.app.created':'https://www.googleapis.com/auth/drive.file');await setPersistence(googleAuth,inMemoryPersistence);const result=await signInWithPopup(googleAuth,provider);const token=GoogleAuthProvider.credentialFromResult(result).accessToken;await signOut(googleAuth);return token;},
  async getCalendarSettings(){if(!member||!auth.currentUser)throw new Error('נדרשת התחברות');const r=await getDoc(path('preferences',auth.currentUser.uid));return r.data()||{};},
  async setCalendarSettings(value){if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');await runTransaction(db,async tx=>{tx.set(path('preferences',auth.currentUser.uid),{calendarId:value.calendarId,lastSync:value.lastSync||'',updatedAt:serverTimestamp()});});},
- logout:()=>signOut(auth),save:commitState,refreshState:rebuild,importVehicles,
+ createFramework,logout:()=>signOut(auth),save:commitState,refreshState:rebuild,importVehicles,
  async upload(vehicle,file){if(!online||!member||member.role!=='officer')throw new Error('אין הרשאת העלאה');if(!/^(image\/|video\/|application\/pdf$)/.test(file.type)||file.size>30*1024*1024)throw new Error('ניתן להעלות תמונה, וידאו או PDF עד 30MB');const p=ROOT.join('/')+'/vehicles/'+vehicle.id+'/'+crypto.randomUUID();await uploadBytes(ref(storage,p),file,{contentType:file.type});return {path:p,name:file.name,type:file.type,at:new Date().toISOString()};},
  async mediaBlob(p){if(!p.startsWith(ROOT.join('/')+'/vehicles/'))throw new Error('נתיב קובץ אינו תקין');return getBlob(ref(storage,p),30*1024*1024);}
 };

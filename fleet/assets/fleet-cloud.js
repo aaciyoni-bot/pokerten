@@ -11,7 +11,7 @@ const loginEmail=number=>{number=String(number).trim();if(!/^\d{6,8}$/.test(numb
 const loginError=e=>({'auth/invalid-credential':'מספר אישי או סיסמה שגויים','auth/wrong-password':'מספר אישי או סיסמה שגויים','auth/user-not-found':'מספר אישי או סיסמה שגויים','auth/email-already-in-use':'החשבון כבר קיים. היכנסו עם הסיסמה האישית כדי להשלים הפעלה, או פנו למנהל.','auth/too-many-requests':'בוצעו ניסיונות רבים. המתינו לפני ניסיון נוסף.','auth/operation-not-allowed':'הכניסה בסיסמה עדיין לא הופעלה. יש לפנות למנהל המערכת.','auth/weak-password':'הסיסמה אינה עומדת בדרישות. בחרו סיסמה חזקה יותר.'})[e.code]||friendly(e);
 async function activate(number,password){
  if(!/^[a-f0-9]{64}$/.test(invitationToken))throw new Error('קישור ההפעלה אינו תקין');
- if(password.length<10)throw new Error('יש לבחור סיסמה בת 10 תווים לפחות');
+ if(password.length<8)throw new Error('יש להזין סיסמה בת 8 תווים לפחות');
  const email=loginEmail(number);activating=true;
  try{
   await setPersistence(auth,browserSessionPersistence);

@@ -12,8 +12,10 @@ test('activation binds the exact invited role and consumes invitation atomically
 test('an invitation for another personal number grants no access',async()=>{const f=fixture({invite:{loginEmail:'p2222222@fleet1894.invalid'}});await assert.rejects(()=>f.c.activate('1111111','example-password'),/אינו מתאים/);assert.equal(f.writes.length,0);});
 test('a consumed invitation cannot be reused by another UID',async()=>{const f=fixture({invite:{usedBy:'someone-else'}});await assert.rejects(()=>f.c.activate('1111111','example-password'),/כבר נוצל/);assert.equal(f.writes.length,0);});
 test('existing account must authenticate before completing activation',async()=>{const f=fixture({existing:true,wrongPassword:true});await assert.rejects(()=>f.c.activate('1111111','example-password'),e=>e.code==='auth/invalid-credential');assert.equal(f.writes.length,0);});
-test('short activation passwords are rejected before authentication',async()=>{const f=fixture();await assert.rejects(()=>f.c.activate('1111111','1234'),/10/);assert.equal(f.writes.length,0);});
+test('short activation passwords are rejected before authentication',async()=>{const f=fixture();await assert.rejects(()=>f.c.activate('1111111','1234'),/8/);assert.equal(f.writes.length,0);});
 test('greeting uses authenticated membership name and read-only users see no edit menu',()=>{
  const nodes={};let nav=false;const edit=[{},{}];const c=vm.createContext({sess:{name:'Example Viewer',role:'viewer'},ROLE_SUB:{viewer:'צפייה'},ROLE_CHIP:{viewer:'צפייה בלבד'},FRBY:{},$:s=>nodes[s]??={},document:{querySelectorAll:()=>edit},buildNav:()=>nav=true});
  const fn=html.match(/^function applyRole\(\).*$/m)[0];vm.runInContext(fn,c);c.applyRole();assert.match(nodes['#hdrSub'].textContent,/ברוך הבא, Example Viewer/);assert.ok(edit.every(b=>b.hidden));assert.ok(nav);
 });
+
+test('eight-character activation password is accepted without changing the invited role',async()=>{const f=fixture();await f.c.activate('1111111','11111111');assert.equal(f.loaded().uid,'example-user');assert.equal(f.data.get('members/example-user').role,'viewer');});

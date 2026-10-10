@@ -1,0 +1,12 @@
+// Merge inside service firebase.storage / match /b/{bucket}/o only after reading current live rules.
+// This addition is prepared, not yet published or verified.
+match /fleet1894/preview/vehicles/{vehicleId}/{fileId} {
+  function owner() { return request.auth != null && request.auth.token.get('email_verified',false) && request.auth.token.get('email','') == 'aaci.yoni@gmail.com'; }
+  function membership() { return firestore.get(/databases/(default)/documents/fleet1894/preview/access/$(request.auth.token.email)).data; }
+  function active() { return request.auth != null && request.auth.token.get('email_verified',false) && membership().active == true; }
+  function editor() { return owner() || (active() && membership().role in ['officer','sergeant']); }
+  function reader() { return owner() || (active() && (membership().role in ['officer','sergeant','viewer'] || (membership().role == 'commander' && membership().scope == firestore.get(/databases/(default)/documents/fleet1894/preview/vehicles/$(vehicleId)).data.unit))); }
+  allow read: if reader();
+  allow create: if editor() && request.resource.size <= 30 * 1024 * 1024 && request.resource.contentType.matches('image/.*|video/.*|application/pdf');
+  allow update, delete: if false;
+}

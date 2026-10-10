@@ -1,0 +1,62 @@
+    // Derech Eretz 1894: isolated preview data. Existing products are unchanged.
+    match /fleet1894/{env} {
+      function fSigned() { return env == 'preview' && request.auth != null && request.auth.token.get('email_verified', false); }
+      function fOwner() { return fSigned() && request.auth.token.get('email', '') == 'aaci.yoni@gmail.com'; }
+      function fMember() { return get(/databases/$(database)/documents/fleet1894/$(env)/access/$(request.auth.token.email)).data; }
+      function fActive() { return fSigned() && fMember().active == true; }
+      function fEditor() { return fOwner() || (fActive() && fMember().role in ['officer', 'sergeant']); }
+      function fReader() { return fOwner() || (fActive() && fMember().role in ['officer', 'sergeant', 'viewer']); }
+      function fUnit(unit) { return fReader() || (fActive() && fMember().role == 'commander' && fMember().scope == unit); }
+      function fVehicle(v, id) {
+        return v.id is int && string(v.id) == id && v.number is string && v.number.size() <= 14
+          && v.plateKey is string && v.plateKey.matches('^[0-9]{6,8}$')
+          && v.number.replace('[- ]', '') == v.plateKey
+          && v.type is string && v.type.size() <= 120
+          && v.unit in ['POOL','A','C','D','CO','DCO','HQ','LOG','CAR','TAG','TECH']
+          && v.status in ['כשיר','לא כשיר','בטיפול','ממתין לשיבוץ','במשימה','תקול','מושבת']
+          && v._updatedAt == request.time
+          && getAfter(/databases/$(database)/documents/fleet1894/$(env)/plates/$(v.plateKey)).data.vehicleId == id;
+      }
+      match /access/{email} {
+        allow get: if fOwner() || (fSigned() && request.auth.token.email == email);
+        allow list: if fOwner();
+        allow create, update: if fOwner()
+          && request.resource.data.keys().hasOnly(['name','role','scope','active','owner'])
+          && request.resource.data.role in ['officer','sergeant','commander','viewer']
+          && request.resource.data.active is bool
+          && request.resource.data.owner == false
+          && email != 'aaci.yoni@gmail.com';
+        allow delete: if false;
+      }
+      match /vehicles/{id} {
+        allow get: if fEditor() || fUnit(resource.data.unit);
+        allow list: if fUnit(resource.data.unit);
+        allow create: if fEditor() && fVehicle(request.resource.data,id) && request.resource.data._rev == 1;
+        allow update: if fEditor() && fVehicle(request.resource.data,id) && request.resource.data._rev == resource.data._rev + 1;
+        allow delete: if false;
+      }
+      match /plates/{number} {
+        allow read: if fEditor();
+        allow create, update: if fEditor() && request.resource.data.keys().hasOnly(['vehicleId'])
+          && getAfter(/databases/$(database)/documents/fleet1894/$(env)/vehicles/$(request.resource.data.vehicleId)).data.plateKey == number;
+        allow delete: if fEditor()
+          && getAfter(/databases/$(database)/documents/fleet1894/$(env)/vehicles/$(resource.data.vehicleId)).data.plateKey != number;
+      }
+      match /drivers/{id} {
+        allow read: if fEditor();
+        allow create: if fEditor() && request.resource.data._rev == 1 && request.resource.data._updatedAt == request.time;
+        allow update: if fEditor() && request.resource.data._rev == resource.data._rev + 1 && request.resource.data._updatedAt == request.time;
+        allow delete: if false;
+      }
+      match /{kind}/{id} {
+        allow read: if kind in ['fuel','cards'] && fReader();
+        allow create: if kind in ['fuel','cards'] && fEditor() && request.resource.data._rev == 1 && request.resource.data._updatedAt == request.time;
+        allow update: if kind in ['fuel','cards'] && fEditor() && request.resource.data._rev == resource.data._rev + 1 && request.resource.data._updatedAt == request.time;
+      }
+      match /bootstrap/{id} { allow read, write: if fOwner(); }
+      match /audit/{id} {
+        allow read: if fOwner();
+        allow create: if fEditor() && request.resource.data.actor == request.auth.uid && request.resource.data.at == request.time;
+        allow update, delete: if false;
+      }
+    }

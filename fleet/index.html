@@ -354,7 +354,8 @@ body:has(#app.hidden){padding-bottom:0}.login .p{font-size:14px;line-height:1.7}
     <button onclick="closeMenu();go('maintenance')">🗓️ <span>יומן טיפולים</span></button>
     <button data-edit-only="true" onclick="closeMenu();exportGoogleReport()">📗 <span>דוח מלא ל־Google Sheets</span></button>
     <button data-edit-only="true" onclick="closeMenu();downloadBackup()">💾 <span>גיבוי נתונים</span></button>
-    <button data-edit-only="true" onclick="closeMenu();openImport()">♻️ <span>ייבוא רכבים מקובץ</span></button>
+    <button data-edit-only="true" onclick="closeMenu();openImport()">♻️ <span>ייבוא נתוני קובץ</span></button>
+    <button data-edit-only="true" onclick="closeMenu();openWorkbookReport()">📚 <span>נתוני הקבצים ובדיקת התאמות</span></button>
     <button class="danger" onclick="closeMenu();logout()">🚪 <span>התנתקות</span></button>
   </div>
 
@@ -635,7 +636,7 @@ function renderCompany(){
 }
 
 /* ===== DRIVERS ===== */
-let drvSearch='';
+let drvSearch='',drvLimit=120;
 function renderDrivers(){
   const q=drvSearch.trim(), dg=q.replace(/\D/g,'');
   let list=DRIVERS.filter(d=>{ if(!q) return true;
@@ -645,8 +646,8 @@ function renderDrivers(){
   let h=safetyCard(safetyBase,'תדריך בטיחות חודשי',true);
   h+=`<div class="search"><span class="ic">🔍</span><input placeholder="חיפוש נהג — שם / מ״א / טלפון" value="${esc(drvSearch)}" oninput="drvSearch=this.value;renderDrivers();focusSearch()"></div>`;
   h+=`<div class="section-h"><h2>נהגים <span style="color:var(--mut);font-weight:600;font-size:13px">(${list.length})</span></h2></div>`;
-  h+=list.slice(0,120).map(driverCard).join('')||emptyBox('לא נמצאו נהגים');
-  if(list.length>120) h+=`<div class="empty">מוצגים 120 ראשונים — צמצם בחיפוש</div>`;
+  h+=list.slice(0,drvLimit).map(driverCard).join('')||emptyBox('לא נמצאו נהגים');
+  if(list.length>drvLimit) h+=`<button class="btn ghost" onclick="drvLimit+=120;renderDrivers()">הצג נהגים נוספים (${list.length-drvLimit})</button>`;
   $('#screen').innerHTML=h;
 }
 function focusSearch(){ const i=$('#screen .search input'); if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);} }
@@ -852,6 +853,7 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 <script src="assets/fleet-frameworks.js"></script>
 <script src="assets/fleet-mobile.js"></script>
 <script src="assets/fleet-planner.js"></script>
+<script src="assets/fleet-workbook.js"></script>
 <script type="module" src="assets/fleet-cloud.js"></script>
 
 </html>

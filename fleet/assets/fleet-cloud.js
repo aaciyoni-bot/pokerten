@@ -131,6 +131,67 @@ async function importBootstrap(){
  await runTransaction(db,async tx=>{const current=await tx.get(path('bootstrap','initial-fleet'));if(current.exists())tx.update(path('bootstrap','initial-fleet'),{completed:true,completedAt:serverTimestamp(),...result});});
  window.toast('רשימת הרכבים נטענה: '+result.added+' נוספו');
 }
+let workbookRunning=null;
+async function workbookJobs(){
+ if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');
+ const snap=await getDocs(col('bootstrap'));
+ return snap.docs.map(d=>({...d.data(),documentId:d.id})).filter(j=>j.schema==='fleet-workbook-v1');
+}
+async function stageWorkbook(input){
+ if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');
+ const batch=FleetWorkbook.validate(input),payload=JSON.stringify(batch);
+ if(new TextEncoder().encode(payload).length>800000)throw new Error('קובץ גדול מדי לייבוא זה');
+ await runTransaction(db,async tx=>{const target=path('bootstrap',batch.id),existing=await tx.get(target);if(existing.exists()){if(existing.data().payload!==payload)throw new Error('מזהה הייבוא כבר קיים עם תוכן אחר');return;}tx.set(target,{schema:batch.schema,payload,completed:false,createdAt:serverTimestamp(),createdBy:auth.currentUser.uid});});
+ await importPendingWorkbooks();
+}
+async function importWorkbook(input){
+ if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');
+ const batch=FleetWorkbook.validate(input),uid=auth.currentUser.uid,verified=[];
+ const result={drivers:0,vehicles:0,createdDrivers:0,createdVehicles:0,skipped:0,conflicts:0};
+ const assertSession=()=>{if(!member||member.role!=='officer'||auth.currentUser?.uid!==uid)throw new Error('ההתחברות השתנתה; הייבוא נעצר וניתן להמשיכו');};
+ for(const kind of ['drivers','vehicles'])for(const item of batch[kind]){
+  assertSession();
+  const outcome=await runTransaction(db,async tx=>{
+   assertSession();let id=kind==='drivers'?item.pn:item.number;
+   let plate=null;
+   if(kind==='vehicles'){plate=await tx.get(path('plates',item.number));if(plate.exists())id=plate.data().vehicleId;}
+   const target=path(kind,id),existing=await tx.get(target),before=existing.exists()?existing.data():null;
+   if(kind==='vehicles'&&before&&before.plateKey!==item.number)throw new Error('מספר הרכב השתנה; יש לבדוק את הייבוא');
+   if(kind==='vehicles'&&!before&&!item.create)throw new Error('רכב קיים חסר במסד; הייבוא נעצר כדי לא ליצור כפילות');
+   if(kind==='vehicles'&&!before&&plate?.exists())throw new Error('הפניית רכב חסרה; יש לתקן לפני ייבוא');
+   let value=FleetWorkbook.merge(before,item,kind,batch.id);
+   if(!value)return {id,skipped:true,conflicts:before.importReview?.length||0};
+   if(kind==='vehicles'&&!before)value={...value,id:Number(id),number:item.number,plateKey:item.number,prefix:item.number.length===6?'צ-':'ל.ז-',type:item.type,unit:'POOL',status:item.create.status==='לא כשיר'?'לא כשיר':'ממתין לשיבוץ',drivers:[],media:[],services:[],history:[]};
+   if(kind==='vehicles')value.history=[...(value.history||[]),{at:new Date().toISOString(),action:'ייבוא נתוני קובץ',by:member.name,note:batch.filename,importId:batch.id}];
+   tx.set(target,{...value,_rev:(before?._rev||0)+1,_updatedAt:serverTimestamp()});
+   if(kind==='vehicles')tx.set(path('plates',item.number),{vehicleId:id});
+   // The immutable audit stores the complete pre-import record for recovery.
+   tx.set(path('audit',batch.id+'-'+kind+'-'+id),{actor:uid,at:serverTimestamp(),action:'workbook-import',batch:batch.id,changes:[{collection:kind,id,before:before?clean(before):null,after:clean(value)}]});
+   return {id,created:!before,conflicts:value.importReview.length};
+  });
+  verified.push({kind,id:outcome.id});result[kind]++;result.conflicts+=outcome.conflicts;
+  if(outcome.created)result[kind==='drivers'?'createdDrivers':'createdVehicles']++;
+  if(outcome.skipped)result.skipped++;
+ }
+ // Verify server reads after every acknowledged write, before marking complete.
+ for(const target of verified){assertSession();const saved=await getDoc(path(target.kind,target.id));if(!saved.exists()||!saved.data()._workbookImports?.includes(batch.id))throw new Error('לא התקבל אישור לשמירת כל הרשומות; אפשר להמשיך ייבוא');}
+ return result;
+}
+async function importPendingWorkbooks(){
+ if(!member||member.role!=='officer')return;
+ if(workbookRunning)return workbookRunning;
+ workbookRunning=(async()=>{
+  const jobs=await workbookJobs();
+  for(const job of jobs.filter(j=>!j.completed)){
+   const input=JSON.parse(job.payload);if(input.id!==job.documentId)throw new Error('מזהה קובץ אינו תואם');
+   window.toast('מייבא נתוני הקובץ; יש להשאיר את המסך פתוח');
+   const result=await importWorkbook(input);
+   await runTransaction(db,async tx=>{const current=await tx.get(path('bootstrap',job.documentId));if(current.exists()&&current.data().payload===job.payload)tx.update(path('bootstrap',job.documentId),{completed:true,completedAt:serverTimestamp(),result});else throw new Error('קובץ המקור השתנה במהלך הייבוא');});
+   window.toast('הייבוא הושלם: '+result.drivers+' כרטיסי נהג ו־'+result.vehicles+' רכבים');
+  }
+ })();
+ try{return await workbookRunning;}finally{workbookRunning=null;}
+}
 async function loadUser(user){
  epoch++;if(memberUnsub){memberUnsub();memberUnsub=null;}stop();member=null;window.fleetSession(null);
  if(!user)return;
@@ -141,7 +202,7 @@ async function loadUser(user){
   const next={role:m.role,name:m.name,scope:null,owner:false};
   if(!['officer','viewer'].includes(next.role)){fail(new Error('הרשאת הגישה אינה תקינה'));return;}
   const same=member&&JSON.stringify(member)===JSON.stringify(next);member=next;
-  if(!same){window.fleetSession(member);subscribe();importBootstrap().catch(fail);}
+  if(!same){window.fleetSession(member);subscribe();importBootstrap().then(importPendingWorkbooks).catch(e=>window.toast('ייבוא לא הושלם: '+friendly(e)));}
  },fail);
 }
 async function createFramework(rawName){
@@ -162,7 +223,7 @@ window.FleetIO={
  async googleToken(kind){if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');const provider=new GoogleAuthProvider();provider.addScope(kind==='calendar'?'https://www.googleapis.com/auth/calendar.app.created':'https://www.googleapis.com/auth/drive.file');await setPersistence(googleAuth,inMemoryPersistence);const result=await signInWithPopup(googleAuth,provider);const token=GoogleAuthProvider.credentialFromResult(result).accessToken;await signOut(googleAuth);return token;},
  async getCalendarSettings(){if(!member||!auth.currentUser)throw new Error('נדרשת התחברות');const r=await getDoc(path('preferences',auth.currentUser.uid));return r.data()||{};},
  async setCalendarSettings(value){if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');await runTransaction(db,async tx=>{tx.set(path('preferences',auth.currentUser.uid),{calendarId:value.calendarId,lastSync:value.lastSync||'',updatedAt:serverTimestamp()});});},
- createFramework,logout:()=>signOut(auth),save:commitState,refreshState:rebuild,importVehicles,
+ createFramework,logout:()=>signOut(auth),save:commitState,refreshState:rebuild,importVehicles,workbookJobs,importPendingWorkbooks,stageWorkbook,
  async upload(vehicle,file){if(!online||!member||member.role!=='officer')throw new Error('אין הרשאת העלאה');if(!/^(image\/|video\/|application\/pdf$)/.test(file.type)||file.size>30*1024*1024)throw new Error('ניתן להעלות תמונה, וידאו או PDF עד 30MB');const p=ROOT.join('/')+'/vehicles/'+vehicle.id+'/'+crypto.randomUUID();await uploadBytes(ref(storage,p),file,{contentType:file.type});return {path:p,name:file.name,type:file.type,at:new Date().toISOString()};},
  async mediaBlob(p){if(!p.startsWith(ROOT.join('/')+'/vehicles/'))throw new Error('נתיב קובץ אינו תקין');return getBlob(ref(storage,p),30*1024*1024);}
 };

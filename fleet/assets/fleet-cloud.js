@@ -78,6 +78,8 @@ async function commitState(next){
    const ch=changes[i],actual=reads[i];
    if(actual.exists()!==!!ch.before||(actual.exists()&&(actual.data()._rev||0)!==(ch.before._rev||0)))throw new Error('הרשומה השתנתה במכשיר אחר. הנתונים רועננו; יש לפתוח שוב ולנסות.');
    if(ch.c==='vehicles'){
+    ch.value=FleetVehicleData.prepare(ch.before,ch.value,{name:member.name||'',uid:auth.currentUser.uid},new Date().toISOString(),crypto.randomUUID());
+    if(FleetVehicleData.enteringService(ch.before,ch.value))ch.value.serviceDispatch.recordedAt=serverTimestamp();
     const key=String(ch.value.number||'').replace(/\D/g,'');
     if(!/^\d{6,8}$/.test(key))throw new Error('מספר הרכב חייב לכלול 6–8 ספרות');
     ch.value.plateKey=key;
@@ -110,7 +112,8 @@ async function importVehicles(input){
  for(const item of items){
   const key=String(item.number).replace(/\D/g,''),id=String(item.id||Number(key));
   if(!Number.isSafeInteger(Number(id))||Number(id)<=0||!FRBY[item.unit]||!['כשיר','לא כשיר','בטיפול','ממתין לשיבוץ','במשימה','תקול','מושבת'].includes(item.status))throw new Error('רשומת ייבוא אינה תקינה');
-  const value={...item,id:Number(id),plateKey:key,drivers:item.drivers||[],history:item.history||[],services:item.services||[],media:item.media||[]};
+  const value=FleetVehicleData.prepare(null,{...item,id:Number(id),plateKey:key,drivers:item.drivers||[],history:item.history||[],services:item.services||[],media:item.media||[]},{name:member.name||'',uid:auth.currentUser.uid},new Date().toISOString(),crypto.randomUUID());
+  if(FleetVehicleData.enteringService(null,value))value.serviceDispatch.recordedAt=serverTimestamp();
   const auditRef=doc(col('audit'));
   const inserted=await runTransaction(db,async tx=>{
    const vehicle=await tx.get(path('vehicles',id)),plate=await tx.get(path('plates',key));
@@ -162,6 +165,7 @@ async function importWorkbook(input){
    let value=FleetWorkbook.merge(before,item,kind,batch.id);
    if(!value)return {id,skipped:true,conflicts:before.importReview?.length||0};
    if(kind==='vehicles'&&!before)value={...value,id:Number(id),number:item.number,plateKey:item.number,prefix:item.number.length===6?'צ-':'ל.ז-',type:item.type,unit:'POOL',status:item.create.status==='לא כשיר'?'לא כשיר':'ממתין לשיבוץ',drivers:[],media:[],services:[],history:[]};
+   if(kind==='vehicles')value=FleetVehicleData.prepare(before,value,{name:member.name||'',uid},new Date().toISOString(),batch.id+'-'+id);
    if(kind==='vehicles')value.history=[...(value.history||[]),{at:new Date().toISOString(),action:'ייבוא נתוני קובץ',by:member.name,note:batch.filename,importId:batch.id}];
    tx.set(target,{...value,_rev:(before?._rev||0)+1,_updatedAt:serverTimestamp()});
    if(kind==='vehicles')tx.set(path('plates',item.number),{vehicleId:id});
@@ -219,6 +223,7 @@ async function createFramework(rawName){
 }
 onAuthStateChanged(auth,user=>{if(!activating)loadUser(user).catch(fail);});
 window.FleetIO={
+ async freshState(){if(!member)throw new Error('נדרשת התחברות');const groups=['vehicles','frameworks',...(member.role==='officer'?['drivers','fuel','cards']:[])],out={vehicles:[],frameworks:[],driverOverrides:{},fuel:[],cards:[]};for(const kind of groups){const snap=await getDocs(col(kind));if(snap.metadata.fromCache)throw new Error('אין חיבור למסד לקבלת דוח עדכני');if(kind==='drivers')out.driverOverrides=Object.fromEntries(snap.docs.map(d=>[d.id,d.data()]));else out[kind]=snap.docs.map(d=>d.data());}return out;},
  login:async(number,password)=>{await setPersistence(auth,browserSessionPersistence);await signInWithEmailAndPassword(auth,loginEmail(number),password);},activate,hasInvitation:()=>!!invitationToken,loginError,
  async googleToken(kind){if(!member||member.role!=='officer')throw new Error('נדרשת הרשאת עריכה');const provider=new GoogleAuthProvider();provider.addScope(kind==='calendar'?'https://www.googleapis.com/auth/calendar.app.created':'https://www.googleapis.com/auth/drive.file');await setPersistence(googleAuth,inMemoryPersistence);const result=await signInWithPopup(googleAuth,provider);const token=GoogleAuthProvider.credentialFromResult(result).accessToken;await signOut(googleAuth);return token;},
  async getCalendarSettings(){if(!member||!auth.currentUser)throw new Error('נדרשת התחברות');const r=await getDoc(path('preferences',auth.currentUser.uid));return r.data()||{};},

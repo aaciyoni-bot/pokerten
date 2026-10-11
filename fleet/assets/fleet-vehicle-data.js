@@ -1,0 +1,50 @@
+/* Vehicle editing invariants shared by the UI, cloud saves and export. */
+const FleetVehicleData=(()=>{
+ const equipment=[['spareWheel','גלגל ספייר'],['reflectiveVest','אפוד זוהר'],['jack','ג׳ק'],['jackHandle','ידית ג׳ק'],['warningTriangle','משולש'],['wheelWrench','מפתח גלגלים']];
+ const stateLabel=x=>x===true?'קיים':x===false?'חסר':'טרם נבדק';
+ const enteringService=(before,after)=>after.status==='בטיפול'&&before?.status!=='בטיפול';
+ function prepare(before,after,actor,at,id){
+  const v=JSON.parse(JSON.stringify(after));
+  if(v.km!==null&&v.km!==undefined&&(!Number.isFinite(v.km)||v.km<0))throw new Error('יש להזין ק״מ תקין');
+  if(v.equipment)for(const [key]of equipment)if(v.equipment[key]!==undefined&&v.equipment[key]!==null&&typeof v.equipment[key]!=='boolean')throw new Error('סימון ציוד אינו תקין');
+  if(enteringService(before,v)){
+   if(v.serviceDispatch?.form1028Completed!==true||!v.serviceDispatch.id||v.serviceDispatch.id===before?.serviceDispatch?.id)throw new Error('לפני יציאה לטיפול חובה לסמן שמולא טופס תחמושת 1028');
+   v.serviceDispatch={id:v.serviceDispatch.id,form1028Completed:true,at,by:actor.name,actor:actor.uid};
+   v.serviceDispatches=[...(before?.serviceDispatches||[]),{...v.serviceDispatch}];
+  }
+  if((before?.km??null)!==(v.km??null)){
+   v.mileageHistory=[...(before?.mileageHistory||[]),{id,at,by:actor.name,previous:before?.km??null,km:v.km??null,note:typeof v.kmChangeNote==='string'?v.kmChangeNote:''}];
+   v.kmUpdatedAt=at;v.kmUpdatedBy=actor.name;
+  }
+  delete v.kmChangeNote;
+  return v;
+ }
+ function mileageTabs(vehicles,frameworks){
+  const vs=vehicles.filter(v=>!v.deleted),fr=v=>frameworks[v.unit]?.name||v.unit;
+  return [{title:'ק״מ רכבים',rows:[['מספר רכב','שם רכב','סוג','מסגרת','ק״מ נוכחי','עודכן בתאריך','עודכן על ידי','ק״מ טיפול הבא','תאריך טיפול הבא'],...vs.map(v=>[v.number,v.displayName||v.type,v.type,fr(v),v.km??'',v.kmUpdatedAt||'',v.kmUpdatedBy||'',v.nextServiceKm??'',v.nextServiceDate||''])]},
+   {title:'היסטוריית ק״מ',rows:[['מספר רכב','שם רכב','מועד','ק״מ קודם','ק״מ מעודכן','שינוי בק״מ','עודכן על ידי','הערה'],...vehicles.flatMap(v=>(v.mileageHistory||[]).map(h=>[v.number,v.displayName||v.type,h.at,h.previous??'',h.km??'',h.previous!=null&&h.km!=null?h.km-h.previous:'',h.by||'',h.note||'']))]}];
+ }
+ return {equipment,stateLabel,enteringService,prepare,mileageTabs};
+})();
+if(typeof module!=='undefined')module.exports=FleetVehicleData;
+
+if(typeof window!=='undefined'){
+ function textField(id,label,value,multiline=false){return `<div class="field"><label for="${id}">${label}</label>${multiline?`<textarea id="${id}" rows="3">${esc(value||'')}</textarea>`:`<input id="${id}" value="${esc(value||'')}" autocomplete="off">`}</div>`;}
+ window.serviceForm1028=prefix=>`<div class="form1028"><label><input type="checkbox" id="${prefix}_1028"> <span>✓ מולא טופס תחמושת 1028 לפני יציאת הרכב לטיפול</span></label></div>`;
+ window.confirmServiceDispatch=function(before,next,checked){if(FleetVehicleData.enteringService(before,next)){if(!checked)throw new Error('חובה לסמן שמולא טופס תחמושת 1028');next.serviceDispatch={id:crypto.randomUUID(),form1028Completed:true};}return next;};
+ window.extraVehicleFields=function(v){return `<h4>שם ואפיון הרכב</h4>${textField('e_name','שם הרכב',v.displayName||v.type)}${textField('e_description','אפיון מדויק של הרכב',v.description,true)}${textField('e_slot','ייעוד / משבצת',v.slot)}<div class="field"><label for="e_lastService">תאריך טיפול אחרון</label><input id="e_lastService" type="date" value="${esc(v.lastService||'')}"></div><div class="field"><label for="e_serviceKind">משמעות תאריך הטיפול הבא</label><select id="e_serviceKind"><option value="appointment" ${v.serviceDateKind!=='deadline'?'selected':''}>מועד מתוכנן</option><option value="deadline" ${v.serviceDateKind==='deadline'?'selected':''}>מועד אחרון לביצוע</option></select></div><div class="srow">${textField('e_fuelcode','קוד דלקן',v.fuelCode)}${textField('e_keypad','קודנית',v.keypadCode)}</div><fieldset class="equipment-checklist"><legend>כלי נהג — בדיקה פרטנית</legend>${FleetVehicleData.equipment.map(([key,label])=>`<fieldset class="equipment-item"><legend>${label}</legend>${[[true,'קיים ✓'],[false,'חסר'],[null,'טרם נבדק']].map(([value,title])=>`<label><input type="radio" name="eq_${key}" value="${value===null?'unknown':value}" ${(v.equipment?.[key]??null)===value?'checked':''}>${title}</label>`).join('')}</fieldset>`).join('')}</fieldset>${textField('e_tools','הערות כלי נהג',v.driverTools,true)}<div class="srow"><div class="field"><label for="e_extinguishers">מספר מטפים</label><input id="e_extinguishers" type="number" min="0" step="1" value="${v.extinguisherCount??''}"></div><div class="field"><label for="e_intervalkm">מחזור טיפול בק״מ</label><input id="e_intervalkm" type="number" min="1" value="${v.serviceIntervalKm??''}"></div></div>${textField('e_photoNote','הערת בדיקה / צילום',v.inspectionPhotoNote)}${textField('e_serviceNote','הערת יעד טיפול',v.nextServiceNote)}${textField('e_kmNote','הערה לעדכון ק״מ', '',true)}${serviceForm1028('e')}<p>האישור נדרש בכל מעבר חדש ל״בטיפול״.</p>`;};
+ window.readExtraVehicleFields=function(v){
+  const equipment=Object.fromEntries(FleetVehicleData.equipment.map(([key])=>{const x=document.querySelector('input[name="eq_'+key+'"]:checked')?.value;return [key,x==='true'?true:x==='false'?false:null];}));
+  const ext=$('#e_extinguishers').value,interval=$('#e_intervalkm').value;
+  if(ext!==''&&(!Number.isInteger(Number(ext))||Number(ext)<0))throw new Error('מספר מטפים אינו תקין');
+  if(interval!==''&&(!Number.isFinite(Number(interval))||Number(interval)<=0))throw new Error('מחזור טיפול בק״מ אינו תקין');
+  return {...v,slot:$('#e_slot').value.trim(),lastService:$('#e_lastService').value,serviceDateKind:$('#e_serviceKind').value,displayName:$('#e_name').value.trim(),description:$('#e_description').value.trim(),fuelCode:$('#e_fuelcode').value.trim(),keypadCode:$('#e_keypad').value.trim(),driverTools:$('#e_tools').value.trim(),extinguisherCount:ext===''?null:Number(ext),serviceIntervalKm:interval===''?null:Number(interval),inspectionPhotoNote:$('#e_photoNote').value.trim(),nextServiceNote:$('#e_serviceNote').value.trim(),kmChangeNote:$('#e_kmNote').value.trim(),equipment};
+ };
+ window.vehicleExtraSummary=function(v){return `<div class="detail-block"><h4>${esc(v.displayName||v.type)}</h4><p style="white-space:pre-wrap">${esc(v.description||'טרם הוזן אפיון')}</p><div class="equipment-summary">${FleetVehicleData.equipment.map(([k,l])=>`<p>${l}: <b>${FleetVehicleData.stateLabel(v.equipment?.[k])}</b></p>`).join('')}</div><p>קוד דלקן: <b dir="ltr">${esc(v.fuelCode||'—')}</b> · קודנית: <b dir="ltr">${esc(v.keypadCode||'—')}</b></p></div>`;};
+ window.vehicleMileageDetails=function(v){return `<details class="detail-block"><summary>היסטוריית ק״מ (${(v.mileageHistory||[]).length})</summary>${(v.mileageHistory||[]).slice().reverse().map(h=>`<p>${esc(formatTime(h.at))} · ${h.previous??'—'} ← ${h.km??'—'} ק״מ · ${esc(h.by||'')}<br>${esc(h.note||'')}</p>`).join('')||'<p>טרם נרשמו עדכוני ק״מ</p>'}</details><details class="detail-block"><summary>יציאות לטיפול ואישור 1028 (${(v.serviceDispatches||[]).length})</summary>${(v.serviceDispatches||[]).slice().reverse().map(h=>`<p>✓ טופס 1028 מולא · ${esc(formatTime(h.at))} · ${esc(h.by)}</p>`).join('')||'<p>טרם נרשמה יציאה מאושרת לטיפול</p>'}</details>`;};
+ window.updateMileage=function(id){if(!guard())return;const v=structuredClone(vehicleById(id));openSheet('עדכון ק״מ — '+(v.displayName||v.type)+' '+v.number,`<div class="field"><label for="quickKm">ק״מ נוכחי</label><input id="quickKm" type="number" min="0" inputmode="numeric" value="${v.km??''}"></div>${textField('quickKmNote','הערה', '',true)}<label class="form1028"><input type="checkbox" id="kmDownload">הורד דוח אקסל לאחר השמירה</label>`,async()=>{const raw=$('#quickKm').value,km=Number(raw),download=$('#kmDownload').checked;if(raw===''||!Number.isFinite(km)||km<0)throw new Error('יש להזין ק״מ תקין');v.km=km;v.kmChangeNote=$('#quickKmNote').value.trim();journal(v,'עדכון ק״מ',{km,note:v.kmChangeNote});S.vehicles=S.vehicles.map(x=>x.id===id?v:x);await save();closeSheet();render();if(download)await downloadFleetExcel('mileage');});};
+ window.dispatchToService=function(id){if(!guard())return;const original=vehicleById(id),v=structuredClone(original);if(v.status==='בטיפול'){toast('הרכב כבר בטיפול');return;}openSheet('יציאה לטיפול — '+v.number,`${serviceForm1028('dispatch')}${textField('dispatchNote','פרטי הטיפול / המוסך','',true)}`,async()=>{v.status='בטיפול';confirmServiceDispatch(original,v,$('#dispatch_1028').checked);journal(v,'יציאה לטיפול',{note:$('#dispatchNote').value.trim()+' · טופס 1028 מולא'});S.vehicles=S.vehicles.map(x=>x.id===id?v:x);await save();closeSheet();render();});$('#_sv').textContent='אישור יציאה לטיפול';};
+ const oldRow=fleetVehicleRow;
+ fleetVehicleRow=function(v){let html=oldRow(v);if(canEdit())html=html.replace('</div></details>',`<button onclick="updateMileage(${v.id})">עדכון ק״מ</button><button onclick="dispatchToService(${v.id})">יציאה לטיפול</button></div></details>`);return html;};
+ const css=document.createElement('style');css.textContent='.equipment-checklist{border:1px solid var(--line);border-radius:12px;padding:12px;margin:18px 0}.equipment-item{display:flex;flex-wrap:wrap;gap:8px;border:0;border-bottom:1px solid var(--line);padding:8px 0;margin:4px 0}.equipment-item legend{font-weight:700;padding-top:12px}.equipment-item label,.form1028 label,.form1028{display:flex;align-items:center;gap:8px;min-height:44px}.equipment-item input,.form1028 input{width:20px!important;height:20px;flex:0 0 20px;accent-color:var(--brand)}.equipment-item label{border:1px solid var(--line);border-radius:8px;padding:6px 10px}.equipment-item label:has(input:checked){background:var(--brand-l);border-color:var(--brand)}.equipment-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.form1028{padding:10px;border:1px solid var(--line);border-radius:8px;margin:12px 0}@media(max-width:420px){.equipment-item label{padding:6px}.equipment-summary{grid-template-columns:1fr}}';document.head.append(css);
+}

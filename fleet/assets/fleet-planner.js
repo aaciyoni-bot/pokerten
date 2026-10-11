@@ -10,7 +10,7 @@ const FleetPlanner = (()=>{
   const generic=items=>{const keys=[...new Set(items.flatMap(x=>Object.keys(x)))].filter(k=>!k.startsWith('_'));return [keys.length?keys:['אין רשומות'],...items.map(x=>keys.map(k=>typeof x[k]==='object'?JSON.stringify(x[k]):x[k]??''))];};
   const head=['מספר רכב','סוג מזהה','סוג רכב','מסגרת','נהג','אחראי','ק״מ','סטטוס','הערות','טיפול אחרון','טיפול הבא','ק״מ טיפול הבא','טסט','מחזור טיפול בימים','מוסתר','נמחק'];
   const row=v=>[v.number,v.prefix,v.type,fr(v.unit),driver(v),v.commander||'',v.km??'',v.status,v.notes||'',v.lastService||'',dueDate(v),v.nextServiceKm??'',v.testExpiry||'',v.frequency||'',v.hiddenCard?'כן':'לא',v.deleted?'כן':'לא'];
-  return [
+  const tabs=[
    {title:'סיכום',rows:[['מדד','ערך'],['תאריך דוח',today],['רכבים פעילים',active.length],['כשירים',active.filter(v=>v.status==='כשיר').length],['בטיפול',active.filter(v=>v.status==='בטיפול').length],['לא כשירים',active.filter(v=>['לא כשיר','תקול','מושבת'].includes(v.status)).length],['טיפול באיחור או ק״מ הגיע',active.filter(v=>{const d=due(v,today);return d.late||d.kmDue;}).length],...Object.entries(frameworks).map(([id,f])=>[f.name,active.filter(v=>v.unit===id).length])]},
    {title:'רכבים',rows:[head,...active.map(row)]},{title:'רכבים שנמחקו',rows:[head,...vs.filter(v=>v.deleted).map(row)]},
    {title:'טיפולים',rows:nested('services',['תאריך','ק״מ בטיפול','פירוט','נרשם על ידי','מועד רישום'],r=>[r.date,r.km??'',r.note||'',r.by||'',r.at||''])},
@@ -21,6 +21,8 @@ const FleetPlanner = (()=>{
    {title:'מלאי תזקיקים',rows:generic(state.fuel)}, {title:'כרטיסי דלק',rows:generic(state.cards)},
    {title:'נתוני רכב מלאים',rows:generic(vs)}
   ];
+  if(typeof FleetVehicleData!=='undefined'){tabs.push(...FleetVehicleData.mileageTabs(vs,frameworks));if(typeof FleetExcel!=='undefined')tabs.push(FleetExcel.equipmentTab(vs,frameworks,FleetVehicleData));}
+  return tabs;
  }
  function spreadsheet(tabs,title){return {properties:{title,locale:'he_IL',timeZone:'Asia/Jerusalem'},sheets:tabs.map((tab,i)=>({properties:{sheetId:i,title:tab.title,rightToLeft:true,gridProperties:{rowCount:Math.max(50,tab.rows.length+1),columnCount:Math.max(1,...tab.rows.map(r=>r.length)),frozenRowCount:1}},data:[{startRow:0,startColumn:0,rowData:tab.rows.map((row,n)=>({values:row.map(value=>{if(String(value??'').length>49000)throw new Error('שדה גדול מדי ל־Google Sheets; יש להשתמש בגיבוי המלא');return {userEnteredValue:typeof value==='number'?{numberValue:value}:{stringValue:String(value??'')},userEnteredFormat:{wrapStrategy:'WRAP',textFormat:{bold:n===0},...(n===0?{backgroundColor:{red:.78,green:.9,blue:.65}}:{})}};})}))}]}))};}
  function calendarEvent(v,frameworks){const date=dueDate(v);if(v.deleted||!date)return null;return {id:'f1894'+String(v.id)+'d'+date.replace(/-/g,''),summary:'טיפול · '+v.type+' '+v.number,description:(frameworks[v.unit]?.name||v.unit)+(v.nextServiceKm!=null?'\nק״מ יעד: '+v.nextServiceKm:'')+'\nהנתונים מתעדכנים ממערכת דרך ארץ. שינוי מועד יש לבצע במערכת.',start:{date},end:{date:addDays(date,1)},extendedProperties:{private:{fleetApp:'derech-eretz-preview',vehicleId:String(v.id)}},reminders:{useDefault:false,overrides:[{method:'popup',minutes:1440}]}};}

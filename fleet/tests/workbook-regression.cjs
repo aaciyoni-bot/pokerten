@@ -8,7 +8,7 @@ function fixture(){
  const vehicle={id:77,number:'123-456',plateKey:'123456',type:'Synthetic type',unit:'A',status:'כשיר',km:600,drivers:['1111111'],services:[{date:'2026-01-01'}],history:[],_rev:4};
  const data=new Map([['vehicles/77',structuredClone(vehicle)],['plates/123456',{vehicleId:'77'}]]),writes=[];
  const snap=p=>({exists:()=>data.has(p),data:()=>structuredClone(data.get(p))});
- const c=vm.createContext({FleetWorkbook:importer,member:{role:'officer',name:'Editor'},auth:{currentUser:{uid:'editor'}},db:{},path:(kind,id)=>kind+'/'+id,serverTimestamp:()=>({server:true}),clean:o=>{const r={...o};delete r._rev;delete r._updatedAt;return r;},getDoc:async p=>snap(p),runTransaction:async(db,run)=>{const staged=[];const result=await run({get:async p=>snap(p),set:(p,v)=>staged.push([p,v])});for(const [p,v]of staged){data.set(p,structuredClone(v));writes.push(p);}return result;}});
+ const c=vm.createContext({FleetVehicleData:require((fs.existsSync(__dirname+'/../assets')?__dirname+'/../assets/':__dirname+'/../fleet/assets/')+'fleet-vehicle-data.js'),crypto:require('node:crypto'),FleetWorkbook:importer,member:{role:'officer',name:'Editor'},auth:{currentUser:{uid:'editor'}},db:{},path:(kind,id)=>kind+'/'+id,serverTimestamp:()=>({server:true}),clean:o=>{const r={...o};delete r._rev;delete r._updatedAt;return r;},getDoc:async p=>snap(p),runTransaction:async(db,run)=>{const staged=[];const result=await run({get:async p=>snap(p),set:(p,v)=>staged.push([p,v])});for(const [p,v]of staged){data.set(p,structuredClone(v));writes.push(p);}return result;}});
  vm.runInContext(fn,c);return {c,data,writes};
 }
 test('import enriches exact identities, keeps assignments and conflicting live values, and backs up before changes',async()=>{

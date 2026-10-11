@@ -20,6 +20,13 @@
           && v._updatedAt == request.time
           && getAfter(/databases/$(database)/documents/fleet1894/$(env)/plates/$(v.plateKey)).data.vehicleId == id;
       }
+      // Publish with the vehicle-data client. Each NEW service departure needs a fresh 1028 assertion.
+      function fDispatch1028(v) {
+        return v.serviceDispatch is map && v.serviceDispatch.form1028Completed == true
+          && v.serviceDispatch.id is string && v.serviceDispatch.id.size() > 0
+          && v.serviceDispatch.actor == request.auth.uid
+          && v.serviceDispatch.recordedAt == request.time;
+      }
       // Legacy Google memberships no longer grant access.
       match /access/{email} { allow read, write: if false; }
       match /members/{uid} {
@@ -56,8 +63,12 @@
       match /vehicles/{id} {
         allow get: if fEditor() || fUnit(resource.data.unit);
         allow list: if fUnit(resource.data.unit);
-        allow create: if fEditor() && fVehicle(request.resource.data,id) && request.resource.data._rev == 1;
-        allow update: if fEditor() && fVehicle(request.resource.data,id) && request.resource.data._rev == resource.data._rev + 1;
+        allow create: if fEditor() && fVehicle(request.resource.data,id) && request.resource.data._rev == 1
+          && (request.resource.data.status != 'בטיפול' || fDispatch1028(request.resource.data));
+        allow update: if fEditor() && fVehicle(request.resource.data,id) && request.resource.data._rev == resource.data._rev + 1
+          && (request.resource.data.status != 'בטיפול' || resource.data.status == 'בטיפול'
+            || (fDispatch1028(request.resource.data)
+              && (!('serviceDispatch' in resource.data) || request.resource.data.serviceDispatch.id != resource.data.serviceDispatch.id)));
         allow delete: if false;
       }
       match /plates/{number} {

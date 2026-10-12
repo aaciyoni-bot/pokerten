@@ -97,7 +97,7 @@ function settleHand(S){
  if(b){t.players=b.players;t.bountyPool=b.pool;for(const [uid,amount]of Object.entries(b.credits))if(amount)S.effects.push({type:'credit',uid:payee(t.players[uid]),amount});}
  for(const uid of grace){Object.assign(t.players[uid],{out:false,rank:null});delete t.players[uid].outAt;S.players[uid].status='busted';}
  const eliminated=busts.filter(p=>!grace.includes(p.uid));let rank=all(t).filter(p=>!p.out).length+eliminated.length;for(const p of eliminated)t.players[p.uid].rank=rank--;
- t.bountyEvents={...t.bountyEvents,[id]:{at:S.now,busts:event.busts,credits:b?.credits||{}}};S.torDirty=true;
+ t.bountyEvents={...t.bountyEvents,[id]:{at:S.now,busts:event.busts,credits:b?.credits||{}}};for(const p of eliminated){delete S.players[p.uid];delete S.priv[p.uid];S.privateDeletes=[...(S.privateDeletes||[]),p.uid];}S.torDirty=true;
 }
 exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
  require('./pokerSecurity').requirePokerAvailable();const uid=A.uid(r),op=r.data?.op;

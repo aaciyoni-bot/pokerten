@@ -139,7 +139,7 @@ test('eliminated players leave the seat and use paid re-entry; late entry and ad
  const f=fixture(27),id=await create(f,{maxPlayers:6,rebuys:true,maxRebuys:1,rebuyUntilLevel:1,reentry:true,maxReentries:1,lateRegUntilLevel:1,addon:true,addonLevel:2,structure:[{sb:1,bb:2,ante:0,mins:1},{sb:2,bb:4,ante:1,mins:120}]});await startHumans(f,id,3);
  const tid=f.tables(id)[0].docId;await f.action(tid,s=>f.engine.startHand(s));
  let steps=0;while(f.tables(id)[0].gameState.phase!=='showdown'&&steps++<60)await playOne(f,f.tables(id)[0]);
- const busted=Object.values(f.tables(id)[0].players).find(p=>p.status==='out');assert.ok(busted);assert.equal(f.tour(id).players[busted.uid].out,true);assert.equal(f.tour(id).rebuys,false);assert.equal(f.tour(id).maxRebuys,0);
+ const busted=Object.entries(f.tour(id).players).map(([uid,p])=>({...p,uid})).find(p=>p.out);assert.ok(busted);assert.equal(f.tables(id).some(row=>row.players[busted.uid]),false,'eliminated seat is removed by settlement itself');assert.equal(f.tour(id).players[busted.uid].out,true);assert.equal(f.tour(id).rebuys,false);assert.equal(f.tour(id).maxRebuys,0);
  await f.command(busted.uid,'register',{tournamentId:id},'fixed-reentry-idempotent-request');assert.equal(f.balance(busted.uid),978);assert.equal(f.tour(id).initialChips,400);
  await f.command(busted.uid,'register',{tournamentId:id},'fixed-reentry-idempotent-request');assert.equal(f.balance(busted.uid),978);
  f.member('late');await f.command('late','register',{tournamentId:id});assert.equal(f.tour(id).initialChips,500);

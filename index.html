@@ -6848,7 +6848,6 @@ function LobbyView({
     ['preflop', 'flop', 'turn', 'river', 'discard', 'dc_selection', 'showdown'].includes(t.gameState?.phase) &&
     Object.values(t.players || {}).filter(p => p && p.status !== 'left' && p.left !== true).length >= 2);
   const shownPoker = pokFilter === 'all' ? ringTables : pokFilter === 'live' ? liveRingTables : pokFilter === 'tours' ? [] : ringTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === pokFilter);
-  const showPokerTours = pokFilter === 'all' || pokFilter === 'tours';
   const durakTables = tables.filter(t => t.type === 'durak' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const ofcTables = tables.filter(t => t.type === 'ofc' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const [showCreateOfc, setShowCreateOfc] = useState(false);
@@ -7668,17 +7667,7 @@ function LobbyView({
     }, variantLabel(v), n > 0 && React.createElement("span", {
       className: "vtab-count"
     }, n));
-  }), React.createElement("button", {
-    onClick: () => setPokFilter('tours'),
-    "aria-pressed": pokFilter === 'tours',
-    className: `vtab ${pokFilter === 'tours' ? 'vtab-active' : ''}`,
-    style: pokFilter === 'tours' ? {
-      borderBottomColor: '#fbbf24',
-      color: '#fbbf24'
-    } : {}
-  }, React.createElement("i", {
-    className: "fa-solid fa-trophy text-[10px] mr-1"
-  }), "Tournaments")), pokFilter !== 'tours' && React.createElement("div", {
+  })), pokFilter !== 'tours' && React.createElement("div", {
     className: "flex flex-col gap-2.5"
   }, shownPoker.map(t => {
     const s = t.settings || {};
@@ -18461,8 +18450,10 @@ function TournamentsTab({
   clubSettings,
   showToast,
   onJoinTable,
-  compactRows = false
+  compactRows = false,
+  compact = false
 }) {
+  const compactMode = compactRows || compact;
   const [expandedTournament, setExpandedTournament] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [champTor, setChampTor] = useState(null);
@@ -18935,7 +18926,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   const sorted = [...myTours].sort((a, b) => (a.status === 'reg' ? 0 : a.status === 'running' ? 1 : 2) - (b.status === 'reg' ? 0 : b.status === 'running' ? 1 : 2) || (a.startAt || 0) - (b.startAt || 0));
   const champModal = champTor ? ReactDOM.createPortal(React.createElement(TournamentResultsDialog, { tournament: {...champTor,finalChipStacks:Object.fromEntries((tables||[]).filter(t=>t.tournamentId===champTor.id).flatMap(t=>Object.entries(t.players||{}).map(([uid,p])=>[uid,p.stack])))}, user, showToast, onClose: () => setChampTor(null) }), document.body) : null;
   return React.createElement("div", {
-    className: "animate-fade-in pt-tournaments"+(compactRows?" pt-tournaments-compact":"")
+    className: "animate-fade-in pt-tournaments"+(compactMode?" pt-tournaments-compact":"")
   }, React.createElement("div", {
     className: "pt-tournaments-heading flex justify-between items-center mb-5"
   }, React.createElement("h2", {
@@ -19692,13 +19683,13 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       onClick: () => setChampTor(tor),
       className: "flex-1 ft-btn py-2.5 rounded-xl font-black text-sm"
     }, "🏆 Final results"))));
-    if(!compactRows)return card;
+    if(!compactMode)return card;
     return h(React.Fragment,{key:tor.id},h('button',{type:'button',className:'pt-tournament-lobby-row','data-tournament-row':tor.id,'aria-label':'Open tournament '+tor.name,onClick:()=>setExpandedTournament(tor.id)},
       h('img',{src:'assets/tournaments/gold-cup.webp',alt:'',width:48,height:56}),
       h('span',{className:'pt-tournament-row-title'},h('strong',null,tor.name),h('small',null,tourEntryOf(tor)===0?'FREEROLL · ':'',tor.pokerType||'NLH',' · ',tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE · '+alive+' left':'Ended')),
       h('span',{className:'pt-tournament-row-pool'},h('small',null,'PRIZE POOL'),h('strong',null,formatMoney(pool))),h('i',{className:'fa-solid fa-chevron-right','aria-hidden':true})),
       expandedTournament===tor.id&&h(TournamentDialog,{title:tor.name,onClose:()=>setExpandedTournament(null),className:'pt-tournament-detail'},h('div',{className:'pt-tournaments'},card)));
-  }), !compactRows && sorted.length === 0 && React.createElement("div", {
+  }), !compactMode && sorted.length === 0 && React.createElement("div", {
     className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
   }, "No tournaments right now. ", canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, standFor && ReactDOM.createPortal(React.createElement(TournamentStandingsDialog, { data: standData, user, onClose: () => setStandFor(null) }), document.body));
 }

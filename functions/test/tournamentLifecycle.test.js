@@ -61,6 +61,8 @@ test('multi-winner finish holds settled tables while another final hand is runni
  const rows=[{docId:'a',tournamentId:'tor',players:{p0:seat('p0',0),p1:seat('p1',1)},tournament:{},gameState:{phase:'showdown',showdownAt:NOW-6000,pots:[]}},{docId:'b',tournamentId:'tor',players:{p2:seat('p2',0)},tournament:{},gameState:{phase:'river',pots:[]}}];
  const plan=T.plan(t,rows,NOW);
  assert.equal(plan.finishers,undefined);assert.ok(plan.updates.some(u=>u.id==='a'&&u.patch.tournament.balanceHoldUntil>NOW),'Settled table must wait for the final running hand');
+ assert.ok(plan.updates.some(u=>u.id==='b'&&u.patch.tournament.balanceHoldUntil>NOW),'Running table must finish its current hand without opening another');
+ assert.equal(plan.updates.find(u=>u.id==='b').patch.gameState.phase,'river');
 });
 
 test('multi-winner cutoff holds through rebuy grace and includes already paid queued chips',()=>{
@@ -254,4 +256,12 @@ test('new deal reaps eliminated seats but retains paid pending rebuy',async()=>{
  const f=fixture(),id=await create(f,{rebuys:true});await startHumans(f,id,3);const row=f.tables(id)[0];
  const d=f.docs.get('tables/'+row.docId);d.players.human2.stack=0;d.players.human2.status='out';f.tour(id).players.human2.out=true;
  await f.action(row.docId,s=>f.engine.startHand(s));assert.equal(f.tables(id)[0].players.human2,undefined);
+});
+test('consolidation holds busy tables before their next deal, preventing missed showdown windows',()=>{
+ const now=NOW,roster={},rows=[2,2,1].map((count,i)=>{const players={};for(let j=0;j<count;j++){const uid='p'+i+j;roster[uid]={};players[uid]={uid,stack:100,bet:0,status:'active',seatIndex:j};}return{docId:'t'+i,tournamentId:'tor',players,tournament:{},gameState:{phase:i===1?'river':'showdown',showdownAt:now-10000,pots:[]}};});
+ const t={id:'tor',status:'running',tableSize:3,players:roster};const hold=T.plan(t,rows,now);
+ assert.equal(hold.deletes.length,0);assert.equal(hold.updates.length,3);assert.equal(hold.updates.find(u=>u.id==='t1').patch.gameState.phase,'river');
+ for(const u of hold.updates)Object.assign(rows.find(r=>r.docId===u.id),u.patch);
+ rows[1].gameState={...rows[1].gameState,phase:'showdown',showdownAt:now+1000};
+ const moved=T.plan(t,rows,now+7000);assert.equal(moved.issue,null);assert.equal(moved.deletes.length,1);assert.equal(moved.updates.reduce((sum,u)=>sum+Object.keys(u.patch.players).length,0),5);
 });

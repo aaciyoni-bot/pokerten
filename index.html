@@ -11957,6 +11957,13 @@ try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){s
   const [tourTick, setTourTick] = useState(0);
   const ch = useTableChat(tableState, tableDocId, user, 'poker', showToast);
   const tour = tableState?.tournament || null;
+  const [tourCoordinatorIssue, setTourCoordinatorIssue] = useState(null);
+  useEffect(() => {
+    if (!srvEngine || !tableState?.tournamentId || tour?.finished) return;
+    let stopped=false, busy=false;
+    const sync=async()=>{if(busy)return;busy=true;try{const result=await window.fb.fx('pkTournament',{op:'tick',tournamentId:tableState.tournamentId});if(!stopped)setTourCoordinatorIssue(result.issue || null);}catch(e){if(!stopped)setTourCoordinatorIssue(e.message || 'Tournament synchronization failed');}finally{busy=false;}};
+    sync();const timer=setInterval(sync,5000);return()=>{stopped=true;clearInterval(timer);};
+  }, [srvEngine, tableState?.tournamentId, tour?.finished]);
   useEffect(() => {
     if (!tour) return;
     const iv = setInterval(() => setTourTick(x => x + 1), 1000);
@@ -13306,7 +13313,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   })), React.createElement("div", {
     role:'status',
     className: "flex-1 text-center text-slate-400 font-bold text-xs truncate"
-  }, tableOnBreak ? 'Tournament break' : acting ? 'Sending move…' : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn && !acting ? React.createElement("button", {
+  }, tourCoordinatorIssue ? 'Tournament synchronization: '+tourCoordinatorIssue : tableOnBreak ? 'Tournament break' : ['waiting','showdown'].includes(gs.phase) && tour?.balanceHoldUntil > Date.now() ? 'Balancing tables — waiting for the other hand to finish' : acting ? 'Sending move…' : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? 'New hand starting soon...' : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn && !acting ? React.createElement("button", {
     onClick: () => setPreCF(v => !v),
     // reads as a real pressable button: raised gradient, visible border
     className: `shrink-0 px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`

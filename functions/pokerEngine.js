@@ -108,6 +108,7 @@ function startHand(S, forcedGameType) {
   if (!tournamentReady(S)) return 'waiting';
   const g0 = S.gameState || {};
   const pl = clonePlayers(S.players);
+  if(S.tor)for(const [uid,p]of Object.entries(pl))if(S.tor.players?.[uid]?.out&&p.stack===0&&!(p.pendingTournamentChips>0))delete pl[uid];
   Object.values(pl).forEach((p) => {
     if(S.tor&&p.pendingTournamentChips>0){p.stack=round2(p.stack+p.pendingTournamentChips);p.pendingTournamentChips=0;p.bustedAt=null;p._reported=false;}
     if (!S.tor && p.pendingTopUp>0) {
@@ -1713,3 +1714,5 @@ exports.tableAutoDrive = onSchedule({schedule:'every 1 minutes',timeoutSeconds:1
 
 // Test hook — a plain object, ignored by the Functions deploy loader.
 exports.__engineInternals = {loadState,commitState,tickTable,tickMayAdvance,startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, botCallPrice, botDiscardIndex, preflopTier, equityOf, rangeFacing, rangeHandStrength};
+
+

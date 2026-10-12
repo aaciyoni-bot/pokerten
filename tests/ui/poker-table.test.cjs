@@ -228,5 +228,16 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    assert.deepEqual(Object.fromEntries(Object.values(current.players).map(p=>[p.uid,p.seatIndex])),before,'visual compaction never changes physical/game seats');
   }
  }
+ current.settings.serverEngine=true;current.tournamentId='break-test';current.tournament={startedAt:Date.now()-61000,status:'running',breakEvery:1,breakMins:4,structure:[{sb:5,bb:10,ante:0,mins:1},{sb:10,bb:20,ante:0,mins:10}]};
+ current.gameState={...current.gameState,phase:'showdown',showdownAt:Date.now()-6000,board:cards.slice(0,5),pots:[],activeTurnUid:null};
+ await React.act(async()=>tableNext(snapshot()));
+ assert.ok(doc.querySelector('.poker-on-break .poker-break-center'),'settled break has central countdown');
+ assert.match(doc.querySelector('.poker-break-clock').textContent,/^3:/);
+ assert.ok(doc.querySelector('.poker-break-center button'),'standings are accessible from break center');
+ assert.ok(returnCalls.some(c=>c.name==='pkTournament'&&c.args.op==='tick'),'active table drives coordinator');
+ assert.equal(doc.body.textContent.includes('New hand starting soon...'),false);
+ current.gameState.phase='river';await React.act(async()=>tableNext(snapshot()));
+ assert.equal(doc.querySelector('.poker-on-break'),null,'unfinished hand is shown until settlement');
  await React.act(async()=>root.unmount());w.close();console.log('PASS: cards, controls, authoritative CALL confirmation, fractional chips, delayed listener and snapshot recovery');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});
+

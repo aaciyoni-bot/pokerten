@@ -77,3 +77,129 @@ button.pt-tour-rank-row:hover{background:#173757;border-color:#729ace66}
 @media(max-width:370px){.pt-tour-dialog{padding:25px 16px 18px}.pt-tour-rank-row{grid-template-columns:27px minmax(0,1fr) minmax(60px,max-content);padding:10px 9px;gap:6px}.pt-tour-rank-value>strong{font-size:12px}.pt-tour-podium-avatar{width:56px;height:56px}.place-1 .pt-tour-podium-avatar{width:74px;height:74px}.pt-tour-actions{gap:8px}.pt-tour-primary,.pt-tour-secondary{padding:12px 9px}.pt-tour-prize-box>strong{font-size:24px}}
 @media(prefers-reduced-motion:reduce){.pt-tour-dialog{animation:none}.pt-tour-dialog *{transition:none!important;animation:none!important}}
 @keyframes pt-tour-enter{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* Tournament lobby and creation form. Scoped to avoid touching poker tables. */
+.pt-tournaments{color:#f5f7fc;font-family:Inter,Arial,sans-serif;max-width:980px;margin:auto;padding:8px 0 24px;font-variant-numeric:tabular-nums}
+.pt-tournaments-heading{display:flex;align-items:center;justify-content:space-between;margin:0 0 18px;gap:16px}
+.pt-tournaments-heading h2{font-size:12px!important;letter-spacing:.23em;font-weight:600!important;color:#b9c7e3!important}
+.pt-tournaments-heading>button{background:#0758ec!important;border:1px solid #3797fc;border-radius:12px!important;padding:11px 17px!important;box-shadow:inset 0 1px 0 #7cb9ff88,0 3px 18px #0049ec22!important;font-size:13px!important;min-height:42px}
+.pt-tournaments-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:24px}
+.pt-tournament-card{container-type:inline-size;background:#04101d;border:1px solid #18334f;border-radius:22px;overflow:hidden;position:relative;text-align:left;isolation:isolate}
+.pt-tournament-card:before{content:"";position:absolute;inset:0;background:url('../tournaments/blue-orbit.webp') no-repeat top right;background-size:58% auto;opacity:.75;z-index:-1;pointer-events:none}
+.pt-tournament-inner{padding:20px 18px}
+.pt-tournament-hero{display:flex;gap:16px;align-items:flex-start;margin:3px 0 20px}
+.pt-tournament-cup{width:58px;height:66px;object-fit:contain;mix-blend-mode:lighten;margin-top:3px}
+.pt-tournament-title{min-width:0}
+.pt-tournament-title h3{font-size:30px;line-height:1.15;letter-spacing:-.04em;font-weight:800;margin:0 0 8px;overflow-wrap:anywhere}
+.pt-tournament-badges{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:7px}
+.pt-tournament-badges span{font-size:11px;font-weight:700;line-height:1;border-radius:7px;padding:5px 9px;border:1px solid #667194;color:#b9c5e1;background:#091624}
+.pt-tournament-badges .pt-tournament-freeroll{border-color:#d3b654;color:#ffe08b;box-shadow:0 0 12px #ffd45c12}
+.pt-tournament-status{display:flex;align-items:center;gap:7px;color:#49d5a0;font-size:11px;line-height:1.4;margin:0}
+.pt-tournament-status i{font-size:8px}
+.pt-tournament-status[data-status="running"]{color:#ffd576}
+.pt-tournament-status[data-status="cancelled"]{color:#ff737b}
+.pt-tournament-status[data-status="done"]{color:#9dafcf}
+.pt-tournament-label{display:block;font-size:10px;font-weight:600;letter-spacing:.22em;color:#b4c2de}
+.pt-tournament-pool{border-bottom:1px solid #213b57;padding-bottom:14px;margin-bottom:14px}
+.pt-tournament-pool strong{display:block;color:#ffd96f;font-size:46px;line-height:1.15;letter-spacing:-.035em;font-weight:800;margin-top:4px;text-shadow:0 0 18px #ffd26430;overflow-wrap:anywhere}
+.pt-tournament-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0}
+.pt-tournament-stat{display:flex;align-items:center;gap:7px;padding:0 7px;min-width:0;border-right:1px solid #24394f}
+.pt-tournament-stat:first-child{padding-left:0}.pt-tournament-stat:last-child{border:0;padding-right:0}
+.pt-tournament-stat i{font-size:20px;color:#7e9fd8;flex-shrink:0}
+.pt-tournament-stat span{display:block;font-size:10px;color:#aebddd;margin-bottom:2px}
+.pt-tournament-stat b{display:block;font-size:12px;white-space:nowrap}
+.pt-tournament-rules{font-size:9px;color:#acb9d5;display:flex;gap:4px 12px;flex-wrap:wrap;justify-content:flex-end;margin:10px 0 14px;line-height:1.5}
+.pt-tournament-countdown,.pt-tournament-prizes,.pt-tournament-registration{border:1px solid #294360;border-radius:12px;background:#0a192a;box-shadow:inset 0 1px 0 #89b2e415;margin-bottom:8px}
+.pt-tournament-countdown{text-align:center;padding:12px 16px 8px}
+.pt-tournament-clock{display:flex;align-items:center;justify-content:center;gap:28px;margin:7px 0 9px}
+.pt-tournament-clock>div{position:relative}
+.pt-tournament-clock>div:not(:last-child):after{content:":";position:absolute;right:-18px;top:0;font-size:32px;line-height:1.2;color:#b6c6e2}
+.pt-tournament-clock strong{font-size:36px;line-height:1.2;font-weight:800;letter-spacing:.025em}
+.pt-tournament-clock small{display:block;color:#a9badd;font-size:9px;letter-spacing:.07em;margin-top:2px}
+.pt-tournament-countdown p{font-size:11px;color:#a9badd;margin:0;border-top:1px solid #253951;padding-top:9px}
+.pt-tournament-prizes{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 0;padding:12px 8px}
+.pt-tournament-prize{display:flex;align-items:center;gap:8px;padding:0 8px;min-width:0;border-right:1px solid #25394f}
+.pt-tournament-prize:nth-child(3n){border:0}
+.pt-tournament-prize img{width:25px;height:35px;object-fit:contain;mix-blend-mode:lighten;flex-shrink:0}
+.pt-tournament-prize small{display:block;font-size:10px;color:#b7c1d8;margin-bottom:3px}
+.pt-tournament-prize strong{font-size:17px;line-height:1.1;color:#ffda79;letter-spacing:-.025em;overflow-wrap:anywhere}
+.pt-tournament-place{color:#9db6dd;font-weight:700;width:22px;text-align:center}
+.pt-tournament-registration{overflow:hidden;background:transparent;border:0;box-shadow:none}
+.pt-tournament-roster-toggle{display:flex;align-items:center;gap:12px;width:100%;background:#0b1b2e;color:#c3cee4;border:1px solid #2c4564;border-radius:12px;padding:12px 14px;text-align:left;cursor:pointer;min-height:48px}
+.pt-tournament-roster-toggle>i:first-child{font-size:22px;color:#80a2dc}
+.pt-tournament-roster-toggle>i:last-child{font-size:11px;color:#b5c9e8}
+.pt-tournament-roster-toggle>div{flex:1;font-size:12px;min-width:0}.pt-tournament-roster-toggle b{font-size:14px;color:#f3f6fc}
+.pt-tournament-roster-toggle progress{display:block;width:100%;height:6px;border-radius:6px;overflow:hidden;margin-top:7px;border:0;background:#1b2d49}
+.pt-tournament-roster-toggle progress::-webkit-progress-bar{background:#1b2d49}.pt-tournament-roster-toggle progress::-webkit-progress-value{background:#168cf5;border-radius:6px}.pt-tournament-roster-toggle progress::-moz-progress-bar{background:#168cf5;border-radius:6px}
+.pt-tournament-roster{display:flex;flex-wrap:wrap;gap:6px;padding:10px}.pt-tournament-roster span{background:#142a45;padding:6px 10px;border-radius:7px;font-size:11px}
+.pt-tournament-registered{display:flex;align-items:center;gap:13px;background:#072523;border:1px solid #1d534b;border-radius:12px;color:#ecfbf6;font-size:13px;font-weight:700;padding:12px 16px;margin-top:8px}
+.pt-tournament-registered i{color:#27cd99;font-size:24px}
+.pt-tournament-actions{display:grid!important;grid-template-columns:60px minmax(0,1fr) 60px;gap:8px!important;margin-top:12px}
+.pt-tournament-actions button{min-height:43px;font-size:12px!important;font-weight:700;border:1px solid #48607e!important;background:#142337!important;border-radius:12px!important;box-shadow:none!important;padding:10px 12px!important;white-space:normal;color:#eaf1fc!important;cursor:pointer}
+.pt-tournament-actions button[title="Start now (ignores the scheduled time)"]{grid-column:1/-1;grid-row:1;background:#0758ef!important;border-color:#56a4ff!important;box-shadow:inset 0 1px 0 #91c4ff66,0 2px 18px #0560f62b!important;font-size:16px!important;min-height:48px}
+.pt-tournament-actions button[title="Start now (ignores the scheduled time)"] i{margin-right:10px}
+.pt-tournament-actions button[title="Add one bot"]{grid-column:1}.pt-tournament-actions button[title="Add one bot"] i{font-size:21px}
+.pt-tournament-actions button[title="Cancel tournament (refund)"]{grid-column:3;background:#27151d!important;color:#fa5e6a!important;border-color:#63323c!important;font-size:24px!important}
+.pt-tournament-actions button.flex-1{grid-column:2}.pt-tournament-actions button[title^="Standings"]{grid-column:1/-1}
+.pt-tournament-result{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;font-size:12px}.pt-tournament-result strong{color:#f7d878}
+.pt-tournaments button:focus-visible{outline:2px solid #9fcdff;outline-offset:3px}
+.pt-tournaments>.glass-panel{background:#0a1b30!important;border-color:#325578!important;box-shadow:0 18px 60px #0005}
+.pt-tournaments>.glass-panel input,.pt-tournaments>.glass-panel select{background:#061322!important;border:1px solid #365574!important;color:#ecf2ff;border-radius:10px!important}
+.pt-tournaments>.glass-panel label{color:#acbfdc!important}
+.pt-tournaments>.glass-panel button{background:#173354!important;color:#daeaff!important;border-color:#3f648d!important}
+.pt-tournaments>.glass-panel button[class*="from-purple"]{background:#0758ef!important;color:white!important}
+@container(max-width:370px){.pt-tournament-inner{padding:18px 12px}.pt-tournament-stat{gap:4px;padding:0 5px}.pt-tournament-stat i{font-size:16px}.pt-tournament-stat b{font-size:11px}.pt-tournament-prize{gap:4px;padding:0 4px}.pt-tournament-prize strong{font-size:15px}.pt-tournament-pool strong{font-size:40px}}
+@container(min-width:700px){.pt-tournament-inner{padding:26px}.pt-tournament-title h3{font-size:34px}.pt-tournament-pool strong{font-size:54px}.pt-tournament-clock strong{font-size:42px}}
+
+.pt-tournament-actions button[title="Add one bot"],.pt-tournament-actions button[title="Cancel tournament (refund)"],.pt-tournament-actions button.flex-1{grid-row:2}
+
+.pt-tournament-label{line-height:1.3}
+.pt-tournament-stat span,.pt-tournament-stat b{line-height:1.4}
+.pt-tournament-clock small,.pt-tournament-prize small{line-height:1.3}
+.pt-tournament-countdown p{line-height:1.4}
+.pt-tournament-registered{line-height:1.4}
+.pt-tournament-roster-toggle>div{line-height:1.4}
+.pt-tournaments-heading>button i{margin-right:6px}
+
+.pt-tournaments{padding-top:0}
+.pt-tournaments-heading{margin-bottom:12px}
+.pt-tournaments-heading>button{min-height:34px;padding:7px 13px!important;font-size:12px!important}
+.pt-tournament-inner{padding:16px}
+.pt-tournament-hero{margin-bottom:12px}
+.pt-tournament-pool{padding-bottom:8px;margin-bottom:12px}
+.pt-tournament-pool strong{font-size:42px}
+.pt-tournament-countdown{padding:10px 14px 7px}
+
+.pt-tournaments .pt-tournaments-heading{margin-bottom:12px!important}
+.pt-tournament-inner{padding-top:0}
+.pt-tournament-hero{margin-top:0}
+.pt-tournament-pool strong{font-size:48px;line-height:1}
+.pt-tournament-rules{margin:6px 0 9px}
+.pt-tournament-countdown{padding:8px 14px 5px}
+.pt-tournament-clock{margin:4px 0 5px}
+.pt-tournament-clock strong{display:block}
+.pt-tournament-countdown p{padding-top:6px}
+.pt-tournament-prizes{padding-top:9px;padding-bottom:9px}
+.pt-tournament-roster-toggle{padding-top:8px;padding-bottom:8px}
+.pt-tournament-registered{padding-top:9px;padding-bottom:9px}
+
+.pt-tournament-pool strong{font-size:clamp(32px,12cqw,48px)}
+.pt-tournament-actions:not(:has([title="Start now (ignores the scheduled time)"])) button.flex-1{grid-column:1/-1;grid-row:auto;background:#0758ef!important;border-color:#56a4ff!important}
+.pt-tournament-more-prizes{font-size:10px;color:#adbfdc;margin:0 0 10px}
+
+.pt-tournament-actions button[title="Delete tournament"]{grid-column:1/-1;grid-row:auto;color:#f18a90!important;background:#211620!important;border-color:#643440!important;min-height:36px}
+.pt-tournament-actions button[title="Delete tournament"] i:after{content:""}
+.pt-tournament-actions button[title="Delete tournament"]:after{content:" Delete tournament";font-size:11px}
+.pt-tournament-actions button:disabled{opacity:.5;cursor:wait}
+
+.pt-tournament-roster-person{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;padding:3px 0}
+.pt-tournament-roster-person>span{flex:1;overflow-wrap:anywhere;min-width:0}
+.pt-tournament-remove-player{background:#351c2a;border:1px solid #774452;color:#ffb4bc;border-radius:8px;font-size:11px;padding:8px 10px;min-height:36px;cursor:pointer}
+
+
+.poker-break-center{display:none}
+.poker-on-break .poker-break-center{display:flex;position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);z-index:55;width:88%;padding:24px 12px;align-items:center;flex-direction:column;gap:12px;text-align:center;border:1px solid #53baf080;border-radius:24px;background:linear-gradient(145deg,#071d34f2,#04101ff2);box-shadow:0 8px 40px #0008;color:#b9e7ff}
+.poker-break-center strong{font-size:28px;letter-spacing:3px}.poker-break-clock{font:900 clamp(48px,12vw,80px)/1.1 monospace;color:white}.poker-break-center>span{font-size:13px}
+.poker-on-break .poker-board,.poker-on-break .poker-total-pot,.poker-on-break .poker-collected-pot,.poker-on-break .poker-hole-cards,.poker-on-break .poker-seat-action,.poker-on-break .poker-result-meta,.poker-on-break .poker-bet,.poker-on-break .poker-table-caption{visibility:hidden}
+
+.poker-on-break .poker-discard-flight,.poker-on-break .poker-bet-collection{visibility:hidden}

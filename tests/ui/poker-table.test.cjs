@@ -238,6 +238,13 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  assert.equal(doc.body.textContent.includes('New hand starting soon...'),false);
  current.gameState.phase='river';await React.act(async()=>tableNext(snapshot()));
  assert.equal(doc.querySelector('.poker-on-break'),null,'unfinished hand is shown until settlement');
+ current.tournament.finished=true;current.tournament.tableWinner='me';current.players.ghost={uid:'ghost',name:'Eliminated ghost',stack:0,status:'out',seatIndex:7};
+ await React.act(async()=>tableNext(snapshot()));
+ assert.equal(doc.querySelectorAll('.poker-seat').length,1,'ended table retains only the viewer seat');
+ assert.ok(doc.querySelector('.poker-tournament-ended'),'finished table has a terminal display');
+ assert.match(doc.querySelector('.poker-break-center').textContent,/Tournament complete/);
+ assert.equal(doc.querySelector('.poker-break-clock'),null,'finished tournament has no countdown');
+ assert.equal(doc.body.textContent.includes('New hand starting soon...'),false);
  await React.act(async()=>root.unmount());w.close();console.log('PASS: cards, controls, authoritative CALL confirmation, fractional chips, delayed listener and snapshot recovery');
 })().catch(async e=>{console.error(e);try{await React.act(async()=>root.unmount());}catch(_){}w.close();process.exitCode=1;});
 

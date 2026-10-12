@@ -99,13 +99,13 @@ test('archiving completed tournament and historical tables never replays prizes 
   assert.equal(await get('tables/'+tableId),undefined);assert.ok(await get('_pkClosedTables/'+tableId));assert.equal(await bank(owner),balance);
  }
 });
-test('a tournament can finish at three configured winners only after every hand settles and pays once',async()=>{
+test('paid places do not finish a tournament until one survivor remains',async()=>{
  const b=await bank(owner),{tournamentId:id}=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Three winners',maxPlayers:5,tableSize:5,buyIn:10,startStack:100,payouts:[50,30,20],finishAtPaidPlaces:true,botFill:true,startAt:Date.now()+600000}});
  await call('pkTournament',owner,{op:'start',tournamentId:id});const [row]=await rows(id),ids=Object.keys(row.players),tor=await get('tournaments/'+id);
  ids.forEach((u,i)=>{Object.assign(row.players[u],{stack:[250,150,100,0,0][i],status:i<3?'active':'out'});Object.assign(tor.players[u],{out:i>=3,rank:i>=3?i+1:null});});
  await db.doc('tournaments/'+id).update({players:tor.players});await db.doc('tables/'+row.docId).update({players:row.players,gameState:{phase:'flop',pots:[]}});
  await Tours.tickTournament(id);assert.equal((await get('tournaments/'+id)).status,'running');
- await db.doc('tables/'+row.docId).update({'gameState.phase':'waiting'});await Tours.tickTournament(id);const done=await get('tournaments/'+id);
+ await db.doc('tables/'+row.docId).update({'gameState.phase':'waiting'});await Tours.tickTournament(id);const running=await get('tournaments/'+id);assert.equal(running.status,'running');assert.equal(await bank(owner),b-50);const [last]=await rows(id);for(const [uid,p]of Object.entries(last.players)){p.stack=uid===ids[0]?500:0;p.status=uid===ids[0]?'active':'out';}ids.forEach((uid,i)=>Object.assign(running.players[uid],{out:i>0,rank:i>0?i+1:null}));await db.doc('tournaments/'+id).update({players:running.players});await db.doc('tables/'+last.docId).update({players:last.players});await Tours.tickTournament(id);const done=await get('tournaments/'+id);
  assert.equal(done.status,'done');assert.equal(done.winnerUids.length,3);assert.deepEqual(done.results.slice(0,3).map(r=>r.prize),[25,15,10]);assert.equal(Core.chips(await rows(id)),500);assert.equal(await bank(owner),b);
  await Tours.tickTournament(id);assert.equal(await bank(owner),b);
 });
@@ -130,12 +130,12 @@ test('cash entry rejects forged identity, grants, negative money and unaffordabl
  await call('pkLeave',uid,{tableId});const leaving=await get('tables/'+tableId);assert.ok(leaving.players[uid]);assert.ok(leaving.players[uid].leaveReq);
  await db.doc('tables/legacy').set({clubId:club,settings:{serverEngine:true},players:{[uid]:{stack:10000}}});await assert.rejects(call('pkLeave',uid,{tableId:'legacy'}),e=>e.code==='failed-precondition');
 });
-test('a last rebuy is charged before a multi-winner finish and tied stacks share their prize places',async()=>{
+test('a last rebuy is charged and play continues until the champion is determined',async()=>{
  const balance=await bank(owner),{tournamentId:id}=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Rebuy at finish',maxPlayers:5,tableSize:5,buyIn:10,startStack:100,payouts:[50,30,20],finishAtPaidPlaces:true,rebuys:true,maxRebuys:1,rebuyUntilLevel:1,botFill:true,startAt:Date.now()+600000}});
  await call('pkTournament',owner,{op:'start',tournamentId:id});const [row]=await rows(id),ids=Object.keys(row.players),t=await get('tournaments/'+id),now=Date.now();
  ids.forEach((uid,i)=>{Object.assign(row.players[uid],{stack:i<2?250:0,status:i<2?'active':i===2?'busted':'out',bustedAt:now-5000});Object.assign(t.players[uid],{out:i>=3,rank:i>=3?i+1:null});});
  await db.doc('tournaments/'+id).update({players:t.players});await db.doc('tables/'+row.docId).update({players:row.players,gameState:{phase:'waiting',pots:[]}});
- await Tours.tickTournament(id,now);const done=await get('tournaments/'+id);assert.equal(done.status,'done');assert.equal(done.players[ids[2]].rebuys,1);assert.deepEqual(done.results.slice(0,3).map(p=>p.prize),[24,24,12]);assert.equal(Core.chips(await rows(id)),600);assert.equal(await bank(owner),balance);
+ await Tours.tickTournament(id,now);const running=await get('tournaments/'+id);assert.equal(running.status,'running');assert.equal(running.players[ids[2]].rebuys,1);assert.equal(Core.chips(await rows(id)),600);assert.equal(await bank(owner),balance-60);const [last]=await rows(id);for(const [uid,p]of Object.entries(last.players)){p.stack=uid===ids[0]?600:0;p.status=uid===ids[0]?'active':'out';}ids.forEach((uid,i)=>Object.assign(running.players[uid],{out:i>0,rank:i>0?i+1:null}));await db.doc('tournaments/'+id).update({players:running.players});await db.doc('tables/'+last.docId).update({players:last.players});await Tours.tickTournament(id,now+10000);const done=await get('tournaments/'+id);assert.equal(done.status,'done');assert.deepEqual(done.results.slice(0,3).map(p=>p.prize),[30,18,12]);assert.equal(Core.chips(await rows(id)),600);assert.equal(await bank(owner),balance);
  await Tours.tickTournament(id,now+10000);assert.equal(await bank(owner),balance);
 });
 test('cash rebuy queues once during another hand and joins only the next deal, even after its old bust timer expires',async()=>{

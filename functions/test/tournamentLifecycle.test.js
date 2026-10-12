@@ -54,24 +54,14 @@ async function playOne(f,row){
  });
 }
 
-test('multi-winner finish holds settled tables while another final hand is running',()=>{
- const roster=Object.fromEntries(Array.from({length:8},(_,i)=>['p'+i,{out:i>=3}]));
- const seat=(uid,seatIndex)=>({uid,seatIndex,stack:100,bet:0,status:'active'});
- const t={id:'tor',status:'running',pokerType:'NLH',tableSize:2,payouts:[50,30,20],finishAtPaidPlaces:true,players:roster};
- const rows=[{docId:'a',tournamentId:'tor',players:{p0:seat('p0',0),p1:seat('p1',1)},tournament:{},gameState:{phase:'showdown',showdownAt:NOW-6000,pots:[]}},{docId:'b',tournamentId:'tor',players:{p2:seat('p2',0)},tournament:{},gameState:{phase:'river',pots:[]}}];
- const plan=T.plan(t,rows,NOW);
- assert.equal(plan.finishers,undefined);assert.ok(plan.updates.some(u=>u.id==='a'&&u.patch.tournament.balanceHoldUntil>NOW),'Settled table must wait for the final running hand');
+test('legacy paid-place cutoff never ends a tournament with three survivors',()=>{
+ const t={id:'tor',status:'running',tableSize:6,payouts:[50,30,20],finishAtPaidPlaces:true,players:{a:{},b:{},c:{}}};
+ const players=Object.fromEntries(['a','b','c'].map((uid,i)=>[uid,{uid,stack:100,bet:0,status:'active',seatIndex:i}]));
+ const row={docId:'table',tournamentId:'tor',players,tournament:{final:true},gameState:{phase:'showdown',showdownAt:NOW-10000,pots:[]}};
+ const result=T.plan(t,[row],NOW);assert.equal(result.champion,null);assert.equal(result.finishers,undefined);assert.equal(result.issue,null);
 });
 
-test('multi-winner cutoff holds through rebuy grace and includes already paid queued chips',()=>{
- const t={id:'tor',status:'running',pokerType:'NLH',tableSize:6,payouts:[50,30,20],finishAtPaidPlaces:true,players:{a:{out:false},b:{out:false},c:{out:false},d:{out:true}}};
- const row={docId:'table',tournamentId:'tor',players:{a:{uid:'a',stack:200,bet:0,status:'waiting'},b:{uid:'b',stack:100,bet:0,status:'waiting'},c:{uid:'c',stack:0,bet:0,status:'busted'}},tournament:{},gameState:{phase:'waiting',pots:[]}};
- const waiting=T.plan(t,[row],NOW);assert.equal(waiting.finishers,undefined);assert.ok(waiting.updates[0].patch.tournament.balanceHoldUntil>NOW);
- row.players.c.pendingTournamentChips=300;
- const paid=T.plan(t,[row],NOW);assert.deepEqual(paid.finishers,['c','a','b']);assert.equal(paid.issue,null);
-});
-
-test('configured multi-winner tournament completes with three survivors and splits tied prizes',async t=>{
+test('paid places preserve normal play until one champion remains',async t=>{
  const f=fixture(77),id=await create(f,{maxPlayers:18,finishAtPaidPlaces:true});await startHumans(f,id,18);let ticks=0;
  for(;ticks<500&&f.tour(id).status==='running';ticks++){
   f.advance(2000);await f.tours.tickTournament(id,f.now());
@@ -79,8 +69,8 @@ test('configured multi-winner tournament completes with three survivors and spli
   for(const [i,row]of f.tables(id).entries())if(ticks%(i+1)===0)await playOne(f,row);
  }
  const done=f.tour(id);assert.equal(done.status,'done');assert.equal(done.winnerUids.length,3);
- assert.ok(Object.values(done.players).filter(p=>!p.out).length>1,'Configured format must not continue until only one survivor');
- assert.deepEqual(done.results.slice(0,3).map(p=>p.prize).sort((a,b)=>a-b),[60,60,60]);
+ assert.equal(Object.values(done.players).filter(p=>!p.out).length,1);
+ assert.deepEqual(done.results.slice(0,3).map(p=>p.prize).sort((a,b)=>a-b),[36,54,90]);
  const snapshot=copy([...f.docs]);await f.tours.tickTournament(id,f.now()+10000);assert.deepEqual([...f.docs],snapshot);
  t.diagnostic(JSON.stringify({ticks,survivors:Object.values(done.players).filter(p=>!p.out).length,payouts:done.results.slice(0,3).map(p=>p.prize)}));
 });
@@ -110,7 +100,7 @@ for(const scenario of [
  const done=f.tour(id);assert.equal(done.status,'done');
  const awarded=done.results.filter(p=>p.prize>0),survivors=Object.values(done.players).filter(p=>!p.out).length;
  assert.equal(done.winnerUids.length,scenario.places);assert.equal(awarded.length,scenario.places);
- assert.deepEqual(awarded.map(p=>p.prize),scenario.expected,'Saved percentages apply; equal survivor stacks split only their combined rank prizes');
+ const weights=scenario.paidPct?Array.from({length:scenario.places},(_,i)=>1/Math.pow(i+1,.9)):scenario.payouts;const cents=scenario.entrants*1000,sum=weights.reduce((n,w)=>n+w,0),expected=weights.map(w=>Math.floor(cents*w/sum));expected[0]+=cents-expected.reduce((n,w)=>n+w,0);assert.deepEqual(awarded.map(p=>p.prize),expected.map(x=>x/100));assert.equal(survivors,1);
  assert.equal(Math.round(awarded.reduce((n,p)=>n+p.prize,0)*100),scenario.entrants*1000);
  for(const result of done.results)assert.equal(f.balance(result.uid),Math.round((989+result.prize)*100)/100,'Each paid result matches its wallet exactly');
  assert.equal(f.balance('owner'),100000+scenario.entrants,'All entry fees reach the owner once');
@@ -139,7 +129,7 @@ for(const pokerType of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple'])test(po
  assert.equal(f.tour(id).status,'done','Tournament completed before progress bound');
  assert.equal(sizes[0],3);assert.ok(sizes.includes(2));assert.equal(sizes.at(-1),1);assert.ok(moves>0);
  const done=f.tour(id);assert.equal(done.results.length,18);assert.equal(done.winnerUids.length,3);assert.equal(done.results.reduce((n,p)=>n+p.prize,0),180);assert.equal(done.finalFeeTotal,18);assert.deepEqual(done.results.slice(0,3).map(p=>p.prize),[90,54,36]);
- assert.equal(f.tables(id).every(row=>row.tournament.finished),true);
+ assert.equal(f.tables(id).every(row=>row.tournament.finished),true);assert.equal(f.tables(id).flatMap(row=>Object.values(row.players)).length,1);assert.ok(f.tables(id).every(row=>row.gameState.phase==='waiting'&&row.gameState.board.length===0&&row.gameState.activeTurnUid===null));
  assert.equal([...f.docs].filter(([p])=>p.startsWith('memberships/')).reduce((n,[,d])=>n+d.balance,0),118000,'Wallet funds conserved through entries, prizes and fees');
  const settled=copy([...f.docs]);for(let i=0;i<3;i++)await f.tours.tickTournament(id,f.now()+i*10000);assert.deepEqual([...f.docs],settled,'Repeated finish ticks cannot pay again');
  t.diagnostic(JSON.stringify({pokerType,ticks,actions,tableCounts:sizes,moves,paidWinners:done.winnerUids.length}));
@@ -254,4 +244,12 @@ test('new deal reaps eliminated seats but retains paid pending rebuy',async()=>{
  const f=fixture(),id=await create(f,{rebuys:true});await startHumans(f,id,3);const row=f.tables(id)[0];
  const d=f.docs.get('tables/'+row.docId);d.players.human2.stack=0;d.players.human2.status='out';f.tour(id).players.human2.out=true;
  await f.action(row.docId,s=>f.engine.startHand(s));assert.equal(f.tables(id)[0].players.human2,undefined);
+});
+test('consolidation holds busy tables before their next deal, preventing missed showdown windows',()=>{
+ const now=NOW,roster={},rows=[2,2,1].map((count,i)=>{const players={};for(let j=0;j<count;j++){const uid='p'+i+j;roster[uid]={};players[uid]={uid,stack:100,bet:0,status:'active',seatIndex:j};}return{docId:'t'+i,tournamentId:'tor',players,tournament:{},gameState:{phase:i===1?'river':'showdown',showdownAt:now-10000,pots:[]}};});
+ const t={id:'tor',status:'running',tableSize:3,players:roster};const hold=T.plan(t,rows,now);
+ assert.equal(hold.deletes.length,0);assert.equal(hold.updates.length,3);assert.equal(hold.updates.find(u=>u.id==='t1').patch.gameState.phase,'river');
+ for(const u of hold.updates)Object.assign(rows.find(r=>r.docId===u.id),u.patch);
+ rows[1].gameState={...rows[1].gameState,phase:'showdown',showdownAt:now+1000};
+ const moved=T.plan(t,rows,now+7000);assert.equal(moved.issue,null);assert.equal(moved.deletes.length,1);assert.equal(moved.updates.reduce((sum,u)=>sum+Object.keys(u.patch.players).length,0),5);
 });

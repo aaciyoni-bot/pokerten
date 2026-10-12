@@ -39,24 +39,12 @@ function plan(t,input,now=Date.now()){
  const ready=row=>idle(row)&&(row.gameState?.phase!=='showdown'||now-(row.gameState.showdownAt||0)>=5000);
  const save=row=>updates.set(row.docId,{id:row.docId,patch:{players:row.players,tournament:row.tournament,gameState:{...row.gameState,__seq:(input.find(x=>x.docId===row.docId).gameState?.__seq||0)+1}}});
  const finish=champion=>chips(rows.filter(r=>!deleted.has(r.docId)))===chips(input)?{updates:[...updates.values()].filter(u=>!deleted.has(u.id)),deletes:[...deleted],champion:champion||null,issue:null}:none('chip-conservation');
- const hold=(targets,force=false)=>{if(!force&&targets.every(ready))return true;for(const row of targets.filter(idle)){if((row.tournament?.balanceHoldUntil||0)<now+10000){row.tournament={...row.tournament,balanceHoldUntil:now+30000};save(row);}}return false;};
+ const hold=(targets,force=false)=>{if(!force&&targets.every(ready))return true;for(const row of targets){if((row.tournament?.balanceHoldUntil||0)<now+10000){row.tournament={...row.tournament,balanceHoldUntil:now+30000};save(row);}}return false;};
  const clean=row=>{let changed=false;for(const [uid,p]of Object.entries(row.players))if(p.status==='out'&&p.stack===0&&!(p.pendingTournamentChips>0)&&roster[uid]?.out){delete row.players[uid];changed=true;}return changed;};
  for(const row of rows)if(idle(row)&&clean(row))save(row);
  const move=(src,dst,p)=>{clean(dst);const used=new Set(Object.values(dst.players).map(p=>p.seatIndex));let seat=0;while(used.has(seat)&&seat<cap)seat++;if(seat>=cap||dst.players[p.uid])throw Error('unsafe-seat');dst.players[p.uid]={...p,seatIndex:seat,bet:0,cards:[],cardCount:0,status:'waiting',hasActed:false,actionText:'',reveal:false,mucked:false,_reported:false};delete src.players[p.uid];save(src);save(dst);};
  for(const row of rows)if(!occupied(row).length&&ready(row))deleted.add(row.docId);
  const live=rows.filter(r=>occupied(r).length).sort((a,b)=>occupied(a).length-occupied(b).length||a.docId.localeCompare(b.docId));
- // Optional multi-winner finish: settle every active hand before ranking the
- // remaining players by their final stacks. Older events keep their format.
- const paid=t.paidPct?Math.max(1,Math.floor(Object.keys(roster).length*t.paidPct/100)):Math.min(Object.keys(roster).length,(t.payouts||[100]).length);
- if(t.finishAtPaidPlaces&&paid>1&&Object.keys(roster).length>paid&&alive.length<=paid){
-  // Once the target is reached, settled tables must not start another hand
-  // while the other final hands finish. Keep rebuy decisions alive until
-  // every remaining player has chips or is formally eliminated.
-  const funded=live.every(row=>occupied(row).every(p=>p.stack+(p.pendingTournamentChips||0)>0));
-  if(!hold(rows,!funded))return finish();
-  const stacks=Object.fromEntries(live.flatMap(row=>occupied(row).map(p=>[p.uid,p.stack+(p.pendingTournamentChips||0)])));
-  return{...finish(),finishers:[...alive].sort((a,b)=>stacks[b]-stacks[a]||a.localeCompare(b))};
- }
  if(alive.length===1&&rows.every(ready)&&live.length===1&&occupied(live[0]).every(p=>p.stack>0)){const row=live[0];row.tournament={...row.tournament,finished:true,final:true,tableWinner:alive[0],balanceHoldUntil:0};save(row);return finish(alive[0]);}
  if(!live.length)return none('missing-seat');const seats=live.reduce((n,r)=>n+occupied(r).length,0),movable=r=>occupied(r).every(p=>p.stack>0);
  if(live.length>Math.ceil(seats/cap)){

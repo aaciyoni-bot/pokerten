@@ -10625,7 +10625,7 @@ function PokerTable({
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournaments',id),d=>{if(!d.exists())return;const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
+  useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournaments',id),d=>{if(!d.exists())return;setTourEntryState({id,...d.data()});const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
   const [tableError, setTableError] = useState('');
   const [privateError, setPrivateError] = useState('');
   const [connectionRetry, setConnectionRetry] = useState(0);
@@ -10884,7 +10884,7 @@ function PokerTable({
   useEffect(() => {
     setPrivateHand(null);
     setPrivateError('');
-    if (!srvEngine) return;
+    if (!srvEngine || (tableState?.tournamentId && !tableState?.players?.[user.uid])) {setPrivateHand(null);return;}
     return window.PokerRuntime.watchSnapshot(
       (next, fail) => window.fb.onSnapshot(window.fb.doc(window.fb.db, "tables", tableDocId, "priv", user.uid), next, fail),
       d => { setPrivateHand({tableId: tableDocId, uid: user.uid, cards: d.exists() ? d.data().cards || [] : []}); setPrivateError(''); },
@@ -10893,7 +10893,7 @@ function PokerTable({
         setPrivateError(/permission-denied|unauthenticated/.test(error.code || '') ? 'Card access could not be verified. Retry to reconnect.' : 'Card updates interrupted. Reconnecting…');
       },
       {document, events:window});
-  }, [srvEngine, tableDocId, user.uid, connectionRetry]);
+  }, [srvEngine, tableDocId, user.uid, connectionRetry,tableState?.tournamentId,!!tableState?.players?.[user.uid]]);
   useEffect(() => {
     if (!srvEngine || tableState?.tournament?.finished) return;
     let warned=false;
@@ -12385,7 +12385,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         !tableState.tournamentId && !setts.spinMode && React.createElement(React.Fragment,null,React.createElement('dt',null,'Waitlist'),React.createElement('dd',null,waitlist.length+' waiting'+(waiting.bots?' · '+waiting.bots+' bots':''))),
         React.createElement('dt',null,'Action time'),React.createElement('dd',null,(setts.actionTime || 30)+'s'),
         React.createElement('dt',null,'Table ID'),React.createElement('dd',null,tableDocId)))),document.body),
-  (tableError || privateError) && React.createElement('div', { className: 'poker-connection-status', role: 'status' }, tableError || privateError,
+  (tableError || (privateError && (!tableState.tournamentId || isSeated))) && React.createElement('div', { className: 'poker-connection-status', role: 'status' }, tableError || privateError,
     React.createElement('button', { onClick: () => setConnectionRetry(n => n + 1) }, 'Retry')),
   skinOpen && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
@@ -13345,7 +13345,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       onClick: tourAddon,
       className: "bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg"
     }, "🚀 Add-on"));
-  })(), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
+  })(), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourEntryState?.players?.[user.uid]?.out||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
     className: "absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse",
     dir: "ltr"
   }, React.createElement("span", {

@@ -17114,7 +17114,7 @@ const TOUR_SIZES = {
 };
 // Entry price. bountyFree = the club funds the bounties as a bonus (players
 // don't pay the bounty component — great for freerolls).
-const tourEntryOf = tor => round2((Number(tor.buyIn) || 0) + (Number(tor.fee) || 0) + (tor.bountyFree ? 0 : Number(tor.bounty) || 0));
+const tourEntryOf = (tor,reentry=false) => round2((Number(reentry?(tor.reentryBuyIn??tor.buyIn):tor.buyIn) || 0) + (Number(tor.fee) || 0) + (tor.bountyFree ? 0 : Number(tor.bounty) || 0));
 // Standard payout curve for n paid places (1..30): power-law weights, first
 // place absorbs rounding so the total is exactly 100.
 const payoutCurve = n => {
@@ -17440,7 +17440,7 @@ const payTourPrize = async (torId, uid, amt, statsPatch, asBonus) => {
   } catch (e) {}
 };
 const tourRegister = async (tor, user, showToast) => {
-if(tor.game==='poker'){try{await pokerCommand('pkTournament',{op:'register',tournamentId:tor.id});showToast('Registration updated.','success');}catch(e){showToast(e.message,'error');}return;}
+if(tor.game==='poker'){const reentry=!!tor.players?.[user.uid]?.out;if(reentry&&!window.confirm('Re-enter '+tor.name+'? Total cost: '+formatMoney(tourEntryOf(tor,true))+' · Starting stack: '+formatShort(tor.startStack)))return;try{await pokerCommand('pkTournament',{op:'register',tournamentId:tor.id});showToast('Registration updated.','success');}catch(e){showToast(e.message,'error');}return;}
 
   const entry = tourEntryOf(tor);
   let didLateSeat = false;
@@ -18478,7 +18478,7 @@ function TournamentsTab({
     payouts: [50, 30, 20],
     mysteryBounty: false,
     bountyMode:'fixed',progressiveCashPct:50,mysteryStartLevel:3,bountyBudgetRemaining:0,
-    maxRebuys:3,botRebuys:true,reentry:false,maxReentries:1,tableSize:6,actionTime:25,anteFromLevel:10,
+    maxRebuys:3,botRebuys:true,reentry:false,reentryBuyIn:0,maxReentries:1,tableSize:6,actionTime:25,anteFromLevel:10,
     bountyFree: false,
     botFill: false,
     serverEngine: true,
@@ -18525,6 +18525,7 @@ function TournamentsTab({
     setOpts(prev => ({
       ...prev,
       ...tp.opts,
+      reentryBuyIn:tp.opts.reentryBuyIn??tp.opts.buyIn??0,
       name: prev.name,
       date: prev.date,
       time: prev.time
@@ -19085,8 +19086,9 @@ if(tor.game==='poker')return showToast('Completed tournaments remain in the hist
   }, "🎁 Club-funded bounty — free for players")), React.createElement("p", {
     className: "text-[10px] text-emerald-300/70 font-bold mt-1"
   }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && React.createElement('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-3', 'data-tournament-options':true},
- ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxRebuys','Maximum rebuys per player',0,100],['maxReentries','Maximum re-entries per player',0,20],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
+ ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxRebuys','Maximum rebuys per player',0,100],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry buy-in to prize pool (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
  React.createElement(Field,{label:'Bounty type'},React.createElement('select',{value:opts.bountyMode,onChange:e=>setOpts({...opts,bountyMode:e.target.value}),className:'w-full bg-slate-900 text-white p-2 rounded-lg'},...['fixed','progressive','mystery'].map(x=>React.createElement('option',{key:x,value:x},x)))),
+ React.createElement('p',{className:'text-xs text-slate-300 sm:col-span-2'},'Re-entry buy-in goes to the prize pool. Club entry fee and any player-funded bounty are added. Set all components to 0 for a free re-entry.'),
  ...[['botRebuys','Bots can rebuy when eligible and funded'],['reentry','Allow re-entry during late registration']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',checked:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
  React.createElement('p',{className:'text-xs text-slate-400 sm:col-span-2'},'Mystery starts after late registration and rebuy close. Club reserves fund free bounties. Bots use mixed playing styles and the same entry rules.')), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
@@ -19646,7 +19648,7 @@ if(tor.game==='poker')return showToast('Completed tournaments remain in the hist
     }, "Registered ✓ · Unregister"), tor.status === 'running' && (!me || me.out && tor.reentry && (me.reentries||0)<tor.maxReentries) && tourLateRegOpen(tor) && (alive < (tor.maxPlayers || 36) ? React.createElement("button", {
       onClick: () => tourRegister(tor, user, showToast),
       className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg"
-    }, "Late register (", formatMoney(tourEntryOf(tor)), ")") : React.createElement("span", {
+    }, me?.out?"Re-enter (":"Late register (", formatMoney(tourEntryOf(tor,!!me?.out)), ")") : React.createElement("span", {
       className: "flex-1 text-center py-2.5 rounded-xl font-black text-sm bg-slate-800/70 border border-white/10 text-slate-400"
     }, "Tournament full")), myTable && React.createElement("button", {
       onClick: () => onJoinTable(myTable),

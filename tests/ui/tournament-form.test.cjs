@@ -36,6 +36,10 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  w.confirm=()=>false;const n2=calls.length;await React.act(()=>w.document.querySelector('button[title="Delete tournament"]').click());assert.equal(calls.length,n2);
  w.confirm=()=>true;await React.act(async()=>w.document.querySelector('button[title="Delete tournament"]').click());assert.equal(calls.at(-1).args.op,'archive');
 
+ await React.act(()=>root.render(React.createElement(w.TourTest,{compactRows:true,user:{uid:'owner',role:'club_owner'},game:'poker',tournaments:[tor],tables:[],clubSettings:{},showToast:m=>messages.push(m),onJoinTable(){}})));
+ const rowButton=w.document.querySelector('[data-tournament-row="managed"]');assert.ok(rowButton);assert.equal(w.document.querySelector('[data-tournament-card]'),null,'compact lobby has rows instead of expanded cards');
+ rowButton.focus();await React.act(()=>rowButton.click());assert.ok(w.document.querySelector('[role="dialog"][aria-label="Managed test"] [data-tournament-card="managed"]'),'row opens the full tournament card');
+ await React.act(()=>w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(w.document.querySelector('[role="dialog"]'),null);assert.equal(w.document.activeElement,rowButton,'closing returns focus to the tournament row');
  await React.act(()=>root.unmount());w.close();console.log('PASS: tournament form exposes and submits entry, rebuy, ante, bounty and table controls through server authority');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});
 

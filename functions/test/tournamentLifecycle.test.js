@@ -129,7 +129,7 @@ for(const pokerType of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple'])test(po
  assert.equal(f.tour(id).status,'done','Tournament completed before progress bound');
  assert.equal(sizes[0],3);assert.ok(sizes.includes(2));assert.equal(sizes.at(-1),1);assert.ok(moves>0);
  const done=f.tour(id);assert.equal(done.results.length,18);assert.equal(done.winnerUids.length,3);assert.equal(done.results.reduce((n,p)=>n+p.prize,0),180);assert.equal(done.finalFeeTotal,18);assert.deepEqual(done.results.slice(0,3).map(p=>p.prize),[90,54,36]);
- assert.equal(f.tables(id).every(row=>row.tournament.finished),true);assert.equal(f.tables(id).flatMap(row=>Object.values(row.players)).length,1);assert.ok(f.tables(id).every(row=>row.gameState.phase==='waiting'&&row.gameState.board.length===0&&row.gameState.activeTurnUid===null));
+ assert.equal(f.tables(id).every(row=>row.tournament.finished),true);assert.equal(done.results[0].finalChips,done.initialChips);assert.ok(done.results.slice(1).every(r=>r.finalChips===0));assert.equal(f.tables(id).flatMap(row=>Object.values(row.players)).length,1);assert.ok(f.tables(id).every(row=>row.gameState.phase==='waiting'&&row.gameState.board.length===0&&row.gameState.activeTurnUid===null));
  assert.equal([...f.docs].filter(([p])=>p.startsWith('memberships/')).reduce((n,[,d])=>n+d.balance,0),118000,'Wallet funds conserved through entries, prizes and fees');
  const settled=copy([...f.docs]);for(let i=0;i<3;i++)await f.tours.tickTournament(id,f.now()+i*10000);assert.deepEqual([...f.docs],settled,'Repeated finish ticks cannot pay again');
  t.diagnostic(JSON.stringify({pokerType,ticks,actions,tableCounts:sizes,moves,paidWinners:done.winnerUids.length}));

@@ -1109,11 +1109,12 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
-<link rel="stylesheet" href="assets/css/tournament-blue.css?v=303-lobby">
+<link rel="stylesheet" href="assets/css/tournament-blue.css?v=314">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/poker-god-best.css?v=299">
+<link rel="stylesheet" href="assets/css/player-wallet-blue.css?v=314">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -7203,12 +7204,12 @@ function LobbyView({
     className: "lw-val"
   }, React.createElement(OwnBalanceNumbers,{user,compact:true}))), React.createElement("button", {
     onClick: () => setCashierOpen(true),
-    className: "btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
+    className: "lw-cashier btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
   }, React.createElement("i",{className:"fa-solid fa-wallet", "aria-hidden":true}), " Cashier"), React.createElement("button", {
     onClick: () => onSettlement?.(),
     title: canOpenBackoffice(user) ? "Club settlement" : "My results",
     "aria-label": canOpenBackoffice(user) ? "Club settlement" : "My results",
-    className: "ml-1.5 px-3 py-2 text-[12px] font-black rounded-xl shrink-0 bg-slate-900 border border-emerald-500/40 text-emerald-300"
+    className: "lw-results ml-1.5 px-3 py-2 text-[12px] font-black rounded-xl shrink-0 bg-slate-900 border border-emerald-500/40 text-emerald-300"
   }, React.createElement("i",{className:"fa-solid fa-chart-simple", "aria-hidden":true}))), React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
   }, bonusEnabled && React.createElement("button", {
@@ -7614,7 +7615,7 @@ function LobbyView({
     }
   })), tab === 'poker' && React.createElement("div", {
     className: "animate-fade-in"
-  }, React.createElement("div", {
+  }, React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker}), React.createElement("div", {
     className: "flex justify-between items-center mb-4"
   }, React.createElement("h2", {
     className: "text-xl font-black text-white"
@@ -7887,17 +7888,7 @@ function LobbyView({
     suit: "\uD83C\uDFA1",
     title: "No Spin & Cash tables right now",
     sub: "3 players, winner takes the wheel prize \u2014 open one and it appears here live."
-  }))), showPokerTours && React.createElement("div", {
-    className: "border-t border-white/5 my-8"
-  }), showPokerTours && React.createElement(TournamentsTab, {
-    game: "poker",
-    user: user,
-    tournaments: tournaments,
-    tables: tables,
-    clubSettings: clubSettings,
-    showToast: showToast,
-    onJoinTable: onJoinPoker
-  })), tab === 'durak' && React.createElement("div", {
+  })))), tab === 'durak' && React.createElement("div", {
     className: "animate-fade-in"
   }, React.createElement("div", {
     className: "flex justify-between items-center mb-5"
@@ -10816,7 +10807,7 @@ function PokerTable({
       })), ...outPl];
       const meRow = list.find(p => p.uid === user.uid);
       const torData = tSnap.exists() ? tSnap.data() : {};
-      if(torData.status==='done'&&Array.isArray(torData.results)){setTourRanks({list:[...torData.results].sort((a,b)=>a.rank-b.rank),finished:true,total:torData.results.length,alive:1,myRank:torData.results.find(p=>p.uid===user.uid)?.rank,prizes:torData.results.filter(p=>p.prize>0).map(p=>p.prize),pool:torData.finalPrizePool||0});return;}
+      if(torData.status==='done'&&Array.isArray(torData.results)){setTourRanks({list:[...torData.results].map(r=>({...r,finalChips:r.finalChips??stacks[r.uid]??(torData.players?.[r.uid]?.out?0:undefined)})).sort((a,b)=>a.rank-b.rank),finished:true,total:torData.results.length,alive:1,myRank:torData.results.find(p=>p.uid===user.uid)?.rank,prizes:torData.results.filter(p=>p.prize>0).map(p=>p.prize),pool:torData.finalPrizePool||0});return;}
       setTourRanks({
         list,
         alive: alivePl.length,
@@ -12639,12 +12630,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     alt: "",
     draggable: false
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
-    className: "absolute inset-0 pointer-events-none z-[6]",
+    className: "ft-silver-halo absolute inset-0 pointer-events-none z-[6]",
     style: {
       borderRadius: 'inherit',
-      border: '2px solid rgba(255,215,0,0.55)',
-      boxShadow: 'inset 0 0 70px 6px rgba(255,215,0,0.22), 0 0 46px 12px rgba(255,200,0,0.35)',
-      animation: 'pulse 2.6s ease-in-out infinite'
+      border: '1px solid rgba(193,202,215,0.22)',
+      boxShadow: 'inset 0 0 50px rgba(190,205,225,0.05)',
+      animation: 'none'
     }
   }), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "ft-banner",
@@ -12655,7 +12646,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), React.createElement("div", {
     className: "poker-community" + ((gs.board2 || []).length ? " has-second-board" : ""),
     "aria-label": "Community cards"
-  }, tournamentEnded && React.createElement('div',{className:'poker-break-center',dir:'ltr'},React.createElement('strong',null,'Tournament complete'),React.createElement('div',{className:'poker-final-ranks'},(tourRanks?.list || []).map(p=>React.createElement('div',{key:p.uid},'#',p.rank,' · ',p.name,p.prize>0?' · '+formatChips(p.prize):''))),tourStandBtn), tableOnBreak && React.createElement('div', {className:'poker-break-center',role:'status',dir:'ltr'},React.createElement('strong',null,'☕ BREAK'),React.createElement('div',{className:'poker-break-clock'},Math.floor(breakSeconds/60),':',String(breakSeconds%60).padStart(2,'0')),React.createElement('span',null,'Resuming at ',formatShort(breakClock.row.sb),' / ',formatShort(breakClock.row.bb)),tourStandBtn), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
+  }, tournamentEnded && React.createElement('div',{className:'poker-break-center',dir:'ltr'},React.createElement('strong',null,'Tournament complete'),React.createElement('div',{className:'poker-final-ranks'},(tourRanks?.list || []).map(p=>React.createElement('div',{key:p.uid},'#',p.rank,' · ',p.name,p.prize>0?' · '+formatMoney(p.prize):''))),tourStandBtn), tableOnBreak && React.createElement('div', {className:'poker-break-center',role:'status',dir:'ltr'},React.createElement('strong',null,'☕ BREAK'),React.createElement('div',{className:'poker-break-clock'},Math.floor(breakSeconds/60),':',String(breakSeconds%60).padStart(2,'0')),React.createElement('span',null,'Resuming at ',formatShort(breakClock.row.sb),' / ',formatShort(breakClock.row.bb)),tourStandBtn), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
     className: "poker-total-pot absolute left-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
     style: {
       background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.22) 60%, rgba(0,0,0,0) 100%)',
@@ -13171,7 +13162,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "absolute top-16 left-1/2 -translate-x-1/2 z-[90] bg-rose-900/90 border border-rose-500 text-white px-6 py-2.5 rounded-full font-black text-sm animate-pulse backdrop-blur"
   }, React.createElement("i", {
     className: "fa-solid fa-crown ml-2 text-rose-300"
-  }), players[gs.dcUid]?.name, " is picking the next game...")), gs.phase === 'waiting' && isSeated && React.createElement("div", {
+  }), players[gs.dcUid]?.name, " is picking the next game...")), !tournamentEnded && !tableOnBreak && gs.phase === 'waiting' && isSeated && React.createElement("div", {
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
     className: "poker-action-dock"
@@ -18339,6 +18330,16 @@ function tournamentResultRows(tor) {
     return { ...r, rank: Number(r.rank), uid: r.uid || match?.[0] || '', photo: match?.[1]?.photo || '', avatarSeed: match?.[1]?.avatarSeed || r.name || 'player' };
   }).sort((a, b) => a.rank - b.rank);
 }
+function TournamentMedal({rank}) {
+ return React.createElement('span',{className:'pt-tour-medal','data-prize-medal':rank,'aria-label':'Prize winner · place '+rank},rank<=3?React.createElement('img',{src:'assets/tournaments/medal-'+rank+'.webp',alt:'',width:28,height:38}):React.createElement(React.Fragment,null,React.createElement('span',{'aria-hidden':true},'🏅'),React.createElement('small',null,rank)));
+}
+function tournamentFinalChips(tor,r) {
+ if(Number.isFinite(r.finalChips))return r.finalChips;
+ if(Number.isFinite(tor?.finalChipStacks?.[r.uid]))return tor.finalChipStacks[r.uid];
+ if(tor?.players?.[r.uid]?.out)return 0;
+ if(r.rank===1&&Number.isFinite(tor?.initialChips)&&Object.entries(tor.players||{}).every(([uid,p])=>uid===r.uid||p.out))return tor.initialChips;
+ return undefined;
+}
 function tournamentPlaceTitle(rank) {
   return Number(rank) === 1 ? 'Champion' : Number(rank) === 2 ? 'Runner-up' : `Place #${rank}`;
 }
@@ -18391,8 +18392,8 @@ function TournamentStandingsDialog({ data, user, onClose, layer = 310 }) {
     data && Number(data.pool) > 0 && React.createElement('div', { className: 'pt-tour-pool' }, React.createElement('span', null, 'Prize pool'), React.createElement('strong', { dir: 'ltr' }, formatMoney(data.pool)), React.createElement('small', null, (data.prizes || []).filter(x => Number(x) > 0).length, ' paid places')),
     !data ? React.createElement('div', { className: 'pt-tour-empty', role: 'status' }, React.createElement('i', { className: 'fa-solid fa-spinner fa-spin', 'aria-hidden': true }), ' Loading standings…') : React.createElement('div', { className: 'pt-tour-rank-list' },
       (data.list || []).map(p => React.createElement('div', { key: p.uid, className: 'pt-tour-rank-row' + (p.uid === user?.uid ? ' is-you' : '') + (p.out && !data.finished ? ' is-out' : '') },
-        React.createElement('span', { className: 'pt-tour-rank', 'aria-label': 'Place ' + (p.rank >= 999 ? 'pending' : p.rank) }, p.rank >= 999 ? '—' : '#' + p.rank),
-        React.createElement('span', { className: 'pt-tour-rank-person' }, React.createElement('strong', null, p.name || 'Player'), p.uid === user?.uid && React.createElement('small', { className: 'pt-tour-you' }, 'YOU'), p.out && !data.finished && React.createElement('small', null, 'Eliminated')),
+        React.createElement('span', { className: 'pt-tour-rank', 'aria-label': 'Place ' + (p.rank >= 999 ? 'pending' : p.rank) }, data.finished && Number(p.prize??data.prizes?.[p.rank-1])>0 ? React.createElement(TournamentMedal,{rank:p.rank}) : p.rank >= 999 ? '—' : '#' + p.rank),
+        React.createElement('span', { className: 'pt-tour-rank-person' }, React.createElement('strong', null, p.name || 'Player'), p.uid === user?.uid && React.createElement('small', { className: 'pt-tour-you' }, 'YOU'), p.out && !data.finished && React.createElement('small', null, 'Eliminated'),data.finished&&React.createElement('small',{className:'pt-tour-final-chips','data-final-chips':p.uid},'Chips: ',Number.isFinite(p.finalChips)?Number(p.finalChips).toLocaleString('en-US',{maximumFractionDigits:2}):p.out?'0':'—')),
         React.createElement('span', { className: 'pt-tour-rank-value', dir: 'ltr' }, data.finished || p.out ? Number(data.prizes?.[p.rank - 1]) > 0 ? React.createElement(React.Fragment, null, React.createElement('strong', { className: 'pt-tour-money' }, formatMoney(data.prizes[p.rank - 1])), React.createElement('small', null, data.finished ? 'Prize' : 'Prize at finish')) : React.createElement('small', null, data.finished ? 'No prize' : 'OUT') : React.createElement(React.Fragment, null, React.createElement('strong', null, p.stack === undefined ? '—' : formatShort(p.stack)), React.createElement('small', null, p.stack === undefined ? 'Moving tables' : 'Chips'))))),
       !(data.list || []).length && React.createElement('p', { className: 'pt-tour-empty' }, 'No standings available yet.')),
     React.createElement('button', { className: 'pt-tour-secondary pt-tour-full', onClick: onClose }, 'Close'));
@@ -18435,8 +18436,8 @@ function TournamentResultsDialog({ tournament, user, onClose, showToast }) {
       React.createElement('strong', null, r.name), React.createElement('span', { className: 'pt-tour-podium-label' }, tournamentPlaceTitle(r.rank)), React.createElement('span', { className: 'pt-tour-money', dir: 'ltr' }, Number(r.prize) > 0 ? formatMoney(r.prize) : '—')))),
     React.createElement('div', { className: 'pt-tour-list-heading' }, React.createElement('h3', null, 'Every finishing place'), React.createElement('span', null, 'Prize')),
     React.createElement('div', { className: 'pt-tour-rank-list' }, results.map(r => React.createElement('button', { key: r.rank + '-' + r.uid, className: 'pt-tour-rank-row' + (r.uid === user?.uid ? ' is-you' : ''), onClick: () => setSelected(r), 'aria-label': 'Open result for ' + r.name + ', place ' + r.rank },
-      React.createElement('span', { className: 'pt-tour-rank' }, '#', r.rank),
-      React.createElement('span', { className: 'pt-tour-rank-person' }, React.createElement('strong', null, r.name), r.uid === user?.uid && React.createElement('small', { className: 'pt-tour-you' }, 'YOU'), Number(r.bounties) > 0 && React.createElement('small', null, r.bounties, ' knockouts')),
+      React.createElement('span', { className: 'pt-tour-rank' },Number(r.prize)>0?React.createElement(TournamentMedal,{rank:r.rank}):'#'+r.rank),
+      React.createElement('span', { className: 'pt-tour-rank-person' }, React.createElement('strong', null, r.name), r.uid === user?.uid && React.createElement('small', { className: 'pt-tour-you' }, 'YOU'), Number(r.bounties) > 0 && React.createElement('small', null, r.bounties, ' knockouts'),React.createElement('small',{className:'pt-tour-final-chips','data-final-chips':r.uid},'Chips: ',Number.isFinite(tournamentFinalChips(tournament,r))?Number(tournamentFinalChips(tournament,r)).toLocaleString('en-US',{maximumFractionDigits:2}):'—')),
       React.createElement('span', { className: 'pt-tour-rank-value', dir: 'ltr' }, Number(r.prize) > 0 ? React.createElement('strong', { className: 'pt-tour-money' }, formatMoney(r.prize)) : React.createElement('small', null, 'No prize')))),
       !results.length && React.createElement('p', { className: 'pt-tour-empty' }, 'Final results are not available yet.')),
     React.createElement('div', { className: 'pt-tour-actions' }, React.createElement('button', { className: 'pt-tour-secondary', onClick: onClose }, 'Close'), React.createElement('button', { className: 'pt-tour-primary', onClick: () => share(results), disabled: !results.length }, React.createElement('i', { className: 'fa-solid fa-arrow-up-from-bracket', 'aria-hidden': true }), ' Share results'))),
@@ -18459,8 +18460,10 @@ function TournamentsTab({
   tables,
   clubSettings,
   showToast,
-  onJoinTable
+  onJoinTable,
+  compactRows = false
 }) {
+  const [expandedTournament, setExpandedTournament] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [champTor, setChampTor] = useState(null);
   const [tick, setTick] = useState(0);
@@ -18565,13 +18568,8 @@ function TournamentsTab({
       // Finished tournament: the FULL final table of every participant by
       // recorded rank (tables are gone, so there are no live stacks to show).
       if ((torD.status || tor.status) === 'done') {
-        const all = Object.entries(torPl).map(([uid, p]) => ({
-          uid,
-          name: p.name,
-          out: true,
-          rank: p.rank || 999,
-          stack: 0
-        }));
+        const finalChipStacks=Object.fromEntries(tbls.docs.flatMap(d=>Object.entries(d.data().players||{}).map(([uid,p])=>[uid,p.stack])));
+        const all=tournamentResultRows({...torD,finalChipStacks}).map(r=>({...r,out:torPl[r.uid]?.out===true,finalChips:tournamentFinalChips({...torD,finalChipStacks},r)}));
         all.sort((a, b) => (a.rank || 999) - (b.rank || 999));
         setStandData({
           list: all,
@@ -18935,9 +18933,9 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     try{const r=await pokerCommand('pkTournament',{op:'removeplayer',tournamentId:tor.id,playerUid:player.uid});showToast(r?.queued?'Player will be removed after the current hand.':'Player removed.','success');}catch(e){showToast(e.message||String(e),'error');}
   };
   const sorted = [...myTours].sort((a, b) => (a.status === 'reg' ? 0 : a.status === 'running' ? 1 : 2) - (b.status === 'reg' ? 0 : b.status === 'running' ? 1 : 2) || (a.startAt || 0) - (b.startAt || 0));
-  const champModal = champTor ? ReactDOM.createPortal(React.createElement(TournamentResultsDialog, { tournament: champTor, user, showToast, onClose: () => setChampTor(null) }), document.body) : null;
+  const champModal = champTor ? ReactDOM.createPortal(React.createElement(TournamentResultsDialog, { tournament: {...champTor,finalChipStacks:Object.fromEntries((tables||[]).filter(t=>t.tournamentId===champTor.id).flatMap(t=>Object.entries(t.players||{}).map(([uid,p])=>[uid,p.stack])))}, user, showToast, onClose: () => setChampTor(null) }), document.body) : null;
   return React.createElement("div", {
-    className: "animate-fade-in pt-tournaments"
+    className: "animate-fade-in pt-tournaments"+(compactRows?" pt-tournaments-compact":"")
   }, React.createElement("div", {
     className: "pt-tournaments-heading flex justify-between items-center mb-5"
   }, React.createElement("h2", {
@@ -19485,7 +19483,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     const pool=tor.status==='done'?(tor.finalPrizePool??tor.prizePool??0):(tor.prizePool||0);
     const countdown=Math.max(0,Math.floor(((tor.startAt||0)-Date.now())/1000));
     const timeParts=[Math.floor(countdown/3600),Math.floor(countdown/60)%60,countdown%60].map(n=>String(n).padStart(2,'0'));
-    return h("article",{key:tor.id,className:"pt-tournament-card", 'data-tournament-card':tor.id},
+    const card = h("article",{key:tor.id,className:"pt-tournament-card", 'data-tournament-card':tor.id},
       h("div",{className:"pt-tournament-inner"},
         h("header",{className:"pt-tournament-hero"},
           h("img",{className:"pt-tournament-cup",src:"assets/tournaments/gold-cup.webp",alt:"",width:64,height:72}),
@@ -19694,7 +19692,13 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       onClick: () => setChampTor(tor),
       className: "flex-1 ft-btn py-2.5 rounded-xl font-black text-sm"
     }, "🏆 Final results"))));
-  }), sorted.length === 0 && React.createElement("div", {
+    if(!compactRows)return card;
+    return h(React.Fragment,{key:tor.id},h('button',{type:'button',className:'pt-tournament-lobby-row','data-tournament-row':tor.id,'aria-label':'Open tournament '+tor.name,onClick:()=>setExpandedTournament(tor.id)},
+      h('img',{src:'assets/tournaments/gold-cup.webp',alt:'',width:48,height:56}),
+      h('span',{className:'pt-tournament-row-title'},h('strong',null,tor.name),h('small',null,tourEntryOf(tor)===0?'FREEROLL · ':'',tor.pokerType||'NLH',' · ',tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE · '+alive+' left':'Ended')),
+      h('span',{className:'pt-tournament-row-pool'},h('small',null,'PRIZE POOL'),h('strong',null,formatMoney(pool))),h('i',{className:'fa-solid fa-chevron-right','aria-hidden':true})),
+      expandedTournament===tor.id&&h(TournamentDialog,{title:tor.name,onClose:()=>setExpandedTournament(null),className:'pt-tournament-detail'},h('div',{className:'pt-tournaments'},card)));
+  }), !compactRows && sorted.length === 0 && React.createElement("div", {
     className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
   }, "No tournaments right now. ", canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, standFor && ReactDOM.createPortal(React.createElement(TournamentStandingsDialog, { data: standData, user, onClose: () => setStandFor(null) }), document.body));
 }

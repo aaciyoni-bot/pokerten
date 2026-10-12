@@ -240,6 +240,9 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  assert.equal(doc.querySelector('.poker-on-break'),null,'unfinished hand is shown until settlement');
  current.tournament.finished=true;current.tournament.tableWinner='me';current.players.ghost={uid:'ghost',name:'Eliminated ghost',stack:0,status:'out',seatIndex:7};
  await React.act(async()=>tableNext(snapshot()));
+ w.fb.getDoc=async()=>({exists:()=>true,data:()=>({status:'done',results:[{uid:'me',name:'Me',rank:1,prize:500,finalChips:200}],players:{me:{}}})});
+ const finalRanksButton=[...doc.querySelectorAll('button')].find(b=>b.textContent.includes('Rank'));await React.act(async()=>finalRanksButton.click());
+ assert.match(doc.querySelector('.poker-final-ranks').textContent,/500.00/,'terminal view renders actual paid results');
  assert.equal(doc.querySelectorAll('.poker-seat').length,1,'ended table retains only the viewer seat');
  assert.ok(doc.querySelector('.poker-tournament-ended'),'finished table has a terminal display');
  assert.match(doc.querySelector('.poker-break-center').textContent,/Tournament complete/);

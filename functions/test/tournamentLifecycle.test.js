@@ -168,14 +168,14 @@ test('disconnected players time out and do not stall the server table',async()=>
 });
 
 test('freeroll supports independently priced, idempotent re-entry with server limits',async()=>{
- for(const reentryBuyIn of [0,50]){
-  const f=fixture(7),id=await create(f,{buyIn:0,fee:0,reentryBuyIn,reentry:true,maxReentries:1,lateRegUntilLevel:1,rebuys:false,maxPlayers:6});
+ for(const buyIn of [0,10])for(const reentryToPrizePool of [false,true])for(const reentryBuyIn of [0,50]){
+  const f=fixture(7),id=await create(f,{buyIn,fee:0,reentryBuyIn,reentryToPrizePool,reentry:true,maxReentries:1,lateRegUntilLevel:1,rebuys:false,maxPlayers:6});
   await startHumans(f,id,3);const tour=f.tour(id),row=f.docs.get('tables/'+f.tables(id)[0].docId);
   const lost=row.players.human0.stack;row.players.human0.stack=0;row.players.human0.status='out';row.players.human1.stack+=lost;tour.players.human0.out=true;tour.players.human0.rank=3;
   const pool=tour.prizePool;await f.command('human0','register',{tournamentId:id},'reentry-once-request-id');
-  assert.equal(f.balance('human0'),1000-reentryBuyIn);assert.equal(f.tour(id).prizePool,pool+reentryBuyIn);assert.equal(f.tour(id).players.human0.reentries,1);
+  assert.equal(f.balance('human0'),1000-buyIn-reentryBuyIn);assert.equal(f.tour(id).prizePool,pool+(reentryToPrizePool?reentryBuyIn:0));assert.equal(f.tour(id).feeTotal,reentryToPrizePool?0:reentryBuyIn);assert.equal(f.tour(id).players.human0.feesPaid,reentryToPrizePool?0:reentryBuyIn);assert.equal(f.tour(id).players.human0.reentries,1);
   assert.equal(f.tables(id).flatMap(t=>Object.values(t.players)).find(p=>p.uid==='human0').stack,100);
-  await f.command('human0','register',{tournamentId:id},'reentry-once-request-id');assert.equal(f.balance('human0'),1000-reentryBuyIn);
+  await f.command('human0','register',{tournamentId:id},'reentry-once-request-id');assert.equal(f.balance('human0'),1000-buyIn-reentryBuyIn);
   f.tour(id).players.human0.out=true;await assert.rejects(f.command('human0','register',{tournamentId:id}),e=>e.message==='Re-entry unavailable');
  }
 });

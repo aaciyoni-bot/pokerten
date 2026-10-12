@@ -238,10 +238,15 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  assert.equal(doc.body.textContent.includes('New hand starting soon...'),false);
  current.gameState.phase='river';await React.act(async()=>tableNext(snapshot()));
  assert.equal(doc.querySelector('.poker-on-break'),null,'unfinished hand is shown until settlement');
+ current.players.me.status='out';current.players.me.stack=0;current.gameState.phase='waiting';
+ w.fb.getDoc=async()=>({exists:()=>true,data:()=>({id:'break-test',status:'running',name:'Return test',game:'poker',startedAt:Date.now(),structure:[{sb:1,bb:2,ante:0,mins:10}],reentry:true,maxReentries:2,lateRegUntilLevel:4,reentryBuyIn:0,buyIn:0,fee:0,bounty:0,startStack:100,players:{me:{name:'Me',out:true,rank:2,reentries:0},other:{name:'Other'}}})});
+ await React.act(async()=>tableNext(snapshot()));const reentryButton=doc.querySelector('[data-tournament-reentry]');assert.ok(reentryButton,'eliminated players have a return action without retaining a live seat');assert.match(reentryButton.textContent,/Re-entry · Free/);
+ const joinsBefore=returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='register').length;await React.act(async()=>{reentryButton.click();reentryButton.click();});assert.equal(returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='register').length,joinsBefore+1,'re-entry double click makes one authoritative purchase');
+ current.players.me.status='active';current.players.me.stack=100;
  current.tournament.finished=true;current.tournament.tableWinner='me';current.players.ghost={uid:'ghost',name:'Eliminated ghost',stack:0,status:'out',seatIndex:7};
  await React.act(async()=>tableNext(snapshot()));
  w.fb.getDoc=async()=>({exists:()=>true,data:()=>({status:'done',results:[{uid:'me',name:'Me',rank:1,prize:500,finalChips:200}],players:{me:{}}})});
- const finalRanksButton=[...doc.querySelectorAll('button')].find(b=>b.textContent.includes('Rank'));await React.act(async()=>finalRanksButton.click());
+ const finalRanksButton=doc.querySelector('.poker-break-center button');await React.act(async()=>finalRanksButton.click());
  assert.match(doc.querySelector('.poker-final-ranks').textContent,/500.00/,'terminal view renders actual paid results');
  assert.equal(doc.querySelectorAll('.poker-seat').length,1,'ended table retains only the viewer seat');
  assert.ok(doc.querySelector('.poker-tournament-ended'),'finished table has a terminal display');

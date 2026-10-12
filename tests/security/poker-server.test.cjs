@@ -256,7 +256,7 @@ test('a paid tournament rebuy survives a live table, expiry and balancing until 
 });
 test('cancelling registration returns funded bot entries, guaranteed prize and unused bounty reserve exactly once',async()=>{
  const b=await bank(owner),r=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Cancel checks',buyIn:10,fee:1,bounty:5,bountyFree:true,bountyBudgetRemaining:100,addedPrize:50,maxPlayers:4,startAt:Date.now()+600000}}),id=r.tournamentId;
- await call('pkTournament',owner,{op:'fillbots',tournamentId:id});assert.equal(await bank(owner),b-194);await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),b);await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),b);
+ for(let i=0;i<4;i++)await call('pkTournament',owner,{op:'fillbots',tournamentId:id});assert.equal(await bank(owner),b-194);await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),b);await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),b);
 });
 test('cash and tournament bots get real display names and existing generic names refresh without changing identity',async()=>{
  const names=require('../../functions/botNames'),r=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:100,blinds:1},botCount:1});
@@ -264,13 +264,13 @@ test('cash and tournament bots get real display names and existing generic names
  await db.doc('tables/'+r.tableId).update({['players.'+id+'.name']:'BOT 1'});const b=await bank(owner);await Engine.__engineInternals.tickTable(r.tableId,Date.now());t=await get('tables/'+r.tableId);
  assert.equal(names.generic(t.players[id].name),false);assert.equal(t.players[id].stack,p.stack);assert.equal(t.players[id].fundingUid,p.fundingUid);assert.equal(await bank(owner),b);
  const c=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Name checks',maxPlayers:6,buyIn:0,startAt:Date.now()+600000}});
- await call('pkTournament',owner,{op:'fillbots',tournamentId:c.tournamentId});let tor=await get('tournaments/'+c.tournamentId);assert.equal(new Set(Object.values(tor.players).map(p=>p.name)).size,6);assert.ok(Object.values(tor.players).every(p=>!names.generic(p.name)));
+ for(let i=0;i<6;i++)await call('pkTournament',owner,{op:'fillbots',tournamentId:c.tournamentId});let tor=await get('tournaments/'+c.tournamentId);assert.equal(new Set(Object.values(tor.players).map(p=>p.name)).size,6);assert.ok(Object.values(tor.players).every(p=>!names.generic(p.name)));
  const bid=Object.keys(tor.players)[0];await db.doc('tournaments/'+c.tournamentId).update({['players.'+bid+'.name']:'Bot 1'});await Tours.tickTournament(c.tournamentId);tor=await get('tournaments/'+c.tournamentId);assert.equal(names.generic(tor.players[bid].name),false);assert.equal(tor.status,'reg');
 });
 test('tournament settlement pays exactly the configured number of prize places and never pays twice',async()=>{
  for(const [mode,payouts,paidPct,expected]of [['three',[50,30,20],0,3],['two',[70,30],0,2],['percent',[100],40,2]]){
   const c=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Payout '+mode,maxPlayers:5,tableSize:5,buyIn:10,payouts,paidPct,startAt:Date.now()+600000}}),id=c.tournamentId;
-  await call('pkTournament',owner,{op:'fillbots',tournamentId:id});await call('pkTournament',owner,{op:'start',tournamentId:id});const [row]=await rows(id),ids=Object.keys(row.players),roster={...(await get('tournaments/'+id)).players};
+  for(let i=0;i<5;i++)await call('pkTournament',owner,{op:'fillbots',tournamentId:id});await call('pkTournament',owner,{op:'start',tournamentId:id});const [row]=await rows(id),ids=Object.keys(row.players),roster={...(await get('tournaments/'+id)).players};
   // Feed the final settled hand into the actual server orchestrator.
   for(let i=0;i<ids.length;i++){const uid=ids[i];Object.assign(row.players[uid],{stack:i===0?50000:0,bet:0,status:i===0?'active':'out'});Object.assign(roster[uid],{out:i!==0,rank:i===0?null:i+1});}
   await db.doc('tables/'+row.docId).update({players:row.players});await db.doc('tournaments/'+id).update({players:roster});const b=await bank(owner);await Tours.tickTournament(id);const done=await get('tournaments/'+id);

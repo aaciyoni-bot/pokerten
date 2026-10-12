@@ -40,7 +40,8 @@ function plan(t,input,now=Date.now()){
  const save=row=>updates.set(row.docId,{id:row.docId,patch:{players:row.players,tournament:row.tournament,gameState:{...row.gameState,__seq:(input.find(x=>x.docId===row.docId).gameState?.__seq||0)+1}}});
  const finish=champion=>chips(rows.filter(r=>!deleted.has(r.docId)))===chips(input)?{updates:[...updates.values()].filter(u=>!deleted.has(u.id)),deletes:[...deleted],champion:champion||null,issue:null}:none('chip-conservation');
  const hold=(targets,force=false)=>{if(!force&&targets.every(ready))return true;for(const row of targets.filter(idle)){if((row.tournament?.balanceHoldUntil||0)<now+10000){row.tournament={...row.tournament,balanceHoldUntil:now+30000};save(row);}}return false;};
- const clean=row=>{for(const [uid,p]of Object.entries(row.players))if(p.status==='out'&&p.stack===0)delete row.players[uid];};
+ const clean=row=>{let changed=false;for(const [uid,p]of Object.entries(row.players))if(p.status==='out'&&p.stack===0&&!(p.pendingTournamentChips>0)&&roster[uid]?.out){delete row.players[uid];changed=true;}return changed;};
+ for(const row of rows)if(idle(row)&&clean(row))save(row);
  const move=(src,dst,p)=>{clean(dst);const used=new Set(Object.values(dst.players).map(p=>p.seatIndex));let seat=0;while(used.has(seat)&&seat<cap)seat++;if(seat>=cap||dst.players[p.uid])throw Error('unsafe-seat');dst.players[p.uid]={...p,seatIndex:seat,bet:0,cards:[],cardCount:0,status:'waiting',hasActed:false,actionText:'',reveal:false,mucked:false,_reported:false};delete src.players[p.uid];save(src);save(dst);};
  for(const row of rows)if(!occupied(row).length&&ready(row))deleted.add(row.docId);
  const live=rows.filter(r=>occupied(r).length).sort((a,b)=>occupied(a).length-occupied(b).length||a.docId.localeCompare(b.docId));
@@ -69,3 +70,4 @@ function plan(t,input,now=Date.now()){
 }
 const api={capacity,idle,chips,clock,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
 })(typeof window!=='undefined'?window:globalThis);
+

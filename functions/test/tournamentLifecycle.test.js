@@ -242,3 +242,16 @@ test('removed participant gets no final prize while all entry fees remain accoun
  let steps=0;while(f.tour(id).status==='running'&&steps++<300){f.advance(6000);await f.tours.tickTournament(id,f.now());if(f.tour(id).status!=='running')break;for(const row of f.tables(id))await playOne(f,row);}
  assert.equal(f.tour(id).status,'done');assert.equal(f.tour(id).results.some(r=>r.uid==='human0'),false);assert.equal(f.balance('human0'),989);assert.equal(f.tour(id).results.reduce((n,p)=>n+p.prize,0),40);assert.equal(f.tour(id).finalFeeTotal,4);
 });
+
+test('coordinator removes eliminated zero seats only at safe hand boundaries',()=>{
+ const seat=(uid,stack,status='active')=>({uid,stack,status,bet:0,seatIndex:uid==='a'?0:1});
+ const t={id:'tor',status:'running',tableSize:2,players:{a:{},b:{},gone:{out:true}}};
+ const row={docId:'one',tournamentId:'tor',tournament:{final:true},players:{a:seat('a',100),b:seat('b',100),gone:seat('gone',0,'out')},gameState:{phase:'showdown',showdownAt:NOW-6000,pots:[]}};
+ const cleaned=T.plan(t,[row],NOW);assert.equal(cleaned.issue,null);assert.equal(cleaned.updates[0].patch.players.gone,undefined);assert.equal(T.chips([row]),T.chips([{...row,...cleaned.updates[0].patch}]));
+ row.gameState.phase='river';assert.equal(T.plan(t,[row],NOW).updates.length,0);assert.ok(row.players.gone);
+});
+test('new deal reaps eliminated seats but retains paid pending rebuy',async()=>{
+ const f=fixture(),id=await create(f,{rebuys:true});await startHumans(f,id,3);const row=f.tables(id)[0];
+ const d=f.docs.get('tables/'+row.docId);d.players.human2.stack=0;d.players.human2.status='out';f.tour(id).players.human2.out=true;
+ await f.action(row.docId,s=>f.engine.startHand(s));assert.equal(f.tables(id)[0].players.human2,undefined);
+});

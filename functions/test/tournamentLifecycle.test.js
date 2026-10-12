@@ -195,3 +195,50 @@ test('legacy tournaments retain entry price and explicit re-entry zero is preser
  assert.equal(f.tours.config({...base,reentryBuyIn:0},'clubA','owner',NOW).reentryBuyIn,0);
  assert.throws(()=>f.tours.config({...base,reentryBuyIn:-1},'clubA','owner',NOW),e=>e.message.includes('Re-entry buy-in'));
 });
+
+test('bot button adds exactly one funded entrant, is idempotent and respects capacity',async()=>{
+ const f=fixture(1),id=await create(f,{maxPlayers:2});
+ await f.command('owner','fillbots',{tournamentId:id},'single-bot-request-one');
+ assert.equal(Object.keys(f.tour(id).players).length,1);assert.equal(f.balance('owner'),99989);
+ await f.command('owner','fillbots',{tournamentId:id},'single-bot-request-one');assert.equal(Object.keys(f.tour(id).players).length,1);
+ await f.command('owner','fillbots',{tournamentId:id});assert.equal(Object.keys(f.tour(id).players).length,2);assert.equal(f.balance('owner'),99978);
+ await assert.rejects(f.command('owner','fillbots',{tournamentId:id}),e=>e.message==='Tournament full');
+});
+test('delete before start refunds entries and sponsor once, retaining records',async()=>{
+ const f=fixture(),id=await create(f,{addedPrize:50});f.member('human');await f.command('human','register',{tournamentId:id});
+ assert.equal(f.balance('human'),989);assert.equal(f.balance('owner'),99950);
+ await f.command('owner','archive',{tournamentId:id});assert.equal(f.balance('human'),1000);assert.equal(f.balance('owner'),100000);assert.equal(f.tour(id).archived,true);assert.equal(f.tour(id).status,'cancelled');
+ await f.command('owner','archive',{tournamentId:id});assert.equal(f.balance('human'),1000);assert.equal(f.balance('owner'),100000);
+ await assert.rejects(f.command('human','register',{tournamentId:id}),e=>e.message==='This tournament was deleted');
+});
+test('delete running stops tables, retains accounting, and prevents future dealing',async()=>{
+ const f=fixture(1),id=await create(f,{addedPrize:50});await startHumans(f,id,3);
+ const tid=f.tables(id)[0].docId;await f.action(tid,s=>f.engine.startHand(s));const before=f.balance('human0'),pool=f.tour(id).prizePool;
+ await f.command('owner','archive',{tournamentId:id});assert.equal(f.tour(id).status,'cancelled');assert.equal(f.tour(id).prizePool,pool);assert.equal(f.balance('human0'),before);assert.equal(f.tables(id).every(t=>t.tournament.finished&&t.tournament.cancelled),true);
+ const snapshots=copy([...f.docs]);await f.tours.tickTournament(id,f.now());assert.deepEqual([...f.docs],snapshots);
+});
+test('manager actions reject ordinary players',async()=>{
+ const f=fixture(),id=await create(f);f.member('ordinary');f.member('human');await f.command('human','register',{tournamentId:id});
+ for(const op of ['fillbots','archive','removeplayer'])await assert.rejects(f.command('ordinary',op,{tournamentId:id,playerUid:'human'}),e=>e.code==='permission-denied');
+ assert.equal(f.tour(id).archived,undefined);assert.equal(Object.keys(f.tour(id).players).length,1);
+});
+test('removing before start refunds one player and blocks re-entry',async()=>{
+ const f=fixture(),id=await create(f);f.member('human');await f.command('human','register',{tournamentId:id});
+ await f.command('owner','removeplayer',{tournamentId:id,playerUid:'human'});assert.equal(f.balance('human'),1000);assert.equal(f.tour(id).prizePool,0);assert.equal(f.tour(id).feeTotal,0);assert.equal(f.tour(id).players.human,undefined);
+ await f.command('owner','removeplayer',{tournamentId:id,playerUid:'human'});assert.equal(f.balance('human'),1000);
+ await assert.rejects(f.command('human','register',{tournamentId:id}),e=>e.code==='permission-denied');
+});
+test('running removal waits for a settled hand and preserves chip accounting',async()=>{
+ const f=fixture(13),id=await create(f,{reentry:true,maxReentries:3,lateRegUntilLevel:4,finishAtPaidPlaces:false,rebuys:false});await startHumans(f,id,4);
+ const tid=f.tables(id)[0].docId;await f.action(tid,s=>f.engine.startHand(s));const rowBefore=copy(f.tables(id)[0]),balance=f.balance('human0');
+ const result=await f.command('owner','removeplayer',{tournamentId:id,playerUid:'human0'});assert.equal(result.queued,true);assert.deepEqual(f.tables(id)[0].players,rowBefore.players);assert.equal(f.tour(id).players.human0.removalRequested,true);
+ let n=0;while(f.tables(id)[0].gameState.phase!=='showdown'&&n++<80)await playOne(f,f.tables(id)[0]);
+ await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).players.human0.removed,true);assert.equal(f.tour(id).players.human0.out,true);assert.equal(f.balance('human0'),balance);assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
+ assert.equal(f.tables(id).some(t=>t.players.human0),false);await assert.rejects(f.command('human0','register',{tournamentId:id}),e=>e.code==='permission-denied');
+});
+
+test('removed participant gets no final prize while all entry fees remain accounted',async()=>{
+ const f=fixture(5),id=await create(f,{finishAtPaidPlaces:false,rebuys:false});await startHumans(f,id,4);await f.command('owner','removeplayer',{tournamentId:id,playerUid:'human0'});
+ let steps=0;while(f.tour(id).status==='running'&&steps++<300){f.advance(6000);await f.tours.tickTournament(id,f.now());if(f.tour(id).status!=='running')break;for(const row of f.tables(id))await playOne(f,row);}
+ assert.equal(f.tour(id).status,'done');assert.equal(f.tour(id).results.some(r=>r.uid==='human0'),false);assert.equal(f.balance('human0'),989);assert.equal(f.tour(id).results.reduce((n,p)=>n+p.prize,0),40);assert.equal(f.tour(id).finalFeeTotal,4);
+});

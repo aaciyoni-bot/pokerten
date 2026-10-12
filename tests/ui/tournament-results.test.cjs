@@ -12,7 +12,7 @@ const code = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m => 
 w.eval(code);
 const api = w.TourPresentation, root = ReactDOM.createRoot(w.document.getElementById('root'));
 const prizes = [9953757.32, 250, 150, 75, 25, 0];
-const tournament = { name: 'Championship · six finishing places', game: 'poker', status: 'done', paidPlaces: 5, players: Object.fromEntries(prizes.map((prize, i) => ['p' + i, { name: 'Player ' + (i + 1), rank: i + 1, avatarSeed: 'player-' + i }])), results: prizes.map((prize, i) => ({ name: 'Player ' + (i + 1), rank: i + 1, prize, bounties: i === 4 ? 2 : 0 })).reverse() };
+const tournament = { name: 'Championship · six finishing places', game: 'poker', status: 'done', paidPlaces: 5, players: Object.fromEntries(prizes.map((prize, i) => ['p' + i, { name: 'Player ' + (i + 1), rank: i + 1, avatarSeed: 'player-' + i }])), results: prizes.map((prize, i) => ({ name: 'Player ' + (i + 1), rank: i + 1, prize, finalChips:i===0?240000:0,bounties: i === 4 ? 2 : 0 })).reverse() };
 const render = (Component, props) => React.act(() => root.render(React.createElement(Component, props)));
 (async () => {
   const before = JSON.stringify(tournament), rows = api.tournamentResultRows(tournament);
@@ -27,8 +27,8 @@ const render = (Component, props) => React.act(() => root.render(React.createEle
   assert.equal(w.document.getElementById('root').querySelector('[role="dialog"]'), null, 'No modal inside the nav stacking context');
   assert.match(dialog.textContent, /5 paid places/);
   assert.equal(dialog.querySelectorAll('.pt-tour-rank-row').length, 6, 'All recorded finishing places are shown, not just the podium');
-  assert.match(dialog.textContent, /9,953,757.32/);
-  assert.equal(dialog.querySelector('.is-you .pt-tour-rank').textContent, '#5');
+  assert.match(dialog.textContent, /9,953,757.32/);assert.match(dialog.querySelector('[data-final-chips="p0"]').textContent,/240,000/);assert.match(dialog.querySelector('[data-final-chips="p4"]').textContent,/Chips: 0/);
+  assert.equal(dialog.querySelector('.is-you [data-prize-medal]').getAttribute('data-prize-medal'),'5');
   assert.equal(w.document.activeElement, dialog.querySelector('.pt-tour-close'));
   const closeButton = w.document.activeElement;
   await React.act(() => closeButton.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true })));
@@ -52,6 +52,7 @@ const render = (Component, props) => React.act(() => root.render(React.createEle
     await render(api.TournamentFinishDialog, { result: { place, prize, torName: 'Final event' }, onClose() {} });
     assert.ok(w.document.querySelector('[role="dialog"]').textContent.includes(expected));
   }
+  let reentered=0;await render(api.TournamentEliminationDialog,{ranks:{myRank:5,prizes},reentryAvailable:true,reentryPrice:57,onReentry(){reentered++;},onWatch(){},onLeave(){}});assert.match(w.document.querySelector('[data-tournament-reentry]').textContent,/57.00/);await React.act(()=>w.document.querySelector('[data-tournament-reentry]').click());assert.equal(reentered,1);
   await render(api.TournamentEliminationDialog, { ranks: { myRank: 5, prizes }, onWatch() {}, onLeave() {} });
   assert.match(w.document.body.textContent, /Prizes are paid out when the tournament ends/);
   await render(api.TournamentEliminationDialog, { ranks: { myRank: 6, prizes }, onWatch() {}, onLeave() {} });
@@ -59,9 +60,10 @@ const render = (Component, props) => React.act(() => root.render(React.createEle
   await render(api.TournamentEliminationDialog, { ranks: { myRank: 999, prizes }, onWatch() {}, onLeave() {} });
   assert.match(w.document.body.textContent, /Finishing place pending/); assert.doesNotMatch(w.document.body.textContent, /#999/);
   await render(api.TournamentStandingsDialog, { data: { finished: true, total: 6, alive: 0, pool: 1000, prizes, list: rows.map(r => ({ ...r, out: true })) }, user: { uid: 'p4' }, onClose() {} });
-  assert.equal(w.document.querySelectorAll('.pt-tour-rank-row').length, 6);
+  assert.equal(w.document.querySelectorAll('.pt-tour-rank-row').length, 6);assert.equal(w.document.querySelectorAll('[data-prize-medal]').length,5);
   assert.match(w.document.querySelector('.is-you').textContent, /25.00/);
   assert.match([...w.document.querySelectorAll('.pt-tour-rank-row')].at(-1).textContent, /No prize/);
   await React.act(() => root.unmount()); w.close();
   console.log('PASS: configured paid places, all finishes, actual prizes, personal result cards, dialog focus/Escape, complete sharing, pending/unpaid outcomes');
 })().catch(async e => { console.error(e); await React.act(() => root.unmount()); w.close(); process.exitCode = 1; });
+

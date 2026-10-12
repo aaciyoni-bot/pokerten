@@ -129,19 +129,19 @@ for(const pokerType of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple'])test(po
  assert.equal(f.tour(id).status,'done','Tournament completed before progress bound');
  assert.equal(sizes[0],3);assert.ok(sizes.includes(2));assert.equal(sizes.at(-1),1);assert.ok(moves>0);
  const done=f.tour(id);assert.equal(done.results.length,18);assert.equal(done.winnerUids.length,3);assert.equal(done.results.reduce((n,p)=>n+p.prize,0),180);assert.equal(done.finalFeeTotal,18);assert.deepEqual(done.results.slice(0,3).map(p=>p.prize),[90,54,36]);
- assert.equal(f.tables(id).every(row=>row.tournament.finished),true);assert.equal(f.tables(id).flatMap(row=>Object.values(row.players)).length,1);assert.ok(f.tables(id).every(row=>row.gameState.phase==='waiting'&&row.gameState.board.length===0&&row.gameState.activeTurnUid===null));
+ assert.equal(f.tables(id).every(row=>row.tournament.finished),true);assert.equal(done.results[0].finalChips,done.initialChips);assert.ok(done.results.slice(1).every(r=>r.finalChips===0));assert.equal(f.tables(id).flatMap(row=>Object.values(row.players)).length,1);assert.ok(f.tables(id).every(row=>row.gameState.phase==='waiting'&&row.gameState.board.length===0&&row.gameState.activeTurnUid===null));
  assert.equal([...f.docs].filter(([p])=>p.startsWith('memberships/')).reduce((n,[,d])=>n+d.balance,0),118000,'Wallet funds conserved through entries, prizes and fees');
  const settled=copy([...f.docs]);for(let i=0;i<3;i++)await f.tours.tickTournament(id,f.now()+i*10000);assert.deepEqual([...f.docs],settled,'Repeated finish ticks cannot pay again');
  t.diagnostic(JSON.stringify({pokerType,ticks,actions,tableCounts:sizes,moves,paidWinners:done.winnerUids.length}));
 });
 
-test('rebuy grace, late entry and add-on use real payments and close at configured levels',async()=>{
- const f=fixture(27),id=await create(f,{maxPlayers:6,rebuys:true,maxRebuys:1,rebuyUntilLevel:1,lateRegUntilLevel:1,addon:true,addonLevel:2,structure:[{sb:1,bb:2,ante:0,mins:1},{sb:2,bb:4,ante:1,mins:120}]});await startHumans(f,id,3);
+test('eliminated players leave the seat and use paid re-entry; late entry and add-on retain server accounting',async()=>{
+ const f=fixture(27),id=await create(f,{maxPlayers:6,rebuys:true,maxRebuys:1,rebuyUntilLevel:1,reentry:true,maxReentries:1,lateRegUntilLevel:1,addon:true,addonLevel:2,structure:[{sb:1,bb:2,ante:0,mins:1},{sb:2,bb:4,ante:1,mins:120}]});await startHumans(f,id,3);
  const tid=f.tables(id)[0].docId;await f.action(tid,s=>f.engine.startHand(s));
  let steps=0;while(f.tables(id)[0].gameState.phase!=='showdown'&&steps++<60)await playOne(f,f.tables(id)[0]);
- const busted=Object.values(f.tables(id)[0].players).find(p=>p.status==='busted');assert.ok(busted);assert.equal(f.tour(id).players[busted.uid].out,false);
- await f.command(busted.uid,'rebuy',{tournamentId:id},'fixed-rebuy-idempotent-request');assert.equal(f.balance(busted.uid),978);assert.equal(f.tour(id).initialChips,400);
- await f.command(busted.uid,'rebuy',{tournamentId:id},'fixed-rebuy-idempotent-request');assert.equal(f.balance(busted.uid),978);
+ const busted=Object.entries(f.tour(id).players).map(([uid,p])=>({...p,uid})).find(p=>p.out);assert.ok(busted);assert.equal(f.tables(id).some(row=>row.players[busted.uid]),false,'eliminated seat is removed by settlement itself');assert.equal(f.tour(id).players[busted.uid].out,true);assert.equal(f.tour(id).rebuys,false);assert.equal(f.tour(id).maxRebuys,0);
+ await f.command(busted.uid,'register',{tournamentId:id},'fixed-reentry-idempotent-request');assert.equal(f.balance(busted.uid),978);assert.equal(f.tour(id).initialChips,400);
+ await f.command(busted.uid,'register',{tournamentId:id},'fixed-reentry-idempotent-request');assert.equal(f.balance(busted.uid),978);
  f.member('late');await f.command('late','register',{tournamentId:id});assert.equal(f.tour(id).initialChips,500);
  f.advance(60000);f.member('closed');await assert.rejects(f.command('closed','register',{tournamentId:id}),e=>e.code==='failed-precondition');
  await assert.rejects(f.command(busted.uid,'rebuy',{tournamentId:id}),e=>e.code==='failed-precondition');
@@ -252,4 +252,14 @@ test('consolidation holds busy tables before their next deal, preventing missed 
  for(const u of hold.updates)Object.assign(rows.find(r=>r.docId===u.id),u.patch);
  rows[1].gameState={...rows[1].gameState,phase:'showdown',showdownAt:now+1000};
  const moved=T.plan(t,rows,now+7000);assert.equal(moved.issue,null);assert.equal(moved.deletes.length,1);assert.equal(moved.updates.reduce((sum,u)=>sum+Object.keys(u.patch.players).length,0),5);
+});
+test('legacy rebuy grace exits immediately without charge; re-entry waits alone with a funded stack',async()=>{
+ const f=fixture(),id=await create(f,{reentry:true,maxReentries:2,lateRegUntilLevel:4,reentryBuyIn:50,bounty:5,fee:2});await startHumans(f,id,3);
+ const row=f.docs.get('tables/'+f.tables(id)[0].docId);Object.assign(row.players.human0,{stack:0,status:'busted',bustedAt:f.now()});row.players.human1.stack=200;
+ Object.assign(f.tour(id),{rebuys:true,botRebuys:true,maxRebuys:3});const before=f.balance('human0');await f.tours.tickTournament(id,f.now());
+ assert.equal(f.tour(id).players.human0.out,true);assert.equal(f.tour(id).rebuys,false);assert.equal(f.balance('human0'),before);assert.equal(f.tables(id).some(r=>r.players.human0),false);
+ await assert.rejects(f.command('human0','rebuy',{tournamentId:id}),e=>e.code==='failed-precondition');const pool=f.tour(id).prizePool,bounty=f.tour(id).bountyPool;
+ const joined=await f.command('human0','register',{tournamentId:id});assert.ok(joined.tableId);const waiting=f.tables(id).find(r=>r.docId===joined.tableId);
+ assert.equal(Object.keys(waiting.players).length,1);assert.equal(waiting.players.human0.stack,100);assert.equal(waiting.gameState.phase,'waiting');assert.equal(f.balance('human0'),before-57);assert.equal(f.tour(id).prizePool,pool+50);assert.equal(f.tour(id).bountyPool,bounty+5);
+ f.advance(7000);await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).integrityIssue||null,null);assert.equal(f.tables(id).length,1);assert.equal(T.chips(f.tables(id)),400);
 });

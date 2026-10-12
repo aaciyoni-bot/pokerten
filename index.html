@@ -1109,15 +1109,12 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
-<link rel="stylesheet" href="assets/css/tournament-blue.css?v=303-lobby">
+<link rel="stylesheet" href="assets/css/tournament-blue.css?v=314">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/poker-god-best.css?v=299">
-<style>
-.pt-tournaments-inline{margin-bottom:18px}.pt-tournaments-inline .pt-tournaments-heading{margin-bottom:8px}.pt-tournaments-inline .pt-tournaments-heading h2{display:none}.pt-tournaments-inline .pt-tournaments-heading{justify-content:flex-end}.pt-tournaments-inline .pt-tournaments-list{display:flex;flex-direction:column;gap:12px}.pt-tournament-inner[hidden]{display:none!important}
-.pt-tournament-summary{width:100%;display:flex;align-items:center;gap:12px;padding:16px;text-align:left;color:#f6f8ff;background:linear-gradient(115deg,#071321,#103b70 65%,#071321);border:0;border-top:1px solid #e7c471;border-radius:inherit;cursor:pointer}.pt-tournament-summary:focus-visible{outline:3px solid #f8dc87;outline-offset:3px}.pt-tournament-summary>img{object-fit:contain;flex-shrink:0;filter:drop-shadow(0 0 10px #d5b36b66)}.pt-tournament-summary-name{flex:1;min-width:0}.pt-tournament-summary-name strong{display:block;font-size:20px;overflow-wrap:anywhere}.pt-tournament-summary small{display:block;font-size:10px;color:#a9bedb;line-height:1.6}.pt-tournament-summary-pool{flex-shrink:0;text-align:right}.pt-tournament-summary-pool strong{display:block;font-size:22px;color:#ffdf80}.pt-tournament-summary>i{font-size:12px;color:#e7c471}@media(max-width:400px){.pt-tournament-summary{padding:12px;gap:8px}.pt-tournament-summary>img{width:34px;height:42px}.pt-tournament-summary-name strong{font-size:16px}.pt-tournament-summary-pool strong{font-size:18px}}
-</style>
+<link rel="stylesheet" href="assets/css/player-wallet-blue.css?v=314">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -7206,12 +7203,12 @@ function LobbyView({
     className: "lw-val"
   }, React.createElement(OwnBalanceNumbers,{user,compact:true}))), React.createElement("button", {
     onClick: () => setCashierOpen(true),
-    className: "btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
+    className: "lw-cashier btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
   }, React.createElement("i",{className:"fa-solid fa-wallet", "aria-hidden":true}), " Cashier"), React.createElement("button", {
     onClick: () => onSettlement?.(),
     title: canOpenBackoffice(user) ? "Club settlement" : "My results",
     "aria-label": canOpenBackoffice(user) ? "Club settlement" : "My results",
-    className: "ml-1.5 px-3 py-2 text-[12px] font-black rounded-xl shrink-0 bg-slate-900 border border-emerald-500/40 text-emerald-300"
+    className: "lw-results ml-1.5 px-3 py-2 text-[12px] font-black rounded-xl shrink-0 bg-slate-900 border border-emerald-500/40 text-emerald-300"
   }, React.createElement("i",{className:"fa-solid fa-chart-simple", "aria-hidden":true}))), React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
   }, bonusEnabled && React.createElement("button", {
@@ -7617,7 +7614,7 @@ function LobbyView({
     }
   })), tab === 'poker' && React.createElement("div", {
     className: "animate-fade-in"
-  }, React.createElement("div", {
+  }, React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker}), React.createElement("div", {
     className: "flex justify-between items-center mb-4"
   }, React.createElement("h2", {
     className: "text-xl font-black text-white"
@@ -7626,7 +7623,7 @@ function LobbyView({
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(245,158,11,0.3)] text-sm"
   }, React.createElement("i", {
     className: "fa-solid fa-plus ml-2"
-  }), "New table")), React.createElement(TournamentsTab, {game:"poker",compact:true,user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker}), React.createElement(QuickBotTableCreate, {user,clubSettings,showToast}), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
+  }), "New table")), React.createElement(QuickBotTableCreate, {user,clubSettings,showToast}), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
     className: "flex flex-wrap gap-2 items-center mb-4"
   }, React.createElement("span", {
     className: "text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"
@@ -7670,7 +7667,7 @@ function LobbyView({
     }, variantLabel(v), n > 0 && React.createElement("span", {
       className: "vtab-count"
     }, n));
-  }))), pokFilter !== 'tours' && React.createElement("div", {
+  })), pokFilter !== 'tours' && React.createElement("div", {
     className: "flex flex-col gap-2.5"
   }, shownPoker.map(t => {
     const s = t.settings || {};
@@ -7880,7 +7877,7 @@ function LobbyView({
     suit: "\uD83C\uDFA1",
     title: "No Spin & Cash tables right now",
     sub: "3 players, winner takes the wheel prize \u2014 open one and it appears here live."
-  }))), tab === 'durak' && React.createElement("div", {
+  })))), tab === 'durak' && React.createElement("div", {
     className: "animate-fade-in"
   }, React.createElement("div", {
     className: "flex justify-between items-center mb-5"
@@ -10628,7 +10625,7 @@ function PokerTable({
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournaments',id),d=>{if(!d.exists())return;const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
+  useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournaments',id),d=>{if(!d.exists())return;setTourEntryState({id,...d.data()});const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
   const [tableError, setTableError] = useState('');
   const [privateError, setPrivateError] = useState('');
   const [connectionRetry, setConnectionRetry] = useState(0);
@@ -10756,12 +10753,16 @@ function PokerTable({
   // Alive players are ranked by current stack across ALL the tournament's
   // tables; busted players keep their recorded finishing rank.
   const [tourRanks, setTourRanks] = useState(null);
+  const [tourEntryState,setTourEntryState]=useState(null);
+  const [tourReentryBusy,setTourReentryBusy]=useState(false);
+  const tourReentryLock=useRef(false);
   const [tourStandOpen, setTourStandOpen] = useState(false);
   const loadTourRanks = async () => {
     const torId = tableRef.current?.tournamentId;
     if (!torId) return;
     try {
       const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",CLUB_ID)))]);
+      setTourEntryState(tSnap.exists()?{id:torId,...tSnap.data()}:null);
       const torPl = tSnap.exists() ? tSnap.data().players || {} : {};
       // Read the stack by the players-map KEY, not by a uid field inside the
       // seat: a seat written without `uid` used to be skipped entirely, and
@@ -10799,7 +10800,7 @@ function PokerTable({
       })), ...outPl];
       const meRow = list.find(p => p.uid === user.uid);
       const torData = tSnap.exists() ? tSnap.data() : {};
-      if(torData.status==='done'&&Array.isArray(torData.results)){setTourRanks({list:[...torData.results].sort((a,b)=>a.rank-b.rank),finished:true,total:torData.results.length,alive:1,myRank:torData.results.find(p=>p.uid===user.uid)?.rank,prizes:torData.results.filter(p=>p.prize>0).map(p=>p.prize),pool:torData.finalPrizePool||0});return;}
+      if(torData.status==='done'&&Array.isArray(torData.results)){setTourRanks({list:[...torData.results].map(r=>({...r,finalChips:r.finalChips??stacks[r.uid]??(torData.players?.[r.uid]?.out?0:undefined)})).sort((a,b)=>a.rank-b.rank),finished:true,total:torData.results.length,alive:1,myRank:torData.results.find(p=>p.uid===user.uid)?.rank,prizes:torData.results.filter(p=>p.prize>0).map(p=>p.prize),pool:torData.finalPrizePool||0});return;}
       setTourRanks({
         list,
         alive: alivePl.length,
@@ -10816,6 +10817,9 @@ function PokerTable({
     const iv = setInterval(loadTourRanks, 30000);
     return () => clearInterval(iv);
   }, [tableState?.tournamentId]);
+  useEffect(()=>{if(tableState?.tournamentId&&(!tableState?.players?.[user.uid]||tableState.players[user.uid].status==='out'))loadTourRanks();},[tableState?.tournamentId,tableState?.players?.[user.uid]?.status]);
+  const reentryOf=tor=>{const p=tor?.players?.[user.uid];return !!(tor&&tor.status==='running'&&p?.out&&!p.removed&&!p.removalRequested&&tor.reentry&&(p.reentries||0)<tor.maxReentries&&tourClock(tor).lvl<tor.lateRegUntilLevel);};
+  const requestTourReentry=async()=>{if(tourReentryLock.current||!reentryOf(tourEntryState))return;const cost=tourEntryOf(tourEntryState,true);if(cost>0&&!window.confirm('Re-entry: '+formatMoney(cost)+' including configured fees and bounty. Starting stack: '+formatShort(tourEntryState.startStack)))return;tourReentryLock.current=true;setTourReentryBusy(true);try{const result=await pokerCommand('pkTournament',{op:'register',tournamentId:tourEntryState.id});setOutDismissed(true);if(result.tableId){const snap=await window.fb.getDoc(window.fb.doc(window.fb.db,'tables',result.tableId));if(snap.exists())onTransfer?.({docId:snap.id,...snap.data()});}await loadTourRanks();showToast('Re-entry complete. Your starting stack is ready; tables will balance between hands.','success');}catch(e){showToast(e.message||'Re-entry failed','error');}finally{tourReentryLock.current=false;setTourReentryBusy(false);}};
   const tourStandBtn = tableState?.tournamentId ? React.createElement("button", {
     key: "tstand",
     onClick: () => {
@@ -10880,7 +10884,7 @@ function PokerTable({
   useEffect(() => {
     setPrivateHand(null);
     setPrivateError('');
-    if (!srvEngine) return;
+    if (!srvEngine || (tableState?.tournamentId && !tableState?.players?.[user.uid])) {setPrivateHand(null);return;}
     return window.PokerRuntime.watchSnapshot(
       (next, fail) => window.fb.onSnapshot(window.fb.doc(window.fb.db, "tables", tableDocId, "priv", user.uid), next, fail),
       d => { setPrivateHand({tableId: tableDocId, uid: user.uid, cards: d.exists() ? d.data().cards || [] : []}); setPrivateError(''); },
@@ -10889,7 +10893,7 @@ function PokerTable({
         setPrivateError(/permission-denied|unauthenticated/.test(error.code || '') ? 'Card access could not be verified. Retry to reconnect.' : 'Card updates interrupted. Reconnecting…');
       },
       {document, events:window});
-  }, [srvEngine, tableDocId, user.uid, connectionRetry]);
+  }, [srvEngine, tableDocId, user.uid, connectionRetry,tableState?.tournamentId,!!tableState?.players?.[user.uid]]);
   useEffect(() => {
     if (!srvEngine || tableState?.tournament?.finished) return;
     let warned=false;
@@ -11968,12 +11972,6 @@ try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){s
     }, 3500);
     return () => clearTimeout(tm);
   }, [!!tour, tableState?.gameState?.phase, Object.keys(tableState?.players || {}).length]);
-  const tourRebuyMe = async () => {
-try{const r=await pokerCommand('pkTournament',{op:'rebuy',tournamentId:tableRef.current?.tournamentId});showToast(r.queued?'Rebuy accepted — chips reserved for the next hand.':'Purchase accepted.','success');}catch(e){showToast(e.message||String(e),'error');}
-};
-  const tourDecline = async () => {
-try{await pokerCommand('pkTournament',{op:'decline',tournamentId:tableRef.current?.tournamentId});}catch(e){showToast(e.message||String(e),'error');}
-};
   const tourAddon = async () => {
 try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.current?.tournamentId});showToast(r.queued?'Add-on accepted — chips reserved for the next hand.':'Purchase accepted.','success');}catch(e){showToast(e.message||String(e),'error');}
 };
@@ -11997,7 +11995,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, [tableState?.players?.[user.uid]?.leavingAt]);
   useEffect(() => {
     const me = tableState?.players?.[user.uid];
-    if (!me || me.status !== 'busted') return;
+    if (!me || me.status !== 'busted' || tableState.tournamentId) return;
     const isTour = !!tableState.tournament;
     const win = isTour ? 45 : 300;
     const iv = setInterval(() => {
@@ -12010,7 +12008,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       setBustLeft(left);
       if (left === 0) {
         clearInterval(iv);
-        if (isTour) tourDecline();else handleStandUp(true);
+        handleStandUp(true);
       }
     }, 500);
     return () => clearInterval(iv);
@@ -12387,7 +12385,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         !tableState.tournamentId && !setts.spinMode && React.createElement(React.Fragment,null,React.createElement('dt',null,'Waitlist'),React.createElement('dd',null,waitlist.length+' waiting'+(waiting.bots?' · '+waiting.bots+' bots':''))),
         React.createElement('dt',null,'Action time'),React.createElement('dd',null,(setts.actionTime || 30)+'s'),
         React.createElement('dt',null,'Table ID'),React.createElement('dd',null,tableDocId)))),document.body),
-  (tableError || privateError) && React.createElement('div', { className: 'poker-connection-status', role: 'status' }, tableError || privateError,
+  (tableError || (privateError && (!tableState.tournamentId || isSeated))) && React.createElement('div', { className: 'poker-connection-status', role: 'status' }, tableError || privateError,
     React.createElement('button', { onClick: () => setConnectionRetry(n => n + 1) }, 'Retry')),
   skinOpen && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
@@ -12622,12 +12620,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     alt: "",
     draggable: false
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
-    className: "absolute inset-0 pointer-events-none z-[6]",
+    className: "ft-silver-halo absolute inset-0 pointer-events-none z-[6]",
     style: {
       borderRadius: 'inherit',
-      border: '2px solid rgba(255,215,0,0.55)',
-      boxShadow: 'inset 0 0 70px 6px rgba(255,215,0,0.22), 0 0 46px 12px rgba(255,200,0,0.35)',
-      animation: 'pulse 2.6s ease-in-out infinite'
+      border: '1px solid rgba(193,202,215,0.22)',
+      boxShadow: 'inset 0 0 50px rgba(190,205,225,0.05)',
+      animation: 'none'
     }
   }), tableState.tournament && tableState.tournament.final && React.createElement("div", {
     className: "ft-banner",
@@ -12638,7 +12636,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), React.createElement("div", {
     className: "poker-community" + ((gs.board2 || []).length ? " has-second-board" : ""),
     "aria-label": "Community cards"
-  }, tournamentEnded && React.createElement('div',{className:'poker-break-center',dir:'ltr'},React.createElement('strong',null,'Tournament complete'),React.createElement('div',{className:'poker-final-ranks'},(tourRanks?.list || []).map(p=>React.createElement('div',{key:p.uid},'#',p.rank,' · ',p.name,p.prize>0?' · '+formatChips(p.prize):''))),tourStandBtn), tableOnBreak && React.createElement('div', {className:'poker-break-center',role:'status',dir:'ltr'},React.createElement('strong',null,'☕ BREAK'),React.createElement('div',{className:'poker-break-clock'},Math.floor(breakSeconds/60),':',String(breakSeconds%60).padStart(2,'0')),React.createElement('span',null,'Resuming at ',formatShort(breakClock.row.sb),' / ',formatShort(breakClock.row.bb)),tourStandBtn), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
+  }, tournamentEnded && React.createElement('div',{className:'poker-break-center',dir:'ltr'},React.createElement('strong',null,'Tournament complete'),React.createElement('div',{className:'poker-final-ranks'},(tourRanks?.list || []).map(p=>React.createElement('div',{key:p.uid},'#',p.rank,' · ',p.name,p.prize>0?' · '+formatMoney(p.prize):''))),tourStandBtn), tableOnBreak && React.createElement('div', {className:'poker-break-center',role:'status',dir:'ltr'},React.createElement('strong',null,'☕ BREAK'),React.createElement('div',{className:'poker-break-clock'},Math.floor(breakSeconds/60),':',String(breakSeconds%60).padStart(2,'0')),React.createElement('span',null,'Resuming at ',formatShort(breakClock.row.sb),' / ',formatShort(breakClock.row.bb)),tourStandBtn), totalPot > 0 && gs.phase !== 'waiting' && React.createElement("div", {
     className: "poker-total-pot absolute left-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
     style: {
       background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.22) 60%, rgba(0,0,0,0) 100%)',
@@ -13154,9 +13152,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "absolute top-16 left-1/2 -translate-x-1/2 z-[90] bg-rose-900/90 border border-rose-500 text-white px-6 py-2.5 rounded-full font-black text-sm animate-pulse backdrop-blur"
   }, React.createElement("i", {
     className: "fa-solid fa-crown ml-2 text-rose-300"
-  }), players[gs.dcUid]?.name, " is picking the next game...")), gs.phase === 'waiting' && isSeated && React.createElement("div", {
+  }), players[gs.dcUid]?.name, " is picking the next game...")), !tournamentEnded && !tableOnBreak && gs.phase === 'waiting' && isSeated && React.createElement("div", {
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
-  }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
+  }, tour?'Waiting for table balancing…':'Waiting for players... ('+eligibleCount+'/'+(setts.autoStart||2)+')')), React.createElement("div", {
     className: "poker-action-dock"
   }, isMyTurn && React.createElement("div", {
     className: "poker-action-buttons"
@@ -13347,30 +13345,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       onClick: tourAddon,
       className: "bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg"
     }, "🚀 Add-on"));
-  })(), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && myPlayer && (myPlayer.status === 'busted' || myPlayer.status === 'out' && !outDismissed) && (myPlayer.status === 'busted' ? React.createElement("div", {
-    className: "absolute inset-0 z-[240] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4",
-    role: "dialog", "aria-modal": true, "aria-label": "Rebuy available"
-  }, React.createElement("div", {
-    className: "pt-tour-rebuy glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-white/10"
-  }, React.createElement("div", {
-    className: "text-5xl mb-2"
-  }, "💥"), React.createElement("h3", {
-    className: "text-2xl font-black text-purple-300 mb-1"
-  }, "Busted from the hand!"), React.createElement("p", {
-    className: "text-slate-300 text-sm font-bold mb-3"
-  }, "The Rebuy window is open - a rebuy brings you back with a full stack"), React.createElement("div", {
-    className: `text-4xl font-black font-mono my-2 ${bustLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-white'}`
-  }, bustLeft), React.createElement("div", {
-    className: "flex gap-3"
-  }, React.createElement("button", {
-    onClick: tourRebuyMe,
-    disabled: myPlayer?.pendingTournamentChips>0,
-    className: "flex-1 bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white py-3.5 rounded-2xl font-black shadow-lg"
-  }, myPlayer?.pendingTournamentChips>0 ? "Next hand ✓" : "Rebuy 💪"), React.createElement("button", {
-    disabled: myPlayer?.pendingTournamentChips>0,
-    onClick: tourDecline,
-    className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3.5 rounded-2xl font-black border border-white/10"
-  }, "Folded")))) : React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave })), offline && React.createElement("div", {
+  })(), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourEntryState?.players?.[user.uid]?.out||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
     className: "absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse",
     dir: "ltr"
   }, React.createElement("span", {
@@ -18322,6 +18297,16 @@ function tournamentResultRows(tor) {
     return { ...r, rank: Number(r.rank), uid: r.uid || match?.[0] || '', photo: match?.[1]?.photo || '', avatarSeed: match?.[1]?.avatarSeed || r.name || 'player' };
   }).sort((a, b) => a.rank - b.rank);
 }
+function TournamentMedal({rank}) {
+ return React.createElement('span',{className:'pt-tour-medal','data-prize-medal':rank,'aria-label':'Prize winner · place '+rank},rank<=3?React.createElement('img',{src:'assets/tournaments/medal-'+rank+'.webp',alt:'',width:28,height:38}):React.createElement(React.Fragment,null,React.createElement('span',{'aria-hidden':true},'🏅'),React.createElement('small',null,rank)));
+}
+function tournamentFinalChips(tor,r) {
+ if(Number.isFinite(r.finalChips))return r.finalChips;
+ if(Number.isFinite(tor?.finalChipStacks?.[r.uid]))return tor.finalChipStacks[r.uid];
+ if(tor?.players?.[r.uid]?.out)return 0;
+ if(r.rank===1&&Number.isFinite(tor?.initialChips)&&Object.entries(tor.players||{}).every(([uid,p])=>uid===r.uid||p.out))return tor.initialChips;
+ return undefined;
+}
 function tournamentPlaceTitle(rank) {
   return Number(rank) === 1 ? 'Champion' : Number(rank) === 2 ? 'Runner-up' : `Place #${rank}`;
 }
@@ -18374,13 +18359,13 @@ function TournamentStandingsDialog({ data, user, onClose, layer = 310 }) {
     data && Number(data.pool) > 0 && React.createElement('div', { className: 'pt-tour-pool' }, React.createElement('span', null, 'Prize pool'), React.createElement('strong', { dir: 'ltr' }, formatMoney(data.pool)), React.createElement('small', null, (data.prizes || []).filter(x => Number(x) > 0).length, ' paid places')),
     !data ? React.createElement('div', { className: 'pt-tour-empty', role: 'status' }, React.createElement('i', { className: 'fa-solid fa-spinner fa-spin', 'aria-hidden': true }), ' Loading standings…') : React.createElement('div', { className: 'pt-tour-rank-list' },
       (data.list || []).map(p => React.createElement('div', { key: p.uid, className: 'pt-tour-rank-row' + (p.uid === user?.uid ? ' is-you' : '') + (p.out && !data.finished ? ' is-out' : '') },
-        React.createElement('span', { className: 'pt-tour-rank', 'aria-label': 'Place ' + (p.rank >= 999 ? 'pending' : p.rank) }, p.rank >= 999 ? '—' : '#' + p.rank),
-        React.createElement('span', { className: 'pt-tour-rank-person' }, React.createElement('strong', null, p.name || 'Player'), p.uid === user?.uid && React.createElement('small', { className: 'pt-tour-you' }, 'YOU'), p.out && !data.finished && React.createElement('small', null, 'Eliminated')),
+        React.createElement('span', { className: 'pt-tour-rank', 'aria-label': 'Place ' + (p.rank >= 999 ? 'pending' : p.rank) }, data.finished && Number(p.prize??data.prizes?.[p.rank-1])>0 ? React.createElement(TournamentMedal,{rank:p.rank}) : p.rank >= 999 ? '—' : '#' + p.rank),
+        React.createElement('span', { className: 'pt-tour-rank-person' }, React.createElement('strong', null, p.name || 'Player'), p.uid === user?.uid && React.createElement('small', { className: 'pt-tour-you' }, 'YOU'), p.out && !data.finished && React.createElement('small', null, 'Eliminated'),data.finished&&React.createElement('small',{className:'pt-tour-final-chips','data-final-chips':p.uid},'Chips: ',Number.isFinite(p.finalChips)?Number(p.finalChips).toLocaleString('en-US',{maximumFractionDigits:2}):p.out?'0':'—')),
         React.createElement('span', { className: 'pt-tour-rank-value', dir: 'ltr' }, data.finished || p.out ? Number(data.prizes?.[p.rank - 1]) > 0 ? React.createElement(React.Fragment, null, React.createElement('strong', { className: 'pt-tour-money' }, formatMoney(data.prizes[p.rank - 1])), React.createElement('small', null, data.finished ? 'Prize' : 'Prize at finish')) : React.createElement('small', null, data.finished ? 'No prize' : 'OUT') : React.createElement(React.Fragment, null, React.createElement('strong', null, p.stack === undefined ? '—' : formatShort(p.stack)), React.createElement('small', null, p.stack === undefined ? 'Moving tables' : 'Chips'))))),
       !(data.list || []).length && React.createElement('p', { className: 'pt-tour-empty' }, 'No standings available yet.')),
     React.createElement('button', { className: 'pt-tour-secondary pt-tour-full', onClick: onClose }, 'Close'));
 }
-function TournamentEliminationDialog({ ranks, onWatch, onLeave }) {
+function TournamentEliminationDialog({ ranks, onWatch, onLeave, reentryAvailable=false,reentryPrice=0,reentryBusy=false,onReentry }) {
   const rankValue = Number(ranks?.myRank);
   const rank = Number.isInteger(rankValue) && rankValue > 0 && rankValue !== 999 ? rankValue : null;
   const prize = rank ? Number(ranks.prizes?.[rank - 1]) || 0 : 0;
@@ -18392,7 +18377,7 @@ function TournamentEliminationDialog({ ranks, onWatch, onLeave }) {
     React.createElement('p', { className: 'pt-tour-name' }, 'Your run has ended'),
     React.createElement('div', { className: 'pt-tour-prize-box' }, React.createElement('span', null, prize > 0 ? 'Prize at tournament finish' : 'Tournament result'), React.createElement('strong', { dir: 'ltr' }, prize > 0 ? formatMoney(prize) : rank ? 'Outside the paid places' : 'Finishing place pending')),
     React.createElement('p', { className: 'pt-tour-note' }, prize > 0 ? 'Prizes are paid out when the tournament ends.' : 'You can keep watching or return to the lobby.'),
-    React.createElement('div', { className: 'pt-tour-actions' }, React.createElement('button', { className: 'pt-tour-secondary', onClick: onWatch }, 'Keep watching'), React.createElement('button', { className: 'pt-tour-primary', onClick: onLeave }, 'Back to lobby')));
+    reentryAvailable&&React.createElement('button',{className:'pt-tour-primary pt-tour-full',disabled:reentryBusy,onClick:onReentry,'data-tournament-reentry':true},reentryBusy?'Entering…':'Re-entry · '+(reentryPrice>0?formatMoney(reentryPrice):'Free')), React.createElement('div', { className: 'pt-tour-actions' }, React.createElement('button', { className: 'pt-tour-secondary', onClick: onWatch }, 'Keep watching'), React.createElement('button', { className: 'pt-tour-primary', onClick: onLeave }, 'Back to lobby')));
 }
 function TournamentResultsDialog({ tournament, user, onClose, showToast }) {
   const [selected, setSelected] = useState(null);
@@ -18418,8 +18403,8 @@ function TournamentResultsDialog({ tournament, user, onClose, showToast }) {
       React.createElement('strong', null, r.name), React.createElement('span', { className: 'pt-tour-podium-label' }, tournamentPlaceTitle(r.rank)), React.createElement('span', { className: 'pt-tour-money', dir: 'ltr' }, Number(r.prize) > 0 ? formatMoney(r.prize) : '—')))),
     React.createElement('div', { className: 'pt-tour-list-heading' }, React.createElement('h3', null, 'Every finishing place'), React.createElement('span', null, 'Prize')),
     React.createElement('div', { className: 'pt-tour-rank-list' }, results.map(r => React.createElement('button', { key: r.rank + '-' + r.uid, className: 'pt-tour-rank-row' + (r.uid === user?.uid ? ' is-you' : ''), onClick: () => setSelected(r), 'aria-label': 'Open result for ' + r.name + ', place ' + r.rank },
-      React.createElement('span', { className: 'pt-tour-rank' }, '#', r.rank),
-      React.createElement('span', { className: 'pt-tour-rank-person' }, React.createElement('strong', null, r.name), r.uid === user?.uid && React.createElement('small', { className: 'pt-tour-you' }, 'YOU'), Number(r.bounties) > 0 && React.createElement('small', null, r.bounties, ' knockouts')),
+      React.createElement('span', { className: 'pt-tour-rank' },Number(r.prize)>0?React.createElement(TournamentMedal,{rank:r.rank}):'#'+r.rank),
+      React.createElement('span', { className: 'pt-tour-rank-person' }, React.createElement('strong', null, r.name), r.uid === user?.uid && React.createElement('small', { className: 'pt-tour-you' }, 'YOU'), Number(r.bounties) > 0 && React.createElement('small', null, r.bounties, ' knockouts'),React.createElement('small',{className:'pt-tour-final-chips','data-final-chips':r.uid},'Chips: ',Number.isFinite(tournamentFinalChips(tournament,r))?Number(tournamentFinalChips(tournament,r)).toLocaleString('en-US',{maximumFractionDigits:2}):'—')),
       React.createElement('span', { className: 'pt-tour-rank-value', dir: 'ltr' }, Number(r.prize) > 0 ? React.createElement('strong', { className: 'pt-tour-money' }, formatMoney(r.prize)) : React.createElement('small', null, 'No prize')))),
       !results.length && React.createElement('p', { className: 'pt-tour-empty' }, 'Final results are not available yet.')),
     React.createElement('div', { className: 'pt-tour-actions' }, React.createElement('button', { className: 'pt-tour-secondary', onClick: onClose }, 'Close'), React.createElement('button', { className: 'pt-tour-primary', onClick: () => share(results), disabled: !results.length }, React.createElement('i', { className: 'fa-solid fa-arrow-up-from-bracket', 'aria-hidden': true }), ' Share results'))),
@@ -18443,9 +18428,11 @@ function TournamentsTab({
   clubSettings,
   showToast,
   onJoinTable,
+  compactRows = false,
   compact = false
 }) {
-  const [expandedTours, setExpandedTours] = useState({});
+  const compactMode = compactRows || compact;
+  const [expandedTournament, setExpandedTournament] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [champTor, setChampTor] = useState(null);
   const [tick, setTick] = useState(0);
@@ -18463,7 +18450,7 @@ function TournamentsTab({
     maxPlayers: 12,
     minPlayers: 2,
     levelMins: 5,
-    rebuys: true,
+    rebuys: false,
     rebuyUntilLevel: 2,
     lateRegLevel: 2, // late registration open through this level (0 = off)
     addon: true,
@@ -18478,7 +18465,7 @@ function TournamentsTab({
     payouts: [50, 30, 20],
     mysteryBounty: false,
     bountyMode:'fixed',progressiveCashPct:50,mysteryStartLevel:3,bountyBudgetRemaining:0,
-    maxRebuys:3,botRebuys:true,reentry:false,reentryBuyIn:0,reentryToPrizePool:false,maxReentries:1,tableSize:6,actionTime:25,anteFromLevel:10,
+    maxRebuys:0,botRebuys:false,reentry:false,reentryBuyIn:0,reentryToPrizePool:false,maxReentries:1,tableSize:6,actionTime:25,anteFromLevel:10,
     bountyFree: false,
     botFill: false,
     serverEngine: true,
@@ -18550,13 +18537,8 @@ function TournamentsTab({
       // Finished tournament: the FULL final table of every participant by
       // recorded rank (tables are gone, so there are no live stacks to show).
       if ((torD.status || tor.status) === 'done') {
-        const all = Object.entries(torPl).map(([uid, p]) => ({
-          uid,
-          name: p.name,
-          out: true,
-          rank: p.rank || 999,
-          stack: 0
-        }));
+        const finalChipStacks=Object.fromEntries(tbls.docs.flatMap(d=>Object.entries(d.data().players||{}).map(([uid,p])=>[uid,p.stack])));
+        const all=tournamentResultRows({...torD,finalChipStacks}).map(r=>({...r,out:torPl[r.uid]?.out===true,finalChips:tournamentFinalChips({...torD,finalChipStacks},r)}));
         all.sort((a, b) => (a.rank || 999) - (b.rank || 999));
         setStandData({
           list: all,
@@ -18687,7 +18669,7 @@ function TournamentsTab({
   }, []);
   const bounty = round2(Number(opts.bounty) || 0);
   const handleCreate = async () => {
-if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=new Date(opts.date+'T'+(opts.time||'20:00')).getTime();try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,finishAtPaidPlaces:false,startAt,structure:opts.structure?.length?opts.structure:autoStructRows(),pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
+if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=new Date(opts.date+'T'+(opts.time||'20:00')).getTime();try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,rebuys:false,maxRebuys:0,botRebuys:false,finishAtPaidPlaces:false,startAt,structure:opts.structure?.length?opts.structure:autoStructRows(),pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
 
     if (!opts.name.trim()) return showToast("Name the tournament", "error");
     if (!opts.date) return showToast("Choose a start date", "error");
@@ -18920,14 +18902,14 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     try{const r=await pokerCommand('pkTournament',{op:'removeplayer',tournamentId:tor.id,playerUid:player.uid});showToast(r?.queued?'Player will be removed after the current hand.':'Player removed.','success');}catch(e){showToast(e.message||String(e),'error');}
   };
   const sorted = [...myTours].sort((a, b) => (a.status === 'reg' ? 0 : a.status === 'running' ? 1 : 2) - (b.status === 'reg' ? 0 : b.status === 'running' ? 1 : 2) || (a.startAt || 0) - (b.startAt || 0));
-  const champModal = champTor ? ReactDOM.createPortal(React.createElement(TournamentResultsDialog, { tournament: champTor, user, showToast, onClose: () => setChampTor(null) }), document.body) : null;
+  const champModal = champTor ? ReactDOM.createPortal(React.createElement(TournamentResultsDialog, { tournament: {...champTor,finalChipStacks:Object.fromEntries((tables||[]).filter(t=>t.tournamentId===champTor.id).flatMap(t=>Object.entries(t.players||{}).map(([uid,p])=>[uid,p.stack])))}, user, showToast, onClose: () => setChampTor(null) }), document.body) : null;
   return React.createElement("div", {
-    className: "animate-fade-in pt-tournaments" + (compact ? " pt-tournaments-inline" : "")
+    className: "animate-fade-in pt-tournaments"+(compactMode?" pt-tournaments-compact":"")
   }, React.createElement("div", {
     className: "pt-tournaments-heading flex justify-between items-center mb-5"
   }, React.createElement("h2", {
     className: "text-xl font-black text-white"
-  }, compact ? "" : "TOURNAMENTS"), canManageGame(user, 'poker') && React.createElement("button", {
+  }, "TOURNAMENTS"), canManageGame(user, 'poker') && React.createElement("button", {
     onClick: () => setShowCreate(!showCreate),
     className: "bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(168,85,247,0.3)] text-sm"
   }, React.createElement("i", {
@@ -19091,11 +19073,11 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   }, "🎁 Club-funded bounty — free for players")), React.createElement("p", {
     className: "text-[10px] text-emerald-300/70 font-bold mt-1"
   }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && React.createElement('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-3', 'data-tournament-options':true},
- ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxRebuys','Maximum rebuys per player',0,100],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
+ ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
  React.createElement(Field,{label:'Bounty type'},React.createElement('select',{value:opts.bountyMode,onChange:e=>setOpts({...opts,bountyMode:e.target.value}),className:'w-full bg-slate-900 text-white p-2 rounded-lg'},...['fixed','progressive','mystery'].map(x=>React.createElement('option',{key:x,value:x},x)))),
  React.createElement('p',{className:'text-xs text-slate-300 sm:col-span-2'},'Choose whether the re-entry price increases the prize pool or is club income. This applies to both freerolls and paid-entry tournaments. Club entry fee and any player-funded bounty are added to the displayed total.'),
- ...[['botRebuys','Bots can rebuy when eligible and funded'],['reentry','Allow re-entry during late registration'],['reentryToPrizePool','Add re-entry price to the prize pool']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',checked:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
- React.createElement('p',{className:'text-xs text-slate-400 sm:col-span-2'},'Mystery starts after late registration and rebuy close. Club reserves fund free bounties. Bots use mixed playing styles and the same entry rules.')), React.createElement("div", null, React.createElement("label", {
+ ...[['reentry','Allow re-entry during late registration'],['reentryToPrizePool','Add re-entry price to the prize pool']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',checked:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
+ React.createElement('p',{className:'text-xs text-slate-400 sm:col-span-2'},'Mystery starts after late registration closes. Club reserves fund free bounties. Bots use mixed playing styles and the same entry rules.')), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "Start date"), React.createElement("input", {
     type: "date",
@@ -19258,30 +19240,6 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   }, "Editing any cell, ✕ or + switches to CUSTOM. The tournament locks its structure at creation."))), isPoker && React.createElement("div", {
     className: "flex flex-col gap-2 justify-end"
   }, React.createElement("label", {
-    className: "flex items-center gap-2 cursor-pointer"
-  }, React.createElement("input", {
-    type: "checkbox",
-    checked: opts.rebuys,
-    onChange: e => setOpts({
-      ...opts,
-      rebuys: e.target.checked
-    }),
-    className: "accent-purple-500 w-4 h-4"
-  }), React.createElement("span", {
-    className: "text-white text-xs font-bold"
-  }, "Rebuy until level"), React.createElement("input", {
-    type: "number",
-    min: "1",
-    max: "12",
-    value: opts.rebuyUntilLevel,
-    onChange: e => setOpts({
-      ...opts,
-      rebuyUntilLevel: Math.max(1, Math.min(12, parseInt(e.target.value) || 1))
-    }),
-    disabled: !opts.rebuys,
-    className: "w-14 bg-slate-900 text-white border border-slate-700 rounded-lg p-1 text-center font-bold disabled:opacity-40",
-    dir: "ltr"
-  })), React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer"
   }, React.createElement("input", {
     type: "checkbox",
@@ -19470,13 +19428,8 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     const pool=tor.status==='done'?(tor.finalPrizePool??tor.prizePool??0):(tor.prizePool||0);
     const countdown=Math.max(0,Math.floor(((tor.startAt||0)-Date.now())/1000));
     const timeParts=[Math.floor(countdown/3600),Math.floor(countdown/60)%60,countdown%60].map(n=>String(n).padStart(2,'0'));
-    return h("article",{key:tor.id,className:"pt-tournament-card", 'data-tournament-card':tor.id},
-      compact && h("button",{type:"button",className:"pt-tournament-summary","aria-expanded":!!expandedTours[tor.id],"aria-controls":"tour-details-"+tor.id,onClick:()=>setExpandedTours(prev=>({...prev,[tor.id]:!prev[tor.id]}))},
-        h("img",{src:"assets/tournaments/gold-cup.webp",alt:"",width:48,height:54}),
-        h("span",{className:"pt-tournament-summary-name"},h("strong",null,tor.name),h("small",null,(tourEntryOf(tor)===0?'FREEROLL · ':'')+(tor.pokerType||'NLH')+' · '+(tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE':tor.status==='done'?'Ended':'Cancelled')+' · '+count+'/'+(tor.maxPlayers||36)+' players')),
-        h("span",{className:"pt-tournament-summary-pool"},h("small",null,"PRIZE POOL"),h("strong",{dir:"ltr"},formatMoney(pool))),
-        h("i",{className:"fa-solid "+(expandedTours[tor.id]?'fa-chevron-up':'fa-chevron-down'),"aria-hidden":true})),
-      h("div",{className:"pt-tournament-inner",id:"tour-details-"+tor.id,hidden:compact&&!expandedTours[tor.id]},
+    const card = h("article",{key:tor.id,className:"pt-tournament-card", 'data-tournament-card':tor.id},
+      h("div",{className:"pt-tournament-inner"},
         h("header",{className:"pt-tournament-hero"},
           h("img",{className:"pt-tournament-cup",src:"assets/tournaments/gold-cup.webp",alt:"",width:64,height:72}),
           h("div",{className:"pt-tournament-title"},
@@ -19494,7 +19447,6 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
           ...[['fa-coins','Buy-in',formatMoney(tor.buyIn)],['fa-circle-notch','Stack',formatShort(Number(tor.startStack)||1000)],['fa-users','Players',(tor.status==='running'?alive:count)+'/'+(tor.maxPlayers||36)],['fa-trophy','Format',tor.mttMode?'MTT':'Knockout']].map(([icon,label,value])=>h("div",{key:label,className:"pt-tournament-stat"},
             h("i",{className:'fa-solid '+icon,'aria-hidden':true}),h("div",null,h("span",null,label),h("b",null,value))))),
         h("div",{className:"pt-tournament-rules"},
-          tor.rebuys&&h("span",null,'Rebuy until level '+(tor.rebuyUntilLevel||2)),
           tor.addon&&h("span",null,'Add-on at level '+(tor.addonLevel||3)),
           tor.lateRegUntilLevel>0&&h("span",null,'Late registration until level '+tor.lateRegUntilLevel),
           tor.reentry&&h("span",null,'Re-entry '+formatMoney(tourEntryOf(tor,true))+' · '+(tor.reentryToPrizePool===false?'Club income':'Added to prize pool'))),
@@ -19684,7 +19636,13 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       onClick: () => setChampTor(tor),
       className: "flex-1 ft-btn py-2.5 rounded-xl font-black text-sm"
     }, "🏆 Final results"))));
-  }), sorted.length === 0 && React.createElement("div", {
+    if(!compactMode)return card;
+    return h(React.Fragment,{key:tor.id},h('button',{type:'button',className:'pt-tournament-lobby-row','data-tournament-row':tor.id,'aria-label':'Open tournament '+tor.name,onClick:()=>setExpandedTournament(tor.id)},
+      h('img',{src:'assets/tournaments/gold-cup.webp',alt:'',width:48,height:56}),
+      h('span',{className:'pt-tournament-row-title'},h('strong',null,tor.name),h('small',null,tourEntryOf(tor)===0?'FREEROLL · ':'',tor.pokerType||'NLH',' · ',tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE · '+alive+' left':'Ended')),
+      h('span',{className:'pt-tournament-row-pool'},h('small',null,'PRIZE POOL'),h('strong',null,formatMoney(pool))),h('i',{className:'fa-solid fa-chevron-right','aria-hidden':true})),
+      expandedTournament===tor.id&&h(TournamentDialog,{title:tor.name,onClose:()=>setExpandedTournament(null),className:'pt-tournament-detail'},h('div',{className:'pt-tournaments'},card)));
+  }), !compactMode && sorted.length === 0 && React.createElement("div", {
     className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
   }, "No tournaments right now. ", canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, standFor && ReactDOM.createPortal(React.createElement(TournamentStandingsDialog, { data: standData, user, onClose: () => setStandFor(null) }), document.body));
 }

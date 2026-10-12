@@ -10753,12 +10753,16 @@ function PokerTable({
   // Alive players are ranked by current stack across ALL the tournament's
   // tables; busted players keep their recorded finishing rank.
   const [tourRanks, setTourRanks] = useState(null);
+  const [tourEntryState,setTourEntryState]=useState(null);
+  const [tourReentryBusy,setTourReentryBusy]=useState(false);
+  const tourReentryLock=useRef(false);
   const [tourStandOpen, setTourStandOpen] = useState(false);
   const loadTourRanks = async () => {
     const torId = tableRef.current?.tournamentId;
     if (!torId) return;
     try {
       const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",CLUB_ID)))]);
+      setTourEntryState(tSnap.exists()?{id:torId,...tSnap.data()}:null);
       const torPl = tSnap.exists() ? tSnap.data().players || {} : {};
       // Read the stack by the players-map KEY, not by a uid field inside the
       // seat: a seat written without `uid` used to be skipped entirely, and
@@ -10813,6 +10817,9 @@ function PokerTable({
     const iv = setInterval(loadTourRanks, 30000);
     return () => clearInterval(iv);
   }, [tableState?.tournamentId]);
+  useEffect(()=>{if(tableState?.tournamentId&&(!tableState?.players?.[user.uid]||tableState.players[user.uid].status==='out'))loadTourRanks();},[tableState?.tournamentId,tableState?.players?.[user.uid]?.status]);
+  const reentryOf=tor=>{const p=tor?.players?.[user.uid];return !!(tor&&tor.status==='running'&&p?.out&&!p.removed&&!p.removalRequested&&tor.reentry&&(p.reentries||0)<tor.maxReentries&&tourClock(tor).lvl<tor.lateRegUntilLevel);};
+  const requestTourReentry=async()=>{if(tourReentryLock.current||!reentryOf(tourEntryState))return;const cost=tourEntryOf(tourEntryState,true);if(cost>0&&!window.confirm('Re-entry: '+formatMoney(cost)+' including configured fees and bounty. Starting stack: '+formatShort(tourEntryState.startStack)))return;tourReentryLock.current=true;setTourReentryBusy(true);try{const result=await pokerCommand('pkTournament',{op:'register',tournamentId:tourEntryState.id});setOutDismissed(true);if(result.tableId){const snap=await window.fb.getDoc(window.fb.doc(window.fb.db,'tables',result.tableId));if(snap.exists())onTransfer?.({docId:snap.id,...snap.data()});}await loadTourRanks();showToast('Re-entry complete. Your starting stack is ready; tables will balance between hands.','success');}catch(e){showToast(e.message||'Re-entry failed','error');}finally{tourReentryLock.current=false;setTourReentryBusy(false);}};
   const tourStandBtn = tableState?.tournamentId ? React.createElement("button", {
     key: "tstand",
     onClick: () => {
@@ -11965,12 +11972,6 @@ try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){s
     }, 3500);
     return () => clearTimeout(tm);
   }, [!!tour, tableState?.gameState?.phase, Object.keys(tableState?.players || {}).length]);
-  const tourRebuyMe = async () => {
-try{const r=await pokerCommand('pkTournament',{op:'rebuy',tournamentId:tableRef.current?.tournamentId});showToast(r.queued?'Rebuy accepted — chips reserved for the next hand.':'Purchase accepted.','success');}catch(e){showToast(e.message||String(e),'error');}
-};
-  const tourDecline = async () => {
-try{await pokerCommand('pkTournament',{op:'decline',tournamentId:tableRef.current?.tournamentId});}catch(e){showToast(e.message||String(e),'error');}
-};
   const tourAddon = async () => {
 try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.current?.tournamentId});showToast(r.queued?'Add-on accepted — chips reserved for the next hand.':'Purchase accepted.','success');}catch(e){showToast(e.message||String(e),'error');}
 };
@@ -11994,7 +11995,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, [tableState?.players?.[user.uid]?.leavingAt]);
   useEffect(() => {
     const me = tableState?.players?.[user.uid];
-    if (!me || me.status !== 'busted') return;
+    if (!me || me.status !== 'busted' || tableState.tournamentId) return;
     const isTour = !!tableState.tournament;
     const win = isTour ? 45 : 300;
     const iv = setInterval(() => {
@@ -12007,7 +12008,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       setBustLeft(left);
       if (left === 0) {
         clearInterval(iv);
-        if (isTour) tourDecline();else handleStandUp(true);
+        handleStandUp(true);
       }
     }, 500);
     return () => clearInterval(iv);
@@ -13153,7 +13154,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "fa-solid fa-crown ml-2 text-rose-300"
   }), players[gs.dcUid]?.name, " is picking the next game...")), !tournamentEnded && !tableOnBreak && gs.phase === 'waiting' && isSeated && React.createElement("div", {
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
-  }, "Waiting for players... (", eligibleCount, "/", setts.autoStart || 2, ")")), React.createElement("div", {
+  }, tour?'Waiting for table balancing…':'Waiting for players... ('+eligibleCount+'/'+(setts.autoStart||2)+')')), React.createElement("div", {
     className: "poker-action-dock"
   }, isMyTurn && React.createElement("div", {
     className: "poker-action-buttons"
@@ -13344,30 +13345,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       onClick: tourAddon,
       className: "bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg"
     }, "🚀 Add-on"));
-  })(), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && myPlayer && (myPlayer.status === 'busted' || myPlayer.status === 'out' && !outDismissed) && (myPlayer.status === 'busted' ? React.createElement("div", {
-    className: "absolute inset-0 z-[240] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4",
-    role: "dialog", "aria-modal": true, "aria-label": "Rebuy available"
-  }, React.createElement("div", {
-    className: "pt-tour-rebuy glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-white/10"
-  }, React.createElement("div", {
-    className: "text-5xl mb-2"
-  }, "💥"), React.createElement("h3", {
-    className: "text-2xl font-black text-purple-300 mb-1"
-  }, "Busted from the hand!"), React.createElement("p", {
-    className: "text-slate-300 text-sm font-bold mb-3"
-  }, "The Rebuy window is open - a rebuy brings you back with a full stack"), React.createElement("div", {
-    className: `text-4xl font-black font-mono my-2 ${bustLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-white'}`
-  }, bustLeft), React.createElement("div", {
-    className: "flex gap-3"
-  }, React.createElement("button", {
-    onClick: tourRebuyMe,
-    disabled: myPlayer?.pendingTournamentChips>0,
-    className: "flex-1 bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white py-3.5 rounded-2xl font-black shadow-lg"
-  }, myPlayer?.pendingTournamentChips>0 ? "Next hand ✓" : "Rebuy 💪"), React.createElement("button", {
-    disabled: myPlayer?.pendingTournamentChips>0,
-    onClick: tourDecline,
-    className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3.5 rounded-2xl font-black border border-white/10"
-  }, "Folded")))) : React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave })), offline && React.createElement("div", {
+  })(), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
     className: "absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse",
     dir: "ltr"
   }, React.createElement("span", {
@@ -18387,7 +18365,7 @@ function TournamentStandingsDialog({ data, user, onClose, layer = 310 }) {
       !(data.list || []).length && React.createElement('p', { className: 'pt-tour-empty' }, 'No standings available yet.')),
     React.createElement('button', { className: 'pt-tour-secondary pt-tour-full', onClick: onClose }, 'Close'));
 }
-function TournamentEliminationDialog({ ranks, onWatch, onLeave }) {
+function TournamentEliminationDialog({ ranks, onWatch, onLeave, reentryAvailable=false,reentryPrice=0,reentryBusy=false,onReentry }) {
   const rankValue = Number(ranks?.myRank);
   const rank = Number.isInteger(rankValue) && rankValue > 0 && rankValue !== 999 ? rankValue : null;
   const prize = rank ? Number(ranks.prizes?.[rank - 1]) || 0 : 0;
@@ -18399,7 +18377,7 @@ function TournamentEliminationDialog({ ranks, onWatch, onLeave }) {
     React.createElement('p', { className: 'pt-tour-name' }, 'Your run has ended'),
     React.createElement('div', { className: 'pt-tour-prize-box' }, React.createElement('span', null, prize > 0 ? 'Prize at tournament finish' : 'Tournament result'), React.createElement('strong', { dir: 'ltr' }, prize > 0 ? formatMoney(prize) : rank ? 'Outside the paid places' : 'Finishing place pending')),
     React.createElement('p', { className: 'pt-tour-note' }, prize > 0 ? 'Prizes are paid out when the tournament ends.' : 'You can keep watching or return to the lobby.'),
-    React.createElement('div', { className: 'pt-tour-actions' }, React.createElement('button', { className: 'pt-tour-secondary', onClick: onWatch }, 'Keep watching'), React.createElement('button', { className: 'pt-tour-primary', onClick: onLeave }, 'Back to lobby')));
+    reentryAvailable&&React.createElement('button',{className:'pt-tour-primary pt-tour-full',disabled:reentryBusy,onClick:onReentry,'data-tournament-reentry':true},reentryBusy?'Entering…':'Re-entry · '+(reentryPrice>0?formatMoney(reentryPrice):'Free')), React.createElement('div', { className: 'pt-tour-actions' }, React.createElement('button', { className: 'pt-tour-secondary', onClick: onWatch }, 'Keep watching'), React.createElement('button', { className: 'pt-tour-primary', onClick: onLeave }, 'Back to lobby')));
 }
 function TournamentResultsDialog({ tournament, user, onClose, showToast }) {
   const [selected, setSelected] = useState(null);
@@ -18472,7 +18450,7 @@ function TournamentsTab({
     maxPlayers: 12,
     minPlayers: 2,
     levelMins: 5,
-    rebuys: true,
+    rebuys: false,
     rebuyUntilLevel: 2,
     lateRegLevel: 2, // late registration open through this level (0 = off)
     addon: true,
@@ -18487,7 +18465,7 @@ function TournamentsTab({
     payouts: [50, 30, 20],
     mysteryBounty: false,
     bountyMode:'fixed',progressiveCashPct:50,mysteryStartLevel:3,bountyBudgetRemaining:0,
-    maxRebuys:3,botRebuys:true,reentry:false,reentryBuyIn:0,reentryToPrizePool:false,maxReentries:1,tableSize:6,actionTime:25,anteFromLevel:10,
+    maxRebuys:0,botRebuys:false,reentry:false,reentryBuyIn:0,reentryToPrizePool:false,maxReentries:1,tableSize:6,actionTime:25,anteFromLevel:10,
     bountyFree: false,
     botFill: false,
     serverEngine: true,
@@ -18691,7 +18669,7 @@ function TournamentsTab({
   }, []);
   const bounty = round2(Number(opts.bounty) || 0);
   const handleCreate = async () => {
-if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=new Date(opts.date+'T'+(opts.time||'20:00')).getTime();try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,finishAtPaidPlaces:false,startAt,structure:opts.structure?.length?opts.structure:autoStructRows(),pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
+if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=new Date(opts.date+'T'+(opts.time||'20:00')).getTime();try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,rebuys:false,maxRebuys:0,botRebuys:false,finishAtPaidPlaces:false,startAt,structure:opts.structure?.length?opts.structure:autoStructRows(),pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
 
     if (!opts.name.trim()) return showToast("Name the tournament", "error");
     if (!opts.date) return showToast("Choose a start date", "error");
@@ -19095,11 +19073,11 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   }, "🎁 Club-funded bounty — free for players")), React.createElement("p", {
     className: "text-[10px] text-emerald-300/70 font-bold mt-1"
   }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && React.createElement('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-3', 'data-tournament-options':true},
- ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxRebuys','Maximum rebuys per player',0,100],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
+ ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
  React.createElement(Field,{label:'Bounty type'},React.createElement('select',{value:opts.bountyMode,onChange:e=>setOpts({...opts,bountyMode:e.target.value}),className:'w-full bg-slate-900 text-white p-2 rounded-lg'},...['fixed','progressive','mystery'].map(x=>React.createElement('option',{key:x,value:x},x)))),
  React.createElement('p',{className:'text-xs text-slate-300 sm:col-span-2'},'Choose whether the re-entry price increases the prize pool or is club income. This applies to both freerolls and paid-entry tournaments. Club entry fee and any player-funded bounty are added to the displayed total.'),
- ...[['botRebuys','Bots can rebuy when eligible and funded'],['reentry','Allow re-entry during late registration'],['reentryToPrizePool','Add re-entry price to the prize pool']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',checked:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
- React.createElement('p',{className:'text-xs text-slate-400 sm:col-span-2'},'Mystery starts after late registration and rebuy close. Club reserves fund free bounties. Bots use mixed playing styles and the same entry rules.')), React.createElement("div", null, React.createElement("label", {
+ ...[['reentry','Allow re-entry during late registration'],['reentryToPrizePool','Add re-entry price to the prize pool']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',checked:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
+ React.createElement('p',{className:'text-xs text-slate-400 sm:col-span-2'},'Mystery starts after late registration closes. Club reserves fund free bounties. Bots use mixed playing styles and the same entry rules.')), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "Start date"), React.createElement("input", {
     type: "date",
@@ -19262,30 +19240,6 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   }, "Editing any cell, ✕ or + switches to CUSTOM. The tournament locks its structure at creation."))), isPoker && React.createElement("div", {
     className: "flex flex-col gap-2 justify-end"
   }, React.createElement("label", {
-    className: "flex items-center gap-2 cursor-pointer"
-  }, React.createElement("input", {
-    type: "checkbox",
-    checked: opts.rebuys,
-    onChange: e => setOpts({
-      ...opts,
-      rebuys: e.target.checked
-    }),
-    className: "accent-purple-500 w-4 h-4"
-  }), React.createElement("span", {
-    className: "text-white text-xs font-bold"
-  }, "Rebuy until level"), React.createElement("input", {
-    type: "number",
-    min: "1",
-    max: "12",
-    value: opts.rebuyUntilLevel,
-    onChange: e => setOpts({
-      ...opts,
-      rebuyUntilLevel: Math.max(1, Math.min(12, parseInt(e.target.value) || 1))
-    }),
-    disabled: !opts.rebuys,
-    className: "w-14 bg-slate-900 text-white border border-slate-700 rounded-lg p-1 text-center font-bold disabled:opacity-40",
-    dir: "ltr"
-  })), React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer"
   }, React.createElement("input", {
     type: "checkbox",
@@ -19493,7 +19447,6 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
           ...[['fa-coins','Buy-in',formatMoney(tor.buyIn)],['fa-circle-notch','Stack',formatShort(Number(tor.startStack)||1000)],['fa-users','Players',(tor.status==='running'?alive:count)+'/'+(tor.maxPlayers||36)],['fa-trophy','Format',tor.mttMode?'MTT':'Knockout']].map(([icon,label,value])=>h("div",{key:label,className:"pt-tournament-stat"},
             h("i",{className:'fa-solid '+icon,'aria-hidden':true}),h("div",null,h("span",null,label),h("b",null,value))))),
         h("div",{className:"pt-tournament-rules"},
-          tor.rebuys&&h("span",null,'Rebuy until level '+(tor.rebuyUntilLevel||2)),
           tor.addon&&h("span",null,'Add-on at level '+(tor.addonLevel||3)),
           tor.lateRegUntilLevel>0&&h("span",null,'Late registration until level '+tor.lateRegUntilLevel),
           tor.reentry&&h("span",null,'Re-entry '+formatMoney(tourEntryOf(tor,true))+' · '+(tor.reentryToPrizePool===false?'Club income':'Added to prize pool'))),

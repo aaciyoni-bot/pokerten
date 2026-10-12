@@ -52,6 +52,7 @@ const render = (Component, props) => React.act(() => root.render(React.createEle
     await render(api.TournamentFinishDialog, { result: { place, prize, torName: 'Final event' }, onClose() {} });
     assert.ok(w.document.querySelector('[role="dialog"]').textContent.includes(expected));
   }
+  let reentered=0;await render(api.TournamentEliminationDialog,{ranks:{myRank:5,prizes},reentryAvailable:true,reentryPrice:57,onReentry(){reentered++;},onWatch(){},onLeave(){}});assert.match(w.document.querySelector('[data-tournament-reentry]').textContent,/57.00/);await React.act(()=>w.document.querySelector('[data-tournament-reentry]').click());assert.equal(reentered,1);
   await render(api.TournamentEliminationDialog, { ranks: { myRank: 5, prizes }, onWatch() {}, onLeave() {} });
   assert.match(w.document.body.textContent, /Prizes are paid out when the tournament ends/);
   await render(api.TournamentEliminationDialog, { ranks: { myRank: 6, prizes }, onWatch() {}, onLeave() {} });

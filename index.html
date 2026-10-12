@@ -1114,6 +1114,10 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/poker-god-best.css?v=299">
+<style>
+.pt-tournaments-inline{margin-bottom:18px}.pt-tournaments-inline .pt-tournaments-heading{margin-bottom:8px}.pt-tournaments-inline .pt-tournaments-heading h2{display:none}.pt-tournaments-inline .pt-tournaments-heading{justify-content:flex-end}.pt-tournaments-inline .pt-tournaments-list{display:flex;flex-direction:column;gap:12px}.pt-tournament-inner[hidden]{display:none!important}
+.pt-tournament-summary{width:100%;display:flex;align-items:center;gap:12px;padding:16px;text-align:left;color:#f6f8ff;background:linear-gradient(115deg,#071321,#103b70 65%,#071321);border:0;border-top:1px solid #e7c471;border-radius:inherit;cursor:pointer}.pt-tournament-summary:focus-visible{outline:3px solid #f8dc87;outline-offset:3px}.pt-tournament-summary>img{object-fit:contain;flex-shrink:0;filter:drop-shadow(0 0 10px #d5b36b66)}.pt-tournament-summary-name{flex:1;min-width:0}.pt-tournament-summary-name strong{display:block;font-size:20px;overflow-wrap:anywhere}.pt-tournament-summary small{display:block;font-size:10px;color:#a9bedb;line-height:1.6}.pt-tournament-summary-pool{flex-shrink:0;text-align:right}.pt-tournament-summary-pool strong{display:block;font-size:22px;color:#ffdf80}.pt-tournament-summary>i{font-size:12px;color:#e7c471}@media(max-width:400px){.pt-tournament-summary{padding:12px;gap:8px}.pt-tournament-summary>img{width:34px;height:42px}.pt-tournament-summary-name strong{font-size:16px}.pt-tournament-summary-pool strong{font-size:18px}}
+</style>
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -6847,7 +6851,6 @@ function LobbyView({
     ['preflop', 'flop', 'turn', 'river', 'discard', 'dc_selection', 'showdown'].includes(t.gameState?.phase) &&
     Object.values(t.players || {}).filter(p => p && p.status !== 'left' && p.left !== true).length >= 2);
   const shownPoker = pokFilter === 'all' ? ringTables : pokFilter === 'live' ? liveRingTables : pokFilter === 'tours' ? [] : ringTables.filter(t => ((t.settings || {}).baseGameType || 'NLH') === pokFilter);
-  const showPokerTours = pokFilter === 'all' || pokFilter === 'tours';
   const durakTables = tables.filter(t => t.type === 'durak' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const ofcTables = tables.filter(t => t.type === 'ofc' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const [showCreateOfc, setShowCreateOfc] = useState(false);
@@ -7623,7 +7626,7 @@ function LobbyView({
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(245,158,11,0.3)] text-sm"
   }, React.createElement("i", {
     className: "fa-solid fa-plus ml-2"
-  }), "New table")), React.createElement(QuickBotTableCreate, {user,clubSettings,showToast}), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
+  }), "New table")), React.createElement(TournamentsTab, {game:"poker",compact:true,user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker}), React.createElement(QuickBotTableCreate, {user,clubSettings,showToast}), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
     className: "flex flex-wrap gap-2 items-center mb-4"
   }, React.createElement("span", {
     className: "text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"
@@ -7667,17 +7670,7 @@ function LobbyView({
     }, variantLabel(v), n > 0 && React.createElement("span", {
       className: "vtab-count"
     }, n));
-  }), React.createElement("button", {
-    onClick: () => setPokFilter('tours'),
-    "aria-pressed": pokFilter === 'tours',
-    className: `vtab ${pokFilter === 'tours' ? 'vtab-active' : ''}`,
-    style: pokFilter === 'tours' ? {
-      borderBottomColor: '#fbbf24',
-      color: '#fbbf24'
-    } : {}
-  }, React.createElement("i", {
-    className: "fa-solid fa-trophy text-[10px] mr-1"
-  }), "Tournaments")), pokFilter !== 'tours' && React.createElement("div", {
+  }))), pokFilter !== 'tours' && React.createElement("div", {
     className: "flex flex-col gap-2.5"
   }, shownPoker.map(t => {
     const s = t.settings || {};
@@ -7887,17 +7880,7 @@ function LobbyView({
     suit: "\uD83C\uDFA1",
     title: "No Spin & Cash tables right now",
     sub: "3 players, winner takes the wheel prize \u2014 open one and it appears here live."
-  }))), showPokerTours && React.createElement("div", {
-    className: "border-t border-white/5 my-8"
-  }), showPokerTours && React.createElement(TournamentsTab, {
-    game: "poker",
-    user: user,
-    tournaments: tournaments,
-    tables: tables,
-    clubSettings: clubSettings,
-    showToast: showToast,
-    onJoinTable: onJoinPoker
-  })), tab === 'durak' && React.createElement("div", {
+  }))), tab === 'durak' && React.createElement("div", {
     className: "animate-fade-in"
   }, React.createElement("div", {
     className: "flex justify-between items-center mb-5"
@@ -18459,8 +18442,10 @@ function TournamentsTab({
   tables,
   clubSettings,
   showToast,
-  onJoinTable
+  onJoinTable,
+  compact = false
 }) {
+  const [expandedTours, setExpandedTours] = useState({});
   const [showCreate, setShowCreate] = useState(false);
   const [champTor, setChampTor] = useState(null);
   const [tick, setTick] = useState(0);
@@ -18937,12 +18922,12 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   const sorted = [...myTours].sort((a, b) => (a.status === 'reg' ? 0 : a.status === 'running' ? 1 : 2) - (b.status === 'reg' ? 0 : b.status === 'running' ? 1 : 2) || (a.startAt || 0) - (b.startAt || 0));
   const champModal = champTor ? ReactDOM.createPortal(React.createElement(TournamentResultsDialog, { tournament: champTor, user, showToast, onClose: () => setChampTor(null) }), document.body) : null;
   return React.createElement("div", {
-    className: "animate-fade-in pt-tournaments"
+    className: "animate-fade-in pt-tournaments" + (compact ? " pt-tournaments-inline" : "")
   }, React.createElement("div", {
     className: "pt-tournaments-heading flex justify-between items-center mb-5"
   }, React.createElement("h2", {
     className: "text-xl font-black text-white"
-  }, "TOURNAMENTS"), canManageGame(user, 'poker') && React.createElement("button", {
+  }, compact ? "" : "TOURNAMENTS"), canManageGame(user, 'poker') && React.createElement("button", {
     onClick: () => setShowCreate(!showCreate),
     className: "bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(168,85,247,0.3)] text-sm"
   }, React.createElement("i", {
@@ -19486,7 +19471,12 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     const countdown=Math.max(0,Math.floor(((tor.startAt||0)-Date.now())/1000));
     const timeParts=[Math.floor(countdown/3600),Math.floor(countdown/60)%60,countdown%60].map(n=>String(n).padStart(2,'0'));
     return h("article",{key:tor.id,className:"pt-tournament-card", 'data-tournament-card':tor.id},
-      h("div",{className:"pt-tournament-inner"},
+      compact && h("button",{type:"button",className:"pt-tournament-summary","aria-expanded":!!expandedTours[tor.id],"aria-controls":"tour-details-"+tor.id,onClick:()=>setExpandedTours(prev=>({...prev,[tor.id]:!prev[tor.id]}))},
+        h("img",{src:"assets/tournaments/gold-cup.webp",alt:"",width:48,height:54}),
+        h("span",{className:"pt-tournament-summary-name"},h("strong",null,tor.name),h("small",null,(tourEntryOf(tor)===0?'FREEROLL · ':'')+(tor.pokerType||'NLH')+' · '+(tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE':tor.status==='done'?'Ended':'Cancelled')+' · '+count+'/'+(tor.maxPlayers||36)+' players')),
+        h("span",{className:"pt-tournament-summary-pool"},h("small",null,"PRIZE POOL"),h("strong",{dir:"ltr"},formatMoney(pool))),
+        h("i",{className:"fa-solid "+(expandedTours[tor.id]?'fa-chevron-up':'fa-chevron-down'),"aria-hidden":true})),
+      h("div",{className:"pt-tournament-inner",id:"tour-details-"+tor.id,hidden:compact&&!expandedTours[tor.id]},
         h("header",{className:"pt-tournament-hero"},
           h("img",{className:"pt-tournament-cup",src:"assets/tournaments/gold-cup.webp",alt:"",width:64,height:72}),
           h("div",{className:"pt-tournament-title"},

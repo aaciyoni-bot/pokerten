@@ -40,6 +40,9 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  const rowButton=w.document.querySelector('[data-tournament-row="managed"]');assert.ok(rowButton);assert.equal(w.document.querySelector('[data-tournament-card]'),null,'compact lobby has rows instead of expanded cards');
  rowButton.focus();await React.act(()=>rowButton.click());assert.ok(w.document.querySelector('[role="dialog"][aria-label="Managed test"] [data-tournament-card="managed"]'),'row opens the full tournament card');
  await React.act(()=>w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(w.document.querySelector('[role="dialog"]'),null);assert.equal(w.document.activeElement,rowButton,'closing returns focus to the tournament row');
+ const live={...tor,status:'running',startedAt:Date.now(),lateRegUntilLevel:2,levelMins:10,structure:[{sb:1,bb:2,mins:10},{sb:2,bb:4,mins:10}]};
+ await React.act(()=>root.render(React.createElement(w.TourTest,{user:{uid:'owner',role:'club_owner'},game:'poker',tournaments:[live],tables:[],clubSettings:{},showToast:m=>messages.push(m),onJoinTable(){}})));assert.ok(bots(),'bot entry remains available during late registration');
+ await React.act(()=>root.render(React.createElement(w.TourTest,{user:{uid:'owner',role:'club_owner'},game:'poker',tournaments:[{...live,lateRegUntilLevel:0}],tables:[],clubSettings:{},showToast:m=>messages.push(m),onJoinTable(){}})));assert.equal(bots(),null,'closed registration does not offer bot entry');
  await React.act(()=>root.unmount());w.close();console.log('PASS: tournament form exposes and submits entry, rebuy, ante, bounty and table controls through server authority');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});
 

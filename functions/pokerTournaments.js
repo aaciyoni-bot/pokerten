@@ -42,7 +42,7 @@ function tableDoc(t,players,now){return{authorityVersion:2,type:'poker',clubId:t
 function docOf(t){const {id,...doc}=t;return doc;}
 function funding(t,effects,p,reentry=false){const amount=entryBuyIn(t,reentry),clubReentry=reentry&&t.reentryToPrizePool===false,buyIn=clubReentry?0:amount,fee=cash(t.fee+(clubReentry?amount:0)),cost=price(t,reentry);if(t.bountyFree&&t.bountyBudgetRemaining<t.bounty)fail('failed-precondition','Club bounty reserve needs funding');if(cost)effects.push({type:'credit',uid:payee(p),amount:-cost});p.paid=cash((p.paid||0)+cost);p.feesPaid=cash((p.feesPaid||0)+fee);p.bountyValue=t.bounty;t.prizePool=cash(t.prizePool+buyIn);t.feeTotal=cash(t.feeTotal+fee);t.bountyPool=cash(t.bountyPool+t.bounty);if(t.bountyFree)t.bountyBudgetRemaining=cash(t.bountyBudgetRemaining-t.bounty);}
 function addBots(t,ownerUid,effects,limit=Infinity){
- const missing=Math.min(limit,t.maxPlayers-all(t).filter(p=>!p.out).length);for(let i=0,n=0;n<missing;i++){const uid='bot_'+t.id+'_'+i;if(t.players[uid]||t.removedPlayers?.[uid])continue;n++;const p={uid,name:botName(uid,all(t).map(p=>p.name),{tableNames:[]}),isBot:true,fundingUid:ownerUid,botStyle:['tight','balanced','aggressive'][i%3],out:false,rank:null,bounties:0,bountyWon:0,paid:0,rebuys:0,reentries:0,addon:false};funding(t,effects,p);t.players[uid]=p;t.entryCount++;}
+ const added=[];const missing=Math.min(limit,t.maxPlayers-all(t).filter(p=>!p.out).length);for(let i=0,n=0;n<missing;i++){const uid='bot_'+t.id+'_'+i;if(t.players[uid]||t.removedPlayers?.[uid])continue;n++;const p={uid,name:botName(uid,all(t).map(p=>p.name),{tableNames:[]}),isBot:true,fundingUid:ownerUid,botStyle:['tight','balanced','aggressive'][i%3],out:false,rank:null,bounties:0,bountyWon:0,paid:0,rebuys:0,reentries:0,addon:false};funding(t,effects,p);t.players[uid]=p;t.entryCount++;added.push(p);}return added;
 }
 function start(tx,db,t,now){
  const entrants=all(t).filter(p=>!p.out);if(entrants.length<t.minPlayers)fail('failed-precondition','Not enough registered players');for(let i=entrants.length-1;i>0;i--){const j=crypto.randomInt(i+1);[entrants[i],entrants[j]]=[entrants[j],entrants[i]];}
@@ -122,7 +122,9 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
   }else if(op==='unregister'){
    if(t.status!=='reg'||!mine)fail('failed-precondition','Registration already started');effects.push({type:'credit',uid:payee(mine),amount:price(t)});t.prizePool=cash(t.prizePool-t.buyIn);t.feeTotal=cash(t.feeTotal-t.fee);t.bountyPool=cash(t.bountyPool-t.bounty);if(t.bountyFree)t.bountyBudgetRemaining=cash(t.bountyBudgetRemaining+t.bounty);delete t.players[uid];t.entryCount--;
   }else if(op==='fillbots'){
-   if(t.status!=='reg')fail('failed-precondition','Tournament already started');if(all(t).filter(p=>!p.out).length>=t.maxPlayers)fail('failed-precondition','Tournament full');addBots(t,club.ownerUid,effects,1);
+   if(!['reg','running'].includes(t.status))fail('failed-precondition','Tournament is no longer accepting entries');if(t.status==='running'&&!late)fail('failed-precondition','Late registration is closed — bots cannot enter');if(all(t).filter(p=>!p.out).length>=t.maxPlayers)fail('failed-precondition','Tournament full');const added=addBots(t,club.ownerUid,effects,1);
+   if(t.status==='running'){for(const p of added){const tid='tour_'+id+'_'+t.entryCount;const row={...tableDoc(t,{[p.uid]:seat(p,0,t.startStack)},now),docId:tid,isNew:true,changed:true};p.tableId=tid;rows.push(row);t.initialChips+=t.startStack;}}
+
   }else if(op==='start'){
    if(t.status!=='reg')return{ok:true,tournamentId:id};if(t.botFill&&club.botsAuto!==false)addBots(t,club.ownerUid,effects);if(all(t).length<t.minPlayers)fail('failed-precondition','Not enough players');
   }else if(['rebuy','addon','decline'].includes(op)){

@@ -263,3 +263,14 @@ test('legacy rebuy grace exits immediately without charge; re-entry waits alone 
  assert.equal(Object.keys(waiting.players).length,1);assert.equal(waiting.players.human0.stack,100);assert.equal(waiting.gameState.phase,'waiting');assert.equal(f.balance('human0'),before-57);assert.equal(f.tour(id).prizePool,pool+50);assert.equal(f.tour(id).bountyPool,bounty+5);
  f.advance(7000);await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).integrityIssue||null,null);assert.equal(f.tables(id).length,1);assert.equal(T.chips(f.tables(id)),400);
 });
+
+test('one funded bot can join a running tournament during late registration without touching an active hand',async()=>{
+ const f=fixture(),id=await create(f,{bounty:5,lateRegUntilLevel:1,structure:[{sb:1,bb:2,ante:0,mins:3},{sb:2,bb:4,ante:0,mins:3}]});
+ for(const uid of ['a','b']){f.member(uid);await f.command(uid,'register',{tournamentId:id});}await f.command('owner','start',{tournamentId:id});
+ const before=f.tables(id)[0];f.docs.get('tables/'+before.docId).gameState.phase='preflop';const active=structuredClone(f.docs.get('tables/'+before.docId));
+ const balance=f.balance('owner'),chips=f.tour(id).initialChips;await f.command('owner','fillbots',{tournamentId:id},'late-bot-request-once');
+ const bot=Object.values(f.tour(id).players).find(p=>p.isBot);assert.ok(bot);assert.equal(f.balance('owner'),balance-16);assert.equal(f.tour(id).initialChips,chips+100);
+ assert.deepEqual(f.docs.get('tables/'+before.docId),active);const waiting=f.docs.get('tables/'+bot.tableId);assert.equal(Object.keys(waiting.players).length,1);assert.equal(waiting.gameState.phase,'waiting');assert.equal(waiting.players[bot.uid].stack,100);
+ await f.command('owner','fillbots',{tournamentId:id},'late-bot-request-once');assert.equal(Object.values(f.tour(id).players).filter(p=>p.isBot).length,1);assert.equal(f.balance('owner'),balance-16);
+ f.advance(180000);await assert.rejects(f.command('owner','fillbots',{tournamentId:id}),e=>e.message.includes('Late registration is closed'));assert.equal(f.balance('owner'),balance-16);
+});

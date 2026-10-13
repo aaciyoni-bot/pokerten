@@ -19502,7 +19502,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       className: `text-[11px] font-black px-2 py-1 rounded-lg border ${i < (Number(tor.mysteryNext) || 0) ? 'bg-slate-800/60 border-white/10 text-slate-500 line-through' : m >= 10 ? 'bg-amber-500/20 border-amber-400/60 text-amber-200' : 'bg-slate-900 border-white/10 text-slate-200'}`
     }, "×", m, " (", formatMoney(round2((Number(tor.bounty) || 0) * m)), ")")))), React.createElement("div", {
       className: "pt-tournament-actions flex gap-2"
-    }, tor.status === 'reg' && canManageGame(user, tor.game) && React.createElement("button", {
+    }, (tor.status === 'reg' || tor.game === 'poker' && tor.status === 'running' && tourClock(tor).lvl < (Number(tor.lateRegUntilLevel) || 0)) && canManageGame(user, tor.game) && React.createElement("button", {
       onClick: () => fillBots(tor),
       title: "Add one bot",
       disabled:addingTourBot===tor.id,

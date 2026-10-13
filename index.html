@@ -6,12 +6,12 @@
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#020a17">
+    <meta name="theme-color" content="#06111c">
     <!-- dark color-scheme: Android paints the system-bar / keyboard / overscroll
          areas DARK in the installed app instead of a light strip -->
     <meta name="color-scheme" content="dark">
-    <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/blue-icon192.png">
-    <link rel="apple-touch-icon" href="assets/brand/blue-apple180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/orbital-icon192.png">
+    <link rel="apple-touch-icon" href="assets/brand/orbital-apple180.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1115,6 +1115,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/poker-god-best.css?v=299">
 <link rel="stylesheet" href="assets/css/player-wallet-blue.css?v=314">
+<link rel="stylesheet" href="assets/css/club-orbital.css?v=315">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -5008,7 +5009,7 @@ function AuthView({error = '', loading = false, onRetry} = {}) {
     }
   }, React.createElement("div", {
     className: "auth-card text-center relative z-10 w-full"
-  }, React.createElement("img", {className:"blue-auth-icon",src:"assets/brand/blue-icon512.png",width:88,height:88,alt:"PokerTen"}), React.createElement("p", {
+  }, React.createElement("img", {className:"blue-auth-icon",src:"assets/brand/orbital-icon512.png",width:88,height:88,alt:"PokerTen"}), React.createElement("p", {
     className: "auth-kicker",
     style: {
       color: 'var(--pt-text-2)',
@@ -5969,7 +5970,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     const moveTo = ix => deckRef.current?.select(ix);
     return React.createElement('section',{className:'blue-club-selection','aria-label':'Choose a club'},
       React.createElement('div',{className:'blue-club-stage'},React.createElement(ClubRotaryCarousel,{ref:deckRef,items:deck,activeIndex:slide,onChange:setSlide,onMovingChange:setCarouselBusy,onActivate:d=>{if(d.kind==='mine')onEnter(d.c);else if(d.kind==='create')setCreateOpen(true);},renderCard:d=>React.createElement(React.Fragment,null,
-        React.createElement('img',{className:'blue-orb-skin',src:'assets/brand/club-sphere-blue.webp',alt:'',draggable:false,decoding:'async'}),
+        React.createElement('img',{className:'blue-orb-skin',src:'assets/brand/club-orbital-v315.webp',alt:'',draggable:false,decoding:'async'}),
         React.createElement('div',{className:'blue-orb-content'},
           d.c?.logo && React.createElement('img',{className:'blue-club-logo',src:d.c.logo,alt:'',draggable:false,decoding:'async'}),
           d.kind==='create' ? React.createElement('i',{className:'fa-solid fa-plus blue-create-icon','aria-hidden':true}) : null,
@@ -13634,7 +13635,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     onClick: closeTableMenu
   }, React.createElement("div", {
     className: "poker-menu-backdrop absolute inset-0 bg-black/70 backdrop-blur-[3px]"
-  }), React.createElement('div',{className:'poker-menu-brand','aria-hidden':true},React.createElement('img',{src:'assets/brand/blue-icon192.png',width:84,height:84,alt:'',draggable:false}),React.createElement('span',null,'POKERTEN')), React.createElement("div", {
+  }), React.createElement('div',{className:'poker-menu-brand','aria-hidden':true},React.createElement('img',{src:'assets/brand/orbital-icon192.png',width:84,height:84,alt:'',draggable:false}),React.createElement('span',null,'POKERTEN')), React.createElement("div", {
     className: "poker-menu-panel absolute inset-x-3 bottom-[max(18px,env(safe-area-inset-bottom))] animate-pop-in",
     role: 'dialog', 'aria-modal':true, 'aria-label':'Table menu',
     onClick: e => e.stopPropagation(),
@@ -19688,7 +19689,7 @@ function PokerLaunch(){
  const[ready,setReady]=useState(false),[message,setMessage]=useState('Connecting to the game…');
  useEffect(()=>{let stopped=false,inFlight=false;const check=async()=>{if(stopped||inFlight||!window.fb?.fx)return;inFlight=true;try{const state=await window.fb.fx('pkSecurityStatus',{});if(!stopped){setReady(state.available===true);setMessage(state.available?'':'An update is being installed. The game will open automatically when the server is ready.');}}catch(e){if(!stopped)setMessage('Unable to connect right now. Retrying…');}finally{inFlight=false;}};check();window.addEventListener('firebase-ready',check);const iv=setInterval(check,5000);return()=>{stopped=true;clearInterval(iv);window.removeEventListener('firebase-ready',check);};},[]);
  if(ready)return React.createElement(App);
- return React.createElement('main',{dir:'ltr',className:'blue-launch'},React.createElement('section',{role:'status','aria-live':'polite'},React.createElement('img',{className:'blue-launch-icon',src:'assets/brand/blue-icon512.png',width:112,height:112,alt:'PokerTen'}),React.createElement('p',null,message)));
+ return React.createElement('main',{dir:'ltr',className:'blue-launch'},React.createElement('section',{role:'status','aria-live':'polite'},React.createElement('img',{className:'blue-launch-icon',src:'assets/brand/orbital-icon512.png',width:112,height:112,alt:'PokerTen'}),React.createElement('p',null,message)));
 }
 root.render(React.createElement(PokerLaunch));
 </script>

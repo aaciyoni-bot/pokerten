@@ -13,6 +13,12 @@ function clock(t,rows,now=Date.now()){
  }
  return{lvl:rows.length-1,row:rows.at(-1),inBreak:false,phaseEndsAt:Infinity,next:null,breakNext:false};
 }
+// An explicit wall-clock deadline takes precedence over the legacy level cutoff.
+function lateRegistrationOpen(t,rows,now=Date.now()){
+ if(!t||t.archived)return false;if(t.status==='reg')return true;if(t.status!=='running')return false;
+ if(t.lateRegClosesAt!=null&&Number(t.lateRegClosesAt)>0)return now<Number(t.lateRegClosesAt);
+ return Number(t.lateRegUntilLevel)>0&&clock(t,rows,now).lvl<Number(t.lateRegUntilLevel);
+}
 function split(value,uids){if(!uids.length)throw Error('No award recipient');const cents=Math.round(value*100),base=Math.floor(cents/uids.length),rem=cents-base*uids.length;return Object.fromEntries(uids.map((uid,i)=>[uid,(base+(i<rem?1:0))/100]));}
 function bountyPlan(t,event,random=()=>.5){
  if(t.bountyEvents?.[event.id])return null;const players=copy(t.players||{}),credits={},mode=t.bountyMode||'fixed';let pool=Number(t.bountyPool)||0;const before=pool;
@@ -56,6 +62,6 @@ function plan(t,input,now=Date.now()){
  const src=live.at(-1),dst=live[0];if(occupied(src).length-occupied(dst).length>=2&&movable(src)&&occupied(dst).length<cap){if(!hold([src,dst]))return finish();const ordered=occupied(src).sort((a,b)=>a.seatIndex-b.seatIndex),dealer=ordered.findIndex(p=>p.uid===src.gameState?.dealerUid);move(src,dst,ordered[(Math.max(-1,dealer)+3)%ordered.length]);for(const row of[src,dst]){row.tournament={...row.tournament,balanceHoldUntil:0};save(row);}}
  return finish();
 }
-const api={capacity,idle,chips,clock,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
+const api={capacity,idle,chips,clock,lateRegistrationOpen,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
 })(typeof window!=='undefined'?window:globalThis);
 

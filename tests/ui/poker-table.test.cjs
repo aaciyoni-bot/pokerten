@@ -242,6 +242,15 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  w.fb.getDoc=async()=>({exists:()=>true,data:()=>({id:'break-test',status:'running',name:'Return test',game:'poker',startedAt:Date.now(),structure:[{sb:1,bb:2,ante:0,mins:10}],reentry:true,maxReentries:2,lateRegUntilLevel:4,reentryBuyIn:0,buyIn:0,fee:0,bounty:0,startStack:100,players:{me:{name:'Me',out:true,rank:2,reentries:0},other:{name:'Other'}}})});
  await React.act(async()=>tableNext(snapshot()));const reentryButton=doc.querySelector('[data-tournament-reentry]');assert.ok(reentryButton,'eliminated players have a return action without retaining a live seat');assert.match(reentryButton.textContent,/Re-entry · Free/);
  const joinsBefore=returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='register').length;await React.act(async()=>{reentryButton.click();reentryButton.click();});assert.equal(returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='register').length,joinsBefore+1,'re-entry double click makes one authoritative purchase');
+ // A tournament manager can add a single entrant from the table menu and correct the deadline.
+ await React.act(()=>root.render(React.createElement(w.TableTest,{tableDocId:'test-table',user:{uid:'me',role:'club_owner',balance:500},clubSettings:{name:'My Club'},onLeave(){left++;},showToast:m=>messages.push(m)})));
+ await React.act(()=>doc.querySelector('[title="Table menu"]').click());
+ const addTournamentBot=doc.querySelector('[title="Add bot"]');assert.ok(addTournamentBot,'tournament menus expose single-bot entry');assert.equal(doc.querySelector('[title="Fill empty seats with bots"]'),null);
+ const botsBefore=returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='fillbots').length;
+ await React.act(async()=>{addTournamentBot.click();addTournamentBot.click();});assert.equal(returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='fillbots').length,botsBefore+1);
+ await React.act(()=>doc.querySelector('[title="Table menu"]').click());await React.act(()=>doc.querySelector('[title="Late registration"]').click());
+ const registrationDialog=doc.querySelector('[role="dialog"][aria-label="Late registration"]');assert.ok(registrationDialog);assert.ok(registrationDialog.querySelector('[aria-label="Registration closes (Israel time)"]'));
+ await React.act(async()=>registrationDialog.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true})));assert.equal(returnCalls.at(-1).args.op,'registration');
  current.players.me.status='active';current.players.me.stack=100;
  current.tournament.finished=true;current.tournament.tableWinner='me';current.players.ghost={uid:'ghost',name:'Eliminated ghost',stack:0,status:'out',seatIndex:7};
  await React.act(async()=>tableNext(snapshot()));

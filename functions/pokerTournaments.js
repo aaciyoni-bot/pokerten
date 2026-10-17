@@ -25,11 +25,17 @@ function config(raw,clubId,creatorUid,now){
  for(const k of ['rebuys','addon','reentry','bountyFree','botFill','demoOnly','prizeAsBonus','finishAtPaidPlaces'])t[k]=raw[k]===true;t.finishAtPaidPlaces=false;t.rebuys=false;t.botRebuys=false;t.maxRebuys=0;t.rebuyUntilLevel=0;t.reentryToPrizePool=raw.reentryToPrizePool!==false;
  t.bountyMode=raw.bountyMode||(raw.mysteryBounty?'mystery':'fixed');if(!['fixed','progressive','mystery'].includes(t.bountyMode))fail('invalid-argument','Invalid bounty mode');t.mysteryBounty=t.bountyMode==='mystery';t.anteType=raw.anteType||'bb';if(!['none','each','bb'].includes(t.anteType))fail('invalid-argument','Invalid ante type');
  if(t.demoOnly&&(t.buyIn||t.reentryBuyIn||t.fee||t.bounty||t.addedPrize||t.bountyBudgetRemaining))fail('invalid-argument','Bots-only demonstrations have no money fees or prizes');
- if(t.mysteryBounty&&t.mysteryStartLevel<=Math.max(t.lateRegUntilLevel,t.rebuys?t.rebuyUntilLevel:0))fail('invalid-argument','Mystery starts after entry and rebuy close');
+ if(!raw.lateRegClosesAt&&t.mysteryBounty&&t.mysteryStartLevel<=Math.max(t.lateRegUntilLevel,t.rebuys?t.rebuyUntilLevel:0))fail('invalid-argument','Mystery starts after entry and rebuy close');
  const rows=raw.structure||Array.from({length:25},(_,i)=>({sb:Math.round(10*Math.pow(1.5,i)),bb:Math.round(20*Math.pow(1.5,i)),ante:i+1>=t.anteFromLevel?Math.round((t.anteType==='each'?10:20)*Math.pow(1.5,i)):0,mins:t.levelMins}));
  if(!Array.isArray(rows)||!rows.length||rows.length>100)fail('invalid-argument','Blind structure must have 1–100 levels');t.structure=rows.map((r,i)=>{const label='Blind structure level '+(i+1),sb=tournamentNumber(r.sb,NaN,.01,10000000,false,label+' small blind');return{sb,bb:tournamentNumber(r.bb,NaN,sb,10000000,false,label+' big blind'),ante:tournamentNumber(r.ante,0,0,10000000,false,label+' ante'),mins:tournamentNumber(r.mins,t.levelMins,1,120,false,label+' minutes')};});
+ if(raw.lateRegClosesAt!=null&&raw.lateRegClosesAt!==0)t.lateRegClosesAt=registrationDeadline(t,raw.lateRegClosesAt,now);
  t.payouts=Array.isArray(raw.payouts)&&raw.payouts.length?raw.payouts.map((v,i)=>tournamentNumber(v,NaN,0,100,false,'Prize for place '+(i+1)+' (%)')):[50,30,20];if(Math.abs(t.payouts.reduce((a,b)=>a+b,0)-100)>.01)fail('invalid-argument','Prize percentages must total 100');
  t.prizePool=t.addedPrize;t.feeTotal=0;t.bountyPool=0;if(!t.bountyFree)t.bountyBudgetRemaining=0;return t;
+}
+function registrationDeadline(t,value,now){
+ const start=t.startedAt||t.startAt||now,deadline=tournamentNumber(value,NaN,Math.max(now+1000,start+1),Math.max(now,start)+7*86400000,true,'Late registration closing date/time');
+ if(t.mysteryBounty){let at=start;for(let i=0;i<t.mysteryStartLevel-1;i++){at+=(t.structure[i]?.mins||t.levelMins)*60000;if(t.breakEvery&&(i+1)%t.breakEvery===0)at+=t.breakMins*60000;}if(deadline>at)fail('invalid-argument','Late registration must close before mystery bounties start');}
+ return deadline;
 }
 function removeSeat(t,row,uid,now){
  if(row&&!T.idle(row))return false;
@@ -106,10 +112,10 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
   const id=op==='create'?'event_'+crypto.createHash('sha256').update(uid+r.data.requestId).digest('hex').slice(0,24):key(r.data.tournamentId),ref=db.doc('tournaments/'+id),snap=await tx.get(ref),effects=[];
   if(op==='create'){const cid=key(r.data.clubId),club=await A.tableManager(tx,db,cid,r);A.assertClubOpen(club);if(snap.exists)return{ok:true,tournamentId:id};const t=config(r.data.settings||{},cid,uid,now);t.bountyFundingUid=club.ownerUid;const cost=cash(t.addedPrize+t.bountyBudgetRemaining),write=await prepareLedger(db,tx,cid,cost?[{type:'credit',uid:club.ownerUid,amount:-cost}]:[],id,now);write();tx.set(ref,t);return{ok:true,tournamentId:id};}
   if(!snap.exists)fail('not-found','Tournament missing');const t={...snap.data(),id};if(t.authorityVersion!==2)fail('failed-precondition','Protected tournaments only');
-  const managing=['start','fillbots','cancel','archive','removeplayer'].includes(op),club=managing?await A.tableManager(tx,db,t.clubId,r):null;if(!managing)await A.member(tx,db,t.clubId,r);
+  const managing=['start','fillbots','registration','cancel','archive','removeplayer'].includes(op),club=managing?await A.tableManager(tx,db,t.clubId,r):null;if(!managing)await A.member(tx,db,t.clubId,r);
   if(t.archived){if(op==='archive')return{ok:true,tournamentId:id};fail('failed-precondition','This tournament was deleted');}
-  if(['register','start','fillbots','rebuy','addon'].includes(op)){if(club)A.assertClubOpen(club);else await A.activeClub(tx,db,t.clubId);}
-  const rows=t.status==='running'?await tables(tx,db,id):[],mine=t.players[uid],late=t.status==='running'&&clock(t,now).lvl<t.lateRegUntilLevel;let queued=false;
+  if(['register','start','fillbots','registration','rebuy','addon'].includes(op)){if(club)A.assertClubOpen(club);else await A.activeClub(tx,db,t.clubId);}
+  const rows=t.status==='running'?await tables(tx,db,id):[],mine=t.players[uid],late=t.status==='running'&&T.lateRegistrationOpen(t,t.structure,now);let queued=false;
   if(op==='register'){
    if(t.removedPlayers?.[uid]||mine?.removed||mine?.removalRequested)fail('permission-denied','You were removed from this tournament');
    if(t.demoOnly)fail('failed-precondition','This demonstration is bots only');if(!['reg','running'].includes(t.status)||t.status==='running'&&!late)fail('failed-precondition','Registration closed');if(mine&&!mine.out)return{ok:true,tournamentId:id};if(mine&&(!t.reentry||(mine.reentries||0)>=t.maxReentries))fail('failed-precondition','Re-entry unavailable');if(all(t).filter(p=>!p.out).length>=t.maxPlayers)fail('failed-precondition','Tournament full');
@@ -125,6 +131,11 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
    if(!['reg','running'].includes(t.status))fail('failed-precondition','Tournament is no longer accepting entries');if(t.status==='running'&&!late)fail('failed-precondition','Late registration is closed — bots cannot enter');if(all(t).filter(p=>!p.out).length>=t.maxPlayers)fail('failed-precondition','Tournament full');const added=addBots(t,club.ownerUid,effects,1);
    if(t.status==='running'){for(const p of added){const tid='tour_'+id+'_'+t.entryCount;const row={...tableDoc(t,{[p.uid]:seat(p,0,t.startStack)},now),docId:tid,isNew:true,changed:true};p.tableId=tid;rows.push(row);t.initialChips+=t.startStack;}}
 
+  }else if(op==='registration'){
+   if(!['reg','running'].includes(t.status))fail('failed-precondition','Only an active tournament can change registration');
+   const deadline=registrationDeadline(t,r.data.lateRegClosesAt,now);
+   t.registrationChanges=[...(t.registrationChanges||[]),{by:uid,at:now,previousClosesAt:t.lateRegClosesAt||null,previousLevel:t.lateRegUntilLevel||0,closesAt:deadline}].slice(-20);
+   t.lateRegClosesAt=deadline;
   }else if(op==='start'){
    if(t.status!=='reg')return{ok:true,tournamentId:id};if(t.botFill&&club.botsAuto!==false)addBots(t,club.ownerUid,effects);if(all(t).length<t.minPlayers)fail('failed-precondition','Not enough players');
   }else if(['rebuy','addon','decline'].includes(op)){

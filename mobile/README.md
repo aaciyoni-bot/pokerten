@@ -27,9 +27,12 @@ store build numbers. Preview Android build numbers use the workflow run number.
 - Core JavaScript (React, Firebase and Tone), Tailwind styles, icon fonts, game
   assets and sounds ship inside the app. No remote `server.url` or live website
   loader is used. Fonts, generated avatars and Firebase services require internet.
-- This first native test uses player ID + personal code. Existing Google users
-  must set their code on the website and use the SAME player ID. Google web popups
-  do not work inside a native webview. Native Google/Apple sign-in is not implemented.
+- Android Google sign-in uses Credential Manager and exchanges its ID token with
+  the existing Firebase JS auth instance. Configure OAuth below before device testing.
+  Player ID + personal code remains available. iOS Google/Apple login is not implemented.
+- Profile includes a bilingual account-deletion request page bundled in the app.
+  It opens an email request to support; the user must send it. This is a manual
+  request process, not immediate deletion. Support must process and verify requests.
 - PWA install prompts and service worker registration are disabled in the native
   generated copy only. The website remains unchanged.
 - Android keyboard resizing and a back/exit confirmation are enabled. Test on a
@@ -48,10 +51,11 @@ store build numbers. Preview Android build numbers use the workflow run number.
    owner-controlled upload key. Store secrets privately, never in this repository.
 3. Apple: verify Team ID, App Store Connect app record, distribution signing and
    provisioning. Build/export on the cloud Mac and upload to TestFlight.
-4. Verify player-code sign-in against production without creating duplicate
-   accounts. Decide and implement native Google login / Apple login as applicable.
-5. Implement and test in-app account deletion and Google Play's external deletion
-   request URL. The existing privacy page only offers an email request.
+4. Configure and device-test Android Google login below; verify player-code login.
+   Implement Apple/iOS login as applicable before an Apple submission.
+5. Test Profile → Request account deletion, opening the email app, the no-email-app
+   fallback, and returning to the game. The public Play deletion request URL is
+   https://pokerten.web.app/delete-account.html. Keep both pages' policies in sync.
 6. Verify report/block/moderation controls for chat and accurate privacy / Data
    Safety / simulated-gambling declarations for the complete submitted build.
 7. Test two devices in the same hand: chat keyboard, reconnect, foreground return,
@@ -62,3 +66,27 @@ store build numbers. Preview Android build numbers use the workflow run number.
 
 The packaging build validates expected source markers and fails when the upstream
 HTML structure changes, rather than silently generating a broken native copy.
+
+## Android Google OAuth setup (required before submission)
+
+1. In Firebase project `pokerten`, verify Google is enabled under Authentication.
+   Register Android app `com.orizis.pokerten` and its **Google Play app signing**
+   certificate SHA-1 (not only the upload certificate). For local signed APKs,
+   also register that signing certificate. Debug requires a separate Android
+   OAuth registration for `com.orizis.pokerten.dev` and the debug certificate.
+2. Obtain the **Web** OAuth client ID from the same project (client type 3 in the
+   Android app's downloaded `google-services.json`). Do not use an Android client
+   ID or a service-account key. No native Firebase SDK or Google Services plugin
+   is used, so the raw JSON is not packaged and should not be committed.
+3. Set `POKERTEN_GOOGLE_WEB_CLIENT_ID` in the build environment. GitHub previews
+   read the repository variable with the same name. This is public app config,
+   never an OAuth client secret. Unconfigured previews build but reject Google
+   login with a clear message; they are not ready for store submission.
+4. For the store bundle, set `REQUIRE_NATIVE_GOOGLE=1` alongside the client ID and
+   a fresh `MOBILE_BUILD_NUMBER`, then build/sign using the owner's upload key.
+   This gate checks presence, not correctness of cloud registration.
+5. Install from a Play test track. Verify existing Google user's UID/profile and
+   chips, new Google user, cancel/retry, logout/account switching, restart/session
+   persistence, and player-code login. CI compilation cannot validate OAuth.
+6. Update Play Data Safety account-creation declarations to include Google/OAuth
+   before submitting this build. Capture screenshots from the final native app.

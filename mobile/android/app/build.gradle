@@ -1,5 +1,15 @@
 apply plugin: 'com.android.application'
 
+// Public OAuth client ID, not a client secret. The Android package and signing
+// SHA-1 must also be registered in the same Firebase/Google Cloud project.
+def googleWebClientId = System.getenv('POKERTEN_GOOGLE_WEB_CLIENT_ID') ?: ''
+if (googleWebClientId && !(googleWebClientId ==~ /[0-9]+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com/)) {
+    throw new GradleException('Invalid POKERTEN_GOOGLE_WEB_CLIENT_ID')
+}
+if (System.getenv('REQUIRE_NATIVE_GOOGLE') == '1' && !googleWebClientId) {
+    throw new GradleException('Store build requires POKERTEN_GOOGLE_WEB_CLIENT_ID')
+}
+
 android {
     namespace = "com.orizis.pokerten"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -9,6 +19,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode Integer.parseInt(System.getenv("MOBILE_BUILD_NUMBER") ?: "1")
         versionName "1.0.0"
+        resValue "string", "pokerten_google_web_client_id", googleWebClientId
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -41,6 +52,9 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    implementation "androidx.credentials:credentials:1.6.0"
+    implementation "androidx.credentials:credentials-play-services-auth:1.6.0"
+    implementation "com.google.android.libraries.identity.googleid:googleid:1.2.1"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
@@ -49,11 +63,4 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
-}
+// Firebase Auth runs in the bundled JS SDK; no native Firebase SDK/config plugin.

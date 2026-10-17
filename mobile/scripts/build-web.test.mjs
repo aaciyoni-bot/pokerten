@@ -18,6 +18,10 @@ test('packaged app has local executable dependencies and excludes server files',
   assert.doesNotMatch(html, /<script[^>]+src="https?:/);
   assert.match(html, /src="vendor\/firebase.js"/);
   const files = await readdir(new URL('../www/', import.meta.url));
-  assert.deepEqual(files.sort(), ['assets', 'index.html', 'manifest.json', 'privacy.html', 'vendor']);
+  assert.deepEqual(files.sort(), ['account-deletion.html', 'assets', 'index.html', 'manifest.json', 'privacy.html', 'vendor']);
+  assert.match(html, /href:"account-deletion.html"/);
+  const deletion = await readFile(new URL('../www/account-deletion.html', import.meta.url), 'utf8');
+  assert.match(deletion, /mailto:office@orizisgroup.com/);
+  assert.match(deletion, /Nothing is submitted until you send the email/);
   assert.equal(await readFile(new URL('../../index.html', import.meta.url), 'utf8'), source);
 });

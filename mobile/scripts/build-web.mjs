@@ -19,12 +19,13 @@ export function nativeHtml(source) {
   let html = replaceOnce(source, '<head>', '<head>\n<script>window.__POKERTEN_NATIVE__ = true;</script>');
   html = replaceOnce(html, "if ('serviceWorker' in navigator)", "if (!window.__POKERTEN_NATIVE__ && 'serviceWorker' in navigator)");
   html = replaceOnce(html, 'let pwaInstalledThisRuntime = false;', 'let pwaInstalledThisRuntime = true;');
-  // Web OAuth popups are not supported in the native webview. The first device
-  // build uses the existing personal-code flow; no accounts are migrated.
-  html = replaceOnce(html, "try { await window.fb.signIn(); }", "try { setGErr('This test build uses player-code sign-in. Existing Google users: set a personal code on pokerten.com first, then use the same player ID here.'); }");
+  // Preserve player-code access while using Credential Manager for Android Google login.
+  html = replaceOnce(html, 'setGErr(window.PokerAuthUI.errorText(e))', 'setGErr(window.nativeAuthError(e, window.PokerAuthUI.errorText))');
   html = replaceOnce(html, '[step, setStep] = useState(\'idle\')', '[step, setStep] = useState(\'code\')');
   // Keep the explanatory message visible while the code form is open.
   html = replaceOnce(html, "step==='idle'&&(gErr||error)", "(gErr||error)");
+  html = replaceOnce(html, 'React.createElement(window.PokerAuthUI.CodeSettings, {user})',
+    'React.createElement(window.PokerAuthUI.CodeSettings, {user}), React.createElement("a", {href:"account-deletion.html", style:{display:"block",padding:"14px 0",color:"#87d6ff",textDecoration:"underline"}}, "Request account deletion / בקשת מחיקת חשבון")');
   return html;
 }
 export async function buildWeb() {
@@ -33,6 +34,7 @@ export async function buildWeb() {
   // Explicit allowlist: never include Functions, credentials, tests or repo files.
   await cp(path.join(repo, 'assets'), path.join(out, 'assets'), { recursive: true });
   for (const name of ['privacy.html', 'manifest.json']) await cp(path.join(repo, name), path.join(out, name));
+  await cp(path.join(mobile, 'account-deletion.html'), path.join(out, 'account-deletion.html'));
   let html = nativeHtml(await readFile(path.join(repo, 'index.html'), 'utf8'));
   const twMatch = html.match(/<script>\s*(tailwind\.config\s*=[\s\S]*?)<\/script>/);
   if (!twMatch) throw new Error('Tailwind configuration not found');
@@ -59,7 +61,18 @@ export async function buildWeb() {
   html = replaceOnce(html, 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css', 'vendor/fontawesome/css/all.min.css');
   const firebaseMatch = html.match(/<script type="module">([\s\S]*?)<\/script>/);
   if (!firebaseMatch?.[1].includes('initializeApp')) throw new Error('Firebase bootstrap not found');
-  const firebaseSource = firebaseMatch[1].replace(/https:\/\/www\.gstatic\.com\/firebasejs\/10\.12\.2\/firebase-(app|auth|firestore|functions)\.js/g, 'firebase/$1');
+  let firebaseSource = firebaseMatch[1].replace(/https:\/\/www\.gstatic\.com\/firebasejs\/10\.12\.2\/firebase-(app|auth|firestore|functions)\.js/g, 'firebase/$1');
+  firebaseSource = `import { Capacitor, registerPlugin } from '@capacitor/core';
+import { signInWithCredential } from 'firebase/auth';
+import { createNativeAuth, nativeAuthError } from './src/native-auth.mjs';\n` + firebaseSource;
+  firebaseSource = replaceOnce(firebaseSource, "getRedirectResult(_auth).catch(() => {});", `const nativeAuth = createNativeAuth({
+    platform: Capacitor.getPlatform(), google: registerPlugin('PokertenGoogleAuth'),
+    auth: _auth, persistence: _persist,
+    credential: token => GoogleAuthProvider.credential(token), signInWithCredential, signOut
+  });
+  window.fb.signIn = nativeAuth.signIn;
+  window.fb.signOut = nativeAuth.signOut;
+  window.nativeAuthError = nativeAuthError;`);
   if (firebaseSource.includes('https://www.gstatic.com/firebasejs')) throw new Error('Unmapped Firebase SDK version');
   await build({ stdin: { contents: firebaseSource, resolveDir: mobile, loader: 'js' }, bundle: true, format: 'esm', minify: true, target: ['es2020'], outfile: path.join(out, 'vendor/firebase.js') });
   html = html.replace(firebaseMatch[0], '<script type="module" src="vendor/firebase.js"></script>');

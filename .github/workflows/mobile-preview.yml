@@ -31,11 +31,18 @@ jobs:
         working-directory: mobile/android
         env:
           MOBILE_BUILD_NUMBER: ${{ github.run_number }}
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug bundleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: POKERTEN-Android-test-${{ github.run_number }}
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload unsigned Play bundle for private signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: POKERTEN-Android-unsigned-bundle-${{ github.run_number }}
+          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14
   ios:

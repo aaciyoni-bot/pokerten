@@ -1,0 +1,69 @@
+name: Build POKERTEN mobile previews
+on:
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/mobile-preview.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mobile-preview-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci --prefix mobile --no-audit --no-fund
+      - run: npm run verify --prefix mobile
+      - run: npx cap sync android
+        working-directory: mobile
+      - name: Build installable Android test app
+        working-directory: mobile/android
+        env:
+          MOBILE_BUILD_NUMBER: ${{ github.run_number }}
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: POKERTEN-Android-test-${{ github.run_number }}
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci --prefix mobile --no-audit --no-fund
+      - run: npm run build --prefix mobile
+      - run: npx cap sync ios
+        working-directory: mobile
+      - name: Compile iPhone app on cloud Mac without signing credentials
+        run: >-
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App
+          -configuration Debug -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath mobile/ios/DerivedData
+          CODE_SIGNING_ALLOWED=NO build
+      - name: Archive simulator app (not installable on an iPhone)
+        run: ditto -c -k --sequesterRsrc --keepParent mobile/ios/DerivedData/Build/Products/Debug-iphonesimulator/App.app POKERTEN-iOS-simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: POKERTEN-iOS-simulator-${{ github.run_number }}
+          path: POKERTEN-iOS-simulator.zip
+          if-no-files-found: error
+          retention-days: 14

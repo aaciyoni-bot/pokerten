@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 
 // Public OAuth client ID, not a client secret. The Android package and signing
 // SHA-1 must also be registered in the same Firebase/Google Cloud project.
-def googleWebClientId = System.getenv('POKERTEN_GOOGLE_WEB_CLIENT_ID') ?: ''
+def googleWebClientId = System.getenv('POKERTEN_GOOGLE_WEB_CLIENT_ID') ?: providers.gradleProperty('pokertenGoogleWebClientId').getOrElse('')
 if (googleWebClientId && !(googleWebClientId ==~ /[0-9]+-[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com/)) {
     throw new GradleException('Invalid POKERTEN_GOOGLE_WEB_CLIENT_ID')
 }

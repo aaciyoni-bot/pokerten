@@ -78,10 +78,13 @@ HTML structure changes, rather than silently generating a broken native copy.
    Android app's downloaded `google-services.json`). Do not use an Android client
    ID or a service-account key. No native Firebase SDK or Google Services plugin
    is used, so the raw JSON is not packaged and should not be committed.
-3. Set `POKERTEN_GOOGLE_WEB_CLIENT_ID` in the build environment. GitHub previews
-   read the repository variable with the same name. This is public app config,
-   never an OAuth client secret. Unconfigured previews build but reject Google
-   login with a clear message; they are not ready for store submission.
+3. The owner's supplied Android config has been validated for project `pokerten`,
+   package `com.orizis.pokerten`, app ID `1:861274065626:android:b6431a10d904245b8c73e3`.
+   Its public Web OAuth client ID is recorded in `android/gradle.properties`.
+   `POKERTEN_GOOGLE_WEB_CLIENT_ID` can override it in the build environment;
+   GitHub previews read that repository variable and require a configured ID.
+   The supplied config contains no Android OAuth client/signing SHA-1; this
+   registration and real-device Google login verification are still pending.
 4. For the store bundle, set `REQUIRE_NATIVE_GOOGLE=1` alongside the client ID and
    a fresh `MOBILE_BUILD_NUMBER`, then build/sign using the owner's upload key.
    This gate checks presence, not correctness of cloud registration.

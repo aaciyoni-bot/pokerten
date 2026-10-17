@@ -37,6 +37,10 @@ store build numbers. Preview Android build numbers use the workflow run number.
   generated copy only. The website remains unchanged.
 - Android keyboard resizing and a back/exit confirmation are enabled. Test on a
   real device: Android 16 edge-to-edge behavior can differ from browser rendering.
+- System bars start hidden. Android restores immersive mode on resume and after
+  native dialogs; an edge swipe temporarily reveals system navigation. Keyboard
+  and display-cutout insets remain managed by Capacitor. Check chat input and
+  Google sign-in return on a device after installing the immersive build.
 - Icons reuse the current site artwork. The iOS 1024 icon is an upscale of the
   512 source; this does not add original detail. Replace with master artwork if available.
 - No signing private keys, account passwords or access tokens belong in git.
@@ -83,8 +87,9 @@ HTML structure changes, rather than silently generating a broken native copy.
    Its public Web OAuth client ID is recorded in `android/gradle.properties`.
    `POKERTEN_GOOGLE_WEB_CLIENT_ID` can override it in the build environment;
    GitHub previews read that repository variable and require a configured ID.
-   The supplied config contains no Android OAuth client/signing SHA-1; this
-   registration and real-device Google login verification are still pending.
+   The refreshed config includes the Android OAuth client and Play signing SHA-1.
+   The owner confirmed successful Google login from Play internal build 4 on
+   2026-10-17; the broader account-switching and persistence checks below remain.
 4. For the store bundle, set `REQUIRE_NATIVE_GOOGLE=1` alongside the client ID and
    a fresh `MOBILE_BUILD_NUMBER`, then build/sign using the owner's upload key.
    This gate checks presence, not correctness of cloud registration.

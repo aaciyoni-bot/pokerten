@@ -32,3 +32,6 @@ test('full export includes new vehicle fields, mileage and equipment tabs',()=>{
  const tabs=c.module.exports.report({vehicles:[v],driverOverrides:{},fuel:[],cards:[]},{A:{name:'A'}},'2026-10-11');
  assert.equal(tabs.length,14);assert.ok(tabs.find(t=>t.title==='ק״מ רכבים'));const eq=tabs.find(t=>t.title==='ציוד ואפיון רכב');assert.equal(eq.rows[1][5],'0012');
 });
+
+
+test('fuel device status remains separate from its code and recognizes prior recorded presence',()=>{const D=require('../assets/fleet-vehicle-data.js');assert.equal(D.fuelLabel({notes:'מצב דלקן: פעיל',fuelCode:'0012'}),'תקין');assert.equal(D.fuelLabel({notes:'מצב דלקן: לא פעיל'}),'לא תקין');assert.equal(D.fuelLabel({notes:'מצב דלקן: אין דלקן'}),'אין דלקן');assert.equal(D.fuelLabel({fuelDeviceStatus:'faulty',notes:'מצב דלקן: פעיל'}),'לא תקין');});

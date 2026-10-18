@@ -83,6 +83,15 @@ async function commitState(next){
     const key=String(ch.value.number||'').replace(/\D/g,'');
     if(!/^\d{6,8}$/.test(key))throw new Error('מספר הרכב חייב לכלול 6–8 ספרות');
     ch.value.plateKey=key;
+    if(typeof FleetVehicleNumbers!=='undefined'){
+     FleetVehicleNumbers.assertAvailable(ch.value,Object.values(records.vehicles||{}));
+     const numbers=FleetVehicleNumbers.get(ch.value);
+     FleetVehicleNumbers.compose(ch.value,numbers.militaryNumber,numbers.yellowNumber,String(ch.value.prefix||'').includes('ל')?'yellow':'military');
+     for(const secondary of FleetVehicleNumbers.keys(ch.value).filter(k=>k!==key)){
+      const reserved=await tx.get(path('plates',secondary));
+      if(reserved.exists()&&reserved.data().vehicleId!==ch.id)throw new Error('מספר רכב זה כבר קיים במאגר');
+     }
+    }
     const p=await tx.get(path('plates',key));
     if(p.exists()&&p.data().vehicleId!==ch.id)throw new Error('מספר רכב זה כבר קיים במאגר');
     if(newPlates.includes(key))throw new Error('מספר רכב זה כבר קיים במאגר');newPlates.push(key);
@@ -234,3 +243,4 @@ window.FleetIO={
 };
 const button=document.getElementById('passwordLogin');button.disabled=false;button.textContent=invitationToken?'הפעלה וקביעת סיסמה':'כניסה';
 window.addEventListener('offline',()=>{online=false;emit();});
+

@@ -68,3 +68,10 @@ Validation: 38 regression tests pass. An independent XLSX reader confirms numeri
 - Requests remain distinct from reported existing permits. Cards show permit names directly.
 - Re-parsed the supplied workbook: identical source hash, 160 drivers, 23 vehicle records, 22 review items. Actual import requires an authenticated editor; do not infer completion from this document.
 - 42 regression tests pass; live import and browser verification tracked separately.
+
+
+## 2026-10-18 dual registration
+- Vehicle intake and editing accept military number plus yellow/civilian registration on one immutable vehicle record. One displayed primary number remains compatible with existing plate reservations.
+- Search and reports include both; legacy single-number vehicles are inferred from their existing prefix.
+- Both identifiers are validated, and duplicates against the loaded fleet or an existing primary-number reservation are rejected. Secondary identifiers do not have a separate server reservation; strict concurrency uniqueness for secondary numbers is not claimed.
+- No Firestore rules changed or published. Live browser checks remain blocked by native credential state; workbook data import is still pending.

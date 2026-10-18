@@ -18,7 +18,7 @@ const FleetExcel=(()=>{
   tabs.forEach((tab,i)=>zip.file(`xl/worksheets/sheet${i+1}.xml`,sheetXml(tab.rows)));
   return zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
  }
- function equipmentTab(vehicles,frameworks,data){return {title:'ציוד ואפיון רכב',rows:[['מספר רכב','שם רכב','סוג','מסגרת','אפיון','קוד דלקן','קודנית',...data.equipment.map(x=>x[1]),'הערות כלי נהג','מטפים','אישור 1028 ביציאה האחרונה','מועד האישור','מאשר'],...vehicles.filter(v=>!v.deleted).map(v=>[v.number,v.displayName||v.type,v.type,frameworks[v.unit]?.name||v.unit,v.description||'',v.fuelCode||'',v.keypadCode||'',...data.equipment.map(([k])=>data.stateLabel(v.equipment?.[k])),v.driverTools||'',v.extinguisherCount??'',v.serviceDispatch?.form1028Completed?'מולא':'לא נרשם',v.serviceDispatch?.at||'',v.serviceDispatch?.by||''])]};}
+ function equipmentTab(vehicles,frameworks,data){return {title:'ציוד ואפיון רכב',rows:[['מספר רכב','שם רכב','סוג','מסגרת','אפיון','קוד דלקן','קודנית',...data.equipment.map(x=>x[1]),'הערות כלי נהג','מטפים','אישור 1028 ביציאה האחרונה','מועד האישור','מאשר','מספר צבאי','מספר רישוי צהוב'],...vehicles.filter(v=>!v.deleted).map(v=>[v.number,v.displayName||v.type,v.type,frameworks[v.unit]?.name||v.unit,v.description||'',v.fuelCode||'',v.keypadCode||'',...data.equipment.map(([k])=>data.stateLabel(v.equipment?.[k])),v.driverTools||'',v.extinguisherCount??'',v.serviceDispatch?.form1028Completed?'מולא':'לא נרשם',v.serviceDispatch?.at||'',v.serviceDispatch?.by||'',...(typeof FleetVehicleNumbers!=='undefined'?Object.values(FleetVehicleNumbers.get(v)):['',''])])]};}
  return {build,sheetXml,equipmentTab};
 })();
 if(typeof module!=='undefined')module.exports=FleetExcel;
@@ -36,3 +36,4 @@ if(typeof window!=='undefined'){
  const renderBeforeExcel=renderFleet;renderFleet=function(){renderBeforeExcel();const heading=document.querySelector('.page-heading');if(heading){const b=document.createElement('button');b.className='chip';b.textContent='אקסל ק״מ';b.onclick=()=>downloadFleetExcel('mileage');heading.append(b);}};
  const b=document.createElement('button');b.dataset.editOnly='true';b.textContent='הורדת דוח אקסל מלא';b.onclick=()=>{closeMenu();downloadFleetExcel('full');};document.getElementById('menu').append(b);
 }
+

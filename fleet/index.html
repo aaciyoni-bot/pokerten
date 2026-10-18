@@ -463,7 +463,7 @@ function fleetMatches(v){
   const q=fleetSearch.trim().toLocaleLowerCase('he');
   if(!q)return true;
   const digits=q.replace(/\D/g,'');
-  return [v.type,v.displayName,v.description,v.commander,v.slot,FRBY[v.unit]?.name].some(x=>String(x||'').toLocaleLowerCase('he').includes(q))||!!(digits&&String(v.number).replace(/\D/g,'').includes(digits));
+  return [v.type,v.displayName,v.description,v.commander,v.slot,FRBY[v.unit]?.name].some(x=>String(x||'').toLocaleLowerCase('he').includes(q))||!!(digits&&[v.number,v.militaryNumber,v.yellowNumber].some(n=>String(n||'').replace(/\D/g,'').includes(digits)));
 }
 function fleetEmpty(){
   if(!scopeVehicles().length)return `<div class="empty"><strong>עדיין אין רכבים בתצוגה</strong>לא ניתן לחשב מוכנות לפני שמופיעים רכבים.${canEdit()?'<br><button class="btn primary" onclick="openIntake()">קליטת רכב ראשון</button>':''}</div>`;
@@ -483,7 +483,7 @@ function fleetAttentionBanner(all){
 }
 function fleetVehicleRow(v){
   const sc=STAT[v.status]||'wait',fr=FRBY[v.unit],t=trackDate(v),n=daysUntil(t),late=t&&n!=null&&n<=7;
-  return `<article class="fleet-row" aria-label="רכב ${esc(v.number)}"><div class="row-plate">${plate(v)}</div><div class="row-type">${uiIcon('truck')}<div><div class="row-name">${esc(v.displayName||v.type)}</div><small class="${late?'row-warning':''}">${late?`${isCivil(v)?'טסט':'טיפול'} ${n<0?'באיחור':n===0?'היום':'בעוד '+n+' ימים'}`:esc(v.slot|| (isCivil(v)?'רכב לבן':'רכב צבאי'))}</small></div></div><div class="row-unit">${esc(fr?fr.name:'ללא מסגרת')}<small>${esc(v.commander||'טרם שויך אחראי')}</small></div><span class="pill ${sc}">${esc(v.status)}</span><div class="row-actions"><button class="row-details" onclick="openEdit(${v.id})" aria-label="פרטי רכב ${esc(v.number)}">פרטים</button>${canEdit()?`<details class="row-menu"><summary aria-label="פעולות נוספות לרכב ${esc(v.number)}">${uiIcon('menu')}</summary><div class="row-menu-content"><button onclick="markOk(${v.id})">סימון כתקין</button><button onclick="openTransfer(${v.id})">העברה בין מסגרות</button><button onclick="hideCard(${v.id})">הסרה מהתצוגה</button></div></details>`:''}</div></article>`;
+  return `<article class="fleet-row" aria-label="רכב ${esc(v.number)}"><div class="row-plate">${plate(v)}${v.militaryNumber&&v.yellowNumber?`<small style="display:block;overflow-wrap:anywhere" dir="ltr">${isCivil(v)?'צ׳ '+esc(v.militaryNumber):'צהוב '+esc(v.yellowNumber)}</small>`:''}</div><div class="row-type">${uiIcon('truck')}<div><div class="row-name">${esc(v.displayName||v.type)}</div><small class="${late?'row-warning':''}">${late?`${isCivil(v)?'טסט':'טיפול'} ${n<0?'באיחור':n===0?'היום':'בעוד '+n+' ימים'}`:esc(v.slot|| (isCivil(v)?'רכב לבן':'רכב צבאי'))}</small></div></div><div class="row-unit">${esc(fr?fr.name:'ללא מסגרת')}<small>${esc(v.commander||'טרם שויך אחראי')}</small></div><span class="pill ${sc}">${esc(v.status)}</span><div class="row-actions"><button class="row-details" onclick="openEdit(${v.id})" aria-label="פרטי רכב ${esc(v.number)}">פרטים</button>${canEdit()?`<details class="row-menu"><summary aria-label="פעולות נוספות לרכב ${esc(v.number)}">${uiIcon('menu')}</summary><div class="row-menu-content"><button onclick="markOk(${v.id})">סימון כתקין</button><button onclick="openTransfer(${v.id})">העברה בין מסגרות</button><button onclick="hideCard(${v.id})">הסרה מהתצוגה</button></div></details>`:''}</div></article>`;
 }
 function renderFleet(){
   const all=scopeVehicles(),vs=all.filter(fleetMatches);
@@ -853,6 +853,7 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 
 <script src="assets/firebase-config.js"></script>
 <script src="assets/fleet-driver-search.js"></script>
+<script src="assets/fleet-vehicle-numbers.js"></script>
 <script src="assets/fleet-actions.js"></script>
 <script src="assets/fleet-frameworks.js"></script>
 <script src="assets/fleet-mobile.js"></script>

@@ -59,3 +59,12 @@ Added editable display name, detailed description, mission/slot, last-service da
 Added local XLSX download from fresh Firestore reads, with typed numeric mileage, literal text identifiers/codes, RTL sheets, frozen headers, filters, current mileage and history. The full export includes equipment/description/codes and the expanded fields are also in Google Sheets export. Downloaded files are snapshots; another download fetches current data. JSZip 3.10.1 is vendored locally with its license. No operational or personnel data is bundled in source.
 
 Validation: 38 regression tests pass. An independent XLSX reader confirms numeric values, leading-zero codes/identifiers, RTL, frozen panes and equipment labels. New script syntax checks pass. The browser authentication attempt timed out and subsequent canonical navigation also timed out; actual authorized import and live visual/save/reload verification remain pending. The additional Firestore rule enforcing 1028 at the server boundary is prepared in the rule snippet but NOT YET PUBLISHED. The application/shared-save guard is implemented; do not claim the unpublished rule is active. The original production domain is unchanged.
+
+
+
+## 2026-10-18 driver discovery
+- Added combined driver search by name, recorded permit/name or number, framework, role, licence and contact (only permitted roles).
+- Added recorded-permit, company, licence and review/refresh/training request filters; keeps existing access checks.
+- Requests remain distinct from reported existing permits. Cards show permit names directly.
+- Re-parsed the supplied workbook: identical source hash, 160 drivers, 23 vehicle records, 22 review items. Actual import requires an authenticated editor; do not infer completion from this document.
+- 42 regression tests pass; live import and browser verification tracked separately.

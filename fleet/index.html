@@ -636,18 +636,21 @@ function renderCompany(){
 }
 
 /* ===== DRIVERS ===== */
-let drvSearch='',drvLimit=120;
+let drvSearch='',drvLimit=120,drvPermit='',drvCompany='',drvLicense='',drvState='';
+function driverFilterChanged(key,value){if(key==='permit')drvPermit=value;if(key==='company')drvCompany=value;if(key==='license')drvLicense=value;if(key==='state')drvState=value;drvLimit=120;renderDrivers();}
+function resetDriverFilters(){drvSearch=drvPermit=drvCompany=drvLicense=drvState='';drvLimit=120;renderDrivers();}
 function renderDrivers(){
-  const q=drvSearch.trim(), dg=q.replace(/\D/g,'');
-  let list=DRIVERS.filter(d=>{ if(!q) return true;
-    return (d.name||'').includes(q)||(dg&&(d.pn.includes(dg)||(d.phone||'').replace(/\D/g,'').includes(dg))); });
-  if(sess.role==='commander'){ const c={A:'א',C:'ג',D:'ד'}[sess.scope]; list=list.filter(d=>d.company===c); }
-  const safetyBase = sess.role==='commander' ? DRIVERS.filter(d=>d.company==={A:'א',C:'ג',D:'ד'}[sess.scope]) : DRIVERS;
-  let h=safetyCard(safetyBase,'תדריך בטיחות חודשי',true);
-  h+=`<div class="search"><span class="ic">🔍</span><input placeholder="חיפוש נהג — שם / מ״א / טלפון" value="${esc(drvSearch)}" oninput="drvSearch=this.value;renderDrivers();focusSearch()"></div>`;
-  h+=`<div class="section-h"><h2>נהגים <span style="color:var(--mut);font-weight:600;font-size:13px">(${list.length})</span></h2></div>`;
-  h+=list.slice(0,drvLimit).map(driverCard).join('')||emptyBox('לא נמצאו נהגים');
-  if(list.length>drvLimit) h+=`<button class="btn ghost" onclick="drvLimit+=120;renderDrivers()">הצג נהגים נוספים (${list.length-drvLimit})</button>`;
+  let base=DRIVERS.map(d=>getDriver(d.pn));
+  if(sess.role==='commander'){const c={A:'א',C:'ג',D:'ד'}[sess.scope];base=base.filter(d=>d.company===c);}
+  const list=base.filter(d=>FleetDriverSearch.matches(d,{query:drvSearch,permit:drvPermit,company:drvCompany,license:drvLicense,state:drvState,pii:piiOk()}));
+  const select=(key,label,selected,items)=>`<div class="field"><label for="driver_${key}">${label}</label><select id="driver_${key}" onchange="driverFilterChanged('${key}',this.value)"><option value="">הכול</option>${items.map(x=>`<option value="${esc(x)}" ${selected===x?'selected':''}>${esc(x)}</option>`).join('')}</select></div>`;
+  let h=safetyCard(base,'תדריך בטיחות חודשי',true);
+  h+=`<div class="search"><span class="ic">🔍</span><input aria-label="חיפוש נהגים" placeholder="שם, היתר או מספר היתר, פלוגה, רישיון, טלפון…" value="${esc(drvSearch)}" oninput="drvSearch=this.value;drvLimit=120;renderDrivers();focusSearch()"></div>`;
+  h+=`<div class="srow">${select('permit','היתר רשום',drvPermit,FleetDriverSearch.options(base,'permits'))}${select('company','פלוגה',drvCompany,FleetDriverSearch.options(base,'company'))}${select('license','סוג רישיון',drvLicense,FleetDriverSearch.options(base,'license'))}</div>`;
+  h+=`<div class="field"><label for="driver_state">מעקב נהגים</label><select id="driver_state" onchange="driverFilterChanged('state',this.value)">${[['','כל הנהגים'],['requests','בקשות קורסים / היתרים'],['refresh','נדרש רענון'],['review','נתונים לבירור'],['none','ללא היתר מיוחד רשום']].map(([k,l])=>`<option value="${k}" ${drvState===k?'selected':''}>${l}</option>`).join('')}</select></div><button class="btn ghost" onclick="resetDriverFilters()">ניקוי סינון</button><p style="color:var(--mut)">היתרים לפי נתוני הקובץ; בקשה להכשרה אינה היתר. יש לבדוק רישיון תקף לפני שיבוץ.</p>`;
+  h+=`<div class="section-h"><h2>נהגים <span role="status" style="color:var(--mut);font-weight:600;font-size:13px">${list.length} מתוך ${base.length}</span></h2></div>`;
+  h+=list.slice(0,drvLimit).map(driverCard).join('')||emptyBox('לא נמצאו נהגים בסינון הנוכחי');
+  if(list.length>drvLimit)h+=`<button class="btn ghost" onclick="drvLimit+=120;renderDrivers()">הצג נהגים נוספים (${list.length-drvLimit})</button>`;
   $('#screen').innerHTML=h;
 }
 function focusSearch(){ const i=$('#screen .search input'); if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);} }
@@ -661,7 +664,7 @@ function driverCard(base){
       ${pii?`<span class="pill wait tnum">מ״א ${esc(d.pn)}</span>`:''}</div>
     <div class="dchips">
       ${d.license?`<span>🪪 ${esc(d.license)}</span>`:''}
-      ${np?`<span>🔑 ${np} היתרים</span>`:'<span style="color:var(--mut)">ללא היתרים מיוחדים</span>'}
+      ${np?`<span>🔑 ${esc(d.permits.join(' · '))}</span>`:'<span style="color:var(--mut)">ללא היתרים מיוחדים רשומים</span>'}${d.importReview?.length?'<span>⚠ נתונים לבירור</span>':''}${d.refreshRequired?'<span>נדרש רענון</span>':''}
       ${pii&&phone?`<span>📞 ${esc(d.phone)}</span>`:''}
       ${d.pn?`<span class="sbadge ${sdone?'on':'off'}">🦺 ${sdone?('תודרך '+fmtHe(so)):'תדריך חסר'}</span>`:''}
       ${d.pn&&canEdit()?`<button class="sfx ${sdone?'on':''}" onclick="event.stopPropagation();markSafety('${esc(d.pn)}')">${sdone?'עדכן':'סמן ✓'}</button>`:''}
@@ -849,6 +852,7 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 </script>
 
 <script src="assets/firebase-config.js"></script>
+<script src="assets/fleet-driver-search.js"></script>
 <script src="assets/fleet-actions.js"></script>
 <script src="assets/fleet-frameworks.js"></script>
 <script src="assets/fleet-mobile.js"></script>
@@ -860,3 +864,4 @@ let toastT; function toast(m){ let t=$('#toast'); if(!t){ t=document.createEleme
 <script type="module" src="assets/fleet-cloud.js"></script>
 
 </html>
+

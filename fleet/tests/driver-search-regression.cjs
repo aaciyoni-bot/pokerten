@@ -1,0 +1,6 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');const F=require('../assets/fleet-driver-search.js');
+const driver={name:'נהג לדוגמה',pn:'1234567',phone:'050-1234567',company:'א',license:'C1',permits:['דוד (36)'],requestedPermits:'טיגריס',courses:'סוואנה',importReview:[{field:'phone'}]};
+test('search combines name, permit number and framework; phone punctuation is normalized',()=>{assert.ok(F.matches(driver,{query:'לדוגמה 36 א'}));assert.ok(F.matches(driver,{query:'0501234567'}));assert.ok(!F.matches(driver,{query:'96'}));});
+test('permit filter never treats a training request as an existing permit',()=>{assert.ok(F.matches(driver,{permit:'דוד (36)'}));assert.ok(!F.matches(driver,{permit:'טיגריס'}));assert.ok(F.matches(driver,{query:'טיגריס',state:'requests'}));});
+test('filters intersect and retain records with missing data',()=>{assert.ok(F.matches(driver,{company:'א',license:'C1',state:'review'}));assert.ok(!F.matches(driver,{company:'ג'}));assert.ok(F.matches({name:'חדש'},{state:'none'}));assert.ok(!F.matches(driver,{state:'none'}));});
+test('restricted search does not expose personal number or phone matches',()=>{assert.ok(!F.matches(driver,{query:'1234567',pii:false}));assert.deepEqual(F.options([driver,driver],'permits'),['דוד (36)']);});

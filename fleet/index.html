@@ -429,7 +429,13 @@ function daysUntil(d){ if(!d) return null; const a=new Date();a.setHours(0,0,0,0
 function nextService(v){ if(isCivil(v)||!v.lastService||!v.frequency) return ''; const d=new Date(v.lastService+'T00:00:00'); d.setDate(d.getDate()+Number(v.frequency)); return d.toISOString().slice(0,10); }
 function trackDate(v){ return isCivil(v)?(v.testExpiry||''):nextService(v); }
 function fmtHe(d){ if(!d) return '—'; const [y,m,dd]=d.split('-'); return dd+'/'+m+'/'+y; }
-function plate(v){ const civil=isCivil(v); return `<span class="plate ${civil?'civil':'army'}" aria-label="${civil?'רכב לבן':'רכב צבאי'} ${esc(v.number)}">${civil?'<span class="plate-country" aria-hidden="true"><img src="assets/flag-il.svg" alt=""><span>IL</span></span>':''}<span class="plate-number">${esc(v.number)}</span>${civil?'':'<span class="plate-prefix" aria-hidden="true">צ׳-</span>'}</span>`; }
+function singlePlate(v){ const civil=isCivil(v); return `<span class="plate ${civil?'civil':'army'}" aria-label="${civil?'רכב לבן':'רכב צבאי'} ${esc(v.number)}">${civil?'<span class="plate-country" aria-hidden="true"><img src="assets/flag-il.svg" alt=""><span>IL</span></span>':''}<span class="plate-number">${esc(v.number)}</span>${civil?'':'<span class="plate-prefix" aria-hidden="true">צ׳-</span>'}</span>`; }
+function plate(v){
+ if(typeof FleetVehicleNumbers==='undefined')return singlePlate(v);
+ const ids=FleetVehicleNumbers.get(v);
+ if(!ids.militaryNumber||!ids.yellowNumber)return singlePlate(v);
+ return `<span class="plate-pair" aria-label="מספרי הרכב">${singlePlate({...v,number:ids.militaryNumber,prefix:'צ-'})}${singlePlate({...v,number:ids.yellowNumber,prefix:'ל.ז-'})}</span>`;
+}
 function scopeVehicles(){ let vs=S.vehicles.filter(v=>!v.hiddenCard); if(sess.role==='commander'&&sess.scope) vs=vs.filter(v=>v.unit===sess.scope); return vs; }
 function needsAttention(v){ const t=trackDate(v),n=daysUntil(t);
   return (!v.drivers||!v.drivers.length)||['תקול','מושבת','לא כשיר'].includes(v.status)||(t&&n!=null&&n<=7)||v.deliveryVideo==='לא צולם'; }
@@ -483,7 +489,7 @@ function fleetAttentionBanner(all){
 }
 function fleetVehicleRow(v){
   const sc=STAT[v.status]||'wait',fr=FRBY[v.unit],t=trackDate(v),n=daysUntil(t),late=t&&n!=null&&n<=7;
-  return `<article class="fleet-row" aria-label="רכב ${esc(v.number)}"><div class="row-plate">${plate(v)}${v.militaryNumber&&v.yellowNumber?`<small style="display:block;overflow-wrap:anywhere" dir="ltr">${isCivil(v)?'צ׳ '+esc(v.militaryNumber):'צהוב '+esc(v.yellowNumber)}</small>`:''}</div><div class="row-type">${uiIcon('truck')}<div><div class="row-name">${esc(v.displayName||v.type)}</div><small class="${late?'row-warning':''}">${late?`${isCivil(v)?'טסט':'טיפול'} ${n<0?'באיחור':n===0?'היום':'בעוד '+n+' ימים'}`:esc(v.slot|| (isCivil(v)?'רכב לבן':'רכב צבאי'))}</small></div></div><div class="row-unit">${esc(fr?fr.name:'ללא מסגרת')}<small>${esc(v.commander||'טרם שויך אחראי')}</small></div><span class="pill ${sc}">${esc(v.status)}</span><div class="row-actions"><button class="row-details" onclick="openEdit(${v.id})" aria-label="פרטי רכב ${esc(v.number)}">פרטים</button>${canEdit()?`<details class="row-menu"><summary aria-label="פעולות נוספות לרכב ${esc(v.number)}">${uiIcon('menu')}</summary><div class="row-menu-content"><button onclick="markOk(${v.id})">סימון כתקין</button><button onclick="openTransfer(${v.id})">העברה בין מסגרות</button><button onclick="hideCard(${v.id})">הסרה מהתצוגה</button></div></details>`:''}</div></article>`;
+  return `<article class="fleet-row" aria-label="רכב ${esc(v.number)}"><div class="row-plate">${plate(v)}</div><div class="row-type">${uiIcon('truck')}<div><div class="row-name">${esc(v.displayName||v.type)}</div><small class="${late?'row-warning':''}">${late?`${isCivil(v)?'טסט':'טיפול'} ${n<0?'באיחור':n===0?'היום':'בעוד '+n+' ימים'}`:esc(v.slot|| (isCivil(v)?'רכב לבן':'רכב צבאי'))}</small></div></div><div class="row-unit">${esc(fr?fr.name:'ללא מסגרת')}<small>${esc(v.commander||'טרם שויך אחראי')}</small></div><span class="pill ${sc}">${esc(v.status)}</span><div class="row-actions"><button class="row-details" onclick="openEdit(${v.id})" aria-label="פרטי רכב ${esc(v.number)}">פרטים</button>${canEdit()?`<details class="row-menu"><summary aria-label="פעולות נוספות לרכב ${esc(v.number)}">${uiIcon('menu')}</summary><div class="row-menu-content"><button onclick="markOk(${v.id})">סימון כתקין</button><button onclick="openTransfer(${v.id})">העברה בין מסגרות</button><button onclick="hideCard(${v.id})">הסרה מהתצוגה</button></div></details>`:''}</div></article>`;
 }
 function renderFleet(){
   const all=scopeVehicles(),vs=all.filter(fleetMatches);

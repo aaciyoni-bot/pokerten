@@ -1,7 +1,7 @@
 /* PokerTen - Service Worker
    Network first: fetch the latest release from the server.
    The cache is only an offline fallback so deployments appear immediately. */
-const CACHE = 'pokerten-shell-v317';
+const CACHE = 'pokerten-shell-v318';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {

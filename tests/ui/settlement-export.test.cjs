@@ -12,8 +12,8 @@ w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js')
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent===text);
 const range={fromAt:Date.parse('2026-10-04T21:00:00Z'),toAt:Date.parse('2026-10-18T21:00:00Z')};
-const players=[{uid:'p1',name:'אביב & <לוי>',result:-34017,rake:1200,chips:15983},{uid:'p2',name:'=HYPERLINK("bad")',result:12030,rake:900,chips:50000},{uid:'0007',name:'Zero',result:0,rake:0,chips:0}];
-const legacy=role=>({active:false,legacy:true,role,supportsDateRange:true,readOnly:true,dateRange:range,cycle:{id:'date_range',status:'range',startAt:range.fromAt,endAt:range.toAt},cycles:[],legacyReport:{asOf:range.toAt,players:structuredClone(players),agents:[],totals:{balance:0,chips:65983,result:-21987,rake:2100,commission:0}}});
+const players=[{uid:'p1',name:'אביב & <לוי>',agentUid:'a',recordedHands:40,handCountStatus:'Recorded cash segments only',result:-34017,rake:1200,chips:15983},{uid:'p2',name:'=HYPERLINK("bad")',agentUid:'b',recordedHands:10,handCountStatus:'Recorded cash segments only',result:12030,rake:900,chips:50000},{uid:'0007',name:'Zero',result:0,rake:0,chips:0}];
+const legacy=role=>({active:false,legacy:true,role,supportsDateRange:true,readOnly:true,dateRange:range,cycle:{id:'date_range',status:'range',startAt:range.fromAt,endAt:range.toAt},cycles:[],legacyReport:{asOf:range.toAt,players:structuredClone(players),agents:[{uid:'a',name:'סוכן אחד',commission:600},{uid:'b',name:'סוכן שני',commission:450}],totals:{balance:0,chips:65983,result:-21987,rake:2100,commission:0}}});
 let data=legacy('owner'),calls=[],fail=false,defer=null,key=0;
 const call=async(name,args)=>{calls.push({name,args});assert.equal(name,'pkSettlementReport');if(fail)throw Error('Report unavailable');if(defer)return defer;return structuredClone(data);};
 const mount=async()=>React.act(async()=>root.render(React.createElement(w.PokerSettlement.Settlement,{key:++key,user:{uid:data.role==='player'?'p1':data.role,role:data.role},clubId:'netabel',call})));
@@ -28,31 +28,48 @@ function unzip(bytes){
 async function readFile(file){
  const bytes=Buffer.from(await file.blob.arrayBuffer()),files=unzip(bytes);
  for(const text of Object.values(files))assert.equal(new w.DOMParser().parseFromString(text,'application/xml').querySelector('parsererror'),null,'valid XML');
- const sheet=new w.DOMParser().parseFromString(files['xl/worksheets/sheet1.xml'],'application/xml');
- const rows=[...sheet.querySelectorAll('sheetData row')].map(row=>[...row.querySelectorAll('c')].map(c=>c.getAttribute('t')==='n'?Number(c.querySelector('v').textContent):c.textContent||null));
- assert.equal(sheet.querySelectorAll('f').length,0,'player text never becomes a formula');
- return {bytes,files,sheet,rows};
+ const sheets={};
+ const workbook=new w.DOMParser().parseFromString(files['xl/workbook.xml'],'application/xml');
+ for(const [i,node] of [...workbook.querySelectorAll('sheet')].entries()){
+  const sheet=new w.DOMParser().parseFromString(files[`xl/worksheets/sheet${i+1}.xml`],'application/xml');
+  const rows=[...sheet.querySelectorAll('sheetData row')].map(row=>[...row.querySelectorAll('c')].map(c=>c.getAttribute('t')==='n'?Number(c.querySelector('v').textContent):c.textContent||null));
+  assert.equal(sheet.querySelectorAll('f').length,0,'untrusted player text never becomes a formula');
+  const headers=rows[4],records=rows.slice(5).map(row=>Object.fromEntries(headers.map((h,i)=>[h,row[i]])));
+  sheets[node.getAttribute('name')]={sheet,rows,records};
+ }
+ return {bytes,files,sheets};
 }
+const lookup=(file,sheet,key,value)=>file.sheets[sheet].records.find(r=>r[key]===value);
 (async()=>{
- await mount();await React.act(()=>button('Download Excel').click());assert.equal(calls.length,1,'export uses the authorized report without another fetch');
+ await mount();await React.act(()=>button('Download Excel').click());assert.equal(calls.length,1,'export uses the authorized response without another fetch');
  assert.match(clicked.name,/2026-10-05-2026-10-18\.xlsx$/);assert.equal(downloaded.type,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
- let file=await readFile({blob:downloaded});assert.match(file.rows[1][0],/2026-10-05 to 2026-10-18/);
- const rowFor=name=>file.rows.find(r=>r[0]===name);
- assert.deepEqual(rowFor('אביב & <לוי>').slice(1),[-340.17,12,159.83,'p1']);
- assert.deepEqual(rowFor('Zero').slice(1),[0,0,0,'0007']);assert.ok(rowFor('=HYPERLINK("bad")'));
- assert.deepEqual(rowFor('Total').slice(1),[-219.87,21,659.83,null]);
- assert.equal(file.sheet.querySelector('autoFilter').getAttribute('ref'),'A6:E9');assert.equal(file.sheet.querySelector('pane').getAttribute('state'),'frozen');
- if(process.env.SETTLEMENT_EXPORT_OUTPUT){fs.mkdirSync(process.env.SETTLEMENT_EXPORT_OUTPUT,{recursive:true});fs.writeFileSync(path.join(process.env.SETTLEMENT_EXPORT_OUTPUT,'players.xlsx'),file.bytes);}
- // Older cycle snapshots keep their balance label and exact cycle boundaries.
- const closed=legacy('owner');delete closed.dateRange;closed.readOnly=false;closed.cycle={id:'legacy_current',status:'closed',startAt:range.fromAt,endAt:range.toAt};
- file=await readFile(w.PokerSettlementExcel.createFile(closed,{clubId:'netabel',userId:'owner'}));assert.ok(file.rows[4].includes('Chips at closing'));
- // Private player view strips staff-only columns even if unexpected extra fields exist.
- data=legacy('player');await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.doesNotMatch(file.files['xl/worksheets/sheet1.xml'],/Rake|p2|HYPERLINK|0007/);assert.equal(file.rows.length,7);
- // Split counterparty activity is one player row, wallet is not added twice.
- data=fixture('owner','owner');data.details.push({...structuredClone(data.details[0]),agentId:'club',totals:{result:1000,rake:20,hands:2,games:1}});data.funds[0].chips=16983;await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.deepEqual(file.rows.find(r=>r[0]==='Other human player').slice(1),[-330.17,10.2,22,2,169.83,'other']);
- // Agent exports remain scoped to the server's own-player rows.
- data=fixture('agent','agent');data.funds.push({uid:'agent',name:'Agent own wallet',balance:99900});await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.doesNotMatch(file.files['xl/worksheets/sheet1.xml'],/Agent own wallet|999/);
- data=fixture('player','p1');await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.doesNotMatch(file.files['xl/worksheets/sheet1.xml'],/Rake|Other human player/);
+ let file=await readFile({blob:downloaded});assert.deepEqual(Object.keys(file.sheets),['Agents','Players','By agent']);
+ assert.match(file.sheets.Players.rows[1][0],/2026-10-05 to 2026-10-18/);
+ let row=lookup(file,'Players','Player','אביב & <לוי>');
+ assert.equal(row.Agent,'סוכן אחד');assert.equal(row['Profit / loss (chips)'],-340.17);assert.equal(row['Recorded cash hands'],40);assert.equal(row['Current chips (wallet + tables)'],159.83);
+ row=lookup(file,'Players','Player','Zero');assert.equal(row['Profit / loss (chips)'],0);assert.equal(row['Recorded cash hands'],null);assert.equal(row['Hand count coverage'],'Not recorded');assert.equal(row['Player ID'],'0007');
+ assert.ok(lookup(file,'Players','Player','=HYPERLINK("bad")'));
+ row=lookup(file,'Players','Player','Total');assert.equal(row['Profit / loss (chips)'],-219.87);assert.equal(row['Rake (included in result)'],21);assert.equal(row['Recorded cash hands'],50);assert.match(row['Hand count coverage'],/Partial/);
+ row=lookup(file,'Agents','Agent','סוכן אחד');assert.equal(row.Players,1);assert.equal(row['Profit / loss (chips)'],-340.17);assert.equal(row['Recorded commission'],6);
+ row=lookup(file,'Agents','Agent','Total');assert.equal(row.Players,3);assert.equal(row['Profit / loss (chips)'],-219.87);assert.equal(row['Recorded commission'],10.5);
+ assert.ok(lookup(file,'Agents','Agent','Direct / no agent'));
+ const subtotals=file.sheets['By agent'].records.filter(r=>r.Player==='Agent subtotal');assert.equal(subtotals.length,3);assert.equal(Math.round(subtotals.reduce((n,r)=>n+r['Profit / loss (chips)'],0)*100),-21987);
+ for(const s of Object.values(file.sheets))assert.equal(s.sheet.querySelector('pane').getAttribute('state'),'frozen');
+ assert.ok(file.sheets.Players.sheet.querySelector('autoFilter'));assert.equal(file.sheets['By agent'].sheet.querySelector('autoFilter'),null,'subtotals cannot be filtered into data totals');
+ if(process.env.SETTLEMENT_EXPORT_OUTPUT){fs.mkdirSync(process.env.SETTLEMENT_EXPORT_OUTPUT,{recursive:true});fs.writeFileSync(path.join(process.env.SETTLEMENT_EXPORT_OUTPUT,'agents.xlsx'),file.bytes);}
+ const closed=legacy('owner');delete closed.dateRange;closed.cycle={id:'legacy_current',status:'closed',startAt:range.fromAt,endAt:range.toAt};
+ file=await readFile(w.PokerSettlementExcel.createFile(closed,{clubId:'netabel',userId:'owner'}));assert.ok(file.sheets.Players.rows[4].includes('Chips at closing'));
+ data=legacy('player');await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.deepEqual(Object.keys(file.sheets),['Players']);assert.doesNotMatch(file.files['xl/worksheets/sheet1.xml'],/Rake|p2|HYPERLINK|0007|סוכן/);
+ // A player can change agent. Group entries reconcile to one player total and one wallet.
+ data=fixture('owner','owner');data.details.push({...structuredClone(data.details[0]),agentId:'club',totals:{result:1000,rake:20,hands:2,games:1}});data.funds[0].chips=16983;await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});
+ row=lookup(file,'Players','Player','Other human player');assert.equal(row['Profit / loss (chips)'],-330.17);assert.equal(row['Recorded cash hands'],22);assert.equal(row['Current chips (wallet + tables)'],169.83);
+ assert.equal(lookup(file,'Agents','Agent','Total').Players,1);assert.equal(file.sheets['By agent'].records.filter(r=>r.Player==='Other human player').length,2);
+ assert.equal(lookup(file,'Agents','Agent','Direct / no agent')['Profit / loss (chips)'],10);
+ // Agent scope stays identical to the authorized server report, excluding its own wallet.
+ data=fixture('agent','agent');data.funds.push({uid:'agent',name:'Agent own wallet',balance:99900});await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.doesNotMatch(JSON.stringify(file.files),/Agent own wallet|99900/);
+ data=fixture('player','p1');await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.doesNotMatch(JSON.stringify(file.files),/Rake|Other human player/);assert.equal(lookup(file,'Players','Player','My player')['Recorded cash hands'],20);
+ // Tournament hands are not presented as a complete all-game count.
+ data=fixture('owner','owner');data.details[0].rows[0].kind='tournament';file=await readFile(w.PokerSettlementExcel.createFile(data,{clubId:'netabel',userId:'owner'}));assert.match(lookup(file,'Players','Player','Other human player')['Hand count coverage'],/Partial/);
  // Unknown start, loading, rejected date range and stale failures cannot be exported.
  data=legacy('owner');data.needsPeriodStart=true;await mount();assert.equal(button('Download Excel'),undefined);
  data=legacy('owner');let release;defer=new Promise(resolve=>release=resolve);await mount();assert.equal(button('Download Excel'),undefined);defer=null;await React.act(()=>release(structuredClone(data)));assert.ok(button('Download Excel'));
@@ -61,7 +78,7 @@ async function readFile(file){
  await React.act(()=>Simulate.change(dateForm.querySelectorAll('input')[0],{target:{value:'2026-10-06'}}));
  await React.act(()=>Simulate.change(dateForm.querySelectorAll('input')[1],{target:{value:'2026-10-19'}}));
  await React.act(async()=>Simulate.submit(dateForm));assert.equal(button('Download Excel'),undefined,'server returned the wrong date range');
- data=legacy('owner');data.legacyReport.players=[];await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.equal(file.sheet.querySelector('autoFilter'),null);
+ data=legacy('owner');data.legacyReport.players=[];await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.equal(file.sheets.Players.sheet.querySelector('autoFilter'),null);
  assert.equal(calls.some(c=>c.name==='pkSettlement'),false,'download never changes balances or cycles');
- await React.act(()=>root.unmount());w.close();console.log('PASS: actual XLSX download, dates, numeric money, Hebrew, text safety, totals, role scope, duplicate counterparties, empty/loading/error states');
+ await React.act(()=>root.unmount());w.close();console.log('PASS: agent summaries, grouped subtotals, unique player totals, recorded/missing hands, role scope, dates and XLSX download');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

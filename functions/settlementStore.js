@@ -104,7 +104,7 @@ async function calculate(tx,db,cid,cycleId){
 }
 function publicReport(ctx,full){
  const {calculated:c,cycle}=full,{uid,role}=ctx;
- const funds=(full.members||[]).filter(m=>!m.isBot&&(role==='owner'||m.uid===uid||m.agentUid===uid)).map(m=>({uid:m.uid,name:m.username||m.uid,balance:E.cents(Number(m.balance)||0)}));
+ const funds=(full.members||[]).filter(m=>!m.isBot&&(role==='owner'||m.uid===uid||m.agentUid===uid)).map(m=>({uid:m.uid,name:m.username||m.uid,balance:E.cents(Number(m.balance)||0),agentId:m.agentUid&&m.agentUid!==m.uid?m.agentUid:'club'}));
  const metadata={id:cycle.id,number:cycle.number,startAt:cycle.startAt,endAt:cycle.endAt,closedAt:cycle.closedAt||null,status:cycle.status,autoClose:!!cycle.autoClose};
  const payments=full.payments.filter(p=>role==='owner'||p.fromId===uid||p.toId===uid).map(p=>({...p,canConfirm:p.status==='pending'&&p.confirmBy===uid}));
  const own=c.players[uid]||{playerId:uid,playerName:ctx.me?.username||uid,rows:[],totals:{result:0,hands:0,games:0},opening:0,paid:0,closing:0,counterparties:[]};

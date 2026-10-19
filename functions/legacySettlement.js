@@ -18,7 +18,7 @@ function buildLegacy(members,games,tables,agentLogs,{ownerUid,now=Date.now(),per
 }
 function projectLegacy(full,auth){
  const {uid,role}=auth;
- const publicPlayer=p=>({uid:p.uid,name:p.name,balance:p.balance,onTables:p.onTables,chips:p.chips,result:p.result,openSessions:p.openSessions});
+ const publicPlayer=p=>({uid:p.uid,name:p.name,balance:p.balance,onTables:p.onTables,chips:p.chips,result:p.result,openSessions:p.openSessions,...(p.handCountStatus?{recordedHands:p.recordedHands,handCountStatus:p.handCountStatus}:{})});
  if(role==='player'){
   const p=full.players.find(p=>p.uid===uid)||{uid,name:auth.me?.username||uid,balance:cents(auth.me?.balance),onTables:0,chips:cents(auth.me?.balance),result:full.needsPeriodStart?null:0,totalResult:0,openSessions:0};
   return{players:[publicPlayer(p)],totals:publicPlayer(p),asOf:full.asOf};
@@ -30,4 +30,15 @@ function projectLegacy(full,auth){
  }
  return{players:full.players,totals:full.club,agents:full.agents,asOf:full.asOf};
 }
-module.exports={buildLegacy,projectLegacy};
+// The old cash-out log has no hand counter. Use only recorded journal segments
+// in the same dates, and keep missing history distinct from a recorded zero.
+// Segment dates are recording dates, not individual hand timestamps.
+function withRecordedHands(full,segments,period,now=Date.now()){
+ const counts=new Map();
+ for(const s of segments){
+  if(!Period.inPeriod(s.at,period,now)||s.kind==='tournament'||!Number.isSafeInteger(s.hands)||s.hands<0)continue;
+  counts.set(s.playerId,(counts.get(s.playerId)||0)+s.hands);
+ }
+ return {...full,players:full.players.map(p=>({...p,recordedHands:counts.has(p.uid)?counts.get(p.uid):null,handCountStatus:counts.has(p.uid)?'Recorded cash segments only':'Not recorded'}))};
+}
+module.exports={buildLegacy,projectLegacy,withRecordedHands};

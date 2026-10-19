@@ -26,13 +26,17 @@ async function legacyData(tx,db,cid,auth,now=Date.now(),period=null){
  if(own)gamesQuery=gamesQuery.where('uid','==',auth.uid);
  let agentQuery=humanCommissionQuery(db,cid);
  if(auth.role==='agent')agentQuery=agentQuery.where('agentUid','==',auth.uid);
- const [members,games,tables,agentLogs]=await Promise.all([
+ let handQuery=S.root(db,cid).collection('sessions');
+ if(own)handQuery=handQuery.where('playerId','==',auth.uid);
+ const [members,games,tables,agentLogs,handSegments]=await Promise.all([
   own?Promise.resolve(null):tx.get(membersQuery.select(...memberMoneyFields)),
   tx.get(gamesQuery.select(...gameMoneyFields)),
   tx.get(db.collection('tables').where('clubId','==',cid).select(...tableMoneyFields)),
-  !needsCommissions?Promise.resolve(null):tx.get(agentQuery.select('agentUid','amount','at','accountingVersion','rakeSource'))]);
+  !needsCommissions?Promise.resolve(null):tx.get(agentQuery.select('agentUid','amount','at','accountingVersion','rakeSource')),
+  tx.get(handQuery.select('playerId','hands','at','kind'))]);
  const rows=members?members.docs.map(d=>d.data()):[];if(auth.me&&!rows.some(m=>m.uid===auth.uid))rows.push({uid:auth.uid,...auth.me});
- return Legacy.buildLegacy(rows,games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),agentLogs?agentLogs.docs.map(d=>d.data()):[],{ownerUid:auth.club.ownerUid,now,period});
+ const full=Legacy.buildLegacy(rows,games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),agentLogs?agentLogs.docs.map(d=>d.data()):[],{ownerUid:auth.club.ownerUid,now,period});
+ return Legacy.withRecordedHands(full,handSegments.docs.map(d=>d.data()),period,now);
 }
 function legacyReport(auth,full,cycle){return{active:false,legacy:true,role:auth.role,basis:full.basis,supportsDateRange:true,needsPeriodStart:!!full.needsPeriodStart,canSetPeriodStart:auth.manager&&!!full.needsPeriodStart,canClose:auth.manager&&cycle.status==='open'&&!full.needsPeriodStart,cycle:meta(cycle),legacyReport:Legacy.projectLegacy(full,auth)};}
 async function initialize(tx,db,cid,auth,now){

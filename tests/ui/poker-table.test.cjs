@@ -7,6 +7,9 @@ w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 const cards=['A','K','Q','J','10','9'].map((val,i)=>({id:'c'+i,val,suit:['♠','♥','♦','♣'][i%4]}));
 let current={settings:{serverEngine:false,maxPlayers:6,baseGameType:'Omaha6',actionTime:30,blinds:5},gameState:{__seq:1,phase:'preflop',activeTurnUid:'me',turnStartedAt:Date.now(),highestBet:10,minRaise:10,board:[],pots:[],currentGameType:'Omaha6',handN:1},players:{me:{uid:'me',name:'Me',stack:100,bet:0,cards,status:'active',seatIndex:0,lastSeen:Date.now()},other:{uid:'other',name:'Other',stack:200,bet:10,cards:[],status:'active',seatIndex:1,lastSeen:Date.now(),actionText:'Check'}}};
 let privateHand=[],fxCalls=[];
+const intervals=new Map(),nativeInterval=w.setInterval.bind(w),nativeClearInterval=w.clearInterval.bind(w);
+w.setInterval=(fn,delay)=>{const id=nativeInterval(fn,delay);intervals.set(id,{fn,delay});return id;};
+w.clearInterval=id=>{intervals.delete(id);nativeClearInterval(id);};
 const ref=(...args)=>({id:args.at(-1),path:args.slice(1).join('/')});let tableNext,tableFail,writes=[],messages=[];
 const snapshot=()=>({id:'test-table',exists:()=>true,data:()=>structuredClone(current),metadata:{fromCache:false}});
 w.fb={db:{},doc:ref,collection:ref,query:r=>r,where:()=>({}),fx:async(name,args)=>{fxCalls.push({name,args});return{};},getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),updateDoc:async()=>{},setDoc:async()=>{},addDoc:async()=>({id:'x'}),deleteDoc:async()=>{},onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;if(r.path==='tables/test-table'){tableNext=cb;tableFail=error;queueMicrotask(()=>cb(snapshot()));}else if(r.path==='tables/test-table/priv/me') queueMicrotask(()=>cb({exists:()=>true,data:()=>({cards:privateHand})}));else queueMicrotask(()=>cb({exists:()=>false,docs:[]}));return()=>{};},runTransaction:async(_,fn)=>fn({get:async()=>snapshot(),update:(r,data)=>{writes.push(data);current={...current,...data};}})};
@@ -17,6 +20,23 @@ w.document.documentElement.requestFullscreen=async options=>{assert.equal(option
 w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document.dispatchEvent(new w.Event('fullscreenchange'));};
 (async()=>{await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test-table',user:{uid:'me',role:'player',balance:500,playerId:'P123456789'},clubSettings:{name:'My Club',logo:'data:image/png;base64,test'},onLeave(){left++;},showToast:m=>messages.push(m)})));
  const doc=w.document;
+ // A queued departure and an expired sit-out belong to server maintenance.
+ // Ordinary players and spectators must not send manager-only kick requests.
+ for(const spectator of [false,true]){
+  const mine=current.players.me;if(spectator)delete current.players.me;
+  for(const state of [{leaveReq:Date.now()},{sitOut:true,sitOutAt:Date.now()-601000}]){
+   Object.assign(current.players.other,state);
+   await React.act(async()=>tableNext(snapshot()));
+   const before=fxCalls.filter(c=>c.name==='pkLeave').length;
+   for(let tick=0;tick<3;tick++)await React.act(async()=>{for(const timer of [...intervals.values()])if(timer.delay===12000)await timer.fn();});
+   assert.equal(fxCalls.filter(c=>c.name==='pkLeave').length,before,'background activity never kicks another player');
+   assert.equal(messages.length,0,'no repeated manager-required toast');
+   delete current.players.other.leaveReq;delete current.players.other.sitOut;delete current.players.other.sitOutAt;
+  }
+  if(spectator)current.players.me=mine;
+ }
+ await React.act(async()=>tableNext(snapshot()));
+
  await React.act(()=>doc.querySelector('[title="Table menu"]').click());
  await React.act(()=>doc.querySelector('[title="My table look — only you see it"]').click());
  for(const color of ['Green','Blue','Red','Purple','Gold','Slate']){

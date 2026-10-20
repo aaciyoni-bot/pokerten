@@ -4,6 +4,7 @@ const {onSchedule}=require('firebase-functions/v2/scheduler');
 const {getFirestore}=require('firebase-admin/firestore');
 const A=require('./pokerAuthority'),E=require('./settlementEngine'),S=require('./settlementStore');
 const Legacy=require('./legacySettlement'),Period=require('./settlementPeriod');
+const Closure=require('./settlementCycleClose');
 const opts={region:'us-central1',memory:'512MiB',timeoutSeconds:120};
 const audit=(tx,ref,uid,action,details,now)=>tx.set(ref.collection('audit').doc(),{uid,action,details,at:now});
 const requireManager=a=>{if(!a.manager)A.fail('permission-denied','Only club managers can perform this action.');};
@@ -69,7 +70,7 @@ async function close(tx,db,cid,ctx,now,uid){
  tx.update(ctx.ref,{currentCycleId:nextId,revision:(ctx.config.revision||0)+1});audit(tx,ctx.ref,uid,'close',{cycleId:old.id,nextId},now);return{ok:true,cycleId:nextId};
 }
 exports.pkSettlementReport=onCall(opts,async r=>{
- const db=getFirestore(),cid=A.key(r.data?.clubId);return db.runTransaction(async tx=>{
+ const db=getFirestore(),cid=A.key(r.data?.clubId);const report=await db.runTransaction(async tx=>{
   const auth=await S.authority(tx,db,cid,r),ctx=await S.context(tx,db,cid);
   if(r.data?.fromAt!==undefined||r.data?.toAt!==undefined){
    let period;try{period=Period.dateRange(r.data.fromAt,r.data.toAt);}catch(e){A.fail('invalid-argument',e.message);}
@@ -102,6 +103,7 @@ exports.pkSettlementReport=onCall(opts,async r=>{
   const approvals=await tx.get(ctx.ref.collection('approvals').where('cycleId','==',requested));
   return{active:true,...result,supportsDateRange:true,needsPeriodStart:false,clubPartyId:auth.club.ownerUid,cycles:cycles.map(meta),currentCycleId:ctx.config.currentCycleId,activatedAt:ctx.config.activatedAt,approvals:approvals.docs.map(d=>d.data()).filter(a=>auth.manager||a.uid===auth.uid)};
  },{readOnly:true});
+ return report.role==='owner'?{...report,cycleClose:await Closure.progress(db,cid)}:report;
 });
 exports.pkSettlementArchive=onCall(opts,async r=>{
  const db=getFirestore(),cid=A.key(r.data?.clubId);return db.runTransaction(async tx=>{
@@ -111,8 +113,16 @@ exports.pkSettlementArchive=onCall(opts,async r=>{
   return{at:config.activatedAt,rows:snap.docs.map(d=>d.data()).filter(m=>auth.manager||m.uid===auth.uid||auth.role==='agent'&&m.agentUid===auth.uid).map(m=>({uid:m.uid,name:m.name,balance:m.balance,result:m.accounting?.result||0,chips:m.accounting?.chips??m.balance,...(auth.role!=='player'?{rake:m.accounting?.rake||0,agentProfits:m.agentProfits,clubProfits:m.clubProfits}:{})}))};
  },{readOnly:true});
 });
-exports.pkSettlement=onCall(opts,async r=>A.command(r,'settlement',async(tx,db,uid,now)=>{
+const finishClosure=(tx,db,cid,auth,ctx,now)=>ctx.config?close(tx,db,cid,ctx,now,auth.uid):initialize(tx,db,cid,auth,now);
+exports.pkSettlement=onCall(opts,async r=>{const result=await A.command(r,'settlement',async(tx,db,uid,now)=>{
  const d=r.data,cid=A.key(d.clubId),auth=await S.authority(tx,db,cid,r),action=d.action;
+ if(action==='beginCloseAll'){
+  requireManager(auth);const ctx=await S.context(tx,db,cid);
+  if(!ctx.config&&(await readLegacyPeriod(tx,db,cid,now)).needsPeriodStart)A.fail('failed-precondition','Confirm the current cycle start date before closing it.');
+  return Closure.begin(tx,db,cid,auth,ctx,A.key(d.expectedCycleId),A.key(d.requestId),now);
+ }
+ if(action==='continueCloseAll'){requireManager(auth);return{ok:true,closureId:A.key(d.closureId)};}
+ if(auth.club.settlementClosing?.status==='closing')A.fail('failed-precondition','Wait until the current cycle finishes closing.');
  if(action==='setLegacyPeriodStart'){
   requireManager(auth);
   const config=await tx.get(S.root(db,cid));if(config.exists)A.fail('failed-precondition','The current cycle already has a recorded start date.');
@@ -165,7 +175,7 @@ exports.pkSettlement=onCall(opts,async r=>A.command(r,'settlement',async(tx,db,u
   tx.set(ctx.ref.collection('approvals').doc(S.hash(cycleId,uid)),{uid,cycleId,approved:d.approved===true,remark:String(d.remark||'').slice(0,1000),at:now});
  }else A.fail('invalid-argument','Unknown action.');
  tx.update(ctx.ref,{revision:(ctx.config.revision||0)+1});return{ok:true};
-}));
+});return result.closureId?Closure.advance(getFirestore(),A.key(r.data.clubId),result.closureId,finishClosure):result;});
 exports.pkSettlementTerms=onCall(opts,async r=>{
  const cid=A.key(r.data?.clubId);
  if(r.data?.action==='list')return getFirestore().runTransaction(async tx=>{
@@ -194,6 +204,10 @@ exports.pkSettlementTerms=onCall(opts,async r=>{
   audit(tx,S.root(db,cid),uid,'terms',{target,previous:old,next},now);return{ok:true};
  });
 });
-// Retain the scheduled export for deployment compatibility. Older persisted
-// autoClose flags have no effect: only an authenticated manager can close.
-exports.pkSettlementTick=onSchedule({schedule:'every 5 minutes',region:'us-central1',timeZone:'Asia/Jerusalem',timeoutSeconds:540},async()=>({automaticClosingDisabled:true}));
+// Resume only explicit manager requests, including when their browser closes.
+// A calendar or an old autoClose setting can never start a closing operation.
+exports.pkSettlementTick=onSchedule({schedule:'every 1 minutes',region:'us-central1',timeZone:'Asia/Jerusalem',timeoutSeconds:540},async()=>{
+ const db=getFirestore(),clubs=await db.collection('clubs').where('settlementClosing.status','==','closing').get();
+ for(const club of clubs.docs)try{await Closure.advance(db,club.id,club.data().settlementClosing.id,finishClosure);}catch(e){console.error('Requested cycle close',club.id,e.message);}
+ return{automaticClosingDisabled:true,manualClosuresProcessed:clubs.size};
+});

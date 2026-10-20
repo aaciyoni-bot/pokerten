@@ -13,6 +13,26 @@ function clock(t,rows,now=Date.now()){
  }
  return{lvl:rows.length-1,row:rows.at(-1),inBreak:false,phaseEndsAt:Infinity,next:null,breakNext:false};
 }
+// End of the selected level, including earlier breaks but not the break after it.
+function lateRegistrationDeadline(t,rows){
+ if(Number(t.lateRegClosesAt)>0)return Number(t.lateRegClosesAt);
+ const level=Math.min(rows.length,Math.max(0,Math.floor(Number(t.lateRegUntilLevel)||0)));
+ if(!level)return 0;
+ let end=Number(t.startedAt)||Number(t.startAt)||0;
+ for(let i=0;i<level;i++){
+  end+=Math.max(1,Number(rows[i].mins)||5)*60000;
+  if(i+1<level&&t.breakEvery&&(i+1)%t.breakEvery===0)end+=Math.max(0,Number(t.breakMins)||0)*60000;
+ }
+ return end;
+}
+function lateRegistrationOpen(t,rows,now=Date.now()){
+ if(!t||t.archived)return false;if(t.status==='reg')return true;if(t.status!=='running')return false;
+ return now<lateRegistrationDeadline(t,rows);
+}
+function earlyRegistrationBonus(t,now=Date.now(),reentry=false){
+ if(reentry||t.status!=='reg'||now>=Number(t.startAt))return 0;
+ return Math.floor(Number(t.startStack)*Math.max(0,Math.min(100,Number(t.earlyRegistrationBonusPct)||0))/100);
+}
 function split(value,uids){if(!uids.length)throw Error('No award recipient');const cents=Math.round(value*100),base=Math.floor(cents/uids.length),rem=cents-base*uids.length;return Object.fromEntries(uids.map((uid,i)=>[uid,(base+(i<rem?1:0))/100]));}
 function bountyPlan(t,event,random=()=>.5){
  if(t.bountyEvents?.[event.id])return null;const players=copy(t.players||{}),credits={},mode=t.bountyMode||'fixed';let pool=Number(t.bountyPool)||0;const before=pool;
@@ -56,6 +76,6 @@ function plan(t,input,now=Date.now()){
  const src=live.at(-1),dst=live[0];if(occupied(src).length-occupied(dst).length>=2&&movable(src)&&occupied(dst).length<cap){if(!hold([src,dst]))return finish();const ordered=occupied(src).sort((a,b)=>a.seatIndex-b.seatIndex),dealer=ordered.findIndex(p=>p.uid===src.gameState?.dealerUid);move(src,dst,ordered[(Math.max(-1,dealer)+3)%ordered.length]);for(const row of[src,dst]){row.tournament={...row.tournament,balanceHoldUntil:0};save(row);}}
  return finish();
 }
-const api={capacity,idle,chips,clock,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
+const api={capacity,idle,chips,clock,lateRegistrationDeadline,lateRegistrationOpen,earlyRegistrationBonus,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
 })(typeof window!=='undefined'?window:globalThis);
 

@@ -274,3 +274,89 @@ test('one funded bot can join a running tournament during late registration with
  await f.command('owner','fillbots',{tournamentId:id},'late-bot-request-once');assert.equal(Object.values(f.tour(id).players).filter(p=>p.isBot).length,1);assert.equal(f.balance('owner'),balance-16);
  f.advance(180000);await assert.rejects(f.command('owner','fillbots',{tournamentId:id}),e=>e.message.includes('Late registration is closed'));assert.equal(f.balance('owner'),balance-16);
 });
+
+test('90-minute deadline admits humans and one bot at minute 38 despite level 2 cutoff, then closes exactly on time',async()=>{
+ const f=fixture(),deadline=NOW+90*60000,id=await create(f,{startAt:NOW,lateRegClosesAt:deadline,lateRegUntilLevel:2,bounty:5,structure:Array.from({length:20},(_,i)=>({sb:i+1,bb:(i+1)*2,ante:0,mins:10}))});
+ await startHumans(f,id,2);f.advance(38*60000);assert.equal(f.tours.clock(f.tour(id),f.now()).lvl,3);
+ f.member('lateHuman');await f.command('lateHuman','register',{tournamentId:id});assert.equal(f.balance('lateHuman'),984);
+ const botBalance=f.balance('owner');await f.command('owner','fillbots',{tournamentId:id});assert.equal(f.balance('owner'),botBalance-16);assert.equal(Object.values(f.tour(id).players).filter(p=>p.isBot).length,1);assert.equal(T.chips(f.tables(id)),400);
+ f.advance(52*60000);f.member('tooLate');await assert.rejects(f.command('tooLate','register',{tournamentId:id}),/Registration closed/);await assert.rejects(f.command('owner','fillbots',{tournamentId:id}),/Late registration is closed/);assert.equal(f.balance('tooLate'),1000);assert.equal(f.balance('owner'),botBalance-16);
+});
+
+test('manager can correct live registration deadline, with authorization, validation, audit and replay safety',async()=>{
+ const f=fixture(),id=await create(f,{lateRegUntilLevel:0});await startHumans(f,id,3);const deadline=NOW+90*60000;
+ const seats=copy(f.tables(id)),balance=f.balance('owner');await assert.rejects(f.command('human0','registration',{tournamentId:id,lateRegClosesAt:deadline}),e=>e.code==='permission-denied');
+ await assert.rejects(f.command('owner','registration',{tournamentId:id,lateRegClosesAt:NOW-1}),/Late registration closing/);
+ await f.command('owner','registration',{tournamentId:id,lateRegClosesAt:deadline},'registration-deadline-once');await f.command('owner','registration',{tournamentId:id,lateRegClosesAt:deadline},'registration-deadline-once');
+ assert.equal(f.tour(id).lateRegClosesAt,deadline);assert.equal(f.tour(id).registrationChanges.length,1);assert.equal(f.tour(id).registrationChanges[0].by,'owner');assert.equal(f.balance('owner'),balance);assert.deepEqual(f.tables(id),seats);
+ // An eliminated participant can re-enter during the same corrected window.
+ const t=f.tour(id),row=f.docs.get('tables/'+f.tables(id)[0].docId);t.reentry=true;t.maxReentries=1;t.reentryBuyIn=20;t.bounty=5;t.players.human0.out=true;row.players.human1.stack+=row.players.human0.stack;row.players.human0.stack=0;row.players.human0.status='out';
+ const wallet=f.balance('human0');await f.command('human0','register',{tournamentId:id});assert.equal(f.balance('human0'),wallet-26);assert.equal(f.tour(id).players.human0.out,false);
+ f.tour(id).status='done';await assert.rejects(f.command('owner','registration',{tournamentId:id,lateRegClosesAt:deadline}),/Only an active tournament/);
+});
+
+test('time-based registration cannot overlap mystery bounties or start before the tournament',()=>{
+ const f=fixture(),base={name:'Time validation',startAt:NOW,lateRegUntilLevel:2,structure:[{sb:1,bb:2,mins:10},{sb:2,bb:4,mins:10},{sb:3,bb:6,mins:10}]};
+ assert.throws(()=>f.tours.config({...base,lateRegClosesAt:NOW-1},'clubA','owner',NOW),/Late registration closing/);
+ assert.throws(()=>f.tours.config({...base,bountyMode:'mystery',mysteryStartLevel:3,lateRegClosesAt:NOW+30*60000},'clubA','owner',NOW),/before mystery bounties/);
+ assert.equal(f.tours.config({...base,bountyMode:'mystery',mysteryStartLevel:3,lateRegClosesAt:NOW+20*60000},'clubA','owner',NOW).lateRegClosesAt,NOW+20*60000);
+});
+
+test('early stack bonus is fixed once per entry; late humans, late bots and re-entry receive the base stack',async()=>{
+ const f=fixture(),id=await create(f,{startAt:NOW+60000,earlyRegistrationBonusPct:25,lateRegUntilLevel:1,reentry:true,maxReentries:1});
+ f.member('a');await f.command('a','register',{tournamentId:id},'early-entry-once');await f.command('a','register',{tournamentId:id},'early-entry-once');await f.command('a','register',{tournamentId:id});
+ await f.command('owner','fillbots',{tournamentId:id},'early-bot-request-once');await f.command('owner','fillbots',{tournamentId:id},'early-bot-request-once');
+ assert.equal(f.tour(id).players.a.entryStartStack,125);assert.equal(f.tour(id).players.a.registeredAt,NOW);assert.equal(f.balance('a'),989);
+ const bot=Object.values(f.tour(id).players).find(p=>p.isBot);assert.equal(bot.entryStartStack,125);assert.equal(f.balance('owner'),99989);
+ f.advance(60000);f.member('b');await f.command('b','register',{tournamentId:id});assert.equal(f.tour(id).players.b.earlyRegistrationBonusChips,0,'scheduled start closes bonus even if start is delayed');
+ await f.command('owner','start',{tournamentId:id});assert.equal(f.tour(id).initialChips,350);assert.equal(T.chips(f.tables(id)),350);
+ await f.command('owner','fillbots',{tournamentId:id});f.member('c');await f.command('c','register',{tournamentId:id});assert.equal(f.tour(id).players.c.entryStartStack,100);
+ assert.equal(f.tour(id).initialChips,550);assert.equal(f.tour(id).prizePool,50);assert.equal(f.tour(id).feeTotal,5,'extra tournament chips do not change entry charges or prize funding');
+ const row=f.docs.get('tables/'+f.tour(id).players.a.tableId),other=Object.values(row.players).find(p=>p.uid!=='a');other.stack+=row.players.a.stack;row.players.a.stack=0;row.players.a.status='out';f.tour(id).players.a.out=true;
+ await f.command('a','register',{tournamentId:id});assert.equal(f.tour(id).players.a.entryStartStack,100);assert.equal(f.tour(id).players.a.earlyRegistrationBonusChips,0);assert.equal(f.balance('a'),978);
+ assert.equal(T.chips(f.tables(id)),650);assert.equal(f.tour(id).initialChips,650);
+ await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).integrityIssue||null,null);assert.equal(T.chips(f.tables(id)),650);
+});
+
+test('bonus stops on an early manual start and is not added to an add-on',async()=>{
+ const f=fixture(),id=await create(f,{earlyRegistrationBonusPct:20,lateRegUntilLevel:1,addon:true,addonLevel:1});await startHumans(f,id,2);
+ assert.equal(f.tour(id).initialChips,240);f.member('late');await f.command('late','register',{tournamentId:id});assert.equal(f.tour(id).players.late.entryStartStack,100);
+ await f.command('human0','addon',{tournamentId:id});assert.equal(f.tour(id).initialChips,440);assert.equal(T.chips(f.tables(id)),440);
+});
+
+test('scheduled automatic bot filling does not award an early bonus at the cutoff',async()=>{
+ const f=fixture(),id=await create(f,{startAt:NOW+1,earlyRegistrationBonusPct:20,botFill:true,maxPlayers:3});f.member('a');await f.command('a','register',{tournamentId:id});
+ f.advance(1);await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).status,'running');assert.equal(f.tour(id).initialChips,320);assert.equal(T.chips(f.tables(id)),320);
+ for(const p of Object.values(f.tour(id).players).filter(p=>p.isBot))assert.equal(p.earlyRegistrationBonusChips,0);
+});
+
+test('unregister refunds the entry and registering again never compounds the stack bonus',async()=>{
+ const f=fixture(),id=await create(f,{earlyRegistrationBonusPct:33.33,startStack:101});f.member('a');await f.command('a','register',{tournamentId:id});assert.equal(f.tour(id).players.a.entryStartStack,134);
+ await f.command('a','unregister',{tournamentId:id});assert.equal(f.balance('a'),1000);assert.equal(f.tour(id).prizePool,0);
+ await f.command('a','register',{tournamentId:id});assert.equal(f.tour(id).players.a.entryStartStack,134);assert.equal(f.balance('a'),989);
+});
+
+test('bonus defaults to off, validates percentages and preserves legacy entry stacks',async()=>{
+ const f=fixture();for(const value of [-1,100.01,'bogus',5.555])assert.throws(()=>f.tours.config({name:'Invalid',earlyRegistrationBonusPct:value},'clubA','owner',NOW),/Early registration bonus/);
+ const id=await create(f);assert.equal(f.tour(id).earlyRegistrationBonusPct,0);for(const uid of ['a','b']){f.member(uid);await f.command(uid,'register',{tournamentId:id});delete f.tour(id).players[uid].entryStartStack;}
+ delete f.tour(id).earlyRegistrationBonusPct;await f.command('owner','start',{tournamentId:id});assert.equal(f.tour(id).initialChips,200);assert.equal(T.chips(f.tables(id)),200);
+});
+
+test('level registration closes exactly at level end, including final level and excluding its following break',()=>{
+ const rows=[{mins:10},{mins:10},{mins:10}],t={status:'running',startedAt:NOW,lateRegUntilLevel:2,breakEvery:1,breakMins:5};
+ assert.equal(T.lateRegistrationDeadline(t,rows),NOW+25*60000);assert.equal(T.lateRegistrationOpen(t,rows,NOW+25*60000-1),true);assert.equal(T.lateRegistrationOpen(t,rows,NOW+25*60000),false);
+ assert.equal(T.lateRegistrationOpen({...t,lateRegUntilLevel:1},rows,NOW+10*60000),false);assert.equal(T.lateRegistrationOpen(t,rows,NOW+12*60000),true,'earlier breaks remain open');
+ assert.equal(T.lateRegistrationOpen(t,rows.slice(0,2),NOW+25*60000),false,'the last blind level cannot keep registration open forever');
+ assert.equal(T.lateRegistrationOpen({...t,lateRegUntilLevel:0},rows,NOW),false);assert.equal(T.lateRegistrationOpen({...t,archived:true},rows,NOW),false);
+});
+
+test('manager may change the cutoff by level, clearing a time override, and both humans and bots stop at the boundary',async()=>{
+ const f=fixture(),id=await create(f,{lateRegUntilLevel:0,structure:[{sb:1,bb:2,mins:1},{sb:2,bb:4,mins:1}]});await startHumans(f,id,2);
+ await f.command('owner','registration',{tournamentId:id,lateRegClosesAt:NOW+90*60000});await assert.rejects(f.command('human0','registration',{tournamentId:id,lateRegUntilLevel:2}),e=>e.code==='permission-denied');
+ await assert.rejects(f.command('owner','registration',{tournamentId:id,lateRegUntilLevel:3}),/end of level/);
+ await f.command('owner','registration',{tournamentId:id,lateRegUntilLevel:2},'level-request-once');await f.command('owner','registration',{tournamentId:id,lateRegUntilLevel:2},'level-request-once');
+ assert.equal(f.tour(id).lateRegClosesAt,0);assert.equal(f.tour(id).registrationChanges.length,2);assert.equal(f.tour(id).registrationChanges[1].level,2);
+ f.advance(120000-1);f.member('justIn');await f.command('justIn','register',{tournamentId:id});await f.command('owner','fillbots',{tournamentId:id});
+ f.advance(1);f.member('tooLate');await assert.rejects(f.command('tooLate','register',{tournamentId:id}),/Registration closed/);await assert.rejects(f.command('owner','fillbots',{tournamentId:id}),/Late registration is closed/);
+ assert.equal(f.balance('tooLate'),1000);
+});

@@ -1181,7 +1181,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <link rel="stylesheet" href="assets/css/settlement.css?v=313">
     <script src="assets/js/poker-settlement-ui.js?v=313"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
-    <script src="assets/js/poker-tournament.js?v=286"></script>
+    <script src="assets/js/poker-tournament.js?v=316"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
     <script src="assets/js/poker-range-model.js?v=304"></script>
 <script>
@@ -10764,6 +10764,7 @@ function PokerTable({
   const [tourRanks, setTourRanks] = useState(null);
   const [tourEntryState,setTourEntryState]=useState(null);
   const [tourReentryBusy,setTourReentryBusy]=useState(false);
+  const [tourRegistrationOpen,setTourRegistrationOpen]=useState(false);
   const tourReentryLock=useRef(false);
   const [tourStandOpen, setTourStandOpen] = useState(false);
   const loadTourRanks = async () => {
@@ -10827,7 +10828,7 @@ function PokerTable({
     return () => clearInterval(iv);
   }, [tableState?.tournamentId]);
   useEffect(()=>{if(tableState?.tournamentId&&(!tableState?.players?.[user.uid]||tableState.players[user.uid].status==='out'))loadTourRanks();},[tableState?.tournamentId,tableState?.players?.[user.uid]?.status]);
-  const reentryOf=tor=>{const p=tor?.players?.[user.uid];return !!(tor&&tor.status==='running'&&p?.out&&!p.removed&&!p.removalRequested&&tor.reentry&&(p.reentries||0)<tor.maxReentries&&tourClock(tor).lvl<tor.lateRegUntilLevel);};
+  const reentryOf=tor=>{const p=tor?.players?.[user.uid];return !!(tor&&tor.status==='running'&&p?.out&&!p.removed&&!p.removalRequested&&tor.reentry&&(p.reentries||0)<tor.maxReentries&&tourLateRegOpen(tor));};
   const requestTourReentry=async()=>{if(tourReentryLock.current||!reentryOf(tourEntryState))return;const cost=tourEntryOf(tourEntryState,true);if(cost>0&&!window.confirm('Re-entry: '+formatMoney(cost)+' including configured fees and bounty. Starting stack: '+formatShort(tourEntryState.startStack)))return;tourReentryLock.current=true;setTourReentryBusy(true);try{const result=await pokerCommand('pkTournament',{op:'register',tournamentId:tourEntryState.id});setOutDismissed(true);if(result.tableId){const snap=await window.fb.getDoc(window.fb.doc(window.fb.db,'tables',result.tableId));if(snap.exists())onTransfer?.({docId:snap.id,...snap.data()});}await loadTourRanks();showToast('Re-entry complete. Your starting stack is ready; tables will balance between hands.','success');}catch(e){showToast(e.message||'Re-entry failed','error');}finally{tourReentryLock.current=false;setTourReentryBusy(false);}};
   const tourStandBtn = tableState?.tournamentId ? React.createElement("button", {
     key: "tstand",
@@ -11780,7 +11781,7 @@ try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){s
 };
   const handleAddBot = async (fill=false) => {
     if(botAddLock.current)return;botAddLock.current=true;setAddingBots(true);
-    try{const r=await pokerCommand('pkSeat',{tableId:tableDocId,op:fill?'fillbots':'addbot'});showToast(fill?(r.added?`${r.added} bots seated.`:'Table is already full.'):'Bot seated.','success');}
+    try{if(tableState.tournamentId){await pokerCommand('pkTournament',{tournamentId:tableState.tournamentId,op:'fillbots'});showToast('One bot entered. Tables will balance between hands.','success');return;}const r=await pokerCommand('pkSeat',{tableId:tableDocId,op:fill?'fillbots':'addbot'});showToast(fill?(r.added?`${r.added} bots seated.`:'Table is already full.'):'Bot seated.','success');}
     catch(e){showToast(e.message||String(e),'error');}finally{botAddLock.current=false;setAddingBots(false);}
   };
   useEffect(() => {
@@ -13354,7 +13355,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       onClick: tourAddon,
       className: "bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg"
     }, "🚀 Add-on"));
-  })(), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourEntryState?.players?.[user.uid]?.out||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
+  })(), tourRegistrationOpen && tourEntryState && React.createElement(TournamentDialog,{title:'Late registration',layer:330,onClose:()=>setTourRegistrationOpen(false)},React.createElement('h2',{className:'pt-tour-title'},'Late registration'),React.createElement(TournamentRegistrationEditor,{key:tourEntryState.id,tor:tourEntryState,showToast,onSaved:()=>setTourRegistrationOpen(false)})), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourEntryState?.players?.[user.uid]?.out||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
     className: "absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse",
     dir: "ltr"
   }, React.createElement("span", {
@@ -13729,15 +13730,15 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     title: "GOD view",
     'aria-pressed':godView,
     className:'poker-menu-tile','data-menu-tone':'orange'
-  }, ...menuTile("god", godView ? "GOD view on" : "GOD view")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
+  }, ...menuTile("god", godView ? "GOD view on" : "GOD view")), canManageGame(user,'poker') && (!tableState.tournamentId || tourLateRegOpen(tourEntryState)) && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       handleAddBot();
     },
     title: "Add bot",
-    disabled: addingBots || Object.keys(players).length >= (setts.maxPlayers||6),
+    disabled: addingBots || (tableState.tournamentId ? Object.values(tourEntryState?.players||{}).filter(p=>!p.out).length >= tourEntryState.maxPlayers : Object.keys(players).length >= (setts.maxPlayers||6)),
     className:'poker-menu-tile','data-menu-tone':'cyan'
-  }, ...menuTile("bot", "Add bot")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
+  }, ...menuTile("bot", "Add bot")), canManageGame(user,'poker') && tourEntryState && ['reg','running'].includes(tourEntryState.status) && React.createElement("button",{onClick:()=>{setToolsOpen(false);setTourRegistrationOpen(true);},title:"Late registration",className:"poker-menu-tile",'data-menu-tone':"cyan"},...menuTile("fa-clock","Late registration")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
     onClick:()=>{setToolsOpen(false);handleAddBot(true);},title:"Fill empty seats with bots",disabled:addingBots||Object.keys(players).length>=(setts.maxPlayers||6),
     className:'poker-menu-tile','data-menu-tone':'cyan'
   },...menuTile("bot-group","Fill bots")), !isSeated && onCreateTable && canManageGame(user,'poker') && React.createElement("button", {
@@ -17175,15 +17176,30 @@ const creditBalance = async (uid, amt, statsPatch, asBonus) => {
     });
   } catch (e) {}
 };
-const tourLateRegOpen = tor => {
-  if (!tor) return false;
-  if (tor.status === 'reg') return true;
-  if (tor.status !== 'running') return false;
-  const until = Number(tor.lateRegUntilLevel) || 0;
-  if (until <= 0) return false;
-  const curLevel1 = (tourLevelOf(tor) || 0) + 1;
-  return curLevel1 <= until;
+const tourLateRegOpen = tor => !!tor&&window.PokerTournament.lateRegistrationOpen(tor,tourStructOf(tor),Date.now());
+const tourRegistrationInput = timestamp => new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(timestamp)).replace(' ','T');
+const tourRegistrationTime = value => {
+ if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value||''))return NaN;
+ const wall=Date.parse(value+'Z');if(!Number.isFinite(wall))return NaN;let at=wall;
+ for(let i=0;i<3;i++)at+=wall-Date.parse(tourRegistrationInput(at)+'Z');
+ return tourRegistrationInput(at)===value?at:NaN;
 };
+const tourRegistrationLabel = tor => tor.lateRegClosesAt>0?'Late registration until '+new Date(tor.lateRegClosesAt).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' (Israel time)':tor.lateRegUntilLevel>0?'Late registration through the end of level '+tor.lateRegUntilLevel:'Late registration off';
+function TournamentRegistrationEditor({tor,showToast,onSaved}){
+ const [mode,setMode]=useState(tor.lateRegClosesAt>0?'time':'level');
+ const [level,setLevel]=useState(tor.lateRegUntilLevel||0);
+ const [value,setValue]=useState(()=>tourRegistrationInput(tor.lateRegClosesAt||Math.max(Date.now()+5*60000,(tor.startedAt||tor.startAt||Date.now())+90*60000)));
+ const [busy,setBusy]=useState(false),lock=useRef(false);
+ const style={display:'block',width:'100%',minWidth:0,marginTop:8,padding:12,border:'1px solid #608295',borderRadius:12,background:'#091927',color:'#fff',colorScheme:'dark'};
+ const save=async e=>{e.preventDefault();if(lock.current)return;const deadline=tourRegistrationTime(value);if(mode==='time'&&(!Number.isFinite(deadline)||deadline<=Date.now()))return showToast('Choose a future registration closing date and time.','error');lock.current=true;setBusy(true);try{await pokerCommand('pkTournament',{op:'registration',tournamentId:tor.id,...(mode==='time'?{lateRegClosesAt:deadline}:{lateRegUntilLevel:Number(level)})});showToast('Late registration updated.','success');onSaved?.();}catch(error){showToast(error.message||'Could not update registration.','error');}finally{lock.current=false;setBusy(false);}};
+ return React.createElement('form',{onSubmit:save,className:'pt-registration-editor',style:{display:'grid',gap:12,padding:16}},
+ React.createElement('p',{style:{color:'#a9c6db',fontSize:14}},tourRegistrationLabel(tor)),
+ React.createElement('label',null,'Late registration by',React.createElement('select',{'aria-label':'Late registration by',value:mode,onChange:e=>setMode(e.target.value),style},React.createElement('option',{value:'level'},'Blind level'),React.createElement('option',{value:'time'},'Closing time'))),
+ mode==='time'?React.createElement('label',null,'Registration closes (Israel time)',React.createElement('input',{type:'datetime-local','aria-label':'Registration closes (Israel time)',value,onChange:e=>setValue(e.target.value),required:true,style,dir:'ltr'})):
+ React.createElement('label',null,'Late registration through the end of level',React.createElement('input',{type:'number','aria-label':'Late registration through the end of level',min:0,max:tourStructOf(tor).length,step:1,value:level,onChange:e=>setLevel(e.target.value),required:true,style,dir:'ltr'})),
+ React.createElement('p',{style:{color:'#a9c6db',fontSize:13}},mode==='time'?'The closing time applies to players, re-entries and bots.':'0 turns late registration off. Players, re-entries and bots can join through the selected level; registration closes as that level ends.'),
+ React.createElement('button',{type:'submit',disabled:busy,className:'pt-tour-primary'},busy?'Saving…':'Save late registration'));
+}
 // A player only LIVE-occupies a seat if they still have chips (or are mid-bust
 // grace). 'out' ghosts and 0-stack leftovers don't block seating.
 const tourLivePl = tb => Object.values(tb.players || {}).filter(x => x.status !== 'out' && (x.stack || 0) > 0);
@@ -18461,12 +18477,14 @@ function TournamentsTab({
     levelMins: 5,
     rebuys: false,
     rebuyUntilLevel: 2,
-    lateRegLevel: 2, // late registration open through this level (0 = off)
+    lateRegLevel: 2, // inclusive: closes at the end of this level
+    lateRegMode: 'level',lateRegCloseTime:'',
     addon: true,
     addonLevel: 3,
     mttMode: true, // Real MTT is the default — the authentic tournament flow
     pokerType: 'NLH',
     startStack: 10000,
+    earlyRegistrationBonusPct: 0,
     paidMode: 'fixed',
     paidPct: 10,
     paidPlaces: 3,
@@ -18523,6 +18541,8 @@ function TournamentsTab({
       ...tp.opts,
       reentryBuyIn:tp.opts.reentryBuyIn??tp.opts.buyIn??0,
       reentryToPrizePool:tp.opts.reentryToPrizePool??true,
+      lateRegCloseTime:'',
+      earlyRegistrationBonusPct:tp.opts.earlyRegistrationBonusPct??0,
       name: prev.name,
       date: prev.date,
       time: prev.time
@@ -18678,7 +18698,7 @@ function TournamentsTab({
   }, []);
   const bounty = round2(Number(opts.bounty) || 0);
   const handleCreate = async () => {
-if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=new Date(opts.date+'T'+(opts.time||'20:00')).getTime();try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,rebuys:false,maxRebuys:0,botRebuys:false,finishAtPaidPlaces:false,startAt,structure:opts.structure?.length?opts.structure:autoStructRows(),pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
+if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=tourRegistrationTime(opts.date+'T'+(opts.time||'20:00'));if(!Number.isFinite(startAt))return showToast('Choose a valid start date and time (Israel time).','error');const lateRegClosesAt=opts.lateRegMode==='time'?tourRegistrationTime(opts.lateRegCloseTime):0;if(opts.lateRegMode==='time'&&(!Number.isFinite(lateRegClosesAt)||lateRegClosesAt<=startAt))return showToast('Late registration closing time must be after the tournament start.','error');try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,earlyRegistrationBonusPct:Number(opts.earlyRegistrationBonusPct)||0,rebuys:false,maxRebuys:0,botRebuys:false,finishAtPaidPlaces:false,startAt,lateRegClosesAt,structure:opts.structure?.length?opts.structure:autoStructRows(),pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
 
     if (!opts.name.trim()) return showToast("Name the tournament", "error");
     if (!opts.date) return showToast("Choose a start date", "error");
@@ -18993,7 +19013,12 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     }),
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold",
     dir: "ltr"
-  })), React.createElement("div", null, React.createElement("label", {
+  })), isPoker && React.createElement("section",{className:"col-span-full rounded-2xl border border-sky-400/40 bg-sky-950/40 p-4"},
+    React.createElement("label",{htmlFor:"tour-early-bonus",className:"block text-sky-200 font-bold mb-2"},"Early registration bonus (%)"),
+    React.createElement("input",{id:"tour-early-bonus",type:"number",min:0,max:100,step:0.01,"aria-label":"Early registration bonus (%)",value:opts.earlyRegistrationBonusPct??0,onChange:e=>setOpts({...opts,earlyRegistrationBonusPct:e.target.value}),className:"w-full bg-slate-900 text-white border border-sky-700 rounded-xl p-3",dir:"ltr"}),
+    React.createElement("p",{className:"text-sm text-sky-100 mt-2",role:"status"},'Early starting stack: '+formatMoney(Number(opts.startStack)+Math.floor(Number(opts.startStack)*(Number(opts.earlyRegistrationBonusPct)||0)/100))+' chips'),
+    React.createElement("p",{className:"text-sm text-slate-300 mt-2"},'0 = off. First registration before the scheduled start earns extra tournament chips, for players and bots. Late registration and re-entry receive the standard stack.')),
+  React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "Buy-in to the prize pool (0 = freeroll)"), React.createElement("input", {
     type: "number",
@@ -19103,7 +19128,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold"
   })), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
-  }, "Start time"), React.createElement("input", {
+  }, "Start time (Israel time)"), React.createElement("input", {
     type: "time",
     value: opts.time,
     onChange: e => setOpts({
@@ -19311,23 +19336,24 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   }), React.createElement("span", {
     className: "text-emerald-300 text-xs font-black"
   }, "🔒 Server-secured engine (cards dealt on the server)")), React.createElement("label", {
-    className: "flex items-center gap-2 mt-2"
+    className: "flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-sky-500/40"
   }, React.createElement("span", {
-    className: "text-sky-300 text-xs font-bold"
-  }, "Late reg until level"), React.createElement("input", {
+    className: "text-sky-200 text-base font-bold"
+  }, "Late registration by"), React.createElement("select",{value:opts.lateRegMode||"level",onChange:e=>setOpts({...opts,lateRegMode:e.target.value}),"aria-label":"Late registration by",className:"bg-slate-900 text-white border border-slate-700 rounded-lg p-2"},React.createElement("option",{value:"level"},"Blind level"),React.createElement("option",{value:"time"},"Closing time"))), opts.lateRegMode==='time'?React.createElement("label",{className:"block mt-3"},"Registration closes (Israel time)",React.createElement("input",{type:"datetime-local","aria-label":"Registration closes (Israel time)",value:opts.lateRegCloseTime||"",onChange:e=>setOpts({...opts,lateRegCloseTime:e.target.value}),className:"block w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2",dir:"ltr"})):React.createElement("label",{className:"block text-base text-sky-100 mt-3"},"Late registration through the end of level", React.createElement("input", {
     type: "number",
+    "aria-label":"Late registration through the end of level",
     min: "0",
-    max: "12",
+    max: (opts.structure?.length||autoStructRows().length),
     value: opts.lateRegLevel ?? 2,
     onChange: e => setOpts({
       ...opts,
-      lateRegLevel: Math.max(0, Math.min(12, parseInt(e.target.value) || 0))
+      lateRegLevel: Math.max(0, Math.min(opts.structure?.length||autoStructRows().length, parseInt(e.target.value) || 0))
     }),
-    className: "w-14 bg-slate-900 text-white border border-slate-700 rounded-lg p-1 text-center font-bold",
+    className: "block w-full mt-2 bg-slate-900 text-white border border-sky-700 rounded-lg p-3 font-bold",
     dir: "ltr"
   }), React.createElement("span", {
-    className: "text-[10px] text-slate-500 font-bold"
-  }, "0 = off")))), React.createElement("div", {
+    className: "block mt-2 text-sm text-slate-300"
+  }, "0 = off. Players, re-entries and bots may enter until this level ends.")))), React.createElement("div", {
     className: "flex justify-between items-center pt-3 border-t border-white/5 flex-wrap gap-2"
   }, React.createElement("div", {
     className: "basis-full bg-slate-950/50 border border-white/10 rounded-2xl p-3"
@@ -19457,8 +19483,12 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
             h("i",{className:'fa-solid '+icon,'aria-hidden':true}),h("div",null,h("span",null,label),h("b",null,value))))),
         h("div",{className:"pt-tournament-rules"},
           tor.addon&&h("span",null,'Add-on at level '+(tor.addonLevel||3)),
-          tor.lateRegUntilLevel>0&&h("span",null,'Late registration until level '+tor.lateRegUntilLevel),
+          h("span",null,tourRegistrationLabel(tor)),
+          Number(tor.earlyRegistrationBonusPct)>0&&h('span',null,'Early registration +'+tor.earlyRegistrationBonusPct+'% · '+formatMoney(Number(tor.startStack)+Math.floor(Number(tor.startStack)*Number(tor.earlyRegistrationBonusPct)/100))+' chips before the scheduled start'),
+          tor.players?.[user.uid]?.earlyRegistrationBonusChips>0&&h('span',{role:'status'},'Your entry: '+formatMoney(tor.players[user.uid].entryStartStack)+' chips including '+formatMoney(tor.players[user.uid].earlyRegistrationBonusChips)+' early bonus'),
           tor.reentry&&h("span",null,'Re-entry '+formatMoney(tourEntryOf(tor,true))+' · '+(tor.reentryToPrizePool===false?'Club income':'Added to prize pool'))),
+        tor.game==='poker'&&['reg','running'].includes(tor.status)&&canManageGame(user,tor.game)&&h('details',{className:'pt-registration-settings'},h('summary',{style:{cursor:'pointer',padding:12}},'Edit late registration'),h(TournamentRegistrationEditor,{key:tor.id+':'+(tor.lateRegClosesAt||0)+':'+(tor.lateRegUntilLevel||0),tor,showToast})),
+        tor.status==='running'&&!tourLateRegOpen(tor)&&h('p',{className:'pt-tournament-more-prizes',role:'status'},'Registration closed · '+tourRegistrationLabel(tor)),
         tor.status==='reg'&&h("section",{className:"pt-tournament-countdown"},
           h("span",{className:"pt-tournament-label"},"STARTS IN"),
           h("div",{className:"pt-tournament-clock",dir:"ltr"},timeParts.map((part,i)=>h("div",{key:i},h("strong",null,part),h("small",null,['HRS','MIN','SEC'][i])))),
@@ -19510,7 +19540,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       className: `text-[11px] font-black px-2 py-1 rounded-lg border ${i < (Number(tor.mysteryNext) || 0) ? 'bg-slate-800/60 border-white/10 text-slate-500 line-through' : m >= 10 ? 'bg-amber-500/20 border-amber-400/60 text-amber-200' : 'bg-slate-900 border-white/10 text-slate-200'}`
     }, "×", m, " (", formatMoney(round2((Number(tor.bounty) || 0) * m)), ")")))), React.createElement("div", {
       className: "pt-tournament-actions flex gap-2"
-    }, (tor.status === 'reg' || tor.game === 'poker' && tor.status === 'running' && tourClock(tor).lvl < (Number(tor.lateRegUntilLevel) || 0)) && canManageGame(user, tor.game) && React.createElement("button", {
+    }, (tor.status === 'reg' || tor.game === 'poker' && tourLateRegOpen(tor)) && canManageGame(user, tor.game) && React.createElement("button", {
       onClick: () => fillBots(tor),
       title: "Add one bot",
       disabled:addingTourBot===tor.id,

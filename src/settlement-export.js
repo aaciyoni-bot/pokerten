@@ -22,6 +22,15 @@ const agentColumn={key:'agent',label:'Agent',width:28};
 const resultColumn=money('result','Profit / loss (chips)');
 const rakeColumn=money('rake','Rake (included in result)',25);
 const idColumn={key:'id',label:'Player ID',width:30};
+// Excel names are limited to 31 UTF-16 units and unique ignoring case. Keep
+// complete agent names in the sheet title when a tab name needs shortening.
+function tabName(label,used){
+ const clean=String(label||'Agent').replace(/[\\/?*\[\]:\u0000-\u001f\ufffe\uffff]/g,' ').replace(/\s+/g,' ').trim().replace(/^'+|'+$/g,'').trim()||'Agent';
+ const cut=(text,length)=>{let out='';for(const ch of text){if(out.length+ch.length>length)break;out+=ch;}return out.replace(/'+$/g,'')||'Agent';};
+ let suffix='',name=cut(clean,31),n=2;
+ while(used.has(name.toLowerCase())){suffix=` (${n++})`;name=cut(clean,31-suffix.length)+suffix;}
+ used.add(name.toLowerCase());return name;
+}
 
 function reportModel(data,userId){
  const staff=data.role!=='player',agents=data.legacy?data.legacyReport.agents||[]:data.agents||[data.agent].filter(Boolean);
@@ -52,7 +61,11 @@ function reportModel(data,userId){
  const combine=rows=>({id:rows[0].id,name:rows[0].name,agent:[...new Set(rows.map(s=>s.agent))].join(', '),result:sum(rows,'result'),rake:sum(rows,'rake'),hands:counted(rows),handStatus:coverage(rows),games:sum(rows,'games'),chips:rows.find(s=>s.chips!=null)?.chips});
  const players=[...byId.values()].map(combine).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
  if(staff)for(const a of agents){const id=a.uid||a.agentId;if(!groups.has(id))groups.set(id,[]);}
- const grouped=[...groups].map(([id,rows])=>{const a=agents.find(a=>(a.uid||a.agentId)===id);return{id,agent:agentName(id),rows,players:new Set(rows.map(s=>s.id)).size,result:sum(rows,'result'),rake:sum(rows,'rake'),hands:counted(rows),handStatus:coverage(rows),commission:id==='club'?0:a?.commission??null};}).sort((a,b)=>a.agent.localeCompare(b.agent));
+ const grouped=[...groups].map(([id,segments])=>{
+  const byPlayer=new Map();for(const s of segments){if(!byPlayer.has(s.id))byPlayer.set(s.id,[]);byPlayer.get(s.id).push(s);}
+  const rows=[...byPlayer.values()].map(combine).sort((a,b)=>String(a.name).localeCompare(String(b.name))),a=agents.find(a=>(a.uid||a.agentId)===id);
+  return{id,agent:agentName(id),rows,players:rows.length,result:sum(rows,'result'),rake:sum(rows,'rake'),hands:counted(rows),handStatus:coverage(rows),commission:id==='club'?0:a?.commission??null};
+ }).sort((a,b)=>a.agent.localeCompare(b.agent));
  return{players,groups:grouped,staff};
 }
 
@@ -61,15 +74,17 @@ function buildReport(data,{clubId,userId,now=Date.now()}){
  const range=data.dateRange,closed=data.legacy&&!range&&data.cycle.status!=='open';
  const from=range?.fromAt??data.cycle.startAt,to=range?.toAt??(data.cycle.status==='open'?null:data.cycle.endAt);
  const period=range?`${day(from)} to ${day(to-1)} (inclusive)`:`${data.cycle.id}: ${stamp(from)} to ${to==null?'open':stamp(to)}`;
- const basis=range?'Profit/loss uses cash-outs and completed tournaments recorded in these dates. Hands use cash journal segments recorded in these dates; older history may be missing.':closed?'Saved cycle results. Historical hand counts may not have been recorded.':'Selected cycle results include settled open-table activity. Hand counts cover recorded cash hands; tournament hand counts are unavailable.';
+ const basis=(range?'Profit/loss uses cash-outs and completed tournaments recorded in these dates. Hands use cash journal segments recorded in these dates; older history may be missing.':closed?'Saved cycle results. Historical hand counts may not have been recorded.':'Selected cycle results include settled open-table activity. Hand counts cover recorded cash hands; tournament hand counts are unavailable.')+' Positive result = won; negative result = lost. Bot results are excluded.';
  const {players,groups,staff}=reportModel(data,userId),asOf=data.legacyReport?.asOf??now;
  const context=[period,`Club: ${clubId}   |   As of: ${stamp(asOf)} (Asia/Jerusalem)`];
  const totalRow=rows=>({name:'Total',agent:'Total',result:sum(rows,'result'),rake:sum(rows,'rake'),hands:counted(rows),handStatus:coverage(rows),games:sum(rows,'games'),chips:rows.every(p=>p.chips!=null)?sum(rows,'chips'):null,commission:rows.every(p=>p.commission!=null)?sum(rows,'commission'):null});
  const sheet=(name,title,columns,rows,totals,note)=>({name,columns,notes:[title,...context,note],rows:rows.map(p=>columns.map(c=>c.money?amount(p[c.key]):p[c.key]??null)),rowKinds:rows.map(p=>p.kind||''),totals:columns.map(c=>c.money?amount(totals[c.key]):totals[c.key]??null)});
  const sheets=[];
  if(staff){
+  const used=new Set(['agents','players','by agent','history']);
+  for(const g of groups)g.tab=tabName(g.agent,used);
   const totals={...totalRow(players),players:players.length,commission:groups.every(g=>g.commission!=null)?sum(groups,'commission'):null};
-  sheets.push(sheet('Agents','POKERTEN — Agent summary',[agentColumn,{key:'players',label:'Players',width:14},resultColumn,rakeColumn,handsColumn,countStatus,money('commission','Recorded commission'),{key:'id',label:'Agent ID',width:30}],groups,totals,basis+' Hand totals count player participations. A player may appear under several agents; the total counts unique players.'));
+  sheets.push(sheet('Agents','POKERTEN — Agent summary',[agentColumn,{key:'players',label:'Players',width:14},resultColumn,rakeColumn,handsColumn,countStatus,money('commission','Recorded commission'),{key:'tab',label:'Player details tab',width:28},{key:'id',label:'Agent ID',width:30}],groups,totals,basis+' Agent results are net totals of their players. Hand totals count player participations. A player may appear under several agents; the total counts unique players.'));
  }
  sheets.push(sheet('Players','POKERTEN — Player totals',[playerColumn,...(staff?[agentColumn]:[]),resultColumn,...(staff?[rakeColumn]:[]),handsColumn,countStatus,...(!data.legacy?[{key:'games',label:'Recorded segments',width:22}]:[]),money('chips',closed?'Chips at closing':'Current chips (wallet + tables)',29),idColumn],players,totalRow(players),basis+(closed?'':' Current chips are a current balance, not period profit.')));
  if(staff){
@@ -81,6 +96,7 @@ function buildReport(data,{clubId,userId,now=Date.now()}){
    detail.push({...totalRow(rows),kind:'subtotal',agent:g.agent,name:'Agent subtotal'});
   }
   sheets.push(sheet('By agent','POKERTEN — Players by agent',[agentColumn,playerColumn,resultColumn,rakeColumn,handsColumn,countStatus,idColumn],detail,totalRow(players),basis+(data.legacy?' Agent grouping uses the membership assignment in this report.':' Each segment keeps its recorded agent. The Players sheet combines each player once.')));
+  for(const g of groups)sheets.push(sheet(g.tab,`POKERTEN — ${g.agent} — Player details`,[playerColumn,resultColumn,rakeColumn,handsColumn,countStatus,...(!data.legacy?[{key:'games',label:'Recorded segments',width:22}]:[]),idColumn],g.rows,totalRow(g.rows),basis+(data.legacy?' Agent grouping uses the membership assignment in this report.':' Only activity recorded under this agent is included. The Players sheet combines each player across agents.')));
  }
  return {sheets,filename:`pokerten-agents-${String(clubId).replace(/[^a-zA-Z0-9_-]/g,'_')}-${day(from)}-${day(to==null?asOf:range?to-1:to)}.xlsx`};
 }

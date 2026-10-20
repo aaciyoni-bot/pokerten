@@ -43,7 +43,7 @@ const lookup=(file,sheet,key,value)=>file.sheets[sheet].records.find(r=>r[key]==
 (async()=>{
  await mount();await React.act(()=>button('Download Excel').click());assert.equal(calls.length,1,'export uses the authorized response without another fetch');
  assert.match(clicked.name,/2026-10-05-2026-10-18\.xlsx$/);assert.equal(downloaded.type,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
- let file=await readFile({blob:downloaded});assert.deepEqual(Object.keys(file.sheets),['Agents','Players','By agent']);
+ let file=await readFile({blob:downloaded});assert.deepEqual(Object.keys(file.sheets).slice(0,3),['Agents','Players','By agent']);assert.equal(Object.keys(file.sheets).length,6);
  assert.match(file.sheets.Players.rows[1][0],/2026-10-05 to 2026-10-18/);
  let row=lookup(file,'Players','Player','אביב & <לוי>');
  assert.equal(row.Agent,'סוכן אחד');assert.equal(row['Profit / loss (chips)'],-340.17);assert.equal(row['Recorded cash hands'],40);assert.equal(row['Current chips (wallet + tables)'],159.83);
@@ -54,9 +54,31 @@ const lookup=(file,sheet,key,value)=>file.sheets[sheet].records.find(r=>r[key]==
  row=lookup(file,'Agents','Agent','Total');assert.equal(row.Players,3);assert.equal(row['Profit / loss (chips)'],-219.87);assert.equal(row['Recorded commission'],10.5);
  assert.ok(lookup(file,'Agents','Agent','Direct / no agent'));
  const subtotals=file.sheets['By agent'].records.filter(r=>r.Player==='Agent subtotal');assert.equal(subtotals.length,3);assert.equal(Math.round(subtotals.reduce((n,r)=>n+r['Profit / loss (chips)'],0)*100),-21987);
+ for(const agent of file.sheets.Agents.records.filter(r=>r.Agent!=='Total')){
+  const tab=file.sheets[agent['Player details tab']];assert.ok(tab,'each agent has a named player details tab');
+  assert.equal(tab.records.length,agent.Players+1);assert.equal(tab.records.at(-1)['Profit / loss (chips)'],agent['Profit / loss (chips)']);
+  assert.equal(tab.records.at(-1)['Rake (included in result)'],agent['Rake (included in result)']);assert.equal(tab.records.at(-1)['Recorded cash hands'],agent['Recorded cash hands']);
+  assert.match(tab.rows[1][0],/2026-10-05 to 2026-10-18/);assert.match(tab.rows[3][0],/Bot results are excluded/);
+  assert.ok(tab.sheet.querySelector('autoFilter'));
+ }
+ assert.equal(lookup(file,'סוכן אחד','Player ID','p1')['Profit / loss (chips)'],-340.17);assert.equal(lookup(file,'סוכן אחד','Player ID','p2'),undefined,'agent tabs contain only that agent’s players');
  for(const s of Object.values(file.sheets))assert.equal(s.sheet.querySelector('pane').getAttribute('state'),'frozen');
  assert.ok(file.sheets.Players.sheet.querySelector('autoFilter'));assert.equal(file.sheets['By agent'].sheet.querySelector('autoFilter'),null,'subtotals cannot be filtered into data totals');
  if(process.env.SETTLEMENT_EXPORT_OUTPUT){fs.mkdirSync(process.env.SETTLEMENT_EXPORT_OUTPUT,{recursive:true});fs.writeFileSync(path.join(process.env.SETTLEMENT_EXPORT_OUTPUT,'agents.xlsx'),file.bytes);}
+ // A winning agent total must not hide a losing player; duplicate segments
+ // for the same player are combined only within their recorded agent.
+ const mixed=legacy('owner');mixed.legacyReport.players[1].agentUid='a';mixed.legacyReport.players[1].result=50000;
+ const mixedFile=await readFile(w.PokerSettlementExcel.createFile(mixed,{clubId:'netabel',userId:'owner'}));
+ assert.equal(lookup(mixedFile,'סוכן אחד','Player','Total')['Profit / loss (chips)'],159.83);assert.equal(lookup(mixedFile,'סוכן אחד','Player ID','p1')['Profit / loss (chips)'],-340.17);
+ // Excel tab names must survive real agent names, collisions, reserved names,
+ // punctuation, apostrophes, and truncation, including supplementary Unicode.
+ const named=legacy('owner'),names=['Agents','agents','Players','By agent','History',"'Team / [A]:?*\\'",'A'.repeat(40),'A'.repeat(39)+'B','😀'.repeat(25),''];
+ named.legacyReport.agents=names.map((name,i)=>({uid:`a${i}`,name,commission:0}));
+ named.legacyReport.players=names.map((name,i)=>({...players[0],uid:`p${i}`,agentUid:`a${i}`,name:`Player ${i}`}));
+ const namedFile=await readFile(w.PokerSettlementExcel.createFile(named,{clubId:'netabel',userId:'owner'})),tabs=Object.keys(namedFile.sheets);
+ assert.equal(tabs.length,3+names.length);assert.equal(new Set(tabs.map(n=>n.toLowerCase())).size,tabs.length);
+ for(const name of tabs){assert.ok(name.length<=31&&name.length>0);assert.doesNotMatch(name,/[\\/?*\[\]:\u0000-\u001f]/);assert.ok(!name.startsWith("'")&&!name.endsWith("'"));assert.notEqual(name.toLowerCase(),'history');}
+ for(const agent of namedFile.sheets.Agents.records.filter(r=>r.Agent!=='Total'))assert.ok(namedFile.sheets[agent['Player details tab']]);
  const closed=legacy('owner');delete closed.dateRange;closed.cycle={id:'legacy_current',status:'closed',startAt:range.fromAt,endAt:range.toAt};
  file=await readFile(w.PokerSettlementExcel.createFile(closed,{clubId:'netabel',userId:'owner'}));assert.ok(file.sheets.Players.rows[4].includes('Chips at closing'));
  data=legacy('player');await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.deepEqual(Object.keys(file.sheets),['Players']);assert.doesNotMatch(file.files['xl/worksheets/sheet1.xml'],/Rake|p2|HYPERLINK|0007|סוכן/);
@@ -65,6 +87,9 @@ const lookup=(file,sheet,key,value)=>file.sheets[sheet].records.find(r=>r[key]==
  row=lookup(file,'Players','Player','Other human player');assert.equal(row['Profit / loss (chips)'],-330.17);assert.equal(row['Recorded cash hands'],22);assert.equal(row['Current chips (wallet + tables)'],169.83);
  assert.equal(lookup(file,'Agents','Agent','Total').Players,1);assert.equal(file.sheets['By agent'].records.filter(r=>r.Player==='Other human player').length,2);
  assert.equal(lookup(file,'Agents','Agent','Direct / no agent')['Profit / loss (chips)'],10);
+ const repeated=structuredClone(data);repeated.details.push({...structuredClone(data.details[0]),totals:{result:100,rake:10,hands:3,games:1}});
+ const repeatedFile=await readFile(w.PokerSettlementExcel.createFile(repeated,{clubId:'netabel',userId:'owner'})),ownTab=lookup(repeatedFile,'Agents','Agent','agent')['Player details tab'];
+ assert.equal(repeatedFile.sheets[ownTab].records.filter(r=>r['Player ID']==='other').length,1);assert.equal(lookup(repeatedFile,ownTab,'Player ID','other')['Profit / loss (chips)'],-339.17);assert.equal(lookup(repeatedFile,ownTab,'Player ID','other')['Recorded cash hands'],23);
  // Agent scope stays identical to the authorized server report, excluding its own wallet.
  data=fixture('agent','agent');data.funds.push({uid:'agent',name:'Agent own wallet',balance:99900});await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.doesNotMatch(JSON.stringify(file.files),/Agent own wallet|99900/);
  data=fixture('player','p1');await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.doesNotMatch(JSON.stringify(file.files),/Rake|Other human player/);assert.equal(lookup(file,'Players','Player','My player')['Recorded cash hands'],20);
@@ -80,5 +105,5 @@ const lookup=(file,sheet,key,value)=>file.sheets[sheet].records.find(r=>r[key]==
  await React.act(async()=>Simulate.submit(dateForm));assert.equal(button('Download Excel'),undefined,'server returned the wrong date range');
  data=legacy('owner');data.legacyReport.players=[];await mount();await React.act(()=>button('Download Excel').click());file=await readFile({blob:downloaded});assert.equal(file.sheets.Players.sheet.querySelector('autoFilter'),null);
  assert.equal(calls.some(c=>c.name==='pkSettlement'),false,'download never changes balances or cycles');
- await React.act(()=>root.unmount());w.close();console.log('PASS: agent summaries, grouped subtotals, unique player totals, recorded/missing hands, role scope, dates and XLSX download');
+ await React.act(()=>root.unmount());w.close();console.log('PASS: separate agent tabs, safe tab names, visible player losses, reconciled subtotals, role scope, dates and XLSX download');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

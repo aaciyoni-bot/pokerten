@@ -69,6 +69,28 @@
     label: 'Player ID',
     width: 30
   };
+  // Excel names are limited to 31 UTF-16 units and unique ignoring case. Keep
+  // complete agent names in the sheet title when a tab name needs shortening.
+  function tabName(label, used) {
+    const clean = String(label || 'Agent').replace(/[\\/?*\[\]:\u0000-\u001f\ufffe\uffff]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^'+|'+$/g, '').trim() || 'Agent';
+    const cut = (text, length) => {
+      let out = '';
+      for (const ch of text) {
+        if (out.length + ch.length > length) break;
+        out += ch;
+      }
+      return out.replace(/'+$/g, '') || 'Agent';
+    };
+    let suffix = '',
+      name = cut(clean, 31),
+      n = 2;
+    while (used.has(name.toLowerCase())) {
+      suffix = ` (${n++})`;
+      name = cut(clean, 31 - suffix.length) + suffix;
+    }
+    used.add(name.toLowerCase());
+    return name;
+  }
   function reportModel(data, userId) {
     const staff = data.role !== 'player',
       agents = data.legacy ? data.legacyReport.agents || [] : data.agents || [data.agent].filter(Boolean);
@@ -149,13 +171,19 @@
       const id = a.uid || a.agentId;
       if (!groups.has(id)) groups.set(id, []);
     }
-    const grouped = [...groups].map(([id, rows]) => {
-      const a = agents.find(a => (a.uid || a.agentId) === id);
+    const grouped = [...groups].map(([id, segments]) => {
+      const byPlayer = new Map();
+      for (const s of segments) {
+        if (!byPlayer.has(s.id)) byPlayer.set(s.id, []);
+        byPlayer.get(s.id).push(s);
+      }
+      const rows = [...byPlayer.values()].map(combine).sort((a, b) => String(a.name).localeCompare(String(b.name))),
+        a = agents.find(a => (a.uid || a.agentId) === id);
       return {
         id,
         agent: agentName(id),
         rows,
-        players: new Set(rows.map(s => s.id)).size,
+        players: rows.length,
         result: sum(rows, 'result'),
         rake: sum(rows, 'rake'),
         hands: counted(rows),
@@ -180,7 +208,7 @@
     const from = range?.fromAt ?? data.cycle.startAt,
       to = range?.toAt ?? (data.cycle.status === 'open' ? null : data.cycle.endAt);
     const period = range ? `${day(from)} to ${day(to - 1)} (inclusive)` : `${data.cycle.id}: ${stamp(from)} to ${to == null ? 'open' : stamp(to)}`;
-    const basis = range ? 'Profit/loss uses cash-outs and completed tournaments recorded in these dates. Hands use cash journal segments recorded in these dates; older history may be missing.' : closed ? 'Saved cycle results. Historical hand counts may not have been recorded.' : 'Selected cycle results include settled open-table activity. Hand counts cover recorded cash hands; tournament hand counts are unavailable.';
+    const basis = (range ? 'Profit/loss uses cash-outs and completed tournaments recorded in these dates. Hands use cash journal segments recorded in these dates; older history may be missing.' : closed ? 'Saved cycle results. Historical hand counts may not have been recorded.' : 'Selected cycle results include settled open-table activity. Hand counts cover recorded cash hands; tournament hand counts are unavailable.') + ' Positive result = won; negative result = lost. Bot results are excluded.';
     const {
         players,
         groups,
@@ -209,6 +237,8 @@
     });
     const sheets = [];
     if (staff) {
+      const used = new Set(['agents', 'players', 'by agent', 'history']);
+      for (const g of groups) g.tab = tabName(g.agent, used);
       const totals = {
         ...totalRow(players),
         players: players.length,
@@ -219,10 +249,14 @@
         label: 'Players',
         width: 14
       }, resultColumn, rakeColumn, handsColumn, countStatus, money('commission', 'Recorded commission'), {
+        key: 'tab',
+        label: 'Player details tab',
+        width: 28
+      }, {
         key: 'id',
         label: 'Agent ID',
         width: 30
-      }], groups, totals, basis + ' Hand totals count player participations. A player may appear under several agents; the total counts unique players.'));
+      }], groups, totals, basis + ' Agent results are net totals of their players. Hand totals count player participations. A player may appear under several agents; the total counts unique players.'));
     }
     sheets.push(sheet('Players', 'POKERTEN — Player totals', [playerColumn, ...(staff ? [agentColumn] : []), resultColumn, ...(staff ? [rakeColumn] : []), handsColumn, countStatus, ...(!data.legacy ? [{
       key: 'games',
@@ -251,6 +285,11 @@
         });
       }
       sheets.push(sheet('By agent', 'POKERTEN — Players by agent', [agentColumn, playerColumn, resultColumn, rakeColumn, handsColumn, countStatus, idColumn], detail, totalRow(players), basis + (data.legacy ? ' Agent grouping uses the membership assignment in this report.' : ' Each segment keeps its recorded agent. The Players sheet combines each player once.')));
+      for (const g of groups) sheets.push(sheet(g.tab, `POKERTEN — ${g.agent} — Player details`, [playerColumn, resultColumn, rakeColumn, handsColumn, countStatus, ...(!data.legacy ? [{
+        key: 'games',
+        label: 'Recorded segments',
+        width: 22
+      }] : []), idColumn], g.rows, totalRow(g.rows), basis + (data.legacy ? ' Agent grouping uses the membership assignment in this report.' : ' Only activity recorded under this agent is included. The Players sheet combines each player across agents.')));
     }
     return {
       sheets,
@@ -1229,7 +1268,7 @@
       }
     }, "Download Excel"), /*#__PURE__*/React.createElement("span", {
       className: "st-muted"
-    }, range ? rangeDates(range) : 'Selected cycle', " \xB7 ", data.role === 'player' ? 'Your results' : 'Agent summary, player totals and players by agent'));
+    }, range ? rangeDates(range) : 'Selected cycle', " \xB7 ", data.role === 'player' ? 'Your results' : 'Agent summary, player totals and a separate tab for each agent'));
     if (data.legacy) return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
       dir: "ltr"

@@ -934,26 +934,59 @@
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "Cycle management"), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "Cycles never close or reset automatically. Only a manager can close the current cycle. Chip balances and history are preserved."), open && /*#__PURE__*/React.createElement("p", null, "Current cycle started: ", /*#__PURE__*/React.createElement("strong", null, date(open.startAt)), " \xB7 Open until manually closed"), /*#__PURE__*/React.createElement("div", {
+    }, "Use Close tables & start new cycle above to save the current report and start again. Chip balances and history are preserved."), open && /*#__PURE__*/React.createElement("p", null, "Current cycle started: ", /*#__PURE__*/React.createElement("strong", null, date(open.startAt)), " \xB7 Open until manually closed"), /*#__PURE__*/React.createElement("div", {
       className: "st-actions"
     }, /*#__PURE__*/React.createElement("button", {
-      disabled: busy,
-      onClick: () => {
-        if (global.confirm("Close this cycle and open the next one now? The closed report, chip balances and history will be preserved.")) act('close');
-      }
-    }, "Close cycle now"), /*#__PURE__*/React.createElement("button", {
-      disabled: busy || !open || open.number <= 1,
+      disabled: busy || data.cycleClose?.status === 'closing' || !open || open.number <= 1,
       onClick: () => {
         if (global.confirm("Reopen the previous cycle? This is only possible while the new cycle is empty.")) act('reopen');
       }
     }, "Reopen previous cycle"), data.cycle.status === 'closed' && /*#__PURE__*/React.createElement("button", {
-      disabled: busy,
+      disabled: busy || data.cycleClose?.status === 'closing',
       onClick: () => {
         if (global.confirm("Lock this cycle? It cannot be reopened after locking.")) act('lock', {
           cycleId: data.cycle.id
         });
       }
     }, "Lock selected cycle")));
+  }
+  function CloseCyclePanel({
+    data,
+    act,
+    busy,
+    onCurrent
+  }) {
+    if (data.role !== 'owner') return null;
+    const job = data.cycleClose,
+      current = !data.dateRange && !data.readOnly && data.cycle?.id === data.currentCycleId,
+      legacy = data.currentCycleId === 'legacy_current';
+    return /*#__PURE__*/React.createElement("section", {
+      className: "st-panel st-close-cycle",
+      "aria-label": "Start a new cycle"
+    }, /*#__PURE__*/React.createElement("h2", null, "Start a new cycle"), job?.status === 'closing' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+      role: "status"
+    }, "Closing tables \xB7 ", job.remaining, " remaining. Waiting for current hands or Spins to finish. The next cycle opens after all results are saved."), /*#__PURE__*/React.createElement("p", null, "Closing continues if you leave this screen."), job.error && /*#__PURE__*/React.createElement("p", {
+      role: "alert",
+      className: "st-error"
+    }, job.error), /*#__PURE__*/React.createElement("button", {
+      disabled: busy,
+      onClick: () => current ? act('continueCloseAll', {
+        closureId: job.id
+      }) : onCurrent()
+    }, current ? 'Check closing progress' : 'Go to current cycle to track closing')) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "Close all open tables, return table chips to their wallets and save the final report. Game results in the new cycle start at zero."), /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, legacy ? 'The previous settlement stays in its saved report; its debts and credits do not carry forward.' : 'Unpaid settlement balances carry forward; chips and history are preserved.', " Active tournaments must finish or be cancelled before closing."), !current ? /*#__PURE__*/React.createElement("button", {
+      disabled: busy,
+      onClick: onCurrent
+    }, "Go to current cycle to close") : /*#__PURE__*/React.createElement("button", {
+      className: "st-primary",
+      disabled: busy || data.needsPeriodStart,
+      onClick: () => {
+        if (global.confirm('Close all tables and start a new cycle? Current hands and Spins will finish first. Table chips return to wallets and final results are saved. ' + (legacy ? 'Previous debts and credits stay in the saved report and do not carry forward.' : 'Unpaid settlement balances carry forward.'))) act('beginCloseAll', {
+          expectedCycleId: data.currentCycleId
+        });
+      }
+    }, "Close tables & start new cycle"), data.needsPeriodStart && /*#__PURE__*/React.createElement("p", null, "Confirm the current cycle start date below to enable closing.")));
   }
   function Archive({
     call,
@@ -1125,15 +1158,7 @@
       value: p.rake
     }))))))), !rows.length && /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
-    }, "No players found.")), data.canClose && !data.readOnly && !range && /*#__PURE__*/React.createElement("section", {
-      className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "Close the current cycle"), /*#__PURE__*/React.createElement("p", null, "When settlement is complete, save this cycle as closed and start the next one at zero. Chip balances and history will stay the same."), /*#__PURE__*/React.createElement("button", {
-      className: "st-primary",
-      disabled: busy,
-      onClick: () => {
-        if (global.confirm("Close the current cycle and start the next one at zero? The current report will be saved for reference. Chip balances and history will stay the same. Debts and credits from this cycle will not carry over.")) act('closeLegacy');
-      }
-    }, "Close cycle and start next")));
+    }, "No players found.")));
   }
   function Settlement({
     user,
@@ -1211,7 +1236,7 @@
         if (result.cycleId) setCycleId(result.cycleId);
         setAttempt(n => n + 1);
         if (typeof global.dispatchEvent === 'function' && typeof global.Event === 'function') global.dispatchEvent(new global.Event('pk-club-changed'));
-        showToast("Changes saved", 'success');
+        showToast(result.closing ? "Closing tables; waiting for games to finish" : result.cycleId ? "New cycle opened" : "Changes saved", 'success');
         return true;
       } catch (e) {
         setError(settlementError(e, "Could not save changes"));
@@ -1221,6 +1246,38 @@
         setBusy(false);
       }
     };
+    useEffect(() => {
+      if (data?.role !== 'owner' || data?.cycleClose?.status !== 'closing' || range) return;
+      let live = true,
+        inFlight = false;
+      const id = data.cycleClose.id;
+      const timer = setInterval(async () => {
+        if (inFlight || actionRef.current) return;
+        inFlight = true;
+        try {
+          const result = await call('pkSettlement', {
+            clubId,
+            action: 'continueCloseAll',
+            closureId: id
+          });
+          if (live) {
+            if (result.cycleId) {
+              setCycleId(result.cycleId);
+              global.dispatchEvent(new global.Event('pk-club-changed'));
+            }
+            setAttempt(n => n + 1);
+          }
+        } catch (e) {
+          if (live) setError(settlementError(e, 'Could not check closing progress'));
+        } finally {
+          inFlight = false;
+        }
+      }, 3000);
+      return () => {
+        live = false;
+        clearInterval(timer);
+      };
+    }, [data?.role, data?.cycleClose?.id, data?.cycleClose?.status, clubId, range]);
     const errorBox = error && /*#__PURE__*/React.createElement("div", {
       role: "alert",
       className: "st-error"
@@ -1235,6 +1292,12 @@
     }, "Loading your settlement\u2026"), range && /*#__PURE__*/React.createElement("button", {
       onClick: currentCycle
     }, "Back to current cycle"));
+    const closeCycle = /*#__PURE__*/React.createElement(CloseCyclePanel, {
+      data: data,
+      act: act,
+      busy: busy,
+      onCurrent: currentCycle
+    });
     const reportDates = /*#__PURE__*/React.createElement(ReportDates, {
       data: data,
       range: range,
@@ -1245,7 +1308,7 @@
     if (data.needsPeriodStart) return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
       dir: "ltr"
-    }, errorBox, reportDates, /*#__PURE__*/React.createElement(PeriodStartRequired, {
+    }, errorBox, closeCycle, reportDates, /*#__PURE__*/React.createElement(PeriodStartRequired, {
       data: data,
       act: act,
       busy: busy
@@ -1272,7 +1335,7 @@
     if (data.legacy) return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
       dir: "ltr"
-    }, errorBox, reportDates, excelExport, /*#__PURE__*/React.createElement(LegacyCurrent, {
+    }, errorBox, closeCycle, reportDates, excelExport, /*#__PURE__*/React.createElement(LegacyCurrent, {
       data: data,
       cycleId: cycleId,
       setCycleId: setCycleId,
@@ -1295,11 +1358,12 @@
       c = data.club?.totals,
       selectedCurrent = !range && !data.readOnly && data.cycle.id === data.currentCycleId,
       periodLabel = data.cycle.id === 'all' ? "across selected cycles" : selectedCurrent ? "in current cycle" : "in selected cycle";
-    const canPay = pair => selectedCurrent && (pair.agentId === user.uid || pair.playerId === user.uid || pair.agentId === 'club' && data.clubPartyId === user.uid);
+    const canEdit = selectedCurrent && data.cycleClose?.status !== 'closing';
+    const canPay = pair => canEdit && (pair.agentId === user.uid || pair.playerId === user.uid || pair.agentId === 'club' && data.clubPartyId === user.uid);
     return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
       dir: "ltr"
-    }, errorBox, reportDates, tab === 'report' && excelExport, /*#__PURE__*/React.createElement("header", {
+    }, errorBox, closeCycle, reportDates, tab === 'report' && excelExport, /*#__PURE__*/React.createElement("header", {
       className: "st-toolbar"
     }, /*#__PURE__*/React.createElement(CyclePicker, {
       data: data,
@@ -1378,7 +1442,7 @@
       value: x.commission + x.leadsIncome
     })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(x.closing)
-    }), /*#__PURE__*/React.createElement("small", null, x.closing > 0 ? "Agent pays the club" : x.closing < 0 ? "Club pays the agent" : "Balanced")), /*#__PURE__*/React.createElement("td", null, selectedCurrent && user.uid === data.clubPartyId && /*#__PURE__*/React.createElement("button", {
+    }), /*#__PURE__*/React.createElement("small", null, x.closing > 0 ? "Agent pays the club" : x.closing < 0 ? "Club pays the agent" : "Balanced")), /*#__PURE__*/React.createElement("td", null, canEdit && user.uid === data.clubPartyId && /*#__PURE__*/React.createElement("button", {
       onClick: () => setPayment({
         type: 'agent',
         agentId: x.agentId,
@@ -1408,7 +1472,7 @@
     }), /*#__PURE__*/React.createElement(Metric, {
       label: "My earnings after rakeback",
       value: a.earnings
-    })), selectedCurrent && /*#__PURE__*/React.createElement("button", {
+    })), canEdit && /*#__PURE__*/React.createElement("button", {
       className: "st-primary",
       onClick: () => setPayment({
         type: 'agent',
@@ -1453,7 +1517,7 @@
       key: x.id
     }, /*#__PURE__*/React.createElement("span", null, x.name === 'club' ? "Club" : x.name, " \xB7 ", x.closing < 0 ? "You pay" : "You receive", " ", /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(x.closing)
-    })), selectedCurrent && /*#__PURE__*/React.createElement("button", {
+    })), canEdit && /*#__PURE__*/React.createElement("button", {
       onClick: () => setPayment({
         type: 'player',
         agentId: x.id,
@@ -1474,8 +1538,8 @@
       act: act,
       busy: busy,
       userId: user.uid,
-      readOnly: !selectedCurrent
-    }), selectedCurrent && data.cycle.status !== 'locked' && /*#__PURE__*/React.createElement("section", {
+      readOnly: !canEdit
+    }), canEdit && data.cycle.status !== 'locked' && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "Approve report or add a note"), /*#__PURE__*/React.createElement("label", null, "Report note", /*#__PURE__*/React.createElement("textarea", {
       maxLength: "1000",

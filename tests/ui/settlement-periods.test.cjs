@@ -72,9 +72,9 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  await React.act(()=>button('Cycle management').click());
  assert.doesNotMatch(doc.body.textContent,/Close automatically|Save end time|Scheduled end/);assert.equal(doc.querySelector('input[type="checkbox"]'),null);
  writes=calls.filter(c=>c.name==='pkSettlement').length;w.confirm=()=>false;
- await React.act(()=>button('Close cycle now').click());assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writes);
- w.confirm=()=>true;await React.act(async()=>button('Close cycle now').click());assert.equal(calls.findLast(c=>c.name==='pkSettlement').args.action,'close');assert.equal(clubChanges,2);
- failMutation=true;await React.act(async()=>button('Close cycle now').click());assert.equal(clubChanges,2,'failed mutation emits no refresh event');assert.match(doc.querySelector('[role="alert"]').textContent,/not saved/);
+ await React.act(()=>button('Close tables & start new cycle').click());assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writes);
+ w.confirm=()=>true;await React.act(async()=>button('Close tables & start new cycle').click());assert.equal(calls.findLast(c=>c.name==='pkSettlement').args.action,'beginCloseAll');assert.equal(clubChanges,2);
+ failMutation=true;await React.act(async()=>button('Close tables & start new cycle').click());assert.equal(clubChanges,2,'failed mutation emits no refresh event');assert.match(doc.querySelector('[role="alert"]').textContent,/not saved/);
  await React.act(()=>button('Settlement report').click());
  // Selecting historical cycles disables financial/report editing.
  await change(doc.querySelector('select[aria-label="Select cycle"]'),'old-cycle');
@@ -88,7 +88,7 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  const request=calls.findLast(c=>c.name==='pkSettlementReport');
  assert.deepEqual(JSON.parse(JSON.stringify(request.args)),{clubId:'example-club',fromAt:Date.parse('2025-01-31T22:00:00Z'),toAt:Date.parse('2025-02-02T22:00:00Z')});
  assert.match(doc.body.textContent,/Date range · Read only|Recorded results in selected dates|Current balance/);assert.match(doc.body.textContent,/in selected dates/);
- assert.doesNotMatch(doc.body.textContent,/At closing|Current cycle · Open/);assert.equal(button('Close cycle and start next'),undefined);assert.equal(button('Record payment'),undefined);assert.equal(button('Approve report'),undefined);
+ assert.doesNotMatch(doc.body.textContent,/At closing|Current cycle · Open/);assert.equal(button('Close tables & start new cycle'),undefined);assert.ok(button('Go to current cycle to close'),'history retains a visible route to the closing control');assert.equal(button('Record payment'),undefined);assert.equal(button('Approve report'),undefined);
  assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writes);assertEnglishUi(doc.body,'Historical date range');
  assert.match(doc.body.textContent,/club time \(Asia\/Jerusalem\)/);
  let dateInputs=doc.querySelectorAll('form[aria-label="Report date range"] input');assert.equal(dateInputs[0].value,'2025-02-01');assert.equal(dateInputs[1].value,'2025-02-02');
@@ -99,7 +99,7 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  dateInputs=doc.querySelectorAll('form[aria-label="Report date range"] input');assert.equal(dateInputs[0].value,'2025-10-26');assert.equal(dateInputs[1].value,'2025-10-26');
  assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writes,'history never writes settlement data');assert.equal(clubChanges,2);
 
- await React.act(async()=>button('Back to current cycle').click());
+ await React.act(async()=>button('Go to current cycle to close').click());
  assert.deepEqual(JSON.parse(JSON.stringify(calls.findLast(c=>c.name==='pkSettlementReport').args)),{clubId:'example-club'});assert.match(doc.body.textContent,/in current cycle/);
 
  // A server that ignores the requested dates must not masquerade as a filtered report.
@@ -108,6 +108,13 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  assert.ok(button('Back to current cycle'));await React.act(async()=>button('Back to current cycle').click());
  assert.match(doc.body.textContent,/in current cycle/);
  current=legacy('player');rangeTrusted=true;await mount();await setDates('2025-02-01','2025-02-02');
- assert.match(doc.body.textContent,/Recorded results in selected dates/);assert.doesNotMatch(doc.body.textContent,/Lifetime profit\/loss|Rakeback|Rake generated|Commission/i);assert.equal(button('Save cycle start'),undefined);assert.equal(button('Close cycle and start next'),undefined);
+ assert.match(doc.body.textContent,/Recorded results in selected dates/);assert.doesNotMatch(doc.body.textContent,/Lifetime profit\/loss|Rakeback|Rake generated|Commission/i);assert.equal(button('Save cycle start'),undefined);assert.equal(button('Close tables & start new cycle'),undefined);assert.equal(doc.querySelector('[aria-label="Start a new cycle"]'),null);
+ // A manager sees the primary control above the report, including legacy mode.
+ current=legacy('owner');await mount();assert.equal(doc.querySelector('.settlement-app').firstElementChild.getAttribute('aria-label'),'Start a new cycle');assert.ok(button('Close tables & start new cycle'));
+ // Continuation polling starts only for an explicitly queued server request.
+ current.cycleClose={id:'test-closure-request',status:'closing',remaining:2};await mount();assert.equal(button('Close tables & start new cycle'),undefined);assert.match(doc.body.textContent,/Closing tables · 2 remaining/);
+ writes=calls.filter(c=>c.name==='pkSettlement').length;
+ await React.act(async()=>{for(const poll of [...timers.values()])await poll();});
+ const continuations=calls.filter(c=>c.name==='pkSettlement').slice(writes);assert.equal(continuations.length,1);assert.equal(continuations[0].args.action,'continueCloseAll');assert.equal(continuations[0].args.closureId,'test-closure-request');
  await React.act(()=>root.unmount());w.close();console.log('PASS: manual-only cycles, explicit missing start, funds preserved, club-time DST boundaries, refresh events, non-overlapping polling, read-only history and verified range responses');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

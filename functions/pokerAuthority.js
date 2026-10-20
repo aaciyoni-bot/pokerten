@@ -19,7 +19,7 @@ async function clubManager(tx,db,cid,r){
 const tableManager=clubManager;
 // New play must serialize on the club document with reversible archival.
 // Keep this separate from member/manager checks: reports and recovery remain available.
-function assertClubOpen(club){if(club.archived===true)fail('failed-precondition','This club is archived. Restore it before opening games or joining.');return club;}
+function assertClubOpen(club){if(club.archived===true)fail('failed-precondition','This club is archived. Restore it before opening games or joining.');if(club.settlementClosing?.status==='closing')fail('failed-precondition','The current cycle is closing. New tables and buy-ins resume after all tables close.');return club;}
 async function activeClub(tx,db,cid){const c=await tx.get(db.doc('clubs/'+key(cid,'club')));if(!c.exists)fail('not-found','Club missing');return assertClubOpen(c.data());}
 async function member(tx,db,cid,r){const m=await tx.get(db.doc(`memberships/${uid(r)}_${key(cid)}`));if(!root(r)&&(!m.exists||m.data().status!=='approved'))fail('permission-denied','Approved membership required');return m.exists?m.data():{};}
 async function command(r,scope,body){

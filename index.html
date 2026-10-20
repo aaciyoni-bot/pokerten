@@ -1116,6 +1116,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/poker-god-best.css?v=299">
 <link rel="stylesheet" href="assets/css/player-wallet-blue.css?v=314">
 <link rel="stylesheet" href="assets/css/club-orbital.css?v=315">
+<link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=321">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -6838,6 +6839,7 @@ function LobbyView({
     } finally { templateCreateLock.current = false; setOpeningTemplate(null); }
   };
   const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
+  const lobbyVariantLabel = (gt, settings) => gt === 'Omaha 4' ? (settings?.omahaPotLimit === false ? 'NLO4' : 'PLO4') : gt === 'Pineapple' ? 'Pineapple' : variantLabel(gt, settings);
   const variantCount = v => pokerTables.filter(t => !(t.settings || {}).spinMode && ((t.settings || {}).baseGameType || 'NLH') === v).length;
   // Spin & Cash lives in its OWN section (where the tournaments block sits),
   // so it never mixes into the ring-game list.
@@ -7635,6 +7637,7 @@ function LobbyView({
     onClick: () => createFromTpl(tp),
     disabled: openingTemplate !== null,
     "aria-busy": openingTemplate === tp.name,
+    "data-lobby-game": tp.settings.spinMode ? "spin" : tp.settings.baseGameType || "NLH",
     className: "inline-flex items-center gap-1.5 bg-slate-800 hover:bg-amber-600 hover:text-slate-900 border border-amber-500/40 text-amber-200 rounded-full px-3 py-1.5 text-xs font-black transition-colors"
   }, React.createElement("i", {
     className: "fa-solid fa-bookmark"
@@ -7664,8 +7667,9 @@ function LobbyView({
       onClick: () => setPokFilter(v),
       "aria-pressed": active,
       className: `vtab ${active ? 'vtab-active' : ''}`,
+      "data-lobby-game": v,
       style: {"--variant-color":vs.hue}
-    }, variantLabel(v), n > 0 && React.createElement("span", {
+    }, lobbyVariantLabel(v), n > 0 && React.createElement("span", {
       className: "vtab-count"
     }, n));
   })), React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker}), pokFilter !== 'tours' && React.createElement("div", {
@@ -7682,11 +7686,13 @@ function LobbyView({
     return React.createElement("div", {
       key: t.docId,
       className: `tbl-row ${s.spinMode ? 'tbl-spin' : ''}`,
+      "data-lobby-game": s.spinMode ? "spin" : gt,
       tabIndex:0, role:'group', 'aria-label':(s.tableName||variantLabel(gt,s))+' '+formatShort(s.blinds)+'/'+formatShort(s.blinds*2),
       onKeyDown:e=>{if(e.target===e.currentTarget && (e.key==='Enter'||e.key===' ')){e.preventDefault();onJoinPoker(t);}},
       onClick: () => onJoinPoker(t)
     }, React.createElement("div", {
       className: "tbl-spine",
+      "aria-hidden": true,
       style: {
         '--spineC': s.spinMode ? '#f59e0b' : vs.hue
       }
@@ -7718,7 +7724,7 @@ function LobbyView({
       className: "seat-cap"
     }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
-    }, React.createElement("div", {
+    }, React.createElement("span", {className:"lobby-game-badge", "data-lobby-game":gt}, lobbyVariantLabel(gt, s)), React.createElement("div", {
       className: "tbl-name"
     }, s.spinMode ? React.createElement(React.Fragment, null, `🎡 Spin & Cash ${formatShort(s.spinBuyIn || 50)}`, React.createElement("span", {
       // the game variant gets its own colored pill so players see WHAT they're
@@ -7813,9 +7819,11 @@ function LobbyView({
     return React.createElement("div", {
       key: t.docId,
       className: "tbl-row tbl-spin",
+      "data-lobby-game": "spin",
       onClick: () => onJoinPoker(t)
     }, React.createElement("div", {
       className: "tbl-spine",
+      "aria-hidden": true,
       style: {
         '--spineC': '#f59e0b'
       }
@@ -7847,9 +7855,9 @@ function LobbyView({
       className: "seat-cap"
     }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
-    }, React.createElement("div", {
+    }, React.createElement("span", {className:"lobby-game-badge"}, "SPIN"), React.createElement("div", {
       className: "tbl-name"
-    }, variantLabel(gt, s), t.players && t.players[user.uid] && React.createElement("span", {
+    }, React.createElement("span", {className:"lobby-game-badge", "data-lobby-game":gt}, lobbyVariantLabel(gt, s)), t.players && t.players[user.uid] && React.createElement("span", {
       className: "tbl-me"
     }, "You're seated")), React.createElement("div", {
       className: "tbl-stakes",

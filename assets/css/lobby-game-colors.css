@@ -1,0 +1,74 @@
+/* Lobby-only game identity. Base-game colors stay the same at every stake,
+   including no-limit Omaha and saved templates. Text labels accompany color. */
+.club-lobby [data-lobby-game] { --lobby-accent:#a8c4d5; }
+.club-lobby [data-lobby-game="NLH"] { --lobby-accent:#35e896; }
+.club-lobby [data-lobby-game="Omaha 4"] { --lobby-accent:#45b5ff; }
+.club-lobby [data-lobby-game="Omaha 5"] { --lobby-accent:#ffd34e; }
+.club-lobby [data-lobby-game="Omaha 6"] { --lobby-accent:#ff646e; }
+.club-lobby [data-lobby-game="Pineapple"] { --lobby-accent:#c59aff; }
+.club-lobby [data-lobby-game="spin"] { --lobby-accent:#ffab55; }
+
+/* Match the existing shell's scope and specificity; never style a game table. */
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .tbl-row[data-lobby-game] {
+  direction:ltr;
+  background:linear-gradient(100deg,color-mix(in srgb,var(--lobby-accent) 12%,#09151e),#09151ef5 60%)!important;
+  border-color:color-mix(in srgb,var(--lobby-accent) 35%,#354550)!important;
+  box-shadow:inset 5px 0 var(--lobby-accent),-3px 0 12px color-mix(in srgb,var(--lobby-accent) 22%,transparent),0 4px 14px #0004!important;
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .tbl-row[data-lobby-game]:hover {
+  border-color:var(--lobby-accent)!important;
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .tbl-row[data-lobby-game="spin"] .tbl-stakes {
+  white-space:normal!important;
+  overflow-wrap:anywhere;
+  font-size:18px!important;
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .tbl-row[data-lobby-game]>.tbl-spine[aria-hidden] {
+  background:transparent!important;
+  border:0;
+  transform:none;
+  font-size:0;
+  color:transparent!important;
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .tbl-row[data-lobby-game] .tbl-ring circle+circle {
+  stroke:var(--lobby-accent);
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .lobby-game-badge {
+  display:inline-flex;
+  align-items:center;
+  width:fit-content;
+  max-width:100%;
+  padding:2px 6px;
+  margin-bottom:3px;
+  border:1px solid color-mix(in srgb,var(--lobby-accent) 45%,transparent);
+  border-radius:5px;
+  background:color-mix(in srgb,var(--lobby-accent) 12%,#09151e);
+  color:var(--lobby-accent)!important;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.02em;
+  line-height:1.4;
+  white-space:nowrap;
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .blue-variant-tabs .vtab {
+  min-height:44px;
+  flex-shrink:0;
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .vtab[data-lobby-game] {
+  border:1px solid color-mix(in srgb,var(--lobby-accent) 45%,#354550)!important;
+  border-left:4px solid var(--lobby-accent)!important;
+  color:var(--lobby-accent)!important;
+  background:color-mix(in srgb,var(--lobby-accent) 10%,#09151e)!important;
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby .vtab[data-lobby-game][aria-pressed="true"] {
+  background:var(--lobby-accent)!important;
+  border-color:var(--lobby-accent)!important;
+  color:#07131c!important;
+  box-shadow:inset 0 -3px #07131c80!important;
+}
+body.poker-theme:not(:has(.poker-room,.pt-wrap,.rami-table-bg)):has(.pt-theme) .club-lobby button[data-lobby-game]:not(.vtab) {
+  border-color:color-mix(in srgb,var(--lobby-accent) 55%,#354550)!important;
+  border-left:4px solid var(--lobby-accent)!important;
+  background:color-mix(in srgb,var(--lobby-accent) 12%,#09151e)!important;
+  color:var(--lobby-accent)!important;
+}

@@ -11734,17 +11734,8 @@ try{const result=await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amou
   const kickSeat = async (uid, byAdmin) => {
 try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid});}catch(e){showToast(e.message||String(e),'error');}
 };
-  useEffect(() => {
-    if (!tableState || tableState.tournamentId) return;
-    const iv = setInterval(() => {
-      const t = tableRef.current;
-      if (!t) return;
-      Object.values(t.players || {}).forEach(p => {
-        if (!p.isBot && p.status !== 'busted' && (p.leaveReq || p.sitOut && Date.now() - (p.sitOutAt || 0) > 600000)) kickSeat(p.uid, false);
-      });
-    }, 12000);
-    return () => clearInterval(iv);
-  }, [tableState && tableState.id]);
+  // Queued departures and idle seats are reaped by the authoritative server.
+  // A player's browser must never issue admin kicks for other players.
   useEffect(() => {
     if (!tableState) return;
     const me = (tableState.players || {})[user.uid];

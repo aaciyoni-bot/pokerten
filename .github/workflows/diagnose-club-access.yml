@@ -1,117 +1,78 @@
-name: Diagnose club access (read only)
-
-# Changing this file runs observation only. No application files are deployed.
+name: Restore requested Omaha table chat
 on:
   push:
-    branches: [main]
-    paths:
-      - '.github/workflows/diagnose-club-access.yml'
-  workflow_dispatch: {}
-
+    branches: [repair/omaha-chat-20261024]
+    paths: ['.github/workflows/diagnose-club-access.yml']
 permissions:
   contents: read
-
+concurrency:
+  group: restore-requested-omaha-chat
+  cancel-in-progress: false
 jobs:
-  observe:
+  restore-chat:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
-
-      - name: Read recent callable errors without publishing raw logs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm install --prefix "$RUNNER_TEMP/chat-cli" --no-audit --no-fund firebase-tools@13.35.1
+      - name: Open only the identified table chat and verify
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: |
+          export NODE_PATH="$RUNNER_TEMP/chat-cli/node_modules"
           node <<'JS'
           'use strict';
-          const {spawnSync} = require('node:child_process');
-          const functions = ['pkClubDirectory', 'pkClubMember'];
-          const now = Date.now();
-          const clean = value => String(value || '').replace(/\u001b\[[0-9;]*m/g, '');
-          // Every emitted message is a literal from this allowlist. Never output
-          // exception text, account IDs, names, document paths, URLs or tokens.
-          const categories = [
-            ['missing-index', 'Firestore query requires an index', /requires an index|index is not ready|index.*building/i],
-            ['transaction-contention', 'Firestore transaction contention', /too much contention|contention on these documents|ABORTED|transaction.*(?:conflict|concurrent)|concurrent.*transaction/i],
-            ['transaction-read-after-write', 'Transaction performed a read after a write', /all reads to be executed before all writes|read.*after.*writ/i],
-            ['deadline-exceeded', 'Function or Firestore deadline exceeded', /DEADLINE_EXCEEDED|deadline-exceeded|deadline exceeded|timed out|timeout|time limit/i],
-            ['resource-exhausted', 'Function or Firestore resource limit exceeded', /RESOURCE_EXHAUSTED|resource-exhausted|quota exceeded|maximum (?:response|request|document|message) size|exceeds? (?:the )?(?:maximum|max) size/i],
-            ['memory-limit', 'Function memory limit exceeded', /memory limit|out of memory|heap out of memory/i],
-            ['serialization', 'A response or field could not be serialized', /serializ|Cannot encode|Cannot convert undefined or null to object|unsupported field value|undefined.*Firestore|Firestore.*undefined|converting circular structure/i],
-            ['permission-denied', 'Callable or data access denied', /PERMISSION_DENIED|permission-denied|permission denied|insufficient permissions|Club staff only|Club manager only/i],
-            ['unauthenticated', 'Authentication was missing or rejected', /UNAUTHENTICATED|unauthenticated|unauthorized|authentication required|must be authenticated/i],
-            ['not-found', 'A required resource was not found', /NOT_FOUND|not-found|Club missing|Membership missing|Profile missing|function.*does not exist/i],
-            ['invalid-argument', 'Callable input failed validation', /INVALID_ARGUMENT|invalid-argument|invalid argument/i],
-            ['failed-precondition', 'A callable or data precondition failed', /FAILED_PRECONDITION|failed-precondition/i],
-            ['unavailable', 'A required service was unavailable', /UNAVAILABLE|service unavailable|ECONNRESET|ECONNREFUSED|ENOTFOUND/i],
-            ['type-error', 'JavaScript type error', /\bTypeError\b/i],
-            ['reference-error', 'JavaScript reference error', /\bReferenceError\b/i],
-            ['range-error', 'JavaScript range error', /\bRangeError\b/i],
-            ['internal', 'Unhandled or internal server error', /Unhandled error|INTERNAL|internal error|internal server error/i]
-          ];
-          const canonicalCodes = ['OK','CANCELLED','UNKNOWN','INVALID_ARGUMENT','DEADLINE_EXCEEDED','NOT_FOUND','ALREADY_EXISTS','PERMISSION_DENIED','RESOURCE_EXHAUSTED','FAILED_PRECONDITION','ABORTED','OUT_OF_RANGE','UNIMPLEMENTED','INTERNAL','UNAVAILABLE','DATA_LOSS','UNAUTHENTICATED'];
-          const parseLine = line => {
-            const input = clean(line).trim();
-            const match = input.match(/^(\d{4}-\d\d-\d\dT\S+)\s+([A-Z?])\s+[^:]+:\s*(.*)$/i);
-            let message = match ? match[3] : input;
-            const timestamp = match ? Date.parse(match[1]) : NaN;
-            let severity = match ? match[2].toUpperCase() : '';
-            for(let depth=0;depth<4;depth++){
-              try {
-                const value = JSON.parse(message);
-                if(value && typeof value === 'object') {
-                  if(/^(ERROR|CRITICAL|ALERT|EMERGENCY)$/.test(value.severity || '')) severity = 'E';
-                  const code = value.code ?? value.error?.code ?? value.jsonPayload?.code;
-                  if(typeof code === 'string') message += ' ' + code;
-                }
-                const nested = typeof value === 'string' ? value : value?.textPayload ?? value?.jsonPayload?.message ?? value?.message;
-                if(typeof nested !== 'string') break;
-                message = nested + ' ' + message;
-              } catch { break; }
-            }
-            return {timestamp, severity, message:clean(message)};
-          };
-          function summarize(stdout){
-            const result = {logEntries:0,recentEntries24h:0,errorEntries:0,uncategorizedErrors:0,latestLogAt:null,categories:[],codes:[]};
-            const found = new Map(), codes = new Map();
-            for(const line of String(stdout || '').split('\n')){
-              const {timestamp,severity,message} = parseLine(line);
-              if(!Number.isFinite(timestamp)) continue;
-              result.logEntries++;
-              if(timestamp >= now - 86400000) result.recentEntries24h++;
-              result.latestLogAt = Math.max(result.latestLogAt || 0,timestamp);
-              const matches = categories.filter(([, ,pattern])=>pattern.test(message));
-              const error = severity === 'E' || matches.length > 0;
-              if(error) result.errorEntries++;
-              if(severity === 'E' && !matches.length) result.uncategorizedErrors++;
-              for(const [category,safeMessage] of matches){
-                const entry = found.get(category) || {category,message:safeMessage,count:0,latestAt:null};
-                entry.count++;entry.latestAt=Math.max(entry.latestAt || 0,timestamp);found.set(category,entry);
-              }
-              for(const code of canonicalCodes){
-                const variant = code.toLowerCase().replaceAll('_','-');
-                if(new RegExp('(?:^|[^A-Za-z_])'+code+'(?:$|[^A-Za-z_])').test(message) || message.includes('functions/'+variant)) codes.set(code,(codes.get(code)||0)+1);
-              }
-            }
-            result.categories=[...found.values()];
-            result.codes=[...codes].map(([code,count])=>({code,count}));
-            return result;
+          const {createHash}=require('node:crypto');
+          const targetRef='55da67adbd';
+          function decode(v){
+           if(!v)return undefined;
+           if('stringValue'in v)return v.stringValue;
+           if('booleanValue'in v)return v.booleanValue;
+           if('integerValue'in v)return Number(v.integerValue);
+           if('nullValue'in v)return null;
+           if(v.mapValue)return Object.fromEntries(Object.entries(v.mapValue.fields||{}).map(([k,x])=>[k,decode(x)]));
+           return undefined;
           }
-          for(const functionName of functions){
-            // Firebase CLI compares --only literally against function_name OR
-            // service_name. Gen 2 Cloud Run service names are lowercase; include
-            // both identifiers so new revision logs are not silently omitted.
-            const functionFilter=functionName+','+functionName.toLowerCase();
-            const result=spawnSync('firebase',['functions:log','--only',functionFilter,'--lines','100','--project','pokerten','--non-interactive'],{encoding:'utf8',timeout:45000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']});
-            if(result.status!==0){
-              // Classify CLI failure privately; do not echo captured stderr.
-              const capture=clean(result.stdout)+' '+clean(result.stderr);
-              const reason=result.error?.code==='ETIMEDOUT'?'log-read-timeout':/permission|forbidden|403/i.test(capture)?'log-read-permission-denied':/unauthenticated|login|credential|401/i.test(capture)?'log-read-authentication-failed':'log-read-failed';
-              console.log('CLUB_ACCESS_DIAGNOSTIC '+JSON.stringify({function:functionName,state:'unavailable',reason}));
-              process.exitCode=1;
-              continue;
-            }
-            console.log('CLUB_ACCESS_DIAGNOSTIC '+JSON.stringify({function:functionName,state:'observed',...summarize(result.stdout)}));
+          async function main(){
+           if(process.env.GITHUB_ACTIONS!=='true'||!process.env.FIREBASE_TOKEN)throw Error('auth-unavailable');
+           const {getAccessToken}=require('firebase-tools/lib/auth');
+           const token=await getAccessToken(process.env.FIREBASE_TOKEN,['https://www.googleapis.com/auth/cloud-platform']);
+           if(!token.access_token)throw Error('auth-unavailable');
+           const base='https://firestore.googleapis.com/v1/projects/pokerten/databases/(default)/documents';
+           async function api(url,body,method='POST'){
+            const response=await fetch(url,{method,headers:{Authorization:'Bearer '+token.access_token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});
+            if(!response.ok){const e=Error('http-'+response.status);e.status=response.status;throw e;}
+            return response.json();
+           }
+           async function query(collection,fields,where){
+            return(await api(base+':runQuery',{structuredQuery:{from:[{collectionId:collection}],select:{fields:fields.map(fieldPath=>({fieldPath}))},...(where?{where}:{}),limit:101}})).filter(x=>x.document).map(x=>({id:x.document.name.split('/').pop(),name:x.document.name,updateTime:x.document.updateTime,data:decode({mapValue:{fields:x.document.fields}})}));
+           }
+           const clubs=await query('clubs',['name']);
+           if(clubs.length>100)throw Error('scope-ambiguous');
+           const selected=clubs.filter(x=>String(x.data.name||'').trim().toLowerCase()==='netabel');
+           if(selected.length!==1)throw Error('scope-ambiguous');
+           for(let attempt=0;attempt<5;attempt++){
+            const tables=await query('tables',['type','settings.baseGameType','settings.serverEngine','authorityVersion','chatMuted'],{fieldFilter:{field:{fieldPath:'clubId'},op:'EQUAL',value:{stringValue:selected[0].id}}});
+            if(tables.length>100)throw Error('scope-ambiguous');
+            const targets=tables.filter(x=>createHash('sha256').update(x.id).digest('hex').slice(0,10)===targetRef&&x.data.type==='poker'&&x.data.settings?.baseGameType==='Omaha 6'&&x.data.settings.serverEngine===true&&x.data.authorityVersion===2);
+            if(targets.length!==1)throw Error('scope-ambiguous');
+            const target=targets[0];
+            if(target.data.chatMuted===false){console.log('CHAT_REPAIR '+JSON.stringify({tableRef:targetRef,state:'already-open',muted:false}));return;}
+            if(target.data.chatMuted!==true)throw Error('unexpected-chat-state');
+            try {
+             // Only this boolean field can change. The exact read version is required;
+             // concurrent game updates cause a retry, never a whole-table overwrite.
+             await api(base+':commit',{writes:[{update:{name:target.name,fields:{chatMuted:{booleanValue:false}}},updateMask:{fieldPaths:['chatMuted']},currentDocument:{updateTime:target.updateTime}}]});
+            } catch(error) {if([409,412].includes(error.status))continue;throw error;}
+            const checked=await api('https://firestore.googleapis.com/v1/'+target.name+'?mask.fieldPaths=chatMuted',null,'GET');
+            if(checked.fields?.chatMuted?.booleanValue!==false)throw Error('verification-failed');
+            console.log('CHAT_REPAIR '+JSON.stringify({tableRef:targetRef,state:'unmuted-and-verified',muted:false,changedFields:['chatMuted']}));
+            return;
+           }
+           throw Error('concurrent-update-retry-limit');
           }
+          main().catch(error=>{const reason=/^(auth-unavailable|scope-ambiguous|unexpected-chat-state|verification-failed|concurrent-update-retry-limit|http-\d+)$/.test(error.message)?error.message:'repair-unavailable';console.log('CHAT_REPAIR '+JSON.stringify({state:'failed',reason}));process.exitCode=1;});
+          
           JS

@@ -1,93 +1,42 @@
-name: Deploy Firebase Functions
-
-# Auto-deploys Cloud Functions on any push that touches functions/
-# Requires a repo secret named FIREBASE_TOKEN (from `firebase login:ci`)
-
+name: Read-only card creation diagnostics
 on:
   push:
-    branches:
-      - main
-      - claude/pokerten-v1
-    paths:
-      - 'functions/**'
-      - '.github/workflows/deploy-functions.yml'
-      - '.github/workflows/security-rules.yml'
-      - 'firestore.rules'
-      - '!functions/aviator*'
-      - '!functions/test/aviator*'
-      - 'firebase.json'
-      - '.firebaserc'
-  workflow_dispatch: {}
-
+    branches: [diagnostics/card-create-20261023]
+permissions:
+  contents: read
 jobs:
-  validate:
-    uses: ./.github/workflows/validate.yml
-  security:
-    uses: ./.github/workflows/security-rules.yml
-  deploy:
-    needs: [validate, security]
+  observe:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Install function dependencies
-        run: npm ci --prefix functions
-
-      - name: Install Firebase CLI
-        run: npm install -g firebase-tools
-
-      - name: Select poker functions only
-        id: targets
-        run: |
-          node - <<'JS' >> "$GITHUB_OUTPUT"
-          const aviator = new Set(['avJoin','avTick','avBet','avCancelBet','avCashout','avPeek','avCredit']);
-          const names = Object.entries(require('./functions'))
-            .filter(([name, value]) => !aviator.has(name) && typeof value === 'function' && (value.__endpoint || value.__trigger))
-            .map(([name]) => name);
-          if (!names.length) throw new Error('No poker function exports found');
-          console.log('only=' + names.map(name => 'functions:' + name).join(','));
-          JS
-      - name: Deploy poker functions without changing AVIATOR
+      - run: npm install -g firebase-tools
+      - name: Inspect error classes without exposing raw logs or changing data
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: firebase deploy --only "${{ steps.targets.outputs.only }}" --project pokerten --non-interactive
-
-      - name: Verify enforced poker security pause
         run: |
-          node --input-type=module <<'JS'
-          const {POKER_SECURITY_PAUSED} = await import('./functions/pokerSecurity.js').then(m => m.default);
-          const response = await fetch('https://us-central1-pokerten.cloudfunctions.net/pkSecurityStatus', {
-            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:{}})
-          });
-          const body = await response.json();
-          if (!response.ok || body.result?.available !== !POKER_SECURITY_PAUSED) throw new Error('Poker security readiness does not match this release');
-          console.log('Poker security state verified: ' + (POKER_SECURITY_PAUSED ? 'paused' : 'available'));
-          JS
-
-      - name: Verify personal-code signing before publishing its login UI
-        run: |
-          node --input-type=module <<'JS'
-          const response = await fetch('https://us-central1-pokerten.cloudfunctions.net/pkPinStatus', {
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({data: {}})
-          });
-          const result = await response.json();
-          if (!response.ok || result.result?.available !== true) {
-            const reasons = ['signing-api-disabled', 'signing-permission', 'signing-configuration', 'signing-unavailable'];
-            const reason = reasons.includes(result.result?.reason) ? result.result.reason : 'readiness-request-failed';
-            throw new Error('Personal-code signing is unavailable: ' + reason);
+          node <<'JS'
+          const {spawnSync}=require('node:child_process');
+          for (const name of ['pkCardTableCreate','pkCardGame']) {
+            const r=spawnSync('firebase',['functions:log','--only',name,'--lines','100','--project','pokerten','--non-interactive'],{encoding:'utf8',timeout:60000,maxBuffer:3*1024*1024});
+            const s=r.stdout||'';
+            const patterns={
+              undefinedValue:/Cannot use .undefined.|undefined.*Firestore/i,
+              readsAfterWrites:/reads.*before.*writes|read.*after.*writ/i,
+              nestedArrays:/nested arrays|array.*array/i,
+              indexMissing:/requires an index|index.*required/i,
+              permissionDenied:/PERMISSION_DENIED|permission.denied/i,
+              internal:/Unhandled error|INTERNAL/i,
+              unauthenticated:/UNAUTHENTICATED|Sign in first/i,
+              numericSetting:/Invalid numeric setting/i,
+              transactionAborted:/ABORTED|transaction.*abort/i,
+              insufficientFunds:/Insufficient balance/i,
+              unavailable:/UNAVAILABLE|unavailable/i,
+              invalidDocument:/Invalid document|not a valid Firestore document/i
+            };
+            const stack=[...s.matchAll(/(?:cardGames|cardGamesCore|pokerAuthority|pokerLedger|settlementStore)\.js:\d+:\d+/g)].map(x=>x[0]);
+            const codes=[...s.matchAll(/(?:code|status)[:=]\s*['"]?([0-9]{1,2}|[A-Z_]{4,30})/g)].map(x=>x[1]);
+            console.log(JSON.stringify({name,readOK:r.status===0,logLines:s.split('\n').length,diagnoses:Object.keys(patterns).filter(k=>patterns[k].test(s)),stack:[...new Set(stack)],codes:[...new Set(codes)]}));
           }
-          console.log('Personal-code token signing verified; no user account was created.');
           JS
-
-      - name: Observe requested cash-table variety without modifying live data
-        continue-on-error: true
-        timeout-minutes: 4
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-        run: node scripts/verify-bot-lobby-variety.cjs

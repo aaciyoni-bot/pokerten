@@ -55,7 +55,7 @@ check('spin still reads server-dealt cards',
 
 // 5) ACTIONS ROUTE FOR BOTH MODES (server via pkAct, else client engine).
 check('CALL uses an idempotency key and a server-validated turn',
- /pokerCommand\('pkAct'/.test(bundle) && /expectedTurn:/.test(bundle) && /requestId:crypto.randomUUID/.test(bundle),
+ /pokerCommand\('pkAct'/.test(bundle) && /expectedTurn:/.test(bundle) && /requestId:(?:clean\.requestId\|\|)?crypto.randomUUID/.test(bundle),
  'Actions must use the server with a receipt and expected turn');
 
 // 6) pkTick must not early-return on a value read from a lagging ref (that froze hands).

@@ -83,6 +83,39 @@ function fixture(){
  };
 }
 
+test('cashier sends and claims regular chips once, conserves funds and never changes bonus or game results',async()=>{
+ const f=fixture(),m=f.records.get('memberships/player_clubA');Object.assign(m,{balance:150,bonusOpen:50,promoBalance:9});
+ const beforeBonus=clone(m),logs=clone(f.records.get('gameLog/existing')),table=clone(f.records.get('tables/active'));
+ const send={targetUid:'player',op:'cashier-transfer',amount:100,requestId:'cashier_send_000001'};
+ await f.run(send);await f.run(send);assert.equal(m.balance,150); // committed records are fresh objects
+ assert.equal(f.records.get('memberships/player_clubA').balance,250);assert.equal(f.records.get('memberships/owner_clubA').balance,900);
+ const claim={...send,amount:-200,requestId:'cashier_claim_000001'};
+ await f.run(claim);await f.run(claim);
+ const after=f.records.get('memberships/player_clubA');assert.equal(after.balance,50);assert.equal(f.records.get('memberships/owner_clubA').balance,1100);
+ for(const k of ['bonusOpen','bonusTotal','promoBalance','agentProfits','clubProfits'])assert.equal(after[k],beforeBonus[k]);
+ assert.deepEqual(f.records.get('gameLog/existing'),logs);assert.deepEqual(f.records.get('tables/active'),table);
+ assert.equal(f.audit().length,2);assert.equal([...f.records.keys()].filter(p=>p.startsWith('_pkLedger/')).length,2);
+ await assert.rejects(f.run({...claim,requestId:'cashier_claim_000002',amount:-.01}),/available regular chips/);
+});
+
+test('cashier rejects unauthorized, unfunded, bonus-only, invalid and ineligible transfers atomically',async()=>{
+ const cases=[
+  [{amount:1},identity('agent')],[{amount:1},identity('player')],[{amount:1},identity('pending-manager')],
+  [{amount:1001},identity()],[{amount:-1},identity()],[{amount:0},identity()],[{amount:1.001},identity()],
+  [{amount:1,targetUid:'new-player'},identity()],[{amount:1,targetUid:'owner'},identity()]
+ ];
+ for(const [patch,auth]of cases){const f=fixture(),before=f.all();await assert.rejects(f.run({targetUid:'player',op:'cashier-transfer',requestId:'cashier_reject_0001',...patch},auth));assert.deepEqual(f.all(),before);}
+ const f=fixture();Object.assign(f.records.get('memberships/player_clubA'),{balance:100,bonusOpen:25,status:'banned'});
+ await assert.rejects(f.run({targetUid:'player',op:'cashier-transfer',amount:1}),/approved player/);
+ await f.run({targetUid:'player',op:'cashier-transfer',amount:-75});assert.equal(f.records.get('memberships/player_clubA').balance,25);
+});
+
+test('cashier honors legacy bonus fallback and revalidates balance on each new request',async()=>{
+ const f=fixture(),m=f.records.get('memberships/player_clubA');Object.assign(m,{balance:100,bonusTotal:30});delete m.bonusOpen;
+ await f.run({targetUid:'player',op:'cashier-transfer',amount:-70,requestId:'cashier_legacy_0001'});
+ const before=f.all();await assert.rejects(f.run({targetUid:'player',op:'cashier-transfer',amount:-70,requestId:'cashier_legacy_0002'}),/available regular chips/);assert.deepEqual(f.all(),before);
+});
+
 test('approved manager and verified HAIM can approve and reject pending members using the real callable',async()=>{
  for(const auth of [identity(),identity('haim','haim29071994@gmail.com')])for(const op of ['approve','reject']){
   const f=fixture();

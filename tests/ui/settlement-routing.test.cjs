@@ -12,6 +12,7 @@ const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
 const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManagementAppTest=App;');
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/club-ui.js'),'utf8'));
+w.eval(fs.readFileSync(require.resolve('../../assets/js/club-cashier.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js'),'utf8'));
 w.eval(script);w.__pkMuted=true;
 w.open=()=>assert.fail('Reports must not open another site or lose the current authenticated session');
@@ -81,8 +82,9 @@ async function assertStaffLinks(fixture){
  for(const source of ['navigation','lobby','cashier']){
   if(source==='cashier')await React.act(async()=>button('Cashier').click());
   const links=[...doc.querySelectorAll('button[aria-label="Club settlement"]')];
-  assert.equal(links.length,source==='cashier'?2:1);
-  await React.act(async()=>(source==='navigation'?settlementNav():links.at(source==='cashier'?-1:0)).click());
+  assert.equal(links.length,source==='cashier'?0:1);
+  if(source==='cashier'){assert.ok(doc.querySelector('[aria-label="Club cashier"]'));assert.match(doc.body.textContent,/Other human player/);assert.equal(new URL(w.location.href).searchParams.get('v'),'cashier');}
+  await React.act(async()=>(source==='navigation'||source==='cashier'?settlementNav():links[0]).click());
   assert.equal(new URL(w.location.href).searchParams.get('v'),'settlement');
   assert.equal(settlementNav().getAttribute('aria-current'),'page','the visible navigation marks the current report');
   assert.match(doc.body.textContent,/Player breakdown/);assertEnglishUi(doc.body,'Staff settlement report');

@@ -16,6 +16,17 @@ const rows=async id=>(await db.collection('tables').where('tournamentId','==',id
 const fresh=async(user,balance=100000)=>{await db.doc('users/'+user).set({username:user});await db.doc(`memberships/${user}_${club}`).set({uid:user,clubId:club,status:'approved',role:user===owner?'club_owner':'player',balance});};
 before(async()=>{await db.doc('clubs/'+club).set({ownerUid:owner});await fresh(owner,1000000);await fresh(uid);await fresh('opponent');});
 after(async()=>{await db.terminate();await admin.app().delete();});
+test('cashier serializes competing claims and replays one receipt without taking bonus chips',async()=>{
+ const target='cashier-concurrent';await fresh(target,150);await db.doc(`memberships/${target}_${club}`).update({bonusOpen:50,bonusTotal:50});
+ const treasuryBefore=await bank(owner),request={clubId:club,targetUid:target,op:'cashier-transfer',amount:-100};
+ const outcomes=await Promise.allSettled([call('pkClubMember',owner,{...request,requestId:'cashier_concurrent_0001'}),call('pkClubMember',owner,{...request,requestId:'cashier_concurrent_0002'})]);
+ assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);assert.equal(await bank(target),50);assert.equal(await bank(owner),treasuryBefore+100);
+ assert.equal((await get(`memberships/${target}_${club}`)).bonusOpen,50);
+ const won=outcomes.findIndex(r=>r.status==='fulfilled');await call('pkClubMember',owner,{...request,requestId:'cashier_concurrent_000'+(won+1)});
+ assert.equal(await bank(target),50);assert.equal(await bank(owner),treasuryBefore+100);
+ await assert.rejects(call('pkClubMember',uid,{...request,amount:1}),e=>e.code==='permission-denied');
+ assert.equal((await db.collection('gameLog').where('uid','==',target).get()).size,0);
+});
 test('profile edits update club copies but cannot change identity, roles or chips',async()=>{
  const u='profile-edit';await fresh(u,250);await db.doc(`memberships/${u}_second`).set({uid:u,clubId:'second',balance:75,role:'player'});
  await call('pkProfile',u,{patch:{username:'שם חדש',photo:'',avatarSeed:'test-avatar'}});

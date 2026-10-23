@@ -100,7 +100,13 @@ exports.pkClubCreate=onCall(opts,async r=>command(r,'club-create',async(tx,db,ui
 }));
 exports.pkClubMember=onCall(opts,async r=>command(r,'club-member',async(tx,db,uid,now)=>{
  const cid=key(r.data.clubId),club=await A.clubManager(tx,db,cid,r),target=key(r.data.targetUid),ref=db.doc(`memberships/${target}_${cid}`),m=await tx.get(ref);if(!m.exists)fail('not-found','Membership missing');const op=r.data.op,p=m.data(),audit={clubId:cid,uid,targetUid:target,at:now,action:'member-'+op};
- if(op==='transfer'){
+ if(op==='transfer'||op==='cashier-transfer'){
+  if(op==='cashier-transfer'){
+   const amount=number(r.data.amount,NaN,-10000000,10000000);
+   if(p.isBot||target.startsWith('bot_')||!['approved','banned'].includes(p.status)||(amount>0&&p.status!=='approved'))fail('failed-precondition','Choose an approved player for Send Out');
+   const balance=Number(p.balance)||0,bonus=cash(Math.max(0,Math.min(balance,Number(p.bonusOpen??p.bonusTotal)||0)));
+   if(amount<0&&-amount>cash(Math.max(0,balance-bonus)))fail('failed-precondition','Claim Back exceeds available regular chips. Bonus and table chips cannot be claimed.');
+  }
   const fundingUid=key(club.ownerUid);if(target===fundingUid)fail('invalid-argument','Choose a member other than the club treasury');const value=number(r.data.amount,NaN,-10000000,10000000);if(!value)fail('invalid-argument','Amount required');const write=await prepareLedger(db,tx,cid,[{type:'credit',uid:fundingUid,amount:-value},{type:'credit',uid:target,amount:value}],`transfer:${uid}`,now);write();Object.assign(audit,{fundingUid,amount:value});
  }else if(op==='ban'||op==='unban'){
   if(target===club.ownerUid)fail('failed-precondition','Cannot ban the club owner');

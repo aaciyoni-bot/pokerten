@@ -130,6 +130,7 @@ exports.pkTableManage=onCall(opts,async r=>command(r,'table-manage',async(tx,db,
  const ref=db.doc('tables/'+key(r.data.tableId)),snap=await tx.get(ref),op=r.data.op;
  if(!snap.exists){const closed=op==='delete'?await tx.get(db.doc('_pkClosedTables/'+ref.id)):null;if(!closed?.exists)fail('not-found','Table missing');await A.tableManager(tx,db,closed.data().clubId,r);return{ok:true,deleted:true,queued:false};}
  const t=snap.data();await A.tableManager(tx,db,t.clubId||'main',r);
+ if(t.cardGameVersion===1){if(op==='delete')return require('./cardGames').__cardInternals.closeTable(tx,db,ref,t,uid,now);fail('failed-precondition','Use the card-game controls');}
  if(op==='delete'&&t.tournamentId){
   const event=await tx.get(db.doc('tournaments/'+key(t.tournamentId)));
   if(!event.exists||!['done','cancelled'].includes(event.data().status))fail('failed-precondition','Tournament tables close after the tournament finishes or is cancelled');

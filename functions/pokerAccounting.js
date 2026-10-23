@@ -23,6 +23,7 @@ function buildAccounting(members,logs,tables,{now=Date.now(),ownerUid,god=false,
   const g=t.gameState||{},live=['preflop','flop','discard','turn','river'].includes(g.phase);
   for(const seat of Object.values(t.players||{})){
    const p=players[seat.uid];if(!p||seat.isBot)continue;
+   if(t.cardGameVersion===1){const held=t.type==='durak'?(t.status==='playing'&&seat.inHand?cash(t.settings.buyIn):0):cash(seat.stack);p.onTables=cash(p.onTables+held);p.chips=cash(p.balance+p.onTables);p.openSessions++;continue;}
    const available=cash(cash(seat.stack)+cash(seat.bet)+cash(seat.pendingTopUp));
    let held=available;
    // A same-UID seat can leave and rejoin while the prior hand is still live.

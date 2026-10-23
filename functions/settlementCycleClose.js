@@ -5,7 +5,7 @@
 const A=require('./pokerAuthority'),S=require('./settlementStore');
 const stateRef=(db,cid)=>S.root(db,cid).collection('state').doc('tableClosure');
 const activeEvent=t=>!['done','cancelled'].includes(t.status);
-const protectedTable=t=>t.authorityVersion===2&&t.settings?.serverEngine===true;
+const protectedTable=t=>t.authorityVersion===2&&(t.settings?.serverEngine===true||t.cardGameVersion===1);
 const legacySafe=t=>!Object.keys(t.players||{}).length&&['waiting','showdown','ended','finished','done','gameOver','gameover'].includes(t.gameState?.phase||t.phase||t.status||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Number(t.pot||t.gameState?.pot||0);
 const spinRunning=t=>t.settings?.spinMode&&t.spin&&!t.spin.fundingPending&&!t.spinDone;
 const publicState=s=>s?{id:s.id,status:s.status,fromCycleId:s.fromCycleId,nextCycleId:s.nextCycleId||null,remaining:s.remaining||0,startedAt:s.startedAt,error:s.error||null}:null;
@@ -35,6 +35,7 @@ async function advance(db,cid,id,finish){
   try{await db.runTransaction(async tx=>{
    const club=S.data(await tx.get(clubRef));if(club?.settlementClosing?.id!==id)return;
    const snap=await tx.get(d.ref);if(!snap.exists)return;const t=snap.data(),now=Date.now(),life=require('./pokerTableLifecycle');
+   if(t.cardGameVersion===1)return require('./cardGames').__cardInternals.closeTable(tx,db,d.ref,t,initial.by,now);
    if(t.tournamentId){const event=S.data(await tx.get(db.doc('tournaments/'+A.key(t.tournamentId))));if(!event||activeEvent(event))A.fail('failed-precondition','Finish the active tournament before closing its table.');return life.archiveTable(tx,db,d.ref,t,initial.by,now);}
    if(!protectedTable(t)){if(!legacySafe(t))A.fail('failed-precondition','A legacy table needs an accounting review.');return life.archiveTable(tx,db,d.ref,t,initial.by,now);}
    if(spinRunning(t))return;

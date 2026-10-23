@@ -38,10 +38,23 @@ jobs:
            const selected=clubs.filter(x=>String(x.data.name||'').trim().toLowerCase()==='netabel');if(selected.length!==1)throw Error('scope-ambiguous');
            const filter={fieldFilter:{field:{fieldPath:'clubId'},op:'EQUAL',value:{stringValue:selected[0].id}}};
            const fields=['type','authorityVersion','cardGameVersion','status','createdAt','closedAt','tournamentId','closeRequested','settings.serverEngine'];
-           const [tables,closed]=await Promise.all([query('tables',fields,filter),query('_pkClosedTables',fields,filter)]);
-           if(tables.length>100)throw Error('scope-ambiguous');
-           const safe=x=>({tableRef:createHash('sha256').update(x.id).digest('hex').slice(0,10),type:x.data.type,authority:x.data.authorityVersion||0,cardVersion:x.data.cardGameVersion||0,status:['setup','waiting','playing','showdown','ended','finished','done','gameover'].includes(x.data.status)?x.data.status:'other',createdAt:x.data.createdAt||null,closedAt:x.data.closedAt||null,tournament:Boolean(x.data.tournamentId),closing:Boolean(x.data.closeRequested),serverEngine:x.data.settings?.serverEngine===true});
-           console.log('CARD_LOBBY_DIAGNOSTIC '+JSON.stringify({activeCounts:tables.reduce((r,x)=>(r[x.data.type]=(r[x.data.type]||0)+1,r),{}),active:tables.filter(x=>['durak','ofc'].includes(x.data.type)).map(safe),archivedResultsTruncated:closed.length>100,archived:closed.filter(x=>['durak','ofc'].includes(x.data.type)).map(safe)}));
+          
+           const [durak,ofc,closed,receipts]=await Promise.all([
+           query('tables',fields.concat('clubId'),{fieldFilter:{field:{fieldPath:'type'},op:'EQUAL',value:{stringValue:'durak'}}}),
+           query('tables',fields.concat('clubId'),{fieldFilter:{field:{fieldPath:'type'},op:'EQUAL',value:{stringValue:'ofc'}}}),
+           query('_pkClosedTables',fields.concat('clubId'),{fieldFilter:{field:{fieldPath:'type'},op:'EQUAL',value:{stringValue:'durak'}}}),
+           query('_pkRequests',['at','result.tableId'],{fieldFilter:{field:{fieldPath:'scope'},op:'EQUAL',value:{stringValue:'card-table-create'}}})
+           ]);
+           const safe=x=>({tableRef:createHash('sha256').update(x.id).digest('hex').slice(0,10),inReportedClub:x.data.clubId===selected[0].id,type:x.data.type,authority:x.data.authorityVersion||0,cardVersion:x.data.cardGameVersion||0,status:['setup','waiting','playing','showdown','ended','finished','done','gameover'].includes(x.data.status)?x.data.status:'other',createdAt:x.data.createdAt||null,closedAt:x.data.closedAt||null,tournament:Boolean(x.data.tournamentId),closing:Boolean(x.data.closeRequested)});
+           console.log('CARD_LOBBY_DIAGNOSTIC '+JSON.stringify({activeDurak:durak.map(safe),activeOfc:ofc.map(safe),archivedDurak:closed.map(safe),receiptsCount:receipts.length,receipts:receipts.sort((a,b)=>b.data.at-a.data.at).slice(0,20).map(x=>({at:x.data.at,tableRef:createHash('sha256').update(x.data.result?.tableId||'').digest('hex').slice(0,10)}))}));
+           const {spawnSync}=require('node:child_process');
+           const cli=require.resolve('firebase-tools/lib/bin/firebase');
+           const logs=spawnSync(process.execPath,[cli,'functions:log','--only','pkCardTableCreate,pkcardtablecreate','--lines','120','--project','pokerten','--non-interactive'],{encoding:'utf8',timeout:45000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']});
+           const raw=String(logs.stdout||'').replace(/\u001b\[[0-9;]*m/g,'');
+           const patterns=[['permission-denied',/permission.denied|Club owner or approved manager|Approved membership required/i],['invalid-input',/invalid.argument|Invalid numeric|Unknown card game|Choose 36|Maximum/i],['serialization',/Cannot use.*undefined|invalid Firestore|Cannot encode|Unsupported field value|not a valid Firestore|serialize|serialization|NaN/i],['read-after-write',/all reads.*before.*writes|read.*after.*write/i],['missing-index',/requires an index/i],['internal',/Unhandled error|INTERNAL|TypeError|ReferenceError/i],['auth',/unauthenticated|unauthorized|authentication required/i],['not-found',/not.found|Club missing|table missing/i]];
+           const observed=raw.split('\n').filter(line=>/^\d{4}-\d\d-\d\dT/.test(line));
+           console.log('CARD_CREATE_LOG_DIAGNOSTIC '+JSON.stringify({available:logs.status===0,entries:observed.length,latest:observed.map(line=>line.match(/^\d{4}-\d\d-\d\dT\S+/)?.[0]).filter(Boolean).sort().at(-1)||null,categories:patterns.map(([category,re])=>({category,count:observed.filter(line=>re.test(line)).length})).filter(x=>x.count)}));
+          
           }
           main().catch(error=>{const reason=/^(auth-unavailable|scope-ambiguous|read-http-\d+)$/.test(error.message)?error.message:'read-unavailable';console.log('CARD_LOBBY_DIAGNOSTIC '+JSON.stringify({state:'failed',reason}));process.exitCode=1;});
           JS

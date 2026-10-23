@@ -1117,6 +1117,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/player-wallet-blue.css?v=314">
 <link rel="stylesheet" href="assets/css/club-orbital.css?v=315">
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=321">
+<link rel="stylesheet" href="assets/css/reference-shell.css?v=324">
+<link rel="stylesheet" href="assets/css/card-games-reference.css?v=324">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -2327,7 +2329,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
     setPendChat(q => [...q.filter(x => Date.now() - x.at < 6000), msg]);
     playSnd(gift ? 'chip' : 'msg');
     try {
-      if(gameId==='poker')await pokerCommand('pkSeat',{tableId:tableDocId,op:'chat',text:msg.text||msg.emoji||msg.giftE,emoji:msg.emoji,gift:msg.gift,giftE:msg.giftE,to:msg.to});else await window.fb.updateDoc(ref(),{chat:[...rawChat,msg].slice(-40)});
+      if(['poker','durak','ofc'].includes(gameId))await pokerCommand(gameId==='poker'?'pkSeat':'pkCardGame',{tableId:tableDocId,op:'chat',text:msg.text||msg.emoji||msg.giftE,emoji:msg.emoji,gift:msg.gift,giftE:msg.giftE,to:msg.to});else await window.fb.updateDoc(ref(),{chat:[...rawChat,msg].slice(-40)});
     } catch (e) {
       setPendChat(q => q.filter(x => x !== msg));
       showToast("Message didn't send — try again", "error");
@@ -2336,7 +2338,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
   const toggleTableMute = async () => {
     if (!canModerate) return;
     try {
-      if(gameId==='poker')await pokerCommand('pkTableManage',{tableId:tableDocId,op:'mute',muted:!chatMuted});else await window.fb.updateDoc(ref(),{chatMuted:!chatMuted});
+      if(['poker','durak','ofc'].includes(gameId))await pokerCommand(gameId==='poker'?'pkTableManage':'pkCardGame',{tableId:tableDocId,op:'mute',muted:!chatMuted});else await window.fb.updateDoc(ref(),{chatMuted:!chatMuted});
     } catch (e) {}
   };
   const callFloor = async () => {
@@ -2357,7 +2359,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
       at: Date.now()
     };
     try {
-      if(gameId==='poker')await pokerCommand('pkSeat',{tableId:tableDocId,op:'floor'});
+      if(['poker','durak','ofc'].includes(gameId))await pokerCommand(gameId==='poker'?'pkSeat':'pkCardGame',{tableId:tableDocId,op:'floor'});
       else await window.fb.updateDoc(ref(),{chat:[...rawChat,msg].slice(-40),floorCall:{uid:user.uid,name:user.username,at:Date.now()}});
     } catch (e) {showToast(e.message||'Could not call the floor','error');return;}
     showToast("🟡 Floor called — the manager has been notified", "success");
@@ -2366,7 +2368,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
   const clearFloor = async () => {
     if (!canModerate) return;
     try {
-      if(gameId==='poker')await pokerCommand('pkTableManage',{tableId:tableDocId,op:'clear-floor'});
+      if(['poker','durak','ofc'].includes(gameId))await pokerCommand(gameId==='poker'?'pkTableManage':'pkCardGame',{tableId:tableDocId,op:'clear-floor'});
       else await window.fb.updateDoc(ref(),{floorCall:null});
     } catch (e) {showToast(e.message||'Could not clear the floor request','error');}
   };
@@ -6859,22 +6861,21 @@ function LobbyView({
     stake: 5,
     maxPlayers: 2
   });
-  const createOfc = async () => {
-    try {
-      const bi = Math.max(1, Number(ofcOpts.buyIn) || 100);
-      const stk = Math.min(bi, Math.max(0.25, Number(ofcOpts.stake) || 5));
-      await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), ofcTableDoc(user.uid, {
-        buyIn: bi,
-        stake: round2(stk),
-        maxPlayers: Math.min(3, Math.max(2, Number(ofcOpts.maxPlayers) || 2)),
-        rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT
-      }));
-      setShowCreateOfc(false);
-      showToast("Chinese poker table opened! 🀄", "success");
-    } catch (e) {
-      showToast("Error", "error");
-    }
+  const [openingCardGame,setOpeningCardGame]=useState('');
+  const cardCreateLock=useRef(false);
+  const createCardTable=async(type,settings)=>{
+    if(cardCreateLock.current)return;
+    cardCreateLock.current=true;setOpeningCardGame(type);
+    try{
+      const result=await pokerCommand('pkCardTableCreate',{clubId:CLUB_ID,type,settings});
+      if(type==='durak')setShowCreateDurak(false);else setShowCreateOfc(false);
+      showToast(type==='durak'?'Durak table opened!':'Chinese poker table opened!','success');
+      const table={docId:result.tableId,id:result.tableId,type,clubId:CLUB_ID};
+      if(type==='durak')onJoinDurak(table);else onJoinOfc(table);
+    }catch(e){showToast(e.message||'Could not open the table. Please try again.','error');}
+    finally{cardCreateLock.current=false;setOpeningCardGame('');}
   };
+  const createOfc=()=>createCardTable('ofc',{...ofcOpts,buyIn:Number(ofcOpts.buyIn),stake:Number(ofcOpts.stake),maxPlayers:Number(ofcOpts.maxPlayers)});
   const bwConf = clubSettings?.bonusWheel || {};
   // Bonus games (wheel + scratch card) are OFF in the build. A club setting is
   // not enough: this club's doc still says enabled:true from before, and the
@@ -7065,62 +7066,21 @@ function LobbyView({
       showToast(typeof e === 'string' ? e : "Bonus error", "error");
     }
   };
-  const handleCreateDurak = async () => {
-    await window.fb.addDoc(window.fb.collection(window.fb.db, "tables"), {
-      type: 'durak',
-      clubId: CLUB_ID,
-      createdAt: Date.now(),
-      hostUid: user.uid,
-      status: 'setup',
-      settings: {
-        ...durakOpts,
-        buyIn: Math.max(1, Number(durakOpts.buyIn) || 0),
-        rakePercent: clubSettings?.rakePct ?? DEFAULT_RAKE_PCT,
-        bluffEnabled: !!durakOpts.bluff
-      },
-      players: {
-        [user.uid]: {
-          uid: user.uid,
-          name: user.username,
-          photo: user.photo || '',
-          avatarSeed: user.avatarSeed || '',
-          seatIndex: 0,
-          cards: [],
-          isBot: false,
-          out: false,
-          left: false
-        }
-      },
-      pot: 0,
-      deck: [],
-      trumpCard: null,
-      trumpSuit: null,
-      attackerUid: null,
-      defenderUid: null,
-      pairs: [],
-      roundCap: 6,
-      finishOrder: [],
-      chat: [],
-      lastResults: null,
-      turnStartedAt: null
-    });
-    setShowCreateDurak(false);
-    showToast("Durak table opened!", "success");
-  };
+  const handleCreateDurak=()=>createCardTable('durak',{...durakOpts,buyIn:Number(durakOpts.buyIn),maxPlayers:Number(durakOpts.maxPlayers),deckSize:Number(durakOpts.deckSize)});
   const [deletingTables,setDeletingTables]=useState({});
   const deleteTableLocks=useRef(new Set());
   const handleDelete = async (e,t) => {
     e.stopPropagation();
     const id=t.docId||t.id;
     if(deleteTableLocks.current.has(id)||t.closeRequested||deletingTables[id])return;
-    if(t.type!=='poker')return showToast('This game requires its own server table controls.','error');
+    if(!['poker','durak','ofc'].includes(t.type))return showToast('This game requires its own server table controls.','error');
     if(t.tournamentId&&!t.tournament?.finished)return showToast('Tournament tables are managed from Tournaments.','info');
     if(t.settings?.spinMode&&t.spin&&!t.spin.fundingPending&&!t.spinDone)return showToast('The Spin must finish before its table can be deleted.','info');
     const msg=t.tournamentId||t.spinDone?'Remove this completed table? Results and previous payments stay unchanged.':Object.keys(t.players||{}).length?'Close this table? The current hand finishes first and remaining seat balances return once. Past entry fees and game results stay unchanged.':'Delete this empty table?';
     if(!window.confirm(msg))return;
     deleteTableLocks.current.add(id);setDeletingTables(v=>({...v,[id]:'pending'}));
     try {
-      const result=await pokerCommand('pkTableManage',{tableId:id,op:'delete'});
+      const result=await pokerCommand(t.type==='poker'?'pkTableManage':'pkCardGame',{tableId:id,op:'delete'});
       setDeletingTables(v=>({...v,[id]:result.queued?'queued':'deleted'}));
       showToast(result.queued?'Table will close after this hand; balances will be returned.':'Table deleted. Previous payments and game results are unchanged.',result.queued?'info':'success');
     }catch(err){
@@ -7527,6 +7487,8 @@ function LobbyView({
     value: n
   }, n)))), React.createElement("button", {
     onClick: createOfc,
+    disabled: !!openingCardGame,
+    "aria-busy": openingCardGame==='ofc',
     className: "bg-gradient-to-b from-teal-500 to-teal-700 hover:from-teal-400 text-white px-8 py-3 rounded-xl font-black shadow-lg"
   }, "Open table")), React.createElement("p", {
     className: "text-xs text-slate-500 font-bold mt-2"
@@ -8005,6 +7967,8 @@ function LobbyView({
     className: "px-6 py-2 text-slate-400 hover:text-white font-bold"
   }, "Cancel"), React.createElement("button", {
     onClick: handleCreateDurak,
+    disabled: !!openingCardGame,
+    "aria-busy": openingCardGame==='durak',
     className: "bg-blue-600 hover:bg-blue-500 text-white px-8 py-2 rounded-xl font-bold shadow-lg"
   }, "Confirm & open")))), React.createElement("div", {
     className: "flex flex-col gap-2.5"
@@ -13971,916 +13935,71 @@ const durakDeck = size => {
   return d;
 };
 const beatsCard = (c, t, trump) => c.suit === t.suit && c.v > t.v || c.suit === trump && t.suit !== trump;
-function DurakTable({
-  tableDocId,
-  user,
-  clubSettings,
-  onLeave,
-  showToast
-}) {
-  const [tableState, setTableState] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [godViewRequested, setGodView] = useState(false);
-  const godView = godViewRequested && isGodUser(user);
-  useEffect(() => setGodView(false), [user.uid]);
-  const [timeLeft, setTimeLeft] = useState(DURAK_TIME);
-  const [resHide, setResHide] = useState(false);
-  useEffect(() => {
-    setResHide(false);
-  }, [tableState && tableState.status]);
-  const stayLeft = useShowdownSweep(tableState, () => tblRef(), Number(tableState?.settings?.maxPlayers) || 5, null);
-  const [bluffMode, setBluffMode] = useState(false);
-  const tableRef = useRef(null);
-  const settlingRef = useRef(false);
-  const synthRef = useRef(null);
-  const isGod = isGodUser(user);
-  const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
-  const tblRef = () => window.fb.doc(window.fb.db, "tables", tableDocId);
-  const T = tableState || {};
-  const setts = T.settings || {};
-  const players = T.players || {};
-  const me = players[user.uid];
-  const isSeated = !!me;
-  const isHost = T.hostUid === user.uid;
-  const pairs = T.pairs || [];
-  const undefPairs = pairs.filter(x => !x.d);
-  const iAmDefender = T.defenderUid === user.uid;
-  const iAmAttackerMain = T.attackerUid === user.uid;
-  const myTurn = T.turnUid === user.uid && T.status === 'playing';
-  const toastErr = m => showToast(m, 'error');
-  const clonePlayers = pl => {
-    const o = {};
-    Object.entries(pl || {}).forEach(([k, v]) => o[k] = {
-      ...v,
-      cards: [...(v.cards || [])]
-    });
-    return o;
+function useCardGame(tableDocId,user,showToast,onLeave,wantPeek=false){
+  const [publicState,setPublic]=useState(null),[privateState,setPrivate]=useState(null),[peek,setPeek]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[clock,setClock]=useState(Date.now());
+  const current=useRef(null),lock=useRef(false);
+  useEffect(()=>{
+    setPublic(null);setPrivate(null);setPeek(null);setError('');
+    const fail=e=>{setError(e.message||'Unable to load the table');showToast(e.message||'Unable to load the table','error');};
+    const pub=window.fb.onSnapshot(window.fb.doc(window.fb.db,'tables',tableDocId),snap=>{
+      if(!snap.exists()){showToast('The table closed','info');onLeave();return;}
+      const t={...snap.data(),id:snap.id,docId:snap.id};
+      if(t.cardGameVersion!==1){setError('This is a legacy table. Open a new table from the lobby.');return;}
+      current.current=t;setPublic(t);
+    },fail);
+    const priv=window.fb.onSnapshot(window.fb.doc(window.fb.db,'tables',tableDocId,'priv',user.uid),snap=>setPrivate(snap.exists()?snap.data():null),fail);
+    return()=>{pub();priv();};
+  },[tableDocId,user.uid]);
+  useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[]);
+  useEffect(()=>{
+    if(!publicState||!wantPeek||!isGodUser(user)){setPeek(null);return;}
+    let stopped=false;
+    window.fb.fx('pkCardPeek',{tableId:tableDocId,seq:publicState.seq}).then(p=>{if(!stopped)setPeek(p);}).catch(()=>{if(!stopped)setPeek(null);});
+    return()=>{stopped=true;};
+  },[wantPeek,publicState?.seq,tableDocId,user.uid]);
+  const godView=!!(wantPeek&&isGodUser(user)&&peek&&peek.seq===publicState?.seq);
+  const table=useMemo(()=>{
+    if(!publicState)return null;
+    const t={...publicState,players:{...publicState.players},deck:Array.from({length:publicState.deckCount||0},(_,i)=>({id:'stock-'+i,hidden:true}))};
+    if(t.players[user.uid]){
+      const p={...t.players[user.uid]};
+      if(privateState?.seq===t.seq)Object.assign(p,privateState);
+      else if(t.type==='durak')p.cards=[];else p.pending=[];
+      t.players[user.uid]=p;
+    }
+    if(godView)Object.assign(t,{players:peek.players,deck:peek.deck,pairs:peek.pairs});
+    return t;
+  },[publicState,privateState,godView,peek,user.uid]);
+  const run=async(op,data={})=>{
+    if(lock.current)return false;lock.current=true;setBusy(true);
+    try{await pokerCommand('pkCardGame',{tableId:tableDocId,op,...(['play','take','pass','accept','challenge','confirm'].includes(op)?{seq:current.current?.seq}:{}),...data});return true;}
+    catch(e){showToast(e.message||'The action failed. Please try again.','error');return false;}
+    finally{lock.current=false;setBusy(false);}
   };
-  const activeList = pl => Object.values(pl).filter(p => !p.out && !p.left).sort((a, b) => a.seatIndex - b.seatIndex);
-  const nextActive = (pl, uid) => {
-    const arr = activeList(pl);
-    if (!arr.length) return null;
-    const seat = pl[uid]?.seatIndex ?? -1;
-    const after = arr.filter(p => p.seatIndex > seat).concat(arr.filter(p => p.seatIndex <= seat && p.uid !== uid));
-    return after[0]?.uid ?? null;
-  };
-  const pairRanks = prs => {
-    const s = new Set();
-    prs.forEach(x => {
-      s.add(x.a.v);
-      if (x.d) s.add(x.d.v);
-    });
-    return s;
-  };
-  const attackerFor = (pl, preferUid, defUid) => {
-    let a = preferUid,
-      guard = 0;
-    while (a && guard < 10 && (a === defUid || !pl[a] || pl[a].out || pl[a].left)) {
-      a = nextActive(pl, a);
-      guard++;
-    }
-    return a && a !== defUid ? a : null;
-  };
-  useEffect(() => {
-    if (!tableDocId) return;
-    const unsub = window.fb.onSnapshot(tblRef(), d => {
-      if (d.exists()) {
-        const t = {
-          id: d.id,
-          ...d.data()
-        };
-        tableRef.current = t;
-        setTableState(t);
-        setLoading(false);
-      } else {
-        showToast("The table closed", "error");
-        onLeave();
-      }
-    });
-    return () => unsub();
-  }, [tableDocId]);
-  const ch = useTableChat(tableState, tableDocId, user, 'durak', showToast);
-  const prevDSnd = useRef({
-    status: '',
-    chatLen: 0,
-    pairsN: 0,
-    turnMine: false
-  });
-  useEffect(() => {
-    if (!tableState) return;
-    const ps = prevDSnd.current;
-    if (T.status === 'showdown' && ps.status !== 'showdown') playSnd('win');
-    if (T.status === 'playing' && ps.status !== 'playing') playSnd('deal');
-    const pn = (T.pairs || []).length;
-    if (pn > ps.pairsN) playSnd('tile');
-    const mine = T.turnUid === user.uid && T.status === 'playing';
-    if (mine && !ps.turnMine) {
-      try {
-        navigator.vibrate && navigator.vibrate([90, 60, 90]);
-      } catch (e) {}
-    }
-    const cl = (T.chat || []).length;
-    if (ps.chatLen && cl > ps.chatLen) playSnd('msg');
-    prevDSnd.current = {
-      status: T.status,
-      chatLen: cl,
-      pairsN: pn,
-      turnMine: mine
-    };
-  }, [tableState]);
-  // Waiting happens INSIDE the table (like poker): anyone with this table open
-  // and visible is automatically "staying" — the showdown sweep only clears
-  // players whose tab is closed/asleep. No more being thrown back to the lobby
-  // (and the table deleted under you) just because you watched the results.
-  useEffect(() => {
-    if (!isSeated || T.status !== 'showdown' || !T.showdownAt) return;
-    const autoStay = () => {
-      if (document.visibilityState !== 'visible') return;
-      const cur = tableRef.current?.players?.[user.uid];
-      if (!cur || (cur.stayAt || 0) >= T.showdownAt) return;
-      window.fb.updateDoc(tblRef(), {
-        [`players.${user.uid}.stayAt`]: Date.now()
-      }).catch(() => {});
-    };
-    autoStay();
-    document.addEventListener('visibilitychange', autoStay);
-    return () => document.removeEventListener('visibilitychange', autoStay);
-  }, [isSeated, T.status, T.showdownAt]);
-  // Spectator queue: watch the running game from inside the table and get
-  // seated automatically when it ends.
-  const onWaitNext = (T.waitlist || []).some(w => w && w.uid === user.uid);
-  const joinNextGame = async () => {
-    try {
-      const wl = (tableRef.current?.waitlist || []).filter(w => w && w.uid !== user.uid);
-      await window.fb.updateDoc(tblRef(), {
-        waitlist: [...wl, { uid: user.uid, name: user.username, at: Date.now() }]
-      });
-    } catch (e) {
-      toastErr("Error joining the queue");
-    }
-  };
-  const leaveNextGame = async () => {
-    try {
-      const wl = (tableRef.current?.waitlist || []).filter(w => w && w.uid !== user.uid);
-      await window.fb.updateDoc(tblRef(), { waitlist: wl });
-    } catch (e) {}
-  };
-  useEffect(() => {
-    if (isSeated || !onWaitNext || !['setup', 'showdown'].includes(T.status)) return;
-    (async () => {
-      await leaveNextGame();
-      await handleJoin();
-    })();
-  }, [isSeated, onWaitNext, T.status]);
-  // Keep the screen awake while the table is open (same as poker) — watching a
-  // game without touching the phone must not dim/lock the screen.
-  useEffect(() => {
-    let lock = null,
-      released = false;
-    const acquire = async () => {
-      try {
-        if (!released && document.visibilityState === 'visible' && navigator.wakeLock) {
-          lock = await navigator.wakeLock.request('screen');
-        }
-      } catch (e) {}
-    };
-    const onVis = () => {
-      if (document.visibilityState === 'visible') acquire();
-    };
-    acquire();
-    document.addEventListener('visibilitychange', onVis);
-    return () => {
-      released = true;
-      document.removeEventListener('visibilitychange', onVis);
-      try {
-        lock && lock.release();
-      } catch (e) {}
-      lock = null;
-    };
-  }, []);
-  // Presence heartbeat (same as poker) — lets the guard fast-skip a player
-  // whose tab is closed instead of stalling the whole table for 35s.
-  useEffect(() => {
-    if (!isSeated) return;
-    const beat = () => window.fb.updateDoc(tblRef(), {
-      [`players.${user.uid}.lastSeen`]: Date.now()
-    }).catch(() => {});
-    beat();
-    const iv = setInterval(beat, 25000);
-    return () => clearInterval(iv);
-  }, [isSeated, tableDocId]);
-  // My own device lost network → show it to ME immediately (same as poker)
-  const [dOffline, setDOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
-  useEffect(() => {
-    const on = () => setDOffline(false),
-      off = () => setDOffline(true);
-    window.addEventListener('online', on);
-    window.addEventListener('offline', off);
-    return () => {
-      window.removeEventListener('online', on);
-      window.removeEventListener('offline', off);
-    };
-  }, []);
-  const startGame = async () => {
-    const t = tableRef.current;
-    if (!t) return;
-    if (!(t.hostUid === user.uid || isSuperAdmin)) return;
-    if (!['setup', 'showdown'].includes(t.status)) return;
-    if (Object.keys(t.players || {}).length < 2) return toastErr("Need at least 2 players");
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const snap = await tr.get(tblRef());
-        if (!snap.exists()) throw "Table doesn't exist";
-        const tbl = snap.data();
-        if (!['setup', 'showdown'].includes(tbl.status)) throw "Game already running";
-        const buyIn = Number(tbl.settings.buyIn) || 0;
-        const pl = {};
-        Object.entries(tbl.players).forEach(([k, v]) => pl[k] = {
-          ...v,
-          cards: [],
-          out: false,
-          left: false
-        });
-        const uids = Object.values(pl).sort((a, b) => a.seatIndex - b.seatIndex).map(p => p.uid);
-        const uSnaps = {};
-        for (const uid of uids) {
-          if (pl[uid].isBot) continue;
-          const s = await tr.get(memDoc(uid));
-          if (!s.exists() || (s.data().balance || 0) < buyIn) throw `${pl[uid].name} doesn't have enough chips (${formatMoney(buyIn)})`;
-          uSnaps[uid] = s;
-        }
-        for (const uid of Object.keys(uSnaps)) tr.update(uSnaps[uid].ref, {
-          balance: round2((uSnaps[uid].data().balance || 0) - buyIn)
-        });
-        const deck = durakDeck(Number(tbl.settings.deckSize) || 36);
-        for (let i = 0; i < 6; i++) for (const uid of uids) pl[uid].cards.push(deck.pop());
-        const trumpCard = deck[0];
-        const trumpSuit = trumpCard.suit;
-        let low = 99,
-          attacker = uids[0];
-        uids.forEach(uid => pl[uid].cards.forEach(c => {
-          if (c.suit === trumpSuit && c.v < low) {
-            low = c.v;
-            attacker = uid;
-          }
-        }));
-        const defender = nextActive(pl, attacker);
-        tr.update(tblRef(), {
-          status: 'playing',
-          pot: round2(buyIn * uids.filter(u => !pl[u].isBot).length),
-          deck,
-          trumpCard,
-          trumpSuit,
-          players: pl,
-          pairs: [],
-          attackerUid: attacker,
-          defenderUid: defender,
-          turnUid: attacker,
-          roundCap: 6,
-          passed: [],
-          discard: 0,
-          finishOrder: [],
-          lastResults: null,
-          turnStartedAt: Date.now()
-        });
-      });
-    } catch (e) {
-      toastErr(typeof e === 'string' ? e : "Error starting the game");
-    }
-  };
-  const settle = async (pl, durakUid, soloWinnerUid, deck, discard, fo) => {
-    if (settlingRef.current) return;
-    settlingRef.current = true;
-    try {
-      const t = tableRef.current;
-      if (!t) return;
-      if (t.tournamentId) {
-        const champ = soloWinnerUid || fo && fo[0] || null;
-        await window.fb.updateDoc(tblRef(), {
-          status: 'showdown',
-          showdownAt: Date.now(),
-          players: pl,
-          pairs: [],
-          deck: deck || [],
-          discard: discard || 0,
-          finishOrder: fo || [],
-          turnUid: null,
-          pot: 0,
-          lastResults: {
-            durakName: durakUid && pl[durakUid] ? pl[durakUid].name : null,
-            winners: [],
-            share: 0,
-            rake: 0,
-            pot: 0,
-            tournament: true
-          },
-          tournament: {
-            ...t.tournament,
-            finished: true,
-            tableWinner: champ
-          }
-        });
-        return;
-      }
-      const pot = t.pot || 0;
-      const rake = round2(pot * ((Number(setts.rakePercent) || 0) / 100));
-      const buyIn = Number(setts.buyIn) || 0;
-      let winners = soloWinnerUid ? [pl[soloWinnerUid]] : Object.values(pl).filter(p => p.out && !p.left && p.uid !== durakUid);
-      const share = winners.length ? Math.floor((pot - rake) / winners.length * 100) / 100 : 0;
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const reads = {};
-        for (const w of winners) {
-          const s = await tr.get(memDoc(w.uid));
-          if (s.exists()) reads[w.uid] = s;
-        }
-        let durakSnap = null;
-        if (durakUid && pl[durakUid] && !pl[durakUid].left) {
-          const s = await tr.get(memDoc(durakUid));
-          if (s.exists()) durakSnap = s;
-        }
-        for (const w of winners) {
-          const s = reads[w.uid];
-          if (!s) continue;
-          const st = s.data().stats || {
-            gamesPlayed: 0,
-            gamesWon: 0,
-            totalProfit: 0
-          };
-          tr.update(s.ref, {
-            balance: round2((s.data().balance || 0) + share),
-            lastRefundAt: Date.now(), // receipt — see guardBalances
-            'stats.gamesPlayed': (st.gamesPlayed || 0) + 1,
-            'stats.gamesWon': (st.gamesWon || 0) + 1,
-            'stats.totalProfit': round2((st.totalProfit || 0) + share - buyIn)
-          });
-        }
-        if (durakSnap) {
-          const st = durakSnap.data().stats || {
-            gamesPlayed: 0,
-            gamesWon: 0,
-            totalProfit: 0
-          };
-          tr.update(durakSnap.ref, {
-            'stats.gamesPlayed': (st.gamesPlayed || 0) + 1,
-            'stats.totalProfit': round2((st.totalProfit || 0) - buyIn)
-          });
-        }
-        tr.update(tblRef(), {
-          status: 'showdown',
-          showdownAt: Date.now(),
-          players: pl,
-          pairs: [],
-          deck: deck || [],
-          discard: discard || 0,
-          finishOrder: fo || [],
-          turnUid: null,
-          pot: 0,
-          lastResults: {
-            durakName: durakUid ? pl[durakUid].name : null,
-            winners: winners.map(w => w.name),
-            share,
-            rake,
-            pot,
-            solo: !!soloWinnerUid
-          }
-        });
-      });
-      distributeRake(rake, Object.keys(pl));
-      logGameResult([...winners.filter(w => !w.isBot).map(w => ({
-        uid: w.uid,
-        username: w.name,
-        game: 'durak',
-        profit: round2(share - (Number(setts.buyIn) || 0))
-      })), ...(durakUid && pl[durakUid] && !pl[durakUid].left && !pl[durakUid].isBot ? [{
-        uid: durakUid,
-        username: pl[durakUid].name,
-        game: 'durak',
-        profit: -(Number(setts.buyIn) || 0)
-      }] : [])], tableDocId);
-    } catch (e) {} finally {
-      settlingRef.current = false;
-    }
-  };
-  const finishRound = async (t, pl, prs, kind, bustedUid) => {
-    let discard = t.discard || 0;
-    if (kind === 'bita') {
-      discard += prs.reduce((s, x) => s + 1 + (x.d ? 1 : 0), 0);
-    } else if (kind === 'busted' && bustedUid && pl[bustedUid]) {
-      const buster = pl[bustedUid];
-      prs.forEach(x => {
-        buster.cards.push(x.a);
-        if (x.d) buster.cards.push(x.d);
-      });
-    } else {
-      const def = pl[t.defenderUid];
-      prs.forEach(x => {
-        def.cards.push(x.a);
-        if (x.d) def.cards.push(x.d);
-      });
-    }
-    const deck = [...(t.deck || [])];
-    const order = [];
-    let cur = attackerFor(pl, t.attackerUid, t.defenderUid);
-    let guard = 0;
-    while (cur && guard < 8) {
-      if (!order.includes(cur)) order.push(cur);
-      let nxt = nextActive(pl, cur);
-      guard++;
-      if (!nxt || order.includes(nxt) || nxt === cur) break;
-      cur = nxt === t.defenderUid ? nextActive(pl, nxt) : nxt;
-      if (cur && order.includes(cur)) break;
-    }
-    if (pl[t.defenderUid] && !pl[t.defenderUid].out && !pl[t.defenderUid].left) order.push(t.defenderUid);
-    for (const uid of order) {
-      const p = pl[uid];
-      if (!p) continue;
-      while (p.cards.length < 6 && deck.length) p.cards.push(deck.pop());
-    }
-    const fo = [...(t.finishOrder || [])];
-    Object.values(pl).forEach(p => {
-      if (!p.out && !p.left && deck.length === 0 && p.cards.length === 0) {
-        p.out = true;
-        if (!fo.includes(p.uid)) fo.push(p.uid);
-      }
-    });
-    const remain = activeList(pl);
-    if (remain.length <= 1) {
-      await settle(pl, remain[0]?.uid || null, null, deck, discard, fo);
-      return;
-    }
-    let newAtt;
-    if (kind === 'bita' || kind === 'busted') newAtt = attackerFor(pl, t.defenderUid, null);else newAtt = attackerFor(pl, nextActive(pl, t.defenderUid), null);
-    const newDef = nextActive(pl, newAtt);
-    await window.fb.updateDoc(tblRef(), {
-      players: pl,
-      pairs: [],
-      deck,
-      discard,
-      finishOrder: fo,
-      attackerUid: newAtt,
-      defenderUid: newDef,
-      roundCap: Math.min(6, pl[newDef].cards.length),
-      passed: [],
-      turnUid: newAtt,
-      turnStartedAt: Date.now()
-    });
-  };
-  const playCard = async (uid, cardId, blind = false) => {
-    const t = tableRef.current;
-    if (!t || t.status !== 'playing') return;
-    const pl = clonePlayers(t.players);
-    const p = pl[uid];
-    if (!p || p.out || p.left) return;
-    const prs = (t.pairs || []).map(x => ({
-      ...x
-    }));
-    const card = p.cards.find(c => c.id === cardId);
-    if (!card) return;
-    const trump = t.trumpSuit;
-    const undef = prs.filter(x => !x.d);
-    if (uid === t.defenderUid) {
-      if (t.turnUid !== uid) return;
-      if (undef.length === 0) return toastErr("No card to respond to");
-      if (undef.some(x => x.blind)) return toastErr("There's a face-down card on the table - doubt it or take it first");
-      const noDef = prs.every(x => !x.d);
-      if (setts.variant === 'perevodnoy' && noDef && prs.every(x => x.a.v === card.v)) {
-        const newDef = nextActive(pl, uid);
-        if (newDef && pl[newDef].cards.length >= prs.length + 1) {
-          p.cards = p.cards.filter(c => c.id !== cardId);
-          prs.push({
-            a: card,
-            d: null,
-            by: uid
-          });
-          if (t.deck.length === 0 && p.cards.length === 0) {
-            p.out = true;
-          }
-          await window.fb.updateDoc(tblRef(), {
-            players: pl,
-            pairs: prs,
-            defenderUid: newDef,
-            roundCap: Math.min(6, pl[newDef].cards.length),
-            passed: [],
-            turnUid: newDef,
-            turnStartedAt: Date.now(),
-            finishOrder: p.out ? [...(t.finishOrder || []), uid] : t.finishOrder || []
-          });
-          return;
-        }
-      }
-      const target = undef.find(x => beatsCard(card, x.a, trump));
-      if (!target) return toastErr("This card doesn't beat any open card");
-      const real = prs.find(x => x.a.id === target.a.id);
-      real.d = card;
-      p.cards = p.cards.filter(c => c.id !== cardId);
-      const stillUndef = prs.some(x => !x.d);
-      if (!stillUndef && t.deck.length === 0 && p.cards.length === 0) {
-        await finishRound({
-          ...t,
-          pairs: prs
-        }, pl, prs, 'bita');
-        return;
-      }
-      const nextTurn = stillUndef ? uid : attackerFor(pl, t.attackerUid, t.defenderUid);
-      await window.fb.updateDoc(tblRef(), {
-        players: pl,
-        pairs: prs,
-        passed: [],
-        turnUid: nextTurn || t.attackerUid,
-        turnStartedAt: Date.now()
-      });
-      return;
-    }
-    if (undef.length > 0) return toastErr("Waiting for the defender's response");
-    if (blind && (!setts.bluffEnabled || prs.length === 0)) blind = false;
-    if (prs.length === 0) {
-      if (uid !== t.attackerUid) return toastErr("The main attacker opens the round");
-    } else {
-      if (t.turnUid !== uid) return toastErr("Wait for your turn to add");
-      if (!blind && !pairRanks(prs).has(card.v)) return toastErr("You can only add ranks already on the table");
-    }
-    if (prs.length >= (t.roundCap || 6)) return toastErr("You've reached the max attacks this round");
-    if ((pl[t.defenderUid]?.cards.length || 0) < 1) return toastErr("The defender has no cards");
-    p.cards = p.cards.filter(c => c.id !== cardId);
-    prs.push({
-      a: card,
-      d: null,
-      by: uid,
-      blind: !!blind
-    });
-    const fo = [...(t.finishOrder || [])];
-    if (t.deck.length === 0 && p.cards.length === 0) {
-      p.out = true;
-      if (!fo.includes(uid)) fo.push(uid);
-    }
-    await window.fb.updateDoc(tblRef(), {
-      players: pl,
-      pairs: prs,
-      passed: [],
-      turnUid: t.defenderUid,
-      turnStartedAt: Date.now(),
-      finishOrder: fo
-    });
-  };
-  const acceptBlind = async uid => {
-    const t = tableRef.current;
-    if (!t || t.status !== 'playing' || uid !== t.defenderUid || t.turnUid !== uid) return;
-    const prs = (t.pairs || []).map(x => ({
-      ...x
-    }));
-    const bp = prs.find(x => !x.d && x.blind);
-    if (!bp) return;
-    bp.blind = false;
-    playSnd('tile');
-    await window.fb.updateDoc(tblRef(), {
-      pairs: prs,
-      turnStartedAt: Date.now()
-    });
-  };
-  const challengeBlind = async uid => {
-    const t = tableRef.current;
-    if (!t || t.status !== 'playing' || uid !== t.defenderUid || t.turnUid !== uid) return;
-    const prs = (t.pairs || []).map(x => ({
-      ...x
-    }));
-    const bp = prs.find(x => !x.d && x.blind);
-    if (!bp) return;
-    bp.blind = false;
-    const otherRanks = new Set();
-    prs.forEach(x => {
-      if (x !== bp) {
-        otherRanks.add(x.a.v);
-        if (x.d) otherRanks.add(x.d.v);
-      }
-    });
-    const legal = otherRanks.has(bp.a.v);
-    const pl = clonePlayers(t.players);
-    if (legal) {
-      showToast(`😬 The card was valid (${bp.a.val}${bp.a.suit}) - you take it all!`, "error");
-      await finishRound({
-        ...t,
-        pairs: prs
-      }, pl, prs, 'take');
-    } else {
-      showToast(`🎭 Bluff revealed! (${bp.a.val}${bp.a.suit}) - ${(pl[bp.by] || {}).name || 'the bluffer'} takes it all`, "success");
-      await finishRound({
-        ...t,
-        pairs: prs
-      }, pl, prs, 'busted', bp.by);
-    }
-  };
-  const instaRef = useRef(0);
-  useEffect(() => {
-    if (!tableState || T.status !== 'playing' || T.turnUid !== user.uid) return;
-    const meP = players[user.uid];
-    if (!meP || (meP.cards || []).length > 0 || (T.deck || []).length > 0) return;
-    if (T.defenderUid === user.uid) return;
-    const prs = T.pairs || [];
-    if (!prs.length || !prs.every(x => x.d)) return;
-    const key = T.turnStartedAt || 1;
-    if (instaRef.current === key) return;
-    instaRef.current = key;
-    const tm = setTimeout(async () => {
-      const t = tableRef.current;
-      if (!t || t.status !== 'playing' || t.turnUid !== user.uid) return;
-      try {
-        await finishRound(t, clonePlayers(t.players), (t.pairs || []).map(x => ({
-          ...x
-        })), 'bita');
-        playSnd('win');
-      } catch (e) {}
-    }, 350);
-    return () => clearTimeout(tm);
-  }, [tableState && T.turnUid, tableState && T.turnStartedAt, tableState && (T.pairs || []).length]);
-  const takeCards = async uid => {
-    const t = tableRef.current;
-    if (!t || t.status !== 'playing') return;
-    if (uid !== t.defenderUid || !(t.pairs || []).length) return;
-    const pl = clonePlayers(t.players);
-    await finishRound(t, pl, (t.pairs || []).map(x => ({
-      ...x
-    })), 'take');
-  };
-  const passAttack = async uid => {
-    const t = tableRef.current;
-    if (!t || t.status !== 'playing') return;
-    if (uid === t.defenderUid || t.turnUid !== uid) return;
-    const prs = t.pairs || [];
-    if (!prs.length || prs.some(x => !x.d)) return;
-    const pl = clonePlayers(t.players);
-    const passed = [...(t.passed || []), uid];
-    let nxt = nextActive(pl, uid);
-    let guard = 0;
-    while (nxt && guard < 8 && (nxt === t.defenderUid || passed.includes(nxt) || nxt === uid)) {
-      nxt = nextActive(pl, nxt);
-      guard++;
-    }
-    if (!nxt || nxt === t.defenderUid || passed.includes(nxt) || nxt === uid) {
-      await finishRound(t, pl, prs.map(x => ({
-        ...x
-      })), 'bita');
-    } else {
-      await window.fb.updateDoc(tblRef(), {
-        passed,
-        turnUid: nxt,
-        turnStartedAt: Date.now()
-      });
-    }
-  };
-  const autoAction = async uid => {
-    const t = tableRef.current;
-    if (!t || t.status !== 'playing' || !t.players[uid]) return;
-    const prs = t.pairs || [];
-    if (uid === t.defenderUid) {
-      if (prs.some(x => !x.d)) await takeCards(uid);
-      return;
-    }
-    if (prs.length === 0 && uid === t.attackerUid) {
-      const hand = [...t.players[uid].cards].sort((a, b) => (a.suit === t.trumpSuit ? 100 : 0) + a.v - ((b.suit === t.trumpSuit ? 100 : 0) + b.v));
-      if (hand[0]) await playCard(uid, hand[0].id);
-      return;
-    }
-    await passAttack(uid);
-  };
-  const handleJoin = async () => {
-    try {
-      let becameFull = false;
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const uRef = memDoc(user.uid);
-        const [uSnap, tSnap] = [await tr.get(uRef), await tr.get(tblRef())];
-        if (!tSnap.exists()) throw "Table doesn't exist";
-        const t = tSnap.data();
-        if (!['setup', 'showdown'].includes(t.status)) throw "Game already running - wait for the next hand";
-        if (t.players[user.uid]) throw "You're already at the table";
-        if (Object.keys(t.players).length >= (t.settings.maxPlayers || 6)) throw "The table is full";
-        if ((uSnap.data().balance || 0) < (Number(t.settings.buyIn) || 0)) throw "Not enough balance for the buy-in";
-        let seatIndex = 0;
-        const taken = new Set(Object.values(t.players).map(p => p.seatIndex));
-        while (taken.has(seatIndex)) seatIndex++;
-        tr.update(tblRef(), {
-          [`players.${user.uid}`]: {
-            uid: user.uid,
-            name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
-            photo: user.photo || '',
-            avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid),
-            seatIndex,
-            cards: [],
-            isBot: false,
-            out: false,
-            left: false
-          }
-        });
-        if (Object.keys(t.players).length + 1 >= (t.settings.maxPlayers || 6)) becameFull = true;
-      });
-      if (becameFull) spawnTwinTable(tableRef.current, true);
-    } catch (e) {
-      toastErr(typeof e === 'string' ? e : "Error joining");
-    }
-  };
-  const handleLeave = async () => {
-    const t = tableRef.current;
-    if (!t || !t.players[user.uid]) {
-      onLeave();
-      return;
-    }
-    if (t.status === 'playing' && !t.players[user.uid].out) {
-      if (!window.confirm("⚠️ Quitting mid Durak game = forfeiting the buy-in. Sure?")) return;
-      try {
-        const pl = clonePlayers(t.players);
-        const meP = pl[user.uid];
-        (t.pairs || []).forEach(x => {
-          const owner = pl[x.by] && !pl[x.by].left && x.by !== user.uid ? pl[x.by] : null;
-          if (owner) owner.cards.push(x.a);
-          if (x.d) {
-            const dOwner = pl[t.defenderUid] && t.defenderUid !== user.uid ? pl[t.defenderUid] : null;
-            if (dOwner) dOwner.cards.push(x.d);
-          }
-        });
-        delete pl[user.uid];
-        if (!t.tournamentId) try {
-          const uRef = memDoc(user.uid);
-          const uSnap = await window.fb.getDoc(uRef);
-          if (uSnap.exists()) {
-            const st = uSnap.data().stats || {
-              gamesPlayed: 0,
-              gamesWon: 0,
-              totalProfit: 0
-            };
-            await window.fb.updateDoc(uRef, {
-              'stats.gamesPlayed': (st.gamesPlayed || 0) + 1,
-              'stats.totalProfit': round2((st.totalProfit || 0) - (Number(setts.buyIn) || 0))
-            });
-          }
-        } catch (e2) {}
-        const remain = activeList(pl);
-        if (remain.length <= 1) {
-          await settle(pl, null, remain[0]?.uid || null, t.deck || [], t.discard || 0, t.finishOrder || []);
-        } else {
-          const newAtt = attackerFor(pl, nextActive(pl, remain[0].uid) ? remain[0].uid : remain[0].uid, null);
-          const newDef = nextActive(pl, newAtt);
-          await window.fb.updateDoc(tblRef(), {
-            players: pl,
-            pairs: [],
-            attackerUid: newAtt,
-            defenderUid: newDef,
-            roundCap: Math.min(6, pl[newDef].cards.length),
-            passed: [],
-            turnUid: newAtt,
-            turnStartedAt: Date.now()
-          });
-        }
-      } catch (e) {}
-      onLeave();
-      return;
-    }
-    try {
-      const pl = {
-        ...t.players
-      };
-      delete pl[user.uid];
-      if (Object.keys(pl).length === 0 && t.status !== 'playing') {
-        await window.fb.deleteDoc(tblRef());
-        spawnTwinTable(t); // keep the lobby stocked — same-config Durak table respawns (skips if a joinable twin exists)
-      } else {
-        const upd = {
-          players: pl
-        };
-        if (t.hostUid === user.uid) {
-          const first = Object.values(pl).sort((a, b) => a.seatIndex - b.seatIndex)[0];
-          if (first) upd.hostUid = first.uid;
-        }
-        await window.fb.updateDoc(tblRef(), upd);
-      }
-    } catch (e) {}
-    onLeave();
-  };
-  const handleAddBot = async () => {
-    const t = tableRef.current;
-    if (!t || !['setup', 'showdown'].includes(t.status)) return;
-    if (Object.keys(t.players).length >= (setts.maxPlayers || 6)) return toastErr("The table is full");
-    try {
-      const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));
-      const botSnaps = await window.fb.getDocs(botQ);
-      const bots = botSnaps.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      })).filter(b => !t.players[b.id]);
-      if (!bots.length) return toastErr("No bots available - create bots in the dashboard");
-      const bot = bots[Math.floor(Math.random() * bots.length)];
-      let seatIndex = 0;
-      const taken = new Set(Object.values(t.players).map(p => p.seatIndex));
-      while (taken.has(seatIndex)) seatIndex++;
-      await window.fb.updateDoc(tblRef(), {
-        [`players.${bot.id}`]: {
-          uid: bot.id,
-          name: bot.username,
-          photo: bot.photo || '',
-          avatarSeed: bot.avatarSeed || '',
-          seatIndex,
-          cards: [],
-          isBot: true,
-          out: false,
-          left: false
-        }
-      });
-    } catch (e) {}
-  };
-  useEffect(() => {
-    if (!isSuperAdmin || !tableState) return;
-    if (T.status === 'playing' && T.turnUid && players[T.turnUid]?.isBot) {
-      const uid = T.turnUid;
-      const tm = setTimeout(async () => {
-        const t = tableRef.current;
-        if (!t || t.turnUid !== uid || t.status !== 'playing') return;
-        const b = t.players[uid];
-        if (!b) return;
-        const prs = t.pairs || [];
-        const trump = t.trumpSuit;
-        const sortHand = h => [...h].sort((a, c) => (a.suit === trump ? 100 : 0) + a.v - ((c.suit === trump ? 100 : 0) + c.v));
-        if (uid === t.defenderUid) {
-          const undef = prs.filter(x => !x.d);
-          if (!undef.length) return;
-          if (undef.some(x => x.blind)) {
-            if (Math.random() < 0.5) await challengeBlind(uid);else await acceptBlind(uid);
-            return;
-          }
-          const noDef = prs.every(x => !x.d);
-          if (setts.variant === 'perevodnoy' && noDef && Math.random() < 0.5) {
-            const tCard = b.cards.find(c => prs.every(x => x.a.v === c.v));
-            const newDef = nextActive(t.players, uid);
-            if (tCard && newDef && t.players[newDef].cards.length >= prs.length + 1) {
-              await playCard(uid, tCard.id);
-              return;
-            }
-          }
-          const cand = sortHand(b.cards).find(c => undef.some(x => beatsCard(c, x.a, trump)));
-          if (cand) await playCard(uid, cand.id);else await takeCards(uid);
-          return;
-        }
-        if (prs.length === 0 && uid === t.attackerUid) {
-          const h = sortHand(b.cards);
-          if (h[0]) await playCard(uid, h[0].id);
-          return;
-        }
-        const ranks = pairRanks(prs);
-        const adds = sortHand(b.cards).filter(c => ranks.has(c.v));
-        if (adds.length && prs.length < (t.roundCap || 6) && Math.random() < 0.7) await playCard(uid, adds[0].id);else if (t.settings.bluffEnabled && prs.length > 0 && prs.length < (t.roundCap || 6) && b.cards.length > 1 && Math.random() < 0.35) await playCard(uid, sortHand(b.cards)[0].id, true);else await passAttack(uid);
-      }, 1900);
-      return () => clearTimeout(tm);
-    }
-  }, [T.turnUid, T.status, T.turnStartedAt, (T.pairs || []).length, isSuperAdmin]);
-  const dPlayersCount = Object.keys(players).length;
-  useEffect(() => {
-    if (!isSuperAdmin || !tableState || T.status !== 'setup') return;
-    if (clubSettings?.botsAuto !== true) return;
-    const iv = setInterval(async () => {
-      const t = tableRef.current;
-      if (!t || t.status !== 'setup') return;
-      const pl = t.players || {};
-      const hasHuman = Object.values(pl).some(p => !p.isBot);
-      if (!hasHuman || Object.keys(pl).length >= (t.settings.maxPlayers || 6)) return;
-      await handleAddBot();
-    }, 3500);
-    return () => clearInterval(iv);
-  }, [T.status, dPlayersCount, isSuperAdmin, clubSettings?.botsAuto]);
-  useEffect(() => {
-    // Guard runs on EVERY seated client (parity with poker) — a table with no
-    // admin watching used to stall forever on a vanished player's turn.
-    if (!(isSuperAdmin || isSeated) || !tableState || T.status !== 'playing') return;
-    const iv = setInterval(() => {
-      const t = tableRef.current;
-      if (!t || t.status !== 'playing' || !t.turnStartedAt) return;
-      const actor = (t.players || {})[t.turnUid] || {};
-      // Connection-aware fast skip (parity with poker): if the actor's
-      // heartbeat has gone dark, act for them after a short grace instead of
-      // the full clock. 20s threshold > 2 missed 25s beats is not needed here —
-      // lastSeen may simply predate this feature, so only fast-skip when a
-      // heartbeat WAS seen and then stopped.
-      const gone = !actor.isBot && actor.lastSeen && Date.now() - actor.lastSeen > 40000;
-      const limit = gone ? 9000 : (DURAK_TIME + 5) * 1000;
-      if (Date.now() - t.turnStartedAt > limit) autoAction(t.turnUid);
-    }, 4000);
-    return () => clearInterval(iv);
-  }, [T.status, isSuperAdmin, isSeated]);
-  useEffect(() => {
-    let interval;
-    if (T.status === 'playing' && T.turnStartedAt) {
-      interval = setInterval(() => {
-        const remaining = Math.max(0, DURAK_TIME - Math.floor((Date.now() - T.turnStartedAt) / 1000));
-        setTimeLeft(remaining);
-        if (remaining <= 5 && remaining > 0 && T.turnUid === user.uid) {
-          try {
-            playSnd('tick');
-          } catch (e) {}
-        }
-        if (remaining === 0 && T.turnUid === user.uid) {
-          clearInterval(interval);
-          autoAction(user.uid);
-        }
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [T.turnStartedAt, T.turnUid, T.status]);
+  useEffect(()=>{
+    if(!publicState||publicState.status!=='playing'&&!publicState.closeRequested)return;
+    let pending=false;const tick=async()=>{if(pending||lock.current)return;pending=true;try{await pokerCommand('pkCardGame',{tableId:tableDocId,op:'tick'});}catch(e){}finally{pending=false;}};
+    const iv=setInterval(tick,2000);return()=>clearInterval(iv);
+  },[publicState?.status,!!publicState?.closeRequested,tableDocId]);
+  return{table,godView,error,busy,run,timeLeft:Math.max(0,(publicState?.type==='durak'?30:45)-Math.floor((clock-(publicState?.turnStartedAt||clock))/1000))};
+}
+function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
+  const [godViewRequested,setGodView]=useState(false),[resHide,setResHide]=useState(false),[bluffMode,setBluffMode]=useState(false);
+  const game=useCardGame(tableDocId,user,showToast,onLeave,godViewRequested);
+  const tableState=game.table,loading=!tableState,T=tableState||{},setts=T.settings||{},players=T.players||{},me=players[user.uid];
+  const isSeated=!!me&&!me.left,isHost=T.hostUid===user.uid,isGod=isGodUser(user),isSuperAdmin=canManageGame(user,'durak'),godView=game.godView,timeLeft=game.timeLeft;
+  const pairs=T.pairs||[],undefPairs=pairs.filter(x=>!x.d),iAmDefender=T.defenderUid===user.uid,iAmAttackerMain=T.attackerUid===user.uid,myTurn=T.turnUid===user.uid&&T.status==='playing'&&!game.busy;
+  const ch=useTableChat(tableState,tableDocId,user,'durak',showToast);
+  const onWaitNext=(T.waitlist||[]).some(w=>w.uid===user.uid);
+  const startGame=()=>game.run('start'),handleJoin=()=>game.run('join'),handleAddBot=()=>game.run('addbot');
+  const playCard=(uid,cardId,blind)=>game.run('play',{cardId,blind}),takeCards=()=>game.run('take'),passAttack=()=>game.run('pass'),acceptBlind=()=>game.run('accept'),challengeBlind=()=>game.run('challenge');
+  const joinNextGame=()=>game.run('wait'),leaveNextGame=()=>game.run('unwait');
+  const handleLeave=async()=>{if(isSeated&&T.status==='playing'&&!me.out&&!window.confirm('Leaving during the game forfeits this buy-in. Leave?'))return;if(!isSeated||await game.run('leave'))onLeave();};
+  const [dOffline,setOffline]=useState(navigator.onLine===false);
+  useEffect(()=>{const on=()=>setOffline(false),off=()=>setOffline(true);window.addEventListener('online',on);window.addEventListener('offline',off);return()=>{window.removeEventListener('online',on);window.removeEventListener('offline',off);};},[]);
+  useEffect(()=>setResHide(false),[T.status]);
+  useEffect(()=>{if(onWaitNext&&!isSeated&&['setup','showdown'].includes(T.status))game.run('join');},[onWaitNext,isSeated,T.status]);
+  if(game.error)return React.createElement('div',{className:'card-game-error'},game.error,React.createElement('button',{onClick:onLeave},'Back to lobby'));
   if (loading || !tableState) return React.createElement("div", {
     className: "h-full flex items-center justify-center text-blue-400"
   }, React.createElement("i", {
@@ -14909,7 +14028,9 @@ function DurakTable({
   const canBluff = setts.bluffEnabled && isSeated && !iAmDefender && !me?.out && T.status === 'playing' && pairs.length > 0 && allDefended && myTurn;
   const res = T.lastResults;
   return React.createElement("div", {
-    className: "h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none",
+    className: "card-game-room durak-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none",
+    "aria-busy":game.busy,
+    "data-god-view":godView,
     dir: "ltr",
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
@@ -14924,7 +14045,9 @@ function DurakTable({
   }, React.createElement("i", {
     className: "fa-solid fa-door-open ml-1"
   }), isSeated ? 'Stand up' : 'Leave'), isGod && React.createElement("button", {
-    onClick: () => setGodView(!godView),
+    onClick: () => setGodView(!godViewRequested),
+    'aria-label': 'GOD MODE',
+    'aria-pressed': godView,
     className: `px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${godView ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_12px_purple]' : 'bg-slate-800 text-purple-400 border-white/10'}`
   }, React.createElement("i", {
     className: "fa-solid fa-eye ml-1"
@@ -14961,7 +14084,7 @@ function DurakTable({
     className: "text-amber-400 font-black text-sm leading-none",
     dir: "ltr"
   }, formatShort(T.status === 'showdown' ? res?.pot || 0 : T.pot || 0))))), React.createElement("div", {
-    className: "flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0 pt-16"
+    className: "card-game-playfield flex-1 relative flex items-center justify-center p-3 sm:p-5 min-h-0 pt-16"
   }, T.status === 'playing' && React.createElement("div", {
     className: "absolute top-1 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 sm:gap-4 bg-slate-950/85 border border-white/10 rounded-2xl px-4 py-1.5 backdrop-blur shadow-2xl"
   }, React.createElement("div", {
@@ -15132,7 +14255,7 @@ function DurakTable({
   })), T.status === 'setup' && React.createElement("div", {
     className: "absolute inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
-    className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-blue-500/40"
+    className: "card-game-dialog glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-blue-500/40"
   }, React.createElement("i", {
     className: "fa-solid fa-chess-king text-4xl text-blue-400 mb-2"
   }), React.createElement("h3", {
@@ -15153,18 +14276,18 @@ function DurakTable({
   }, p.name)))), !isSeated && React.createElement("button", {
     onClick: handleJoin,
     className: "w-full bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
-  }, "Join (", formatMoney(setts.buyIn), ")"), (isHost || isSuperAdmin) && Object.keys(players).length >= 2 && React.createElement("button", {
+  }, "Join (", formatMoney(setts.buyIn), ")"), (isHost || isSuperAdmin || isSeated) && Object.keys(players).length >= 2 && React.createElement("button", {
     onClick: startGame,
     className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
   }, React.createElement("i", {
     className: "fa-solid fa-play ml-2"
-  }), "Start game"), React.createElement("button", {
+  }), "Start game"), isSuperAdmin && list.length<setts.maxPlayers && React.createElement("button",{onClick:handleAddBot,className:"w-full bg-slate-800 text-sky-200 py-3 rounded-xl mb-2"},"Add bot"), React.createElement("button", {
     onClick: handleLeave,
     className: "text-slate-400 hover:text-white text-xs font-bold underline"
-  }, "Back to lobby"))), T.status === 'showdown' && res && !resHide && React.createElement("div", {
+  }, "Back to lobby"))), T.status === 'showdown' && resHide && React.createElement('button',{onClick:()=>setResHide(false),className:'absolute bottom-16 left-1/2 -translate-x-1/2 z-[80] card-game-primary px-5 py-2'},'Results / next hand'), T.status === 'showdown' && res && !resHide && React.createElement("div", {
     className: "absolute inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
-    className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/40"
+    className: "card-game-dialog glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/40"
   }, res.durakName ? React.createElement(React.Fragment, null, React.createElement("div", {
     className: "text-5xl mb-2"
   }, "🤡"), React.createElement("h3", {
@@ -15183,20 +14306,18 @@ function DurakTable({
   }, "🏆 ", w), React.createElement("span", {
     className: "text-emerald-400 font-black",
     dir: "ltr"
-  }, "+", formatMoney(res.share))))), React.createElement("div", {
+  }, "+", formatMoney(res.winnerAmounts?.[i] ?? res.share))))), React.createElement("div", {
     className: "flex gap-3"
-  }, (isHost || isSuperAdmin) && !tableState.tournamentId && Object.keys(players).length >= 2 && React.createElement("button", {
+  }, (isHost || isSuperAdmin || isSeated) && !tableState.tournamentId && Object.keys(players).length >= 2 && React.createElement("button", {
     onClick: startGame,
     className: "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black"
-  }, "New game"), isSeated && React.createElement("button", {
+  }, "New game"), !isSeated && list.length<setts.maxPlayers && React.createElement('button',{onClick:handleJoin,className:'card-game-primary px-4 py-2'},'Join next game'), isSeated && React.createElement("button", {
     onClick: () => {
-      window.fb.updateDoc(tblRef(), {
-        [`players.${user.uid}.stayAt`]: Date.now()
-      }).catch(() => {});
+      game.run('stay');
       setResHide(true);
     },
     className: "flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-black border border-slate-500"
-  }, "I'm staying 🔄 (", stayLeft, ")"), isSeated && React.createElement("button", {
+  }, "Keep watching"), isSeated && React.createElement("button", {
     onClick: handleLeave,
     className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3 rounded-xl font-black border border-white/10"
   }, "Stand up 🚪"), !isSeated && React.createElement("button", {
@@ -15210,8 +14331,10 @@ function DurakTable({
   }), React.createElement("span", {
     className: "text-[11px] font-black text-rose-300"
   }, "No connection — reconnecting…")), React.createElement("div", {
-    className: "shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 px-3 pt-2 pb-3 z-40 min-h-[135px] flex flex-col justify-end gap-2"
-  }, !isSeated && T.status === 'playing' && React.createElement("div", {
+    className: "card-game-dock shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 px-3 pt-2 pb-3 z-40 min-h-[135px] flex flex-col justify-end gap-2"
+  }, godView && T.status === 'playing' && T.deck.length > 0 && React.createElement('details',{className:'card-game-god-stock'},
+    React.createElement('summary',null,'GOD · next draws (',T.deck.length,')'),
+    React.createElement('div',{className:'card-game-god-cards',dir:'ltr'},[...T.deck].reverse().map((card,i)=>React.createElement('div',{key:card.id,title:'Draw '+(i+1)},React.createElement(PCard,{card,size:'sm'}))))), !isSeated && T.status === 'playing' && React.createElement("div", {
     className: "flex items-center justify-center gap-3 py-3"
   }, React.createElement("span", {
     className: "text-gold-400 text-xs font-black"
@@ -15799,76 +14922,37 @@ function OFCTable({
   onLeave,
   showToast
 }) {
-  const [tableState, setTableState] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [timeLeft, setTimeLeft] = useState(OFC_TIME);
+
   const [resHide, setResHide] = useState(false);
   const [stage, setStage] = useState({});
   const [selCard, setSelCard] = useState(null);
   const [errMsg, setErrMsg] = useState('');
   const [godViewRequested, setGodView] = useState(false);
-  const godView = godViewRequested && isGodUser(user);
+  const game=useCardGame(tableDocId,user,showToast,onLeave,godViewRequested);
+  const tableState=game.table,loading=!tableState,timeLeft=game.timeLeft,godView=game.godView;
   useEffect(() => setGodView(false), [user.uid]);
   const [showSeen, setShowSeen] = useState(false);
-  const tableRef = useRef(null);
-  const settlingRef = useRef(false);
   const [drag, setDrag] = useState(null);
   const [rainbow, setRainbow] = useState(false);
   const [sortMode, setSortMode] = useState('rank');
   const prevFlC = useRef(0);
-  const tblRef = () => window.fb.doc(window.fb.db, "tables", tableDocId);
   const flashErr = m => {
     setErrMsg(m);
     setTimeout(() => setErrMsg(''), 3200);
   };
-  const clonePl = pl => {
-    const o = {};
-    Object.entries(pl || {}).forEach(([k, v]) => o[k] = {
-      ...v,
-      top: [...(v.top || [])],
-      mid: [...(v.mid || [])],
-      bot: [...(v.bot || [])],
-      pending: [...(v.pending || [])],
-      disc: [...(v.disc || [])]
-    });
-    return o;
-  };
-  useEffect(() => {
-    if (!tableDocId) {
-      showToast("Table not found", "error");
-      onLeave();
-      return;
-    }
-    const unsub = window.fb.onSnapshot(tblRef(), snap => {
-      if (!snap.exists()) {
-        showToast("The table closed", "info");
-        onLeave();
-        return;
-      }
-      const d = {
-        id: snap.id,
-        docId: snap.id,
-        ...snap.data()
-      };
-      tableRef.current = d;
-      setTableState(d);
-      setLoading(false);
-    });
-    return () => unsub();
-  }, [tableDocId]);
   const T = tableState || {};
   const setts = T.settings || {};
   const players = T.players || {};
   const list = Object.values(players).sort((a, b) => (a.seatIndex || 0) - (b.seatIndex || 0));
   const me = players[user.uid];
-  const isSeated = !!me;
+  const isSeated = !!me && !me.left;
   const isHost = T.hostUid === user.uid;
-  const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
+  const isSuperAdmin = canManageGame(user,'ofc');
   const isGod = isGodUser(user);
-  const isMyTurn = T.status === 'playing' && T.turnUid === user.uid;
+  const isMyTurn = T.status === 'playing' && T.turnUid === user.uid && !game.busy;
   const maxP = Number(setts.maxPlayers) || 2;
   const aloneWithBots = isSeated && Object.values(players).filter(p => !p.isBot && p.uid !== user.uid).length === 0;
-  const canStart = isHost || isSuperAdmin || aloneWithBots;
+  const canStart = isHost || isSuperAdmin || isSeated;
   const ch = useTableChat(tableState, tableDocId, user, 'ofc', showToast);
   useEffect(() => {
     setResHide(false);
@@ -15877,7 +14961,7 @@ function OFCTable({
     setStage({});
     setSelCard(null);
   }, [T.turnUid, T.street, T.status]);
-  const stayLeft = useShowdownSweep(tableState, () => tblRef(), maxP, null, true);
+
   const placedCount = p => (p.top || []).length + (p.mid || []).length + (p.bot || []).length;
   const targetFor = (p, street) => p.flC ? 13 : 5 + 2 * street;
   const needPlace = me ? me.flC ? 13 : T.street === 0 ? 5 : 2 : 0;
@@ -15931,7 +15015,7 @@ function OFCTable({
   const jokerViz = useMemo(() => {
     const map = {};
     list.forEach(p => {
-      if (placedCount(p) !== 13) return;
+      if (placedCount(p) !== 13 || (p.flC && T.status==='playing' && p.uid!==user.uid && !godView)) return;
       const hasJoker = [...(p.top || []), ...(p.mid || []), ...(p.bot || [])].some(c => c.v === 0);
       if (hasJoker) map[p.uid] = ofcBoard(p).resolved || {};
     });
@@ -16002,516 +15086,9 @@ function OFCTable({
     }
     prevFlC.current = flc;
   }, [me && me.flC]);
-  const handleJoin = async () => {
-    try {
-      let becameFull = false;
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const snap = await tr.get(tblRef());
-        if (!snap.exists()) throw "err";
-        const t = snap.data();
-        if (t.players[user.uid]) return;
-        const mx = Number(t.settings.maxPlayers) || 2;
-        if (Object.keys(t.players).length >= mx) throw "The table is full";
-        const buyIn = Number(t.settings.buyIn) || 0;
-        const ms = await tr.get(memDoc(user.uid));
-        if (!ms.exists() || (ms.data().balance || 0) < buyIn) throw "Not enough chips to buy the stack";
-        tr.update(ms.ref, {
-          balance: round2((ms.data().balance || 0) - buyIn)
-        });
-        const taken = new Set(Object.values(t.players).map(p => p.seatIndex));
-        let seatIndex = 0;
-        while (taken.has(seatIndex)) seatIndex++;
-        tr.update(tblRef(), {
-          [`players.${user.uid}`]: {
-            uid: user.uid,
-            name: user.username || 'Player' + String(user.playerId || user.uid).slice(-3),
-            photo: user.photo || '',
-            avatarSeed: user.avatarSeed || (user.photo ? '' : user.uid),
-            seatIndex,
-            stack: buyIn,
-            top: [],
-            mid: [],
-            bot: [],
-            pending: [],
-            flC: 0,
-            flNext: 0,
-            isBot: false,
-            left: false
-          }
-        });
-        becameFull = Object.keys(t.players).length + 1 >= mx;
-      });
-      playSnd('chip');
-      if (becameFull) spawnTwinTable(tableRef.current, true);
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Error", "error");
-    }
-  };
-  const handleAddBot = async () => {
-    try {
-      const botQ = window.fb.query(window.fb.collection(window.fb.db, "users"), window.fb.where("isBot", "==", true));
-      const bs = await window.fb.getDocs(botQ);
-      if (!bs.docs.length) return showToast("No bots available", "error");
-      const ref = tblRef();
-      let noneLeft = false;
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const snap = await tr.get(ref);
-        if (!snap.exists()) return;
-        const t = snap.data();
-        const pl = t.players || {};
-        const mx = (t.settings || {}).maxPlayers || 3;
-        if (Object.keys(pl).length >= mx) {
-          noneLeft = true;
-          return;
-        }
-        const used = new Set(Object.keys(pl));
-        const avail = bs.docs.filter(d => !used.has(d.id));
-        if (!avail.length) {
-          noneLeft = true;
-          return;
-        }
-        const b = avail[Math.floor(Math.random() * avail.length)];
-        const taken = new Set(Object.values(pl).map(p => p.seatIndex));
-        let seatIndex = 0;
-        while (taken.has(seatIndex)) seatIndex++;
-        tr.update(ref, {
-          [`players.${b.id}`]: {
-            uid: b.id,
-            name: b.data().username,
-            photo: '',
-            avatarSeed: b.data().avatarSeed || b.id,
-            seatIndex,
-            stack: Number((t.settings || {}).buyIn) || 100,
-            top: [],
-            mid: [],
-            bot: [],
-            pending: [],
-            flC: 0,
-            flNext: 0,
-            isBot: true,
-            left: false
-          }
-        });
-      });
-      if (noneLeft) showToast("The table is full", "error");
-    } catch (e) {}
-  };
-  const startGame = async () => {
-    const t = tableRef.current;
-    if (!t) return;
-    if (!canStart) return;
-    if (!['setup', 'showdown'].includes(t.status)) return;
-    if (Object.keys(t.players).length < 2) return showToast("Need at least 2 players", "error");
-    try {
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const snap = await tr.get(tblRef());
-        if (!snap.exists()) throw "err";
-        const tbl = snap.data();
-        if (!['setup', 'showdown'].includes(tbl.status)) throw "Game already running";
-        const base = {};
-        Object.entries(tbl.players).forEach(([k, v]) => {
-          if ((v.stack || 0) > 0) base[k] = {
-            ...v,
-            top: [],
-            mid: [],
-            bot: [],
-            pending: [],
-            disc: [],
-            flC: v.flNext || 0,
-            flNext: 0,
-            left: false
-          };
-        });
-        const active = Object.values(base);
-        if (active.length < 2) throw "Need at least 2 players with chips in stack";
-        const deck = ofcDeck();
-        const order = active.sort((a, b) => a.seatIndex - b.seatIndex);
-        const first = order[0];
-        const n = first.flC || 5;
-        base[first.uid].pending = deck.splice(0, n);
-        tr.update(tblRef(), {
-          status: 'playing',
-          players: base,
-          pot: 0,
-          deck,
-          street: 0,
-          turnUid: first.uid,
-          lastResults: null,
-          showdownAt: null,
-          turnStartedAt: Date.now()
-        });
-      });
-      playSnd('deal');
-    } catch (e) {
-      showToast(typeof e === 'string' ? e : "Error", "error");
-    }
-  };
-  useEffect(() => {
-    if (!canStart || T.status !== 'setup') return;
-    const seated = Object.values(players).filter(p => (p.stack || 0) > 0).length;
-    if (seated < 2) return;
-    const tm = setTimeout(() => {
-      startGame();
-    }, 1500);
-    return () => clearTimeout(tm);
-  }, [T.status, Object.keys(players).length, canStart]);
-  const cashOutSeat = async () => {
-    try {
-      const myStack = tableRef.current?.players?.[user.uid]?.stack || 0;
-      let respawn = false;
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const snap = await tr.get(tblRef());
-        if (!snap.exists()) return;
-        const t = snap.data();
-        const p = t.players[user.uid];
-        if (!p) return;
-        const ms = await tr.get(memDoc(user.uid));
-        const pl = {
-          ...t.players
-        };
-        delete pl[user.uid];
-        const backAmt = round2((p.stack || 0) + (p.pendingTopUp || 0));
-        if (ms.exists() && backAmt > 0) tr.update(ms.ref, {
-          balance: round2((ms.data().balance || 0) + backAmt),
-          lastRefundAt: Date.now() // receipt — see guardBalances in functions/index.js
-        });
-        if (Object.keys(pl).length === 0) {
-          tr.delete(tblRef());
-          respawn = true;
-        } else tr.update(tblRef(), {
-          players: pl
-        });
-      });
-      if (myStack > 0) showToast(`Stack cashed out: ${formatMoney(myStack)} returned to wallet 💰`, "success");
-      if (respawn) spawnTwinTable(tableRef.current);
-    } catch (e) {}
-  };
-  const handleLeave = async () => {
-    const t = tableRef.current;
-    if (!t || !t.players[user.uid]) {
-      onLeave();
-      return;
-    }
-    const meP = t.players[user.uid] || {};
-    if (t.status === 'playing') {
-      if ((meP.flC || 0) > 0 && (meP.stack || 0) > 0.009) {
-        flashErr("🌈 Fantasyland - you can't fold now. The round plays out; you can only leave once your chips run out.");
-        return;
-      }
-      if (!window.confirm("⚠️ Quitting mid hand = automatic foul this hand. Any remaining stack is returned to your wallet. Sure?")) return;
-      try {
-        const pl = clonePl(t.players);
-        pl[user.uid].left = true;
-        await window.fb.updateDoc(tblRef(), {
-          players: pl
-        });
-        await settleOFC();
-        const remain = Object.values(tableRef.current?.players || {}).filter(p => !p.isBot && p.uid !== user.uid);
-        if (!remain.length) {
-          try {
-            await window.fb.deleteDoc(tblRef());
-            spawnTwinTable(tableRef.current);
-          } catch (e2) {}
-        }
-      } catch (e) {}
-      onLeave();
-      return;
-    }
-    await cashOutSeat();
-    onLeave();
-  };
-  const doConfirm = async (uid, stg) => {
-    const t = tableRef.current;
-    if (!t || t.status !== 'playing' || t.turnUid !== uid) return;
-    const p = t.players[uid];
-    if (!p) return;
-    const pend = p.pending || [];
-    const need = p.flC ? 13 : t.street === 0 ? 5 : 2;
-    const ids = Object.keys(stg);
-    if (ids.length !== need) {
-      if (uid === user.uid) flashErr(`You must place exactly ${need} cards`);
-      return;
-    }
-    const rows = {
-      top: [...(p.top || [])],
-      mid: [...(p.mid || [])],
-      bot: [...(p.bot || [])]
-    };
-    for (const id of ids) {
-      const c = pend.find(x => x.id === id);
-      if (!c) return;
-      rows[stg[id]].push(c);
-    }
-    if (rows.top.length > 3 || rows.mid.length > 5 || rows.bot.length > 5) {
-      if (uid === user.uid) flashErr("No room in the row (3/5/5)");
-      return;
-    }
-    try {
-      let doSettle = false;
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const snap = await tr.get(tblRef());
-        if (!snap.exists()) return;
-        const tt = snap.data();
-        if (tt.status !== 'playing' || tt.turnUid !== uid) return;
-        const pl = clonePl(tt.players);
-        const dropped = (pl[uid].pending || []).filter(c => !ids.includes(c.id));
-        pl[uid].top = rows.top;
-        pl[uid].mid = rows.mid;
-        pl[uid].bot = rows.bot;
-        pl[uid].pending = [];
-        pl[uid].disc = [...(pl[uid].disc || []), ...dropped];
-        let deck = [...(tt.deck || [])];
-        let street = tt.street;
-        const order = Object.values(pl).filter(q => !q.left && (q.stack || 0) > 0).sort((a, b) => a.seatIndex - b.seatIndex);
-        const findNext = st => order.find(q => placedCount(q) < targetFor(q, st));
-        let nxt = order.filter(q => q.seatIndex > pl[uid].seatIndex).find(q => placedCount(q) < targetFor(q, street)) || null;
-        if (!nxt) {
-          street++;
-          if (street > 4) {
-            tr.update(tblRef(), {
-              players: pl,
-              deck,
-              street,
-              turnUid: null
-            });
-            doSettle = true;
-            return;
-          }
-          nxt = findNext(street);
-          if (!nxt) {
-            tr.update(tblRef(), {
-              players: pl,
-              deck,
-              street,
-              turnUid: null
-            });
-            doSettle = true;
-            return;
-          }
-        }
-        const n = nxt.flC ? nxt.flC : street === 0 ? 5 : 3;
-        pl[nxt.uid].pending = deck.splice(0, Math.min(n, deck.length));
-        tr.update(tblRef(), {
-          players: pl,
-          deck,
-          street,
-          turnUid: nxt.uid,
-          turnStartedAt: Date.now()
-        });
-      });
-      playSnd('chip');
-      if (uid === user.uid) {
-        setStage({});
-        setSelCard(null);
-      }
-      if (doSettle) await settleOFC();
-    } catch (e) {}
-  };
-  const settleOFC = async () => {
-    if (settlingRef.current) return;
-    settlingRef.current = true;
-    try {
-      const t = tableRef.current;
-      if (!t) return;
-      const pl = clonePl(t.players);
-      const parts = Object.values(pl);
-      const boards = {};
-      parts.forEach(p => {
-        const full = placedCount(p) === 13 && !p.left;
-        boards[p.uid] = full ? {
-          ...ofcBoard(p),
-          left: false
-        } : {
-          t: [0],
-          m: [0],
-          b: [0],
-          foul: true,
-          roy: 0,
-          flNext: 0,
-          left: !!p.left
-        };
-      });
-      const pts = {};
-      parts.forEach(p => pts[p.uid] = 0);
-      for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
-        const A = parts[i],
-          B = parts[j],
-          a = boards[A.uid],
-          b = boards[B.uid];
-        let d = 0;
-        if (a.foul && b.foul) d = 0;else if (a.foul) d = -(6 + b.roy);else if (b.foul) d = 6 + a.roy;else {
-          let lines = 0;
-          lines += ofcCmp(a.t, b.t) > 0 ? 1 : ofcCmp(a.t, b.t) < 0 ? -1 : 0;
-          lines += ofcCmp(a.m, b.m) > 0 ? 1 : ofcCmp(a.m, b.m) < 0 ? -1 : 0;
-          lines += ofcCmp(a.b, b.b) > 0 ? 1 : ofcCmp(a.b, b.b) < 0 ? -1 : 0;
-          if (lines === 3) lines = 6;else if (lines === -3) lines = -6;
-          d = lines + a.roy - b.roy;
-        }
-        pts[A.uid] += d;
-        pts[B.uid] -= d;
-      }
-      const stake = Number(setts.stake) || Number(setts.buyIn) / 20 || 5;
-      const pv = Math.max(0.01, round2(stake / 10));
-      const pays = {},
-        rawPos = {};
-      let collected = 0,
-        posSum = 0;
-      parts.forEach(p => {
-        const raw = round2(pts[p.uid] * pv);
-        if (raw < 0) {
-          const pay = Math.min(p.stack || 0, -raw);
-          pays[p.uid] = round2(pay);
-          collected = round2(collected + pay);
-        } else if (raw > 0) {
-          rawPos[p.uid] = raw;
-          posSum = round2(posSum + raw);
-        }
-      });
-      const rake = round2(collected * ((Number(setts.rakePercent) || 0) / 100));
-      const distributable = round2(collected - rake);
-      const wins = {};
-      if (posSum > 0) Object.entries(rawPos).forEach(([u, r]) => wins[u] = round2(Math.floor(distributable * (r / posSum) * 100) / 100));
-      const logEntries = [];
-      const cashouts = [];
-      await window.fb.runTransaction(window.fb.db, async tr => {
-        const humans = parts.filter(p => !p.isBot);
-        const reads = {};
-        for (const p of humans) {
-          const sm = await tr.get(memDoc(p.uid));
-          if (sm.exists()) reads[p.uid] = sm;
-        }
-        Object.keys(pl).forEach(u => {
-          pl[u].stack = round2((pl[u].stack || 0) - (pays[u] || 0) + (wins[u] || 0));
-          pl[u].flNext = boards[u].flNext || 0;
-          pl[u].pending = [];
-        });
-        for (const p of humans) {
-          const sm = reads[p.uid];
-          if (!sm) continue;
-          const delta = round2((wins[p.uid] || 0) - (pays[p.uid] || 0));
-          const st = sm.data().stats || {
-            gamesPlayed: 0,
-            gamesWon: 0,
-            totalProfit: 0
-          };
-          const memUpd = {
-            'stats.gamesPlayed': (st.gamesPlayed || 0) + 1,
-            'stats.gamesWon': (st.gamesWon || 0) + (pts[p.uid] > 0 ? 1 : 0),
-            'stats.totalProfit': round2((st.totalProfit || 0) + delta)
-          };
-          if (pl[p.uid].left && (pl[p.uid].stack || 0) > 0) {
-            memUpd.balance = round2((sm.data().balance || 0) + pl[p.uid].stack);
-            cashouts.push(p.name);
-          }
-          tr.update(sm.ref, memUpd);
-          logEntries.push({
-            uid: p.uid,
-            username: p.name,
-            game: 'ofc',
-            profit: delta
-          });
-        }
-        Object.keys(pl).forEach(u => {
-          if (pl[u].left || (pl[u].stack || 0) <= 0.009) delete pl[u];
-        });
-        tr.update(tblRef(), {
-          status: 'showdown',
-          showdownAt: Date.now(),
-          pot: 0,
-          turnUid: null,
-          players: pl,
-          lastResults: {
-            rows: parts.map(p => ({
-              uid: p.uid,
-              name: p.name,
-              pts: pts[p.uid],
-              roy: boards[p.uid].roy,
-              foul: boards[p.uid].foul,
-              fl: boards[p.uid].flNext || 0,
-              money: round2((wins[p.uid] || 0) - (pays[p.uid] || 0)),
-              stack: pl[p.uid] ? pl[p.uid].stack : 0,
-              busted: !pl[p.uid] && !boards[p.uid].left,
-              hands: boards[p.uid].foul ? null : {
-                t: ofcHandName(boards[p.uid].t, true),
-                m: ofcHandName(boards[p.uid].m),
-                b: ofcHandName(boards[p.uid].b)
-              },
-              isBot: !!p.isBot
-            })).sort((a, b) => b.pts - a.pts),
-            pv,
-            stake,
-            rake,
-            endedAt: Date.now()
-          }
-        });
-      });
-      playSnd('win');
-      if (logEntries.length) logGameResult(logEntries, tableDocId);
-      if (rake > 0) {
-        creditRakeToClub(rake, CLUB_ID);
-        distributeRake(rake, parts.filter(p => !p.isBot).map(p => p.uid));
-      }
-    } catch (e) {} finally {
-      settlingRef.current = false;
-    }
-  };
-  const greedyStage = (p, street) => {
-    const pend = [...(p.pending || [])].sort((a, b) => (b.v === 0 ? 15 : b.v) - (a.v === 0 ? 15 : a.v));
-    const need = p.flC ? 13 : street === 0 ? 5 : 2;
-    const cap = {
-      bot: 5 - (p.bot || []).length,
-      mid: 5 - (p.mid || []).length,
-      top: 3 - (p.top || []).length
-    };
-    const stg = {};
-    let placed = 0;
-    for (const c of pend) {
-      if (placed >= need) break;
-      const row = cap.bot > 0 ? 'bot' : cap.mid > 0 ? 'mid' : 'top';
-      if (cap[row] <= 0) break;
-      stg[c.id] = row;
-      cap[row]--;
-      placed++;
-    }
-    return stg;
-  };
-  const autoAct = async uid => {
-    const t = tableRef.current;
-    if (!t || t.status !== 'playing' || t.turnUid !== uid) return;
-    const p = t.players[uid];
-    if (!p) return;
-    await doConfirm(uid, greedyStage(p, t.street));
-  };
-  useEffect(() => {
-    if (!(isSuperAdmin || isHost || isSeated) || !tableState || T.status !== 'playing') return;
-    const p = players[T.turnUid];
-    if (p && p.isBot) {
-      const tm = setTimeout(() => autoAct(T.turnUid), 1200);
-      return () => clearTimeout(tm);
-    }
-  }, [T.turnUid, T.status, T.street, isSuperAdmin, isHost, isSeated]);
-  useEffect(() => {
-    let iv,
-      armed = false,
-      grace = 0;
-    if (T.status === 'playing' && T.turnStartedAt) {
-      iv = setInterval(() => {
-        const rem = Math.max(0, OFC_TIME - Math.floor((Date.now() - T.turnStartedAt) / 1000));
-        setTimeLeft(rem);
-        if (rem > 0) armed = true;
-        if (rem === 0 && T.turnUid === user.uid) {
-          if (armed || ++grace >= 10) {
-            clearInterval(iv);
-            autoAct(user.uid);
-          }
-        }
-      }, 1000);
-    }
-    return () => clearInterval(iv);
-  }, [T.status, T.turnStartedAt, T.turnUid]);
-  useEffect(() => {
-    if (isMyTurn) playSnd('turn');
-  }, [T.turnUid]);
+  const handleJoin=()=>game.run('join'),handleAddBot=()=>game.run('addbot'),startGame=()=>game.run('start');
+  const doConfirm=async(uid,stage)=>{if(await game.run('confirm',{stage})){setStage({});setSelCard(null);playSnd('chip');}};
+  const handleLeave=async()=>{if(isSeated&&T.status==='playing'&&!window.confirm('Leaving now marks this hand as a foul. Your remaining stack returns when the hand finishes. Leave?'))return;if(!isSeated||await game.run('leave'))onLeave();};
   const OCard = ({
     c,
     sel,
@@ -16633,13 +15210,16 @@ function OFCTable({
       jokers
     };
   })();
+  if(game.error)return React.createElement('div',{className:'card-game-error'},game.error,React.createElement('button',{onClick:onLeave},'Back to lobby'));
   if (loading) return React.createElement("div", {
     className: "h-full flex items-center justify-center text-emerald-500"
   }, React.createElement("i", {
     className: "fa-solid fa-spinner fa-spin text-3xl"
   }));
   return React.createElement("div", {
-    className: "h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none",
+    className: "card-game-room ofc-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none",
+    "aria-busy":game.busy,
+    "data-god-view":godView,
     dir: "ltr",
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #122a2a 0%, #05070f 60%)'
@@ -16649,7 +15229,7 @@ function OFCTable({
   }, React.createElement("div", {
     className: "flex items-center gap-1.5 sm:gap-2 flex-wrap shrink-0"
   }, (() => {
-    const flLocked = isSeated && me && (me.flC || 0) > 0 && (me.stack || 0) > 0.009 && T.status === 'playing';
+    const flLocked = false;
     return React.createElement("button", {
       onClick: handleLeave,
       title: flLocked ? "Fantasyland locks folding until your chips run out" : '',
@@ -16663,7 +15243,9 @@ function OFCTable({
   }, React.createElement("i", {
     className: "fa-solid fa-robot"
   })), isGod && React.createElement("button", {
-    onClick: () => setGodView(!godView),
+    onClick: () => setGodView(!godViewRequested),
+    'aria-label': 'GOD MODE',
+    'aria-pressed': godView,
     className: `px-3 py-1.5 rounded-lg text-[10px] font-black border ${godView ? 'bg-purple-600 text-white border-purple-400' : 'bg-slate-800 text-purple-400 border-white/10'}`
   }, React.createElement("i", {
     className: "fa-solid fa-eye ml-1"
@@ -16671,7 +15253,7 @@ function OFCTable({
     className: "flex-1 min-w-0 flex flex-col items-center px-1"
   }, React.createElement("span", {
     className: "text-teal-300 font-black text-xs sm:text-sm tracking-wider truncate max-w-full"
-  }, "Chinese Poker (OFC) OFC ", T.status === 'playing' ? `· round ${(T.street || 0) + 1}/5 · 🂠${(T.deck || []).length}` : ''), React.createElement("span", {
+  }, "Chinese Poker ", T.status === 'playing' ? `· round ${(T.street || 0) + 1}/5 · 🂠${(T.deck || []).length}` : ''), React.createElement("span", {
     className: "text-slate-400 text-[9px] sm:text-[10px] font-bold truncate max-w-full",
     dir: "ltr"
   }, "Match ", formatMoney(Number(setts.stake) || 5), " · 1pt = ", formatMoney(Math.max(0.01, round2((Number(setts.stake) || 5) / 10))))), React.createElement("div", {
@@ -16682,12 +15264,12 @@ function OFCTable({
     className: "text-teal-300 font-black text-sm leading-none",
     dir: "ltr"
   }, formatShort(me ? me.stack || 0 : 0)))), React.createElement("div", {
-    className: "flex-1 relative min-h-0 flex flex-col p-2 gap-1.5 overflow-y-auto"
+    className: "ofc-playfield flex-1 relative min-h-0 flex flex-col p-2 gap-1.5 overflow-y-auto"
   }, React.createElement("div", {
-    className: "flex justify-center gap-3 flex-wrap"
+    className: "ofc-opponents flex justify-center gap-3 flex-wrap"
   }, list.filter(p => p.uid !== user.uid).map(p => React.createElement("div", {
     key: p.uid,
-    className: `bg-slate-900/70 rounded-2xl p-2 border relative ${T.turnUid === p.uid && T.status === 'playing' ? 'border-amber-400/70' : 'border-white/8'} ${p.left ? 'opacity-40' : ''}`
+    className: `ofc-opponent bg-slate-900/70 rounded-2xl p-2 border relative ${T.turnUid === p.uid && T.status === 'playing' ? 'border-amber-400/70' : 'border-white/8'} ${p.left ? 'opacity-40' : ''}`
   }, ch.bubbles[p.uid] && React.createElement("div", {
     className: "chat-bubble"
   }, React.createElement("span", {
@@ -16843,7 +15425,7 @@ function OFCTable({
       className: `text-[9px] font-black px-2 py-0.5 rounded-full border ${foul ? 'text-rose-300 border-rose-500/70 bg-rose-500/15 animate-pulse' : full ? 'text-teal-200 border-teal-500/40 bg-teal-500/10' : 'text-slate-600 border-white/8'}`
     }, full ? ofcHandName(ev, isTop) : '···');
     return React.createElement("div", {
-      className: `space-y-1.5 mb-2 transition-transform ${me.flC > 0 ? 'ofc-fantasy-board' : ''}`
+      className: `ofc-hero-board space-y-1.5 mb-2 transition-transform ${me.flC > 0 ? 'ofc-fantasy-board' : ''}`
     }, React.createElement("div", {
       className: "flex items-center justify-center gap-2"
     }, React.createElement(RowSlots, {
@@ -16938,7 +15520,7 @@ function OFCTable({
   })()), T.status === 'setup' && React.createElement("div", {
     className: "absolute inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
-    className: "glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-teal-500/40"
+    className: "card-game-dialog glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-teal-500/40"
   }, React.createElement("i", {
     className: "fa-solid fa-table-cells text-4xl text-teal-400 mb-2"
   }), React.createElement("h3", {
@@ -16973,10 +15555,10 @@ function OFCTable({
     className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
   }, React.createElement("i", {
     className: "fa-solid fa-play ml-2"
-  }), "Start game"), React.createElement("button", {
+  }), "Start game"), me && me.stack<=0 && React.createElement("button", {onClick:()=>game.run('topup'),className:"card-game-primary"},"Add chips (",formatMoney(setts.buyIn),")"), React.createElement("button", {
     onClick: handleLeave,
     className: "text-slate-400 hover:text-white text-xs font-bold underline"
-  }, "Back to lobby"))), T.status === 'showdown' && res && !resHide && (() => {
+  }, "Back to lobby"))), T.status === 'showdown' && resHide && React.createElement('button',{onClick:()=>setResHide(false),className:'absolute bottom-16 left-1/2 -translate-x-1/2 z-[80] card-game-primary px-5 py-2'},'Results / next hand'), T.status === 'showdown' && res && !resHide && (() => {
     const rows = res.rows || [];
     const topPts = rows.length ? Math.max(...rows.map(r => r.pts)) : 0;
     return React.createElement("div", {
@@ -17038,15 +15620,13 @@ function OFCTable({
     }, canStart && list.length >= 2 && React.createElement("button", {
       onClick: startGame,
       className: "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-black"
-    }, "New match (", formatMoney(Number(setts.stake) || 5), ")"), isSeated && React.createElement("button", {
+    }, "New match (", formatMoney(Number(setts.stake) || 5), ")"), isSeated && me.stack<=0 && React.createElement('button',{onClick:()=>game.run('topup'),className:'card-game-primary px-4 py-2'},'Add chips (',formatMoney(setts.buyIn),')'), isSuperAdmin && list.some(p=>p.isBot&&p.stack<=0) && React.createElement('button',{onClick:()=>game.run('refillbots'),className:'card-game-primary px-4 py-2'},'Refill bot stacks'), !isSeated && list.length<maxP && React.createElement('button',{onClick:handleJoin,className:'card-game-primary px-4 py-2'},'Join next hand'), isSeated && React.createElement("button", {
       onClick: () => {
-        window.fb.updateDoc(tblRef(), {
-          [`players.${user.uid}.stayAt`]: Date.now()
-        }).catch(() => {});
+        game.run('stay');
         setResHide(true);
       },
       className: "flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2.5 rounded-xl font-black border border-slate-500"
-    }, "I'm staying 🔄 (", stayLeft, ")"), isSeated && React.createElement("button", {
+    }, "Keep watching"), isSeated && React.createElement("button", {
       onClick: handleLeave,
       className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-2.5 rounded-xl font-black border border-white/10"
     }, "Stand up 🚪"), !isSeated && React.createElement("button", {

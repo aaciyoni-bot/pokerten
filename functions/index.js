@@ -340,7 +340,7 @@ exports.guardTables = onDocumentWrittenWithAuthContext("tables/{tableId}",
     async (event) => {
       const before = event.data.before.exists ? event.data.before.data() : null;
       const after = event.data.after.exists ? event.data.after.data() : null;
-      if (!before || !after) return; // table opened or closed — nothing to balance
+      if (!before || !after || after.cardGameVersion === 1) return; // card games use their own funded ledger; table opened or closed — nothing to balance
 
       const pb = before.players || {};
       const pa = after.players || {};
@@ -427,3 +427,5 @@ Object.assign(exports,require("./pokerAccess"));
 exports.pkTournament=require("./pokerTournaments").pkTournament;
 exports.pkBotLobbyConfigure=require("./botLobby").pkBotLobbyConfigure;
 exports.pkClubArchive=require("./clubArchive").pkClubArchive;
+
+Object.assign(exports,require("./cardGames"));

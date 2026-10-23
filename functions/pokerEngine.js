@@ -1707,7 +1707,7 @@ exports.tableAutoDrive = onSchedule({schedule:'every 1 minutes',timeoutSeconds:1
     for(const d of tours.docs)if(['reg','running'].includes(d.data().status))try{await Tours.tickTournament(d.id);}catch(e){console.error('Tournament driver',d.id,e.message);}
     const snap=await db().collection('tables').where('authorityVersion','==',2).get();
     const rows=snap.docs.filter(d=>!d.data().tournament?.finished&&(d.data().closeRequested||Object.keys(d.data().players||{}).length));
-    for(let i=0;i<rows.length;i+=8)await Promise.all(rows.slice(i,i+8).map(d=>tickTable(d.id).catch(e=>console.error('Table driver',d.id,e.message))));
+    for(let i=0;i<rows.length;i+=8)await Promise.all(rows.slice(i,i+8).map(d=>(d.data().cardGameVersion===1?require('./cardGames').__cardInternals.tickTable(db(),d.id):tickTable(d.id)).catch(e=>console.error('Table driver',d.id,e.message))));
     if(!rows.length)return;await new Promise(resolve=>setTimeout(resolve,1500));
   }
 });

@@ -1,0 +1,33 @@
+'use strict';
+const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
+const w=new JSDOM('<div id="root"></div>',{url:'https://example.test',runScripts:'outside-only'}).window;
+global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
+const React=require('react'),{createRoot}=require('react-dom/client'),{Simulate}=require('react-dom/test-utils');w.React=React;
+w.eval(fs.readFileSync(require.resolve('../../assets/js/club-cashier.js'),'utf8'));
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
+w.fb={auth:{currentUser:{uid:'owner'}},fx:async(name,args)=>send(name,args)};
+w.eval(html.match(/const pokerCommand=async[\s\S]*?\n/)[0]+'window.command=pokerCommand;');
+const calls=[];let pending,rejectNext=false,refreshes=0;
+async function send(name,args){calls.push({name,args});if(rejectNext){rejectNext=false;throw Object.assign(Error('Offline'),{code:'functions/unavailable'});}if(pending)return pending;return{ok:true};}
+const root=createRoot(w.document.getElementById('root')),doc=w.document;
+const members=[{uid:'owner',username:'Owner',status:'approved',balance:1000},{uid:'alice',username:'Alice',playerId:'P101',status:'approved',balance:300,bonusOpen:100,promoBalance:7},{uid:'bob',username:'Bob',playerId:'P202',status:'approved',balance:50,bonusOpen:0},{uid:'pending',username:'Pending',status:'pending',balance:10},{uid:'bot_1',username:'Bot',status:'approved',balance:500}];
+const props={members,treasury:{uid:'owner',balance:1000},accounting:{players:{alice:{onTables:55,result:200},bob:{onTables:0,result:-25}}},canTransfer:true,clubId:'main',call:w.command,onRefresh:()=>refreshes++};
+const render=async extra=>React.act(async()=>root.render(React.createElement(w.ClubCashier.Cashier,{...props,...extra})));
+const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent===text),input=()=>doc.querySelector('[aria-label="Cashier amount"]');
+const change=async(el,value)=>React.act(()=>Simulate.change(el,{target:{value}}));
+(async()=>{
+ await render();assert.equal(doc.querySelectorAll('.cashier-member').length,2);assert.equal(calls.length,0,'opening cashier never transfers');
+ const row=doc.querySelector('[data-player-id="alice"]');assert.match(row.textContent,/Available200.00Bonus in wallet100.00At tables55.00Cycle result\+200.00/);assert.match(row.textContent,/Legacy bonus wallet: 7.00/);
+ await change(doc.querySelector('[aria-label="Find cashier player"]'),'P202');assert.equal(doc.querySelectorAll('.cashier-member').length,1);await change(doc.querySelector('[aria-label="Find cashier player"]'),'');
+ await React.act(()=>doc.querySelector('[aria-label="Claim Back from Alice"]').click());await change(input(),'201');assert.equal(button('Confirm Claim Back').disabled,true);await change(input(),'100.001');assert.equal(button('Confirm Claim Back').disabled,true);await change(input(),'200');
+ await React.act(async()=>{button('Confirm Claim Back').click();button('Confirm Claim Back').click();});assert.equal(calls.length,1);assert.equal(calls[0].args.amount,-200);assert.equal(calls[0].args.op,'cashier-transfer');assert.equal(refreshes,1);
+ await React.act(()=>doc.querySelector('[aria-label="Send Out to Bob"]').click());await change(input(),'1001');assert.equal(button('Confirm Send Out').disabled,true);await change(input(),'100');
+ let reject;pending=new Promise((_,r)=>reject=r);await React.act(()=>button('Confirm Send Out').click());const first=calls.at(-1).args.requestId;
+ await React.act(async()=>{reject(Object.assign(Error('Unknown result'),{code:'functions/internal'}));await Promise.resolve();});pending=null;
+ assert.ok(button('Retry same transfer'));assert.equal(input().disabled,true);assert.equal(button('Cancel').disabled,true);
+ await React.act(async()=>button('Retry same transfer').click());assert.equal(calls.at(-1).args.requestId,first,'ambiguous retry preserves the same server receipt');assert.equal(refreshes,2);
+ await render({canTransfer:false});assert.equal(doc.querySelector('[aria-label="Send Out to Alice"]'),null);assert.match(doc.body.textContent,/approved club manager/);
+ await render({error:'Results could not load'});assert.match(doc.querySelector('[data-player-id="alice"]').textContent,/At tables—Cycle result—/);
+ assert.match(html,/key:'cashier'.*show:canOpenBackoffice\(user\)/);assert.match(html,/cashierOnly: currentView === 'cashier'/);
+ await React.act(()=>root.unmount());w.close();console.log('PASS cashier: centralized balances/results, search, limits, roles, duplicate clicks, receipt-safe retry and no automatic transfers');
+})().catch(e=>{console.error(e);process.exitCode=1;w.close();});

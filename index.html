@@ -1119,6 +1119,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=321">
 <link rel="stylesheet" href="assets/css/reference-shell.css?v=324">
 <link rel="stylesheet" href="assets/css/card-games-reference.css?v=324">
+<link rel="stylesheet" href="assets/css/club-cashier.css?v=325">
+<script src="assets/js/club-cashier.js?v=325"></script>
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1188,7 +1190,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-range-model.js?v=304"></script>
 <script>
 
-const pokerCommand=async(name,data,scope='')=>{const clean=JSON.parse(JSON.stringify(data));const key=String(window.fb.auth?.currentUser?.uid||'')+':'+scope+':'+name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{const result=await window.fb.fx(name,payload);if(['pkClubMember','pkProfile'].includes(name)&&window.dispatchEvent&&window.Event)window.dispatchEvent(new window.Event('pk-club-changed'));return result;}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
+const pokerCommand=async(name,data,scope='')=>{const clean=JSON.parse(JSON.stringify(data));const key=String(window.fb.auth?.currentUser?.uid||'')+':'+scope+':'+name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:clean.requestId||crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{const result=await window.fb.fx(name,payload);if(['pkClubMember','pkProfile'].includes(name)&&window.dispatchEvent&&window.Event)window.dispatchEvent(new window.Event('pk-club-changed'));return result;}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
 // Assemble every page before exposing totals or exports. A failed page must never
 // turn a partial report into a successful-looking settlement.
 const loadClubDirectoryReport = async (options, scope='') => {
@@ -4087,10 +4089,11 @@ const PotAward = ({
     }))))
   );
 };
-function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onSettlement, onRanks, onProfile, onInstall, showInstall}) {
+function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onCashier, onSettlement, onRanks, onProfile, onInstall, showInstall}) {
   const buttons = [
     {key:'clubs', icon:'fa-building-columns', label:'Clubs', action:onClubs, show:true},
     {key:'backoffice', icon:'fa-chart-line', label:'Manage', action:onManage, show:canOpenBackoffice(user)},
+    {key:'cashier', icon:'fa-wallet', label:'Cashier', action:onCashier, show:canOpenBackoffice(user)},
     {key:'settlement', icon:'fa-file-invoice-dollar', label:'Settlement', action:onSettlement, show:true},
     {key:'leaders', icon:'fa-ranking-star', label:'Ranks', action:onRanks, show:true},
     {key:'install', icon:'fa-circle-down', label:'Install', action:onInstall, show:showInstall}
@@ -4634,6 +4637,7 @@ function App() {
     user:effUser, club:{...activeClub,...clubSettings,id:activeClub.id}, currentView,
     onClubs:leaveToClubs, onLobby:()=>changeView('lobby'),
     onManage:()=>changeView(currentView==='backoffice'?'lobby':'backoffice'),
+    onCashier:()=>changeView('cashier'),
     onSettlement:()=>changeView('settlement'),
     onRanks:()=>changeView(currentView==='leaders'?'lobby':'leaders'),
     onProfile:()=>changeView(currentView==='profile'?'lobby':'profile'),
@@ -4664,6 +4668,7 @@ function App() {
     onJoinDurak: t => changeView('durak-table', t),
     onJoinOfc: t => changeView('ofc-table', t),
     onCreatePoker: () => changeView('poker-create'),
+    onCashier: () => changeView('cashier'),
     onSettlement: () => changeView('settlement'),
     showToast: showToast
   }), currentView === 'settlement' && activeClub && React.createElement('div', {className:'club-admin scrollable-content aurora-bg p-4 sm:p-6'},
@@ -4678,7 +4683,8 @@ function App() {
   }), currentView === 'leaders' && activeClub && React.createElement(LeadersView, {
     user: effUser,
     showToast: showToast
-  }), currentView === 'backoffice' && activeClub && canOpenBackoffice(effUser) && React.createElement(BackofficeView, {
+  }), ['backoffice','cashier'].includes(currentView) && activeClub && canOpenBackoffice(effUser) && React.createElement(BackofficeView, {
+    cashierOnly: currentView === 'cashier',
     user: effUser,
     clubSettings: clubSettings,
     tables: tablesDB,
@@ -6736,6 +6742,7 @@ function LobbyView({
   onJoinDurak,
   onJoinOfc,
   onCreatePoker,
+  onCashier,
   onSettlement,
   showToast
 }) {
@@ -7165,7 +7172,7 @@ function LobbyView({
   }, "YOUR CHIPS"), React.createElement("div", {
     className: "lw-val"
   }, React.createElement(OwnBalanceNumbers,{user,compact:true}))), React.createElement("button", {
-    onClick: () => setCashierOpen(true),
+    onClick: () => canOpenBackoffice(user) && onCashier ? onCashier() : setCashierOpen(true),
     className: "lw-cashier btn-gold ml-2 px-3.5 py-2 text-[12px] font-black rounded-xl shrink-0"
   }, React.createElement("i",{className:"fa-solid fa-wallet", "aria-hidden":true}), " Cashier"), React.createElement("button", {
     onClick: () => onSettlement?.(),
@@ -8788,6 +8795,7 @@ function BotLobbyControl({user, clubSettings}) {
     React.createElement('p', {className:'text-xs text-slate-400 mt-2'}, 'Deleting a table will not open a replacement. Existing tables keep running; tables are not opened or rotated automatically.'));
 }
 function BackofficeView({
+  cashierOnly = false,
   user,
   clubSettings,
   tables = [],
@@ -9272,6 +9280,9 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   if(!directoryLoaded)return React.createElement('div',{className:'club-admin blue-secondary scrollable-content p-4 sm:p-6','aria-busy':directoryLoading},
     React.createElement('h2',{className:'text-2xl font-black text-white mb-6'},'Club management'),
     directoryNotice || React.createElement('p',{role:'status',className:'text-center py-8 text-amber-400'},'Loading club members…'));
+  if(cashierOnly&&window.ClubCashier)return React.createElement('div',{className:'club-admin scrollable-content p-4 sm:p-6'},directoryNotice,
+    React.createElement(window.ClubCashier.Cashier,{key:directoryScope,members:usersList,treasury,accounting:currentAccounting,loading:directoryLoading||accountingLoading,error:accountingError,
+      canTransfer:canAdmin&&!directoryError,clubId:CLUB_ID,call:pokerCommand,onRefresh:()=>{setDirectoryAttempt(n=>n+1);setAccountingAttempt(n=>n+1);}}));
   return React.createElement("div", {
     style: {
       overflowX: "hidden"

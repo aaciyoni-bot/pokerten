@@ -33,10 +33,12 @@ jobs:
            if(v.arrayValue)return(v.arrayValue.values||[]).map(decode);
            return undefined;
           }
+          let stage='setup';
           async function main(){
            if(process.env.GITHUB_ACTIONS!=='true'||!process.env.FIREBASE_TOKEN)throw Error('auth-unavailable');
            const {getAccessToken}=require('firebase-tools/lib/auth');
-           const token=await getAccessToken(process.env.FIREBASE_TOKEN,['https://www.googleapis.com/auth/datastore']);
+           stage='authenticate';
+           const token=await getAccessToken(process.env.FIREBASE_TOKEN,['https://www.googleapis.com/auth/cloud-platform']);
            if(!token.access_token)throw Error('auth-unavailable');
            const base='https://firestore.googleapis.com/v1/projects/pokerten/databases/(default)/documents';
            async function query(collection,fields,where){
@@ -44,16 +46,18 @@ jobs:
             if(!response.ok)throw Error('read-http-'+response.status);
             return(await response.json()).filter(x=>x.document).map(x=>({id:x.document.name.split('/').pop(),data:decode({mapValue:{fields:x.document.fields}})}));
            }
+           stage='read-clubs';
            const clubs=await query('clubs',['name']);
            if(clubs.length>100)throw Error('club-scope-ambiguous');
            const selected=clubs.filter(x=>String(x.data.name||'').trim().toLowerCase()==='netabel');
            console.log('CHAT_DIAGNOSTIC '+JSON.stringify({matchingClubs:selected.length}));
            if(selected.length!==1)throw Error('club-scope-ambiguous');
+           stage='read-tables';
            const tables=await query('tables',['type','settings.baseGameType','settings.serverEngine','authorityVersion','chatMuted'],{fieldFilter:{field:{fieldPath:'clubId'},op:'EQUAL',value:{stringValue:selected[0].id}}});
            if(tables.length>100)throw Error('table-scope-ambiguous');
            const omaha=tables.filter(x=>x.data.type==='poker'&&/^Omaha ?[456]$/.test(x.data.settings?.baseGameType||''));
            console.log('CHAT_DIAGNOSTIC '+JSON.stringify({omahaTables:omaha.length,tables:omaha.map(x=>({tableRef:createHash('sha256').update(x.id).digest('hex').slice(0,10),variant:x.data.settings.baseGameType,protected:x.data.authorityVersion===2&&x.data.settings.serverEngine===true,muted:Boolean(x.data.chatMuted),mutedFieldType:typeof x.data.chatMuted}))}));
           }
-          main().catch(error=>{const reason=/^(auth-unavailable|club-scope-ambiguous|table-scope-ambiguous|read-http-\d+)$/.test(error.message)?error.message:'read-unavailable';console.log('CHAT_DIAGNOSTIC '+JSON.stringify({state:'failed',reason}));process.exitCode=1;});
+          main().catch(error=>{const reason=/^(auth-unavailable|club-scope-ambiguous|table-scope-ambiguous|read-http-\d+)$/.test(error.message)?error.message:'read-unavailable';console.log('CHAT_DIAGNOSTIC '+JSON.stringify({state:'failed',reason,stage,code:['ERR_REQUIRE_ESM','MODULE_NOT_FOUND','ENOTFOUND','ETIMEDOUT'].includes(error.code)?error.code:'other',category:/invalid.credential|authentication|reauth|authorization scopes/i.test(error.message)?'authentication':/json/i.test(error.message)?'response-format':'other'}));process.exitCode=1;});
           
           JS

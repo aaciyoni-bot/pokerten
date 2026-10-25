@@ -1,62 +1,57 @@
-# SYNGA POKER design QA — 2026-10-25
+# SYNGA POKER — landscape and proportions QA
 
-## Findings
+Date: 2026-10-25. Scope: the user's correction that the game must be landscape, with the reference's size proportions. This is not approval of the entire earlier one-to-one artwork request; that assessment is retained in design-qa-full-redesign.md.
 
-- **P1 — Exact visual fidelity remains incomplete.** The supplied lobby uses Halloween artwork, event promotions and a specific lower navigation bar. The implementation uses reconstructed courtyard artwork and the existing club features. The table room also differs in floor, dealer framing and lighting. Evidence: full-view comparisons below. Replace remaining reconstructed artwork with matching seasonal assets and finish those compositions before claiming a one-to-one result.
-- **P2 — Typography and icon treatment differ.** Barlow Condensed follows the display direction, but lettering, compact labels and custom gold icons are not identical. Some controls still use text symbols. Replace those with matching assets and tune type sizes/spacing against focused captures.
-- **P2 — Secondary screen fidelity is incomplete.** Management, club rewards and some card game controls reuse existing layouts with the new color theme. These screens need their own visual pass.
-- **Resolved — Dense table controls covered a lower player.** At 844 × 390 with six Omaha seats, the action dock overlapped the sixth seat. Dense tables now reserve 86px beneath the room. The final mobile capture shows player labels and action controls separately.
-- **Resolved — Hero labels and hidden cards collided.** Hero placement, separate name/balance rows, hidden-card positioning and the redundant felt caption were corrected. The final table comparison shows readable balances and cards.
-- **Passed for the latest branding request.** ORIZIS appears at both entrances. Shipped interface text, account pages, manifest, service worker, export labels and brand icons use SYNGA POKER. An automated check guards against previous names returning to product text.
+## Findings and resolutions
 
-## Visual truth and normalization
+- Resolved P1: independent viewport width/height sizing stretched the layout. Every main game surface now uses a single scale unit for a 1536 × 709 landscape stage. Portrait presents an accessible rotate-phone notice and hides game controls until landscape returns; no game state is reset.
+- Resolved P2: lobby cards were too tall and the content density differed. At reference scale, main cards are 238 × 324, the promotional column is 238 × 353, the stacked shortcuts occupy 168/139 heights, gaps are 34, the header is 83 and footer 69. Club shortcuts use existing callbacks.
+- Resolved P0 during iteration: percentage table width collapsed inside a size-contained grid. Explicit stage-unit dimensions restored the full table.
+- Resolved P2 during iteration: four chooser detail rows overflowed their cards. Waiting information now shares the player row, and three rows fill the card. Selecting another table centers it in the carousel.
+- Resolved P2 during iteration: six-seat hidden cards intersected the action dock. Dense seats use 0.76 of their vertical anchor to reserve the lower action area without shrinking the entire room. Nine-seat browser geometry reports zero intersections between opponent avatars/labels/cards and the action dock.
 
-Source lobby: `/workspace/scratch/91af4316c513/upload/04-1000519072.jpg`.
-Source active table: `/workspace/scratch/91af4316c513/upload/08-1000519076.jpg`.
-Both sources are 1536 × 709 pixels, normalized to 1280 × 592 for comparison with the browser fixture at 1280 × 592 CSS pixels, density 1. Captures exclude the surrounding canvas; a one-pixel crop rounding difference is immaterial.
+## Visual evidence
 
-States differ: the reference contains public-game events and large balances; the implementation contains sample club tables, existing game features and sample balances. The implementation shows the local player's controls; the source shows another player's action. These differences do not establish exact fidelity.
+Source visual truth: ../upload/04-1000519072.jpg (lobby), ../upload/06-1000519074.jpg (chooser), ../upload/08-1000519076.jpg (table). Sources are 1536 × 709.
 
-Implementation evidence:
+Browser evidence: qa/proportions-lobby-full.jpg, qa/proportions-stakes-full.jpg, qa/proportions-table-full.jpg (1280 × 592 iframe); qa/proportions-mobile-lobby-full.jpg and qa/proportions-nine-seat-full.jpg (844 × 390 iframe); qa/proportions-portrait-full.jpg (390 × 844 iframe). The outer browser screenshot canvas is 1363 × 936 at density 1. Outer dark margins are test harness space, not game content.
 
-- `qa/lobby-full.jpg` / `qa/lobby-1280.jpg`: lobby, 1280 × 592.
-- `qa/table-1280.jpg`: earlier table iteration.
-- `qa/table-final-full.jpg` / `qa/table-final-1280.jpg`: final five-seat table, 1280 × 592.
-- `qa/mobile-landscape-full.jpg` / `qa/mobile-landscape-final-full.jpg`: six-seat Omaha before/after action-area correction, iframe 844 × 390, screenshot canvas 1363 × 936.
-- `qa/orizis-intro.jpg` / `qa/preview-orizis-intro.jpg`: both entrances, 1363 × 936.
+Full comparisons opened and inspected: qa/landscape-lobby-comparison.jpg and qa/landscape-table-comparison.jpg. Sources resized to 1280 × 591 and implementation cropped to the same game area. Focused comparisons: qa/landscape-lobby-detail.jpg and qa/landscape-table-detail.jpg. Both source and implementation appear in each combined comparison input.
 
-Full-view combined inputs opened and inspected: `/workspace/scratch/91af4316c513/reference-review/synga-lobby-comparison.jpg`, `synga-table-comparison.jpg` and `synga-table-comparison-final.jpg` in the same directory.
+Content/state differences: source public-game promotions and balances versus current club features and sample balances; the source table shows another player's action whereas the fixture shows the local player's action controls. Existing room art, avatars and branded typography differ, as documented in the earlier full-redesign report.
 
-Focused combined inputs opened and inspected: `synga-lobby-detail.jpg`, `synga-table-detail.jpg` and `synga-table-detail-final.jpg` in that directory. These examine display type, tile artwork, hero hand and labels. Different lobby tile positions are noted; the focused lobby view is not a pixel alignment test.
+## Measured geometry
 
-## Required fidelity surfaces
+| Region | Reference basis | Browser at 1280 × 592 | Browser at 844 × 390 |
+|---|---:|---:|---:|
+| Game stage | 1536 × 709 | 1280 × 590.83 | 844 × 389.58 |
+| Main game card | 238 × 324 | 198.33 × 270 | 130.77 × 178.03 |
+| Header height | 83 | 69.16 | 45.59 |
+| Footer height | 69 | 57.50 | 37.91 |
 
-| Surface | Assessment |
-|---|---|
-| Fonts and typography | Condensed display font and hierarchy implemented; exact lettering and label metrics differ. P2 remains. |
-| Spacing and layout | Landscape carousel and stakes chooser implemented. Hero labels and six-seat controls corrected. Secondary screens still need comparison. |
-| Colors and tokens | Red/burgundy panels, gold borders, green actions and blue night backdrop follow the reference direction; lighting and textures differ. |
-| Image quality | Actual APK Texas/Omaha art is sharp at the captured size. Generated room/courtyard art and symbol icons prevent exact fidelity. |
-| Copy and content | SYNGA POKER and ORIZIS are correct. Club/game features preserve the existing product. Preview data is visibly marked. |
+The selected second table centered at x=639.64 in the 1280-wide viewport (rounding tolerance <1px).
 
-## Browser checks and iteration history
+## Fidelity surfaces
 
-Local implementation: `http://terminal.local:4173/`, `preview.html`, and fixtures under `tests/ui/synga-preview.html`.
+- Typography: the existing families remain; hierarchy, card titles and controls now scale together. No truncated labels in tested primary states. Exact source lettering remains outside this orientation correction.
+- Spacing/layout: landscape frame, tile grid, bars, chooser and table share proportional dimensions. Portrait no longer becomes a vertical lobby.
+- Colors/tokens: existing burgundy, gold and green remain unchanged; this revision changes dimensions and orientation.
+- Image quality: existing PNG/WebP assets scale uniformly. Texas art can protrude above its card without clipping. Different seasonal art remains documented in the broader review.
+- Copy/content: SYNGA POKER and ORIZIS preserved. New orientation message explains the required landscape view in Hebrew and English. Preview sample-data label remains visible.
 
-1. Initial table iteration identified small avatars, mixed action-button colors, hidden-card sizing and hero-label collisions. Updated CSS and recaptured `qa/table-1280.jpg`.
-2. Replaced interim Texas/Omaha tile art with APK artwork; compared `qa/lobby-full.jpg` with the source. Seasonal background/icon differences remain above.
-3. Centered player information, supplied varied existing avatars and removed the redundant felt caption. Recaptured `qa/table-final-full.jpg`; opened full and focused final comparisons.
-4. Reserved an action area to fix six-seat mobile overlap; inspected before/after captures. Portrait poker displays a rotate instruction; it is not claimed as a full portrait playing layout.
-5. Navigated through ORIZIS at both entrances. Verified the next page title and visible branding are SYNGA POKER.
+## Verification
 
-Interactions checked: lobby carousel, Texas table selection, Omaha six-card selection, table entry/return, navigation, sound settings/sample buttons, Durak and Chinese Poker entry. Automated UI suites cover management/accounting. Console checks reported no application exceptions; extension metadata/Tailwind CDN notices were non-blocking. No listening comparison was performed. Real authentication/multiplayer writes were not tested because the separate backend is not configured.
+Browser: lobby → Texas chooser → table → lobby; selection centering; club tables dialog open/close; landscape phone, five/six/nine-seat table rendering; portrait notice. Console checked: extension metadata errors only, no observed application errors.
+
+Automated: npm run check (20 invariants plus isolation/branding/ORIZIS); npm run test:ui (38 suites); JavaScript syntax; git diff --check. These are UI/design-preview checks. Real multiplayer transactions are unavailable while the independent backend is pending.
 
 ## Implementation checklist
 
-- Obtain/recreate remaining matching assets and finish typography/icons.
-- Review secondary screens and denser table variants against references.
-- Configure the independent backend and validate multiplayer before deployment.
+- [x] Preserve one landscape coordinate system.
+- [x] Replace portrait game layout with a rotate-phone notice.
+- [x] Match principal lobby/card/bar proportions.
+- [x] Keep dense players clear of the action dock.
+- [x] Verify existing navigation and mandatory checks.
+- [ ] Continue the separately documented full artwork/secondary-screen redesign.
 
-The latest ORIZIS/SYNGA branding change is verified. The broader one-to-one redesign retains the P1/P2 findings above and is not a completed production release.
-
-final result: blocked
+final result: passed

@@ -44,7 +44,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
   assert.equal(JSON.parse(w.localStorage.getItem('pkSkin')).felt,color.toLowerCase());
   assert.equal(doc.querySelector('[aria-label="Table color: '+color+'"]').getAttribute('aria-pressed'),'true');
   assert.ok(doc.querySelector('.poker-table').style.getPropertyValue('--table-filter'));
-  assert.equal(doc.querySelector('.approved-poker-material').getAttribute('src'),'assets/design/poker-material-v292.webp','felt and LED use a single recolored material');
+  assert.equal(doc.querySelector('.approved-poker-material').getAttribute('src'),'assets/synga/table-room.webp','felt, rail and dealer use the SYNGA room material');
  }
  await React.act(()=>doc.querySelector('[aria-label="Table color: Auto"]').click());
  await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Done').click());
@@ -55,13 +55,13 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  const menuTrigger=doc.querySelector('[title="Table menu"]');await React.act(()=>menuTrigger.click());
  assert.match(doc.querySelector('.poker-menu-heading').textContent,/Blinds 5\/10/);assert.ok(doc.querySelector('[title="Hand history"]'));
  assert.equal(doc.activeElement,doc.querySelector('[aria-label="Close table menu"]'));
- assert.equal(doc.querySelector('.poker-felt-wordmark').textContent,'POKERTEN','club logos never replace the POKERTEN name');assert.equal(doc.querySelector('.poker-felt-logo'),null);assert.equal(doc.querySelector('.poker-felt-club-name').textContent,'My Club');
+ assert.equal(doc.querySelector('.poker-felt-wordmark').textContent,'SYNGA POKER','club logos never replace the SYNGA POKER name');assert.equal(doc.querySelector('.poker-felt-logo'),null);assert.equal(doc.querySelector('.poker-felt-club-name').textContent,'My Club');
  await React.act(()=>doc.querySelector('[title="Hand history"]').click());let historyDialog=doc.querySelector('[role="dialog"][aria-label="Hand history"]');assert.ok(historyDialog);assert.match(historyDialog.textContent,/No hands have been played/);await React.act(()=>historyDialog.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(doc.activeElement,menuTrigger);await React.act(()=>menuTrigger.click());
  const details=doc.querySelector('[aria-label="Table details"]');await React.act(()=>details.click());let dialog=doc.querySelector('[role="dialog"]');assert.match(dialog.textContent,/My Club/);assert.match(dialog.textContent,/test-table/);assert.equal(doc.activeElement,dialog.querySelector('button'));
  await React.act(()=>dialog.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(doc.querySelector('.poker-info-dialog'),null);assert.equal(doc.activeElement,menuTrigger,'details returns focus to the persistent table menu');
  await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test-table',user:{uid:'me',role:'player',balance:500,playerId:'P123456789'},clubSettings:{name:'Renamed Club',logo:'data:image/png;base64,test'},onLeave(){left++;},showToast:m=>messages.push(m)})));
  assert.equal(doc.querySelector('.poker-felt-club-name').textContent,'Renamed Club','a live club-name update appears on the existing table');
- assert.equal(doc.querySelector('.poker-felt-wordmark').textContent,'POKERTEN');
+ assert.equal(doc.querySelector('.poker-felt-wordmark').textContent,'SYNGA POKER');
  assert.equal(fullscreenRequests,0,'fullscreen is only requested from an explicit click');await React.act(()=>menuTrigger.click());await React.act(async()=>doc.querySelector('[aria-label="Enter fullscreen"]').click());assert.equal(fullscreenRequests,1);assert.equal(doc.querySelector('.poker-menu-panel'),null);await React.act(()=>menuTrigger.click());assert.ok(doc.querySelector('[aria-label="Exit fullscreen"]'));
  await React.act(async()=>doc.exitFullscreen());assert.ok(doc.querySelector('[aria-label="Enter fullscreen"]'),'system exit updates the control without re-entering fullscreen');await React.act(()=>doc.querySelector('.poker-menu-panel').dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(doc.querySelector('.poker-menu-panel'),null);assert.equal(doc.activeElement,menuTrigger);
  assert.equal(doc.querySelector('.btn-call .poker-action-amount').textContent,'10');
@@ -242,7 +242,8 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    const seats=[...doc.querySelectorAll('.poker-seat')];
    assert.equal(Number(doc.querySelector('.poker-table').dataset.seatCount),seats.length);
    const left=seats.filter(s=>s.dataset.seatSide==='left').length;
-   assert.ok(Math.abs(left-(seats.length-left))<=1,'occupied ring remains balanced after stand-up');
+   const right=seats.filter(s=>s.dataset.seatSide==='right').length;
+   assert.ok(Math.abs(left-right)<=1,'occupied ring remains balanced around the centered hero after stand-up');
    const ordered=Object.values(current.players).sort((a,b)=>a.seatIndex-b.seatIndex),my=ordered.findIndex(p=>p.uid==='me');
    assert.deepEqual(seats.map(s=>s.dataset.playerUid),[...ordered.slice(my),...ordered.slice(0,my)].map(p=>p.uid),'clockwise order survives compaction');
    assert.deepEqual(Object.fromEntries(Object.values(current.players).map(p=>[p.uid,p.seatIndex])),before,'visual compaction never changes physical/game seats');

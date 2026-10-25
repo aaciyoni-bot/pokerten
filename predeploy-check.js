@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* POKERTEN — mandatory pre-deploy checks.
+/* SYNGA POKER — mandatory pre-deploy checks.
  *
  * WHY THIS EXISTS: a syntax-only check ("does the bundle parse?") passes even
  * when a change silently breaks basic behaviour — e.g. flipping the engine flag
@@ -24,7 +24,7 @@ const check = (name, pass, why) => pass ? ok(name) : bad(name + ' — ' + why);
 const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 const bundle = scripts.reduce((a, b) => (b.length > a.length ? b : a), '');
 
-console.log('POKERTEN pre-deploy checks\n');
+console.log('SYNGA POKER pre-deploy checks\n');
 
 // 1) BUNDLE PARSES (crash guard)
 try { new Function(bundle); ok('bundle parses (no syntax error)'); }
@@ -65,11 +65,11 @@ check('pkTick is not gated on tableRef.current inside the interval',
   'a stale-ref guard here can skip the tick that advances the hand (freeze)');
 
 // 7) SW CACHE VERSION WAS BUMPED (else the deploy is served stale).
-const swVer = (sw.match(/pokerten-shell-v(\d+)/) || [])[1];
-const htmlVerRef = html.includes('pokerten-shell-v' + swVer); // not required, informational
+const swVer = (sw.match(/synga-shell-v(\d+)/) || [])[1];
+const htmlVerRef = html.includes('synga-shell-v' + swVer); // not required, informational
 check('service-worker cache version present', !!swVer,
-  'sw.js must define a pokerten-shell-vNN cache name');
-if (swVer) console.log('    (sw cache = pokerten-shell-v' + swVer + ' — confirm it is higher than the live deploy)');
+  'sw.js must define a synga-shell-vNN cache name');
+if (swVer) console.log('    (sw cache = synga-shell-v' + swVer + ' — confirm it is higher than the live deploy)');
 
 // 8) PURE HAND-NAME FUNCTION SANITY (evaluate the real function from the bundle).
 try {

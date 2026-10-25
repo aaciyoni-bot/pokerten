@@ -1,6 +1,16 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
 const source=html.slice(html.indexOf('const SFX = {'),html.indexOf('const playSnd ='));
+test('SYNGA uses extracted cues once per event and keeps mute and volume controls',()=>{
+ const played=[];const ctx={currentTime:0,state:'running',createBufferSource:()=>{const src={playbackRate:{value:1},connect(){},start(){played.push(src.buffer.name);}};return src;},createGain:()=>({gain:{value:1},connect(){}})};
+ const w={addEventListener(){}};const c={window:w,localStorage:{getItem:()=>null},setTimeout(){},document:{hidden:false},performance:{now:()=>3000}};vm.createContext(c);
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../assets/js/synga-soundpack.js'),'utf8'),c);
+ vm.runInContext(html.slice(html.indexOf('const SFX = {'),html.indexOf('const creditRakeToClub ='))+'\nwindow.audioTest={SFX,playSnd};',c);
+ const {SFX,playSnd}=w.audioTest;SFX.ctx=ctx;SFX.bus={};for(const name of Object.values(w.SYNGA_SOUNDS).flat())SFX.buf[name]={name};
+ for(const cue of ['deal','flip','chip','check','fold','turn','allin','win','bigwin','ui']){const before=played.length;playSnd(cue);assert.equal(played.length,before+1,cue+' uses one bundled cue');assert.ok(w.SYNGA_SOUNDS[cue].includes(played.at(-1)));}
+ w.__pkMuted=true;playSnd('check');assert.equal(played.length,10);
+ w.__pkMuted=false;w.__pkVolume=0;playSnd('win');assert.equal(played.length,10);
+});
 test('all-in and both pot wins use distinct soft buffers, once, through the mute gate',()=>{
  const played=[];const ctx={sampleRate:24000,currentTime:0,state:'running',createBuffer:(_,n)=>{const data=new Float32Array(n);return{getChannelData:()=>data};},createBufferSource:()=>{const src={playbackRate:{value:1},connect(){},start(){played.push(src.buffer);}};return src;},createGain:()=>({gain:{value:1},connect(){}})};
  const w={addEventListener(){}};const c={window:w,localStorage:{getItem:()=>null},setTimeout(){},document:{hidden:false}};vm.createContext(c);

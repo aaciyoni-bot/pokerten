@@ -4,18 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
-    <title>POKERTEN</title>
+    <title>SYNGA POKER</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#06111c">
     <!-- dark color-scheme: Android paints the system-bar / keyboard / overscroll
          areas DARK in the installed app instead of a light strip -->
     <meta name="color-scheme" content="dark">
-    <link rel="icon" type="image/png" sizes="192x192" href="assets/brand/orbital-icon192.png">
-    <link rel="apple-touch-icon" href="assets/brand/orbital-apple180.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="assets/synga/icon-192.png">
+    <link rel="apple-touch-icon" href="assets/synga/icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="POKERTEN">
+    <meta name="apple-mobile-web-app-title" content="SYNGA POKER">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -425,7 +425,7 @@
         @keyframes muckFade { to { opacity: 0.55; transform: translateY(5px) scale(0.97); filter: saturate(0.75); } }
         .card-mucked { animation: muckFade 0.6s ease 3s both; }
         @media (prefers-reduced-motion: reduce) { .card-mucked { animation-delay: 2.4s; animation-duration: 0.01s; } }
-        /* Premium navy-and-gold POKERTEN back (Durak decks re-theme it via --cb* vars) */
+        /* Premium navy-and-gold SYNGA POKER back (Durak decks re-theme it via --cb* vars) */
         .card-back {
             border-radius: 9px;
             position: relative;
@@ -665,7 +665,7 @@
         .cube-emerald, .cube-rose, .cube-sky, .cube-amber, .cube-cyan, .cube-purple, .cube-indigo, .cube-teal, .cube-orange, .cube-lime, .cube-gold { --cubeA: #D5B36B; }
 
         /* Breathing logo */
-        /* ═══ POKERTEN Design Tokens v2 ═══ */
+        /* ═══ SYNGA POKER Design Tokens v2 ═══ */
         :root {
             --pt-bg: #07090F; --pt-card: #0E1219; --pt-raised: #141926;
             --pt-line: rgba(255,255,255,0.06);
@@ -1045,43 +1045,8 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCustomToken, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, onAuthStateChanged, onIdTokenChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-        import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyC1MuCmX0bUAW6XakFzkqS8LHVxkDRTrfo",
-            authDomain: "pokerten.firebaseapp.com",
-            projectId: "pokerten",
-            storageBucket: "pokerten.firebasestorage.app",
-            messagingSenderId: "861274065626",
-            appId: "1:861274065626:web:512b8383ea1fae7a8c73e3",
-            measurementId: "G-DSZNTQMZV6"
-        };
-        const app = initializeApp(firebaseConfig);
-        const _auth = getAuth(app);
-        window.fb = { auth: _auth, db: getFirestore(app), googleProvider: new GoogleAuthProvider(), signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, onIdTokenChanged, signOut, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction };
-        // A guest has no password to sign back in with: if the session is lost,
-        // the account — and the chips in it — are gone with it. So persistence
-        // is set BEFORE any sign-in, and every sign-in waits for it.
-        const _persist = setPersistence(_auth, indexedDBLocalPersistence)
-            .catch(() => setPersistence(_auth, browserLocalPersistence))
-            .catch(() => {});
-        window.fb.signInCode = async token => { await _persist; return signInWithCustomToken(_auth, token); };
-        const _fx = getFunctions(app);
-        window.fb.fx = (name, data) => httpsCallable(_fx, name,{timeout:20000})(data).then(r => r.data);
-        // Keep popup errors visible. Cross-origin redirect fallback can silently
-        // lose the Google result on browsers with partitioned storage.
-        window.fb.signIn = async () => {
-            await _persist;
-            return signInWithPopup(_auth, window.fb.googleProvider);
-        };
-        // Complete any pending redirect sign-in on load (onAuthStateChanged then fires).
-        getRedirectResult(_auth).catch(() => {});
-        window.dispatchEvent(new Event('firebase-ready'));
-    </script>
+    <script src="synga-config.js"></script>
+    <script type="module" src="assets/js/synga-firebase.js"></script>
 <style id="table-chat-design">
 .table-chat__sent{padding:8px 12px;font-size:12px;text-align:center;color:#93e0cd;background:#133e36;flex-shrink:0}
 /* Responsive chat drawer: preserve the game geometry and mobile action area. */
@@ -1121,8 +1086,9 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=326">
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=325">
 <script src="assets/js/club-cashier.js?v=325"></script>
+<link rel="stylesheet" href="assets/css/synga.css?v=1">
 </head>
-<body class="bg-slate-950 h-full w-full poker-theme">
+<body class="bg-slate-950 h-full w-full poker-theme synga-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
   <linearGradient id="pcGRed" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0" stop-color="#c31c20"/><stop offset="0.52" stop-color="#8f1114"/><stop offset="1" stop-color="#350709"/></linearGradient>
@@ -1186,6 +1152,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-settlement-ui.js?v=313"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=316"></script>
+    <script src="assets/js/synga-soundpack.js?v=1"></script>
+    <script src="assets/js/synga-ui.js?v=2"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
     <script src="assets/js/poker-range-model.js?v=304"></script>
 <script>
@@ -1584,7 +1552,7 @@ const SFX = {
   buf: {},
   loading: false
 };
-const SFX_FILES = {
+const SFX_FILES = window.SYNGA_SOUNDS || {
   deal: ['card_deal_1', 'card_deal_2', 'card_deal_3', 'card_deal_4'],
   flip: ['card_flip_1', 'card_flip_2', 'card_flip_3'],
   chip: ['chips_slide_1', 'chips_slide_2', 'chips_slide_3'],
@@ -1762,10 +1730,11 @@ const playSnd = (type, times = 1, gapSec = 0) => {
     } catch (e) {}
   }
   if (window.__pkMuted || document.hidden) return;
+  if(window.SYNGA_SOUNDS && type==='tick'){const now=performance.now();if(now-(SFX.lastTick||0)<1900)return;SFX.lastTick=now;}
   // Keep chat/join quiet; turn and countdown cues are gameplay feedback.
   if (['msg', 'join'].includes(type)) return;
   try {
-    if (['allin', 'win', 'bigwin'].includes(type)) {
+    if (!window.SYNGA_SOUNDS && ['allin', 'win', 'bigwin'].includes(type)) {
       sfxPrepareCues(sfxCtx());
       sfxPlay(SFX_FILES[type][0], 0, type === 'allin' ? .8 : .85, 1);
       return;
@@ -1773,11 +1742,11 @@ const playSnd = (type, times = 1, gapSec = 0) => {
     const variants = (SFX_FILES[type] || []).filter(v => SFX.buf[v]);
     if (variants.length) {
       // check = two real knuckle-knocks on the rail, second one a touch softer
-      const reps = type === 'check' ? 2 : Math.floor(times) || 1;
+      const reps = type === 'check' && !window.SYNGA_SOUNDS ? 2 : Math.floor(times) || 1;
       const n = Math.max(1, Math.min(type === 'deal' ? 36 : 9, reps));
-      const base = SFX_GAIN[type] ?? 0.7;
+      const base = window.SYNGA_SOUNDS ? (type==='tick'?.4:type==='turn'?.65:.75) : (SFX_GAIN[type] ?? 0.7);
       const gap = gapSec || (type === 'check' ? 0.155 : type === 'flip' ? 0.22 : type === 'win' || type === 'bigwin' ? 0.16 : 0.085);
-      if (type === 'check') {
+      if (type === 'check' && !window.SYNGA_SOUNDS) {
         const v = (SFX_FILES.check || []).filter(x => SFX.buf[x]);
         if (v.length) {
           sfxPlay(v[0], 0, base);
@@ -3650,7 +3619,7 @@ const SpinWheel = ({mult, prize, buyIn}) => {
   },[target,rotation,segments.length]);
   if(target===null)return React.createElement('div',{className:'spin-cash-scene',role:'status'},'Waiting for the prize result…');
   return React.createElement('div',{className:'spin-cash-scene',dir:'ltr',role:'dialog','aria-label':'Spin and Cash prize draw'},
-    React.createElement('header',{className:'spin-cash-heading'},React.createElement('span',null,'POKERTEN'),React.createElement('h1',null,'SPIN & CASH'),React.createElement('p',null,done?'Your prize pool is ready':'The table is ready. Let it spin.')),
+    React.createElement('header',{className:'spin-cash-heading'},React.createElement('span',null,'SYNGA POKER'),React.createElement('h1',null,'SPIN & CASH'),React.createElement('p',null,done?'Your prize pool is ready':'The table is ready. Let it spin.')),
     React.createElement('div',{className:'spin-cash-wheel-frame','aria-hidden':'true'},
       React.createElement('i',{className:'fa-solid fa-caret-down spin-cash-pointer'}),
       React.createElement('div',{className:'spin-cash-rotor',style:{transform:`rotate(${go?rotation:0}deg)`}},
@@ -4102,7 +4071,7 @@ function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onCa
     React.createElement('div', {className:'blue-identity-row'},
       React.createElement('button', {type:'button',className:'blue-icon-button',onClick:onClubs,'aria-label':'Back to clubs'},React.createElement('i',{className:'fa-solid fa-chevron-left','aria-hidden':true})),
       React.createElement('button', {type:'button',className:'blue-club-identity',onClick:onLobby,'aria-label':'Club lobby'},
-        React.createElement('strong',null,club.name || 'POKERTEN'),
+        React.createElement('strong',null,club.name || 'SYNGA POKER'),
         React.createElement('span',null,'ID: ',clubCode(club.id))),
       React.createElement('button', {type:'button',className:'blue-profile-button',onClick:onProfile,'aria-label':'My profile'},React.createElement('img',{src:avatarUrl(user),alt:''}),isGodUser(user) && React.createElement('i',{className:'fa-solid fa-eye blue-god-eye',title:'GOD MODE','aria-label':'GOD MODE'}))),
     React.createElement('div',{className:'blue-nav-tabs'},buttons.filter(b=>b.show).map(b=>React.createElement('button',{key:b.key,type:'button',onClick:b.action,'aria-current':currentView===b.key?'page':undefined,className:currentView===b.key?'is-active':''},React.createElement('i',{className:'fa-solid '+b.icon,'aria-hidden':true}),React.createElement('span',null,b.label)))));
@@ -4633,7 +4602,7 @@ function App() {
   const inTable = ['poker-table', 'durak-table', 'ofc-table'].includes(currentView);
   return React.createElement("div", {
     className: "h-full w-full flex flex-col relative overflow-hidden" + (inTable ? "" : " pt-theme")
-  }, effUser && activeClub && effUser.status === 'approved' && !inTable && currentView !== 'clubs' && React.createElement(ClubShellNav, {
+  }, effUser && activeClub && effUser.status === 'approved' && !inTable && currentView !== 'clubs' && React.createElement(window.SyngaUI?.Nav || ClubShellNav, {
     user:effUser, club:{...activeClub,...clubSettings,id:activeClub.id}, currentView,
     onClubs:leaveToClubs, onLobby:()=>changeView('lobby'),
     onManage:()=>changeView(currentView==='backoffice'?'lobby':'backoffice'),
@@ -4656,7 +4625,7 @@ function App() {
     clubName: activeClub?.name,
     onBack: leaveToClubs,
     banned: activeMem?.status === 'banned'
-  }), currentView === 'lobby' && activeClub && React.createElement(LobbyView, {
+  }), currentView === 'lobby' && activeClub && React.createElement(window.SyngaUI?.Lobby || LobbyView, {
     user: effUser,
     tables: tablesDB,
     tablesLoaded: tablesLoaded,
@@ -4754,7 +4723,7 @@ function App() {
     className: "text-3xl mb-1"
   }, "📲"), React.createElement("h3", {
     className: "text-lg font-black text-white mb-1"
-  }, "Install PokerTen"), React.createElement("p", {
+  }, "Install SYNGA POKER"), React.createElement("p", {
     className: "text-slate-400 text-xs font-bold mb-4"
   }, "Add it to your home screen — opens full-screen like a real app."), isIOSDev ? React.createElement("div", {
     className: "text-left space-y-2.5"
@@ -4922,7 +4891,7 @@ function InstallBanner({
     className: "text-3xl mb-1"
   }, "📲"), React.createElement("h3", {
     className: "text-lg font-black text-white mb-1"
-  }, "Install PokerTen"), React.createElement("p", {
+  }, "Install SYNGA POKER"), React.createElement("p", {
     className: "text-slate-400 text-xs font-bold mb-4"
   }, "Add it to your home screen — opens full-screen like a real app."), isIOSDev ? React.createElement("div", {
     className: "text-left space-y-2.5"
@@ -4958,7 +4927,7 @@ function InstallBanner({
     className: "p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/40"
   }, React.createElement("p", {
     className: "text-emerald-300 text-sm font-black mb-1"
-  }, "✅ PokerTen is already installed on this phone"), React.createElement("p", {
+  }, "✅ SYNGA POKER is already installed on this phone"), React.createElement("p", {
     className: "text-slate-300 text-[11px] font-bold leading-relaxed"
   }, "That's why Chrome won't offer a one-tap install — the app is here. If the icon is gone from your home screen, you only removed the shortcut.")), React.createElement("div", {
     className: "flex items-center gap-3"
@@ -4966,13 +4935,13 @@ function InstallBanner({
     className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
   }, "1"), React.createElement("span", {
     className: "text-slate-200 text-sm font-bold"
-  }, "To open it: Chrome menu ", React.createElement("b", null, "⋮"), " → ", React.createElement("b", null, "Open app"), ", or find PokerTen in your app drawer")), React.createElement("div", {
+  }, "To open it: Chrome menu ", React.createElement("b", null, "⋮"), " → ", React.createElement("b", null, "Open app"), ", or find SYNGA POKER in your app drawer")), React.createElement("div", {
     className: "flex items-center gap-3"
   }, React.createElement("span", {
     className: "w-7 h-7 rounded-lg bg-slate-800 text-emerald-400 flex items-center justify-center font-black shrink-0"
   }, "2"), React.createElement("span", {
     className: "text-slate-200 text-sm font-bold"
-  }, "To reinstall fresh: ", React.createElement("b", null, "Settings → Apps → PokerTen → Uninstall"), ", reopen Chrome — the one-tap install returns"))) : React.createElement("div", {
+  }, "To reinstall fresh: ", React.createElement("b", null, "Settings → Apps → SYNGA POKER → Uninstall"), ", reopen Chrome — the one-tap install returns"))) : React.createElement("div", {
     className: "text-left space-y-2.5"
   }, React.createElement("div", {
     className: "flex items-center gap-3"
@@ -4996,7 +4965,7 @@ function InstallBanner({
     className: "mt-3 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30"
   }, React.createElement("p", {
     className: "text-amber-300 text-[11px] font-bold leading-relaxed"
-  }, "Menu says ", React.createElement("b", null, "\"Open app\""), " instead of Install? The app is still installed on your phone (removing the icon isn't uninstalling). Go to ", React.createElement("b", null, "Settings → Apps → PokerTen → Uninstall"), ", reopen Chrome, and the one-tap Install button will come back."))), React.createElement("button", {
+  }, "Menu says ", React.createElement("b", null, "\"Open app\""), " instead of Install? The app is still installed on your phone (removing the icon isn't uninstalling). Go to ", React.createElement("b", null, "Settings → Apps → SYNGA POKER → Uninstall"), ", reopen Chrome, and the one-tap Install button will come back."))), React.createElement("button", {
     onClick: () => setShowGuide(false),
     className: "mt-5 text-slate-500 hover:text-white underline text-sm font-bold"
   }, "Close"))), document.body));
@@ -5018,7 +4987,7 @@ function AuthView({error = '', loading = false, onRetry} = {}) {
     }
   }, React.createElement("div", {
     className: "auth-card text-center relative z-10 w-full"
-  }, React.createElement("img", {className:"blue-auth-icon",src:"assets/brand/orbital-icon512.png",width:88,height:88,alt:"PokerTen"}), React.createElement("p", {
+  }, React.createElement("img", {className:"blue-auth-icon",src:"assets/synga/icon-512.png",width:88,height:88,alt:"SYNGA POKER"}), React.createElement("p", {
     className: "auth-kicker",
     style: {
       color: 'var(--pt-text-2)',
@@ -5077,7 +5046,7 @@ function AuthView({error = '', loading = false, onRetry} = {}) {
     strokeLinejoin: "round"
   })), React.createElement("span", {
     className: "text-[10px] text-gold-400/90 font-bold tracking-[0.18em] uppercase"
-  }, "POKERTEN · Club poker")), React.createElement("span", {
+  }, "SYNGA POKER · Club poker")), React.createElement("span", {
     className: "text-[8px] text-slate-600 font-bold tracking-[0.3em] uppercase"
   }, "Powered by ORIZIS TECHNOLOGY")));
 }
@@ -5606,10 +5575,10 @@ function ClubsView({
   }, []);
   const copySiteLink = async () => {
     try {
-      await navigator.clipboard.writeText('https://pokerten.com');
+      await navigator.clipboard.writeText('https://syngapoker.com');
       showToast("Link copied - paste in Safari", "success");
     } catch (e) {
-      showToast("Copy manually: pokerten.com", "info");
+      showToast("Copy manually: syngapoker.com", "info");
     }
   };
   useEffect(() => {
@@ -5796,7 +5765,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     className: "max-w-2xl mx-auto animate-fade-in relative z-10 flex flex-col"
   }, React.createElement("div", {
     className: "text-center mb-3 mt-0 shrink-0"
-  }, React.createElement("h1", {className:"blue-wordmark", 'aria-label':'POKERTEN'}, "POKER", React.createElement('span',null,'TEN')), React.createElement("p", {
+  }, React.createElement("h1", {className:"blue-wordmark", 'aria-label':'SYNGA POKER'}, "POKER", React.createElement('span',null,'TEN')), React.createElement("p", {
     className: "hidden sm:block text-[11px] tracking-[0.3em] uppercase mt-2",
     style: {
       color: 'var(--pt-text-2)',
@@ -5840,7 +5809,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     className: "p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/40"
   }, React.createElement("p", {
     className: "text-emerald-300 text-sm font-black mb-1"
-  }, "✅ PokerTen is already installed on this phone"), React.createElement("p", {
+  }, "✅ SYNGA POKER is already installed on this phone"), React.createElement("p", {
     className: "text-slate-300 text-[11px] font-bold leading-relaxed"
   }, "That's why there's no one-tap install — the app is here. If the icon is gone from your home screen, you only removed the shortcut, not the app.")), React.createElement("div", {
     className: "flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"
@@ -5850,7 +5819,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     className: "fa-solid fa-up-right-from-square"
   })), React.createElement("span", {
     className: "text-slate-200 font-bold text-sm"
-  }, "To open: Chrome menu ", React.createElement("b", null, "⋮"), " → ", React.createElement("b", null, "Open app"), ", or find PokerTen in your app drawer")), React.createElement("div", {
+  }, "To open: Chrome menu ", React.createElement("b", null, "⋮"), " → ", React.createElement("b", null, "Open app"), ", or find SYNGA POKER in your app drawer")), React.createElement("div", {
     className: "flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"
   }, React.createElement("span", {
     className: "w-9 h-9 rounded-xl bg-slate-700 flex items-center justify-center text-white shrink-0"
@@ -5858,7 +5827,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     className: "fa-solid fa-rotate"
   })), React.createElement("span", {
     className: "text-slate-200 font-bold text-sm"
-  }, "To reinstall fresh: ", React.createElement("b", null, "Settings → Apps → PokerTen → Uninstall"), ", reopen Chrome — the one-tap install returns"))), !isIOS && !stillInstalled && React.createElement("div", {
+  }, "To reinstall fresh: ", React.createElement("b", null, "Settings → Apps → SYNGA POKER → Uninstall"), ", reopen Chrome — the one-tap install returns"))), !isIOS && !stillInstalled && React.createElement("div", {
     className: "text-left space-y-2.5 mb-4"
   }, React.createElement("div", {
     className: "flex items-center gap-3 bg-slate-950/60 border border-white/5 rounded-2xl p-3"
@@ -5884,12 +5853,12 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     className: "p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30"
   }, React.createElement("p", {
     className: "text-amber-300 text-[11px] font-bold leading-relaxed"
-  }, "Menu says ", React.createElement("b", null, "\"Open app\""), " instead? The app is still installed — removing the icon isn't uninstalling. Go to ", React.createElement("b", null, "Settings → Apps → PokerTen → Uninstall"), ", reopen Chrome, and the one-tap install returns."))), isIOS && !isIOSSafari && React.createElement("div", {
+  }, "Menu says ", React.createElement("b", null, "\"Open app\""), " instead? The app is still installed — removing the icon isn't uninstalling. Go to ", React.createElement("b", null, "Settings → Apps → SYNGA POKER → Uninstall"), ", reopen Chrome, and the one-tap install returns."))), isIOS && !isIOSSafari && React.createElement("div", {
     className: "bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 mb-4"
   }, React.createElement("div", {
     className: "text-amber-300 font-black text-sm mb-2"
   }, "First switch to Safari:"), React.createElement("a", {
-    href: "x-safari-https://pokerten.com",
+    href: "x-safari-https://syngapoker.com",
     className: "block bg-gradient-to-b from-sky-500 to-sky-700 text-white py-3 rounded-xl font-black shadow-lg mb-2"
   }, "🧭 Open in Safari"), React.createElement("button", {
     onClick: copySiteLink,
@@ -7160,7 +7129,7 @@ function LobbyView({
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Close"))), document.body), React.createElement("div", {
     className: "max-w-6xl mx-auto animate-fade-in relative z-10"
-  }, window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"POKERTEN",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
+  }, window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"SYNGA POKER",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
     className: "flex items-center justify-between gap-3 mb-5"
   }, React.createElement("div", {
     className: "lobby-wallet",
@@ -7256,7 +7225,7 @@ function LobbyView({
     className: "flex items-center justify-between mb-1"
   }, React.createElement("span", {
     className: "text-[9px] font-black text-amber-300/80 tracking-[0.25em] uppercase"
-  }, "POKERTEN"), React.createElement("span", {
+  }, "SYNGA POKER"), React.createElement("span", {
     className: "text-[9px] font-black text-amber-300/80 tracking-[0.25em] uppercase"
   }, "Lucky 3")), React.createElement("h3", {
     className: "text-2xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 via-amber-300 to-yellow-500 mb-0.5"
@@ -9148,7 +9117,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
         const botName = botDisplayName(usedN, usedK);
         await window.fb.addDoc(window.fb.collection(window.fb.db, "users"), {
           username: botName,
-          email: `bot${i}@pokerten.com`,
+          email: `bot${i}@syngapoker.com`,
           role: ROLES.PLAYER,
           status: 'approved',
           balance: 50000,
@@ -9768,7 +9737,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "grid grid-cols-1 sm:grid-cols-2 gap-3"
   }, (isAgentOnly ? agents.filter(a => a.uid === user.uid) : agents).map(a => {
     const linked = usersList.filter(x => x.agentUid === a.uid && x.status === 'approved');
-    const inviteLink = `https://pokerten.com/?agent=${a.agentCode || ''}&club=${CLUB_ID}`;
+    const inviteLink = `https://syngapoker.com/?agent=${a.agentCode || ''}&club=${CLUB_ID}`;
     return React.createElement("div", {
       key: a.id,
       className: "bg-slate-900/70 border border-purple-500/20 rounded-2xl p-4"
@@ -12243,16 +12212,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const N = Math.max(displayList.length, 2);
   // Stable rail rows leave room for cards, avatars and the lower-left hero hand.
   // Compact occupied seats for seated viewers; retain clockwise game order.
-  const SEAT_LAYOUTS = {
-    2: [[16.125,76.875],[89.16,31.25]],
-    3: [[16.125,76.875],[10.84,31.25],[89.16,31.25]],
-    4: [[16.125,76.875],[10.84,31.25],[89.16,31.25],[83.875,76.875]],
-    5: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[89.16,31.25],[89.16,59.375]],
-    6: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[50,18],[89.16,31.25],[89.16,59.375]],
-    7: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[25.339,18],[74.797,18],[89.16,31.25],[89.16,59.188]],
-    8: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[28,18],[72,18],[89.16,31.25],[89.16,59.375],[83.875,76.875]],
-    9: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[22,18],[50,18],[78,18],[89.16,31.25],[89.16,59.375],[83.875,76.875]]
-  };
+  const SEAT_LAYOUTS = {"2":[[50,72],[31,20]],"3":[[50,72],[31,20],[69,20]],"4":[[50,72],[24,60],[31,20],[69,20]],"5":[[50,72],[24,60],[31,20],[69,20],[76,60]],"6":[[50,72],[23,59],[28,20],[72,20],[77,59],[68,74]],"7":[[50,74],[31,72],[21,46],[29,18],[71,18],[79,46],[69,72]],"8":[[50,74],[30,72],[20,46],[27,18],[41,13],[70,18],[80,46],[70,72]],"9":[[50,74],[31,72],[20,46],[25,18],[40,12],[60,12],[75,18],[80,46],[69,72]]};
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
   // every real seatIndex so two players can never share a slot.
@@ -12273,7 +12233,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   // A spectator gets one join position for the next available physical seat.
   const slotMap = displayList.map((p,i)=>i+(compactVacancy?1:0));
   const slotOf = i => slotMap[i] || 0;
-  const seatXY = i => isSeated && displayList[i]?.uid === user.uid ? [16.125,76.875] : slotXY(slotOf(i));
+  const seatXY = i => isSeated && displayList[i]?.uid === user.uid ? [50,72] : slotXY(slotOf(i));
   const seatPos = i => {
     const [x, y] = seatXY(i);
     return {
@@ -12283,17 +12243,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   };
   const podWidthFor = y => y <= 40 ? 14.363 : y <= 71 ? 16.26 : 19.6477;
   const betPos = i => {
-    // Bets stay beside their owner's rail, outside all inward-facing hands.
-    const [sx, sy] = seatXY(i);
-    const hero = isSeated && displayList[i]?.uid === user.uid;
-    const x = sy <= 22 ? sx : sx < 50 ? 28 : 72;
-    const resultGap = layoutN <= 7 && sy > 22 && sy < 40 && (gs.allInReveal || gs.phase === 'showdown') ? 12 : 0;
-    const pod = podWidthFor(sy);
-    return {
-      left: hero ? '24%' : `${x}%`,
-      '--poker-top-bet-x': `${sx}%`,
-      top: hero ? 'calc(100% - var(--poker-hero-bottom, 158px) - 20px)' : sy >= 72 ? `calc(${sy}% + 18px)` : `calc(${sy}% + clamp(22px, min(${(pod / 2).toFixed(3)}cqw, ${(pod * .46125 / 2).toFixed(3)}cqh), 44px) + ${(sy <= 22 ? 23 : 32) + resultGap}px)`
-    };
+    const [sx,sy]=seatXY(i);
+    return {left:`${50+(sx-50)*.7}%`,top:`${sy<35?sy+15:sy>65?sy-13:sy}%`,'--poker-top-bet-x':`${sx}%`};
   };
 
   const breakClock = tour ? tourClock(tour) : null;
@@ -12356,7 +12307,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       React.createElement('button', {type:'button', autoFocus:true, onClick:closeTableInfo, 'aria-label':'Close table details'}, '✕'),
       React.createElement('h2', null, tableTitle), React.createElement('p', null, tableVariant),
       React.createElement('dl', null,
-        React.createElement('dt',null,'Club'),React.createElement('dd',null,clubSettings?.name || window.__club?.name || 'POKERTEN'),
+        React.createElement('dt',null,'Club'),React.createElement('dd',null,clubSettings?.name || window.__club?.name || 'SYNGA POKER'),
         React.createElement('dt',null,'Blinds / Ante'),React.createElement('dd',{dir:'ltr'},tableStakes),
         React.createElement('dt',null,'Buy-in'),React.createElement('dd',{dir:'ltr'},formatMoney(buyInMin(setts))+'–'+formatMoney(buyInMax(setts))),
         React.createElement('dt',null,'Seats'),React.createElement('dd',null,playersCount+' / '+tblCap),
@@ -12594,7 +12545,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-wrap approved-poker-table"
   }, React.createElement("img", {
     className: "approved-poker-material",
-    src: "assets/design/poker-material-v292.webp",
+    src: "assets/synga/table-room.webp",
     alt: "",
     draggable: false
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
@@ -12685,7 +12636,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   })), React.createElement("div", {
     className: "poker-table-caption",
     'aria-label': 'Table branding'
-  }, React.createElement('strong', {className:'poker-felt-wordmark'}, 'POKERTEN'),
+  }, React.createElement('strong', {className:'poker-felt-wordmark'}, 'SYNGA POKER'),
     tableClubName && React.createElement('span', {className:'poker-felt-club-name',dir:'auto',title:tableClubName}, tableClubName),
     React.createElement('div', {className:'poker-felt-details'}, React.createElement('span', {className:'poker-felt-variant'}, tableVariant), React.createElement('span', {className:'poker-felt-stakes'}, tableStakes)))), totalPot > 0 && gs.phase !== 'waiting' && React.createElement('div', {className:'poker-collected-pot', 'aria-label':'Collected pot',dir:'ltr'}, (gs.pots || []).map((pot,i)=>React.createElement(CasinoChipStack,{key:i,amount:pot.amount,scale:.7,showLabel:false,unit:chipUnit})),React.createElement('span',null,formatShort(totalPot))), !isSeated && !tableState?.tournamentId && (() => {
     // A single vacant visual slot keeps occupied players evenly distributed.
@@ -13612,7 +13563,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     onClick: closeTableMenu
   }, React.createElement("div", {
     className: "poker-menu-backdrop absolute inset-0 bg-black/70 backdrop-blur-[3px]"
-  }), React.createElement('div',{className:'poker-menu-brand','aria-hidden':true},React.createElement('img',{src:'assets/brand/orbital-icon192.png',width:84,height:84,alt:'',draggable:false}),React.createElement('span',null,'POKERTEN')), React.createElement("div", {
+  }), React.createElement('div',{className:'poker-menu-brand','aria-hidden':true},React.createElement('img',{src:'assets/synga/icon-192.png',width:84,height:84,alt:'',draggable:false}),React.createElement('span',null,'SYNGA POKER')), React.createElement("div", {
     className: "poker-menu-panel absolute inset-x-3 bottom-[max(18px,env(safe-area-inset-bottom))] animate-pop-in",
     role: 'dialog', 'aria-modal':true, 'aria-label':'Table menu',
     onClick: e => e.stopPropagation(),
@@ -13626,7 +13577,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       }
     }
   }, React.createElement('div', {className:'poker-menu-heading'},
-    React.createElement('div',null,React.createElement('strong',null,tableTitle),React.createElement('span',null,tableClubName || 'POKERTEN'),React.createElement('span',{dir:'ltr'},tableState.closeRequested?'Closing after this hand':tableStakes)),
+    React.createElement('div',null,React.createElement('strong',null,tableTitle),React.createElement('span',null,tableClubName || 'SYNGA POKER'),React.createElement('span',{dir:'ltr'},tableState.closeRequested?'Closing after this hand':tableStakes)),
     React.createElement('button',{type:'button',autoFocus:true,onClick:closeTableMenu,'aria-label':'Close table menu'},React.createElement('i',{className:'fa-solid fa-xmark','aria-hidden':true}))),
   !tableState.tournamentId && !setts.spinMode && ((!isSeated && isFull) || waitlist.length > 0) && React.createElement('div', {className:'poker-waitlist-status'},
     React.createElement(PokerWaitlistIndicator, {table:tableState, uid:user.uid, className:'poker-waitlist-summary', showEmpty:true}),
@@ -14178,7 +14129,7 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
     size: "md"
   })))), pairs.length === 0 && React.createElement("span", {
     className: "text-emerald-200/20 font-black text-xs tracking-[0.25em] uppercase pointer-events-none"
-  }, "POKERTEN")), displayList.map((p, i) => {
+  }, "SYNGA POKER")), displayList.map((p, i) => {
     const isMe = p.uid === user.uid;
     const isTurn = T.turnUid === p.uid && T.status === 'playing';
     const isAtt = T.attackerUid === p.uid && T.status === 'playing';
@@ -14617,7 +14568,7 @@ function ScratchFoil({
     ctx.fillStyle = 'rgba(90,66,20,0.14)';
     ctx.font = '800 10px Arial, sans-serif';
     ctx.textAlign = 'center';
-    for (let yy = 22; yy < h; yy += 26) for (let xx = 0; xx < w + 90; xx += 88) ctx.fillText('POKERTEN', xx, yy);
+    for (let yy = 22; yy < h; yy += 26) for (let xx = 0; xx < w + 90; xx += 88) ctx.fillText('SYNGA POKER', xx, yy);
     ctx.restore();
     ctx.fillStyle = 'rgba(90,66,20,0.16)';
     ctx.font = '900 54px Arial, sans-serif';
@@ -16736,7 +16687,7 @@ const tourAutoFillBots = async tor => {
       const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + Math.floor(Math.random() * 100000);
       const ref = await window.fb.addDoc(window.fb.collection(window.fb.db, "users"), {
         username: name,
-        email: `bot_${Date.now()}_${j}@pokerten.com`,
+        email: `bot_${Date.now()}_${j}@syngapoker.com`,
         role: ROLES.PLAYER,
         status: 'approved',
         balance: 50000,
@@ -16995,7 +16946,7 @@ function TournamentResultsDialog({ tournament, user, onClose, showToast }) {
   const avatar = r => r.photo || dicebearUrl(r.avatarSeed);
   const share = async rows => {
     const lines = rows.map(r => '#' + r.rank + ' ' + r.name + (Number(r.prize) > 0 ? ' — ' + formatMoney(r.prize) : ''));
-    const text = '🏆 ' + tournament.name + '\n' + lines.join('\n') + '\nPOKERTEN';
+    const text = '🏆 ' + tournament.name + '\n' + lines.join('\n') + '\nSYNGA POKER';
     try {
       if (navigator.share) await navigator.share({ text });
       else if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); showToast?.('Results copied', 'success'); }
@@ -17403,7 +17354,7 @@ if(tor.game==='poker'){if(tourBotLock.current)return;tourBotLock.current=true;se
             const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + Math.floor(Math.random() * 100000);
             batch.push(window.fb.addDoc(window.fb.collection(window.fb.db, "users"), {
               username: name,
-              email: `bot_${Date.now()}_${j}@pokerten.com`,
+              email: `bot_${Date.now()}_${j}@syngapoker.com`,
               role: ROLES.PLAYER,
               status: 'approved',
               balance: 50000,
@@ -18306,12 +18257,14 @@ function TourDrivers({
     showToast: () => {}
   })));
 }
+window.SyngaUI?.bind({LegacyLobby:LobbyView,Tournaments:TournamentsTab,avatar:avatarUrl,short:formatShort,minBuyIn:buyInMin,maxBuyIn:buyInMax,canManage:canOpenBackoffice,sound:playSnd});
 const root = ReactDOM.createRoot(document.getElementById('root'));
 function PokerLaunch(){
+ if(!window.SYNGA_CONFIG?.firebase?.projectId)return React.createElement(window.SyngaUI.Welcome);
  const[ready,setReady]=useState(false),[message,setMessage]=useState('Connecting to the game…');
  useEffect(()=>{let stopped=false,inFlight=false;const check=async()=>{if(stopped||inFlight||!window.fb?.fx)return;inFlight=true;try{const state=await window.fb.fx('pkSecurityStatus',{});if(!stopped){setReady(state.available===true);setMessage(state.available?'':'An update is being installed. The game will open automatically when the server is ready.');}}catch(e){if(!stopped)setMessage('Unable to connect right now. Retrying…');}finally{inFlight=false;}};check();window.addEventListener('firebase-ready',check);const iv=setInterval(check,5000);return()=>{stopped=true;clearInterval(iv);window.removeEventListener('firebase-ready',check);};},[]);
  if(ready)return React.createElement(App);
- return React.createElement('main',{dir:'ltr',className:'blue-launch'},React.createElement('section',{role:'status','aria-live':'polite'},React.createElement('img',{className:'blue-launch-icon',src:'assets/brand/orbital-icon512.png',width:112,height:112,alt:'PokerTen'}),React.createElement('p',null,message)));
+ return React.createElement('main',{dir:'ltr',className:'blue-launch'},React.createElement('section',{role:'status','aria-live':'polite'},React.createElement('img',{className:'blue-launch-icon',src:'assets/synga/icon-512.png',width:112,height:112,alt:'SYNGA POKER'}),React.createElement('p',null,message)));
 }
 root.render(React.createElement(PokerLaunch));
 </script>

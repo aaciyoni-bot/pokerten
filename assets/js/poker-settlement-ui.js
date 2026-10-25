@@ -244,7 +244,7 @@
         players: players.length,
         commission: groups.every(g => g.commission != null) ? sum(groups, 'commission') : null
       };
-      sheets.push(sheet('Agents', 'POKERTEN — Agent summary', [agentColumn, {
+      sheets.push(sheet('Agents', 'SYNGA POKER — Agent summary', [agentColumn, {
         key: 'players',
         label: 'Players',
         width: 14
@@ -258,7 +258,7 @@
         width: 30
       }], groups, totals, basis + ' Agent results are net totals of their players. Hand totals count player participations. A player may appear under several agents; the total counts unique players.'));
     }
-    sheets.push(sheet('Players', 'POKERTEN — Player totals', [playerColumn, ...(staff ? [agentColumn] : []), resultColumn, ...(staff ? [rakeColumn] : []), handsColumn, countStatus, ...(!data.legacy ? [{
+    sheets.push(sheet('Players', 'SYNGA POKER — Player totals', [playerColumn, ...(staff ? [agentColumn] : []), resultColumn, ...(staff ? [rakeColumn] : []), handsColumn, countStatus, ...(!data.legacy ? [{
       key: 'games',
       label: 'Recorded segments',
       width: 22
@@ -284,8 +284,8 @@
           name: 'Agent subtotal'
         });
       }
-      sheets.push(sheet('By agent', 'POKERTEN — Players by agent', [agentColumn, playerColumn, resultColumn, rakeColumn, handsColumn, countStatus, idColumn], detail, totalRow(players), basis + (data.legacy ? ' Agent grouping uses the membership assignment in this report.' : ' Each segment keeps its recorded agent. The Players sheet combines each player once.')));
-      for (const g of groups) sheets.push(sheet(g.tab, `POKERTEN — ${g.agent} — Player details`, [playerColumn, resultColumn, rakeColumn, handsColumn, countStatus, ...(!data.legacy ? [{
+      sheets.push(sheet('By agent', 'SYNGA POKER — Players by agent', [agentColumn, playerColumn, resultColumn, rakeColumn, handsColumn, countStatus, idColumn], detail, totalRow(players), basis + (data.legacy ? ' Agent grouping uses the membership assignment in this report.' : ' Each segment keeps its recorded agent. The Players sheet combines each player once.')));
+      for (const g of groups) sheets.push(sheet(g.tab, `SYNGA POKER — ${g.agent} — Player details`, [playerColumn, resultColumn, rakeColumn, handsColumn, countStatus, ...(!data.legacy ? [{
         key: 'games',
         label: 'Recorded segments',
         width: 22
@@ -293,7 +293,7 @@
     }
     return {
       sheets,
-      filename: `pokerten-agents-${String(clubId).replace(/[^a-zA-Z0-9_-]/g, '_')}-${day(from)}-${day(to == null ? asOf : range ? to - 1 : to)}.xlsx`
+      filename: `synga-agents-${String(clubId).replace(/[^a-zA-Z0-9_-]/g, '_')}-${day(from)}-${day(to == null ? asOf : range ? to - 1 : to)}.xlsx`
     };
   }
 

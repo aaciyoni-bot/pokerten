@@ -1,0 +1,208 @@
+<!doctype html><html><head><meta charset="utf-8"><title>SYNGA POKER layout verification</title><style>body{margin:0;background:#232624;color:#fff;font:14px Arial}nav{min-height:40px;display:flex;gap:16px;align-items:center;padding:0 20px}a{color:white}iframe{display:block;border:0;margin:auto;background:#0b0d0c}</style></head><body><nav>Design verification · simulated chips <a href="?mode=reference">Reference</a><a href="?mode=nlh">NLH</a><a href="?mode=omaha">Omaha 6</a><a href="?mode=omaha&size=desktop">Desktop</a></nav><iframe title="Poker preview"></iframe><script>
+(async()=>{
+ const query=new URLSearchParams(location.search),mode=query.get('mode')||'lobby';
+ const managementRole=['club_owner','manager','super_admin','agent','player'].includes(query.get('managementRole'))?query.get('managementRole'):query.has('agent')?'agent':query.has('player')?'player':'club_owner';
+ const menuRole=['player','manager','super_admin','god'].includes(query.get('menuRole'))?query.get('menuRole'):'player';
+ if(menuRole==='god')query.set('god','');
+ const capacity=Math.min(9,Math.max(2,Number(query.get('seats'))||5));
+ const frame=document.querySelector('iframe');frame.width=Number(query.get('width'))||(query.get('size')==='desktop'?1100:369);frame.height=Number(query.get('height'))||800;
+ const projectRoot=new URL('../../',location.href),reviewStamp=Date.now();
+ const localAsset=path=>{const url=new URL(path,projectRoot);url.searchParams.set('review',reviewStamp);return url.href;};
+ const source=await fetch(new URL('index.html',projectRoot),{cache:'no-store'});
+ if(!source.ok)throw Error('Cannot load local index.html: '+source.status);
+ const html=await source.text();
+ const cardFixtures=await (await fetch(new URL('tests/ui/synga-card-fixtures.json',projectRoot))).json();
+ let head=html.match(/<head>([\s\S]*?)<\/head>/)[1]
+   .replace(/<script\b[^>]*type=["']module["'][^>]*>[\s\S]*?<\/script>/g,'')
+   .replace(/<link\b[^>]*rel=["']manifest["'][^>]*>/g,'')
+   .replace(/href=["'](assets\/css\/[^"']+)["']/g,(_,path)=>'href="'+localAsset(path)+'"');
+ // Application code, styles and all relative images come from this checkout.
+ // New menu assets must be visible before they exist in production.
+ const runtimeTags=[...html.matchAll(/<script\b[^>]*src=["'](assets\/js\/[^"']+)["'][^>]*><\/script>/g)].map(([,path])=>{
+   const src=localAsset(path);
+   return '<scr'+'ipt src="'+src+'"></scr'+'ipt>';
+ }).join('');
+ document.querySelector('nav').remove();const resize=()=>{frame.width=Number(query.get('width'))||window.innerWidth;frame.height=Number(query.get('height'))||window.innerHeight;};resize();window.addEventListener('resize',resize);
+ let code=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.PreviewTable=PokerTable;window.PreviewDurak=DurakTable;window.PreviewOFC=OFCTable;window.PreviewTournaments=TournamentsTab;window.PreviewClubs=ClubsView;window.PreviewLobby=window.SyngaUI.Lobby;window.PreviewAuth=AuthView;window.PreviewAdmin=BackofficeView;window.PreviewPlayerFile=PlayerFileModal;window.PreviewSettlement=SettlementSection;window.PreviewProfile=ProfileView;window.PreviewRanks=LeadersView;window.PreviewCreate=PokerCreateView;');
+ if(query.has('god'))code=code.replace('const [godViewRequested, setGodView] = useState(false);','const [godViewRequested, setGodView] = useState(true);').replace('useEffect(() => setGodView(false), [user.uid]);','useEffect(() => setGodView(true), [user.uid]);').replace(/const GOD_EMAILS = \[[^;]+;/,"const GOD_EMAILS = ['preview@example.invalid'];");
+ code=code.replaceAll('assets/design/poker-material-v292.webp',localAsset('assets/design/poker-material-v292.webp'));
+ if(query.has('motion'))code+='\nwindow.PreviewMotion={DiscardFly,BetCollect,PotAward,pokerVisualPoint,useReducedPokerMotion};';
+ const variants={nlh:['NLH',2],pineapple:['Pineapple',3],omaha4:['Omaha 4',4],omaha5:['Omaha 5',5],omaha:['Omaha 6',6]};const [variant,holeCount]=variants[mode]||variants.nlh;
+ const cards=['A','K','Q','J','10','9'].map((val,i)=>({val,suit:['♠','♥','♦','♣'][i%4]}));
+ const players={};['Sharon',null,'Maya','MindStack','David',null,'Robin'].forEach((name,i)=>{if(name)players['p'+i]={uid:'p'+i,name,stack:[2225.60,0,354.77,437.91,1100.07,0,1692.11][i],bet:0,seatIndex:i,status:'active',cards:[],cardCount:i===3?2:0,photo:'/BearFace_2k.png',lastSeen:Date.now()};});
+ if(query.has('full')){for(const id of Object.keys(players))if(players[id].seatIndex>=capacity)delete players[id];for(let i=0;i<capacity;i++)if(!players['p'+i])players['p'+i]={uid:'p'+i,name:'Player '+i,stack:100,bet:0,seatIndex:i,status:'active',cards:[],cardCount:0,photo:'/BearFace_2k.png',lastSeen:Date.now()};}
+ if(mode!=='reference'){for(const p of Object.values(players))p.cardCount=holeCount;delete players.p0;players.me={uid:'me',name:'You',stack:99.5,bet:.5,seatIndex:0,status:'active',cards:[],cardCount:holeCount,photo:'/BearFace_2k.png',lastSeen:Date.now()};}
+ if(query.has('sparse'))for(const id of ['p1','p3','p5'])delete players[id];
+ if(query.has('bots'))Object.values(players).forEach(p=>{p.isBot=p.uid!=='me'&&p.seatIndex%2===1;});
+ if(query.has('opponents')){for(const p of Object.values(players)){if(p.uid==='me')continue;p.cardCount=holeCount;if(query.get('opponents')==='revealed'){p.cards=cards.slice(0,holeCount);p.reveal=true;}}}
+ if(query.has('bets'))Object.values(players).forEach((p,i)=>p.bet=[.5,12,345,8,50,2,65][i%7]);
+ Object.values(players).forEach((p,i)=>p.photo='assets/avatars/'+['av-thief.webp','av-west-woman.webp','av-gamer.webp','av-tigerface.webp','av-lionface.webp','av-astronaut.webp'][i%6]);
+ const state={authorityVersion:2,settings:{serverEngine:true,maxPlayers:capacity,baseGameType:variant,actionTime:30,blinds:.5,buyIn:100},gameState:{__seq:1,phase:'flop',activeTurnUid:mode==='reference'?'p3':'me',turnStartedAt:Date.now(),highestBet:1,minRaise:1,pots:[{amount:115}],board:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'}],currentGameType:variant,handN:1,dealerUid:'p3'},players};
+ if(query.has('sitout')&&players.me){players.me.sitOut=true;players.me.sitOutAt=Date.now()-90000;players.me.status='sitout';players.me.cardCount=0;}
+ if(query.has('turn')&&players[query.get('turn')])state.gameState.activeTurnUid=query.get('turn');
+ if(query.has('longname')&&players[state.gameState.activeTurnUid])players[state.gameState.activeTurnUid].name='Liat Shapira — Very long player name';
+ if(query.has('phase'))state.gameState.phase=query.get('phase');
+ if(state.gameState.phase==='turn')state.gameState.board.push({val:'2',suit:'♥'});
+ if(state.gameState.phase==='river')state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});
+ if(query.has('allin')){state.gameState.allInReveal=true;state.gameState.activeTurnUid=null;for(const p of Object.values(players)){p.cardCount=holeCount;p.reveal=true;}}
+ if(['preflop','discard'].includes(state.gameState.phase))state.gameState.board=[];
+ if(state.gameState.phase==='showdown'){state.gameState.activeTurnUid=null;state.gameState.board.push({val:'2',suit:'♥'},{val:'8',suit:'♣'});}
+ if(state.gameState.phase==='showdown')for(const p of Object.values(players))p.bet=0;
+ if(query.has('actions'))Object.values(players).forEach(p=>p.actionText='All-in');
+ if(query.has('rit'))state.gameState.board2=[{val:'A',suit:'♣'},{val:'K',suit:'♠'},{val:'3',suit:'♦'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}];
+ const uid=query.has('spectator')||mode==='reference'?'viewer':'me';
+ const demoMembers=[
+   {uid:'owner',username:'Yoni',playerId:'2854',role:'club_owner',status:'approved',balance:12500.5,stats:{gamesPlayed:28,gamesWon:12,totalProfit:580}},
+   {uid:'p1',username:'Maya Cohen',playerId:'2307',role:'player',balance:12450.5,status:'approved',stats:{gamesPlayed:35,gamesWon:18,totalProfit:350}},
+   {uid:'p2',username:'Daniel Levy',playerId:'4018',role:'player',balance:530,status:'approved',stats:{gamesPlayed:22,gamesWon:8,totalProfit:-175}}
+ ];
+ const demoLogs=[{uid:'owner',profit:430,rake:12,at:Date.now()-3600000,game:'NLH',tableId:'test0'}, {uid:'owner',profit:150,rake:8,at:Date.now()-86400000,game:'Omaha 6',tableId:'test3'}, {uid:'p1',profit:350,rake:12,at:Date.now(),game:'NLH',tableId:'test0'}, {uid:'p2',profit:-175,rake:8,at:Date.now(),game:'Omaha 6',tableId:'test3'}];
+ if(query.has('pending'))demoMembers.push({uid:'new_player',username:'New player · pending approval',playerId:'9001',role:'player',status:'pending',balance:0});
+ demoMembers.forEach(m=>{m.id=m.uid+'_main';m.clubId='main';});
+ if(query.has('accounting')||managementRole==='agent'){demoMembers[1].balance=159.83;demoMembers[2].balance=1000;demoMembers[1].agentUid='agent';demoMembers[2].agentUid='agent';demoMembers.push({id:'agent_main',uid:'agent',clubId:'main',username:'Demo Agent',role:'agent',status:'approved',balance:50,agentCode:'DEMO123'});demoLogs.find(x=>x.uid==='p1').profit=-340.17;demoLogs.find(x=>x.uid==='p2').profit=500;}
+ if(mode==='player-file')demoLogs.push({uid:'p1',profit:-120,rake:4,at:Date.now()-6*86400000,game:'NLH',tableId:'prior-period'});
+ const confirmedStart=Date.now()-3*86400000,needsPeriodStart=query.get('needsPeriodStart')==='true'||query.has('unknown-start');
+ const directory={members:demoMembers,gameLog:demoLogs,agentLog:[],treasury:{uid:'owner',balance:2000,clubProfits:500},securityAlerts:[]};
+ const accountPlayers=Object.fromEntries(demoMembers.filter(m=>m.status==='approved').map(m=>[m.uid,{balance:m.balance,onTables:0,chips:m.balance,result:demoLogs.filter(e=>e.uid===m.uid&&e.at>=confirmedStart).reduce((n,e)=>n+e.profit,0),totalResult:demoLogs.filter(e=>e.uid===m.uid).reduce((n,e)=>n+e.profit,0),...(query.has('god')?{rake:demoLogs.filter(e=>e.uid===m.uid).reduce((n,e)=>n+e.rake,0)}:{})}]));
+ const sumAccount=rows=>({balance:rows.reduce((n,m)=>n+m.balance,0),onTables:0,chips:rows.reduce((n,m)=>n+m.balance,0),result:Math.round(rows.reduce((n,m)=>n+accountPlayers[m.uid].result,0)*100)/100,totalResult:Math.round(rows.reduce((n,m)=>n+accountPlayers[m.uid].totalResult,0)*100)/100,...(query.has('god')?{rake:rows.reduce((n,m)=>n+(accountPlayers[m.uid].rake||0),0)}:{})});
+ directory.accounting={start:needsPeriodStart?null:confirmedStart,end:null,needsPeriodStart,basis:needsPeriodStart?'legacy-period-start-required':'cycle-cashouts-and-open-sessions',cycleId:'legacy_current',cycleStatus:'open',players:accountPlayers,agents:{agent:sumAccount(demoMembers.filter(m=>m.agentUid==='agent'))},club:sumAccount(demoMembers.filter(m=>m.uid!=='owner'&&m.status==='approved')),asOf:Date.now(),rakeVisible:query.has('god')};
+ if(needsPeriodStart)for(const value of [...Object.values(accountPlayers),...Object.values(directory.accounting.agents),directory.accounting.club]){value.result=null;if('rake'in value)value.rake=null;}
+ const managementViewer={uid:managementRole==='agent'?'agent':managementRole==='player'?'p1':'owner',username:managementRole==='agent'?'Demo Agent':managementRole==='player'?'Maya Cohen':'Yoni',role:managementRole,status:'approved',balance:managementRole==='agent'?50:managementRole==='player'?demoMembers[1].balance:12500.5,playerId:'2854'};
+ // Mirror the server's agent/player scope. Historical totals are not delivered
+ // to non-managers, even though separate adversarial UI tests inject them.
+ if(['agent','player'].includes(managementRole)&&['admin','player-file','settlement'].includes(mode)){
+   const visible=new Set(demoMembers.filter(m=>m.uid===managementViewer.uid||managementRole==='agent'&&m.agentUid===managementViewer.uid).map(m=>m.uid));
+   directory.members=directory.members.filter(m=>visible.has(m.uid));directory.gameLog=directory.gameLog.filter(e=>visible.has(e.uid));delete directory.treasury;
+   const scopedValue=value=>{const {totalResult,totalRake,...safe}=value;return safe;};
+   directory.accounting.players=Object.fromEntries(Object.entries(accountPlayers).filter(([id])=>visible.has(id)).map(([id,value])=>[id,scopedValue(value)]));
+   directory.accounting.agents=managementRole==='agent'?{agent:scopedValue(directory.accounting.agents.agent)}:{};
+   delete directory.accounting.club;
+ }
+ // Allocate the local hand first. A nine-seat PLO6 geometry fixture cannot
+ // be dealt from 52 cards; it must never silently drop the hero's private hand.
+ const finalBoard=[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'},{val:'2',suit:'♥'},{val:'8',suit:'♣'}];
+ const reservedBoard=[...finalBoard,...(state.gameState.board2||[])];
+ const previewDeck=['♠','♥','♦','♣'].flatMap(suit=>['2','3','4','5','6','7','8','9','10','J','Q','K','A'].map(val=>({val,suit}))).filter(c=>!reservedBoard.some(b=>b.val===c.val&&b.suit===c.suit));
+ const pool=previewDeck.map(c=>({...c})),previewHands={};let cardsNeeded=0,geometryOnly=false;
+ const dealOrder=Object.keys(players).sort((a,b)=>Number(b===uid)-Number(a===uid));
+ for(const id of dealOrder){
+   const count=players[id].cardCount||0;cardsNeeded+=count;previewHands[id]=[];
+   for(let i=0;i<count;i++){
+     const preferred=id===uid?cards[i]:null,index=preferred?previewDeck.findIndex(c=>c.val===preferred.val&&c.suit===preferred.suit):-1;
+     let next=index>=0?previewDeck.splice(index,1)[0]:previewDeck.shift();
+     if(!next){geometryOnly=true;next={...pool[(cardsNeeded+i)%pool.length]};}
+     previewHands[id].push(next);
+   }
+   // Publicly exposed cards and the GOD/private snapshot describe one hand.
+   if(players[id].reveal)players[id].cards=previewHands[id].map(c=>({...c}));
+ }
+ const scenario={mode,uid,holeCount,capacity,menuRole,phase:state.gameState.phase,god:query.has('god'),geometryOnly,heroExpected:players[uid]?.cardCount||0,cardsNeeded,availableHoleCards:pool.length};
+ if(geometryOnly){const note=document.createElement('p');note.textContent='Geometry stress only: this combination of seats and hole cards exceeds a 52-card deck.';note.style.cssText='text-align:center;color:#ffd88a';document.body.insertBefore(note,frame);}
+ const stub=`window.__pkMuted=false;window.__previewMode=true;
+ if(window.Worker){const PreviewWorker=window.Worker;window.Worker=class extends PreviewWorker{constructor(url,options){super(new URL(String(url),${JSON.stringify(projectRoot.href)}),options);}};}
+
+ ${query.has('install')?"window.__installEvt={prompt:()=>{},userChoice:Promise.resolve({outcome:'dismissed'})};":''}
+ const previewState=${JSON.stringify(state)},privateCards=${JSON.stringify(previewHands[uid]||cards.slice(0,holeCount))},previewHands=${JSON.stringify(previewHands)},previewDirectory=${JSON.stringify(directory)},previewScenario=${JSON.stringify(scenario)};
+ const previewCardFixtures=${JSON.stringify(cardFixtures)};
+ const previewRef=(...a)=>({id:a.at(-1),path:a.slice(1).join('/')});
+ const previewSnap=()=>({id:'preview',exists:()=>true,data:()=>structuredClone(previewState),metadata:{fromCache:false}});
+ const previewDocs=(rows)=>{const docs=rows.map((row,i)=>({id:row.uid||String(i),data:()=>structuredClone(row)}));return{docs,empty:!docs.length,size:docs.length,forEach:cb=>docs.forEach(cb)};};
+ const denyWrite=async()=>{throw Error('Design preview only: data changes are disabled');};
+ window.fb={db:{},auth:{currentUser:{uid:'${['admin','player-file','settlement'].includes(mode)?managementViewer.uid:uid}',email:'preview@example.invalid',emailVerified:true}},doc:previewRef,collection:previewRef,
+ query:(r,...filters)=>({...r,filters}),where:(field,op,value)=>({field,op,value}),
+ fx:async(name,args={})=>{if(name==='pkGameHistory')return{records:previewDirectory.gameLog.filter(e=>!args.targetUid||e.uid===args.targetUid),nextCursor:null};if(name==='pkClubDirectory'){if(args.accountingOnly)return{accounting:previewDirectory.accounting};if(args.reportSection){if(${query.has('reporterror')})throw Object.assign(new Error('Simulated report failure'),{code:'functions/unavailable'});const rows=previewDirectory[args.reportSection]||[],start=Number(args.cursor)||0,end=start+2;return{records:structuredClone(rows.slice(start,end)),hasMore:end<rows.length,nextCursor:end<rows.length?String(end):null};}return structuredClone(previewDirectory);}if(name==='pkTick')return{};if(name==='godPeek')return{tableId:args.tableId,contextKey:args.contextKey,hands:previewHands,finalBoard:${JSON.stringify(finalBoard)}};return denyWrite();},
+ getDoc:async()=>({exists:()=>false}),getDocs:async(r)=>{let rows=r.path==='memberships'?previewDirectory.members:r.path==='gameLog'?previewDirectory.gameLog:[];for(const f of r.filters||[])if(f.op==='=='&&f.field!=='clubId')rows=rows.filter(row=>row[f.field]===f.value);return previewDocs(rows);},
+ onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;let done=false;queueMicrotask(()=>{if(done)return;if(r.path.startsWith('tables/preview-durak')||r.path.startsWith('tables/preview-ofc')){const type=r.path.includes('preview-durak')?'durak':'ofc';cb({id:'preview-'+type,exists:()=>true,data:()=>structuredClone(previewCardFixtures[type][r.path.includes('/priv/')?'private':'public'])});}else if(r.path==='tables/preview')cb(previewSnap());else if(r.path.includes('/priv/'))cb({exists:()=>true,data:()=>({cards:privateCards})});else cb({exists:()=>false,...previewDocs([])});});return()=>{done=true;};},
+ updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite,signIn:denyWrite,signInCode:denyWrite,signOut:denyWrite};`;
+
+ const definitions=html.match(/<svg[^>]*>[\s\S]*?pcGBlk[\s\S]*?<\/svg>/)?.[0]||'';
+ const clubCount=Number(query.get('clubs'))||3;
+ const previewClubs=Array.from({length:clubCount},(_,i)=>({id:'club'+i,name:i===0?'SYNGA POKER':i===1?'Yoni’s Friends Club':'Poker Club '+(i+1),ownerUid:'owner',logo:i===0?'assets/synga/icon-192.png':undefined}));
+ const clubProps={user:{uid:'player',username:'Yoni',role:'player'},clubs:previewClubs,myMems:previewClubs.map(c=>({clubId:c.id,status:'approved',balance:1234567.89})),directoryReady:true};
+
+ const tables=[['NLH',.5,50,0],['NLH',.5,50,6],['Pineapple',.5,100,0],['Omaha 6',1,100,0],['Omaha 6',.5,10000000,0]].map(([baseGameType,blinds,minBuyIn,seated],i)=>({docId:'test'+i,type:'poker',settings:{baseGameType,blinds,minBuyIn,maxPlayers:6,serverEngine:true},players:Object.fromEntries(Array.from({length:seated},(_,j)=>['p'+j,{uid:'p'+j,name:'Player '+j,stack:100}])),gameState:{phase:seated?'flop':'waiting'},history:seated?[{at:Date.now()}]:[]}));
+ if(true){
+   tables.splice(0,tables.length,...['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple'].map((baseGameType,i)=>({docId:'color'+i,type:'poker',settings:{baseGameType,blinds:1,minBuyIn:100,maxPlayers:6,serverEngine:true},players:{},gameState:{phase:'waiting'}})),
+     {docId:'color-spin',type:'poker',settings:{baseGameType:'NLH',spinMode:true,spinBuyIn:50,blinds:1,maxPlayers:3},players:{},gameState:{phase:'waiting'}},
+     ...['durak','ofc'].map(type=>({docId:'color-'+type,type,settings:{buyIn:100,stake:5,maxPlayers:2,deckSize:36,variant:'podkidnoy'},players:{},status:'waiting'})));
+ }
+ const props={cashierOnly:mode==='cashier',game:'poker',user:{...managementViewer,stats:demoMembers[0].stats},tables,tablesLoaded:true,tournaments:[],clubSettings:{name:'Netabel',rakePct:6},tab:'poker'};
+ if(query.has('colors')&&['durak','ofc'].includes(query.get('game')))props.tab=query.get('game');
+ let component=mode==='player-file'?'PreviewPlayerFile':mode==='tournaments'?'PreviewTournaments':mode==='auth'?'PreviewAuth':mode==='lobby'?'PreviewLobby':['admin','cashier'].includes(mode)?'PreviewAdmin':mode==='settlement'?'PreviewSettlement':mode==='profile'?'PreviewProfile':mode==='ranks'?'PreviewRanks':mode==='create'?'PreviewCreate':mode==='clubs'?'PreviewClubs':'PreviewTable';
+ let propsCode=mode==='player-file'?JSON.stringify({mem:demoMembers[1],viewer:managementViewer,accounting:directory.accounting,canEdit:false,canManagePeriod:!['agent','player'].includes(managementRole),showRake:query.has('god')}):mode==='clubs'?JSON.stringify(clubProps):JSON.stringify(props);
+ let renderPreview=`window.__club={id:'main',name:'Netabel',ownerUid:'owner',closedWeeks:{}}; const noop=()=>{}; const demo=React.createElement(window.${component},{...${propsCode},tableDocId:'preview',agentName:()=>"Demo Agent",onSettlement:noop,onClose:noop,onEnter:noop,onBack:noop,onJoinPoker:noop,onJoinOfc:noop,onJoinDurak:noop,onCreatePoker:noop,onCreated:noop,onLeave:noop,setTab:noop,showToast:noop}); ReactDOM.createRoot(document.getElementById('root')).render(React.createElement('div',{className:'pt-theme h-full w-full flex flex-col'},${mode==='settlement'?"React.createElement('div',{className:'club-admin scrollable-content p-4'},demo)":"demo"}));`;
+ if(component==='PreviewTable')renderPreview=`ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'${menuRole==='god'?'player':menuRole}',status:'approved',balance:500},clubSettings:{name:'Netabel'},onManage:()=>{},onCreateTable:()=>{},onLeave:()=>{},showToast:()=>{}}));`;
+ if(component==='PreviewTable'&&query.has('motion'))renderPreview=`
+ const M=window.PreviewMotion;
+ function MotionPreview(){
+   const [host,setHost]=React.useState(null),[effect,setEffect]=React.useState(null),reduced=M.useReducedPokerMotion();
+   React.useEffect(()=>{const update=()=>{const table=document.querySelector('.poker-table');if(table){setHost(table);observer.disconnect();}};const observer=new MutationObserver(update);observer.observe(document.getElementById('root'),{childList:true,subtree:true});update();return()=>observer.disconnect();},[]);
+   React.useEffect(()=>{if(!effect)return;const timer=setTimeout(()=>setEffect(null),effect.kind==='award'?2450:750);return()=>clearTimeout(timer);},[effect]);
+   const replay=kind=>setEffect({kind,id:Date.now(),from:M.pokerVisualPoint(host,host&&host.querySelector('.poker-bet'),{left:'50%',top:'76%'})});
+   const buttonStyle={padding:'6px 8px',border:'1px solid #8dc6d5',borderRadius:'7px',background:'#143642',color:'white',font:'bold 11px Arial'};
+   const controls=React.createElement('div',{'aria-label':'Motion verification',style:{position:'fixed',left:'8px',right:'8px',top:'96px',zIndex:9999,padding:'8px',border:'1px solid #80b4c3',borderRadius:'10px',background:'#08151ff0',display:'flex',gap:'5px',flexWrap:'wrap'}},
+     React.createElement('span',{style:{width:'100%',font:'11px Arial',color:'#d5e9f0'}},'Visual test only · simulated chips · '+(reduced?'Reduced motion':'Motion enabled')),
+     ...['collect','award','discard'].map(kind=>React.createElement('button',{key:kind,type:'button',style:buttonStyle,onClick:()=>replay(kind),disabled:!host},'Replay '+kind)),
+     React.createElement('button',{type:'button',style:buttonStyle,onClick:()=>setEffect(null)},'Clear motion'));
+   let moving=null;if(effect&&host){const common={key:effect.id,unit:.5,amount:125,snd:false};moving=effect.kind==='collect'?React.createElement(M.BetCollect,{...common,from:effect.from,to:{left:'50%',top:'35%'}}):effect.kind==='award'?React.createElement(M.PotAward,{...common,to:{left:'50%',top:'78%'},toUid:'${uid}',dur:.6}):React.createElement(M.DiscardFly,{key:effect.id,card:{val:'A',suit:'♠'}});}
+   return React.createElement(React.Fragment,null,React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'${menuRole==='god'?'player':menuRole}',status:'approved',balance:500},clubSettings:{name:'Netabel'},onManage:()=>{},onCreateTable:()=>{},onLeave:()=>{},showToast:()=>{}}),controls,host&&moving&&ReactDOM.createPortal(moving,host));
+ }
+ ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(MotionPreview));`;
+ const diagnostics=`
+ window.__previewLayoutReport=()=>{
+  const table=document.querySelector('.poker-table'),community=table?.querySelector('.poker-community');
+  if(!table)return {ready:false};
+  const box=n=>{const r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
+  const boards=[...table.querySelectorAll('.poker-board')].map(box).filter(r=>r.height>0);
+  const holes=[...table.querySelectorAll('.poker-hole-cards > *')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,...box(n)}));
+  const overlaps=[];for(let b=0;b<boards.length;b++)for(let h=0;h<holes.length;h++){const a=boards[b],c=holes[h];if(a.left<c.right-.5&&a.right>c.left+.5&&a.top<c.bottom-.5&&a.bottom>c.top+.5)overlaps.push({board:b,card:h,uid:c.uid});}
+  const fans=[...table.querySelectorAll('.poker-hole-cards')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,count:Number(n.dataset.cardCount),hidden:n.classList.contains('is-hidden'),faces:n.querySelectorAll('.card-face').length,...box(n)}));
+  const boardCards=[...table.querySelectorAll('.poker-board .card-face')].map(box);
+  const hero=table.querySelector('.poker-seat-hero');
+  const heroFaces=hero?.querySelectorAll('.poker-own-fan .card-face').length||0;
+  const outOfViewport=holes.map((r,i)=>({...r,card:i})).filter(r=>r.left<-.5||r.right>innerWidth+.5||r.top<-.5||r.bottom>innerHeight+.5);
+  const seatPanels=[...table.querySelectorAll('.poker-player-info,.poker-result-meta')].map(n=>({uid:n.closest('[data-player-uid]')?.dataset.playerUid,panelType:n.classList.contains('poker-result-meta')?'result':'player-info',...box(n)})).filter(r=>r.width>0&&r.height>0);
+  const cardPanelOverlaps=[];
+  for(const [i,c] of holes.entries())for(const p of seatPanels)if(c.left<p.right-.5&&c.right>p.left+.5&&c.top<p.bottom-.5&&c.bottom>p.top+.5)cardPanelOverlaps.push({card:i,cardUid:c.uid,panelUid:p.uid,panelType:p.panelType});
+  return{ready:true,scenario:previewScenario,viewport:[innerWidth,innerHeight],seats:table.dataset.seatCount,boards,boardCards,holes,fans,heroFaces,heroComplete:heroFaces===previewScenario.heroExpected,outOfViewport,cardPanelOverlaps,overlaps,boardClear:community?.dataset.boardClear,shift:community?.style.getPropertyValue('--poker-board-shift')};
+ };
+ setTimeout(()=>{const report=window.__previewLayoutReport();window.parent.postMessage({pokerLayoutReport:report},'*');},1800);
+ `;
+ window.addEventListener('message',event=>{if(true)return;if(event.source!==frame.contentWindow||!event.data?.pokerLayoutReport)return;window.__layoutReport=event.data.pokerLayoutReport;let out=document.querySelector('#layout-diagnostic');if(!out){out=document.createElement('output');out.id='layout-diagnostic';document.body.append(out);}out.textContent=JSON.stringify(window.__layoutReport);out.style.cssText='display:block;max-width:100%;padding:8px;font:12px monospace;overflow-wrap:anywhere';});
+ renderPreview=`
+ const h=React.createElement;
+ window.__club={id:'main',name:'SYNGA Friends',ownerUid:'owner',closedWeeks:{}};
+ function SyngaPreviewApp(){
+   const [view,setView]=React.useState(${JSON.stringify(['lobby','clubs','profile','ranks','create','settlement','admin','cashier'].includes(mode)?mode:'table')}),[tab,setTab]=React.useState('poker'),[notice,setNotice]=React.useState('');
+   const user={...${JSON.stringify(managementViewer)},username:'You',photo:'assets/avatars/av-thief.webp'};
+   const toast=message=>{setNotice(String(message));setTimeout(()=>setNotice(''),4000);};
+   const leave=()=>setView('lobby');
+   const previewTables=${JSON.stringify(tables)};
+   const join=t=>{
+     if(t.type!=='poker'){previewCardFixtures[t.type].public.turnStartedAt=Date.now();setView(t.type);return;}
+     const kind=t.settings.baseGameType||'NLH', count=kind.startsWith('Omaha')?Number(kind.match(/[456]/)?.[0]||4):kind==='Pineapple'?3:2;
+     privateCards.splice(0,privateCards.length,...[{"val": "A", "suit": "\u2660"}, {"val": "K", "suit": "\u2665"}, {"val": "Q", "suit": "\u2666"}, {"val": "J", "suit": "\u2663"}, {"val": "10", "suit": "\u2660"}, {"val": "9", "suit": "\u2665"}].slice(0,count));
+     for(const p of Object.values(previewState.players)){p.cardCount=count;p.lastSeen=Date.now();}
+     previewState.gameState.turnStartedAt=Date.now();
+     previewState.settings.blinds=t.settings.blinds||.5;
+     previewState.settings.baseGameType=kind;
+     previewState.gameState.currentGameType=t.settings.baseGameType||'NLH';
+     previewState.settings.isDealerChoice=!!t.settings.isDealerChoice;
+     setView('table');
+   };
+   const p={user,tables:previewTables,tablesLoaded:true,tournaments:[],clubSettings:{name:'SYNGA Friends'},tab,setTab,onJoinPoker:join,onJoinDurak:join,onJoinOfc:join,onCreatePoker:()=>setView('create'),onCashier:()=>setView('cashier'),onSettlement:()=>setView('settlement'),showToast:toast};
+   const nav=h(window.SyngaUI.Nav,{user,club:{name:'SYNGA Friends',id:'main'},currentView:view,onClubs:()=>setView('clubs'),onLobby:leave,onManage:()=>setView('admin'),onCashier:()=>setView('cashier'),onSettlement:()=>setView('settlement'),onRanks:()=>setView('ranks'),onProfile:()=>setView('profile')});
+   let screen=view==='lobby'?h(window.PreviewLobby,p):view==='table'?h(window.PreviewTable,{tableDocId:'preview',user:{...user,uid:'me',role:'player'},clubSettings:p.clubSettings,onLeave:leave,onManage:()=>setView('admin'),onCreateTable:()=>setView('create'),showToast:toast}):['durak','ofc'].includes(view)?h(window[view==='durak'?'PreviewDurak':'PreviewOFC'],{tableDocId:'preview-'+view,user:{...user,uid:'me'},clubSettings:p.clubSettings,onLeave:leave,showToast:toast}):view==='clubs'?h(window.PreviewClubs,{...${JSON.stringify(clubProps)},clubs:${JSON.stringify(previewClubs)}.map(c=>({...c,logo:'assets/synga/brand.webp'})),onEnter:leave,showToast:toast}):view==='profile'?h(window.PreviewProfile,{user,onBack:leave,showToast:toast}):view==='ranks'?h(window.PreviewRanks,p):view==='create'?h(window.PreviewCreate,{...p,onBack:leave,onCreated:leave}):view==='settlement'?h(window.PreviewSettlement,p):h(window.PreviewAdmin,{...p,cashierOnly:view==='cashier'});
+   return h('div',{className:'h-full w-full flex flex-col'},!['table','durak','ofc'].includes(view)&&nav,h('main',{className:'flex-1 relative overflow-hidden'},screen),['table','durak','ofc'].includes(view)&&h('button',{className:'synga-preview-back',onClick:leave,'aria-label':'Back to preview lobby'},'‹ LOBBY'),h('span',{className:'synga-preview-badge'},'DESIGN PREVIEW · SAMPLE CHIPS'),notice&&h('div',{role:'status',style:{position:'fixed',bottom:90,left:'50%',transform:'translateX(-50%)',zIndex:9999,background:'#460c29',color:'#fff',padding:'12px 20px',border:'1px solid #e1b56f',borderRadius:12,maxWidth:'80vw'}},notice));
+ }
+ ReactDOM.createRoot(document.getElementById('root')).render(h(SyngaPreviewApp));`;
+ const tag=code=>'<scr'+'ipt>'+code+'</scr'+'ipt>';
+ // Disallow network calls from the preview; SDK initialization is removed above.
+ const isolation='<meta http-equiv="Content-Security-Policy" content="connect-src \'self\'; form-action \'none\'">';
+ frame.srcdoc='<!doctype html><html><head><base href="'+projectRoot.href+'">'+isolation+head+runtimeTags+'</head><body class="poker-theme synga-theme" style="margin:0;width:100vw;height:100dvh"><div id="root" style="height:100%"></div>'+definitions+tag(stub)+tag(code)+tag(renderPreview)+tag(diagnostics)+'</body></html>';
+ document.documentElement.dataset.previewSource=new URL('index.html',projectRoot).href;
+ document.documentElement.dataset.previewMode=mode;
+ document.documentElement.dataset.previewRuntime=localAsset(html.match(/src="(assets\/js\/poker-runtime\.js[^"]*)"/)?.[1]||'assets/js/poker-runtime.js');
+
+})().catch(e=>document.body.append(String(e)));
+</script></body></html>

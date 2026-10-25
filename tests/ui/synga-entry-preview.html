@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>SYNGA entrance and rotation verification</title><style>body{margin:0;background:#15151a;color:white;font:14px Arial}nav{height:40px;display:flex;gap:16px;justify-content:center;align-items:center}button{padding:4px 12px}iframe{display:block;margin:auto;border:0}</style></head><body><nav><button id="portrait">Portrait phone</button><button id="landscape">Landscape phone</button><button id="desktop">Desktop</button><button id="reload">Restart entrance</button></nav><iframe title="Device viewport"></iframe><script>
+const frame=document.querySelector('iframe'),query=new URLSearchParams(location.search);
+frame.width=query.get('width')||390;frame.height=query.get('height')||844;
+frame.src=new URL(query.get('entry')==='index'?'../../index.html':'../../preview.html',location.href).href;
+document.getElementById('portrait').onclick=()=>{frame.width=390;frame.height=844;};
+document.getElementById('landscape').onclick=()=>{frame.width=844;frame.height=390;};
+document.getElementById('desktop').onclick=()=>{frame.width=1280;frame.height=592;};
+document.getElementById('reload').onclick=()=>frame.contentWindow.location.reload();
+</script></body></html>

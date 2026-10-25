@@ -1,5 +1,6 @@
 (async function () {
   'use strict';
+  if(window.SyngaEntry?.isHost)return;
   const config=window.SYNGA_CONFIG?.firebase;
   if(!config?.projectId)return;
   if(config.projectId==='pokerten')throw new Error('SYNGA requires its own Firebase project.');

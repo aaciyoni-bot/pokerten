@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
+<link rel="stylesheet" href="assets/css/synga-entry.css?v=1">
+<script src="assets/js/synga-entry.js?v=1"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1087,7 +1089,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=325">
 <script src="assets/js/club-cashier.js?v=325"></script>
 <link rel="stylesheet" href="assets/css/synga.css?v=1">
-<link rel="stylesheet" href="assets/css/synga-proportions.css?v=1">
+<link rel="stylesheet" href="assets/css/synga-proportions.css?v=2">
+<link rel="stylesheet" href="assets/css/synga-clubs.css?v=1">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme synga-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1154,7 +1157,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=316"></script>
     <script src="assets/js/synga-soundpack.js?v=1"></script>
-    <script src="assets/js/synga-ui.js?v=3"></script>
+    <script src="assets/js/synga-ui.js?v=4"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
     <script src="assets/js/poker-range-model.js?v=304"></script>
 <script>
@@ -5761,12 +5764,17 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     style: {
       overflowX: "hidden"
     },
-    className: "club-surface scrollable-content cl-page aurora-bg p-4 sm:p-8"
-  }, React.createElement("div", {
+    className: "club-surface scrollable-content cl-page aurora-bg p-4 sm:p-8"+(window.SyngaUI?.Clubs?" synga-clubs-container":"")
+  }, window.SyngaUI?.Clubs&&React.createElement(window.SyngaUI.Clubs,{
+    user,clubs:[...myClubs,...pendingClubs],memOf,clubCode,god,directoryReady,
+    onEnter,onCreate:()=>setCreateOpen(true),onSearch:doClubSearch,foundClub,onJoin:requestJoin,
+    onClearSearch:()=>setFoundClub(null),canArchive:canArchiveClub,onArchive:deleteClub,
+    archivedCount:archivedClubs.length,onArchived:()=>{setArchivedOpen(true);setArchiveError('');}
+  }), React.createElement("div", {
     className: "max-w-2xl mx-auto animate-fade-in relative z-10 flex flex-col"
   }, React.createElement("div", {
     className: "text-center mb-3 mt-0 shrink-0"
-  }, React.createElement("h1", {className:"blue-wordmark", 'aria-label':'SYNGA POKER'}, "POKER", React.createElement('span',null,'TEN')), React.createElement("p", {
+  }, React.createElement("h1", {className:"blue-wordmark", 'aria-label':'SYNGA POKER'}, "SYNGA", React.createElement('span',null,'POKER')), React.createElement("p", {
     className: "hidden sm:block text-[11px] tracking-[0.3em] uppercase mt-2",
     style: {
       color: 'var(--pt-text-2)',
@@ -5988,7 +5996,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     onClick: () => setJoinFor(null)
   }, React.createElement("div", {
     onClick: e => e.stopPropagation(),
-    className: "glass-panel rounded-3xl p-6 max-w-sm w-full text-center"
+    className: "glass-panel rounded-3xl p-6 max-w-sm w-full text-center synga-club-form"
   }, React.createElement("div", {
     className: "text-3xl mb-1"
   }, "🎟️"), React.createElement("h3", {
@@ -6031,7 +6039,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     onClick: () => setCreateOpen(false)
   }, React.createElement("div", {
     onClick: e => e.stopPropagation(),
-    className: "glass-panel rounded-3xl p-6 max-w-sm w-full text-center"
+    className: "glass-panel rounded-3xl p-6 max-w-sm w-full text-center synga-club-form"
   }, React.createElement("div", {
     className: "w-14 h-14 mx-auto rounded-2xl flex items-center justify-center mb-3",
     style: {
@@ -18267,7 +18275,7 @@ function PokerLaunch(){
  if(ready)return React.createElement(App);
  return React.createElement('main',{dir:'ltr',className:'blue-launch'},React.createElement('section',{role:'status','aria-live':'polite'},React.createElement('img',{className:'blue-launch-icon',src:'assets/synga/icon-512.png',width:112,height:112,alt:'SYNGA POKER'}),React.createElement('p',null,message)));
 }
-root.render(React.createElement(PokerLaunch));
+if(!window.SyngaEntry?.isHost)root.render(React.createElement(PokerLaunch));
 </script>
 </body>
 </html>

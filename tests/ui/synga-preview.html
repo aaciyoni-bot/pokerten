@@ -117,7 +117,7 @@
 
  const definitions=html.match(/<svg[^>]*>[\s\S]*?pcGBlk[\s\S]*?<\/svg>/)?.[0]||'';
  const clubCount=Number(query.get('clubs'))||3;
- const previewClubs=Array.from({length:clubCount},(_,i)=>({id:'club'+i,name:i===0?'SYNGA POKER':i===1?'Yoni’s Friends Club':'Poker Club '+(i+1),ownerUid:'owner',logo:i===0?'assets/synga/icon-192.png':undefined}));
+ const previewClubs=Array.from({length:clubCount},(_,i)=>({id:'club'+i,name:i===0?'SYNGA SOCIAL CLUB':i===1?'YONI’S FRIENDS':'ROYAL TABLES',ownerUid:'owner',logo:i===0?'assets/synga/icon-192.png':undefined}));
  const clubProps={user:{uid:'player',username:'Yoni',role:'player'},clubs:previewClubs,myMems:previewClubs.map(c=>({clubId:c.id,status:'approved',balance:1234567.89})),directoryReady:true};
 
  const tables=[['NLH',.5,50,0],['NLH',.5,50,6],['Pineapple',.5,100,0],['Omaha 6',1,100,0],['Omaha 6',.5,10000000,0]].map(([baseGameType,blinds,minBuyIn,seated],i)=>({docId:'test'+i,type:'poker',settings:{baseGameType,blinds,minBuyIn,maxPlayers:6,serverEngine:true},players:Object.fromEntries(Array.from({length:seated},(_,j)=>['p'+j,{uid:'p'+j,name:'Player '+j,stack:100}])),gameState:{phase:seated?'flop':'waiting'},history:seated?[{at:Date.now()}]:[]}));
@@ -173,10 +173,11 @@
  const h=React.createElement;
  window.__club={id:'main',name:'SYNGA Friends',ownerUid:'owner',closedWeeks:{}};
  function SyngaPreviewApp(){
-   const [view,setView]=React.useState(${JSON.stringify(['lobby','clubs','profile','ranks','create','settlement','admin','cashier'].includes(mode)?mode:'table')}),[tab,setTab]=React.useState('poker'),[notice,setNotice]=React.useState('');
+   const [view,setView]=React.useState(${JSON.stringify(['lobby','clubs','profile','ranks','create','settlement','admin','cashier'].includes(mode)?mode:'table')}),[tab,setTab]=React.useState('poker'),[notice,setNotice]=React.useState(''),[activeClub,setActiveClub]=React.useState(${JSON.stringify(previewClubs[0])});
    const user={...${JSON.stringify(managementViewer)},username:'You',photo:'assets/avatars/av-thief.webp'};
    const toast=message=>{setNotice(String(message));setTimeout(()=>setNotice(''),4000);};
    const leave=()=>setView('lobby');
+   const enterClub=club=>{setActiveClub(club);window.__club={...club,closedWeeks:{}};setView('lobby');};
    const previewTables=${JSON.stringify(tables)};
    const join=t=>{
      if(t.type!=='poker'){previewCardFixtures[t.type].public.turnStartedAt=Date.now();setView(t.type);return;}
@@ -190,10 +191,10 @@
      previewState.settings.isDealerChoice=!!t.settings.isDealerChoice;
      setView('table');
    };
-   const p={user,tables:previewTables,tablesLoaded:true,tournaments:[],clubSettings:{name:'SYNGA Friends'},tab,setTab,onJoinPoker:join,onJoinDurak:join,onJoinOfc:join,onCreatePoker:()=>setView('create'),onCashier:()=>setView('cashier'),onSettlement:()=>setView('settlement'),showToast:toast};
-   const nav=h(window.SyngaUI.Nav,{user,club:{name:'SYNGA Friends',id:'main'},currentView:view,onClubs:()=>setView('clubs'),onLobby:leave,onManage:()=>setView('admin'),onCashier:()=>setView('cashier'),onSettlement:()=>setView('settlement'),onRanks:()=>setView('ranks'),onProfile:()=>setView('profile')});
-   let screen=view==='lobby'?h(window.PreviewLobby,p):view==='table'?h(window.PreviewTable,{tableDocId:'preview',user:{...user,uid:'me',role:'player'},clubSettings:p.clubSettings,onLeave:leave,onManage:()=>setView('admin'),onCreateTable:()=>setView('create'),showToast:toast}):['durak','ofc'].includes(view)?h(window[view==='durak'?'PreviewDurak':'PreviewOFC'],{tableDocId:'preview-'+view,user:{...user,uid:'me'},clubSettings:p.clubSettings,onLeave:leave,showToast:toast}):view==='clubs'?h(window.PreviewClubs,{...${JSON.stringify(clubProps)},clubs:${JSON.stringify(previewClubs)}.map(c=>({...c,logo:'assets/synga/brand.webp'})),onEnter:leave,showToast:toast}):view==='profile'?h(window.PreviewProfile,{user,onBack:leave,showToast:toast}):view==='ranks'?h(window.PreviewRanks,p):view==='create'?h(window.PreviewCreate,{...p,onBack:leave,onCreated:leave}):view==='settlement'?h(window.PreviewSettlement,p):h(window.PreviewAdmin,{...p,cashierOnly:view==='cashier'});
-   return h('div',{className:'h-full w-full flex flex-col'},!['table','durak','ofc'].includes(view)&&nav,h('main',{className:'flex-1 relative overflow-hidden'},screen),['table','durak','ofc'].includes(view)&&h('button',{className:'synga-preview-back',onClick:leave,'aria-label':'Back to preview lobby'},'‹ LOBBY'),h('span',{className:'synga-preview-badge'},'DESIGN PREVIEW · SAMPLE CHIPS'),notice&&h('div',{role:'status',style:{position:'fixed',bottom:90,left:'50%',transform:'translateX(-50%)',zIndex:9999,background:'#460c29',color:'#fff',padding:'12px 20px',border:'1px solid #e1b56f',borderRadius:12,maxWidth:'80vw'}},notice));
+   const p={user,tables:previewTables,tablesLoaded:true,tournaments:[],clubSettings:{name:activeClub.name},tab,setTab,onJoinPoker:join,onJoinDurak:join,onJoinOfc:join,onCreatePoker:()=>setView('create'),onCashier:()=>setView('cashier'),onSettlement:()=>setView('settlement'),showToast:toast};
+   const nav=h(window.SyngaUI.Nav,{user,club:activeClub,currentView:view,onClubs:()=>setView('clubs'),onLobby:leave,onManage:()=>setView('admin'),onCashier:()=>setView('cashier'),onSettlement:()=>setView('settlement'),onRanks:()=>setView('ranks'),onProfile:()=>setView('profile')});
+   let screen=view==='lobby'?h(window.PreviewLobby,p):view==='table'?h(window.PreviewTable,{tableDocId:'preview',user:{...user,uid:'me',role:'player'},clubSettings:p.clubSettings,onLeave:leave,onManage:()=>setView('admin'),onCreateTable:()=>setView('create'),showToast:toast}):['durak','ofc'].includes(view)?h(window[view==='durak'?'PreviewDurak':'PreviewOFC'],{tableDocId:'preview-'+view,user:{...user,uid:'me'},clubSettings:p.clubSettings,onLeave:leave,showToast:toast}):view==='clubs'?h(window.PreviewClubs,{...${JSON.stringify(clubProps)},clubs:${JSON.stringify(previewClubs)}.map(c=>({...c,logo:'assets/synga/brand.webp'})),onEnter:enterClub,showToast:toast}):view==='profile'?h(window.PreviewProfile,{user,onBack:leave,showToast:toast}):view==='ranks'?h(window.PreviewRanks,p):view==='create'?h(window.PreviewCreate,{...p,onBack:leave,onCreated:leave}):view==='settlement'?h(window.PreviewSettlement,p):h(window.PreviewAdmin,{...p,cashierOnly:view==='cashier'});
+   return h('div',{className:'h-full w-full flex flex-col'},!['clubs','table','durak','ofc'].includes(view)&&nav,h('main',{className:'flex-1 relative overflow-hidden'},screen),['table','durak','ofc'].includes(view)&&h('button',{className:'synga-preview-back',onClick:leave,'aria-label':'Back to preview lobby'},'‹ LOBBY'),h('span',{className:'synga-preview-badge'},'DESIGN PREVIEW · SAMPLE CHIPS'),notice&&h('div',{role:'status',style:{position:'fixed',bottom:90,left:'50%',transform:'translateX(-50%)',zIndex:9999,background:'#460c29',color:'#fff',padding:'12px 20px',border:'1px solid #e1b56f',borderRadius:12,maxWidth:'80vw'}},notice));
  }
  ReactDOM.createRoot(document.getElementById('root')).render(h(SyngaPreviewApp));`;
  const tag=code=>'<scr'+'ipt>'+code+'</scr'+'ipt>';

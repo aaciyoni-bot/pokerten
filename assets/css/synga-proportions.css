@@ -1,6 +1,6 @@
 /* Reference geometry: 1536 x 709. One unit scales every game surface together. */
 html body.synga-theme{--synga-u:min(calc(100vw / 1536),calc(100dvh / 709))}
-html body.synga-theme #root:has(.synga-nav,.poker-room,.card-game-room){position:fixed!important;left:50%!important;top:50%!important;width:calc(1536 * var(--synga-u))!important;height:calc(709 * var(--synga-u))!important;max-width:none!important;max-height:none!important;transform:translate(-50%,-50%);overflow:hidden;isolation:isolate}
+html body.synga-theme #root:has(.synga-nav,.poker-room,.card-game-room,.synga-club-hub){position:fixed!important;left:50%!important;top:50%!important;width:calc(1536 * var(--synga-u))!important;height:calc(709 * var(--synga-u))!important;max-width:none!important;max-height:none!important;transform:translate(-50%,-50%);overflow:hidden;isolation:isolate}
 html body.synga-theme .synga-nav{position:absolute;inset:0 calc(40 * var(--synga-u)) auto;height:calc(83 * var(--synga-u));min-height:0;padding:calc(5 * var(--synga-u)) calc(60 * var(--synga-u));gap:calc(20 * var(--synga-u));border-width:calc(5 * var(--synga-u));border-top:0;border-radius:0 0 calc(18 * var(--synga-u)) calc(18 * var(--synga-u))}
 html body.synga-theme .synga-player-link{max-width:34%;gap:calc(12 * var(--synga-u))}
 html body.synga-theme .synga-player-link>img{width:calc(62 * var(--synga-u));height:calc(62 * var(--synga-u));border-width:calc(2 * var(--synga-u))}
@@ -115,16 +115,3 @@ html body.synga-theme .poker-room .poker-table:is([data-seat-count="6"],[data-se
 html body.synga-theme .synga-preview-back{top:calc(18 * var(--synga-u));left:calc(24 * var(--synga-u));border-radius:calc(30 * var(--synga-u));font-size:calc(22 * var(--synga-u));padding:calc(9 * var(--synga-u)) calc(18 * var(--synga-u))}
 html body.synga-theme .synga-preview-badge{top:calc(3 * var(--synga-u));bottom:auto;font-size:calc(12 * var(--synga-u));padding:calc(3 * var(--synga-u)) calc(11 * var(--synga-u));border-radius:calc(20 * var(--synga-u))}
 html body.synga-theme #root:has(.synga-nav) main:not(.synga-welcome):not(:has(.synga-lobby)){padding-top:calc(83 * var(--synga-u))}
-/* The game is landscape-only. Preserve state while the device rotates. */
-.synga-orientation-notice{display:none}
-@media(orientation:portrait){
- html body.synga-theme:has(.synga-nav,.poker-room,.card-game-room,.synga-welcome) #root{visibility:hidden;pointer-events:none}
- html body.synga-theme::after{content:none!important}
- html body.synga-theme:has(.synga-nav,.poker-room,.card-game-room,.synga-welcome) .synga-orientation-notice{position:fixed;inset:0;z-index:999998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:32px;background:radial-gradient(ellipse at center,#4a1028,#120812 75%);color:#fff3d5;text-align:center;font-family:Arial,sans-serif}
- .synga-orientation-notice>img{width:180px;max-width:55vw;height:100px;object-fit:contain}
- .synga-orientation-phone{width:102px;height:55px;border:3px solid #efc36b;border-radius:10px;position:relative;box-shadow:0 0 30px #efc36b22}
- .synga-orientation-phone::before{content:'';position:absolute;left:8px;top:21px;width:3px;height:9px;background:#efc36b;border-radius:4px}
- .synga-orientation-phone::after{content:'↻';position:absolute;inset:-37px -37px;color:#efc36b;font:43px Arial;text-align:right}
- .synga-orientation-notice h1{font-size:23px;line-height:1.45;margin:8px 0 0;font-weight:700}
- .synga-orientation-notice p{font-size:15px;line-height:1.6;margin:0;max-width:290px;color:#d3b9ac}
-}

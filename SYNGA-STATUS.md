@@ -19,6 +19,10 @@ The lobby and tables now share a 1536 × 709 coordinate system with uniform scal
 
 The preview now starts with MY CLUBS: membership cards, balances, six-digit lookup, entry, creation and permission-controlled archived clubs. The original ClubsView retains all server callbacks and permissions. New burgundy/gold club dialogs match the presentation. The SYNGA logo entrance follows ORIZIS and can be replayed without resetting the game. A 15-second MP3 demonstration plus ten individual sound controls are available under SOUNDS. Native browser playback was verified.
 
+## Fullscreen (2026-10-25)
+
+The first trusted click in the entrance or game requests fullscreen on the outer document with browser navigation hidden. Club/lobby buttons and the existing table control share that same controller. Leaving fullscreen does not trigger automatic re-entry; explicit re-entry remains available. The installed-app manifest already requests fullscreen/landscape, and preview.html now links it too. Browser support and OS navigation behavior remain platform-controlled. Cloud Chrome rejected fullscreen with TypeError: not granted, so actual Android system-bar hiding is not verified here.
+
 ## Isolation and validation
 
 Files under functions/ and firestore.rules are unchanged. The original Firebase configuration and custom-domain mapping have been removed from this fork. Inherited deployment and operational workflows are disabled. The production service has not been changed.

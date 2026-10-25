@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
 <link rel="stylesheet" href="assets/css/synga-entry.css?v=1">
-<script src="assets/js/synga-entry.js?v=1"></script>
+<script src="assets/js/synga-fullscreen.js?v=1"></script><script src="assets/js/synga-entry.js?v=1"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1157,7 +1157,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=316"></script>
     <script src="assets/js/synga-soundpack.js?v=1"></script>
-    <script src="assets/js/synga-ui.js?v=4"></script>
+    <script src="assets/js/synga-ui.js?v=5"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
     <script src="assets/js/poker-range-model.js?v=304"></script>
 <script>
@@ -10489,9 +10489,11 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
   )), document.body))));
 }
 function PokerFullscreenButton({showToast, onToggle}) {
-  const [active, setActive] = useState(!!(document.fullscreenElement || document.webkitFullscreenElement));
+  const controller = window.SyngaFullscreen;
+  const [active, setActive] = useState(controller ? controller.active : !!(document.fullscreenElement || document.webkitFullscreenElement));
   const [pending, setPending] = useState(false);
   useEffect(() => {
+    if (controller) return controller.subscribe(() => setActive(controller.active));
     const sync = () => setActive(!!(document.fullscreenElement || document.webkitFullscreenElement));
     document.addEventListener('fullscreenchange', sync);
     document.addEventListener('webkitfullscreenchange', sync);
@@ -10501,12 +10503,14 @@ function PokerFullscreenButton({showToast, onToggle}) {
     };
   }, []);
   const el = document.documentElement;
-  if (!el.requestFullscreen && !el.webkitRequestFullscreen) return null;
+  if (controller ? !controller.available : !el.requestFullscreen && !el.webkitRequestFullscreen) return null;
   const toggle = async () => {
     if (pending) return;
     setPending(true);
     try {
-      if (document.fullscreenElement || document.webkitFullscreenElement) {
+      if (controller) {
+        if (!await controller.toggle()) throw new Error('Fullscreen unavailable');
+      } else if (document.fullscreenElement || document.webkitFullscreenElement) {
         if (document.exitFullscreen) await document.exitFullscreen();
         else await document.webkitExitFullscreen();
       } else if (el.requestFullscreen) await el.requestFullscreen({navigationUI:'hide'});

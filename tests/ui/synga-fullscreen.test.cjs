@@ -17,6 +17,10 @@ const click=(p,{trusted=true,excluded=false}={})=>p.events.click({isTrusted:trus
   vm.runInContext(source,host.context);assert.equal(host.api,host.window.SyngaFullscreen,'only one controller');
   assert.equal(host.calls.length,0,'never requests on load or intro timers');
   click(host,{trusted:false});click(host,{excluded:true});assert.equal(host.calls.length,0,'synthetic clicks and input/control clicks ignored');
+  const {JSDOM}=require('jsdom');
+  const authDOM=new JSDOM('<div class="auth-screen"><button><span>Continue with Google</span></button></div>');
+  host.events.click({isTrusted:true,defaultPrevented:false,target:authDOM.window.document.querySelector('span')});
+  assert.equal(host.calls.length,0,'Google popup retains the user gesture instead of fullscreen consuming it');
   click(host);await Promise.resolve();assert.equal(host.calls.length,1);assert.equal(host.calls[0].navigationUI,'hide');assert.equal(host.api.active,true);
   await host.api.toggle();assert.equal(host.api.active,false);click(host);await Promise.resolve();assert.equal(host.calls.length,1,'does not trap the user after exiting fullscreen');
   await host.api.toggle();assert.equal(host.calls.length,2,'explicit re-entry works');

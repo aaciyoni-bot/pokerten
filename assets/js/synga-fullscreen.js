@@ -60,7 +60,7 @@
   };
   document.addEventListener('click',event => {
     if (!event.isTrusted || event.defaultPrevented) return;
-    if (event.target.closest?.('[data-synga-fullscreen],.poker-fullscreen-button,input,textarea,select,[contenteditable="true"]')) return;
+    if (event.target.closest?.('[data-synga-auth],.auth-screen button,[data-synga-fullscreen],.poker-fullscreen-button,input,textarea,select,[contenteditable="true"]')) return;
     void enter(true);
   },true);
 })();

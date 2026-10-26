@@ -45,7 +45,7 @@ const positive=row=>Object.values(row.players).filter(p=>p.stack>0);
 async function playOne(f,row){
  return f.action(row.docId,s=>{
   const g=s.gameState;
-  if(['waiting','showdown'].includes(g.phase)){if(g.phase==='showdown'&&f.now()-(g.showdownAt||0)<5100)return;return f.engine.startHand(s);}
+  if(['waiting','showdown'].includes(g.phase)){if(g.phase==='showdown'&&f.now()-(g.showdownAt||0)<require('../pokerTournamentCore').showdownDelay(g))return;return f.engine.startHand(s);}
   if(g.phase==='discard'){for(const p of Object.values(s.players))if((s.priv[p.uid]||[]).length===3)f.engine.applyDiscard(s,p.uid,0);return;}
   if(g.allInReveal){return f.engine.advancePhase(s);}
   const p=s.players[g.activeTurnUid];assert.ok(p,'Every unsettled betting hand has an actor');
@@ -236,7 +236,7 @@ test('removed participant gets no final prize while all entry fees remain accoun
 test('coordinator removes eliminated zero seats only at safe hand boundaries',()=>{
  const seat=(uid,stack,status='active')=>({uid,stack,status,bet:0,seatIndex:uid==='a'?0:1});
  const t={id:'tor',status:'running',tableSize:2,players:{a:{},b:{},gone:{out:true}}};
- const row={docId:'one',tournamentId:'tor',tournament:{final:true},players:{a:seat('a',100),b:seat('b',100),gone:seat('gone',0,'out')},gameState:{phase:'showdown',showdownAt:NOW-6000,pots:[]}};
+ const row={docId:'one',tournamentId:'tor',tournament:{final:true},players:{a:seat('a',100),b:seat('b',100),gone:seat('gone',0,'out')},gameState:{phase:'showdown',showdownAt:NOW-9000,pots:[]}};
  const cleaned=T.plan(t,[row],NOW);assert.equal(cleaned.issue,null);assert.equal(cleaned.updates[0].patch.players.gone,undefined);assert.equal(T.chips([row]),T.chips([{...row,...cleaned.updates[0].patch}]));
  row.gameState.phase='river';assert.equal(T.plan(t,[row],NOW).updates.length,0);assert.ok(row.players.gone);
 });
@@ -251,7 +251,7 @@ test('consolidation holds busy tables before their next deal, preventing missed 
  assert.equal(hold.deletes.length,0);assert.equal(hold.updates.length,3);assert.equal(hold.updates.find(u=>u.id==='t1').patch.gameState.phase,'river');
  for(const u of hold.updates)Object.assign(rows.find(r=>r.docId===u.id),u.patch);
  rows[1].gameState={...rows[1].gameState,phase:'showdown',showdownAt:now+1000};
- const moved=T.plan(t,rows,now+7000);assert.equal(moved.issue,null);assert.equal(moved.deletes.length,1);assert.equal(moved.updates.reduce((sum,u)=>sum+Object.keys(u.patch.players).length,0),5);
+ const moved=T.plan(t,rows,now+10000);assert.equal(moved.issue,null);assert.equal(moved.deletes.length,1);assert.equal(moved.updates.reduce((sum,u)=>sum+Object.keys(u.patch.players).length,0),5);
 });
 test('legacy rebuy grace exits immediately without charge; re-entry waits alone with a funded stack',async()=>{
  const f=fixture(),id=await create(f,{reentry:true,maxReentries:2,lateRegUntilLevel:4,reentryBuyIn:50,bounty:5,fee:2});await startHumans(f,id,3);

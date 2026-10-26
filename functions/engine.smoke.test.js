@@ -88,4 +88,14 @@ assert.strictEqual(C.handName(C.evaluate5Cards(wheel)), "Straight", "A-5 wheel i
 const sflush = [mk("9", "♠"), mk("10", "♠"), mk("J", "♠"), mk("Q", "♠"), mk("K", "♠")];
 assert.strictEqual(C.handName(C.evaluate5Cards(sflush)), "Straight Flush");
 
+// Distinct side-pot recipients keep their exact public awards, even if names repeat.
+S = mkState(3); S.settings.rakePercent = 0;
+Object.values(S.players).forEach(p => {p.stack=0;p.cardCount=2;});
+S.players.u0.name = S.players.u2.name = 'Same name';
+S.priv={u0:[mk('J','♠'),mk('10','♠')],u1:[mk('A','♥'),mk('A','♦')],u2:[mk('K','♥'),mk('K','♦')]};
+S.gameState={phase:'river',currentGameType:'NLH',board:[mk('A','♠'),mk('K','♠'),mk('Q','♠'),mk('2','♥'),mk('3','♦')],pots:[{amount:30,eligible:['u0','u1','u2']},{amount:20,eligible:['u1','u2']}],allInReveal:true};
+E.runShowdown(S);
+assert.deepStrictEqual(S.gameState.lastAwards,[{uid:'u0',name:'Same name',amount:30},{uid:'u1',name:'P1',amount:20}]);
+assert.strictEqual(totalChips(S),50,'display receipts do not change the paid amounts');
+
 console.log("engine smoke: ALL OK — deal/bet/showdown, fold-out, raise math, evaluator");

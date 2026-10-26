@@ -205,7 +205,7 @@ test('closing a live cash table preserves its hand, settles its real winner and 
  const g=t.gameState;await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
  t=await get('tables/'+tableId);assert.equal(t.gameState.phase,'showdown');assert.equal(Core.chips([t])+Object.values(t.players).reduce((n,p)=>n+(p.pendingTopUp||0),0),240);const expected=[a,b].map((u,i)=>balances[i]+t.players[u].stack+(t.players[u].pendingTopUp||0));
  await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+1000);assert.ok(await get('tables/'+tableId),'winner display stays visible');
- await Promise.all([1,2].map(()=>Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+6000)));
+ await Promise.all([1,2].map(()=>Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+9000)));
  assert.equal(await get('tables/'+tableId),undefined);assert.deepEqual(await Promise.all([bank(a),bank(b)]),expected);assert.equal((await get('_pkClosedTables/'+tableId)).gameState.handN,before.gameState.handN);
  await call('pkTableManage',owner,{tableId,op:'delete'});assert.deepEqual(await Promise.all([bank(a),bank(b)]),expected);
 });
@@ -350,7 +350,7 @@ test('lobby settings queue through an active hand, keep its rake and stacks, and
  const act=async action=>{const t=await get('tables/'+tableId),g=t.gameState;await call('pkAct',g.activeTurnUid,{tableId,action,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});};
  await act('call');await act('call');t=await get('tables/'+tableId);assert.equal(t.gameState.phase,'flop');await act('fold');t=await get('tables/'+tableId);assert.equal(t.gameState.phase,'showdown');assert.equal(t.gameState.lastWinAmount,3.76,'the settled pot still uses the original 6% rake');
  const chips=Core.chips([t]);await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+1000);t=await get('tables/'+tableId);assert.equal(t.pendingSettings,null);assert.equal(t.settings.blinds,5);assert.equal(t.settings.minBuyIn,100);assert.equal(t.settings.maxBuyIn,500);assert.equal(t.settings.rakePercent,20);assert.equal(Core.chips([t]),chips);
- await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+6000);t=await get('tables/'+tableId);assert.equal(t.gameState.highestBet,10);assert.equal(Core.chips([t]),chips);
+ await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+9000);t=await get('tables/'+tableId);assert.equal(t.gameState.highestBet,10);assert.equal(Core.chips([t]),chips);
 });
 test('cash bot rotation is staggered, boundary-only, preserves funds and removes obsolete private cards',async()=>{
  const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:3,settings:{maxPlayers:3,blinds:1,minBuyIn:40,maxBuyIn:100}});let t=await get('tables/'+tableId);const ids=Object.keys(t.players),now=Date.now();

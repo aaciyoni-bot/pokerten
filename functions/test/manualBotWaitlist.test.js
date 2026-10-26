@@ -34,11 +34,13 @@ function fixture(seed=1){
    require:name=>name==='firebase-admin/firestore'?{getFirestore:()=>db}:name==='firebase-functions/v2/https'?{...localRequire(name),onCall:(_,fn)=>fn}:name==='firebase-functions/v2/scheduler'?{onSchedule:(_,fn)=>fn}:name==='./pokerSecurity'?{requirePokerAvailable(){},POKER_SECURITY_PAUSED:false}:['crypto','node:crypto'].includes(name)?{...crypto,randomInt}:['./pokerAuthority','./pokerTournaments','./pokerEngine','./pokerAccess'].includes(name)?load(name.slice(2)+'.js'):localRequire(name)
   },{filename:file});cached[file]=module.exports;return module.exports;
  }
- const access=load('pokerAccess.js'),engine=load('pokerEngine.js').__engineInternals;
+ const access=load('pokerAccess.js'),engineApi=load('pokerEngine.js'),engine=engineApi.__engineInternals;
  const auth=uid=>({uid,token:{email:uid+'@example.test',email_verified:true}});
  return{docs,db,engine,now:()=>now,advance:ms=>{now+=ms;},table:id=>docs.get('tables/'+id),balance:uid=>docs.get(`memberships/${uid}_clubA`).balance,
   create:settings=>access.pkTableCreate({auth:auth('owner'),data:{clubId:'clubA',manual:true,requestId:'manual-create-request-'+(++request),settings:{baseGameType:'NLH',blinds:.5,minBuyIn:50,maxBuyIn:200,maxPlayers:4,...settings},botCount:'full'}}),
   wait:id=>access.pkSeat({auth:auth('human'),data:{op:'wait',tableId:id,amount:100,requestId:'manual-wait-request-'+(++request)}}),
+  act:(id,action)=>{const g=docs.get('tables/'+id).gameState;return engineApi.pkAct({auth:auth(g.activeTurnUid),data:{tableId:id,action,requestId:"showdown-action-"+(++request),expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}}});},
+  deal:(id,uid)=>engineApi.pkDeal({auth:auth(uid),data:{tableId:id}}),
   tick:id=>engine.tickTable(id,now)
  };
 }
@@ -48,7 +50,7 @@ async function settled(f,capacity=4){
  const players=Object.values(t.players).sort((a,b)=>a.seatIndex-b.seatIndex),departing=players[2];
  for(const p of players){p.cardCount=2;p.botLeavesAt=f.now()+3*60*60000;f.docs.set(`tables/${id}/priv/${p.uid}`,{cards:[deck.pop(),deck.pop()]});}
  departing.botLeavesAt=f.now()+60*60000;
- Object.assign(t.gameState,{phase:'showdown',showdownAt:f.now()-6000,dealerUid:departing.uid,currentGameType:'NLH',board:[],pots:[]});
+ Object.assign(t.gameState,{phase:'showdown',showdownAt:f.now()-9000,dealerUid:departing.uid,currentGameType:'NLH',board:[],pots:[]});
  t.botRotateAfter=f.now()+2*60000;f.docs.set(`tables/${id}/priv/_engine`,{deck});
  return{id,departing:departing.uid};
 }
@@ -148,4 +150,22 @@ test('tournament seats are not yielded by the cash-table waitlist guard',async()
  f.docs.set('tournaments/event_waitlist_guard',{authorityVersion:2,clubId:'clubA',status:'reg',players:{}});
  for(const p of Object.values(table.players))p.botLeavesAt=f.now()-1;const before=copy(table),bank=f.balance('owner');
  await f.tick(id);assert.deepEqual(f.table(id),before);assert.equal(f.balance('owner'),bank);assert.equal(f.balance('human'),1000);assert.equal(audits(f,id).length,0);
+});
+
+for(const earlyWin of [false,true])test(`public ${earlyWin?'fold win':'showdown'} survives ticks and manual deal for its full display interval`,async()=>{
+ const f=fixture(77),{tableId:id}=await f.create({maxPlayers:4});await f.tick(id);
+ const initialTotal=total(f,id);let steps=0;
+ while(f.table(id).gameState.phase!=='showdown'&&steps++<60)await f.act(id,earlyWin?'fold':'call');
+ const before=copy(f.table(id));assert.equal(before.gameState.phase,'showdown');assert.equal(before.gameState.earlyWin,earlyWin);
+ assert.equal(total(f,id),initialTotal,'settlement conserves chips');
+ assert.equal(Math.round(before.gameState.lastAwards.reduce((n,a)=>n+a.amount,0)*100),Math.round(before.gameState.lastWinAmount*100));
+ const delay=earlyWin?5000:8000,actor=Object.keys(before.players)[0];
+ f.advance(before.gameState.showdownAt-f.now()+delay-1);await f.tick(id);await f.deal(id,actor);
+ assert.deepEqual(copy(f.table(id).gameState),before.gameState,'background ticks and manual deal cannot erase the public result');
+ assert.deepEqual(copy(f.table(id).players),before.players,'winner and revealed cards remain visible');
+ assert.equal(total(f,id),initialTotal);
+ f.advance(1);await f.tick(id);
+ assert.equal(f.table(id).gameState.phase,'preflop');assert.equal(f.table(id).gameState.handN,before.gameState.handN+1);
+ assert.deepEqual(copy(f.table(id).gameState.lastAwards),[],'next hand clears the old award');
+ assert.equal(total(f,id),initialTotal,'next deal conserves chips');
 });

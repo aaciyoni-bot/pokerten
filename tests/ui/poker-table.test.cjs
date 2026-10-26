@@ -105,6 +105,15 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    assert.ok(loser.querySelector('.poker-hand-name'),'the losing hand is labeled for comparison');
    assert.equal(loser.querySelector('.card-mucked'),null,'exposed losing cards never dim during the result pause');
  }
+ // The footer survives the chip flight and uses exact server award identities.
+ current.gameState.lastAwards=[{uid:'me',name:'Me',amount:30},{uid:'other',name:'Other',amount:20}];current.gameState.lastWinAmount=50;
+ await React.act(async()=>tableNext(snapshot()));
+ assert.match(doc.querySelector('.poker-showdown-summary').textContent,/Me \+30.*Other \+20/);
+ assert.match(doc.querySelector('.poker-total-pot').textContent,/Pot awarded.*50/);
+ current.gameState.lastAwards=[{uid:'me',name:'Me',amount:50}];current.players.other.name='Me';
+ await React.act(async()=>tableNext(snapshot()));
+ assert.equal(doc.querySelectorAll('.poker-seat-winner').length,1,'duplicate names never identify a second winner');
+ delete current.gameState.lastAwards;current.players.other.name='Other';
  current.players.other.mucked=true;
  await React.act(async()=>tableNext(snapshot()));
  assert.equal(doc.querySelector('.poker-seat:not(.poker-seat-hero) .poker-opponent-fan').querySelectorAll('.card-face').length,0,'mucked loser cards stay hidden');
@@ -249,7 +258,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
   }
  }
  current.settings.serverEngine=true;current.tournamentId='break-test';current.tournament={startedAt:Date.now()-61000,status:'running',breakEvery:1,breakMins:4,structure:[{sb:5,bb:10,ante:0,mins:1},{sb:10,bb:20,ante:0,mins:10}]};
- current.gameState={...current.gameState,phase:'showdown',showdownAt:Date.now()-6000,board:cards.slice(0,5),pots:[],activeTurnUid:null};
+ current.gameState={...current.gameState,phase:'showdown',showdownAt:Date.now()-9000,board:cards.slice(0,5),pots:[],activeTurnUid:null};
  await React.act(async()=>tableNext(snapshot()));
  assert.ok(doc.querySelector('.poker-on-break .poker-break-center'),'settled break has central countdown');
  assert.match(doc.querySelector('.poker-break-clock').textContent,/^3:/);

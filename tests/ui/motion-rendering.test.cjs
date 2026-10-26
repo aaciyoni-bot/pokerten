@@ -38,8 +38,12 @@ const scene=(component,props)=>React.createElement('div',{className:'poker-table
   await render(null);assert.equal(timers.size,0,'leaving the table cancels its sound');
   await React.act(()=>root.render(scene(PotAward,{to:{left:'50%',top:'78%'},toUid:'hero',amount:125,dur:.6,snd:true})));
   flight=w.document.querySelector('.poker-pot-award');assert.equal(flight.firstElementChild.style.left,'35%');assert.equal(flight.firstElementChild.style.top,'40%');
-  assert.ok([...timers.values()].some(t=>t.delay===480),'award sound delay stays tied to duration');assert.ok([...timers.values()].some(t=>t.delay===40),'award number still starts after 40ms');
-  await paint();await paint();assert.equal(flight.style.transform,'translate(calc(20% - 35%), calc(80% - 40%))');assert.equal(flight.style.transition,'transform 0.6s ease-in-out, opacity 0.18s ease-in 0.6s');
+  assert.ok([...timers.values()].some(t=>t.delay===3100),'award sound follows the reveal pause and flight');assert.ok([...timers.values()].some(t=>t.delay===40),'award number still starts after 40ms');
+  await paint();await paint();assert.equal(flight.style.transform,'translate(0, 0)','cards and full award stay readable before the flight');
+  assert.match(flight.textContent,/125/);
+  const revealTimer=[...timers.entries()].find(([,t])=>t.delay===2500);assert.ok(revealTimer);
+  await React.act(()=>{timers.delete(revealTimer[0]);revealTimer[1].fn();});
+  assert.equal(flight.style.transform,'translate(calc(20% - 35%), calc(80% - 40%))');assert.equal(flight.style.transition,'transform 0.6s ease-in-out, opacity 0.18s ease-in 0.6s');
   // Switching the OS preference while mounted stops motion immediately.
   await React.act(()=>{reduced=true;listeners.forEach(fn=>fn());});assert.equal(flight.style.transition,'none');assert.equal(frames.size,0);await render(null);assert.equal(timers.size,0);assert.equal(listeners.size,0);
   await render(CountNum,{value:10});await render(CountNum,{value:275});assert.equal(w.document.getElementById('root').textContent,'275');assert.equal(frames.size,0,'reduced motion displays the actual amount without tween frames');

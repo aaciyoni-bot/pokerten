@@ -25,6 +25,7 @@ const OpponentModel = require("./pokerOpponentModel");
 const round2 = C.round2;
 const A = require('./pokerAuthority');
 const Tours = require('./pokerTournaments');
+const {showdownDelay} = require('./pokerTournamentCore');
 const {botName,renameGenericBots} = require('./botNames');
 const {session:botSession,rotationGap} = require('./botSessions');
 const {prepareLedger} = require('./pokerLedger');
@@ -158,7 +159,7 @@ function startHand(S, forcedGameType) {
     dcUid = null;
     dcAnchor = null;
   }
-  S.gameState = {...g0, dealerUid, dcUid, dcAnchor, board: [], pots: [], lastWinners: null, lastWinAmount: 0, allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, rabbit: null};
+  S.gameState = {...g0, dealerUid, dcUid, dcAnchor, board: [], pots: [], lastWinners: null, lastWinAmount: 0, lastAwards: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, rabbit: null};
   if (S.settings.isDealerChoice && dealerUid === dcUid) {
     S.gameState.phase = "dc_selection";
     S.gameState.activeTurnUid = null;
@@ -218,6 +219,7 @@ function executeDeal(S, gameType) {
   g.tourLevel = S.settings.spinMode ? spinLevel(S) : 0;
   g.lastWinners = null;
   g.lastWinAmount = 0;
+  g.lastAwards = [];
   g.allInReveal = false;
   g.earlyWin = false;
   g.rabbit = null;
@@ -556,6 +558,7 @@ function finishEarlyWin(S, winnerUid) {
   g.ritOffer = null;
   g.lastWinAmount = round2(pot - rake);
   g.lastWinners = w.name;
+  g.lastAwards = [{uid: winnerUid, name: w.name, amount: g.lastWinAmount}];
   g.showdownAt = S.now;
   settleAfterHand(S, rake, new Set([winnerUid]));
 }
@@ -578,6 +581,7 @@ function runShowdown(S) {
   let rakeTotal = 0;
   let winTotal = 0;
   const winnerUids = new Set();
+  const awards = new Map();
   (g.pots || []).forEach((potObj, idx) => {
     // Single-eligible pot = uncalled over-bet returning to its owner: a
     // silent REFUND, never a "win" (it rendered like a split pot).
@@ -621,6 +625,7 @@ function runShowdown(S) {
         pl[uid].stack = round2(pl[uid].stack + share);
         pl[uid].actionText = "WINNER";
         winnerUids.add(uid);
+        awards.set(uid, round2((awards.get(uid) || 0) + share));
         winTotal = round2(winTotal + share);
       });
     };
@@ -639,6 +644,7 @@ function runShowdown(S) {
   g.allInReveal = false;
   g.ritOffer = null;
   g.lastWinAmount = winTotal;
+  g.lastAwards = [...awards].map(([uid, amount]) => ({uid, name: pl[uid].name, amount}));
   g.lastWinners = [...winnerUids].map((uid) => pl[uid].name).join(", ");
   g.showdownAt = S.now;
   g.allInReveal = mustRevealAll;
@@ -1244,7 +1250,7 @@ async function tickTable(id, testNow) {
     S = await loadState(tx, id, {withCards: true, allowMissing: true, skipUndueAt:testNow??Date.now()});
     if (!S) return;
     if(testNow!=null)S.now=testNow;
-    if (S.raw.closeRequested && A.idle(S.raw) && (S.gameState.phase !== 'showdown' || S.now - (S.gameState.showdownAt || 0) >= 5000)) {
+    if (S.raw.closeRequested && A.idle(S.raw) && (S.gameState.phase !== 'showdown' || S.now - (S.gameState.showdownAt || 0) >= showdownDelay(S.gameState))) {
       await require('./pokerTableLifecycle').closeTable(tx, db(), tRef(id), S.raw, S.raw.closeRequested.by, S.now);
       return;
     }
@@ -1279,7 +1285,7 @@ async function tickTable(id, testNow) {
     }
 
     // --- Spin resolution: one player left with chips, hand not running ---
-    if (S.settings.spinMode && S.raw.spin && !S.raw.spinDone && ["waiting", "showdown"].includes(g.phase)) {
+    if (S.settings.spinMode && S.raw.spin && !S.raw.spinDone && ["waiting", "showdown"].includes(g.phase) && (g.phase !== "showdown" || now - (g.showdownAt || 0) >= showdownDelay(g))) {
       const alive = Object.values(pl).filter((p) => p.stack > 0);
       if (alive.length === 1 && Object.keys(pl).length >= 2) {
         extraTop.spinDone = true;
@@ -1301,7 +1307,7 @@ async function tickTable(id, testNow) {
     // No human is automatically seated or charged by this maintenance path.
     const manualHumanWaiting=!S.raw.botLobby&&require('./pokerWaitlist').normalizeWaitlist({...S.raw,players:pl},now).some(p=>p.isBot!==true);
     if(!S.raw.botLobby&&!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&
-       (g.phase!=='showdown'||now-(g.showdownAt||0)>=(g.earlyWin?2500:5000))){
+       (g.phase!=='showdown'||now-(g.showdownAt||0)>=showdownDelay(g))){
       const yieldSeat=manualHumanWaiting&&Object.keys(pl).length>=A.capacity(S.settings);
       const candidates=Object.values(pl).filter(p=>p.isBot&&p.fundingUid&&!p.pendingTopUp).map(p=>({p,at:p.botLeavesAt||botSession(p.uid,p.botJoinedAt||S.raw.createdAt||now).botLeavesAt}));
       const due=yieldSeat?candidates.sort((a,b)=>Number(b.p.status==='busted'||!!b.p.leaveReq)-Number(a.p.status==='busted'||!!a.p.leaveReq)||a.at-b.at||a.p.seatIndex-b.p.seatIndex)[0]:now>=(S.raw.botRotateAfter||0)?candidates.filter(x=>x.at<=now).sort((a,b)=>a.at-b.at||a.p.seatIndex-b.p.seatIndex)[0]:null;
@@ -1332,7 +1338,7 @@ async function tickTable(id, testNow) {
     }
 
     // --- Seat reaping (cash only): leaveReq/sitOut/busted between hands ---
-    if (!S.raw.closeRequested && !S.settings.spinMode && !S.tor && A.idle(S.raw) && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=5000)) {
+    if (!S.raw.closeRequested && !S.settings.spinMode && !S.tor && A.idle(S.raw) && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=showdownDelay(g))) {
       for (const p of Object.values(pl)) {
         const idle = p.leaveReq || (p.sitOut && p.sitOutAt && now - p.sitOutAt > 600000) ||
           (p.leavingAt && now >= p.leavingAt) ||
@@ -1367,8 +1373,8 @@ async function tickTable(id, testNow) {
       startHand(S);
       dirty = true;
     } else if (g.phase === "showdown" && spinGate && !extraTop.spinDone) {
-      const wait = g.earlyWin ? 2500 : 5000; // client cash parity (server tables are cash/spin only)
-      if (now - (g.showdownAt || 0) > wait && eligible.length >= 2) {
+      const wait = showdownDelay(g);
+      if (now - (g.showdownAt || 0) >= wait && eligible.length >= 2) {
         startHand(S);
         dirty = true;
       }
@@ -1518,7 +1524,7 @@ exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
       const armed = S.raw.spin && S.raw.spinStartAt && Date.now() >= S.raw.spinStartAt && !S.raw.spinDone;
       if (!armed) throw new HttpsError("failed-precondition", "The spin has not started yet");
     }
-    if(phase==='showdown'&&S.now-(S.gameState.showdownAt||0)<5000){S=null;return;}
+    if(phase==='showdown'&&S.now-(S.gameState.showdownAt||0)<showdownDelay(S.gameState)){S=null;return;}
     startHand(S);
     await commitState(tx, S);
   });

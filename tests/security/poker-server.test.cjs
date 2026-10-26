@@ -456,3 +456,27 @@ test('frequent ticks do not shorten thinking time or duplicate a bot move, while
  assert.equal(afterBot.publicModels,undefined);assert.equal(afterBot.botDecisionDebug,undefined);assert.equal(afterBot.gameState.botDecisionDebug,undefined);
  assert.doesNotMatch(JSON.stringify(traces),/"cards"|"deck"|finalBoard/);
 });
+
+test('old client background departure checks are inert for approved players while explicit kicks stay manager-only',async()=>{
+ const a='legacy-maintenance-a',b='legacy-maintenance-b',viewer='legacy-new-viewer',outsider='legacy-outsider';
+ for(const u of [a,b,viewer])await fresh(u,1000);
+ const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:40,maxBuyIn:200,blinds:1}});
+ for(const u of [a,b])await call('pkSeat',u,{tableId,op:'join',amount:100});
+ await call('pkDeal',a,{tableId});assert.equal((await call('pkLeave',b,{tableId})).queued,true);
+ const before=await get('tables/'+tableId),balances=await Promise.all([bank(a),bank(b),bank(viewer),bank(owner)]);
+ for(const caller of [a,viewer])for(let n=0;n<3;n++){
+  const result=await call('pkLeave',caller,{tableId,targetUid:b});
+  assert.equal(result.ok,false);assert.equal(result.ignored,true);assert.equal(result.reason,'server-maintenance');
+ }
+ assert.deepEqual(await get('tables/'+tableId),before);
+ assert.deepEqual(await Promise.all([bank(a),bank(b),bank(viewer),bank(owner)]),balances);
+ await assert.rejects(call('pkLeave',viewer,{tableId,targetUid:b,intent:'kick'}),e=>e.code==='permission-denied');
+ await assert.rejects(call('pkLeave',viewer,{tableId,targetUid:a}),e=>e.code==='permission-denied');
+ await assert.rejects(call('pkLeave',outsider,{tableId,targetUid:b}),e=>e.code==='permission-denied');
+ for(const status of ['pending','banned']){
+  await db.doc(`memberships/${viewer}_${club}`).update({status});
+  await assert.rejects(call('pkLeave',viewer,{tableId,targetUid:b}),e=>e.code==='permission-denied');
+ }
+ assert.deepEqual(await get('tables/'+tableId),before);
+ assert.equal((await call('pkLeave',owner,{tableId,targetUid:a,intent:'kick'})).queued,true);
+});

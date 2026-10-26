@@ -1562,11 +1562,25 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const target = (request.data || {}).targetUid || uid;
-  let S = null,notice=false,queued=false;
+  let S = null,notice=false,queued=false,ignored=false;
   await db().runTransaction(async (tx) => {
-    notice=false;queued=false;S = await loadState(tx, id, {withCards: true});
+    notice=false;queued=false;ignored=false;S = await loadState(tx, id, {withCards: true});
     if (target !== uid) {
-      await A.tableManager(tx,db(),S.table.clubId,request);
+      try {
+        await A.tableManager(tx,db(),S.table.clubId,request);
+      } catch (error) {
+        // Pre-v323 browsers attempted an admin kick every 12s for another
+        // player's queued leave / expired sit-out. Never execute those kicks.
+        // A non-throwing, explicitly ignored result stops their recurring toast;
+        // the authoritative tick remains responsible for all seat maintenance.
+        const p = S.players[target];
+        const legacyMaintenance = request.data?.intent == null && !S.tor &&
+          (!p || !p.isBot && p.status !== 'busted' &&
+            (p.leaveReq || p.sitOut && S.now - (p.sitOutAt || 0) > 600000));
+        if (error.code !== 'permission-denied' || !legacyMaintenance) throw error;
+        await A.member(tx,db(),S.table.clubId,request);
+        ignored=true;S=null;return; // no writes, refunds, role changes or tick
+      }
     }
     const p = S.players[target];
     if (!p) {
@@ -1584,6 +1598,7 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
     if(!S.players[target])tx.set(privRef(id, target), {cards: []});
   });
   if (S) await runEffects(S);
+  if(ignored)return {ok:false,ignored:true,reason:'server-maintenance',clientUpdateRequired:true};
   return {ok: true,notice,queued};
 });
 

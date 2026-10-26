@@ -37,9 +37,11 @@ function fixture(seed=1){
  const access=load('pokerAccess.js'),engineApi=load('pokerEngine.js'),engine=engineApi.__engineInternals;
  const auth=uid=>({uid,token:{email:uid+'@example.test',email_verified:true}});
  return{docs,db,engine,now:()=>now,advance:ms=>{now+=ms;},table:id=>docs.get('tables/'+id),balance:uid=>docs.get(`memberships/${uid}_clubA`).balance,
-  create:settings=>access.pkTableCreate({auth:auth('owner'),data:{clubId:'clubA',manual:true,requestId:'manual-create-request-'+(++request),settings:{baseGameType:'NLH',blinds:.5,minBuyIn:50,maxBuyIn:200,maxPlayers:4,...settings},botCount:'full'}}),
+  create:(settings,botCount='full')=>access.pkTableCreate({auth:auth('owner'),data:{clubId:'clubA',manual:true,requestId:'manual-create-request-'+(++request),settings:{baseGameType:'NLH',blinds:.5,minBuyIn:50,maxBuyIn:200,maxPlayers:4,...settings},botCount}}),
   wait:id=>access.pkSeat({auth:auth('human'),data:{op:'wait',tableId:id,amount:100,requestId:'manual-wait-request-'+(++request)}}),
   act:(id,action)=>{const g=docs.get('tables/'+id).gameState;return engineApi.pkAct({auth:auth(g.activeTurnUid),data:{tableId:id,action,requestId:"showdown-action-"+(++request),expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}}});},
+  seat:(id,uid='human')=>access.pkSeat({auth:auth(uid),data:{tableId:id,op:'join',amount:100,requestId:'join-player-request-'+(++request)}}),
+  leave:(id,uid,data={})=>engineApi.pkLeave({auth:auth(uid),data:{tableId:id,...data}}),
   deal:(id,uid)=>engineApi.pkDeal({auth:auth(uid),data:{tableId:id}}),
   tick:id=>engine.tickTable(id,now)
  };
@@ -168,4 +170,39 @@ for(const earlyWin of [false,true])test(`public ${earlyWin?'fold win':'showdown'
  assert.equal(f.table(id).gameState.phase,'preflop');assert.equal(f.table(id).gameState.handN,before.gameState.handN+1);
  assert.deepEqual(copy(f.table(id).gameState.lastAwards),[],'next hand clears the old award');
  assert.equal(total(f,id),initialTotal,'next deal conserves chips');
+});
+
+for(const seated of [false,true])test(`legacy background departure request is inert for a fresh ${seated?'seated player':'spectator'}`,async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:4},0);
+ for(const uid of ['departing','newcomer']){
+  f.docs.set('users/'+uid,{username:uid});
+  f.docs.set(`memberships/${uid}_clubA`,{uid,clubId:'clubA',role:'player',status:'approved',balance:1000});
+ }
+ await f.seat(id);await f.seat(id,'departing');if(seated)await f.seat(id,'newcomer');await f.tick(id);
+ assert.equal((await f.leave(id,'departing')).queued,true,'target asked to leave after the hand');
+ const before=copy([...f.docs]);
+ for(let repeat=0;repeat<3;repeat++){
+  const result=await f.leave(id,'newcomer',{targetUid:'departing'});
+  assert.equal(result.ok,false);assert.equal(result.ignored,true);assert.equal(result.reason,'server-maintenance');
+  assert.deepEqual(copy([...f.docs]),before,'old automatic requests cannot change cards, table, wallets or roles');
+ }
+ await assert.rejects(f.leave(id,'newcomer',{targetUid:'departing',intent:'kick'}),e=>e.code==='permission-denied');
+ await assert.rejects(f.leave(id,'newcomer',{targetUid:'human'}),e=>e.code==='permission-denied','an active seat cannot be removed');
+ await assert.rejects(f.leave(id,'outsider',{targetUid:'departing'}),e=>e.code==='permission-denied');
+ f.docs.get('memberships/newcomer_clubA').status='banned';
+ await assert.rejects(f.leave(id,'newcomer',{targetUid:'departing'}),e=>e.code==='permission-denied');
+ assert.deepEqual(copy(f.table(id)),before.find(([path])=>path==='tables/'+id)[1]);
+ f.docs.get('memberships/newcomer_clubA').status='approved';
+ // Real management and self departure still follow their original authorization paths.
+ assert.equal((await f.leave(id,'owner',{targetUid:'human',intent:'kick'})).queued,true);
+ if(seated)assert.equal((await f.leave(id,'newcomer')).queued,true);
+});
+test('legacy expired sit-out and stale absent target requests never issue a refund',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:4},0);await f.seat(id);
+ const p=f.table(id).players.human;Object.assign(p,{sitOut:true,sitOutAt:f.now()-601000});
+ f.docs.set('memberships/spectator_clubA',{uid:'spectator',clubId:'clubA',role:'player',status:'approved',balance:1000});
+ for(const targetUid of ['human','already_gone']){
+  const before=copy([...f.docs]);assert.equal((await f.leave(id,'spectator',{targetUid})).ignored,true);
+  assert.deepEqual(copy([...f.docs]),before);
+ }
 });

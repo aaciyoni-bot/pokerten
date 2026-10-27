@@ -1112,7 +1112,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/tournament-blue.css?v=314">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
-<link rel="stylesheet" href="assets/css/table-entry-blue.css?v=296">
+<link rel="stylesheet" href="assets/css/table-entry-blue.css?v=330">
 <link rel="stylesheet" href="assets/css/poker-god-best.css?v=299">
 <link rel="stylesheet" href="assets/css/player-wallet-blue.css?v=314">
 <link rel="stylesheet" href="assets/css/club-orbital.css?v=315">
@@ -1122,7 +1122,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=325">
 <script src="assets/js/club-cashier.js?v=325"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=329">
-<script src="assets/js/poker-sound-pack.js?v=329"></script>
+<script src="assets/js/poker-sound-pack.js?v=330"></script>
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -10943,6 +10943,13 @@ function PokerTable({
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [buyinEdit, setBuyinEdit] = useState(null);
   const [spinEdit, setSpinEdit] = useState(null);
+  const [seatBusy, setSeatBusy] = useState(false);
+  const [seatError, setSeatError] = useState('');
+  const seatRequestRef = useRef(null);
+  useEffect(() => {
+    seatRequestRef.current = null; setSeatBusy(false); setSeatError('');
+    return () => { seatRequestRef.current = null; };
+  }, [tableDocId, user.uid]);
   const [pickSeat, setPickSeat] = useState(null); // seat chosen by tapping a "+" disc
   const [confirmBox, setConfirmBox] = useState(null);
   const askConfirm = msg => new Promise(resolve => setConfirmBox({
@@ -11636,7 +11643,21 @@ try{await window.fb.fx('pkTick',{tableId:tableDocId});}catch(e){showToast(e.mess
     if (!(await saveGame(g, pl))) return;
   };
   const handleSit = async () => {
-try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'join',amount:Number(buyAmt),seatIndex:pickSeat});setSpectate(false);setPickSeat(null);}catch(e){showToast(e.message||String(e),'error');}
+    if (seatRequestRef.current) return;
+    const request = {}; seatRequestRef.current = request;
+    setSeatBusy(true); setSeatError('');
+    try {
+      const result = await pokerCommand('pkSeat',{tableId:tableDocId,op:'join',amount:Number(buyAmt),seatIndex:pickSeat});
+      if (seatRequestRef.current !== request) return;
+      if (!result?.ok) throw new Error('The seat was not confirmed. Please try again.');
+      // The callable confirms the atomic purchase; the subscription supplies
+      // the seat and balance. Do not keep a second purchase dialog over it.
+      setSpectate(true); setPickSeat(null);
+    } catch (e) {
+      if (seatRequestRef.current === request) setSeatError(e.message || 'Could not take a seat. Please try again.');
+    } finally {
+      if (seatRequestRef.current === request) { seatRequestRef.current = null; setSeatBusy(false); }
+    }
 };
   const joinWaitlist = async () => {
 try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'wait',amount:Number(buyAmt)});showToast("You joined the waiting list.",'success');}catch(e){showToast(e.message||String(e),'error');}
@@ -12137,6 +12158,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const myEquity = equityResult.key === equityKey ? equityResult.mine : null;
   const realEq = equityResult.key === equityKey ? equityResult.real : null;
   const prevSnd = useRef({
+    tableId: null,
     board: 0,
     phase: '',
     turnMine: false,
@@ -12147,6 +12169,13 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     if (!tableState || headless) return;
     const ps = prevSnd.current;
     const bl = (gs.board || []).length;
+    const latestChat=(tableState.chat||[]).at(-1),chatKey=latestChat?`${latestChat.uid}:${latestChat.at}`:'';
+    // Opening/reconnecting to a table is a baseline, not a replay of its hand.
+    if (ps.tableId !== tableDocId) {
+      prevSnd.current = {tableId:tableDocId,board:bl,phase:gs.phase,turnMine:gs.activeTurnUid===user.uid,
+        chatKey,acts:Object.fromEntries(Object.entries(players).map(([uid,p])=>[uid,p.actionText]))};
+      return;
+    }
     if (bl > ps.board) playSnd('flip', bl - ps.board);
     if (gs.phase === 'preflop' && ['waiting', 'showdown', 'dc_selection'].includes(ps.phase)) {
       const acts = Object.values(players).filter(p => p.status === 'active').sort((x, y) => x.seatIndex - y.seatIndex);
@@ -12176,7 +12205,6 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       } catch (e) {}
     }
     const cl = (tableState.chat || []).length;
-    const latestChat=(tableState.chat||[]).at(-1),chatKey=latestChat?`${latestChat.uid}:${latestChat.at}`:'';
     if(ps.chatKey && chatKey!==ps.chatKey && latestChat?.uid!==user.uid)playSnd(latestChat?.gift?'gift':latestChat?.emoji?'emote':'msg');
     ps.chatKey=chatKey;
     Object.entries(players).forEach(([puid, p]) => {
@@ -12192,7 +12220,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     ps.phase = gs.phase;
     ps.turnMine = mine;
     ps.chatLen = cl;
-  }, [tableState]);
+  }, [tableState, tableDocId, headless]);
   if (loading || !tableState) return React.createElement('div', {
     className: 'h-full flex flex-col gap-4 items-center justify-center p-6 text-amber-300', role: 'status'
   }, tableError || 'Connecting to your table…', tableError && React.createElement('button', {
@@ -13878,8 +13906,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "text-2xl font-black text-amber-300"
   }, formatShort((Number(setts.spinBuyIn) || 50) * 100)))), React.createElement("button", {
     onClick: handleSit,
+    disabled: seatBusy,
+    "aria-busy": seatBusy,
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
-  }, "Enter for ", formatShort(Number(setts.spinBuyIn) || 50)), React.createElement("button", {
+  }, seatBusy ? 'Taking your seat…' : 'Enter for ' + formatShort(Number(setts.spinBuyIn) || 50)), seatError && React.createElement('div', {role:'alert',className:'pt-buyin-notice pt-buyin-error'},seatError), React.createElement("button", {
     onClick: () => setSpectate(true),
     className: "w-full bg-slate-800 hover:bg-slate-700 border border-gold-400/30 text-gold-400 py-3 rounded-2xl font-black text-sm"
   }, React.createElement("i", {
@@ -13911,6 +13941,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     dir: "ltr"
   }, formatMoney(buyAmt)), React.createElement("input", {
     id: "pt-buyin-amount",
+    disabled: seatBusy,
     type: "range",
     min: minBuy,
     max: maxBuy,
@@ -13943,8 +13974,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-buyin-button pt-buyin-secondary"
   }, "Leave waitlist")), !(requiresWaitlist && !needRebuy) && React.createElement("button", {
     onClick: needRebuy ? handleRebuy : handleSit,
+    disabled: seatBusy,
+    "aria-busy": seatBusy,
     className: "pt-buyin-button pt-buyin-primary"
-  }, needRebuy ? 'Do Rebuy' : 'Take a seat 🪑'), !needRebuy && React.createElement("button", {
+  }, seatBusy ? 'Taking your seat…' : needRebuy ? 'Do Rebuy' : 'Take a seat 🪑'), seatError && React.createElement('div', {role:'alert',className:'pt-buyin-notice pt-buyin-error'},seatError), !needRebuy && React.createElement("button", {
     onClick: () => setSpectate(true),
     className: "pt-buyin-button pt-buyin-secondary"
   }, React.createElement("i", {

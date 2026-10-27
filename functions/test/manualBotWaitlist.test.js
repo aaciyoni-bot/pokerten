@@ -206,3 +206,20 @@ test('legacy expired sit-out and stale absent target requests never issue a refu
   assert.deepEqual(copy([...f.docs]),before);
  }
 });
+
+for(const count of [0,1])for(const earlyWin of [false,true])test(`settled ${earlyWin?'fold':'showdown'} clears stale cards with ${count} players after the full result interval`,async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:4},0);
+ if(count)await f.seat(id);
+ const table=f.table(id),cards=[{val:'J',suit:'♠'},{val:'5',suit:'♦'},{val:'5',suit:'♥'},{val:'9',suit:'♣'},{val:'A',suit:'♥'}];
+ Object.assign(table.gameState,{phase:'showdown',handN:7,showdownAt:f.now(),earlyWin,board:copy(cards),board2:copy(cards),pots:[],lastAwards:[{uid:'previous',name:'Previous',amount:50}],lastWinAmount:50,lastWinners:'Previous'});
+ if(count){table.players.human.cards=cards.slice(0,2);table.players.human.cardCount=2;table.players.human.actionText='Call';f.docs.set(`tables/${id}/priv/human`,{cards:cards.slice(0,2)});}
+ const before=copy(table),bank=f.balance('human'),chips=total(f,id),delay=earlyWin?5000:8000;
+ f.advance(delay-1);await f.tick(id);assert.deepEqual(f.table(id).gameState,before.gameState,'The result remains for its full interval');
+ f.advance(1);await f.tick(id);const after=f.table(id);
+ assert.equal(after.gameState.phase,'waiting');assert.deepEqual(after.gameState.board,[]);assert.equal(after.gameState.board2,null);
+ assert.equal(after.gameState.activeTurnUid,null);assert.equal(after.gameState.handN,7,'No cards are dealt without a second player');
+ assert.deepEqual(after.gameState.lastAwards,[]);assert.equal(f.balance('human'),bank);assert.equal(total(f,id),chips,'Clearing presentation cannot move money');
+ if(count){assert.equal(after.players.human.cardCount,0);assert.deepEqual(after.players.human.cards,[]);assert.deepEqual(f.docs.get(`tables/${id}/priv/human`).cards,[],'Private old cards are also cleared');}
+ const stable=copy(after);await f.tick(id);assert.deepEqual(f.table(id),stable,'Idle maintenance does not repeatedly change the table');
+ if(count){await f.seat(id,'owner');await f.tick(id);assert.equal(f.table(id).gameState.phase,'preflop');assert.equal(f.table(id).gameState.handN,8);assert.deepEqual(f.table(id).gameState.board,[]);assert.equal(f.table(id).players.human.cardCount,2);assert.equal(total(f,id),chips,'A second player starts a fresh, conserved hand');}
+});

@@ -92,8 +92,8 @@
   }
   function track(src) { sources.add(src);src.onended=()=>sources.delete(src); }
   function setView(next) {
-    const previous=view;view=next;
-    if(previous!==next&&next.endsWith('-table'))play('switchTable');
+    view=next;
+    // Navigation is not a deal/bet; table sounds come from new game events.
     syncMusic();
   }
   function unlock(){unlocked=true;preload();syncMusic();}
@@ -154,12 +154,17 @@
   if(root.addEventListener){
     ['pointerdown','touchstart','keydown'].forEach(ev=>root.addEventListener(ev,unlock,{once:true,passive:true}));
     document.addEventListener('visibilitychange',()=>{if(document.hidden)stopAll();else{refresh();syncMusic();}});
-    document.addEventListener('click',e=>{
-      const button=e.target.closest?.('button,a');if(!button||button.disabled||button.closest('.pk-sound-library'))return;
+    const tap = e => {
+      const button=e.target.closest?.('button,a,[role="button"],[role="tab"]');
+      if(!button||button.disabled||button.getAttribute('aria-disabled')==='true'||button.closest('[aria-hidden="true"],.pk-sound-library'))return;
+      if(e.type==='keydown'&&(!['Enter',' '].includes(e.key)||e.repeat||button.matches('button,a')))return;
       if(view.endsWith('-table')&&!button.matches('.poker-menu-tile'))return;
       if(view==='auth')return;
       play('click');
-    });
+    };
+    // Capture before React navigation removes a card or stops propagation.
+    document.addEventListener('click',tap,true);
+    document.addEventListener('keydown',tap,true);
     document.addEventListener('input',e=>{if(e.target.matches?.('input[type=range]')&&e.target.getAttribute('aria-label')!=='Sound volume')play('slider');});
     setInterval(refresh,60000);
   }

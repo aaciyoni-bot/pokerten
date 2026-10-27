@@ -299,3 +299,18 @@ test('lifetime accounting is manager-only while agents retain current-cycle resu
  assert.equal(unknown.needsPeriodStart,true);assert.equal(unknown.players.alice.result,null);assert.equal(unknown.players.alice.chips,79);assert.doesNotMatch(JSON.stringify(unknown),/totalResult|totalRake/);
  assert.equal(f.options.every(o=>o.readOnly),true);
 });
+
+test('cashier history pages audit records without exposing private audit fields or other clubs',async()=>{
+ const f=fixture();
+ f.documents.set('_pkAudit/a',{clubId:'clubA',action:'member-ban',targetUid:'bob',at:1,privateDetail:'hidden'});
+ f.documents.set('_pkAudit/b',{clubId:'clubA',action:'member-cashier-transfer',targetUid:'bob',amount:20,at:2,uid:'owner',fundingUid:'owner',privateDetail:'hidden'});
+ f.documents.set('_pkAudit/c',{clubId:'clubA',action:'member-transfer',targetUid:'bob',amount:-5,at:3});
+ f.documents.set('_pkAudit/d',{clubId:'otherClub',action:'member-transfer',targetUid:'other',amount:999,at:4});
+ const first=await f.run({reportSection:'cashierHistory',pageSize:1});
+ assert.deepEqual(first,{records:[],hasMore:true,nextCursor:'a'},'cursor advances over filtered audit events');
+ const next=await f.run({reportSection:'cashierHistory',pageSize:200,cursor:first.nextCursor});
+ assert.deepEqual(next.records,[{id:'b',targetUid:'bob',amount:20,at:2},{id:'c',targetUid:'bob',amount:-5,at:3}]);
+ assert.equal(next.hasMore,false);
+ await assert.rejects(f.run({reportSection:'cashierHistory'},auth('agentA','agent@example.test')),e=>e.code==='permission-denied');
+ await assert.rejects(f.run({reportSection:'cashierHistory'},auth('bob','player@example.test')),e=>e.code==='permission-denied');
+});

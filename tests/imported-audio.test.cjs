@@ -3,7 +3,7 @@ const root=path.join(__dirname,'..'),packCode=fs.readFileSync(path.join(root,'as
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const catalog=JSON.parse(fs.readFileSync(path.join(root,'assets/sounds/zynga-23-29-705/catalog.json')));
 const events=JSON.parse(fs.readFileSync(path.join(root,'assets/sounds/zynga-23-29-705/events.json')));
-function fixture(){
+function fixture(document){
  const handlers={},played=[],requests=[],stopped=[];let theme='zynga-23-29-705';
  const param=()=>({value:1,setTargetAtTime(){},setValueAtTime(){},linearRampToValueAtTime(){}});
  const ctx={state:'running',sampleRate:24000,currentTime:1,destination:{},resume:async()=>{},
@@ -12,7 +12,7 @@ function fixture(){
   createBufferSource:()=>{const src={playbackRate:{value:1},connect(){},start(t){played.push({src,t,buffer:src.buffer});},stop(){stopped.push(src);src.onended?.();}};return src;},
   createGain:()=>({gain:param(),connect(){}})};
  const w={__pkVolume:.55,addEventListener:(ev,fn)=>handlers[ev]=fn};
- const d={hidden:false,addEventListener:(ev,fn)=>handlers[ev]=fn};
+ const d=document||{hidden:false,addEventListener:(ev,fn)=>handlers[ev]=fn};
  const c={window:w,document:d,localStorage:{getItem:()=>null,setItem(){}},console,Date,Map,Set,Math,setTimeout(){},setInterval(){},
   fetch:async url=>{requests.push(url);if(url==='assets/sounds/theme.json')return{ok:true,json:async()=>({active:theme})};
    const data=fs.readFileSync(path.join(root,url));return{ok:true,json:async()=>JSON.parse(data),arrayBuffer:async()=>data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength)};}};
@@ -68,4 +68,21 @@ test('sound library exposes all clips, filters, previews one at a time and stops
  dialog.querySelector('.pk-sound-item').click();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,1);assert.match(dialog.querySelector('[role=status]').textContent,/Playing:/);
  dialog.querySelector('.pk-sound-item').click();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,2);assert.ok(f.stopped.includes(f.played[0].src));
  dialog.querySelector('header button').click();assert.equal(dom.window.document.querySelector('dialog'),null);assert.ok(f.stopped.includes(f.played[1].src));dom.window.close();
+});
+
+test('club role-buttons sound before navigation stops bubbling; keyboard, disabled, mute and rollback behave correctly',async()=>{
+ const {JSDOM}=require('./ui/node_modules/jsdom');
+ const dom=new JSDOM('<div role="button" tabindex="0" id="club"><span>Enter club</span></div><button disabled>Disabled</button><div role="button" aria-disabled="true" id="blocked">Blocked</div>',{pretendToBeVisual:true});
+ const f=fixture(dom.window.document);let now=Date.now();f.context.Date={now:()=>now};
+ await f.pack.refresh();f.handlers.pointerdown();await f.pack.preload();f.pack.setView('clubs');
+ const club=dom.window.document.querySelector('#club');let activated=0;
+ club.addEventListener('click',e=>{e.stopPropagation();activated++;f.pack.setView('lobby');});
+ const cues=()=>f.played.filter(x=>!x.src.loop);
+ club.querySelector('span').click();assert.equal(activated,1);assert.equal(cues().length,1,'Accessible club card receives one click sound despite stopping propagation');
+ now+=100;club.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));assert.equal(cues().length,2,'Keyboard activation has feedback');
+ now+=100;dom.window.document.querySelector('#blocked').click();dom.window.document.querySelector('button').click();assert.equal(cues().length,2);
+ f.w.__pkMuted=true;now+=100;club.click();assert.equal(cues().length,2);f.w.__pkMuted=false;
+ f.pack.setView('poker-table');assert.equal(cues().length,2,'Opening a table itself plays no card or chip cue');
+ f.setTheme('original');await f.pack.refresh();f.pack.setView('clubs');now+=100;club.click();assert.equal(cues().length,2,'Original theme preserves its original quiet navigation');
+ dom.window.close();
 });

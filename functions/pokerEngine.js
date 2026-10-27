@@ -140,7 +140,9 @@ function startHand(S, forcedGameType) {
   S.priv = {}; // fresh hands only for this hand's actives
   const actives = activesOf(pl);
   if (actives.length < 2) {
-    S.gameState = {...g0, phase: "waiting", activeTurnUid: null, turnStartedAt: null, board: [], pots: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, rabbit: null};
+    S.priv = Object.fromEntries(Object.keys(pl).map(uid => [uid, []]));
+    S.deck = [];
+    S.gameState = {...g0, lastAwards: [], lastWinners: null, lastWinAmount: 0, showdownAt: null, highestBet: 0, phase: "waiting", activeTurnUid: null, turnStartedAt: null, board: [], pots: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, rabbit: null};
     return "waiting";
   }
   const uids = actives.map((p) => p.uid);
@@ -1374,7 +1376,9 @@ async function tickTable(id, testNow) {
       dirty = true;
     } else if (g.phase === "showdown" && spinGate && !extraTop.spinDone) {
       const wait = showdownDelay(g);
-      if (now - (g.showdownAt || 0) >= wait && eligible.length >= 2) {
+      if (now - (g.showdownAt || 0) >= wait && A.idle({...S.raw,players:pl,gameState:g})) {
+        // Even with one/zero players, finish the display interval. startHand
+        // clears public/private cards and enters waiting without dealing.
         startHand(S);
         dirty = true;
       }

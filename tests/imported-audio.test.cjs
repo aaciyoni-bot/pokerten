@@ -3,7 +3,7 @@ const root=path.join(__dirname,'..'),packCode=fs.readFileSync(path.join(root,'as
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const catalog=JSON.parse(fs.readFileSync(path.join(root,'assets/sounds/zynga-23-29-705/catalog.json')));
 const events=JSON.parse(fs.readFileSync(path.join(root,'assets/sounds/zynga-23-29-705/events.json')));
-function fixture(document){
+function fixture(document,options={}){
  const handlers={},played=[],requests=[],stopped=[];let theme='zynga-23-29-705';
  const param=()=>({value:1,setTargetAtTime(){},setValueAtTime(){},linearRampToValueAtTime(){}});
  const ctx={state:'running',sampleRate:24000,currentTime:1,destination:{},resume:async()=>{},
@@ -13,8 +13,8 @@ function fixture(document){
   createGain:()=>({gain:param(),connect(){}})};
  const w={__pkVolume:.55,addEventListener:(ev,fn)=>handlers[ev]=fn};
  const d=document||{hidden:false,addEventListener:(ev,fn)=>handlers[ev]=fn};
- const c={window:w,document:d,localStorage:{getItem:()=>null,setItem(){}},console,Date,Map,Set,Math,setTimeout(){},setInterval(){},
-  fetch:async url=>{requests.push(url);if(url==='assets/sounds/theme.json')return{ok:true,json:async()=>({active:theme})};
+ const c={window:w,document:d,localStorage:{getItem:k=>options.storage?.[k]??null,setItem:(k,v)=>{if(options.storage)options.storage[k]=v;}},console,Date,Map,Set,Math,setTimeout(){},setInterval(){},
+  fetch:async url=>{requests.push(url);if(options.beforeFetch)await options.beforeFetch(url);if(url==='assets/sounds/theme.json')return{ok:true,json:async()=>({active:theme})};
    const data=fs.readFileSync(path.join(root,url));return{ok:true,json:async()=>JSON.parse(data),arrayBuffer:async()=>data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength)};}};
  vm.createContext(c);vm.runInContext(packCode,c);
  vm.runInContext(html.slice(html.indexOf('const SFX = {'),html.indexOf('const creditRakeToClub ='))+'\nwindow.audioTest={SFX,playSnd,sfxPlay,setSfxLevel};',c);
@@ -65,8 +65,13 @@ test('sound library exposes all clips, filters, previews one at a time and stops
  const f=fixture();f.context.document=dom.window.document;await f.pack.refresh();f.handlers.pointerdown();await f.pack.preload();
  await f.pack.openLibrary();const dialog=dom.window.document.querySelector('dialog');assert.ok(dialog.open);assert.equal(dialog.querySelectorAll('.pk-sound-item').length,379);
  const search=dialog.querySelector('input[type=search]');search.value='all_in';search.dispatchEvent(new dom.window.Event('input'));assert.equal(dialog.querySelectorAll('.pk-sound-item').length,2);
- dialog.querySelector('.pk-sound-item').click();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,1);assert.match(dialog.querySelector('[role=status]').textContent,/Playing:/);
+ dialog.querySelector('.pk-sound-item').click();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,1);assert.match(dialog.querySelector('.pk-sound-status').textContent,/Playing:/);
  dialog.querySelector('.pk-sound-item').click();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,2);assert.ok(f.stopped.includes(f.played[0].src));
+ assert.match(dialog.querySelector('.pk-sound-readiness').textContent,/New table sounds ready/);
+ for(const label of ['Deal','Check','Bet','All-in','Win','Your turn']){
+  const before=f.played.length;dialog.querySelector('[aria-label="Test '+label+'"]').click();await new Promise(r=>setImmediate(r));
+  assert.equal(f.played.length,before+1);assert.equal(dialog.querySelector('.pk-sound-status').textContent,'New table sound: '+label);
+ }
  dialog.querySelector('header button').click();assert.equal(dom.window.document.querySelector('dialog'),null);assert.ok(f.stopped.includes(f.played[1].src));dom.window.close();
 });
 
@@ -85,4 +90,43 @@ test('club role-buttons sound before navigation stops bubbling; keyboard, disabl
  f.pack.setView('poker-table');assert.equal(cues().length,2,'Opening a table itself plays no card or chip cue');
  f.setTheme('original');await f.pack.refresh();f.pack.setView('clubs');now+=100;club.click();assert.equal(cues().length,2,'Original theme preserves its original quiet navigation');
  dom.window.close();
+});
+
+test('a temporary configuration outage keeps the requested imported theme working on a fresh browser',async()=>{
+ const f=fixture(undefined,{beforeFetch:async url=>{if(url==='assets/sounds/theme.json')throw new Error('offline config');}});
+ f.handlers.pointerdown();await f.pack.refresh();await f.pack.preload();
+ f.engine.SFX.buf.check_knock={original:'check'};f.engine.playSnd('check');
+ assert.equal(f.played.length,1,'The requested check is one imported sample, not the old double knock');
+ assert.ok(f.played[0].buffer.digest);assert.equal(f.pack.active,true);
+});
+test('metadata failure before the first gesture recovers on the next refresh without reloading the page',async()=>{
+ let unavailable=true;
+ const f=fixture(undefined,{beforeFetch:async url=>{if(url.endsWith('events.json')&&unavailable)throw new Error('temporary metadata failure');}});
+ f.handlers.pointerdown();await f.pack.refresh();await f.pack.preload();
+ unavailable=false;await f.pack.refresh();f.engine.playSnd('check');
+ assert.equal(f.played.length,1);assert.ok(f.played[0].buffer.digest);
+});
+test('loading imported audio never silently falls back to the original table cues',async()=>{
+ let release;const wait=new Promise(r=>release=r);
+ const f=fixture(undefined,{beforeFetch:async url=>{if(url.endsWith('.bin'))await wait;}});
+ f.handlers.pointerdown();await f.pack.metadata();
+ f.engine.SFX.buf.check_knock={original:'check'};f.engine.playSnd('check');
+ assert.equal(f.played.length,0,'A slow new sound must not trigger the old double knock');
+ release();await f.pack.preload();await new Promise(r=>setImmediate(r));
+ assert.equal(f.played.length,1);assert.ok(f.played[0].buffer.digest);
+});
+
+test('an explicit original-theme rollback persists through a later config outage',async()=>{
+ const storage={};const first=fixture(undefined,{storage});await first.pack.refresh();first.setTheme('original');await first.pack.refresh();
+ const f=fixture(undefined,{storage,beforeFetch:async url=>{if(url==='assets/sounds/theme.json')throw new Error('offline');}});
+ f.handlers.pointerdown();await f.pack.refresh();f.engine.SFX.buf.check_knock={original:'check'};f.engine.playSnd('check');
+ assert.equal(f.pack.active,false);assert.equal(f.played.length,2);assert.equal(f.played[0].buffer.original,'check');
+});
+for(const cancelledBy of ['rollback','background','mute'])test('a pending new cue is cancelled by '+cancelledBy,async()=>{
+ let release;const wait=new Promise(r=>release=r),f=fixture(undefined,{beforeFetch:async url=>{if(url.endsWith('.bin'))await wait;}});
+ f.handlers.pointerdown();await f.pack.metadata();f.engine.playSnd('check');
+ if(cancelledBy==='rollback'){f.setTheme('original');await f.pack.refresh();}
+ if(cancelledBy==='background'){f.d.hidden=true;f.handlers.visibilitychange();f.d.hidden=false;}
+ if(cancelledBy==='mute'){f.w.__pkMuted=true;f.engine.setSfxLevel(.55);f.w.__pkMuted=false;}
+ release();await f.pack.preload();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,0);
 });

@@ -2,7 +2,11 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{createRequire}=require('node:module'),{Readable}=require('node:stream');
 const {Firestore}=require('firebase-admin/firestore');
 const realRequire=createRequire(path.join(__dirname,'../cardGames.js')),stamp={seconds:'1',nanos:0},clone=x=>JSON.parse(JSON.stringify(x));
-function fixture(){
+function fixture(seed=20261027){
+ // Reproducible deals keep this ledger integration check independent of entropy.
+ // The core suite separately exercises broad randomized game simulations.
+ let rng=seed>>>0;
+ const randomInt=(min,max)=>{if(max===undefined){max=min;min=0;}rng=(Math.imul(rng,1664525)+1013904223)>>>0;return min+Math.floor(rng/4294967296*(max-min));};
  const db=new Firestore({projectId:'demo-pokerten-card-games'}),records=new Map([['clubs/club',{ownerUid:'owner',rakePct:6}],...['owner','alice','bob','outsider'].flatMap(uid=>[['users/'+uid,{username:uid}],['memberships/'+uid+'_club',{uid,clubId:'club',username:uid,status:uid==='outsider'?'pending':'approved',role:uid==='owner'?'club_owner':'player',balance:1000}]])]);
  const proto=(p,v)=>({name:db.formattedName+'/documents/'+p,fields:db._serializer.encodeFields(v),createTime:stamp,updateTime:stamp});
  db.initializeIfNeeded=async()=>{};
@@ -19,23 +23,35 @@ function fixture(){
   }
   records.clear();for(const [p,v]of pending)records.set(p,v);return{commitTime:stamp,writeResults:request.writes.map(()=>({updateTime:stamp}))};
  };
- const modules=new Map();function local(name){if(name==='firebase-admin/firestore')return{...realRequire(name),getFirestore:()=>db};if(!name.startsWith('./'))return realRequire(name);const file=realRequire.resolve(name);if(modules.has(file))return modules.get(file).exports;const m={exports:{}};modules.set(file,m);new Function('require','module','exports','__dirname',fs.readFileSync(file,'utf8'))(local,m,m.exports,path.dirname(file));return m.exports;}
+ const modules=new Map();function local(name){if(name==='node:crypto'||name==='crypto')return{...realRequire(name),randomInt};if(name==='firebase-admin/firestore')return{...realRequire(name),getFirestore:()=>db};if(!name.startsWith('./'))return realRequire(name);const file=realRequire.resolve(name);if(modules.has(file))return modules.get(file).exports;const m={exports:{}};modules.set(file,m);new Function('require','module','exports','__dirname',fs.readFileSync(file,'utf8'))(local,m,m.exports,path.dirname(file));return m.exports;}
  const mod=local('./cardGames');let counter=0;const auth=uid=>({uid,token:{email:uid+'@example.test',email_verified:true}});
  const run=(name,data,uid='owner')=>mod[name].run({auth:auth(uid),data:{requestId:'card_request_'+String(++counter).padStart(8,'0'),...data}});
- return{db,records,run,mod,balance:uid=>records.get('memberships/'+uid+'_club').balance,engine:id=>records.get('tables/'+id+'/priv/_engine'),pub:id=>records.get('tables/'+id),all:()=>clone([...records])};
+ return{db,records,run,mod,core:local('./cardGamesCore'),bots:local('./cardGameBots'),balance:uid=>records.get('memberships/'+uid+'_club').balance,engine:id=>records.get('tables/'+id+'/priv/_engine'),pub:id=>records.get('tables/'+id),all:()=>clone([...records])};
 }
 test('Real Firestore transactions: create/join/start/play/cash-out both games with funded bots and duplicate protection',async()=>{
- for(const type of ['durak','ofc']){
-  const f=fixture(),created=await f.run('pkCardTableCreate',{clubId:'club',type,settings:{maxPlayers:3,buyIn:100}}),id=created.tableId,command=(op,data={},uid='owner')=>f.run('pkCardGame',{tableId:id,op,...data},uid);
+ for(const seed of [1,7,42,20261027])for(const type of ['durak','ofc']){
+  const f=fixture(seed),created=await f.run('pkCardTableCreate',{clubId:'club',type,settings:{maxPlayers:3,buyIn:100}}),id=created.tableId,command=(op,data={},uid='owner')=>f.run('pkCardGame',{tableId:id,op,...data},uid);
   assert.equal(f.balance('owner'),1000,'Opening alone never debits balance');assert.equal(f.pub(id).authorityVersion,2);assert.equal(f.pub(id).cardGameVersion,1);
   const joinId='same_join_request_000000';await command('join',{requestId:joinId},'alice');await command('join',{requestId:joinId},'alice');assert.equal(f.balance('alice'),type==='ofc'?900:1000);
   await command('join',{},'bob');await command('addbot');const bot=Object.values(f.engine(id).players).find(p=>p.isBot);assert.ok(bot);assert.equal(bot.fundingUid,'owner');
   await command('start');assert.equal(f.balance('alice'),900);assert.equal(f.balance('bob'),900);assert.equal(f.balance('owner'),900,'Bot chips are debited from its sponsor once');
-  let turns=0;while(f.engine(id).status==='playing'&&turns++<3000){
-   const t=f.engine(id);t.turnStartedAt=0;f.records.get('tables/'+id).turnStartedAt=0;
-   // Tick uses the actual server's timeout path, private state, settlement and ledger.
-   await command('tick');
+  let turns=0,humanTimeouts=0,humanMoves=0,botTicks=0;
+  while(f.engine(id).status==='playing'&&turns++<3000){
+   const t=f.engine(id),actor=t.players[t.turnUid];
+   if(type==='durak'&&!actor.isBot&&humanTimeouts>0){
+    // Human timeout deliberately takes rather than defends. Two disconnected
+    // humans can exchange the same cards forever after their bot finishes.
+    // Exercise that timeout once, then send legal, authenticated human moves
+    // using only that player's public view and own private hand.
+    const move=f.bots.durakMove(f.core.botView(t,t.turnUid));
+    await command(move.op,{...move,seq:t.seq},t.turnUid);humanMoves++;
+   }else{
+    t.turnStartedAt=0;f.records.get('tables/'+id).turnStartedAt=0;
+    await command('tick');
+    if(actor.isBot)botTicks++;else humanTimeouts++;
+   }
   }
+  if(type==='durak'){assert.ok(humanTimeouts>0);assert.ok(humanMoves>0);assert.ok(botTicks>0);}
   assert.equal(f.engine(id).status,'showdown');assert.ok(f.pub(id).lastResults);const settled=clone(f.all());await command('tick');
   const wealth=()=>['owner','alice','bob'].reduce((n,u)=>n+f.balance(u),0)+Object.values(f.engine(id).players).reduce((n,p)=>n+(type==='ofc'?p.stack:0),0);
   assert.ok(Math.abs(wealth()-3000)<.001,'Wallets, stacks and rake allocation conserve all chips');

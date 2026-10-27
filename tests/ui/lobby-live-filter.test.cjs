@@ -37,6 +37,17 @@ const names=()=>[...w.document.querySelectorAll('.tbl-row:not(.tbl-spin) .tbl-na
  assert.equal(filter('All').getAttribute('aria-pressed'),'true');
  assert.deepEqual(names(),['waiting-full'],'All restores the unfiltered ring list');
  assert.ok(w.document.querySelector('.tbl-spin'),'All restores Spin section');
+ const checks=[...w.document.querySelectorAll('.reference-lobby-filters input')];
+ await render([...active,waiting]);
+ await React.act(()=>checks[1].click());assert.ok(!names().includes('waiting-full'),'Hide Full excludes a table at capacity');assert.equal(names().length,active.length);
+ await React.act(()=>checks[0].click());assert.equal(names().length,active.length,'Running and Hide Full compose');
+ await render([waiting]);assert.equal(names().length,0,'full waiting table matches neither filter');
+ await React.act(()=>checks[0].click());assert.equal(names().length,0,'Hide Full remains independent');
+ await React.act(()=>checks[1].click());assert.deepEqual(names(),['waiting-full'],'clearing filters restores waiting tables');
+ const cheap=table('cheap','waiting',{settings:{baseGameType:'NLH',tableName:'cheap',blinds:1,minBuyIn:20,maxPlayers:6}});
+ await render([waiting,cheap]);const sort=w.document.querySelector('[aria-label="Sort tables"]');
+ await React.act(()=>{sort.value='buyin';sort.dispatchEvent(new w.Event('change',{bubbles:true}));});assert.equal(w.document.querySelector('.reference-table-row .tbl-name').textContent,'cheap','Buy-in sorts ascending');
+ await React.act(()=>{sort.value='players';sort.dispatchEvent(new w.Event('change',{bubbles:true}));});assert.equal(w.document.querySelector('.reference-table-row .tbl-name').textContent,'waiting-full','Players sorts descending');
  assert.equal(actions.length,0,'filtering issues no game/server commands');assert.equal(writes.length,0);assert.equal(joins.length,0,'filter clicks never enter a table');
  await React.act(()=>root.unmount());w.close();console.log('PASS: leftmost LIVE filter, truthful active phases, waiting/stale exclusions, live updates, empty state, All restoration and zero game actions');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

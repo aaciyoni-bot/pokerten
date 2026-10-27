@@ -6,7 +6,7 @@ const React=require('react'),ReactDOM={...require('react-dom'),...require('react
 const calls=[],messages=[];let next,settle,created=0,newTables=0;
 const current={authorityVersion:2,clubId:'main',settings:{serverEngine:true,maxPlayers:6,baseGameType:'NLH',blinds:1,minBuyIn:40,maxBuyIn:200,straddle:true},players:{},gameState:{phase:'waiting',pots:[],board:[],__seq:1}};
 const ref=(...a)=>({path:a.slice(1).join('/')});w.fb={db:{},auth:{currentUser:{uid:'viewer'}},doc:ref,collection:ref,query:r=>r,where:()=>({}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),fx:(name,args)=>{if(name==='pkTick')return Promise.resolve({});calls.push({name,args});return new Promise((resolve,reject)=>{settle={resolve,reject};});},onSnapshot:(r,opts,fn)=>{const cb=typeof opts==='function'?opts:fn;if(r.path==='tables/test'){next=cb;queueMicrotask(()=>cb({id:'test',exists:()=>true,data:()=>structuredClone(current),metadata:{fromCache:false}}));}else queueMicrotask(()=>cb({exists:()=>false,docs:[]}));return()=>{};}};
-const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;window.CreateTest=PokerCreateView;');w.eval(script);w.__pkMuted=true;
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;window.CreateTest=PokerCreateView;');w.eval(script.replace(/const GOD_EMAILS = \[[^;]+;/,"const GOD_EMAILS = ['god-test@example.invalid'];"));w.__pkMuted=true;
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document,byTitle=t=>doc.querySelector('button[title="'+t+'"]');
 const render=async role=>React.act(async()=>root.render(React.createElement(w.TableTest,{key:role,tableDocId:'test',user:{uid:'viewer',role,managedGames:[],balance:1000},clubSettings:{},onLeave(){},onCreateTable(){newTables++;},showToast:(m,type)=>messages.push({m,type})})));
 const menu=async()=>React.act(()=>byTitle('Table menu').click());
@@ -26,11 +26,14 @@ const menu=async()=>React.act(()=>byTitle('Table menu').click());
   await menu();await React.act(()=>byTitle('Create a new table').click());
  }
  assert.equal(newTables,3);
- w.fb.auth.currentUser={uid:'viewer',email:'aaci.yoni@gmail.com',emailVerified:true};
+ w.fb.auth.currentUser={uid:'viewer',email:'god-test@example.invalid',emailVerified:true};
  const baseFx=w.fb.fx,board=['A','K','Q','J','10'].map(val=>({val,suit:'♠'}));w.fb.fx=(name,args)=>name==='godPeek'?Promise.resolve({tableId:args.tableId,contextKey:args.contextKey,hands:{},finalBoard:board}):baseFx(name,args);
  current.gameState={phase:'preflop',activeTurnUid:'other',turnStartedAt:Date.now(),highestBet:2,minRaise:2,handN:1,__seq:2,pots:[],board:[]};current.players={other:{uid:'other',name:'Other',isBot:false,stack:98,bet:2,cards:[],cardCount:2,status:'active',seatIndex:3},bot:{uid:'bot',name:'Robot',isBot:true,stack:100,bet:0,cards:[],cardCount:2,status:'active',seatIndex:1}};
  const kindBadges=()=>doc.querySelectorAll('.poker-god-player-kind');
  await render('player');await render('super_admin');const watch=[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table');if(watch)await React.act(()=>watch.click());
+ const vacancies=[...doc.querySelectorAll('.poker-empty-seat')];
+ assert.deepEqual(vacancies.map(b=>b.getAttribute('aria-label')).sort(),['Take seat 1','Take seat 3','Take seat 5','Take seat 6'],'every unoccupied physical seat is selectable, occupied seats are excluded');
+ assert.equal(new Set(vacancies.map(b=>b.style.left+':'+b.style.top)).size,4,'empty seat controls never share a visual position');
  assert.equal(kindBadges().length,0,'an authorized account sees no identity badges while GOD mode is off');
  await menu();await React.act(async()=>byTitle('GOD view').click());
  const preview=doc.querySelector('.poker-board-primary');assert.ok(preview);assert.equal(preview.querySelectorAll('.poker-god-future-card').length,5);assert.equal(doc.querySelector('.poker-god-runout'),null,'future cards use the actual board slots, never a header');
@@ -47,7 +50,7 @@ const menu=async()=>React.act(()=>byTitle('Table menu').click());
  await menu();assert.equal(byTitle('GOD view'),null);await menu();
  w.fb.auth.currentUser={uid:'viewer',email:'ordinary-admin@example.invalid',emailVerified:true};await render('super_admin');
  assert.equal(kindBadges().length,0,'a super_admin role does not authorize GOD identity badges');await menu();assert.equal(byTitle('GOD view'),null);await menu();
- w.fb.auth.currentUser={uid:'different-user',email:'aaci.yoni@gmail.com',emailVerified:true};await render('super_admin');
+ w.fb.auth.currentUser={uid:'different-user',email:'god-test@example.invalid',emailVerified:true};await render('super_admin');
  assert.equal(kindBadges().length,0,'an allowlisted identity for another UID cannot retain GOD identity badges');await menu();assert.equal(byTitle('GOD view'),null);await menu();
  w.fb.fx=baseFx;
 

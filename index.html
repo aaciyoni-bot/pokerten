@@ -1121,6 +1121,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=326">
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=325">
 <script src="assets/js/club-cashier.js?v=325"></script>
+<link rel="stylesheet" href="assets/sounds/sound-library.css?v=329">
+<script src="assets/js/poker-sound-pack.js?v=329"></script>
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1633,6 +1635,7 @@ const sfxCtx = () => {
 };
 const sfxLoad = () => {
   const ctx = sfxCtx();
+  window.PokerSoundPack?.preload();
   if (!ctx || SFX.loading) return;
   SFX.loading = true;
   sfxPrepareCues(ctx);
@@ -1679,9 +1682,10 @@ setTimeout(() => {
     sfxLoad();
   } catch (e) {}
 }, 2500);
-const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0, scope = null) => {
+const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0, scope = null, loop = false) => {
   if (window.__pkMuted || window.__pkVolume === 0 || document.hidden) return false;
   const ctx = sfxCtx();
+  name = window.PokerSoundPack?.resolve(name) || name;
   const b = SFX.buf[name];
   if (!ctx || !b) return false;
   try {
@@ -1700,6 +1704,7 @@ const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0, scope = null) =
     }
     const src = ctx.createBufferSource();
     src.buffer = b;
+    src.loop = loop;
     // explicit rate = deliberately stretched/pitched sample; otherwise a hair
     // of random detune so repeated chips don't sound machine-gunned
     src.playbackRate.value = rate || 1 + (Math.random() - 0.5) * 0.09;
@@ -1717,6 +1722,7 @@ const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0, scope = null) =
     tail.connect(SFX.bus);
     const t0 = ctx.currentTime + when;
     src.start(t0);
+    if(name.startsWith('apk:'))window.PokerSoundPack?.track(src);
     if (scope) scope.push(src);
     if (maxDur > 0) {
       // trim long samples: hold, then quick fade so the cut isn't a click
@@ -1740,6 +1746,7 @@ try {
 const setSfxLevel = (level) => {
   if (Number.isFinite(level)) window.__pkVolume = Math.max(0, Math.min(1, level));
   if (SFX.master && SFX.ctx) SFX.master.gain.setTargetAtTime(window.__pkMuted ? 0 : window.__pkVolume, SFX.ctx.currentTime, .015);
+  window.PokerSoundPack?.syncMusic();
   try { localStorage.setItem('pkVolume', String(window.__pkVolume)); } catch (_) {}
 };
 const SND = {};
@@ -1762,6 +1769,9 @@ const playSnd = (type, times = 1, gapSec = 0) => {
     } catch (e) {}
   }
   if (window.__pkMuted || document.hidden) return;
+  if (window.PokerSoundPack?.play(type, times, gapSec)) return;
+  // Imported-only event names retain the exact old behavior after rollback.
+  type = ({raise:'chip',gift:'chip',emote:'msg'})[type] || type;
   // Keep chat/join quiet; turn and countdown cues are gameplay feedback.
   if (['msg', 'join'].includes(type)) return;
   try {
@@ -1923,6 +1933,7 @@ const playSnd = (type, times = 1, gapSec = 0) => {
     }
   } catch (e) {}
 };
+window.PokerSoundPack?.attach({getContext:sfxCtx,buffers:SFX.buf,emit:sfxPlay});
 const creditRakeToClub = async (amount, clubId) => {
   if (!amount || amount <= 0) return;
   try {
@@ -2329,7 +2340,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
     // instantly, and Firestore catches up behind it
     setChatOpen(false);
     setPendChat(q => [...q.filter(x => Date.now() - x.at < 6000), msg]);
-    playSnd(gift ? 'chip' : 'msg');
+    playSnd(gift ? 'gift' : emoji ? 'emote' : 'msg');
     try {
       if(['poker','durak','ofc'].includes(gameId))await pokerCommand(gameId==='poker'?'pkSeat':'pkCardGame',{tableId:tableDocId,op:'chat',text:msg.text||msg.emoji||msg.giftE,emoji:msg.emoji,gift:msg.gift,giftE:msg.giftE,to:msg.to});else await window.fb.updateDoc(ref(),{chat:[...rawChat,msg].slice(-40)});
     } catch (e) {
@@ -4167,6 +4178,7 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [currentView, setCurrentView] = useState('auth');
+  useEffect(() => { window.PokerSoundPack?.setView(currentView); }, [currentView]);
   const [canInstallApp, setCanInstallApp] = useState(!!window.__installEvt);
   const [showInstall, setShowInstall] = useState(false);
   const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
@@ -4215,6 +4227,7 @@ function App() {
   // trophy. Watch finished tournaments and pop the celebration for anyone who
   // finished in the money (biggest for the champion), wherever they are.
   const [tourCele, setTourCele] = useState(null);
+  useEffect(() => { if(tourCele)window.PokerSoundPack?.play('tournamentWin'); }, [tourCele]);
   useEffect(() => {
     if (!dbUser?.uid) return;
     for (const tor of toursDB || []) {
@@ -11078,7 +11091,9 @@ throw new Error('Game state is managed by the server');
     // instant local feedback — the sound fires on the press itself, not after the
     // Firestore round-trip (the sync effect skips our own echo to avoid doubling)
     try {
-      if (type === 'fold') playSnd('fold');else if (type === 'raise') playSnd('chip');else if (type === 'call') playSnd(toCallMe > 0 ? 'chip' : 'check');
+      let cue=type==='fold'?'fold':type==='raise'?'raise':type==='call'?(toCallMe>0?'chip':'check'):null;
+      if(window.PokerSoundPack?.active && myPlayer?.stack>0 && (type==='raise' && Number(amt)>=(myPlayer.bet||0)+myPlayer.stack || type==='call' && toCallMe>=myPlayer.stack))cue='allin';
+      if(cue)playSnd(cue);
     } catch (e) {}
     setActing(true);
     actedTurnRef.current = gs.turnStartedAt;
@@ -11893,6 +11908,7 @@ try{const result=await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amou
         }
         if (remaining === 0 && gs.activeTurnUid === user.uid) {
           clearInterval(interval);
+          window.PokerSoundPack?.play('timeout');
           const toCall = round2(Math.max(0, gs.highestBet - (myPlayer?.bet || 0)));
           performAction(user.uid, toCall > 0 ? 'fold' : 'call', undefined, true);
         }
@@ -12160,12 +12176,15 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       } catch (e) {}
     }
     const cl = (tableState.chat || []).length;
-    if (ps.chatLen && cl > ps.chatLen) playSnd('msg');
+    const latestChat=(tableState.chat||[]).at(-1),chatKey=latestChat?`${latestChat.uid}:${latestChat.at}`:'';
+    if(ps.chatKey && chatKey!==ps.chatKey && latestChat?.uid!==user.uid)playSnd(latestChat?.gift?'gift':latestChat?.emoji?'emote':'msg');
+    ps.chatKey=chatKey;
     Object.entries(players).forEach(([puid, p]) => {
       const prev = ps.acts[puid];
+      if(ps.phase && !Object.prototype.hasOwnProperty.call(ps.acts,puid))playSnd('join');
       if (p.actionText && p.actionText !== prev && puid !== user.uid) {
         // my own action already sounded instantly at press time (myAct)
-        if (p.actionText === 'Fold') playSnd('fold');else if (p.actionText === 'Check') playSnd('check');else if (p.actionText === 'All-in') playSnd('allin');else if (['Call', 'Raise', 'SB', 'BB'].includes(p.actionText)) playSnd('chip');
+        if (p.actionText === 'Fold') playSnd('fold');else if (p.actionText === 'Check') playSnd('check');else if (p.actionText === 'All-in') playSnd('allin');else if (['Call', 'Raise', 'SB', 'BB'].includes(p.actionText)) playSnd(p.actionText==='Raise'?'raise':'chip');
       }
       ps.acts[puid] = p.actionText;
     });
@@ -13604,7 +13623,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, React.createElement("button", {
     type: "button",
     ref: tableMenuTrigger,
-    onClick: () => setToolsOpen(o => !o),
+    onClick: () => {window.PokerSoundPack?.play(toolsOpen?'menuClose':'menuOpen');setToolsOpen(o => !o);},
     title: "Table menu",
     "aria-label": "Table menu",
     "aria-expanded": toolsOpen,
@@ -13667,6 +13686,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     'aria-pressed':!window.__pkMuted,
     className:'poker-menu-tile','data-menu-tone':'green'
   }, ...menuTile(window.__pkMuted ? 'muted' : 'sound', window.__pkMuted ? 'Sound off' : 'Sound on')),
+  window.PokerSoundPack?.active && React.createElement('button',{type:'button',className:'poker-menu-tile','data-menu-tone':'purple',onClick:()=>{setToolsOpen(false);window.PokerSoundPack.openLibrary();}},...menuTile('sound','Sound library')),
   React.createElement('label', {className:'poker-menu-volume','data-menu-tone':'cyan'},
     React.createElement('span',null,'Volume · ',React.createElement('strong',null,Math.round(window.__pkVolume * 100)+'%')),
     React.createElement('input', {type:'range',min:0,max:100,value:Math.round(window.__pkVolume*100),'aria-label':'Sound volume',className:'poker-menu-volume-control',onChange:e=>{setSfxLevel(Number(e.target.value)/100);setMuteTick(x=>x+1);}})), isSeated && setts.straddle && !setts.spinMode && !tableState?.tournamentId && React.createElement("button", {

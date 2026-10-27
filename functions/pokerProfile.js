@@ -40,7 +40,7 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
  const uid=A.uid(r),cid=A.key(r.data?.clubId),{getFirestore,FieldPath}=require('firebase-admin/firestore'),db=getFirestore();
  const reportSection=r.data?.reportSection,pageSize=r.data?.pageSize??200,cursor=r.data?.cursor;
  if(reportSection!==undefined){
-  if(!['agentLog','gameLog','securityAlerts'].includes(reportSection))A.fail('invalid-argument','Unknown report section');
+  if(!['agentLog','gameLog','securityAlerts','cashierHistory'].includes(reportSection))A.fail('invalid-argument','Unknown report section');
   if(!Number.isInteger(pageSize)||pageSize<1||pageSize>200)A.fail('invalid-argument','Report page size must be 1 to 200');
   // History may have legacy IDs containing punctuation, spaces or Unicode.
   // Validate a single Firestore document ID, not the stricter player UID format.
@@ -69,6 +69,7 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
   if(reportSection!==undefined){
    // Each page rechecks staff authority. Paging by document ID preserves legacy
    // records without timestamps and uses existing equality/name indexes.
+   if(reportSection==='cashierHistory'&&!manager)A.fail('permission-denied','Club managers only');
    if(reportSection==='securityAlerts'&&!manager)return{records:[],hasMore:false,nextCursor:null};
    let visible=null;
    if(reportSection==='gameLog'&&!manager){
@@ -77,15 +78,15 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
     visible=new Set([uid,...assigned.docs.map(d=>d.data().uid)]);
     diagnostic.memberCount=visible.size;
    }
-   diagnostic.stage=reportSection==='gameLog'?'game-history':reportSection==='agentLog'?'agent-history':'security-alerts';
-   let query=db.collection(reportSection).where('clubId','==',cid);
+   diagnostic.stage=reportSection==='gameLog'?'game-history':reportSection==='agentLog'?'agent-history':reportSection==='cashierHistory'?'cashier-history':'security-alerts';
+   let query=db.collection(reportSection==='cashierHistory'?'_pkAudit':reportSection).where('clubId','==',cid);
    if(reportSection==='agentLog'&&!manager)query=query.where('agentUid','==',uid);
    query=query.orderBy(FieldPath.documentId());
    if(cursor!=null)query=query.startAfter(cursor);
    const page=await tx.get(query.limit(pageSize+1)),docs=page.docs.slice(0,pageSize),hasMore=page.docs.length>pageSize;
    if(reportSection==='agentLog')diagnostic.agentLogCount=page.docs.length;
    if(reportSection==='gameLog')diagnostic.gameLogCount=page.docs.length;
-   const records=docs.filter(d=>!visible||visible.has(d.data().uid)).map(d=>({id:d.id,...d.data()})).map(row=>reportSection==='gameLog'?Accounting.publicGameLog(row,A.root(r)):reportSection==='agentLog'?Accounting.publicAgentLog(row,A.root(r)):row);
+   const records=docs.filter(d=>reportSection!=='cashierHistory'||['member-transfer','member-cashier-transfer'].includes(d.data().action)).filter(d=>!visible||visible.has(d.data().uid)).map(d=>({id:d.id,...d.data()})).map(row=>reportSection==='gameLog'?Accounting.publicGameLog(row,A.root(r)):reportSection==='agentLog'?Accounting.publicAgentLog(row,A.root(r)):reportSection==='cashierHistory'?{id:row.id,targetUid:row.targetUid,amount:row.amount,at:row.at}:row);
    // Advance using the scanned page, even if agent scoping hides every row.
    return{records,hasMore,nextCursor:hasMore?docs[docs.length-1].id:null};
   }

@@ -1119,8 +1119,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/reference-shell.css?v=324">
 <link rel="stylesheet" href="assets/css/card-games-reference.css?v=324">
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=326">
-<link rel="stylesheet" href="assets/css/club-cashier.css?v=325">
-<script src="assets/js/club-cashier.js?v=325"></script>
+<link rel="stylesheet" href="assets/css/club-cashier.css?v=330">
+<script src="assets/js/club-cashier.js?v=330"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=329">
 <script src="assets/js/poker-sound-pack.js?v=330"></script>
 </head>
@@ -4701,6 +4701,8 @@ function App() {
     showToast: showToast
   }), ['backoffice','cashier'].includes(currentView) && activeClub && canOpenBackoffice(effUser) && React.createElement(BackofficeView, {
     cashierOnly: currentView === 'cashier',
+    onBack: () => changeView('lobby'),
+    onManage: () => changeView('backoffice'),
     user: effUser,
     clubSettings: clubSettings,
     tables: tablesDB,
@@ -8814,6 +8816,8 @@ function BotLobbyControl({user, clubSettings}) {
 }
 function BackofficeView({
   cashierOnly = false,
+  onBack,
+  onManage,
   user,
   clubSettings,
   tables = [],
@@ -9298,9 +9302,9 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   if(!directoryLoaded)return React.createElement('div',{className:'club-admin blue-secondary scrollable-content p-4 sm:p-6','aria-busy':directoryLoading},
     React.createElement('h2',{className:'text-2xl font-black text-white mb-6'},'Club management'),
     directoryNotice || React.createElement('p',{role:'status',className:'text-center py-8 text-amber-400'},'Loading club members…'));
-  if(cashierOnly&&window.ClubCashier)return React.createElement('div',{className:'club-admin scrollable-content p-4 sm:p-6'},directoryNotice,
+  if(cashierOnly&&window.ClubCashier)return React.createElement('div',{className:'club-admin cashier-host'},directoryNotice,
     React.createElement(window.ClubCashier.Cashier,{key:directoryScope,members:usersList,treasury,accounting:currentAccounting,loading:directoryLoading||accountingLoading,error:accountingError,
-      canTransfer:canAdmin&&!directoryError,clubId:CLUB_ID,call:pokerCommand,onRefresh:()=>{setDirectoryAttempt(n=>n+1);setAccountingAttempt(n=>n+1);}}));
+      canTransfer:canAdmin&&!directoryError,clubId:CLUB_ID,viewerId:user.uid,avatarUrl,onBack,onManage,onSettlement,onMember:setPlayerFile,call:pokerCommand,onRefresh:()=>{setDirectoryAttempt(n=>n+1);setAccountingAttempt(n=>n+1);}}),playerFile&&React.createElement(PlayerFileModal,{mem:playerFile,viewer:user,accounting:currentAccounting,accountingLoading,canManagePeriod:canManageClub(user),showRake:isGodUser(user),onSettlement,agentName,canEdit:canAdmin||canManageAny||playerFile.agentUid===user.uid,onClose:()=>setPlayerFile(null),showToast}));
   return React.createElement("div", {
     style: {
       overflowX: "hidden"

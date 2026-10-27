@@ -1,3 +1,43 @@
+# Supplied screen redesign — v334
+
+final result: passed
+
+Scope: completes the remaining supplied screen types after the v330 Counter/Club Members release: club selector, lobby, table buy-in, ORIZIS intro, navy NLH and teal Omaha tables. The existing live game engine, settlement calculations and transfer authorization are retained.
+
+## Evidence
+
+Source images: `../upload/02-1000515887.jpg`, `03-1000515884.jpg`, `05-1000515878.jpg`, `06-1000515875.jpg`, `07-1000509952.jpg`, `08-1000519746.jpg`.
+
+Each reference and browser rendering was normalized to a 369 × 800 viewport and inspected side by side. Internal evidence: `docs/review/remaining-screens-comparison-v333.jpg` and the six individual `*-comparison-v333.jpg` images. Browser canvas outside the iframe was cropped; screenshot scale was normalized when the browser capture used a smaller backing resolution. These internal screenshots are excluded from deployment.
+
+The local `/tests/ui/gg-preview.html` loads the production components and styles, with simulated accounts and denied writes. Intro mode extracts the actual intro markup and holds it for inspection. Normal production intro still dismisses automatically or on tap. Narrow 320 × 640 lobby was reviewed in addition to the reference viewport.
+
+## Fixes and verification
+
+- Replaced the unrelated spiral orb and green felt artwork with transparent smoked-glass club artwork and a blue portrait table material. Personal felt color selection remains available and uses hues relative to the new blue material.
+- Restored source-like vertical rhythm in the club picker, rounded code entry, large selected balance and circular carousel. Existing swipe, keyboard, archive, create and join behavior remains tested.
+- Added a compact club identity/balance/notice header with role-appropriate account navigation. Removed the duplicate legacy wallet. Table creation controls share the masthead, keeping the table list high on the screen.
+- Reworked poker rows into title, players, buy-in and VPIP columns, with variant-colored edge accents. Existing table actions, waitlists, tournaments and return-to-seat actions remain available.
+- Added composable Running Tables/Hide Full Tables filters and buy-in/player sorting. Automated tests cover phase changes, full tables, combining/resetting filters, sorting, and no game writes.
+- Matched the buy-in dialog proportions, amount slider, action hierarchy and chair icon. Browser keyboard adjustment changed 40.00 to 41.00; Spectate displayed the table; selecting the sixth seat displayed “Seat 6 — buy-in” while preserving the amount. No live seat or monetary operation was submitted.
+- Spectators see all unoccupied physical seats instead of a single generic vacancy. Tests verify occupied-seat exclusion, unique visual positions and choosing a seat without submitting a buy-in. Seated players retain the tested compact presentation and server-owned seat indices.
+- Retained the board collision rules, 2–6 hole-card fans, RIT, showdown, GOD permissions and existing table menus. No engine or backend changes.
+- ORIZIS uses the supplied dark shell, white wordmark, cyan divider and loader. Reduced-motion settings are respected.
+- Fixed high-priority spacing, duplicate navigation and narrow-header wrapping issues. No open P0/P1/P2 findings remain in this scope.
+
+## Validation
+
+39 UI suites passed across the initial run and focused continuation after the duplicate settlement entry was fixed. The spectator-exit assertion now excludes the independent `pkTick` heartbeat while still forbidding all other commands. All 73 repository unit tests and all 20 predeploy checks passed. The CI workflow repeats the full suite before merge. The concurrent audio recovery from PR #74 is retained, and the shell cache advances to v334. The modified spectator test uses a synthetic allowlisted email instead of publishing a personal address.
+
+## Deliberate adaptations and limits
+
+- Production club logos, balances, player names, avatar art, card values, capacities and table counts are live data; reference screenshot values are not hardcoded.
+- The source Union button maps to the existing Results destination; no federation service is invented. Missing public VPIP statistics are shown as an em dash with an explanation, never a fabricated percentage.
+- Other supported games, LIVE filtering, tournaments and authorized management tools remain accessible even though not all appear in the source screenshot. Active-hand state and card count can alter table occupancy and reveal layouts.
+- Illustrated coin/chip artwork and minor typeface differences remain P3 visual differences. The new table material follows the navy reference; Omaha uses a teal treatment while preserving the common renderer.
+
+---
+
 # Counter and Club Members design QA — v330
 
 final result: passed
@@ -43,7 +83,7 @@ Scope: the existing POKERTEN Counter and Club Members screens, plus the transfer
 
 - P3: the existing library chip glyph is less detailed than the illustrated poker-chip artwork in the source. It is consistent across totals, cards and history; exact artwork can be supplied later.
 - Dynamic production avatars, member counts and balances will naturally differ from the reference. The preview uses fixture data only.
-- Deployment and authenticated live verification are pending approval. Multi-member operations are individually atomic, not a single all-or-nothing batch; completion status is exposed per member.
+- Counter v330 was published through PR #73; authenticated live financial actions were not executed. Multi-member operations are individually atomic, not a single all-or-nothing batch; completion status is exposed per member.
 
 ## Implementation checklist
 
@@ -52,4 +92,4 @@ Scope: the existing POKERTEN Counter and Club Members screens, plus the transfer
 - [x] Verify normal and narrow mobile screens and primary review interactions.
 - [x] Check UI, backend authorization and existing transfer regression tests.
 - [x] Keep local preview running and open for review.
-- [ ] Publish approved source and deploy backend before the dependent frontend.
+- [x] Publish approved source and deploy backend before the dependent frontend.

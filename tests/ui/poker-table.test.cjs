@@ -44,7 +44,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
   assert.equal(JSON.parse(w.localStorage.getItem('pkSkin')).felt,color.toLowerCase());
   assert.equal(doc.querySelector('[aria-label="Table color: '+color+'"]').getAttribute('aria-pressed'),'true');
   assert.ok(doc.querySelector('.poker-table').style.getPropertyValue('--table-filter'));
-  assert.equal(doc.querySelector('.approved-poker-material').getAttribute('src'),'assets/design/poker-material-v292.webp','felt and LED use a single recolored material');
+  assert.equal(doc.querySelector('.approved-poker-material').getAttribute('src'),'assets/design/table-blue-v333.webp','felt and LED use a single recolored material');
  }
  await React.act(()=>doc.querySelector('[aria-label="Table color: Auto"]').click());
  await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Done').click());
@@ -183,7 +183,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  const rebuy=[...doc.querySelectorAll('button')].find(b=>b.textContent==='Rebuy 💪');assert.ok(rebuy);await React.act(async()=>rebuy.click());assert.ok(fxCalls.findLast(c=>c.name==='pkSeat'&&c.args.op==='rebuy'));
  current.players.me.pendingTopUp=100;await React.act(async()=>tableNext(snapshot()));assert.ok([...doc.querySelectorAll('button')].find(b=>b.textContent==='Next hand ✓').disabled);assert.equal(doc.querySelector('.poker-seat-hero .poker-stack-amount').textContent,'0','pending rebuy cannot appear in the live stack');
  const oldFx=w.fb.fx;w.fb.fx=async(name,args)=>{fxCalls.push({name,args});return {queued:false};};await React.act(async()=>doc.querySelector('button[title="Stand up"]').click());assert.equal(left,1,'a non-participating seat exits on the server result despite another live hand');w.fb.fx=oldFx;
- delete current.players.me;await React.act(async()=>tableNext(snapshot()));const beforeLeaveCalls=fxCalls.length;await React.act(()=>menuTrigger.click());await React.act(()=>doc.querySelector('[aria-label="Leave table"]').click());assert.equal(left,2);assert.equal(fxCalls.length,beforeLeaveCalls,'spectating exit is immediate and does not send a seat command');
+ delete current.players.me;await React.act(async()=>tableNext(snapshot()));const beforeLeaveCalls=fxCalls.filter(c=>c.name!=="pkTick").length;await React.act(()=>menuTrigger.click());await React.act(()=>doc.querySelector('[aria-label="Leave table"]').click());assert.equal(left,2);assert.equal(fxCalls.filter(c=>c.name!=="pkTick").length,beforeLeaveCalls,'spectating exit is immediate and does not send a seat command');
  current=structuredClone(saved);await React.act(async()=>tableNext(snapshot()));
  const call=[...dock.querySelectorAll('button')].find(b=>b.textContent.includes('CALL'));assert.ok(call);current.players.me.stack=150;
  await React.act(async()=>call.click());assert.equal(writes.length,0);assert.equal(current.players.me.stack,150);const action=fxCalls.findLast(c=>c.name==='pkAct');assert.ok(action);assert.ok(action.args.requestId.length>=16);assert.equal(action.args.expectedTurn.turnStartedAt,saved.gameState.turnStartedAt);assert.equal(action.args.expectedTurn.highestBet,10);

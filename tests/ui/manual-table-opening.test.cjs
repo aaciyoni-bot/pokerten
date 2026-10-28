@@ -65,6 +65,7 @@ async function mountAndEnter(fixture){
 const table=(id,count,patch={})=>({id,docId:id,clubId:'main',authorityVersion:2,type:'poker',createdAt:1,settings:{serverEngine:true,baseGameType:'NLH',blinds:1,minBuyIn:100,maxBuyIn:400,maxPlayers:6},players:Object.fromEntries(Array.from({length:count},(_,i)=>['bot_'+i,{uid:'bot_'+i,name:'Player '+i,isBot:true,stack:100,seatIndex:i}])),gameState:{phase:'waiting',handN:0,pots:[]},...patch});
 (async()=>{
  const fixture=firebaseFixture('owner@example.test','approved');
+ fixture.membership.role='club_owner';
  await mountAndEnter(fixture);
  assert.equal(w.__club.ownerUid,fixture.identity.uid,'the actual signed-in user owns this club');
  for(const rows of [[table('cash',5)],[table('cash',6)],[table('cash',5)],[],[table('cash',6)],[table('spin',2,{settings:{spinMode:true,spinBuyIn:50,maxPlayers:3}})],[table('spin',3,{settings:{spinMode:true,spinBuyIn:50,maxPlayers:3},spin:{started:true}})],[]]){
@@ -75,6 +76,12 @@ const table=(id,count,patch={})=>({id,docId:id,clubId:'main',authorityVersion:2,
  const before=fixture.calls.length;
  for(const type of ['poker','durak','ofc'])await w.retiredTwin({...table('old-client-callback',6),type},true);
  assert.equal(fixture.calls.length,before,'all retained automatic twin callbacks are inert');assert.equal(fixture.writes.length,0);
+ await React.act(async()=>fixture.emitTables([table('old-result',0,{tournamentId:'deleted-event',tournament:{finished:true},players:{[fixture.identity.uid]:{uid:fixture.identity.uid,stack:30000,status:'waiting',sitOut:true}}})]));
+ assert.equal(doc.querySelector('[data-resume-table="old-result"]'),null,'a deleted tournament result does not claim the owner is still playing');
+ const create=doc.querySelector('button[aria-label="New poker table"]');assert.ok(create);assert.equal(create.closest('details'),null);
+ await React.act(()=>create.click());
+ assert.ok([...doc.querySelectorAll('h2')].some(h=>h.textContent==='New poker table'),'the visible action reaches the actual table creation screen');
+ assert.equal(fixture.calls.filter(c=>c.name==='pkTableCreate').length,0,'opening settings does not create or fund a table');assert.equal(fixture.writes.length,0);
  await React.act(()=>root.unmount());w.close();
  console.log('PASS: actual owner App available/full/deleted cash and Spin snapshots never open twins; legacy automatic callbacks are inert');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

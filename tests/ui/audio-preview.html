@@ -1,17 +1,17 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="connect-src 'self'; form-action 'none'"><title>POKERTEN audio verification</title><link rel="stylesheet" href="../../assets/sounds/sound-library.css"><style>body{background:#081218;color:#eaf7ff;font:16px Arial;padding:24px;max-width:560px;margin:auto}button{padding:16px;margin:6px;border:1px solid #79b4cb;border-radius:12px;background:#153343;color:inherit;font:inherit}output{display:block;margin:18px 0;line-height:1.6}small{color:#9fb8c6}</style></head><body><h1>POKERTEN sound check</h1><p>Actual app audio engine · no account or game writes.</p><div id="buttons"></div><output id="status">Loading the app engine…</output><output id="played"></output><small>These controls use the production event mapping and MP3 decoder.</small><script>
 (async()=>{
   const base=new URL('../../',location.href);document.head.insertAdjacentHTML('afterbegin','<base href="'+base.href+'">');
-  const pack=document.createElement('script');pack.src=new URL('assets/js/poker-sound-pack.js?v=335',base);await new Promise((resolve,reject)=>{pack.onload=resolve;pack.onerror=reject;document.head.append(pack);});
+  const pack=document.createElement('script');pack.src=new URL('assets/js/poker-sound-pack.js?v=337',base);await new Promise((resolve,reject)=>{pack.onload=resolve;pack.onerror=reject;document.head.append(pack);});
   const html=await(await fetch(new URL('index.html',base),{cache:'no-store'})).text();
   const audio=html.slice(html.indexOf('const SFX = {'),html.indexOf('const creditRakeToClub ='));
   new Function(audio+'\nwindow.PreviewAudio={SFX,playSnd,sfxPlay,sfxCtx};')();
   const engine=window.PreviewAudio,ctx=engine.sfxCtx(),create=ctx.createBufferSource.bind(ctx);
   ctx.createBufferSource=()=>{const source=create(),start=source.start.bind(source);source.start=(...args)=>{const name=Object.keys(engine.SFX.buf).find(k=>engine.SFX.buf[k]===source.buffer);document.querySelector('#played').textContent='Played: '+name+' · '+source.buffer.duration.toFixed(2)+'s · AudioContext '+ctx.state;return start(...args);};return source;};
-  for(const [event,label] of [['deal','Deal'],['check','Check'],['chip','Bet'],['allin','All-in'],['win','Win'],['bigwin','Large pot'],['turn','Your turn']]){
+  for(const [event,label] of [['deal','Deal'],['check','Check'],['chip','Bet'],['allin','All-in'],['win','Win'],['bigwin','Large pot'],['handend','Other winner'],['turn','Your turn']]){
     const b=document.createElement('button');b.textContent=label;b.onclick=()=>engine.playSnd(event);document.querySelector('#buttons').append(b);
   }
   const b=document.createElement('button');b.textContent='Sound library';b.onclick=()=>window.PokerSoundPack.openLibrary();document.querySelector('#buttons').append(b);
-  const status=()=>{const s=window.PokerSoundPack.status();document.querySelector('#status').textContent='v335 · '+s.theme+' sounds · '+s.state+' · AudioContext '+ctx.state+' · clock '+ctx.currentTime.toFixed(1)+'s';};
+  const status=()=>{const s=window.PokerSoundPack.status();document.querySelector('#status').textContent='v337 · '+s.theme+' sounds · '+s.state+' · AudioContext '+ctx.state+' · clock '+ctx.currentTime.toFixed(1)+'s';};
   await window.PokerSoundPack.preload();status();setInterval(status,1000);
 })().catch(e=>document.querySelector('#status').textContent=e.message);
 </script></body></html>

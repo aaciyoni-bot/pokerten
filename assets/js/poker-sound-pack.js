@@ -27,7 +27,7 @@
   }
   const json = url => read(url,'json',{cache:'no-store'});
   function metadata() {
-    if (!ready) ready = Promise.all([json(BASE+'catalog.json'),json(BASE+'events.json?v=335')]).then(([c,s]) => {
+    if (!ready) ready = Promise.all([json(BASE+'catalog.json'),json(BASE+'events.json?v=337')]).then(([c,s]) => {
       catalog=c;spec=s;index=new Map(c.clips.map(clip=>[clip.name,clip]));return c;
     }).catch(e=>{ready=null;throw e;});
     return ready;
@@ -165,16 +165,22 @@
     dialog.addEventListener('close',()=>{stopPreview();current.remove();if(dialog===current)dialog=null;syncMusic();},{once:true});
     try {
       await metadata();if(!current.open)return;
-    current.querySelector('header p').textContent=catalog.count+' sounds · '+(active?'Imported sound pack · v335':'Original POKERTEN sounds active');
+    current.querySelector('header p').textContent=catalog.count+' sounds · '+(active?'Imported sound pack · v337':'Original POKERTEN sounds active');
       const quick=current.querySelector('.pk-sound-quick');
-      for(const [event,label] of [['deal','Deal'],['check','Check'],['chip','Bet'],['allin','All-in'],['win','Win'],['turn','Your turn']]){
+      for(const [event,label] of [['deal','Deal'],['check','Check'],['chip','Bet'],['allin','All-in'],['win','Win'],['handend','Other winner'],['turn','Your turn']]){
         const b=document.createElement('button');b.type='button';b.textContent=label;b.setAttribute('aria-label','Test '+label);
         b.addEventListener('click',async()=>{
           stopPreview();const token=previewToken;
           if(!active){status.textContent='Original sounds are active.';return;}
           if(root.__pkMuted||root.__pkVolume===0){status.textContent='Turn sound on to preview.';return;}
           status.textContent='Loading…';
-          try{const name=spec.events[event][0];await loadClip(name);
+          try{
+            if(event==='handend'){
+              bridge.prepareCues();
+              if(token!==previewToken||!current.open||!audible())return;
+              bridge.emit('soft_hand_end',0,.48,1,0,preview);status.textContent='New table sound: '+label;return;
+            }
+            const name=spec.events[event][0];await loadClip(name);
             if(token!==previewToken||!current.open||!audible())return;
             bridge.emit(key(name),0,gain[event]??.6,1,0,preview);status.textContent='New table sound: '+label;
           }catch(_){if(token===previewToken)status.textContent='Could not load this sound. Tap Retry sounds.';}

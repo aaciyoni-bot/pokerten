@@ -6,7 +6,7 @@ const React=require('react'),ReactDOM={...require('react-dom'),...require('react
 const calls=[],messages=[];let next,settle,created=0,newTables=0;
 const current={authorityVersion:2,clubId:'main',settings:{serverEngine:true,maxPlayers:6,baseGameType:'NLH',blinds:1,minBuyIn:100,maxBuyIn:1000,straddle:true},players:{},gameState:{phase:'waiting',pots:[],board:[],__seq:1}};
 const ref=(...a)=>({path:a.slice(1).join('/')});w.fb={db:{},auth:{currentUser:{uid:'viewer'}},doc:ref,collection:ref,query:r=>r,where:()=>({}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),fx:(name,args)=>{if(name==='pkTick')return Promise.resolve({});calls.push({name,args});return new Promise((resolve,reject)=>{settle={resolve,reject};});},onSnapshot:(r,opts,fn)=>{const cb=typeof opts==='function'?opts:fn;if(r.path==='tables/test'){next=cb;queueMicrotask(()=>cb({id:'test',exists:()=>true,data:()=>structuredClone(current),metadata:{fromCache:false}}));}else queueMicrotask(()=>cb({exists:()=>false,docs:[]}));return()=>{};}};
-const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;window.CreateTest=PokerCreateView;');w.eval(script);w.__pkMuted=false;const sounds=[];w.PokerSoundPack={play:type=>{sounds.push(type);return true;}};
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;window.CreateTest=PokerCreateView;');w.eval(script);w.__pkMuted=false;const sounds=[];w.PokerSoundPack={play:type=>{sounds.push(type);return true;},resolve:name=>{if(name==='soft_hand_end')sounds.push('handend');return name;},track(){}};
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document,byTitle=t=>doc.querySelector('button[title="'+t+'"]');
 const render=async role=>React.act(async()=>root.render(React.createElement(w.TableTest,{key:role,tableDocId:'test',user:{uid:'viewer',role,managedGames:[],balance:1000},clubSettings:{},onLeave(){},onCreateTable(){newTables++;},showToast:(m,type)=>messages.push({m,type})})));
 const menu=async()=>React.act(()=>byTitle('Table menu').click());
@@ -42,8 +42,11 @@ const emit=async()=>React.act(()=>next({id:'test',exists:()=>true,data:()=>struc
  current.gameState.board.push({val:'9',suit:'♣'});current.gameState.phase='turn';current.players.other.actionText='Raise';current.gameState.__seq++;
  await emit();assert.deepEqual(sounds,['flip','raise'],'A genuinely new board card and bet still sound');
  sounds.length=0;await emit();assert.deepEqual(sounds,[],'Repeated snapshots stay silent');
- current.gameState.phase='showdown';current.gameState.showdownAt=Date.now();current.gameState.__seq++;
- await emit();assert.ok(sounds.includes('win'),'A new showdown still sounds');
+ current.gameState.phase='showdown';current.gameState.lastAwards=[{uid:'viewer',amount:30},{uid:'other',amount:30}];current.gameState.showdownAt=Date.now();current.gameState.__seq++;
+ await emit();assert.ok(sounds.includes('win'),'The current player hears applause when one of two split winners');
  sounds.length=0;await render('showdown-baseline');assert.deepEqual(sounds,[],'Opening an already completed hand does not replay its win');
+ current.gameState.phase='river';current.gameState.__seq++;await emit();sounds.length=0;
+ current.gameState.phase='showdown';current.gameState.lastAwards=[{uid:'other',amount:60}];current.gameState.__seq++;await emit();
+ assert.deepEqual(sounds,['handend'],'Someone else winning plays only the short result cue');
  await React.act(()=>root.unmount());w.close();console.log('PASS: seat 1, duplicate taps, pending/error/success, session safety and real snapshot sound transitions');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

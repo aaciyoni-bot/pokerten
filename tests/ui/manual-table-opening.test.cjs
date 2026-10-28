@@ -78,6 +78,13 @@ const table=(id,count,patch={})=>({id,docId:id,clubId:'main',authorityVersion:2,
  assert.equal(fixture.calls.length,before,'all retained automatic twin callbacks are inert');assert.equal(fixture.writes.length,0);
  await React.act(async()=>fixture.emitTables([table('old-result',0,{tournamentId:'deleted-event',tournament:{finished:true},players:{[fixture.identity.uid]:{uid:fixture.identity.uid,stack:30000,status:'waiting',sitOut:true}}})]));
  assert.equal(doc.querySelector('[data-resume-table="old-result"]'),null,'a deleted tournament result does not claim the owner is still playing');
+ const tournamentCreate=doc.querySelector('button[aria-label="New tournament"]');assert.ok(tournamentCreate);assert.equal(tournamentCreate.closest('details'),null);
+ await React.act(()=>tournamentCreate.click());
+ assert.equal(tournamentCreate.getAttribute('aria-expanded'),'true');
+ assert.ok([...doc.querySelectorAll('label')].some(label=>label.textContent==='Tournament name'),'the actual lobby opens the tournament creation form even without existing events');
+ assert.ok(doc.querySelector('[aria-label="Prize pool type"]'));assert.ok(doc.querySelector('[aria-label="Early registration bonus (%)"]'));
+ assert.equal(fixture.calls.filter(c=>c.name==='pkTournament').length,0,'opening the tournament form never creates an event or debits a reserve');
+ await React.act(()=>tournamentCreate.click());assert.equal(tournamentCreate.getAttribute('aria-expanded'),'false');
  const create=doc.querySelector('button[aria-label="New poker table"]');assert.ok(create);assert.equal(create.closest('details'),null);
  await React.act(()=>create.click());
  assert.ok([...doc.querySelectorAll('h2')].some(h=>h.textContent==='New poker table'),'the visible action reaches the actual table creation screen');

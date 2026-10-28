@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="339">
-    <script src="assets/js/app-update.js?v=339" defer></script>
+    <meta name="app-version" content="340">
+    <script src="assets/js/app-update.js?v=340" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1125,7 +1125,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <script src="assets/js/club-cashier.js?v=330"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=337"></script>
-<link rel="stylesheet" href="assets/css/reference-experience.css?v=339">
+<link rel="stylesheet" href="assets/css/reference-experience.css?v=340">
 <link rel="stylesheet" href="assets/css/login-reference.css?v=336">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
@@ -4192,7 +4192,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 339. Check for updates'},'v339 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 340. Check for updates'},'v340 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -7605,10 +7605,7 @@ function LobbyView({
     }
   })), tab === 'poker' && React.createElement("div", {
     className: "animate-fade-in"
-  }, canManageGame(user,'poker') && React.createElement('div',{className:'reference-lobby-table-actions'},React.createElement('button',{
-    type:'button',onClick:onCreatePoker,className:'reference-create-table','aria-label':'New poker table'
-  },React.createElement('i',{className:'fa-solid fa-plus','aria-hidden':true}),'New table')),
-  canManageGame(user,'poker') && React.createElement("details", {className:"reference-table-management"},React.createElement("summary",{'aria-label':'Table tools',title:'Table tools'},"Table tools"),React.createElement(QuickBotTableCreate, {user,clubSettings,showToast}), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
+  }, canManageGame(user,'poker') && React.createElement("details", {className:"reference-table-management"},React.createElement("summary",{'aria-label':'Table tools',title:'Table tools'},"Table tools"),React.createElement(QuickBotTableCreate, {user,clubSettings,showToast}), canManageGame(user, 'poker') && pokerTpls.length > 0 && React.createElement("div", {
     className: "flex flex-wrap gap-2 items-center mb-4"
   }, React.createElement("span", {
     className: "text-[11px] font-black text-amber-300 uppercase tracking-widest shrink-0"
@@ -7658,7 +7655,7 @@ function LobbyView({
     React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:runningOnly,onChange:e=>setRunningOnly(e.target.checked)}),'Running Tables'),
     React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:hideFull,onChange:e=>setHideFull(e.target.checked)}),'Hide Full Tables'),
     React.createElement('select',{'aria-label':'Sort tables',value:tableSort,onChange:e=>setTableSort(e.target.value)},React.createElement('option',{value:'default'},'Sort'),React.createElement('option',{value:'buyin'},'Buy-in'),React.createElement('option',{value:'players'},'Players'))),
-    React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker}), pokFilter !== 'tours' && React.createElement("div", {
+    React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker,onCreateTable:onCreatePoker}), pokFilter !== 'tours' && React.createElement("div", {
     className: "flex flex-col gap-2.5"
   }, shownPoker.map(t => {
     const s = t.settings || {};
@@ -17124,6 +17121,7 @@ function TournamentsTab({
   clubSettings,
   showToast,
   onJoinTable,
+  onCreateTable,
   compactRows = false,
   compact = false
 }) {
@@ -17613,7 +17611,10 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     className: "pt-tournaments-heading flex justify-between items-center mb-5"
   }, React.createElement("h2", {
     className: "text-xl font-black text-white"
-  }, "TOURNAMENTS"), canManageGame(user, 'poker') && React.createElement("button", {
+  }, "TOURNAMENTS"), compactMode && onCreateTable && canManageGame(user,'poker') && React.createElement('button',{
+    type:'button',onClick:onCreateTable,className:'reference-create-table','aria-label':'New poker table'
+  },React.createElement('i',{className:'fa-solid fa-plus','aria-hidden':true}),'New table'), canManageGame(user, 'poker') && React.createElement("button", {
+    type:'button', 'aria-expanded':showCreate,
     onClick: () => setShowCreate(!showCreate),
     title:"New tournament", "aria-label":"New tournament",
     className: "bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(168,85,247,0.3)] text-sm"

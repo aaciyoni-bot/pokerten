@@ -1,7 +1,7 @@
 /* PokerTen - Service Worker
    Network first: fetch the latest release from the server.
    The cache is only an offline fallback so deployments appear immediately. */
-const CACHE = 'pokerten-shell-v334';
+const CACHE = 'pokerten-shell-v335';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
@@ -16,6 +16,12 @@ self.addEventListener('fetch', (e) => {
     const req = e.request;
     if (req.method !== 'GET') return;
     const url = new URL(req.url);
+    // Release/theme checks must report a network failure instead of claiming
+    // that an offline cached configuration is the newest deployed version.
+    if (url.origin === self.location.origin && /\/assets\/(release\.json|sounds\/theme\.json)$/.test(url.pathname)) {
+        e.respondWith(fetch(new Request(req, {cache:'no-store'})));
+        return;
+    }
     // Firebase and Google requests pass through directly.
     if (url.hostname.includes('googleapis.com') || url.hostname.includes('firebaseapp.com') || url.hostname.includes('gstatic.com') && url.pathname.includes('firebasejs')) return;
     // Page/document loads must always come fresh from the network (never the HTTP cache),

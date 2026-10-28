@@ -15,7 +15,7 @@ function fixture(document,options={}){
  const d=document||{hidden:false,addEventListener:(ev,fn)=>handlers[ev]=fn};
  const c={window:w,document:d,localStorage:{getItem:k=>options.storage?.[k]??null,setItem:(k,v)=>{if(options.storage)options.storage[k]=v;}},console,Date,Map,Set,Math,setTimeout(){},setInterval(){},
   fetch:async url=>{requests.push(url);if(options.beforeFetch)await options.beforeFetch(url);if(url==='assets/sounds/theme.json')return{ok:true,json:async()=>({active:theme})};
-   const data=fs.readFileSync(path.join(root,url));return{ok:true,json:async()=>JSON.parse(data),arrayBuffer:async()=>data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength)};}};
+   const data=fs.readFileSync(path.join(root,url.split('?')[0]));return{ok:true,json:async()=>JSON.parse(data),arrayBuffer:async()=>data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength)};}};
  vm.createContext(c);vm.runInContext(packCode,c);
  vm.runInContext(html.slice(html.indexOf('const SFX = {'),html.indexOf('const creditRakeToClub ='))+'\nwindow.audioTest={SFX,playSnd,sfxPlay,setSfxLevel};',c);
  w.audioTest.SFX.ctx=ctx;w.audioTest.SFX.bus={};
@@ -34,8 +34,10 @@ test('real audio entry point routes imported check once and keeps all-in, turn, 
  for(const type of ['check','allin','turn','win','bigwin','msg'])f.engine.playSnd(type);
  assert.equal(f.played.length,6,'imported check already contains its full knock sequence');
  assert.equal(new Set(f.played.map(p=>p.buffer.digest)).size,6);
- const coreBankRequests=f.requests.filter(x=>x.endsWith('.bin'));assert.equal(new Set(coreBankRequests).size,2,'gameplay does not download all 379 clips');
- assert.equal(coreBankRequests.length,2,'one fetch per bank');
+ assert.equal(f.played[3].buffer.digest,catalog.clips.find(c=>c.name==='sfx_TiN_Applause_Normal').sha256,'Regular wins play the requested crowd applause');
+ assert.equal(f.played[4].buffer.digest,catalog.clips.find(c=>c.name==='sfx_TiN_Applause_Awesome').sha256,'Large pots play the stronger crowd applause');
+ const coreBankRequests=f.requests.filter(x=>x.endsWith('.bin'));assert.equal(new Set(coreBankRequests).size,4,'gameplay does not download all 379 clips');
+ assert.equal(coreBankRequests.length,4,'one fetch per bank');
  f.w.__pkMuted=true;f.engine.playSnd('allin');f.w.__pkMuted=false;f.w.__pkVolume=0;f.engine.playSnd('turn');f.w.__pkVolume=.5;f.d.hidden=true;f.engine.playSnd('bigwin');assert.equal(f.played.length,6);
 });
 test('בטל צלילים restores original synthesized wins, quiet chat, double check and direct roulette sound',async()=>{
@@ -101,7 +103,7 @@ test('a temporary configuration outage keeps the requested imported theme workin
 });
 test('metadata failure before the first gesture recovers on the next refresh without reloading the page',async()=>{
  let unavailable=true;
- const f=fixture(undefined,{beforeFetch:async url=>{if(url.endsWith('events.json')&&unavailable)throw new Error('temporary metadata failure');}});
+ const f=fixture(undefined,{beforeFetch:async url=>{if(url.split('?')[0].endsWith('events.json')&&unavailable)throw new Error('temporary metadata failure');}});
  f.handlers.pointerdown();await f.pack.refresh();await f.pack.preload();
  unavailable=false;await f.pack.refresh();f.engine.playSnd('check');
  assert.equal(f.played.length,1);assert.ok(f.played[0].buffer.digest);

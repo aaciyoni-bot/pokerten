@@ -71,3 +71,19 @@ test('the same rules cannot grant any access to the original default database',a
   for(const p of ['users/alice','clubs/one','memberships/alice_one','tables/table'])await denied(getDoc(doc(db,p)));
   await denied(setDoc(doc(db,'clubs/new'),{name:'Blocked'}));
 });
+test('owner bootstrap is idempotent and writes only into SYNGA',async()=>{
+  const app=adminApp({projectId});
+  const auth=serverRequire('firebase-admin/auth').getAuth(app),getUser=auth.getUser;
+  auth.getUser=async uid=>({uid,email:'aaci.yoni@gmail.com',emailVerified:true,displayName:'Test owner'});
+  try {
+    const {pkEnsurePlayer}=require('../../.synga-functions/personalCode');
+    const request={auth:{uid:'bootstrap-owner',token:{email:'aaci.yoni@gmail.com',email_verified:true}}};
+    const first=await pkEnsurePlayer.run(request),second=await pkEnsurePlayer.run(request);
+    assert.equal(first.playerId,second.playerId);
+    const db=adminFirestore(app,'synga');
+    assert.equal((await db.doc('clubs/synga_main').get()).data().ownerUid,request.auth.uid);
+    assert.equal((await db.doc('memberships/bootstrap-owner_synga_main').get()).data().balance,0);
+    const original=adminFirestore(app);
+    for(const p of ['users/bootstrap-owner','clubs/synga_main','memberships/bootstrap-owner_synga_main'])assert.equal((await original.doc(p).get()).exists,false);
+  } finally {auth.getUser=getUser;await deleteAdmin(app);}
+});

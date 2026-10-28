@@ -281,8 +281,13 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  const registrationDialog=doc.querySelector('[role="dialog"][aria-label="Late registration"]');assert.ok(registrationDialog);assert.ok(registrationDialog.querySelector('[aria-label="Late registration through the end of level"]'));
  await React.act(async()=>registrationDialog.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true})));assert.equal(returnCalls.at(-1).args.op,'registration');
  current.players.me.status='active';current.players.me.stack=100;
+  const exitsBeforeFinish=left,leaveCommandsBefore=fxCalls.filter(c=>c.name==='pkLeave').length;
  current.tournament.finished=true;current.tournament.tableWinner='me';current.players.ghost={uid:'ghost',name:'Eliminated ghost',stack:0,status:'out',seatIndex:7};
  await React.act(async()=>tableNext(snapshot()));
+  assert.equal(left,exitsBeforeFinish+1,'completed tournament requests the lobby automatically');
+  await React.act(async()=>tableNext(snapshot()));
+  assert.equal(left,exitsBeforeFinish+1,'repeated terminal snapshots navigate only once');
+  assert.equal(fxCalls.filter(c=>c.name==='pkLeave').length,leaveCommandsBefore,'finish navigation never requests a tournament cash-out');
  w.fb.getDoc=async()=>({exists:()=>true,data:()=>({status:'done',results:[{uid:'me',name:'Me',rank:1,prize:500,finalChips:200}],players:{me:{}}})});
  const finalRanksButton=doc.querySelector('.poker-break-center button');await React.act(async()=>finalRanksButton.click());
  assert.match(doc.querySelector('.poker-final-ranks').textContent,/500.00/,'terminal view renders actual paid results');

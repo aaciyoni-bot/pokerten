@@ -10,7 +10,7 @@ const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[.
 const root=ReactDOM.createRoot(w.document.getElementById('root'));
 const toast=(m,type)=>messages.push({m,type}),user={uid:'owner',role:'club_owner',username:'Owner'};
 const table=(id,patch={})=>({docId:id,clubId:'main',type:'poker',authorityVersion:2,settings:{serverEngine:true,baseGameType:'NLH',tableName:id,minBuyIn:40,maxBuyIn:200,maxPlayers:6,blinds:1},players:{},gameState:{phase:'waiting'},...patch});
-const render=async(t,tournaments=[],viewer=user)=>React.act(async()=>root.render(React.createElement(w.LobbyTest,{tablesLoaded:true,user:viewer,tables:[t],tournaments,clubSettings:{},tab:'poker',setTab(){},onJoinPoker:t=>joined.push(t.docId),onCreatePoker:()=>createOpened++,showToast:toast})));
+const render=async(t,tournaments=[],viewer=user)=>React.act(async()=>root.render(React.createElement(w.LobbyTest,{tablesLoaded:true,user:viewer,tables:Array.isArray(t)?t:[t],tournaments,clubSettings:{},tab:'poker',setTab(){},onJoinPoker:t=>joined.push(t.docId),onCreatePoker:()=>createOpened++,showToast:toast})));
 const del=()=>w.document.querySelector('button[aria-label="Delete table"]');
 (async()=>{
  await render(table('empty'));
@@ -45,6 +45,24 @@ const del=()=>w.document.querySelector('button[aria-label="Delete table"]');
  await render(seat,[{...event,status:'done'}]);assert.equal(resume(),null,'finishing removes the banner without a refresh');
  await React.act(()=>w.document.querySelector('button[aria-label="New poker table"]').click());assert.equal(createOpened,2,'old tournament history never blocks opening a new table');
  assert.equal(calls.length,beforeResumeChecks,'resume filtering never deletes history, refunds seats or sends game commands');
+ // Two retained champion seats, including a stale unfinished table flag, must
+ // disappear from the active lobby together while their result history remains.
+ const past=[{...event,status:'done',finishedAt:100,results:[{uid:'owner',name:'Owner',rank:1,prize:100}],finalPrizePool:100},{...event,id:'second-ended',name:'Second ended event',status:'done',finishedAt:200,results:[{uid:'owner',name:'Owner',rank:1,prize:200}],finalPrizePool:200}];
+ const retained=[seat,{...seat,docId:'second-result',tournamentId:'second-ended',tournament:{finished:true}}];
+ await render(retained,past);
+ assert.equal(w.document.querySelectorAll('[data-resume-table]').length,0,'neither ended event offers a return');
+ assert.equal(w.document.querySelectorAll('[data-tournament-row]').length,0,'ended events are absent from the default active list');
+ const history=()=>[...w.document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Tournament history'));
+ assert.match(history().textContent,/2/);await React.act(()=>history().click());
+ assert.deepEqual([...w.document.querySelectorAll('[data-tournament-row]')].map(e=>e.dataset.tournamentRow),['second-ended','old-event'],'history lists newest results first');
+ await React.act(()=>w.document.querySelector('[data-tournament-row="second-ended"]').click());
+ await React.act(()=>[...w.document.querySelectorAll('button')].find(b=>b.textContent.includes('Final results')).click());
+ assert.match(w.document.querySelector('.pt-tour-results').textContent,/200.00/,'recorded prizes remain available');
+ await React.act(()=>[...w.document.querySelectorAll('.pt-tour-close')].at(-1).click());
+ await React.act(()=>w.document.querySelector('.pt-tour-close').click());
+ await React.act(()=>[...w.document.querySelectorAll('button')].find(b=>b.textContent==='Active tournaments').click());
+ assert.equal(w.document.querySelectorAll('[data-tournament-row]').length,0);
+ assert.equal(calls.length,beforeResumeChecks,'history viewing sends no mutation or refund command');
  for(const viewer of [{...user,role:'player'},{...user,role:'manager',status:'banned'}]){await render(seat,[],viewer);assert.equal(w.document.querySelector('button[aria-label="New poker table"]'),null,'table creation keeps existing authorization');}
  const Hook=()=>{const h=w.ChatHook({chat:[],players:{}},'floor-table',user,'poker',toast);return React.createElement(React.Fragment,null,React.createElement('button',{onClick:h.callFloor},'Call floor'),React.createElement('button',{onClick:h.clearFloor},'Clear floor'));};
  await React.act(async()=>root.render(React.createElement(Hook)));const buttons=()=>[...w.document.querySelectorAll('button')];

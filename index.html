@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="342">
-    <script src="assets/js/app-update.js?v=342" defer></script>
+    <meta name="app-version" content="343">
+    <script src="assets/js/app-update.js?v=343" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1111,7 +1111,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
-<link rel="stylesheet" href="assets/css/tournament-blue.css?v=341">
+<link rel="stylesheet" href="assets/css/tournament-blue.css?v=343">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=330">
@@ -4192,7 +4192,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 342. Check for updates'},'v342 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 343. Check for updates'},'v343 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -4245,10 +4245,8 @@ function App() {
   // available table must never trigger a replacement in an owner's browser.
   const [activeTable, setActiveTable] = useState(null);
   const [toasts, setToasts] = useState([]);
-  // Tournament celebration: the champion's table gets DELETED at finalize, so
-  // the winner used to be dumped to the lobby with "The table closed" and no
-  // trophy. Watch finished tournaments and pop the celebration for anyone who
-  // finished in the money (biggest for the champion), wherever they are.
+  // Results belong to App so they survive the completed table returning to the
+  // lobby, regardless of which Firestore listener receives the finish first.
   const [tourCele, setTourCele] = useState(null);
   useEffect(() => { if(tourCele)window.PokerSoundPack?.play('tournamentWin'); }, [tourCele]);
   useEffect(() => {
@@ -10975,6 +10973,14 @@ function PokerTable({
   const tblRef = () => window.fb.doc(window.fb.db, "tables", tableDocId);
   const setts = tableState?.settings || {};
   const tournamentEnded = tableState?.tournament?.finished === true;
+  const completedTableExit = useRef(null);
+  useEffect(() => {
+    if (headless || !tournamentEnded || tableState?.id !== tableDocId || completedTableExit.current === tableDocId) return;
+    completedTableExit.current = tableDocId;
+    // Final tables remain stored for results. Leave their screen without a
+    // pkLeave/cash-out command; App keeps the prize dialog above the lobby.
+    onLeave();
+  }, [headless, tournamentEnded, tableState?.id, tableDocId, onLeave]);
   const gs = tournamentEnded ? {...tableState.gameState,phase:'waiting',board:[],board2:null,pots:[],activeTurnUid:null,lastWinners:null,highestBet:0,allInReveal:false} : tableState?.gameState || {};
   const players = tournamentEnded ? Object.fromEntries(Object.entries(tableState?.players || {}).filter(([uid])=>uid===user.uid)) : tableState?.players || {};
   // DRIVER ELECTION. Bots, discards and the next deal used to be driven by the
@@ -17171,6 +17177,7 @@ function TournamentsTab({
 }) {
   const compactMode = compactRows || compact;
   const [expandedTournament, setExpandedTournament] = useState(null);
+  const [showHistory, setShowHistory] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [champTor, setChampTor] = useState(null);
   const [tick, setTick] = useState(0);
@@ -17619,7 +17626,11 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     if(!window.confirm(msg))return;
     try{const r=await pokerCommand('pkTournament',{op:'removeplayer',tournamentId:tor.id,playerUid:player.uid});showToast(r?.queued?'Player will be removed after the current hand.':'Player removed.','success');}catch(e){showToast(e.message||String(e),'error');}
   };
-  const sorted = [...myTours].sort((a, b) => (a.status === 'reg' ? 0 : a.status === 'running' ? 1 : 2) - (b.status === 'reg' ? 0 : b.status === 'running' ? 1 : 2) || (a.startAt || 0) - (b.startAt || 0));
+  const pastTours = myTours.filter(t => ['done','cancelled'].includes(t.status));
+  const activeTours = myTours.filter(t => ['reg','running'].includes(t.status));
+  const sorted = [...(showHistory ? pastTours : activeTours)].sort((a, b) => showHistory
+    ? (b.finishedAt || b.startAt || 0) - (a.finishedAt || a.startAt || 0)
+    : (a.status === 'reg' ? 0 : 1) - (b.status === 'reg' ? 0 : 1) || (a.startAt || 0) - (b.startAt || 0));
   const champModal = champTor ? ReactDOM.createPortal(React.createElement(TournamentResultsDialog, { tournament: {...champTor,finalChipStacks:Object.fromEntries((tables||[]).filter(t=>t.tournamentId===champTor.id).flatMap(t=>Object.entries(t.players||{}).map(([uid,p])=>[uid,p.stack])))}, user, showToast, onClose: () => setChampTor(null) }), document.body) : null;
   return React.createElement("div", {
     className: "animate-fade-in pt-tournaments"+(compactMode?" pt-tournaments-compact":"")
@@ -17636,7 +17647,9 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     className: "bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white px-5 py-2.5 rounded-xl font-bold shadow-[0_6px_20px_rgba(168,85,247,0.3)] text-sm"
   }, React.createElement("i", {
     className: "fa-solid fa-plus ml-2"
-  }), "New tournament")), showCreate && React.createElement("div", {
+  }), "New tournament")), pastTours.length > 0 && React.createElement('nav',{className:'pt-tournament-filters','aria-label':'Tournament list'},
+    React.createElement('button',{type:'button','aria-pressed':!showHistory,onClick:()=>{setShowHistory(false);setExpandedTournament(null);}},'Active tournaments'),
+    React.createElement('button',{type:'button','aria-pressed':showHistory,onClick:()=>{setShowHistory(true);setExpandedTournament(null);}},'Tournament history · '+pastTours.length)), showCreate && React.createElement("div", {
     className: "glass-panel p-6 rounded-2xl mb-6 border border-purple-500/30 animate-pop-in"
   }, React.createElement('button',{type:'button',className:'pt-restore-tournament-defaults',onClick:()=>{setOpts(prev=>({...tournamentDefaultOptions(),name:prev.name,date:prev.date,time:prev.time}));setStructOpen(true);}},'Restore default settings'), tTpls.length > 0 && React.createElement("div", {
     className: "flex flex-wrap gap-2 items-center pb-4 mb-4 border-b border-white/8"
@@ -18365,7 +18378,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       expandedTournament===tor.id&&h(TournamentDialog,{title:tor.name,onClose:()=>setExpandedTournament(null),className:'pt-tournament-detail'},h('div',{className:'pt-tournaments'},card)));
   }), !compactMode && sorted.length === 0 && React.createElement("div", {
     className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"
-  }, "No tournaments right now. ", canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, standFor && ReactDOM.createPortal(React.createElement(TournamentStandingsDialog, { data: standData, user, onClose: () => setStandFor(null) }), document.body));
+  }, showHistory ? 'No completed tournaments.' : 'No active tournaments right now. ', !showHistory && canManageGame(user, 'poker') ? 'Open the first!' : '')), champModal, standFor && ReactDOM.createPortal(React.createElement(TournamentStandingsDialog, { data: standData, user, onClose: () => setStandFor(null) }), document.body));
 }
 // HIDDEN DRIVERS — mounted at App level so they run CONSTANTLY while the
 // tournament manager's app is open on ANY screen (lobby, a table, the back

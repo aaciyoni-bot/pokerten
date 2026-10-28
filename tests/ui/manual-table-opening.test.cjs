@@ -82,7 +82,7 @@ const table=(id,count,patch={})=>({id,docId:id,clubId:'main',authorityVersion:2,
  await React.act(()=>tournamentCreate.click());
  assert.equal(tournamentCreate.getAttribute('aria-expanded'),'true');
  assert.ok([...doc.querySelectorAll('label')].some(label=>label.textContent==='Tournament name'),'the actual lobby opens the tournament creation form even without existing events');
- assert.ok(doc.querySelector('[aria-label="Prize pool type"]'));assert.ok(doc.querySelector('[aria-label="Early registration bonus (%)"]'));
+ assert.ok(doc.querySelector('[aria-label="Starting small blind (SB)"]'));assert.ok(doc.querySelector('[aria-label="Starting big blind (BB)"]'));assert.ok(doc.querySelector('[aria-label="No ante"]'));assert.ok(doc.querySelector('[aria-label="Level 1 sb"]'));assert.ok(doc.querySelector('[aria-label="Prize pool type"]'));assert.ok(doc.querySelector('[aria-label="Early registration bonus (%)"]'));
  assert.equal(fixture.calls.filter(c=>c.name==='pkTournament').length,0,'opening the tournament form never creates an event or debits a reserve');
  await React.act(()=>tournamentCreate.click());assert.equal(tournamentCreate.getAttribute('aria-expanded'),'false');
  const create=doc.querySelector('button[aria-label="New poker table"]');assert.ok(create);assert.equal(create.closest('details'),null);

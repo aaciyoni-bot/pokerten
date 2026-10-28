@@ -4,7 +4,7 @@
   const ID = 'zynga-23-29-705', BASE = 'assets/sounds/' + ID + '/';
   const banks = new Map(), pending = new Map(), sources = new Set(), last = new Map(), deferred = new Map(), bankErrors = new Map();
   let bridge, catalog, spec, index, ready, active = true, unlocked = false, view = 'auth';
-  let warming, loadState = 'loading', lastAttempt = 0;
+  let warming, loadState = 'loading', lastAttempt = 0, appliedRevision = null;
   // This script is the selected imported pack. A config-network failure must
   // not silently select the original engine; retain an explicit prior rollback.
   try { const saved=JSON.parse(localStorage.getItem('pkSoundTheme'));if(saved?.active==='original')active=false; } catch (_) {}
@@ -25,9 +25,9 @@
       if(!r.ok)throw new Error('Audio unavailable');return await r[format]();
     }finally{if(controller)clearTimeout(timer);}
   }
-  const json = url => read(url,'json',{cache:'no-cache'});
+  const json = url => read(url,'json',{cache:'no-store'});
   function metadata() {
-    if (!ready) ready = Promise.all([json(BASE+'catalog.json'),json(BASE+'events.json')]).then(([c,s]) => {
+    if (!ready) ready = Promise.all([json(BASE+'catalog.json'),json(BASE+'events.json?v=335')]).then(([c,s]) => {
       catalog=c;spec=s;index=new Map(c.clips.map(clip=>[clip.name,clip]));return c;
     }).catch(e=>{ready=null;throw e;});
     return ready;
@@ -81,6 +81,8 @@
       const cfg=await json('assets/sounds/theme.json');
       if(![ID,'original'].includes(cfg.active))throw new Error('Unknown sound theme');
       const enabled=cfg.active===ID;
+      if(appliedRevision!==null && appliedRevision!==cfg.revision){ready=null;spec=null;}
+      appliedRevision=cfg.revision;
       if(active&&!enabled){stopAll();if(dialog?.open)dialog.close();}
       active=enabled;
       try{localStorage.setItem('pkSoundTheme',JSON.stringify({active:cfg.active,revision:cfg.revision}));}catch(_){}
@@ -163,7 +165,7 @@
     dialog.addEventListener('close',()=>{stopPreview();current.remove();if(dialog===current)dialog=null;syncMusic();},{once:true});
     try {
       await metadata();if(!current.open)return;
-      current.querySelector('header p').textContent=catalog.count+' sounds · '+(active?'Imported sound pack':'Original POKERTEN sounds active');
+    current.querySelector('header p').textContent=catalog.count+' sounds · '+(active?'Imported sound pack · v335':'Original POKERTEN sounds active');
       const quick=current.querySelector('.pk-sound-quick');
       for(const [event,label] of [['deal','Deal'],['check','Check'],['chip','Bet'],['allin','All-in'],['win','Win'],['turn','Your turn']]){
         const b=document.createElement('button');b.type='button';b.textContent=label;b.setAttribute('aria-label','Test '+label);

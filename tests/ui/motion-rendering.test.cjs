@@ -58,6 +58,14 @@ const scene=(component,props)=>React.createElement('div',{className:'poker-table
   const awardDuration=new Function('awards',durationStatement+'return dur;');
   const durations=[.01,25,100,1000,1000000000].map(amount=>awardDuration([{amount}]));
   assert.ok(durations.every(d=>d>0&&d<=.9),'small and very large wins finish their travel within 900ms');assert.ok(durations.slice(1).every((d,i)=>d>=durations[i]),'larger awards do not move faster than small awards');
+  w.PokerSoundPack={active:true};
+  await render(PotAward,{to:{left:'20%',top:'78%'},amount:125,dur:.6,snd:true});
+  assert.ok(![...timers.values()].some(t=>t.delay===3100),'imported crowd-win must not be followed by a card-flip cue when the pot lands');
+  assert.ok([...timers.values()].some(t=>t.delay===2500),'chip flight still runs at the same time');
+  await render(null);w.PokerSoundPack.active=false;
+  await render(PotAward,{to:{left:'20%',top:'78%'},amount:125,dur:.6,snd:true});
+  assert.ok([...timers.values()].some(t=>t.delay===3100),'original rollback preserves its settle cue');
+  await render(null);
   assert.equal(sounds.length,0);await React.act(()=>root.unmount());w.close();
   console.log('PASS: actual motion components use rendered pot/winner centers, use fast bounded timing, cancel both frames, and honor live reduced-motion changes');
 })().catch(error=>{console.error(error);process.exitCode=1;w.close();});

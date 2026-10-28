@@ -2,6 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
+    <meta name="app-version" content="335">
+    <script src="assets/js/app-update.js?v=335" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1122,8 +1124,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=330">
 <script src="assets/js/club-cashier.js?v=330"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
-<script src="assets/js/poker-sound-pack.js?v=333"></script>
-<link rel="stylesheet" href="assets/css/reference-experience.css?v=334">
+<script src="assets/js/poker-sound-pack.js?v=335"></script>
+<link rel="stylesheet" href="assets/css/reference-experience.css?v=335">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1165,9 +1167,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <!-- ═══ /ORIZIS INTRO ═══ -->
     <div id="root" class="h-full w-full"></div>
     <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
-        }
+        // assets/js/app-update.js owns service-worker and foreground update checks.
         // Agent invitation link: keep the referral until sign-in completes
         try {
             const qp = new URLSearchParams(window.location.search);
@@ -4066,7 +4066,7 @@ const PotAward = ({
   }, [amount]);
   React.useEffect(() => {
     // Play one soft settle after the reveal pause and the chip flight.
-    const tm = snd ? setTimeout(() => playSnd('tile'), delay + Math.max(300, dur * 1000)) : null;
+    const tm = snd && !window.PokerSoundPack?.active ? setTimeout(() => playSnd('tile'), delay + Math.max(300, dur * 1000)) : null;
     return () => {
       if (tm) clearTimeout(tm);
     };
@@ -4173,13 +4173,18 @@ function useInstalledAppDisplay() {
   }, []);
   return installed;
 }
+function AppReleaseControls() {
+  return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 335. Check for updates'},'v335 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
+}
 function App() {
   const [fbReady, setFbReady] = useState(false);
   const [dbUser, setDbUser] = useState(null);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [currentView, setCurrentView] = useState('auth');
-  useEffect(() => { window.PokerSoundPack?.setView(currentView); }, [currentView]);
+  useEffect(() => { window.__pkAppView=currentView; window.PokerSoundPack?.setView(currentView); window.PokerAppUpdate?.setView(currentView); }, [currentView]);
   const [canInstallApp, setCanInstallApp] = useState(!!window.__installEvt);
   const [showInstall, setShowInstall] = useState(false);
   const isIOSDev = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
@@ -5099,7 +5104,7 @@ function AuthView({error = '', loading = false, onRetry} = {}) {
     className: "text-[10px] text-gold-400/90 font-bold tracking-[0.18em] uppercase"
   }, "POKERTEN · Club poker")), React.createElement("span", {
     className: "text-[8px] text-slate-600 font-bold tracking-[0.3em] uppercase"
-  }, "Powered by ORIZIS TECHNOLOGY")));
+  }, "Powered by ORIZIS TECHNOLOGY"), React.createElement(AppReleaseControls)));
 }
 function LeadersView({
   user,
@@ -5831,7 +5836,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
   }, "Hi ", user.username, " — pick a club"), React.createElement("button", {
     onClick: () => window.fb.signOut(window.fb.auth),
     className: "text-[11px] text-slate-500 underline font-bold mt-0.5"
-  }, "Log out"), !isStandalone && (canInstall || isIOS || isAndroidMob) && React.createElement("div", {
+  }, "Log out"), React.createElement(AppReleaseControls), !isStandalone && (canInstall || isIOS || isAndroidMob) && React.createElement("div", {
     className: "mt-4"
   }, React.createElement("button", {
     onClick: () => {
@@ -6761,7 +6766,7 @@ function ReferenceLobbyHeader({club, tables, user, balance, onCashier, onSettlem
   return h('header',{className:'reference-lobby-header',dir:'ltr'},
     h('div',{className:'reference-lobby-masthead'},action('fa-chevron-left','Clubs',onClubs),h('img',{src:'icon-192.png',alt:'POKERTEN',width:38,height:38}),
       h('details',{className:'reference-lobby-menu'},h('summary',{'aria-label':'Club menu'},icon('fa-bars')),h('div',null,
-        action('fa-users-gear','Manage',canOpenBackoffice(user)&&onManage),action('fa-wallet','Cashier',onCashier),action('fa-chart-simple',canOpenBackoffice(user)?'Club settlement':'My results',onSettlement),action('fa-user','Profile',onProfile),showInstall&&action('fa-download','Install app',onInstall)))),
+        action('fa-users-gear','Manage',canOpenBackoffice(user)&&onManage),action('fa-wallet','Cashier',onCashier),action('fa-chart-simple',canOpenBackoffice(user)?'Club settlement':'My results',onSettlement),action('fa-user','Profile',onProfile),showInstall&&action('fa-download','Install app',onInstall),h(AppReleaseControls)))),
     h('section',{className:'reference-club-card','aria-label':'Club overview'},
       h('div',{className:'reference-club-identity'},club.logo?h('img',{src:club.logo,alt:'',className:'reference-club-logo'}):h('div',{className:'reference-club-logo'},String(club.name||'P').slice(0,1)),
         h('div',{className:'reference-club-name'},h('h1',null,club.name||'POKERTEN'),h('span',null,'ID: '+clubCode(club.id||CLUB_ID)),h('small',null,icon('fa-user-group'),' '+players+' Players',icon('fa-table-cells-large'),' '+tables.length+' Tables')),
@@ -13162,7 +13167,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       amount: a.amount,
       dur: dur,
       delay: 2500 + k * 180,
-      snd: k === 0
+      snd: !headless && k === 0
     }));
   })(), (() => {
     if (!isSeated || !myPlayer) return null;

@@ -9,7 +9,7 @@ const vm=require('node:vm');
 const A=require('../pokerAuthority');
 const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
 const profileSource=fs.readFileSync(path.join(__dirname,'../pokerProfile.js'),'utf8');
-const HAIM='haim29071994@gmail.com';
+const HAIM='haim29071994@gmail.com',TOMER='tomerbitan481@gmail.com';
 function ui(auth){
  const window={fb:{auth:{currentUser:auth}}};
  const definitions=['ROLES','GOD_EMAILS','SUPER_ADMIN_EMAIL','CLUB_OVERSIGHT_EMAILS'].map(name=>{
@@ -25,27 +25,29 @@ const user={uid:'haim-auth-uid',role:'player',status:'pending'};
 const auth=(email=HAIM,verified=true)=>({uid:user.uid,email,emailVerified:verified});
 const requestAuth=(email=HAIM,verified=true)=>({uid:user.uid,token:{email,email_verified:verified}});
 
-test('verified HAIM can open management despite a stale player/pending membership role',()=>{
- const access=ui(auth());
+for(const email of [HAIM,TOMER])test('verified '+email+' can open management despite a stale player/pending membership role',()=>{
+ const access=ui(auth(email));
+ assert.equal(access.isGodUser(user),true);
  assert.equal(access.isClubOversightUser(user),true);
  assert.equal(access.canManageClub(user),true);
  assert.equal(access.canOpenBackoffice(user),true);
- assert.equal(A.root({auth:requestAuth()}),true,'Server recognizes the same existing oversight identity');
+ assert.equal(A.root({auth:requestAuth(email)}),true,'Server recognizes the same oversight identity');
 });
 test('management does not depend on a username, profile email or another signed-in UID',()=>{
- for(const identity of [auth('someone@example.test'),auth(HAIM,false),{...auth(),uid:'different-uid'},null]){
+ for(const identity of [auth('someone@example.test'),auth(HAIM,false),auth(TOMER,false),{...auth(TOMER),uid:'different-uid'},null]){
   const access=ui(identity),forged={...user,username:'HAIM2907',email:HAIM};
   assert.equal(access.isClubOversightUser(forged),false);
   assert.equal(access.canManageClub(forged),false);
   assert.equal(access.canOpenBackoffice(forged),false);
  }
 });
-test('only the pre-existing server root allowlist gets identity-based management access',()=>{
- for(const email of [HAIM,'aaci.yoni@gmail.com','info.bagso@gmail.com','stranger@example.test']){
+test('only the designated server root allowlist gets identity-based management access',()=>{
+ for(const email of [HAIM,TOMER,'aaci.yoni@gmail.com','info.bagso@gmail.com','stranger@example.test']){
   const access=ui(auth(email));
   assert.equal(access.isClubOversightUser(user),A.root({auth:requestAuth(email)}),email);
  }
  assert.equal(ui(auth('  HAIM29071994@GMAIL.COM ')).isClubOversightUser(user),true);
+ assert.equal(ui(auth('Tomerbitan481@gmail.com')).isClubOversightUser(user),true);
 });
 test('club manager and agent scopes remain distinct; pending/banned members get neither entry',()=>{
  const access=ui(auth('ordinary@example.test'));
@@ -75,14 +77,14 @@ function directoryFixture(){
  vm.runInNewContext(profileSource,context);
  return{run:auth=>context.exports.pkClubDirectory({auth,data:{clubId:'clubA',includeReports:true}}),reads};
 }
-test('server lets verified HAIM see all club results without creating a membership',async()=>{
- const fixture=directoryFixture(),result=await fixture.run(requestAuth());
+for(const email of [HAIM,TOMER])test('server lets verified '+email+' see all club results without creating a membership',async()=>{
+ const fixture=directoryFixture(),result=await fixture.run(requestAuth(email));
  assert.deepEqual(Array.from(result.gameLog,row=>row.uid),['alice','bob']);
  assert.equal(result.members.length,3);
  assert.equal(fixture.reads.filter(ref=>ref.name==='gameLog').length,1);
 });
 test('an unverified or different identity cannot reuse HAIM management report access',async()=>{
- for(const identity of [requestAuth(HAIM,false),requestAuth('someone@example.test')]){
+ for(const identity of [requestAuth(HAIM,false),requestAuth(TOMER,false),requestAuth('someone@example.test')]){
   const fixture=directoryFixture();
   await assert.rejects(fixture.run(identity),error=>error.code==='permission-denied');
   assert.equal(fixture.reads.some(ref=>ref.name==='gameLog'),false);

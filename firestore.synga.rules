@@ -1,0 +1,43 @@
+rules_version = '2';
+// SYNGA's named database only. All mutations go through scoped server functions.
+// users/{uid}: private profile (email, phone, role, playerId); self read only.
+// memberships/{uid_clubId}: uid, clubId, role, status, username and chip accounting.
+// clubs/{id}: directory entry with name and ownerUid; authenticated discovery.
+// tables/{id}, tournaments/{id}: authorityVersion=2 and clubId; public game state.
+// tables/{id}/priv/{uid}: a player's cards. _engine is server-only.
+// broadcasts/{clubId}: club messages. Journals, auth/PIN records and decks are private.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return database == 'synga' && request.auth != null; }
+    function self(uid) { return signedIn() && request.auth.uid == uid; }
+    function owner() {
+      return signedIn() && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('email', '') == 'aaci.yoni@gmail.com';
+    }
+    function clubOwner(cid) {
+      return signedIn() && get(/databases/$(database)/documents/clubs/$(cid)).data.ownerUid == request.auth.uid;
+    }
+    function member(cid) {
+      return signedIn() && get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + cid)).data.status == 'approved';
+    }
+    match /users/{uid} { allow read: if self(uid); }
+    match /clubs/{id} { allow read: if signedIn(); }
+    match /memberships/{id} {
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || owner() || clubOwner(resource.data.clubId));
+      allow get: if signedIn() && !exists(/databases/$(database)/documents/memberships/$(id)) && id.matches(request.auth.uid + '_.*');
+    }
+    match /tables/{id} {
+      allow read: if signedIn() && resource.data.authorityVersion == 2 && (owner() || member(resource.data.clubId));
+    }
+    match /tables/{id}/priv/{uid} {
+      allow read: if uid != '_engine' && self(uid)
+        && exists(/databases/$(database)/documents/tables/$(id))
+        && member(get(/databases/$(database)/documents/tables/$(id)).data.clubId);
+    }
+    match /tournaments/{id} {
+      allow read: if signedIn() && resource.data.authorityVersion == 2 && (owner() || member(resource.data.clubId));
+    }
+    match /broadcasts/{id} { allow read: if owner() || member(id); }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

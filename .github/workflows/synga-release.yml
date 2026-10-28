@@ -1,0 +1,58 @@
+name: Release isolated SYNGA backend
+on:
+  push:
+    branches: [codex/synga-poker-redesign]
+    paths:
+      - 'scripts/build-synga-backend.cjs'
+      - 'firestore.synga.rules'
+      - 'firebase.synga.json'
+      - '.github/workflows/synga-release.yml'
+permissions:
+  contents: read
+concurrency:
+  group: synga-backend-only
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/codex/synga-poker-redesign'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Build and check the independent codebase
+        run: |
+          node scripts/build-synga-backend.cjs
+          npm ci --prefix .synga-functions --ignore-scripts --no-audit --no-fund
+          node tests/synga-backend.test.cjs
+          node predeploy-check.js
+          node tests/synga-isolation.test.cjs
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools@15.34.1
+      - name: Verify rules against local emulator
+        run: |
+          npm ci --prefix tests/security --ignore-scripts --no-audit --no-fund
+          tests/security/node_modules/.bin/firebase emulators:exec --config firebase.synga-test.json --project demo-synga --only firestore 'node --test tests/security/synga-rules.test.cjs'
+      - name: Provision and deploy only SYNGA
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          test -n "$FIREBASE_TOKEN"
+          npx -y firebase-tools@15.34.1 firestore:databases:list --project pokerten --json > /tmp/synga-databases.json
+          node -e "const r=require('/tmp/synga-databases.json');const rows=r.result?.databases||r.result; if(!Array.isArray(rows))throw Error('Unknown database list');require('fs').writeFileSync('/tmp/synga-exists',String(rows.some(d=>d.name?.endsWith('/databases/synga'))));"
+          if [ "$(cat /tmp/synga-exists)" = false ]; then
+            npx -y firebase-tools@15.34.1 firestore:databases:create synga --project pokerten --location eur3 --edition standard
+          fi
+          npx -y firebase-tools@15.34.1 firestore:databases:get synga --project pokerten --json > /tmp/synga-database.json
+          node -e "const r=require('/tmp/synga-database.json').result;if(!r.name?.endsWith('/databases/synga'))throw Error('Wrong database');"
+          npx -y firebase-tools@15.34.1 deploy --config firebase.synga.json --project pokerten --only functions:synga,firestore:rules --non-interactive
+      - name: Verify isolated endpoint
+        run: |
+          node --input-type=module <<'JS'
+          const r=await fetch('https://us-central1-pokerten.cloudfunctions.net/synga-backendStatus',{method:'POST',headers:{'Content-Type':'application/json'},body:'{"data":{}}'});
+          const b=await r.json();
+          if(!r.ok||b.result?.brand!=='SYNGA'||b.result?.databaseId!=='synga')throw Error('SYNGA isolation readiness failed');
+          console.log('SYNGA named database and prefixed backend verified.');
+          JS

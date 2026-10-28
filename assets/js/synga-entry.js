@@ -15,12 +15,13 @@
     const surface = document.createElement('div');
     surface.className = 'synga-landscape-surface';
     surface.setAttribute('aria-label','SYNGA POKER');
-    const preview = location.pathname.endsWith('/preview.html');
+    const previewPath = location.pathname.endsWith('/preview.html');
+    const preview = previewPath && !window.SYNGA_CONFIG?.firebase?.projectId;
     const frame = document.createElement('iframe');
     frame.className = 'synga-game-frame';
     frame.title = preview ? 'SYNGA POKER design preview' : 'SYNGA POKER game';
     frame.allow = 'autoplay; fullscreen';
-    const target = new URL(preview ? 'tests/ui/synga-preview.html?mode=clubs&seats=5&full&opponents' : location.href,location.href);
+    const target = new URL(preview ? 'tests/ui/synga-preview.html?mode=clubs&seats=5&full&opponents' : (previewPath ? './' : location.href),location.href);
     if (!preview) target.searchParams.set('synga-frame','1');
     frame.src = target.href;
     surface.appendChild(frame);

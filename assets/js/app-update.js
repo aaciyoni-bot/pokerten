@@ -1,7 +1,7 @@
 /* Refresh the app shell without clearing sign-in, saved settings or game data. */
 (function(root){
   'use strict';
-  const current=Number(document.querySelector('meta[name="app-version"]')?.content)||341;
+  const current=Number(document.querySelector('meta[name="app-version"]')?.content)||342;
   let view='auth',latest=current,checking,registration,banner,message,button,applying=false,verified=false;
   const atTable=()=>String(root.__pkAppView||view).endsWith('-table');
   async function read(url,format){

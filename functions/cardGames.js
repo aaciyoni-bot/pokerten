@@ -116,7 +116,7 @@ exports.pkCardGame=onCall(opts,async r=>{
 });
 // Existing GOD allowlist, checked on the server and never added to public docs.
 exports.pkCardPeek=onCall(opts,async r=>{
- A.uid(r);const allowed=['aaci.yoni@gmail.com','info.bagso@gmail.com','avi057278@gmail.com','khnby749@gmail.com','bykhn3234@gmail.com','haim29071994@gmail.com'];
+ A.uid(r);const allowed=['aaci.yoni@gmail.com','info.bagso@gmail.com','avi057278@gmail.com','khnby749@gmail.com','bykhn3234@gmail.com','haim29071994@gmail.com','tomerbitan481@gmail.com'];
  if(r.auth.token.email_verified!==true||!allowed.includes(String(r.auth.token.email||'').toLowerCase().trim()))A.fail('permission-denied','Not allowed');
  const db=getFirestore(),ref=db.doc('tables/'+A.key(r.data.tableId));return db.runTransaction(async tx=>{const s=await tx.get(ref);if(!s.exists)A.fail('not-found','Table closed');await A.member(tx,db,s.data().clubId,r);const t=await load(tx,db,ref,s.data());if(t.seq!==r.data.seq)A.fail('failed-precondition','The turn changed');return{seq:t.seq,players:t.players,deck:t.deck,pairs:t.pairs};});
 });

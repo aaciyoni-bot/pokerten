@@ -58,6 +58,24 @@ test("verified designated administrator can reconcile wallets, not restart legac
  await assertSucceeds(updateDoc(doc(db,"memberships/other_club"),{balance:201}));
  await assertFails(updateDoc(doc(db,"tables/table"),{"players.player.stack":10000}));
 });
+test('Tomer has verified oversight access, while unverified or forged identities gain no permissions',async()=>{
+ const email='tomerbitan481@gmail.com';
+ const db=env.authenticatedContext('tomer',{email,email_verified:true}).firestore();
+ await assertSucceeds(getDoc(doc(db,'memberships/other_club')));
+ await assertSucceeds(getDocs(collection(db,'tables')));
+ await assertSucceeds(getDoc(doc(db,'gameLog/log')));
+ await assertSucceeds(updateDoc(doc(db,'memberships/other_club'),{balance:201}));
+ await assertFails(updateDoc(doc(db,'tables/protected'),{'players.player.stack':10000}));
+ await assertFails(getDoc(doc(db,'tables/protected/priv/_engine')));
+ await assertFails(getDoc(doc(db,'tables/protected/priv/other')));
+ for(const claims of [{email,email_verified:false},{email},{email:'ordinary@example.test',email_verified:true,god:true,role:'super_admin'}]){
+  const blocked=env.authenticatedContext('not-tomer',claims).firestore();
+  await assertFails(getDoc(doc(blocked,'memberships/other_club')));
+  await assertFails(getDocs(collection(blocked,'tables')));
+  await assertFails(getDoc(doc(blocked,'gameLog/log')));
+  await assertFails(updateDoc(doc(blocked,'memberships/other_club'),{balance:10000}));
+ }
+});
 test("hidden legacy decks and opponent private cards are inaccessible to players",async()=>{
  const db=player();await assertFails(getDoc(doc(db,"tables/table")));await assertFails(getDoc(doc(db,"tables/table/priv/other")));await assertFails(getDoc(doc(db,"tables/table/priv/_engine")));await assertSucceeds(getDoc(doc(db,"tables/table/priv/player")));
 });

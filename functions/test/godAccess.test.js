@@ -8,7 +8,7 @@ const vm=require('node:vm');
 const {createRequire}=require('node:module');
 const enginePath=path.join(__dirname,'../pokerEngine.js');
 const source=fs.readFileSync(enginePath,'utf8'),engineRequire=createRequire(enginePath);
-const HAIM='haim29071994@gmail.com',REVOKED='easymarcelos@gmail.com';
+const HAIM='haim29071994@gmail.com',TOMER='tomerbitan481@gmail.com',REVOKED='easymarcelos@gmail.com';
 function fixture(){
  const reads=[],board=['A','K','Q','J','10'].map(val=>({val,suit:'♠'})),cards=[{val:'2',suit:'♥'},{val:'3',suit:'♥'}];
  let transactions=0;
@@ -28,14 +28,14 @@ function fixture(){
  return{peek:context.exports.godPeek,reads,board,cards,contextKey,get transactions(){return transactions;}};
 }
 const auth=(email,verified=true)=>({uid:'verified-account',token:{email,email_verified:verified}});
-test('HAIM can read the existing GOD callable after verified sign-in',async()=>{
- const f=fixture(),result=await f.peek({auth:auth(HAIM),data:{tableId:'test',contextKey:f.contextKey}});
+for(const email of [HAIM,TOMER])test(email+' can read the existing GOD callable after verified sign-in',async()=>{
+ const f=fixture(),result=await f.peek({auth:auth(email),data:{tableId:'test',contextKey:f.contextKey}});
  assert.deepEqual(JSON.parse(JSON.stringify(result)),{tableId:'test',contextKey:f.contextKey,handN:23,hands:{p1:f.cards},finalBoard:f.board});
  assert.deepEqual(f.reads.sort(),['tables/test','tables/test/priv/_engine','tables/test/priv/p1']);
  assert.equal(f.transactions,1,'the real engine callable uses one coherent transaction');
 });
 test('revoked EASYMARCELOS and unverified/forged identities cannot read any private document',async()=>{
- for(const identity of [auth(REVOKED),auth(HAIM,false),auth('ordinary@example.invalid'),{uid:'verified-account',email:HAIM,role:'super_admin',token:{email:'ordinary@example.invalid',email_verified:true}},null]){
+ for(const identity of [auth(REVOKED),auth(HAIM,false),auth(TOMER,false),auth('ordinary@example.invalid'),{uid:'verified-account',email:TOMER,role:'super_admin',token:{email:'ordinary@example.invalid',email_verified:true}},null]){
   const f=fixture();
   await assert.rejects(f.peek({auth:identity,data:{tableId:'test',email:HAIM,role:'super_admin'}}),e=>e.code===(identity?'permission-denied':'unauthenticated'));
   assert.deepEqual(f.reads,[]);
@@ -47,7 +47,7 @@ test('UI GOD identity guard agrees with the callable including revocation',()=>{
  const clientList=vm.runInNewContext(html.match(/const GOD_EMAILS = (\[[^;]+);/)[1]);
  const serverList=vm.runInNewContext(source.match(/const GOD_EMAILS = (\[[^;]+);/)[1]);
  assert.deepEqual(Array.from(clientList).sort(),Array.from(serverList).sort());
- assert.ok(clientList.includes(HAIM));assert.equal(clientList.includes(REVOKED),false);
+ assert.ok(clientList.includes(HAIM));assert.ok(clientList.includes(TOMER));assert.equal(clientList.includes(REVOKED),false);
  const context={window:{fb:{auth:{currentUser:{uid:'haim',email:HAIM,emailVerified:true}}}}};
  vm.runInNewContext(html.match(/const GOD_EMAILS = [^;]+;/)[0]+'\n'+html.slice(html.indexOf('const isGodUser ='),html.indexOf('const isClubOversightUser ='))+'\nthis.allowed=isGodUser;',context);
  assert.equal(context.allowed({uid:'haim'}),true);

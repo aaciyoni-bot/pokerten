@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="340">
-    <script src="assets/js/app-update.js?v=340" defer></script>
+    <meta name="app-version" content="341">
+    <script src="assets/js/app-update.js?v=341" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1111,7 +1111,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
-<link rel="stylesheet" href="assets/css/tournament-blue.css?v=314">
+<link rel="stylesheet" href="assets/css/tournament-blue.css?v=341">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=330">
@@ -1285,10 +1285,10 @@ const SuitGlyph = ({
   }));
 };
 const TOUR_SCHEDULE = [[5, 10], [10, 20], [15, 30], [25, 50], [40, 80], [60, 120], [100, 200], [150, 300], [250, 500], [400, 800], [600, 1200], [1000, 2000]];
-// Default tournament structure for NEW tournaments: 25 sensible levels starting
-// 50/100 (hundreds). TOUR_SCHEDULE above stays untouched as the legacy fallback
+// Default tournament structure for NEW tournaments: 23 levels starting
+// 100/200 then 150/300. TOUR_SCHEDULE stays untouched as the legacy fallback
 // for tournaments created before structures existed.
-const TOUR_DEFAULT_STRUCT = [[50, 100], [75, 150], [100, 200], [150, 300], [200, 400], [300, 600], [400, 800], [500, 1000], [600, 1200], [800, 1600], [1000, 2000], [1500, 3000], [2000, 4000], [2500, 5000], [3000, 6000], [4000, 8000], [5000, 10000], [6000, 12000], [8000, 16000], [10000, 20000], [15000, 30000], [20000, 40000], [30000, 60000], [40000, 80000], [50000, 100000]];
+const TOUR_DEFAULT_STRUCT = [[100, 200], [150, 300], [200, 400], [300, 600], [400, 800], [500, 1000], [600, 1200], [800, 1600], [1000, 2000], [1500, 3000], [2000, 4000], [2500, 5000], [3000, 6000], [4000, 8000], [5000, 10000], [6000, 12000], [8000, 16000], [10000, 20000], [15000, 30000], [20000, 40000], [30000, 60000], [40000, 80000], [50000, 100000]];
 const genPlayerId = () => {
   const C = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let r = '';
@@ -4192,7 +4192,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 340. Check for updates'},'v340 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 341. Check for updates'},'v341 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -17113,6 +17113,50 @@ function TournamentResultsDialog({ tournament, user, onClose, showToast }) {
       React.createElement('div', { className: 'pt-tour-actions' }, React.createElement('button', { className: 'pt-tour-secondary', onClick: () => setSelected(null) }, 'All results'), React.createElement('button', { className: 'pt-tour-primary', onClick: () => share([selected]) }, 'Share result'))));
 }
 
+function tournamentDefaultOptions() {
+  return {
+    name: '',
+    gameSel: 'poker',
+    buyIn: 100,
+    fee: 0,
+    addedPrize: 4000,
+    prizePoolMode: 'fixed',
+    bounty: 0,
+    date: '',
+    time: '20:00',
+    maxPlayers: 60,
+    minPlayers: 5,
+    levelMins: 10,
+    rebuys: false,
+    rebuyUntilLevel: 2,
+    lateRegLevel: 10, // inclusive: closes at the end of this level
+    lateRegMode: 'level',lateRegCloseTime:'',
+    addon: false,
+    addonLevel: 3,
+    mttMode: true, // Real MTT is the default — the authentic tournament flow
+    pokerType: 'NLH',
+    startStack: 30000,
+    earlyRegistrationBonusPct: 30,
+    earlyRegistrationBonusUntilStart: true,
+    paidMode: 'fixed',
+    paidPct: 10,
+    paidPlaces: 4,
+    finishAtPaidPlaces: false,
+    payouts: [35, 30, 20, 15],
+    mysteryBounty: false,
+    bountyMode:'fixed',progressiveCashPct:50,mysteryStartLevel:3,bountyBudgetRemaining:0,
+    maxRebuys:0,botRebuys:false,reentry:true,reentryBuyIn:100,reentryToPrizePool:false,maxReentries:10,tableSize:8,actionTime:15,anteFromLevel:10,
+    bountyFree: false,
+    botFill: false,
+    serverEngine: true,
+    prizeAsBonus: false,
+    structure: null,
+    anteMode: 'none',
+    breakEvery: 10,
+    breakMins: 4
+  };
+}
+
 function TournamentsTab({
   user,
   game,
@@ -17132,48 +17176,10 @@ function TournamentsTab({
   const [tick, setTick] = useState(0);
   const tourBotLock=useRef(false);
   const [addingTourBot,setAddingTourBot]=useState(null);
-  const [opts, setOpts] = useState({
-    name: '',
-    gameSel: 'poker',
-    buyIn: 500,
-    fee: 50,
-    addedPrize: 0,
-    prizePoolMode: 'entries',
-    bounty: 0,
-    date: '',
-    time: '20:00',
-    maxPlayers: 12,
-    minPlayers: 2,
-    levelMins: 5,
-    rebuys: false,
-    rebuyUntilLevel: 2,
-    lateRegLevel: 2, // inclusive: closes at the end of this level
-    lateRegMode: 'level',lateRegCloseTime:'',
-    addon: true,
-    addonLevel: 3,
-    mttMode: true, // Real MTT is the default — the authentic tournament flow
-    pokerType: 'NLH',
-    startStack: 10000,
-    earlyRegistrationBonusPct: 0,
-    earlyRegistrationBonusUntilStart: true,
-    paidMode: 'fixed',
-    paidPct: 10,
-    paidPlaces: 3,
-    finishAtPaidPlaces: false,
-    payouts: [50, 30, 20],
-    mysteryBounty: false,
-    bountyMode:'fixed',progressiveCashPct:50,mysteryStartLevel:3,bountyBudgetRemaining:0,
-    maxRebuys:0,botRebuys:false,reentry:false,reentryBuyIn:0,reentryToPrizePool:false,maxReentries:1,tableSize:6,actionTime:25,anteFromLevel:10,
-    bountyFree: false,
-    botFill: false,
-    serverEngine: true,
-    prizeAsBonus: false,
-    structure: null,
-    anteMode: 'bb',
-    breakEvery: 10,
-    breakMins: 4
-  });
-  const [structOpen, setStructOpen] = useState(false);
+  const [opts, setOpts] = useState(tournamentDefaultOptions);
+  const [structOpen, setStructOpen] = useState(true);
+  const creationLock = useRef(false);
+  const [creatingTournament,setCreatingTournament] = useState(false);
   // Tournament templates — same local per-club mechanism as the table forms.
   // A template stores the whole config (incl. blind structure) minus name/date.
   const TOURTPL_KEY = 'tourTpl_' + CLUB_ID;
@@ -17304,7 +17310,7 @@ function TournamentsTab({
     }
   };
   // Current blind structure rows: the custom rows once edited, else the
-  // system default (TOUR_SCHEDULE + level length + ante from level 5).
+  // system default for new tournaments; saved events keep their own rows.
   const autoStructRows = () => TOUR_DEFAULT_STRUCT.map(([sb, bb], i) => ({
     sb,
     bb,
@@ -17313,7 +17319,12 @@ function TournamentsTab({
     ante: opts.anteMode === 'none' ? 0 : i+1 >= Number(opts.anteFromLevel) ? (opts.anteMode==='each'?sb:bb) : 0,
     mins: Number(opts.levelMins) || 5
   }));
-  const structRows = opts.structure || autoStructRows();
+  const structRows = (opts.structure || autoStructRows()).map(row => opts.anteMode === 'none' ? {...row,ante:0} : row);
+  const setAnteSettings = patch => setOpts(prev => {
+    const next = {...prev,...patch};
+    if (prev.structure) next.structure = prev.structure.map((row,i) => ({...row,ante:next.anteMode === 'none' || i+1 < Number(next.anteFromLevel) ? 0 : next.anteMode === 'each' ? row.sb : row.bb}));
+    return next;
+  });
   const setStructRow = (i, k, v) => {
     const val = Math.max(0, Number(v) || 0);
     const rows = structRows.map((r, j) => {
@@ -17371,7 +17382,12 @@ function TournamentsTab({
   }, []);
   const bounty = round2(Number(opts.bounty) || 0);
   const handleCreate = async () => {
-if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=tourRegistrationTime(opts.date+'T'+(opts.time||'20:00'));if(!Number.isFinite(startAt))return showToast('Choose a valid start date and time (Israel time).','error');const lateRegClosesAt=opts.lateRegMode==='time'?tourRegistrationTime(opts.lateRegCloseTime):0;if(opts.lateRegMode==='time'&&(!Number.isFinite(lateRegClosesAt)||lateRegClosesAt<=startAt))return showToast('Late registration closing time must be after the tournament start.','error');try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,earlyRegistrationBonusPct:Number(opts.earlyRegistrationBonusPct)||0,rebuys:false,maxRebuys:0,botRebuys:false,finishAtPaidPlaces:false,startAt,lateRegClosesAt,structure:opts.structure?.length?opts.structure:autoStructRows(),pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
+    if(creationLock.current)return;
+    creationLock.current=true;setCreatingTournament(true);
+    try{await createTournament();}finally{creationLock.current=false;setCreatingTournament(false);}
+  };
+  const createTournament = async () => {
+if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=tourRegistrationTime(opts.date+'T'+(opts.time||'20:00'));if(!Number.isFinite(startAt))return showToast('Choose a valid start date and time (Israel time).','error');const lateRegClosesAt=opts.lateRegMode==='time'?tourRegistrationTime(opts.lateRegCloseTime):0;if(opts.lateRegMode==='time'&&(!Number.isFinite(lateRegClosesAt)||lateRegClosesAt<=startAt))return showToast('Late registration closing time must be after the tournament start.','error');try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,earlyRegistrationBonusPct:Number(opts.earlyRegistrationBonusPct)||0,rebuys:false,maxRebuys:0,botRebuys:false,finishAtPaidPlaces:false,startAt,lateRegClosesAt,structure:structRows,pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
 
     if (!opts.name.trim()) return showToast("Name the tournament", "error");
     if (!opts.date) return showToast("Choose a start date", "error");
@@ -17622,7 +17638,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     className: "fa-solid fa-plus ml-2"
   }), "New tournament")), showCreate && React.createElement("div", {
     className: "glass-panel p-6 rounded-2xl mb-6 border border-purple-500/30 animate-pop-in"
-  }, tTpls.length > 0 && React.createElement("div", {
+  }, React.createElement('button',{type:'button',className:'pt-restore-tournament-defaults',onClick:()=>{setOpts(prev=>({...tournamentDefaultOptions(),name:prev.name,date:prev.date,time:prev.time}));setStructOpen(true);}},'Restore default settings'), tTpls.length > 0 && React.createElement("div", {
     className: "flex flex-wrap gap-2 items-center pb-4 mb-4 border-b border-white/8"
   }, React.createElement("span", {
     className: "text-[11px] font-black text-purple-300 uppercase tracking-widest shrink-0"
@@ -17690,7 +17706,101 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     }),
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold",
     dir: "ltr"
-  })), isPoker && React.createElement(TournamentEarlyBonusFields,{value:opts,onChange:setOpts}),
+  })), isPoker && React.createElement("div", {
+    className: "col-span-full tournament-blind-settings", 'aria-label':'Blinds and ante'
+  }, React.createElement('h3',{className:'tournament-blind-title'},'Blinds and ante'),
+  React.createElement('label',{className:'tournament-no-ante'},React.createElement('input',{
+    type:'checkbox','aria-label':'No ante',checked:opts.anteMode==='none',onChange:e=>setAnteSettings({anteMode:e.target.checked?'none':'bb'})
+  }),'No ante'),
+  React.createElement('div',{className:'tournament-ante-controls tournament-starting-blinds'},
+    React.createElement(Field,{label:'Starting small blind (SB)'},React.createElement('input',{'aria-label':'Starting small blind (SB)',type:'number',min:0.01,step:0.01,value:structRows[0].sb,onChange:e=>setStructRow(0,'sb',e.target.value)})),
+    React.createElement(Field,{label:'Starting big blind (BB)'},React.createElement('input',{'aria-label':'Starting big blind (BB)',type:'number',min:structRows[0].sb,step:0.01,value:structRows[0].bb,onChange:e=>setStructRow(0,'bb',e.target.value)}))),
+  React.createElement('div',{className:'tournament-ante-controls'},
+    React.createElement(Field,{label:'Ante type'},React.createElement('select',{'aria-label':'Ante type',value:opts.anteMode||'bb',onChange:e=>setAnteSettings({anteMode:e.target.value})},
+      React.createElement('option',{value:'none'},'No ante'),React.createElement('option',{value:'bb'},'Big blind ante'),React.createElement('option',{value:'each'},'Each player posts an ante'))),
+    React.createElement(Field,{label:'Ante starts at level'},React.createElement('input',{'aria-label':'Ante starts at level',type:'number',min:1,max:100,step:1,disabled:opts.anteMode==='none',value:opts.anteFromLevel,onChange:e=>setAnteSettings({anteFromLevel:Number(e.target.value)})})),
+    React.createElement(Field,{label:'Level length (min)'},React.createElement('input',{'aria-label':'Level length (min)',type:'number',min:1,max:120,step:1,value:opts.levelMins,onChange:e=>setOpts(prev=>({...prev,levelMins:Number(e.target.value),structure:prev.structure?.map(row=>({...row,mins:Number(e.target.value)}))||null}))}))),
+  React.createElement('p',{className:'tournament-ante-summary'},opts.anteMode==='none'?'No ante in any level.':(opts.anteMode==='each'?'Each player posts the level ante.':'The big blind posts the level ante.')+' Starts at level '+opts.anteFromLevel+'.'),
+  React.createElement("button", {
+    type: "button", 'aria-expanded':structOpen,
+    onClick: () => setStructOpen(o => !o),
+    className: "w-full flex items-center justify-between bg-slate-900/80 border border-purple-500/30 rounded-xl px-4 py-3 text-white font-black text-sm"
+  }, React.createElement("span", null, "🎚 Blind structure · ", structRows.length, " levels", opts.structure ? ' · CUSTOM' : ' · auto', Number(opts.breakEvery) > 0 ? ` · ☕ break ${opts.breakMins}m every ${opts.breakEvery} levels` : ''), React.createElement("i", {
+    className: `fa-solid fa-chevron-${structOpen ? 'up' : 'down'} text-purple-300`
+  })), structOpen && React.createElement("div", {
+    className: "tournament-blind-editor mt-2 bg-slate-950/60 border border-white/10 rounded-xl p-3"
+  }, React.createElement("div", {
+    className: "flex flex-wrap items-center gap-3 mb-3"
+  }, React.createElement("span", {
+    className: "text-[11px] font-black text-sky-300"
+  }, "☕ Break every"), React.createElement("input", {
+    type: "number",
+    min: "0",
+    max: "50",
+    value: opts.breakEvery,
+    onChange: e => setOpts({
+      ...opts,
+      breakEvery: e.target.value
+    }),
+    className: "w-16 bg-slate-900 text-white border border-white/10 rounded-lg p-2 text-sm font-bold text-center",
+    dir: "ltr"
+  }), React.createElement("span", {
+    className: "text-[11px] font-bold text-slate-400"
+  }, "levels (0 = none) for"), React.createElement("input", {
+    type: "number",
+    min: "1",
+    max: "60",
+    value: opts.breakMins,
+    onChange: e => setOpts({
+      ...opts,
+      breakMins: e.target.value
+    }),
+    className: "w-16 bg-slate-900 text-white border border-white/10 rounded-lg p-2 text-sm font-bold text-center",
+    dir: "ltr"
+  }), React.createElement("span", {
+    className: "text-[11px] font-bold text-slate-400"
+  }, "minutes · one clock for ALL tables — a table that ends its hand late just gets a shorter break"), opts.structure && React.createElement("button", {
+    type: "button",
+    onClick: () => setOpts({
+      ...opts,
+      structure: null
+    }),
+    className: "text-[11px] font-black text-amber-300 underline mr-auto"
+  }, "↺ Reset to system structure")), React.createElement("div", {
+    className: "tournament-blind-rows grid gap-1",
+    "aria-label": "Tournament blind levels",
+    dir: "ltr"
+  }, React.createElement("div", {
+    className: "tournament-blind-header text-[10px] font-black text-slate-500 uppercase"
+  }, React.createElement("span", null, "Lvl"), React.createElement("span", null, "SB"), React.createElement("span", null, "BB"), React.createElement("span", null, "Ante"), React.createElement("span", null, "Min"), React.createElement("span", null, "")), structRows.map((r, i) => React.createElement(React.Fragment, {
+    key: i
+  }, React.createElement("div", {
+    className: "tournament-blind-row"
+  }, React.createElement("span", {
+    className: "tournament-blind-level text-[11px] font-black text-purple-300 text-center"
+  }, i + 1), ['sb', 'bb', 'ante', 'mins'].map(k => React.createElement('label',{key:k,className:'tournament-blind-field'},React.createElement('span',null,({sb:'SB',bb:'BB',ante:'Ante',mins:'Min'})[k]),React.createElement("input", {
+    'aria-label': `Level ${i+1} ${k}`,
+    type: "number",
+    min: k==='ante'?0:k==='mins'?1:0.01, step:k==='mins'?1:0.01,
+    disabled:k==='ante'&&opts.anteMode==='none',
+    value: r[k],
+    onChange: e => setStructRow(i, k, e.target.value),
+    className: "bg-slate-900 text-white border border-white/10 rounded-lg p-1.5 text-xs font-bold text-center"
+  }))), React.createElement("span", {
+    className: "tournament-blind-actions flex gap-1 justify-center"
+  }, React.createElement("button", {
+    type: "button",
+    title: "Add a level after this one",
+    onClick: () => addStructRow(i),
+    className: "w-6 h-6 rounded-md bg-slate-800 text-emerald-300 hover:bg-emerald-800 text-xs font-black"
+  }, "+"), structRows.length > 1 && React.createElement("button", {
+    type: "button",
+    title: "Remove this level",
+    onClick: () => delStructRow(i),
+    className: "w-6 h-6 rounded-md bg-slate-800 text-rose-300 hover:bg-rose-900 text-xs font-black"
+  }, "✕")))))), React.createElement("p", {
+    className: "text-[10px] text-slate-500 font-bold mt-2"
+  }, "Editing any cell, ✕ or + switches to CUSTOM. The tournament locks its structure at creation."))), isPoker && React.createElement(TournamentEarlyBonusFields,{value:opts,onChange:setOpts}),
   React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, isPoker&&opts.prizePoolMode==='fixed'?"Buy-in to club (fixed prize pool)":"Buy-in to the prize pool (0 = freeroll)"), React.createElement("input", {
@@ -17780,7 +17890,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   }, "🎁 Club-funded bounty — free for players")), React.createElement("p", {
     className: "text-[10px] text-emerald-300/70 font-bold mt-1"
   }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && React.createElement('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-3', 'data-tournament-options':true},
- ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
+ ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
  React.createElement(Field,{label:'Bounty type'},React.createElement('select',{value:opts.bountyMode,onChange:e=>setOpts({...opts,bountyMode:e.target.value}),className:'w-full bg-slate-900 text-white p-2 rounded-lg'},...['fixed','progressive','mystery'].map(x=>React.createElement('option',{key:x,value:x},x)))),
  React.createElement('p',{className:'text-xs text-slate-300 sm:col-span-2'},opts.prizePoolMode==='fixed'?'Fixed pool: every entry and re-entry is club income. The prize total does not change.':'Choose whether the re-entry price increases the prize pool or is club income. Club entry fee and any player-funded bounty are added to the displayed total.'),
  ...[['reentry','Allow re-entry during late registration'],['reentryToPrizePool','Add re-entry price to the prize pool']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',disabled:key==='reentryToPrizePool'&&opts.prizePoolMode==='fixed',checked:key==='reentryToPrizePool'&&opts.prizePoolMode==='fixed'?false:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
@@ -17840,111 +17950,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     }),
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold",
     dir: "ltr"
-  })), isPoker && React.createElement("div", null, React.createElement("label", {
-    className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
-  }, "Level length (min)"), React.createElement("select", {
-    value: opts.levelMins,
-    onChange: e => setOpts({
-      ...opts,
-      levelMins: parseInt(e.target.value)
-    }),
-    className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold"
-  }, [3, 5, 10].map(n => React.createElement("option", {
-    key: n,
-    value: n
-  }, n, " min")))), isPoker && React.createElement("div", {
-    className: "col-span-full"
-  }, React.createElement("button", {
-    type: "button",
-    onClick: () => setStructOpen(o => !o),
-    className: "w-full flex items-center justify-between bg-slate-900/80 border border-purple-500/30 rounded-xl px-4 py-3 text-white font-black text-sm"
-  }, React.createElement("span", null, "🎚 Blind structure · ", structRows.length, " levels", opts.structure ? ' · CUSTOM' : ' · auto', Number(opts.breakEvery) > 0 ? ` · ☕ break ${opts.breakMins}m every ${opts.breakEvery} levels` : ''), React.createElement("i", {
-    className: `fa-solid fa-chevron-${structOpen ? 'up' : 'down'} text-purple-300`
-  })), structOpen && React.createElement("div", {
-    className: "tournament-blind-editor mt-2 bg-slate-950/60 border border-white/10 rounded-xl p-3"
-  }, React.createElement("div", {
-    className: "flex flex-wrap items-center gap-3 mb-3"
-  }, React.createElement("span", {
-    className: "text-[11px] font-black text-sky-300"
-  }, "☕ Break every"), React.createElement("input", {
-    type: "number",
-    min: "0",
-    max: "50",
-    value: opts.breakEvery,
-    onChange: e => setOpts({
-      ...opts,
-      breakEvery: e.target.value
-    }),
-    className: "w-16 bg-slate-900 text-white border border-white/10 rounded-lg p-2 text-sm font-bold text-center",
-    dir: "ltr"
-  }), React.createElement("span", {
-    className: "text-[11px] font-bold text-slate-400"
-  }, "levels (0 = none) for"), React.createElement("input", {
-    type: "number",
-    min: "1",
-    max: "60",
-    value: opts.breakMins,
-    onChange: e => setOpts({
-      ...opts,
-      breakMins: e.target.value
-    }),
-    className: "w-16 bg-slate-900 text-white border border-white/10 rounded-lg p-2 text-sm font-bold text-center",
-    dir: "ltr"
-  }), React.createElement("span", {
-    className: "text-[11px] font-bold text-slate-400"
-  }, "minutes · one clock for ALL tables — a table that ends its hand late just gets a shorter break"), React.createElement("select", {
-    value: opts.anteMode || 'bb',
-    onChange: e => setOpts({
-      ...opts,
-      anteMode: e.target.value
-    }),
-    title: "BB-ante: from level 10 the big blind alone posts one extra BB as the whole table's ante",
-    className: "bg-slate-900 text-white border border-white/10 rounded-lg p-2 text-xs font-bold"
-  }, React.createElement("option", {
-    value: "bb"
-  }, "BB-ante from L10 (big blind pays BB+BB)"), React.createElement("option", {
-    value: "none"
-  }, "No ante"),React.createElement("option",{value:"each"},"Each player posts an ante")), opts.structure && React.createElement("button", {
-    type: "button",
-    onClick: () => setOpts({
-      ...opts,
-      structure: null
-    }),
-    className: "text-[11px] font-black text-amber-300 underline mr-auto"
-  }, "↺ Reset to system structure")), React.createElement("div", {
-    className: "tournament-blind-rows grid gap-1",
-    "aria-label": "Tournament blind levels",
-    dir: "ltr"
-  }, React.createElement("div", {
-    className: "tournament-blind-header text-[10px] font-black text-slate-500 uppercase"
-  }, React.createElement("span", null, "Lvl"), React.createElement("span", null, "SB"), React.createElement("span", null, "BB"), React.createElement("span", null, "Ante"), React.createElement("span", null, "Min"), React.createElement("span", null, "")), structRows.map((r, i) => React.createElement(React.Fragment, {
-    key: i
-  }, React.createElement("div", {
-    className: "tournament-blind-row"
-  }, React.createElement("span", {
-    className: "tournament-blind-level text-[11px] font-black text-purple-300 text-center"
-  }, i + 1), ['sb', 'bb', 'ante', 'mins'].map(k => React.createElement('label',{key:k,className:'tournament-blind-field'},React.createElement('span',null,({sb:'SB',bb:'BB',ante:'Ante',mins:'Min'})[k]),React.createElement("input", {
-    'aria-label': `Level ${i+1} ${k}`,
-    type: "number",
-    min: "0",
-    value: r[k],
-    onChange: e => setStructRow(i, k, e.target.value),
-    className: "bg-slate-900 text-white border border-white/10 rounded-lg p-1.5 text-xs font-bold text-center"
-  }))), React.createElement("span", {
-    className: "tournament-blind-actions flex gap-1 justify-center"
-  }, React.createElement("button", {
-    type: "button",
-    title: "Add a level after this one",
-    onClick: () => addStructRow(i),
-    className: "w-6 h-6 rounded-md bg-slate-800 text-emerald-300 hover:bg-emerald-800 text-xs font-black"
-  }, "+"), structRows.length > 1 && React.createElement("button", {
-    type: "button",
-    title: "Remove this level",
-    onClick: () => delStructRow(i),
-    className: "w-6 h-6 rounded-md bg-slate-800 text-rose-300 hover:bg-rose-900 text-xs font-black"
-  }, "✕")))))), React.createElement("p", {
-    className: "text-[10px] text-slate-500 font-bold mt-2"
-  }, "Editing any cell, ✕ or + switches to CUSTOM. The tournament locks its structure at creation."))), isPoker && React.createElement("div", {
+  })), isPoker && React.createElement("div", {
     className: "flex flex-col gap-2 justify-end"
   }, React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer"
@@ -17983,7 +17989,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     className: "accent-amber-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-amber-300 text-xs font-black"
-  }, "🏆 Real MTT engine (9-max final table)")), React.createElement("label", {
+  }, "🏆 Multi-table tournament · up to ", window.PokerTournament?.capacity(opts)||Number(opts.tableSize)||8, " players per table")), React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer mt-2"
   }, React.createElement("input", {
     type: "checkbox",
@@ -18111,8 +18117,9 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     className: "flex gap-3 flex-wrap items-center"
   }, React.createElement("button", {
     onClick: handleCreate,
+    disabled:creatingTournament, 'aria-busy':creatingTournament,
     className: "w-full sm:w-auto order-first bg-gradient-to-b from-purple-500 to-purple-700 hover:from-purple-400 text-white px-8 py-3 rounded-xl font-black shadow-lg text-base"
-  }, "🏆 Open registration"), React.createElement("input", {
+  }, creatingTournament?'Opening registration…':"🏆 Open registration"), React.createElement("input", {
     value: tTplName,
     onChange: e => setTTplName(e.target.value),
     placeholder: "Template name (optional)",

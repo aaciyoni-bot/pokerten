@@ -480,3 +480,15 @@ test('old client background departure checks are inert for approved players whil
  assert.deepEqual(await get('tables/'+tableId),before);
  assert.equal((await call('pkLeave',owner,{tableId,targetUid:a,intent:'kick'})).queued,true);
 });
+
+test('fixed prize edit is authorized, atomic with registration, and cancellation refunds all escrow exactly once',async()=>{
+ const a='fixed-early-a',b='fixed-early-b';await fresh(a,1000);await fresh(b,1000);const treasury=await bank(owner);
+ const {tournamentId:id}=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Fixed 4000',addedPrize:4000,buyIn:100,fee:5,startStack:30000,startAt:Date.now()+600000,maxPlayers:4}});
+ await call('pkTournament',a,{op:'register',tournamentId:id});assert.equal((await get('tournaments/'+id)).prizePool,4100);
+ const change={op:'prizeconfig',tournamentId:id,prizePoolMode:'fixed',addedPrize:4000,earlyRegistrationBonusPct:20,earlyRegistrationBonusUntilStart:true};
+ await assert.rejects(call('pkTournament',a,change),e=>e.code==='permission-denied');
+ await Promise.all([call('pkTournament',owner,change),call('pkTournament',b,{op:'register',tournamentId:id})]);
+ const t=await get('tournaments/'+id);assert.equal(t.prizePool,4000);assert.equal(t.feeTotal,210);assert.equal(t.players[a].entryStartStack,36000);assert.equal(t.players[b].entryStartStack,36000);assert.equal(await bank(owner),treasury-4000);
+ await call('pkTournament',a,{op:'unregister',tournamentId:id});assert.equal((await get('tournaments/'+id)).prizePool,4000);assert.equal(await bank(a),1000);
+ await call('pkTournament',owner,{op:'cancel',tournamentId:id});await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),treasury);assert.equal(await bank(b),1000);
+});

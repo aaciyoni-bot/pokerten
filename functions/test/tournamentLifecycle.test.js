@@ -360,3 +360,50 @@ test('manager may change the cutoff by level, clearing a time override, and both
  f.advance(1);f.member('tooLate');await assert.rejects(f.command('tooLate','register',{tournamentId:id}),/Registration closed/);await assert.rejects(f.command('owner','fillbots',{tournamentId:id}),/Late registration is closed/);
  assert.equal(f.balance('tooLate'),1000);
 });
+
+test('fixed 4000 pool survives paid entries, paid re-entry and add-ons, then pays exactly 4000 once',async()=>{
+ const f=fixture(83),id=await create(f,{prizePoolMode:'fixed',addedPrize:4000,buyIn:100,reentryBuyIn:75,reentryToPrizePool:true,fee:2,reentry:true,maxReentries:2,lateRegUntilLevel:1,addon:true,addonLevel:1,earlyRegistrationBonusPct:20,earlyRegistrationBonusUntilStart:true,startStack:30000,payouts:[50,30,20]});
+ await startHumans(f,id,3);assert.equal(f.tour(id).prizePool,4000);assert.equal(T.chips(f.tables(id)),108000);
+ const row=f.docs.get('tables/'+f.tour(id).players.human0.tableId);row.players.human1.stack+=row.players.human0.stack;row.players.human0.stack=0;row.players.human0.status='out';f.tour(id).players.human0.out=true;
+ await f.command('human0','register',{tournamentId:id});assert.equal(f.tour(id).players.human0.entryStartStack,30000);assert.equal(f.tour(id).prizePool,4000);
+ await f.command('human1','addon',{tournamentId:id});assert.equal(f.tour(id).prizePool,4000);assert.equal(f.tour(id).feeTotal,483);assert.equal(f.balance('human0'),821);assert.equal(f.balance('human1'),798);
+ for(let ticks=0;ticks<300&&f.tour(id).status==='running';ticks++){f.advance(10000);await f.tours.tickTournament(id,f.now());if(f.tour(id).status!=='running')break;for(const row of f.tables(id))await playOne(f,row);}
+ const done=f.tour(id);assert.equal(done.status,'done');assert.equal(done.finalPrizePool,4000);assert.equal(done.results.reduce((n,p)=>n+p.prize,0),4000);assert.equal(done.finalFeeTotal,483);assert.equal(f.balance('owner'),96483);
+ assert.equal([...f.docs].filter(([p])=>p.startsWith('memberships/')).reduce((n,[,d])=>n+d.balance,0),103000,'Every wallet unit is conserved');
+ const balances=copy([...f.docs]);await f.tours.tickTournament(id,f.now()+100000);assert.deepEqual([...f.docs],balances);
+});
+
+test('fixed pool refunds entry and fee on unregister/removal and returns the reserve exactly once on cancellation',async()=>{
+ const f=fixture(),id=await create(f,{prizePoolMode:'fixed',addedPrize:4000,buyIn:100,fee:5});
+ for(const uid of ['a','b']){f.member(uid);await f.command(uid,'register',{tournamentId:id});}
+ await f.command('owner','fillbots',{tournamentId:id});assert.equal(f.tour(id).prizePool,4000);assert.equal(f.tour(id).feeTotal,315);
+ await f.command('a','unregister',{tournamentId:id});await f.command('owner','removeplayer',{tournamentId:id,playerUid:'b'});
+ assert.equal(f.balance('a'),1000);assert.equal(f.balance('b'),1000);assert.equal(f.tour(id).prizePool,4000);assert.equal(f.tour(id).feeTotal,105);
+ await f.command('owner','cancel',{tournamentId:id});await f.command('owner','cancel',{tournamentId:id});assert.equal(f.balance('owner'),100000);assert.equal(f.tour(id).feeTotal,0);
+});
+
+test('manager converts an existing 4100 pool to fixed 4000 and applies the chosen bonus to current registrants',async()=>{
+ const f=fixture(),id=await create(f,{addedPrize:4000,buyIn:100,fee:0,startStack:30000,startAt:NOW+1});f.member('a');await f.command('a','register',{tournamentId:id});assert.equal(f.tour(id).prizePool,4100);
+ const args={tournamentId:id,prizePoolMode:'fixed',addedPrize:4000,earlyRegistrationBonusPct:20,earlyRegistrationBonusUntilStart:true};
+ await assert.rejects(f.command('a','prizeconfig',args),e=>e.code==='permission-denied');
+ f.advance(2);await f.command('owner','prizeconfig',args,'fixed-config-once');await f.command('owner','prizeconfig',args,'fixed-config-once');
+ assert.equal(f.tour(id).prizePool,4000);assert.equal(f.tour(id).feeTotal,100);assert.equal(f.tour(id).players.a.feesPaid,100);assert.equal(f.tour(id).players.a.entryStartStack,36000);assert.equal(f.balance('owner'),96000);assert.equal(f.balance('a'),900);
+ f.member('b');await f.command('b','register',{tournamentId:id});assert.equal(f.tour(id).players.b.entryStartStack,36000,'Delayed start retains the requested bonus');assert.equal(f.tour(id).prizePool,4000);
+ await f.command('owner','prizeconfig',{...args,addedPrize:4500});assert.equal(f.balance('owner'),95500);assert.equal(f.tour(id).prizePool,4500);
+ await f.command('owner','prizeconfig',{...args,prizePoolMode:'entries'});assert.equal(f.tour(id).prizePool,4200);assert.equal(f.tour(id).feeTotal,0);assert.equal(f.balance('owner'),96000);
+ await f.command('owner','prizeconfig',args);await f.command('owner','start',{tournamentId:id});assert.equal(T.chips(f.tables(id)),72000);
+ await assert.rejects(f.command('owner','prizeconfig',{...args,addedPrize:1}),/before the tournament starts/);assert.equal(f.tour(id).prizePool,4000);
+});
+
+test('fixed pool rejects invalid configuration and fails an unaffordable reserve edit atomically',async()=>{
+ const f=fixture();assert.throws(()=>f.tours.config({name:'Invalid',prizePoolMode:'fixed'},'clubA','owner',NOW),/greater than zero/);assert.throws(()=>f.tours.config({name:'Invalid',prizePoolMode:'fake'},'clubA','owner',NOW),/Invalid prize pool/);
+ const id=await create(f,{prizePoolMode:'fixed',addedPrize:4000});const before=copy([...f.docs]);
+ await assert.rejects(f.command('owner','prizeconfig',{tournamentId:id,prizePoolMode:'fixed',addedPrize:200000,earlyRegistrationBonusPct:20,earlyRegistrationBonusUntilStart:true}));assert.deepEqual([...f.docs],before);
+});
+
+test('until-start bonus includes all pre-start registrants and automatic fill, but stops on actual start',async()=>{
+ const f=fixture(),id=await create(f,{startAt:NOW+1,earlyRegistrationBonusPct:20,earlyRegistrationBonusUntilStart:true,botFill:true,maxPlayers:3,lateRegUntilLevel:1});
+ f.advance(2);f.member('a');await f.command('a','register',{tournamentId:id});assert.equal(f.tour(id).players.a.entryStartStack,120);
+ await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).status,'running');assert.equal(T.chips(f.tables(id)),360);
+ assert.equal(T.earlyRegistrationBonus(f.tour(id),f.now()),0);
+});

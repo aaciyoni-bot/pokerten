@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="337">
-    <script src="assets/js/app-update.js?v=337" defer></script>
+    <meta name="app-version" content="338">
+    <script src="assets/js/app-update.js?v=338" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1189,7 +1189,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <link rel="stylesheet" href="assets/css/settlement.css?v=313">
     <script src="assets/js/poker-settlement-ui.js?v=313"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
-    <script src="assets/js/poker-tournament.js?v=327"></script>
+    <script src="assets/js/poker-tournament.js?v=338"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
     <script src="assets/js/poker-range-model.js?v=304"></script>
 <script>
@@ -4192,7 +4192,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 337. Check for updates'},'v337 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 338. Check for updates'},'v338 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -15832,6 +15832,29 @@ const tourRegistrationTime = value => {
  return tourRegistrationInput(at)===value?at:NaN;
 };
 const tourRegistrationLabel = tor => tor.lateRegClosesAt>0?'Late registration until '+new Date(tor.lateRegClosesAt).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' (Israel time)':tor.lateRegUntilLevel>0?'Late registration through the end of level '+tor.lateRegUntilLevel:'Late registration off';
+function TournamentEarlyBonusFields({value,onChange}){
+ const h=React.createElement,pct=Number(value.earlyRegistrationBonusPct)||0,stack=Number(value.startStack)||0;
+ return h('section',{className:'pt-tour-early-bonus col-span-full rounded-2xl border border-sky-400/40 bg-sky-950/40 p-4'},
+  h('label',{className:'block text-sky-200 font-bold mb-2'},'Early registration bonus (%)',h('input',{type:'number',min:0,max:100,step:0.01,required:true,'aria-label':'Early registration bonus (%)',value:value.earlyRegistrationBonusPct??0,onChange:e=>onChange({...value,earlyRegistrationBonusPct:e.target.value}),className:'w-full bg-slate-900 text-white border border-sky-700 rounded-xl p-3',dir:'ltr'})),
+  h('p',{className:'text-sm text-sky-100 mt-2',role:'status'},'Early starting stack: '+formatMoney(stack+Math.floor(stack*pct/100))+' chips'),
+  h('label',{className:'flex items-center gap-2 text-sm text-sky-100 mt-3'},h('input',{type:'checkbox',checked:!!value.earlyRegistrationBonusUntilStart,onChange:e=>onChange({...value,earlyRegistrationBonusUntilStart:e.target.checked})}),'Bonus until the tournament actually starts'),
+  h('p',{className:'text-sm text-slate-300 mt-2'},'0 = off. Extra starting chips for every first registration '+(value.earlyRegistrationBonusUntilStart?'before play starts, even if the start is delayed.':'before the scheduled start time.')+' Applies to players and bots. Late entries, re-entries and add-ons receive no early bonus.'));
+}
+function TournamentPrizePoolFields({value,onChange}){
+ const h=React.createElement,fixed=value.prizePoolMode==='fixed',style={width:'100%',minWidth:0,marginTop:8,padding:12,border:'1px solid #608295',borderRadius:12,background:'#091927',color:'#fff'};
+ return h('section',{className:'pt-tour-prize-settings col-span-full rounded-2xl border border-sky-400/40 p-4'},
+  h('label',{className:'block font-bold mb-3'},'Prize pool type',h('select',{'aria-label':'Prize pool type',value:value.prizePoolMode||'entries',onChange:e=>onChange({...value,prizePoolMode:e.target.value}),style},h('option',{value:'fixed'},'Fixed total prize pool'),h('option',{value:'entries'},'Entries + house contribution'))),
+  h('label',{className:'block font-bold'},fixed?'Fixed total prize pool':'House contribution to prize pool',h('input',{type:'number',min:fixed?0.01:0,max:10000000,step:0.01,required:true,'aria-label':'House-funded prize amount',value:value.addedPrize??0,onChange:e=>onChange({...value,addedPrize:e.target.value}),style,dir:'ltr'})),
+  h('p',{className:'text-sm text-sky-100 mt-3',role:'status'},fixed?'Total prizes stay at '+formatMoney(Number(value.addedPrize)||0)+'. Entries, re-entries and add-ons are club income and never increase this amount.':'House contribution + entry payments. Re-entry funding follows the setting below.'),
+  h('p',{className:'text-sm text-slate-300 mt-2'},'The house-funded amount is reserved from the club treasury. Knockout bounties are funded separately.'));
+}
+function TournamentPrizeEditor({tor,showToast}){
+ const h=React.createElement,[value,setValue]=useState(()=>({...tor,prizePoolMode:tor.prizePoolMode||'entries',earlyRegistrationBonusUntilStart:tor.earlyRegistrationBonusUntilStart??true})),[busy,setBusy]=useState(false),lock=useRef(false);
+ const save=async e=>{e.preventDefault();if(lock.current)return;lock.current=true;setBusy(true);try{
+  await pokerCommand('pkTournament',{op:'prizeconfig',tournamentId:tor.id,prizePoolMode:value.prizePoolMode,addedPrize:Number(value.addedPrize),earlyRegistrationBonusPct:Number(value.earlyRegistrationBonusPct)||0,earlyRegistrationBonusUntilStart:!!value.earlyRegistrationBonusUntilStart});showToast('Prize pool and early bonus updated for all registered players.','success');
+ }catch(error){showToast(error.message||'Could not update tournament settings.','error');}finally{lock.current=false;setBusy(false);}};
+ return h('form',{className:'pt-prize-editor',onSubmit:save,style:{display:'grid',gap:12,padding:12}},h(TournamentPrizePoolFields,{value,onChange:setValue}),h(TournamentEarlyBonusFields,{value,onChange:setValue}),h('p',{className:'text-sm text-slate-300'},'Changes apply to players already registered. Settings lock when the tournament starts.'),h('button',{type:'submit',className:'pt-tour-primary',disabled:busy},busy?'Saving…':'Save prize and bonus'));
+}
 function TournamentRegistrationEditor({tor,showToast,onSaved}){
  const [mode,setMode]=useState(tor.lateRegClosesAt>0?'time':'level');
  const [level,setLevel]=useState(tor.lateRegUntilLevel||0);
@@ -17116,6 +17139,7 @@ function TournamentsTab({
     buyIn: 500,
     fee: 50,
     addedPrize: 0,
+    prizePoolMode: 'entries',
     bounty: 0,
     date: '',
     time: '20:00',
@@ -17132,6 +17156,7 @@ function TournamentsTab({
     pokerType: 'NLH',
     startStack: 10000,
     earlyRegistrationBonusPct: 0,
+    earlyRegistrationBonusUntilStart: true,
     paidMode: 'fixed',
     paidPct: 10,
     paidPlaces: 3,
@@ -17190,6 +17215,8 @@ function TournamentsTab({
       reentryToPrizePool:tp.opts.reentryToPrizePool??true,
       lateRegCloseTime:'',
       earlyRegistrationBonusPct:tp.opts.earlyRegistrationBonusPct??0,
+      earlyRegistrationBonusUntilStart:tp.opts.earlyRegistrationBonusUntilStart??true,
+      prizePoolMode:tp.opts.prizePoolMode??'entries',
       name: prev.name,
       date: prev.date,
       time: prev.time
@@ -17661,14 +17688,10 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     }),
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold",
     dir: "ltr"
-  })), isPoker && React.createElement("section",{className:"col-span-full rounded-2xl border border-sky-400/40 bg-sky-950/40 p-4"},
-    React.createElement("label",{htmlFor:"tour-early-bonus",className:"block text-sky-200 font-bold mb-2"},"Early registration bonus (%)"),
-    React.createElement("input",{id:"tour-early-bonus",type:"number",min:0,max:100,step:0.01,"aria-label":"Early registration bonus (%)",value:opts.earlyRegistrationBonusPct??0,onChange:e=>setOpts({...opts,earlyRegistrationBonusPct:e.target.value}),className:"w-full bg-slate-900 text-white border border-sky-700 rounded-xl p-3",dir:"ltr"}),
-    React.createElement("p",{className:"text-sm text-sky-100 mt-2",role:"status"},'Early starting stack: '+formatMoney(Number(opts.startStack)+Math.floor(Number(opts.startStack)*(Number(opts.earlyRegistrationBonusPct)||0)/100))+' chips'),
-    React.createElement("p",{className:"text-sm text-slate-300 mt-2"},'0 = off. First registration before the scheduled start earns extra tournament chips, for players and bots. Late registration and re-entry receive the standard stack.')),
+  })), isPoker && React.createElement(TournamentEarlyBonusFields,{value:opts,onChange:setOpts}),
   React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
-  }, "Buy-in to the prize pool (0 = freeroll)"), React.createElement("input", {
+  }, isPoker&&opts.prizePoolMode==='fixed'?"Buy-in to club (fixed prize pool)":"Buy-in to the prize pool (0 = freeroll)"), React.createElement("input", {
     type: "number",
     min: "0",
     step: "10",
@@ -17692,7 +17715,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     }),
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold",
     dir: "ltr"
-  })), React.createElement("div", null, React.createElement("label", {
+  })), isPoker ? React.createElement(TournamentPrizePoolFields,{value:opts,onChange:setOpts}) : React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "Guaranteed prize from the house 🎁"), React.createElement("input", {
     type: "number",
@@ -17757,8 +17780,8 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && React.createElement('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-3', 'data-tournament-options':true},
  ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['anteFromLevel','Ante starts at level',1,100],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
  React.createElement(Field,{label:'Bounty type'},React.createElement('select',{value:opts.bountyMode,onChange:e=>setOpts({...opts,bountyMode:e.target.value}),className:'w-full bg-slate-900 text-white p-2 rounded-lg'},...['fixed','progressive','mystery'].map(x=>React.createElement('option',{key:x,value:x},x)))),
- React.createElement('p',{className:'text-xs text-slate-300 sm:col-span-2'},'Choose whether the re-entry price increases the prize pool or is club income. This applies to both freerolls and paid-entry tournaments. Club entry fee and any player-funded bounty are added to the displayed total.'),
- ...[['reentry','Allow re-entry during late registration'],['reentryToPrizePool','Add re-entry price to the prize pool']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',checked:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
+ React.createElement('p',{className:'text-xs text-slate-300 sm:col-span-2'},opts.prizePoolMode==='fixed'?'Fixed pool: every entry and re-entry is club income. The prize total does not change.':'Choose whether the re-entry price increases the prize pool or is club income. Club entry fee and any player-funded bounty are added to the displayed total.'),
+ ...[['reentry','Allow re-entry during late registration'],['reentryToPrizePool','Add re-entry price to the prize pool']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',disabled:key==='reentryToPrizePool'&&opts.prizePoolMode==='fixed',checked:key==='reentryToPrizePool'&&opts.prizePoolMode==='fixed'?false:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),
  React.createElement('p',{className:'text-xs text-slate-400 sm:col-span-2'},'Mystery starts after late registration closes. Club reserves fund free bounties. Bots use mixed playing styles and the same entry rules.')), React.createElement("div", null, React.createElement("label", {
     className: "text-slate-400 text-xs font-bold mb-1 block uppercase tracking-widest"
   }, "Start date"), React.createElement("input", {
@@ -18082,7 +18105,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     className: `text-xs font-black ${(opts.payouts || []).slice(0, opts.paidPlaces).reduce((sm, x) => sm + (Number(x) || 0), 0) === 100 ? 'text-emerald-400' : 'text-rose-400'}`
   }, "Total ", (opts.payouts || []).slice(0, opts.paidPlaces).reduce((sm, x) => sm + (Number(x) || 0), 0), "%"))), React.createElement("span", {
     className: "text-xs text-slate-500 font-bold"
-  }, "Entry: ", formatMoney(round2((Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) + (isPoker ? bounty : 0))), " (", formatMoney(Number(opts.buyIn) || 0), " to pool + ", formatMoney(Number(opts.fee) || 0), " to club", isPoker && bounty > 0 ? ` + ${formatMoney(bounty)} bounty` : '', ")", (Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) === 0 ? ' · 🎁 Freeroll!' : '', isPoker ? ` · stack ${Number(opts.startStack) || 1000}` : ' · knockout'), React.createElement("div", {
+  }, "Entry: ", formatMoney(round2((Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) + (isPoker ? bounty : 0))), " (", formatMoney(Number(opts.buyIn) || 0), (isPoker&&opts.prizePoolMode==='fixed'?" to club + ":" to pool + "), formatMoney(Number(opts.fee) || 0), " to club", isPoker && bounty > 0 ? ` + ${formatMoney(bounty)} bounty` : '', ")", (Number(opts.buyIn) || 0) + (Number(opts.fee) || 0) === 0 ? ' · 🎁 Freeroll!' : '', isPoker ? ` · stack ${Number(opts.startStack) || 1000}` : ' · knockout'), React.createElement("div", {
     className: "flex gap-3 flex-wrap items-center"
   }, React.createElement("button", {
     onClick: handleCreate,
@@ -18132,9 +18155,11 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
         h("div",{className:"pt-tournament-rules"},
           tor.addon&&h("span",null,'Add-on at level '+(tor.addonLevel||3)),
           h("span",null,tourRegistrationLabel(tor)),
-          Number(tor.earlyRegistrationBonusPct)>0&&h('span',null,'Early registration +'+tor.earlyRegistrationBonusPct+'% · '+formatMoney(Number(tor.startStack)+Math.floor(Number(tor.startStack)*Number(tor.earlyRegistrationBonusPct)/100))+' chips before the scheduled start'),
+          Number(tor.earlyRegistrationBonusPct)>0&&h('span',null,'Early registration +'+tor.earlyRegistrationBonusPct+'% · '+formatMoney(Number(tor.startStack)+Math.floor(Number(tor.startStack)*Number(tor.earlyRegistrationBonusPct)/100))+(tor.earlyRegistrationBonusUntilStart?' chips before play starts':' chips before the scheduled start')),
           tor.players?.[user.uid]?.earlyRegistrationBonusChips>0&&h('span',{role:'status'},'Your entry: '+formatMoney(tor.players[user.uid].entryStartStack)+' chips including '+formatMoney(tor.players[user.uid].earlyRegistrationBonusChips)+' early bonus'),
-          tor.reentry&&h("span",null,'Re-entry '+formatMoney(tourEntryOf(tor,true))+' · '+(tor.reentryToPrizePool===false?'Club income':'Added to prize pool'))),
+          tor.reentry&&h("span",null,'Re-entry '+formatMoney(tourEntryOf(tor,true))+' · '+(tor.prizePoolMode==='fixed'||tor.reentryToPrizePool===false?'Club income':'Added to prize pool'))),
+        tor.prizePoolMode==='fixed'&&h('p',{className:'text-sm text-sky-100',style:{padding:12}},'Fixed prize pool · entries and re-entries do not increase the prizes'),
+        tor.game==='poker'&&tor.status==='reg'&&canManageGame(user,tor.game)&&h('details',{className:'pt-registration-settings'},h('summary',{style:{cursor:'pointer',padding:12}},'Edit prize pool and early bonus'),h(TournamentPrizeEditor,{key:tor.id+':'+(tor.prizeConfigChanges?.length||0),tor,showToast})),
         tor.game==='poker'&&['reg','running'].includes(tor.status)&&canManageGame(user,tor.game)&&h('details',{className:'pt-registration-settings'},h('summary',{style:{cursor:'pointer',padding:12}},'Edit late registration'),h(TournamentRegistrationEditor,{key:tor.id+':'+(tor.lateRegClosesAt||0)+':'+(tor.lateRegUntilLevel||0),tor,showToast})),
         tor.status==='running'&&!tourLateRegOpen(tor)&&h('p',{className:'pt-tournament-more-prizes',role:'status'},'Registration closed · '+tourRegistrationLabel(tor)),
         tor.status==='reg'&&h("section",{className:"pt-tournament-countdown"},

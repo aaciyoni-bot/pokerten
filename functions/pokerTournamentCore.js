@@ -32,8 +32,15 @@ function lateRegistrationOpen(t,rows,now=Date.now()){
  return now<lateRegistrationDeadline(t,rows);
 }
 function earlyRegistrationBonus(t,now=Date.now(),reentry=false){
- if(reentry||t.status!=='reg'||now>=Number(t.startAt))return 0;
+ if(reentry||t.status!=='reg'||(!t.earlyRegistrationBonusUntilStart&&now>=Number(t.startAt)))return 0;
  return Math.floor(Number(t.startStack)*Math.max(0,Math.min(100,Number(t.earlyRegistrationBonusPct)||0))/100);
+}
+// Entry payments remain escrowed until settlement. Fixed-pool events route
+// buy-ins to club income, including re-entries regardless of the legacy flag.
+function entryFunding(t,reentry=false){
+ const amount=Number(reentry?(t.reentryBuyIn??t.buyIn):t.buyIn)||0;
+ const club=t.prizePoolMode==='fixed'||(reentry&&t.reentryToPrizePool===false);
+ return {pool:club?0:amount,fee:cash((Number(t.fee)||0)+(club?amount:0))};
 }
 function split(value,uids){if(!uids.length)throw Error('No award recipient');const cents=Math.round(value*100),base=Math.floor(cents/uids.length),rem=cents-base*uids.length;return Object.fromEntries(uids.map((uid,i)=>[uid,(base+(i<rem?1:0))/100]));}
 function bountyPlan(t,event,random=()=>.5){
@@ -78,6 +85,6 @@ function plan(t,input,now=Date.now()){
  const src=live.at(-1),dst=live[0];if(occupied(src).length-occupied(dst).length>=2&&movable(src)&&occupied(dst).length<cap){if(!hold([src,dst]))return finish();const ordered=occupied(src).sort((a,b)=>a.seatIndex-b.seatIndex),dealer=ordered.findIndex(p=>p.uid===src.gameState?.dealerUid);move(src,dst,ordered[(Math.max(-1,dealer)+3)%ordered.length]);for(const row of[src,dst]){row.tournament={...row.tournament,balanceHoldUntil:0};save(row);}}
  return finish();
 }
-const api={showdownDelay,capacity,idle,chips,clock,lateRegistrationDeadline,lateRegistrationOpen,earlyRegistrationBonus,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
+const api={showdownDelay,capacity,idle,chips,clock,lateRegistrationDeadline,lateRegistrationOpen,earlyRegistrationBonus,entryFunding,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
 })(typeof window!=='undefined'?window:globalThis);
 

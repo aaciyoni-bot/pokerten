@@ -1,7 +1,7 @@
 /* Check the deployed release without interrupting a seat or changing app data. */
 (function(root){
   'use strict';
-  const current=Number(document.querySelector('meta[name="app-version"]')?.content)||335;
+  const current=Number(document.querySelector('meta[name="app-version"]')?.content)||336;
   let view='auth',latest=current,checking,registration,banner,message,button;
   const atTable=()=>String(root.__pkAppView||view).endsWith('-table');
   function render(text){

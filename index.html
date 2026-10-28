@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="335">
-    <script src="assets/js/app-update.js?v=335" defer></script>
+    <meta name="app-version" content="336">
+    <script src="assets/js/app-update.js?v=336" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1126,6 +1126,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=335"></script>
 <link rel="stylesheet" href="assets/css/reference-experience.css?v=335">
+<link rel="stylesheet" href="assets/css/login-reference.css?v=336">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -4175,7 +4176,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 335. Check for updates'},'v335 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 336. Check for updates'},'v336 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -5036,76 +5037,36 @@ function AuthView({error = '', loading = false, onRetry} = {}) {
     catch (e) { setGErr(window.PokerAuthUI.errorText(e)); }
     finally { googleLock.current = false; setGoogleBusy(false); }
   };
-  return React.createElement("div", {
-    className: "auth-screen auth-poker auth-shell h-full w-full flex flex-col items-center justify-center p-4 relative",
-    style: {
-      background: "linear-gradient(rgba(7,9,15,0.72), rgba(7,9,15,0.86)), url('assets/login-bg.jpg') center / cover no-repeat, #07090F"
-    }
-  }, React.createElement("div", {
-    className: "auth-card text-center relative z-10 w-full"
-  }, React.createElement("img", {className:"blue-auth-icon",src:"assets/brand/orbital-icon512.png",width:88,height:88,alt:"PokerTen"}), React.createElement("p", {
-    className: "auth-kicker",
-    style: {
-      color: 'var(--pt-text-2)',
-      fontWeight: 500
-    }
-  }, "Your club. Your table."), React.createElement("h1", {className:"auth-title"}, "Your seat is waiting."), React.createElement("p",{className:"auth-intro"},"Sign in and join the game."), React.createElement("button", {
-    onClick: googleLogin,
-    disabled:googleBusy||loading,
-    className: "w-full bg-white hover:bg-slate-100 transition-transform hover:scale-[1.02] text-slate-900 py-4 px-6 rounded-xl shadow-xl flex items-center justify-center gap-3",
-    style: {
-      fontWeight: 600
-    }
-  }, React.createElement("i", {
-    className: "fa-brands fa-google text-blue-500 text-xl"
-  }), (googleBusy || loading) ? "Signing in…" : "Continue with Google"), step==='idle'&&(gErr||error)&&React.createElement("p",{role:"alert",className:"auth-error"},gErr||error), error&&onRetry&&React.createElement("button",{onClick:onRetry,disabled:loading,className:"w-full mt-3 btn-outline py-3"},loading?'Loading account…':'Try again'), React.createElement("div", {
-    className: "flex items-center gap-3 my-5"
-  }, React.createElement("div", {
-    className: "flex-1 h-px bg-white/10"
-  }), React.createElement("span", {
-    className: "text-[11px] font-bold tracking-widest",
-    style: {
-      color: 'var(--pt-text-2)'
-    }
-  }, "or"), React.createElement("div", {
-    className: "flex-1 h-px bg-white/10"
-  })), step === 'idle' ? React.createElement("button", {
-    onClick: () => {setStep('code'); setGErr('');},
-    disabled: googleBusy || loading,
-    className: "w-full bg-slate-900/80 hover:bg-slate-800 border border-gold-400/30 text-gold-400 py-3.5 px-6 rounded-xl font-black text-[15px]"
-  }, "Sign in with player code") : React.createElement(React.Fragment, null,
-    React.createElement(window.PokerAuthUI.CodeLogin, {loading: loading || googleBusy}),
-    React.createElement('button', {className:'w-full underline text-sm py-3', onClick:()=>{setStep('idle');setGErr('');}, disabled:loading || googleBusy}, 'Back')),
-  React.createElement(InstallBanner, {
-    variant: "auth"
-  })), React.createElement("div", {
-    className: "auth-footer"
-  }, React.createElement("div", {
-    className: "flex items-center gap-2 px-4 py-2 rounded-full border border-gold-400/25 bg-slate-950/60"
-  }, React.createElement("svg", {
-    viewBox: "0 0 24 24",
-    style: {
-      width: '15px',
-      height: '15px'
-    }
-  }, React.createElement("path", {
-    d: "M12 2l8 3v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5l8-3z",
-    fill: "none",
-    stroke: "#e3ae4e",
-    strokeWidth: "1.6"
-  }), React.createElement("path", {
-    d: "M8.5 12l2.4 2.4L15.5 9.8",
-    fill: "none",
-    stroke: "#e3ae4e",
-    strokeWidth: "1.8",
-    strokeLinecap: "round",
-    strokeLinejoin: "round"
-  })), React.createElement("span", {
-    className: "text-[10px] text-gold-400/90 font-bold tracking-[0.18em] uppercase"
-  }, "POKERTEN · Club poker")), React.createElement("span", {
-    className: "text-[8px] text-slate-600 font-bold tracking-[0.3em] uppercase"
-  }, "Powered by ORIZIS TECHNOLOGY"), React.createElement(AppReleaseControls)));
+  const h = React.createElement;
+  return h('section', {className:'login-screen', dir:'ltr', 'aria-label':'Sign in to PokerTen'},
+    h('div', {className:'login-page' + (step === 'code' ? ' login-page--code' : '')},
+      h('div', {className:'login-content'},
+        h('img', {className:'login-brand', src:'assets/brand/login-wordmark-v336.webp', width:2172, height:724, alt:'POKERTEN', fetchpriority:'high'}),
+        h('div', {className:'login-hero'},
+          h('img', {className:'login-orb', src:'assets/brand/club-glass-v333.webp', width:1024, height:1024, alt:'', 'aria-hidden':true}),
+          h('img', {className:'login-icon', src:'assets/brand/orbital-icon512.png', width:512, height:512, alt:'', 'aria-hidden':true}),
+          h('p', {className:'login-tagline'}, 'Your club. Your table.')),
+        h('h1', {className:'login-title'}, 'Your seat is waiting.'),
+        h('p', {className:'login-intro'}, 'Sign in and join the game.'),
+        h('section', {className:'login-actions', 'aria-label':'Sign-in options'},
+          h('button', {type:'button', onClick:googleLogin, disabled:googleBusy||loading, className:'login-button login-button--google', 'aria-busy':googleBusy||loading},
+            h('img', {className:'login-google-icon', src:'assets/brand/google-g.png', alt:'', width:48, height:48, 'aria-hidden':true}),
+            h('span', null, (googleBusy||loading) ? 'Signing in…' : 'Sign in with Google')),
+          (gErr||error)&&h('p', {role:'alert', className:'auth-error'}, gErr||error),
+          error&&onRetry&&h('button', {type:'button', onClick:onRetry, disabled:loading, className:'login-retry'}, loading?'Loading account…':'Try again'),
+          h('div', {className:'login-divider', 'aria-hidden':true}, h('span',null,'or')),
+          step === 'idle' ? h('button', {type:'button', onClick:()=>{setStep('code');setGErr('');}, disabled:googleBusy||loading, className:'login-button login-button--code'},
+            h('span',null,'Sign in with player code')) :
+            h('div', {className:'login-code-panel'},
+              h(window.PokerAuthUI.CodeLogin, {loading:loading||googleBusy}),
+              h('button', {type:'button', className:'login-back', onClick:()=>{setStep('idle');setGErr('');}, disabled:loading||googleBusy}, 'Back'))),
+        h('footer', {className:'login-footer'},
+          h('div', {className:'login-club-badge'}, h('i', {className:'fa-solid fa-shield-halved', 'aria-hidden':true}), h('span',null,'POKERTEN · CLUB POKER')),
+          h('p', {className:'login-powered'}, 'POWERED BY ORIZIS TECHNOLOGY'),
+          h(AppReleaseControls),
+          h('div', {className:'login-install'}, h(InstallBanner, {variant:'auth'}))))));
 }
+
 function LeadersView({
   user,
   showToast

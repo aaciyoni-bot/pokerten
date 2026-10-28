@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="336">
-    <script src="assets/js/app-update.js?v=336" defer></script>
+    <meta name="app-version" content="337">
+    <script src="assets/js/app-update.js?v=337" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1124,7 +1124,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=330">
 <script src="assets/js/club-cashier.js?v=330"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
-<script src="assets/js/poker-sound-pack.js?v=335"></script>
+<script src="assets/js/poker-sound-pack.js?v=337"></script>
 <link rel="stylesheet" href="assets/css/reference-experience.css?v=335">
 <link rel="stylesheet" href="assets/css/login-reference.css?v=336">
 </head>
@@ -1583,6 +1583,15 @@ const EMOJI_SETS = {
   'emoji-animals': ['🦁', '🐯', '🦊', '🐺', '🐼', '🐨', '🦅', '🦉', '🐍', '🦈', '🐉', '🦍', '🐘', '🦄', '🐙', '🦋', '🐢', '🐬'].map((e, i) => 'emoji::' + e + '::' + i),
   'emoji-elements': ['🔥', '⚡', '❄️', '🌊', '🌪️', '☀️', '🌙', '⭐', '☄️', '🌋', '💎', '🌈', '🌀', '💠', '⚔️', '🛡️', '👑', '🧿'].map((e, i) => 'emoji::' + e + '::' + i)
 };
+// The server's per-UID awards include every split, side-pot and RIT recipient.
+// A display name or an uncalled-bet refund is never evidence of a win.
+const pokerResultCue = (gs, uid, smallBlind) => {
+  const awards = Array.isArray(gs?.lastAwards) ? gs.lastAwards : [];
+  const mine = awards.filter(a => a.uid === uid && Number.isFinite(Number(a.amount)) && Number(a.amount) > 0)
+    .reduce((total, a) => total + Number(a.amount), 0);
+  if (!uid || mine <= 0) return 'handend';
+  return mine >= (Number(smallBlind) || .5) * 2 * 40 ? 'bigwin' : 'win';
+};
 const SFX = {
   ctx: null,
   buf: {},
@@ -1600,6 +1609,7 @@ const SFX_FILES = {
   turn: ['timer_tick_1'],
   win: ['soft_pot_win'],
   bigwin: ['soft_pot_win'],
+  handend: ['soft_hand_end'],
   msg: ['chat_msg'],
   shuffle: ['shuffle'],
   allin: ['soft_all_in'],
@@ -1650,10 +1660,12 @@ const sfxLoad = () => {
 // Locally rendered, soft acoustic cues: one continuous low sweep for all-in,
 // three warm piano-like notes for a won pot. No metallic FM or network fallback.
 const sfxPrepareCues = ctx => {
-  if (!ctx || SFX.buf.soft_all_in && SFX.buf.soft_pot_win) return;
+  if (!ctx || SFX.buf.soft_all_in && SFX.buf.soft_pot_win && SFX.buf.soft_hand_end) return;
   for (const [name, duration, notes] of [
     ['soft_all_in', .48, [[0, 146.83, .42, .48]]],
-    ['soft_pot_win', 1.12, [[0, 261.63, .52, .36], [.15, 329.63, .55, .32], [.30, 392, .76, .30]]]
+    ['soft_pot_win', 1.12, [[0, 261.63, .52, .36], [.15, 329.63, .55, .32], [.30, 392, .76, .30]]],
+    // Short, warm two-part ta-da for everyone who did not receive an award.
+    ['soft_hand_end', .78, [[0, 293.66, .14, .13], [0, 369.99, .14, .09], [.18, 392, .54, .13], [.18, 493.88, .54, .09], [.18, 587.33, .54, .06]]]
   ]) {
     const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
     const samples = buffer.getChannelData(0);
@@ -1724,7 +1736,7 @@ const sfxPlay = (name, when = 0, gain = 1, rate = 0, maxDur = 0, scope = null, l
     tail.connect(SFX.bus);
     const t0 = ctx.currentTime + when;
     src.start(t0);
-    if(name.startsWith('apk:'))window.PokerSoundPack?.track(src);
+    if(name.startsWith('apk:') || name === 'soft_hand_end')window.PokerSoundPack?.track(src);
     if (scope) scope.push(src);
     if (maxDur > 0) {
       // trim long samples: hold, then quick fade so the cut isn't a click
@@ -1771,6 +1783,10 @@ const playSnd = (type, times = 1, gapSec = 0) => {
     } catch (e) {}
   }
   if (window.__pkMuted || document.hidden) return;
+  if (type === 'handend') {
+    sfxPrepareCues(sfxCtx());
+    return sfxPlay('soft_hand_end', 0, .48, 1);
+  }
   if (window.PokerSoundPack?.play(type, times, gapSec)) return;
   // Imported-only event names retain the exact old behavior after rollback.
   type = ({raise:'chip',gift:'chip',emote:'msg'})[type] || type;
@@ -1935,7 +1951,7 @@ const playSnd = (type, times = 1, gapSec = 0) => {
     }
   } catch (e) {}
 };
-window.PokerSoundPack?.attach({getContext:sfxCtx,buffers:SFX.buf,emit:sfxPlay});
+window.PokerSoundPack?.attach({getContext:sfxCtx,buffers:SFX.buf,emit:sfxPlay,prepareCues:()=>sfxPrepareCues(sfxCtx())});
 const creditRakeToClub = async (amount, clubId) => {
   if (!amount || amount <= 0) return;
   try {
@@ -4176,7 +4192,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 336. Check for updates'},'v336 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 337. Check for updates'},'v337 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -12152,13 +12168,13 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     acts: {}
   });
   useEffect(() => {
-    if (!tableState || headless) return;
+    if (!tableState) return;
     const ps = prevSnd.current;
     const bl = (gs.board || []).length;
     const latestChat=(tableState.chat||[]).at(-1),chatKey=latestChat?`${latestChat.uid}:${latestChat.at}`:'';
     // Opening/reconnecting to a table is a baseline, not a replay of its hand.
-    if (ps.tableId !== tableDocId) {
-      prevSnd.current = {tableId:tableDocId,board:bl,phase:gs.phase,turnMine:gs.activeTurnUid===user.uid,
+    if (headless || ps.silent || ps.tableId !== tableDocId) {
+      prevSnd.current = {tableId:tableDocId,silent:headless,board:bl,phase:gs.phase,turnMine:gs.activeTurnUid===user.uid,
         chatKey,acts:Object.fromEntries(Object.entries(players).map(([uid,p])=>[uid,p.actionText]))};
       return;
     }
@@ -12183,7 +12199,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       };
       playSnd('deal', total, iv);
     }
-    if (gs.phase === 'showdown' && ps.phase !== 'showdown') playSnd((gs.lastWinAmount || 0) >= (Number(setts.blinds) || 0.5) * 2 * 40 ? 'bigwin' : 'win');
+    if (gs.phase === 'showdown' && ps.phase !== 'showdown') playSnd(pokerResultCue(gs, user.uid, setts.blinds));
     const mine = gs.activeTurnUid === user.uid && BETTING.includes(gs.phase);
     if (mine && !ps.turnMine) {
       try {

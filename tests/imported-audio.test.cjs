@@ -70,7 +70,7 @@ test('sound library exposes all clips, filters, previews one at a time and stops
  dialog.querySelector('.pk-sound-item').click();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,1);assert.match(dialog.querySelector('.pk-sound-status').textContent,/Playing:/);
  dialog.querySelector('.pk-sound-item').click();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,2);assert.ok(f.stopped.includes(f.played[0].src));
  assert.match(dialog.querySelector('.pk-sound-readiness').textContent,/New table sounds ready/);
- for(const label of ['Deal','Check','Bet','All-in','Win','Your turn']){
+ for(const label of ['Deal','Check','Bet','All-in','Win','Other winner','Your turn']){
   const before=f.played.length;dialog.querySelector('[aria-label="Test '+label+'"]').click();await new Promise(r=>setImmediate(r));
   assert.equal(f.played.length,before+1);assert.equal(dialog.querySelector('.pk-sound-status').textContent,'New table sound: '+label);
  }
@@ -131,4 +131,12 @@ for(const cancelledBy of ['rollback','background','mute'])test('a pending new cu
  if(cancelledBy==='background'){f.d.hidden=true;f.handlers.visibilitychange();f.d.hidden=false;}
  if(cancelledBy==='mute'){f.w.__pkMuted=true;f.engine.setSfxLevel(.55);f.w.__pkMuted=false;}
  release();await f.pack.preload();await new Promise(r=>setImmediate(r));assert.equal(f.played.length,0);
+});
+
+test('other winners use a short, unclipped cue that respects mute, volume and background cancellation',async()=>{
+ const f=fixture();await f.pack.refresh();f.handlers.pointerdown();await f.pack.preload();
+ f.engine.playSnd('handend');assert.equal(f.played.length,1);
+ const samples=f.played[0].buffer.getChannelData(0);assert.equal(samples.length/f.ctx.sampleRate,.78);assert.ok(samples.some(x=>Math.abs(x)>.05));assert.ok(samples.every(x=>Number.isFinite(x)&&Math.abs(x)<1));assert.ok(Math.abs(samples.at(-1))<.001);
+ f.d.hidden=true;f.handlers.visibilitychange();assert.ok(f.stopped.includes(f.played[0].src));f.engine.playSnd('handend');assert.equal(f.played.length,1);
+ f.d.hidden=false;f.w.__pkMuted=true;f.engine.playSnd('handend');f.w.__pkMuted=false;f.w.__pkVolume=0;f.engine.playSnd('handend');assert.equal(f.played.length,1);
 });

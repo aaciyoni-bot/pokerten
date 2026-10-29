@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="343">
-    <script src="assets/js/app-update.js?v=343" defer></script>
+    <meta name="app-version" content="344">
+    <script src="assets/js/app-update.js?v=344" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1120,7 +1120,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-orbital.css?v=315">
 <link rel="stylesheet" href="assets/css/reference-shell.css?v=324">
 <link rel="stylesheet" href="assets/css/card-games-reference.css?v=324">
-<link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=326">
+<link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=344">
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=330">
 <script src="assets/js/club-cashier.js?v=330"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
@@ -4192,7 +4192,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 343. Check for updates'},'v343 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 344. Check for updates'},'v344 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -7994,12 +7994,16 @@ function LobbyView({
     className: "flex flex-col gap-2.5"
   }, durakTables.map(t => {
     const s = t.settings || {};
+    const variant = s.variant === 'perevodnoy' ? 'transfer' : 'classic';
+    const deck = Number(s.deckSize) === 52 ? 52 : 36;
     const seated = Object.keys(t.players || {}).length;
     const cap = s.maxPlayers || 6;
     return React.createElement("div", {
       key: t.docId,
       className: "tbl-row",
       "data-lobby-game": "durak",
+      "data-durak-variant": variant,
+      "data-durak-deck": deck,
       onClick: () => onJoinDurak(t)
     }, React.createElement("div", {
       className: "tbl-spine spine-durak"
@@ -8032,8 +8036,12 @@ function LobbyView({
     }, "/", cap))), React.createElement("div", {
       className: "tbl-main"
     }, React.createElement("div", {
-      className: "tbl-name"
-    }, "Durak · ", s.variant === 'perevodnoy' ? 'Transfer' : 'Classic', " · ", s.deckSize, " cards", t.players && t.players[user.uid] && React.createElement("span", {
+      className: "tbl-name durak-variant-name"
+    }, React.createElement("span", {
+      className: "lobby-game-badge"
+    }, variant === 'transfer' ? 'Transfer' : 'Classic', " · ", deck, " cards"), (s.bluffEnabled || s.bluff) && React.createElement("span", {
+      className: "durak-rule-badge"
+    }, "Bluff"), t.players && t.players[user.uid] && React.createElement("span", {
       className: "tbl-me"
     }, "You're seated")), React.createElement("div", {
       className: "tbl-stakes",

@@ -1,0 +1,71 @@
+name: Build POKERTEN iPhone archive
+on:
+  push:
+    branches: ['codex/ios-testflight-20261029']
+    paths: ['mobile/**', '.github/workflows/ios-archive.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-archive-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  archive:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci --prefix mobile --no-audit --no-fund
+      - run: npm run verify --prefix mobile
+      - run: npm run build --prefix mobile
+      - name: Configure the registered Apple app identifier
+        working-directory: mobile
+        run: |
+          node --input-type=module <<'JS'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          const path = 'capacitor.config.json';
+          const config = JSON.parse(readFileSync(path,'utf8'));
+          config.appId = 'com.pokerten.app';
+          writeFileSync(path, JSON.stringify(config,null,2)+'\n');
+          JS
+          npx cap sync ios
+      - name: Archive for iPhone without signing credentials
+        run: |
+          xcodebuild -version
+          xcodebuild -project mobile/ios/App/App.xcodeproj -scheme App \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/POKERTEN.xcarchive" \
+            PRODUCT_BUNDLE_IDENTIFIER=com.pokerten.app \
+            DEVELOPMENT_TEAM=RX38AZ3387 MARKETING_VERSION=1.0 \
+            CURRENT_PROJECT_VERSION=1 CODE_SIGNING_ALLOWED=NO archive
+      - name: Verify archive identity and bundled game
+        run: |
+          APP="$RUNNER_TEMP/POKERTEN.xcarchive/Products/Applications/App.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")" = com.pokerten.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist")" = 1.0
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$APP/Info.plist")" = 1
+          test -s "$APP/public/index.html"
+          test -s "$APP/public/vendor/firebase.js"
+          test -s "$APP/public/account-deletion.html"
+          ditto -c -k --sequesterRsrc --keepParent "$RUNNER_TEMP/POKERTEN.xcarchive" POKERTEN-iPhone-unsigned-archive.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: POKERTEN-iPhone-unsigned-archive-${{ github.run_number }}
+          path: POKERTEN-iPhone-unsigned-archive.zip
+          if-no-files-found: error
+          retention-days: 14
+      - name: Record remaining release work
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'TEXT'
+          Compiled iPhone archive for App Store Connect app 6828543924.
+          This is UNSIGNED and cannot be installed or uploaded to TestFlight yet.
+          Distribution signing and an App Store provisioning profile are required.
+          Google login is currently Android-only; complete and device-test iOS authentication before store submission.
+          Screenshots, privacy declarations, age ratings and review access remain to be completed.
+          TEXT
+

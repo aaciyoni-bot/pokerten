@@ -103,9 +103,9 @@ test('tournament fees attribute paid human entries and bot funding separately at
  const logs=(await db.collection('agentLog').where('tableId','==','tournament:'+id).get()).docs.map(d=>d.data());assert.equal(logs.filter(e=>e.rakeSource==='bot').reduce((n,e)=>n+e.amount,0),2);
  await Tours.tickTournament(id,now+1000);assert.equal(await bank(agent),1);
 });
-test('archiving completed tournament and historical tables never replays prizes or old stacks',async()=>{
+test('archiving completed tournament and empty historical tables never replays prizes or past refunds',async()=>{
  const id='archive-done',balance=await bank(owner);await db.doc('tournaments/'+id).set({clubId:club,status:'done',paidPrizes:{sponsor:true}});
- for(const [tableId,t]of [['archive-tour',{authorityVersion:2,tournamentId:id,settings:{serverEngine:true},players:{sponsor:{uid:owner,stack:100000}}}],['archive-legacy',{status:'done',players:{sponsor:{uid:owner,stack:99999}}}]]){
+ for(const [tableId,t]of [['archive-tour',{authorityVersion:2,tournamentId:id,settings:{serverEngine:true},players:{sponsor:{uid:owner,stack:100000}}}],['archive-legacy',{status:'done',players:{},leftStacks:{sponsor:{amount:99999,at:Date.UTC(2026,8,10)}}}]]){
   await db.doc('tables/'+tableId).set({clubId:club,...t});await call('pkTableManage',owner,{tableId,op:'delete'});await call('pkTableManage',owner,{tableId,op:'delete'});
   assert.equal(await get('tables/'+tableId),undefined);assert.ok(await get('_pkClosedTables/'+tableId));assert.equal(await bank(owner),balance);
  }

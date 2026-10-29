@@ -29,9 +29,16 @@ async function repair(db,{apply=false,now=Date.now()}={}){
 async function main(){
  if(process.env.GITHUB_ACTIONS!=='true'||!process.env.FIREBASE_TOKEN)throw Error('Run through the authorized deployment workflow');
  const {getAccessToken}=require('firebase-tools/lib/auth');
- const admin=require('../functions/node_modules/firebase-admin');
- const app=admin.initializeApp({projectId:PROJECT,credential:{getAccessToken:async()=>{const token=await getAccessToken(process.env.FIREBASE_TOKEN,['https://www.googleapis.com/auth/cloud-platform']);if(!token.access_token)throw Error('Deployment authentication failed');return{access_token:token.access_token,expires_in:3600};}}},'legacy-archive-repair');
- try{console.log('LEGACY_TABLE_REPAIR '+JSON.stringify(await repair(admin.firestore(app),{apply:process.argv.includes('--apply')})));}finally{await app.delete();}
+ const {Firestore}=require('../functions/node_modules/@google-cloud/firestore');
+ const {OAuth2Client}=require('../functions/node_modules/google-auth-library');
+ const token=await getAccessToken(process.env.FIREBASE_TOKEN,['https://www.googleapis.com/auth/cloud-platform']);
+ if(!token.access_token)throw Error('Deployment authentication failed');
+ const authClient=new OAuth2Client();authClient.setCredentials({access_token:token.access_token});
+ // Firestore's Admin wrapper only accepts certificate/ADC credentials. Pass the
+ // existing deployment OAuth credential directly to the Google Cloud client.
+ // It stays in memory and is never written to disk or printed.
+ const db=new Firestore({projectId:PROJECT,databaseId:'(default)',authClient});
+ try{console.log('LEGACY_TABLE_REPAIR '+JSON.stringify(await repair(db,{apply:process.argv.includes('--apply')})));}finally{await db.terminate();}
 }
 module.exports={repair,IDS,CLUB};
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});

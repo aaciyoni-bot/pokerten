@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="344">
-    <script src="assets/js/app-update.js?v=344" defer></script>
+    <meta name="app-version" content="345">
+    <script src="assets/js/app-update.js?v=345" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1111,7 +1111,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
-<link rel="stylesheet" href="assets/css/tournament-blue.css?v=343">
+<link rel="stylesheet" href="assets/css/tournament-blue.css?v=345">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=330">
@@ -4192,7 +4192,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 344. Check for updates'},'v344 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 345. Check for updates'},'v345 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -6739,7 +6739,7 @@ function ReferenceLobbyHeader({club, tables, user, balance, onCashier, onSettlem
   const icon=name=>h('i',{className:'fa-solid '+name,'aria-hidden':true});
   const action=(name,label,click)=>click&&h('button',{type:'button',onClick:click,'aria-label':label},icon(name),h('span',null,label),icon('fa-chevron-right'));
   return h('header',{className:'reference-lobby-header',dir:'ltr'},
-    h('div',{className:'reference-lobby-masthead'},action('fa-chevron-left','Clubs',onClubs),h('img',{src:'icon-192.png',alt:'POKERTEN',width:38,height:38}),
+    h('div',{className:'reference-lobby-masthead'},action('fa-chevron-left','Clubs',onClubs),h('img',{src:'assets/brand/orbital-icon192.png',alt:'POKERTEN',width:38,height:38}),
       h('details',{className:'reference-lobby-menu'},h('summary',{'aria-label':'Club menu'},icon('fa-bars')),h('div',null,
         action('fa-users-gear','Manage',canOpenBackoffice(user)&&onManage),action('fa-wallet','Cashier',onCashier),action('fa-chart-simple',canOpenBackoffice(user)?'Club settlement':'My results',onSettlement),action('fa-user','Profile',onProfile),showInstall&&action('fa-download','Install app',onInstall),h(AppReleaseControls)))),
     h('section',{className:'reference-club-card','aria-label':'Club overview'},
@@ -17171,6 +17171,27 @@ function tournamentDefaultOptions() {
   };
 }
 
+function TournamentRowClock({tournament:tor,now=Date.now()}) {
+  const h=React.createElement;
+  const validTime=value=>Number.isFinite(Number(value))&&Number(value)>0?Number(value):0;
+  const duration=ms=>{const seconds=Math.max(0,Math.floor(ms/1000));return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');};
+  let at=0,label='';
+  if(tor.status==='reg') {
+    at=validTime(tor.startAt);
+    label=!at?'Start time pending':at>now?'Starts in '+duration(at-now):'Awaiting start';
+  } else if(tor.status==='running') {
+    at=validTime(tor.startedAt)||validTime(tor.startAt);
+    label=at?'Running '+duration(now-at):'In progress';
+  } else {
+    at=validTime(tor.status==='cancelled'?tor.cancelledAt:tor.finishedAt);
+    label=tor.status==='cancelled'?'Cancelled':'Ended';
+  }
+  return h('span',{className:'pt-tournament-row-clock','data-tournament-clock':tor.id,'data-status':tor.status,dir:'ltr'},
+    h('span',null,h('i',{className:'fa-regular fa-clock','aria-hidden':true}),h('strong',{role:'timer','aria-live':'off'},label)),
+    at>0&&h('time',{dateTime:new Date(at).toISOString(),title:(tor.status==='running'?'Started · ':'')+'Israel time'},
+      (tor.status==='running'?'Started ':'')+new Date(at).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})));
+}
+
 function TournamentsTab({
   user,
   game,
@@ -18381,8 +18402,8 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     if(!compactMode)return card;
     return h(React.Fragment,{key:tor.id},h('button',{type:'button',className:'pt-tournament-lobby-row','data-tournament-row':tor.id,'aria-label':'Open tournament '+tor.name,onClick:()=>setExpandedTournament(tor.id)},
       h('img',{src:'assets/tournaments/gold-cup.webp',alt:'',width:48,height:56}),
-      h('span',{className:'pt-tournament-row-title'},h('strong',null,tor.name),h('small',null,tourEntryOf(tor)===0?'FREEROLL · ':'',tor.pokerType||'NLH',' · ',tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE · '+alive+' left':'Ended')),
-      h('span',{className:'pt-tournament-row-pool'},h('small',null,'PRIZE POOL'),h('strong',null,formatMoney(pool))),h('i',{className:'fa-solid fa-chevron-right','aria-hidden':true})),
+      h('span',{className:'pt-tournament-row-title'},h('strong',null,tor.name),h('small',null,tourEntryOf(tor)===0?'FREEROLL · ':'',tor.pokerType||'NLH',' · ',tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE · '+alive+' left':tor.status==='cancelled'?'Cancelled':'Ended')),
+      h('span',{className:'pt-tournament-row-pool'},h('small',null,'PRIZE POOL'),h('strong',null,formatMoney(pool))),h('i',{className:'fa-solid fa-chevron-right','aria-hidden':true}),h(TournamentRowClock,{tournament:tor})),
       expandedTournament===tor.id&&h(TournamentDialog,{title:tor.name,onClose:()=>setExpandedTournament(null),className:'pt-tournament-detail'},h('div',{className:'pt-tournaments'},card)));
   }), !compactMode && sorted.length === 0 && React.createElement("div", {
     className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"

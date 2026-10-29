@@ -143,9 +143,7 @@ exports.pkTableManage=onCall(opts,async r=>command(r,'table-manage',async(tx,db,
   return require('./pokerTableLifecycle').archiveTable(tx,db,ref,t,uid,now);
  }
  if(t.authorityVersion!==2||!t.settings?.serverEngine){
-  const phase=t.gameState?.phase||t.phase||t.status||'waiting';
-  const empty=!Object.keys(t.players||{}).length&&!Number(t.pot||0)&&!(t.gameState?.pots||[]).some(p=>p.amount>0);
-  if(op==='delete'&&(empty||['ended','finished','done','gameOver','gameover'].includes(phase)))return require('./pokerTableLifecycle').archiveTable(tx,db,ref,t,uid,now);
+  if(op==='delete')return require('./pokerLegacyTables').archiveTable(tx,db,ref,t,uid,now);
   fail('failed-precondition','This unfinished legacy table needs an accounting review before it can be changed');
  }
  if(op==='delete'){

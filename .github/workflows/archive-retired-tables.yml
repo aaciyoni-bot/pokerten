@@ -1,0 +1,33 @@
+name: Archive reviewed retired tables
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/archive-retired-tables.cjs'
+      - '.github/workflows/archive-retired-tables.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pokerten-retired-table-repair
+  cancel-in-progress: false
+jobs:
+  security:
+    uses: ./.github/workflows/security-rules.yml
+  archive:
+    needs: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci --prefix functions --ignore-scripts
+      - run: npm install --prefix "$RUNNER_TEMP/archive-cli" --no-audit --no-fund firebase-tools@13.35.1
+      - name: Check legacy accounting classification
+        run: node --test tests/legacy-table-archive.test.cjs
+      - name: Archive reviewed records without changing money or cycles
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: NODE_PATH="$RUNNER_TEMP/archive-cli/node_modules" node scripts/archive-retired-tables.cjs --apply

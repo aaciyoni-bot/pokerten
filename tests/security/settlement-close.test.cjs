@@ -74,3 +74,47 @@ test('a funded Spin is allowed to finish before its table is removed, without pa
  await f.cmd('beginCloseAll',{expectedCycleId:'legacy_current',requestId});assert.deepEqual(await get('tables/'+tid),before);assert.equal(await get(f.root),undefined);
  await db.doc('tables/'+tid).update({spinDone:true});await f.cmd('continueCloseAll',{closureId:requestId});assert.equal(await get('tables/'+tid),undefined);assert.equal(await f.bank(f.owner),980,'already awarded Spin receives no second payout');
 });
+test('retired Spin and synthetic cash tables archive completely without changing balances or history',async()=>{
+ const f=await fixture(),old=Date.UTC(2026,8,10),bot='bot_1788994187349_ev73mw';
+ const spin={type:'poker',clubId:f.cid,createdAt:old,settings:{serverEngine:true,spinMode:true},spin:{prize:100},players:{[bot]:{uid:bot,isBot:true,stack:19440,bet:0},[f.a]:{lastSeen:old}},gameState:{phase:'showdown',pots:[],showdownAt:old},history:[{at:old,amount:7560}]};
+ const cash={...spin,settings:{serverEngine:true},leftStacks:{[f.a]:{amount:49,at:old}},players:{[bot]:{uid:bot,isBot:true,stack:96,bet:2,buyTotal:500}},gameState:{phase:'flop',pots:[{amount:3,eligible:[bot]}],activeTurnUid:bot,turnStartedAt:old}};
+ const s=f.cid+'_spin',c=f.cid+'_cash';await db.doc('tables/'+s).set(spin);await db.doc('tables/'+c).set(cash);await db.doc('tables/'+s+'/priv/_engine').set({deck:['preserved']});
+ const balances=await Promise.all([f.owner,f.a,f.b].map(f.bank));
+ await Promise.all([f.call('pkTableManage',f.owner,{tableId:s,op:'delete'}),f.call('pkTableManage',f.owner,{tableId:s,op:'delete'})]);
+ assert.equal(await get('tables/'+s),undefined);assert.deepEqual((await get('_pkClosedTables/'+s)).players,spin.players);
+ assert.deepEqual(await get('_pkClosedTables/'+s+'/priv/_engine'),{deck:['preserved']});assert.equal(await get('tables/'+s+'/priv/_engine'),undefined);
+ await f.cmd('beginCloseAll',{expectedCycleId:'legacy_current'});
+ assert.equal(await get('tables/'+c),undefined);assert.deepEqual((await get('_pkClosedTables/'+c)).leftStacks,cash.leftStacks);assert.deepEqual((await get('_pkClosedTables/'+c)).gameState,cash.gameState);
+ assert.equal((await get('_pkClosedTables/'+c)).legacyArchive.moneyEffects,0);
+ assert.deepEqual(await Promise.all([f.owner,f.a,f.b].map(f.bank)),balances);assert.equal((await db.collection('gameLog').where('clubId','==',f.cid).get()).size,0);
+ assert.equal((await get(f.root)).currentCycleId,'cycle_1');
+ assert.equal((await db.collection('_pkAudit').where('tableId','==',s).get()).docs.filter(d=>d.data().action==='legacy-table-archive').length,1);
+});
+test('legacy deletion cannot discard funded players or overwrite an existing archive',async()=>{
+ const f=await fixture(),id=f.cid+'_legacy',ref=db.doc('tables/'+id),old=Date.UTC(2026,8,10);
+ await ref.set({clubId:f.cid,players:{[f.a]:{uid:f.a,stack:100}},gameState:{phase:'done'}});
+ await assert.rejects(f.call('pkTableManage',f.owner,{tableId:id,op:'delete'}),/accounting review/);assert.equal((await get(ref.path)).players[f.a].stack,100);
+ await ref.set({clubId:f.cid,players:{},gameState:{phase:'waiting'},createdAt:old});await db.doc('_pkClosedTables/'+id).set({evidence:'keep'});
+ await assert.rejects(f.call('pkTableManage',f.owner,{tableId:id,op:'delete'}),/archive already exists/);
+ assert.deepEqual(await get('_pkClosedTables/'+id),{evidence:'keep'});assert.ok(await get(ref.path));assert.equal(await f.bank(f.a),1000);
+});
+test('bounded production repair preflights every target and reruns without any accounting or cycle writes',async()=>{
+ const {repair,IDS,CLUB}=require('../../scripts/archive-retired-tables.cjs'),old=Date.UTC(2026,8,10),bot='bot_1788994187349_ev73mw';
+ const original={clubId:CLUB,type:'poker',createdAt:old,settings:{serverEngine:true,spinMode:true},spin:{prize:100},players:{[bot]:{uid:bot,isBot:true,stack:19440,bet:0}},gameState:{phase:'showdown',pots:[],showdownAt:old}};
+ const financial={['clubs/'+CLUB]:{ownerUid:'repair-owner',botsAuto:false}};
+ financial['memberships/repair-owner_'+CLUB]={uid:'repair-owner',clubId:CLUB,balance:1234,agentProfits:56,clubProfits:78};
+ financial['gameLog/repair-history']={clubId:CLUB,uid:'repair-owner',profit:42,rake:3,at:old};
+ financial['settlementClubs/'+CLUB]={currentCycleId:'cycle_7'};
+ for(const [path,data]of Object.entries(financial))await db.doc(path).set(data);
+ for(const id of IDS)await db.doc('tables/'+id).set(original);
+ const modern={...original,authorityVersion:2};await db.doc('tables/repair-modern').set(modern);
+ await db.doc('tables/'+IDS.at(-1)).update({[`players.${bot}.fundingUid`]:'repair-owner'});
+ await assert.rejects(repair(db,{apply:true}),/accounting review/);assert.ok(await get('tables/'+IDS[0]),'all targets are validated before any write');
+ await db.doc('tables/'+IDS.at(-1)).set(original);
+ const preview=await repair(db);assert.equal(preview.applied,false);assert.equal(preview.eligible,13);assert.ok(await get('tables/'+IDS[0]));
+ const result=await repair(db,{apply:true});assert.equal(result.legacyRemaining,0);assert.equal(result.moneyEffects,0);assert.equal(result.cycleChanged,false);
+ const archive=await get('_pkClosedTables/'+IDS[0]);await repair(db,{apply:true});assert.deepEqual(await get('_pkClosedTables/'+IDS[0]),archive);
+ for(const [path,data]of Object.entries(financial))assert.deepEqual(await get(path),data,path);
+ assert.deepEqual(await get('tables/repair-modern'),modern);
+ for(const id of IDS){assert.equal(await get('tables/'+id),undefined);assert.deepEqual((await get('_pkClosedTables/'+id)).players,original.players);}
+});

@@ -2,11 +2,10 @@
 // A manager-requested close drains tables before taking the cycle boundary.
 // Every payout uses the existing table lifecycle transaction. A retry never
 // pays an archived table again, and no new play can cross the club barrier.
-const A=require('./pokerAuthority'),S=require('./settlementStore');
+const A=require('./pokerAuthority'),S=require('./settlementStore'),Legacy=require('./pokerLegacyTables');
 const stateRef=(db,cid)=>S.root(db,cid).collection('state').doc('tableClosure');
 const activeEvent=t=>!['done','cancelled'].includes(t.status);
 const protectedTable=t=>t.authorityVersion===2&&(t.settings?.serverEngine===true||t.cardGameVersion===1);
-const legacySafe=t=>!Object.keys(t.players||{}).length&&['waiting','showdown','ended','finished','done','gameOver','gameover'].includes(t.gameState?.phase||t.phase||t.status||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Number(t.pot||t.gameState?.pot||0);
 const spinRunning=t=>t.settings?.spinMode&&t.spin&&!t.spin.fundingPending&&!t.spinDone;
 const publicState=s=>s?{id:s.id,status:s.status,fromCycleId:s.fromCycleId,nextCycleId:s.nextCycleId||null,remaining:s.remaining||0,startedAt:s.startedAt,error:s.error||null}:null;
 async function progress(db,cid){return publicState(S.data(await stateRef(db,cid).get()));}
@@ -19,7 +18,7 @@ async function begin(tx,db,cid,auth,ctx,expectedCycleId,id,now){
  const active=events.docs.filter(d=>activeEvent(d.data()));
  if(active.length)A.fail('failed-precondition','Finish or cancel active tournaments before closing the cycle: '+active.map(d=>d.data().name||d.id).join(', ').slice(0,250));
  if(tables.size>400)A.fail('resource-exhausted','Close some tables before closing this cycle.');
- for(const d of tables.docs){const t=d.data();if(t.tournamentId){const event=events.docs.find(e=>e.id===t.tournamentId);if(!event||activeEvent(event.data()))A.fail('failed-precondition','Review tournament '+t.tournamentId+' before closing its table.');}else if(!protectedTable(t)&&!legacySafe(t))A.fail('failed-precondition','This unfinished legacy table needs an accounting review: '+(t.name||d.id));}
+ for(const d of tables.docs){const t=d.data();if(t.tournamentId){const event=events.docs.find(e=>e.id===t.tournamentId);if(!event||activeEvent(event.data()))A.fail('failed-precondition','Review tournament '+t.tournamentId+' before closing its table.');}else if(!protectedTable(t)&&!Legacy.archiveReason(t,now))A.fail('failed-precondition','This unfinished legacy table needs an accounting review: '+(t.name||d.id));}
  const job={id,status:'closing',fromCycleId:currentId,by:auth.uid,startedAt:now,remaining:tables.size,error:null};
  tx.set(ref,job);tx.update(db.doc('clubs/'+cid),{settlementClosing:{id,status:'closing',by:auth.uid,at:now},botsAuto:false,...(auth.club.botLobby?{'botLobby.enabled':false}:{})});
  for(const d of tables.docs){const t=d.data();if(protectedTable(t)&&!t.tournamentId&&!spinRunning(t))tx.update(d.ref,{closeRequested:{by:auth.uid,at:now,cycleClosureId:id},...(t.botLobby?{'botLobby.disabled':true}:{}),'gameState.__seq':(t.gameState?.__seq||0)+1});}
@@ -37,7 +36,7 @@ async function advance(db,cid,id,finish){
    const snap=await tx.get(d.ref);if(!snap.exists)return;const t=snap.data(),now=Date.now(),life=require('./pokerTableLifecycle');
    if(t.cardGameVersion===1)return require('./cardGames').__cardInternals.closeTable(tx,db,d.ref,t,initial.by,now);
    if(t.tournamentId){const event=S.data(await tx.get(db.doc('tournaments/'+A.key(t.tournamentId))));if(!event||activeEvent(event))A.fail('failed-precondition','Finish the active tournament before closing its table.');return life.archiveTable(tx,db,d.ref,t,initial.by,now);}
-   if(!protectedTable(t)){if(!legacySafe(t))A.fail('failed-precondition','A legacy table needs an accounting review.');return life.archiveTable(tx,db,d.ref,t,initial.by,now);}
+   if(!protectedTable(t))return Legacy.archiveTable(tx,db,d.ref,t,initial.by,now);
    if(spinRunning(t))return;
    if(A.idle(t)&&(t.gameState?.phase!=='showdown'||now-(t.gameState.showdownAt||0)>=5000))return life.closeTable(tx,db,d.ref,t,initial.by,now);
    if(!t.closeRequested)tx.update(d.ref,{closeRequested:{by:initial.by,at:now,cycleClosureId:id},'gameState.__seq':(t.gameState?.__seq||0)+1});

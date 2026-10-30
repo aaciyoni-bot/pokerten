@@ -33,3 +33,14 @@ P3: wordmark retains a faint navy rectangular matte, and chip/seat treatments ar
 Implementation checklist: generated assets installed; layout collisions fixed; controls verified; no Firebase/rules/functions modifications; cache bumped to synga-shell-v333.
 
 final result: passed
+
+## Lobby and entry revision — 2026-10-30
+final result: passed
+
+Source: user screenshot upload/image(20261030-065014).png, 1920×1200, showing the rejected old lobby. This is a corrective redesign in the previously selected Midnight Arena direction, not a clone of that screenshot. Implementation: qa/midnight/lobby.jpg, auth.jpg, lobby-mobile.jpg. Desktop fixture 1280×720; mobile fixture 844×390. Browser screenshot 1363×936, desktop content cropped to 1280×590; source content normalized from 1920×887 to 1280×591 in local-only lobby-comparison.jpg. Different sample account/data intentionally retained; no production balances copied.
+
+Comparison history: P1 old collage, bull, crown and red/gold game tiles removed; consistent slate game cards and Font Awesome library icons replace them. P1 opening table-room asset and login background replaced with midnight-table; authentication card and brand updated. P2 gold stake-card glow removed. P2 small mobile controls increased and footer width fixed. Post-fix desktop and mobile captures inspected. Full-view before/after comparison inspected; card typography and footer labels readable at full crop, so separate focus crop unnecessary.
+
+Typography: readable sans serif headings and actions replace slab/display headings. Spacing: consistent cards, header and flat footer; horizontal game carousel intentional. Colors: navy, slate, blue/lavender icon accents and coral primary button. Images: new generated ceramic chip stack and blank chip face, existing numerical denominations/counts retained; authentic new table background across intro/auth. Content: actual table counts, club names, callbacks and balances preserved.
+
+Interactions: lobby Texas selection opens current tables; presentation, poker-table and fullscreen tests pass. Predeploy 20 gates and isolation pass; static build succeeds. Browser errors checked: only unrelated extension metadata error. No real chip transactions or auth submission performed. Existing pre-revision table QA remains applicable; game logic unchanged. P3: wordmark matte and inherited condensed small profile text remain.

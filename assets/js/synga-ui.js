@@ -5,7 +5,7 @@
   let api;
   const icon = name => h('i', {className:'fa-solid fa-'+name, 'aria-hidden':true});
   const money = n => new Intl.NumberFormat('en-US',{maximumFractionDigits:2}).format(Number(n)||0);
-  const art = (cell, extra='') => h('div',{className:'synga-game-art '+extra+(cell<2?' synga-apk-art synga-art-'+cell:''),style:cell<2?undefined:{backgroundPosition:(cell%3*50)+'% '+(Math.floor(cell/3)*100)+'%'},'aria-hidden':true},cell===0&&h('img',{className:'synga-art-crown',src:'assets/synga/texas-crown.png',alt:''}),cell<2&&h('img',{className:'synga-art-emblem',src:'assets/synga/'+(cell===0?'texas-cards.png':'omaha-bull.png'),alt:''}));
+  const art = cell => h('div',{className:'synga-game-art synga-modern-art','aria-hidden':true},icon(['layer-group','grip','shuffle','shield-halved','table-cells','bolt'][cell]));
   const games = [
     {id:'holdem',title:'TEXAS',sub:'HOLD’EM',cell:0,filter:t=>t.type==='poker'&&!t.settings?.isDealerChoice&&!t.settings?.spinMode&&['NLH','Pineapple'].includes(t.settings?.baseGameType||'NLH')},
     {id:'omaha',title:'OMAHA',sub:'4 · 5 · 6 CARDS',cell:1,filter:t=>t.type==='poker'&&!t.settings?.isDealerChoice&&!t.settings?.spinMode&&String(t.settings?.baseGameType).startsWith('Omaha')},
@@ -29,7 +29,7 @@
       h('button',{className:'synga-player-link',onClick:p.onProfile,'aria-label':'My profile'},h('img',{src:api.avatar(p.user),alt:''}),h('span',null,h('strong',null,p.user.username||p.user.name||'Player'),h('small',null,p.club.name||'SYNGA POKER'))),
       h('button',{className:'synga-logo-link',onClick:p.onLobby,'aria-label':'Club lobby'},h('img',{src:'assets/synga/midnight-wordmark.webp',alt:'SYNGA POKER'})),
       h('button',{className:'synga-nav-clubs',onClick:p.onClubs},icon('building-columns'),'MY CLUBS'),
-      h('div',{className:'synga-nav-right'},h('button',{className:'synga-balance',onClick:p.onSettlement,'aria-label':'My chips and results'},icon('coins'),h('span',null,money(p.user.balance))),h(FullscreenButton),h('button',{className:'synga-round',onClick:()=>setMenu(true),'aria-label':'Open navigation'},icon('bars'))),
+      h('div',{className:'synga-nav-right'},h('button',{className:'synga-balance',onClick:p.onSettlement,'aria-label':'My chips and results'},h('img',{className:'synga-chip-icon',src:'assets/synga/midnight-chips.webp',alt:''}),h('span',null,money(p.user.balance))),h(FullscreenButton),h('button',{className:'synga-round',onClick:()=>setMenu(true),'aria-label':'Open navigation'},icon('bars'))),
       menu&&h(Modal,{title:'SYNGA POKER',onClose:()=>setMenu(false)},h('div',{className:'synga-menu'},actions.filter(x=>x[3]&&x[2]).map(([i,label,fn])=>h('button',{key:label,onClick:()=>{setMenu(false);fn();}},icon(i),label)),h('button',{onClick:()=>{setMenu(false);setSounds(true);}},icon('volume-high'),'Sound'))),
       sounds&&h(SoundPanel,{onClose:()=>setSounds(false)}));
   }
@@ -50,8 +50,8 @@
       h('div',{className:'synga-carousel',ref:strip},
         h('button',{className:'synga-feature-tile',onClick:()=>setTour(true)},art(5),h('span',{className:'synga-feature-tag'},running.length?'REGISTRATION & LIVE EVENTS':'CLUB TOURNAMENTS'),h('div',{className:'synga-tile-title'},h('strong',null,'TOURNAMENTS'),h('span',null,running.length?running.length+' events to explore':'Play for the top spot')),h('span',{className:'synga-green-button'},'VIEW EVENTS')),
         h('div',{className:'synga-shortcut-column'},
-          h('button',{className:'synga-shortcut',onClick:()=>setLegacy(true)},h('img',{src:'assets/menu/manage.png',alt:''}),h('strong',null,'CLUB TABLES'),h('span',{className:'synga-green-button'},'OPEN CLUB')),
-          h('button',{className:'synga-shortcut',onClick:p.onSettlement},h('img',{src:'assets/menu/history.png',alt:''}),h('strong',null,'MY RESULTS'))),
+          h('button',{className:'synga-shortcut',onClick:()=>setLegacy(true)},icon('sliders'),h('strong',null,'CLUB TABLES'),h('span',{className:'synga-green-button'},'OPEN CLUB')),
+          h('button',{className:'synga-shortcut',onClick:p.onSettlement},icon('chart-line'),h('strong',null,'MY RESULTS'))),
         games.map(g=>{const count=all.filter(g.filter).filter(t=>!live||hasPlayers(t)).length;return h('button',{key:g.id,className:'synga-game-tile synga-game-'+g.id,onClick:()=>openGame(g),'aria-label':g.title+' '+g.sub},art(g.cell),h('span',{className:'synga-tile-count'},p.tablesLoaded?count+' TABLE'+(count===1?'':'S'):'LOADING…'),h('div',{className:'synga-tile-title'},h('strong',null,g.title),h('span',null,g.sub)),h('span',{className:'synga-green-button'},'SELECT A TABLE'));})),
       h('button',{className:'synga-carousel-arrow prev',onClick:()=>scroll(-1),'aria-label':'Previous games'},icon('chevron-left')),
       h('button',{className:'synga-carousel-arrow next',onClick:()=>scroll(1),'aria-label':'More games'},icon('chevron-right')),
@@ -93,7 +93,7 @@
       h('div',{className:'synga-club-welcome'},h('span',null,'Welcome, '+(p.user.username||p.user.name||'Player')),h('span',null,'SELECT YOUR CLUB')),
       h('div',{className:'synga-club-strip',ref:strip},!p.directoryReady?h('p',{role:'status'},'Loading your clubs…'):p.clubs.map((c,i)=>{const m=p.memOf(c.id),approved=m?.status==='approved'||p.god;return h('article',{key:c.id,className:'synga-club-card synga-club-style-'+i%3},
         h('span',{className:'synga-club-ribbon'},c.ownerUid===p.user.uid?'YOUR CLUB':approved?'MEMBER':'PENDING APPROVAL'),
-        h('img',{className:'synga-club-emblem',src:c.logo||'assets/synga/brand.webp',alt:''}),
+        h('img',{className:'synga-club-emblem',src:c.logo||'assets/synga/midnight-wordmark.webp',alt:''}),
         h('h2',null,c.name),h('span',{className:'synga-club-code'},'CLUB ID '+p.clubCode(c.id)),
         h('div',{className:'synga-club-balance'},h('small',null,'YOUR CHIPS'),h('strong',null,Number.isFinite(m?.balance)?money(m.balance):'—')),
         h('button',{className:'synga-green-button',disabled:!approved,onClick:()=>p.onEnter(c)},approved?'ENTER CLUB':'AWAITING APPROVAL'),
@@ -107,7 +107,7 @@
       sounds&&h(SoundPanel,{onClose:()=>setSounds(false)}));
   }
   function Welcome() {
-    return h('main',{className:'synga-welcome'},h('img',{className:'synga-welcome-logo',src:'assets/synga/brand.webp',alt:'SYNGA POKER'}),h('section',null,h('span',{className:'synga-eyebrow'},'A NEW HOME FOR YOUR POKER CLUB'),h('h1',null,'Your friends.',h('br'),'Your table.'),h('p',null,'Explore the new lobby and table design.'),h('a',{className:'synga-green-button',href:'preview.html',target:'_top'},'OPEN DESIGN PREVIEW'),h('small',null,'Preview only · Multiplayer is awaiting setup.')));
+    return h('main',{className:'synga-welcome'},h('img',{className:'synga-welcome-logo',src:'assets/synga/midnight-wordmark.webp',alt:'SYNGA POKER'}),h('section',null,h('span',{className:'synga-eyebrow'},'A NEW HOME FOR YOUR POKER CLUB'),h('h1',null,'Your friends.',h('br'),'Your table.'),h('p',null,'Explore the new lobby and table design.'),h('a',{className:'synga-green-button',href:'preview.html',target:'_top'},'OPEN DESIGN PREVIEW'),h('small',null,'Preview only · Multiplayer is awaiting setup.')));
   }
   let bound=false;
   window.SyngaUI={Nav,Lobby,Clubs,SoundPanel,Welcome,Modal,games,bind(deps){api=deps;if(!bound){bound=true;document.addEventListener('click',event=>{if(event.target.closest('.synga-carousel button,.synga-footer button,.synga-select-screen button'))api.sound?.('ui');});}}};

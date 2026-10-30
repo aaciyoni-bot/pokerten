@@ -1092,7 +1092,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/synga-proportions.css?v=2">
 <link rel="stylesheet" href="assets/css/synga-clubs.css?v=1">
 <link rel="stylesheet" href="assets/css/synga-midnight.css?v=2">
-<link rel="stylesheet" href="assets/css/synga-luminous.css?v=1">
+<link rel="stylesheet" href="assets/css/synga-luminous.css?v=2">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme synga-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1159,7 +1159,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=316"></script>
     <script src="assets/js/synga-soundpack.js?v=1"></script>
-    <script src="assets/js/synga-ui.js?v=8"></script>
+    <script src="assets/js/synga-ui.js?v=9"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
     <script src="assets/js/poker-range-model.js?v=304"></script>
 <script>
@@ -4611,7 +4611,7 @@ function App() {
   }, effUser && activeClub && effUser.status === 'approved' && !inTable && currentView !== 'clubs' && React.createElement(window.SyngaUI?.Nav || ClubShellNav, {
     user:effUser, club:{...activeClub,...clubSettings,id:activeClub.id}, currentView,
     onClubs:leaveToClubs, onLobby:()=>changeView('lobby'),
-    onManage:()=>changeView(currentView==='backoffice'?'lobby':'backoffice'),
+    onManage:()=>changeView(currentView==='club-desk'?'lobby':'club-desk'),
     onCashier:()=>changeView('cashier'),
     onSettlement:()=>changeView('settlement'),
     onRanks:()=>changeView(currentView==='leaders'?'lobby':'leaders'),
@@ -4631,7 +4631,10 @@ function App() {
     clubName: activeClub?.name,
     onBack: leaveToClubs,
     banned: activeMem?.status === 'banned'
-  }), currentView === 'lobby' && activeClub && React.createElement(window.SyngaUI?.Lobby || LobbyView, {
+  }), (['lobby','club-desk'].includes(currentView)||(['backoffice','cashier'].includes(currentView)&&canOpenBackoffice(effUser))) && activeClub && React.createElement(window.SyngaUI?.Lobby || LobbyView, {
+    initialDesk: currentView !== 'lobby',
+    initialDeskSection: currentView==='cashier'?'cashier':currentView==='backoffice'?'members':'tables',
+    onDeskClose:()=>changeView('lobby'),
     user: effUser,
     tables: tablesDB,
     tablesLoaded: tablesLoaded,
@@ -4657,13 +4660,6 @@ function App() {
     showToast: showToast
   }), currentView === 'leaders' && activeClub && React.createElement(LeadersView, {
     user: effUser,
-    showToast: showToast
-  }), ['backoffice','cashier'].includes(currentView) && activeClub && canOpenBackoffice(effUser) && React.createElement(BackofficeView, {
-    cashierOnly: currentView === 'cashier',
-    user: effUser,
-    clubSettings: clubSettings,
-    tables: tablesDB,
-    onSettlement: () => changeView('settlement'),
     showToast: showToast
   }), currentView === 'poker-create' && React.createElement(PokerCreateView, {
     user: effUser,
@@ -6711,6 +6707,7 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
         busy ? 'Opening…' : 'Open ' + gameLabel + ' · ' + blinds + '/' + Number(blinds)*2)));
 }
 function LobbyView({
+  deskMode = false,
   tablesLoaded,
   user,
   tables,
@@ -7099,7 +7096,7 @@ function LobbyView({
     style: {
       overflowX: "hidden"
     },
-    className: "club-lobby scrollable-content aurora-bg p-4 sm:p-6"
+    className: "club-lobby scrollable-content aurora-bg p-4 sm:p-6"+(deskMode?" synga-operations":"")
   }, buyinEdit && React.createElement(TableSettingsEditor,{table:buyinEdit,onClose:()=>setBuyinEdit(null),showToast}), cashierOpen && ReactDOM.createPortal(React.createElement("div", {
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setCashierOpen(false)
@@ -7140,8 +7137,8 @@ function LobbyView({
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Close"))), document.body), React.createElement("div", {
     className: "max-w-6xl mx-auto animate-fade-in relative z-10"
-  }, window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"SYNGA POKER",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
-    className: "flex items-center justify-between gap-3 mb-5"
+  }, !deskMode && window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"SYNGA POKER",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
+    className: "synga-operations-wallet flex items-center justify-between gap-3 mb-5"
   }, React.createElement("div", {
     className: "lobby-wallet",
     dir: "ltr"
@@ -7568,7 +7565,7 @@ function LobbyView({
   })), tab === 'poker' && React.createElement("div", {
     className: "animate-fade-in"
   }, React.createElement("div", {
-    className: "flex justify-between items-center mb-4"
+    className: "synga-poker-tools-heading flex justify-between items-center mb-4"
   }, React.createElement("h2", {
     className: "text-xl font-black text-white"
   }, "Poker"), canManageGame(user, 'poker') && React.createElement("button", {
@@ -7622,7 +7619,7 @@ function LobbyView({
     }, lobbyVariantLabel(v), n > 0 && React.createElement("span", {
       className: "vtab-count"
     }, n));
-  })), React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker}), pokFilter !== 'tours' && React.createElement("div", {
+  })), !deskMode && React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker}), pokFilter !== 'tours' && React.createElement("div", {
     className: "flex flex-col gap-2.5"
   }, shownPoker.map(t => {
     const s = t.settings || {};
@@ -8777,6 +8774,7 @@ function BotLobbyControl({user, clubSettings}) {
     React.createElement('p', {className:'text-xs text-slate-400 mt-2'}, 'Deleting a table will not open a replacement. Existing tables keep running; tables are not opened or rotated automatically.'));
 }
 function BackofficeView({
+  deskMode = false,
   cashierOnly = false,
   user,
   clubSettings,
@@ -8784,6 +8782,7 @@ function BackofficeView({
   showToast,
   onSettlement
 }) {
+  const [deskSection,setDeskSection] = useState("members");
   const [usersList, setUsersList] = useState([]);
   const directoryScope = `${user.uid}:${user.role}:${user.status}:${CLUB_ID}:${isGodUser(user)}`;
   const [loadedDirectoryScope, setLoadedDirectoryScope] = useState('');
@@ -9269,7 +9268,8 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     style: {
       overflowX: "hidden"
     },
-    className: "club-admin blue-secondary scrollable-content p-4 sm:p-6"
+    className: "club-admin blue-secondary scrollable-content p-4 sm:p-6"+(deskMode?" synga-members-workspace":""),
+    "data-desk-section":deskSection
   }, directoryNotice, activityError && React.createElement('div',{role:'alert',className:'auth-error mb-4'},activityError,
     activityLoaded && React.createElement('p',{className:'mt-2 text-sm'},'Showing the last loaded security alerts.'),
     React.createElement('button',{type:'button',onClick:()=>setActivityAttempt(x=>x+1),disabled:activityLoading,className:'block mt-3 px-4 py-2 rounded-lg bg-slate-800 disabled:opacity-50'},activityLoading?'Loading…':'Retry activity')), balBox && ReactDOM.createPortal((() => {
@@ -9422,7 +9422,8 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     { id: 'bo-settings', ico: 'fa-sliders', label: 'Settings', badge: 0 }
   ].map(s2 => React.createElement("button", {
     key: s2.id,
-    onClick: () => { const el = document.getElementById(s2.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    onClick: () => { if(deskMode){setDeskSection(s2.id==='bo-players'?'members':s2.id==='bo-terms'?'agents':'settings');return;} const el = document.getElementById(s2.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+    'aria-pressed':deskMode?(deskSection===(s2.id==='bo-players'?'members':s2.id==='bo-terms'?'agents':'settings')):undefined,
     className: "relative text-xs font-black px-4 py-2.5 rounded-xl border shrink-0 text-gold-400 border-gold-400/30 bg-slate-900/60 hover:bg-slate-800"
   }, React.createElement("i", { className: `fa-solid ${s2.ico} mr-1` }), s2.label, s2.badge > 0 && React.createElement("span", {
     className: "absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border border-slate-900"
@@ -9737,6 +9738,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     onClick: () => setAssignFor(null),
     className: "text-slate-500 hover:text-white underline text-xs font-bold"
   }, "Cancel"))), document.body), (canAdmin || isAgentOnly) && React.createElement("div", {
+    id: "bo-terms",
     className: "glass-panel p-6 rounded-3xl mb-6 border border-purple-500/20"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white flex items-center gap-2 mb-4"
@@ -18281,7 +18283,7 @@ function TourDrivers({
     showToast: () => {}
   })));
 }
-window.SyngaUI?.bind({LegacyLobby:LobbyView,Tournaments:TournamentsTab,avatar:avatarUrl,short:formatShort,minBuyIn:buyInMin,maxBuyIn:buyInMax,canManage:canOpenBackoffice,sound:playSnd});
+window.SyngaUI?.bind({Backoffice:BackofficeView,LegacyLobby:LobbyView,Tournaments:TournamentsTab,avatar:avatarUrl,short:formatShort,minBuyIn:buyInMin,maxBuyIn:buyInMax,canManage:canOpenBackoffice,sound:playSnd});
 const root = ReactDOM.createRoot(document.getElementById('root'));
 function PokerLaunch(){
  if(!window.SYNGA_CONFIG?.firebase?.projectId)return React.createElement(window.SyngaUI.Welcome);

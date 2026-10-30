@@ -1,7 +1,7 @@
 /* SYNGA POKER - Service Worker
    Network first: fetch the latest release from the server.
    The cache is only an offline fallback so deployments appear immediately. */
-const CACHE = 'synga-shell-v335';
+const CACHE = 'synga-shell-v336';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {

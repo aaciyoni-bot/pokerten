@@ -51,9 +51,21 @@ const type=(selector,value)=>React.act(()=>{const el=w.document.querySelector(se
  await click(w.document.querySelector('[aria-label="DURAK PLAY YOUR CARDS"]'));
  await click(w.document.querySelector('.synga-play'));
  assert.deepEqual(joined,['durak-test']);
- await click(w.document.querySelector('[aria-label="Back to games"]'));
+ await click(w.document.querySelector('[aria-label="Close DURAK PLAY YOUR CARDS"]'));
  await click(w.document.querySelector('[aria-label="Previous games"]'));
  assert.ok(w.document.querySelector('[aria-label="TEXAS HOLD’EM"]'));
+
+ // Empty games stay contextual: no disabled join action or management controls for a player.
+ await click(w.document.querySelector('[aria-label="OMAHA 4 · 5 · 6 CARDS"]'));
+ assert.equal(w.document.querySelector('.synga-play'),null);
+ assert.equal(w.document.querySelector('.synga-select-screen'),null);
+ assert.match(w.document.querySelector('.synga-table-panel').textContent,/no open tables/i);
+ assert.ok(!w.document.querySelector('.synga-table-panel').textContent.includes('SET UP A TABLE'));
+ await click(w.document.querySelector('[aria-label="Close OMAHA 4 · 5 · 6 CARDS"]'));
+ await click([...w.document.querySelectorAll('.synga-footer button')].find(e=>e.textContent==='CLUB TABLES'));
+ assert.ok(w.document.querySelector('.synga-desk'));
+ assert.ok(!w.document.querySelector('.synga-desk-sidebar').textContent.includes('Cashier'));
+ assert.ok(!w.document.querySelector('.synga-desk-sidebar').textContent.includes('Members'));
  await React.act(()=>root.unmount());w.close();
 
  const host=new JSDOM('<div id="root"></div><div id="orizis-intro">ORIZIS</div>',{url:'http://localhost/preview.html',runScripts:'outside-only'}).window;

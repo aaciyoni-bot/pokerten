@@ -27,7 +27,7 @@
     const actions=[['building-columns','My clubs',p.onClubs,true],['house','Lobby',p.onLobby,true],['chart-line','Manage club',p.onManage,api.canManage(p.user)],['wallet','Cashier',p.onCashier,api.canManage(p.user)],['file-invoice-dollar','Account & settlement',p.onSettlement,true],['ranking-star','Rankings',p.onRanks,true],['user','My profile',p.onProfile,true],['download','Install app',p.onInstall,p.showInstall]];
     return h('header',{className:'synga-nav'},
       h('button',{className:'synga-player-link',onClick:p.onProfile,'aria-label':'My profile'},h('img',{src:api.avatar(p.user),alt:''}),h('span',null,h('strong',null,p.user.username||p.user.name||'Player'),h('small',null,p.club.name||'SYNGA POKER'))),
-      h('button',{className:'synga-logo-link',onClick:p.onLobby,'aria-label':'Club lobby'},h('img',{src:'assets/synga/brand.webp',alt:'SYNGA POKER'})),
+      h('button',{className:'synga-logo-link',onClick:p.onLobby,'aria-label':'Club lobby'},h('img',{src:'assets/synga/midnight-wordmark.webp',alt:'SYNGA POKER'})),
       h('button',{className:'synga-nav-clubs',onClick:p.onClubs},icon('building-columns'),'MY CLUBS'),
       h('div',{className:'synga-nav-right'},h('button',{className:'synga-balance',onClick:p.onSettlement,'aria-label':'My chips and results'},icon('coins'),h('span',null,money(p.user.balance))),h(FullscreenButton),h('button',{className:'synga-round',onClick:()=>setMenu(true),'aria-label':'Open navigation'},icon('bars'))),
       menu&&h(Modal,{title:'SYNGA POKER',onClose:()=>setMenu(false)},h('div',{className:'synga-menu'},actions.filter(x=>x[3]&&x[2]).map(([i,label,fn])=>h('button',{key:label,onClick:()=>{setMenu(false);fn();}},icon(i),label)),h('button',{onClick:()=>{setMenu(false);setSounds(true);}},icon('volume-high'),'Sound'))),
@@ -88,7 +88,7 @@
     const [code,setCode]=React.useState(''),[sounds,setSounds]=React.useState(false);
     const strip=React.useRef(null);
     return h('section',{className:'synga-club-hub','aria-label':'My clubs'},
-      h('header',{className:'synga-clubs-head'},h('img',{src:'assets/synga/brand.webp',alt:'SYNGA POKER'}),h('div',null,h('h1',null,'MY CLUBS'),h('p',null,'Your friends. Your tables. Your game.')),
+      h('header',{className:'synga-clubs-head'},h('img',{src:'assets/synga/midnight-wordmark.webp',alt:'SYNGA POKER'}),h('div',null,h('h1',null,'MY CLUBS'),h('p',null,'Your friends. Your tables. Your game.')),
         h('div',{className:'synga-club-head-actions'},h('button',{className:'synga-panel-button',onClick:()=>setSounds(true)},icon('volume-high'),'SOUNDS'),h(FullscreenButton),h('button',{className:'synga-round',onClick:replayIntro,'aria-label':'Replay SYNGA introduction'},icon('film')))),
       h('div',{className:'synga-club-welcome'},h('span',null,'Welcome, '+(p.user.username||p.user.name||'Player')),h('span',null,'SELECT YOUR CLUB')),
       h('div',{className:'synga-club-strip',ref:strip},!p.directoryReady?h('p',{role:'status'},'Loading your clubs…'):p.clubs.map((c,i)=>{const m=p.memOf(c.id),approved=m?.status==='approved'||p.god;return h('article',{key:c.id,className:'synga-club-card synga-club-style-'+i%3},

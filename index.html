@@ -1091,6 +1091,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/synga.css?v=1">
 <link rel="stylesheet" href="assets/css/synga-proportions.css?v=2">
 <link rel="stylesheet" href="assets/css/synga-clubs.css?v=1">
+<link rel="stylesheet" href="assets/css/synga-midnight.css?v=1">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme synga-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1157,7 +1158,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=316"></script>
     <script src="assets/js/synga-soundpack.js?v=1"></script>
-    <script src="assets/js/synga-ui.js?v=5"></script>
+    <script src="assets/js/synga-ui.js?v=6"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
     <script src="assets/js/poker-range-model.js?v=304"></script>
 <script>
@@ -10591,6 +10592,7 @@ function PokerTable({
   if (!botWorkerRef.current) botWorkerRef.current = window.PokerRuntime.createWorkerClient(window.Worker);
   useEffect(() => () => { oddsWorkerRef.current.close(); botWorkerRef.current.close(); }, []);
   const [tableState, setTableState] = useState(null);
+  const [arenaSoundOpen,setArenaSoundOpen]=useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournaments',id),d=>{if(!d.exists())return;setTourEntryState({id,...d.data()});const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
@@ -12225,7 +12227,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const N = Math.max(displayList.length, 2);
   // Stable rail rows leave room for cards, avatars and the lower-left hero hand.
   // Compact occupied seats for seated viewers; retain clockwise game order.
-  const SEAT_LAYOUTS = {"2":[[50,72],[31,20]],"3":[[50,72],[31,20],[69,20]],"4":[[50,72],[24,60],[31,20],[69,20]],"5":[[50,72],[24,60],[31,20],[69,20],[76,60]],"6":[[50,72],[23,59],[28,20],[72,20],[77,59],[68,74]],"7":[[50,74],[31,72],[21,46],[29,18],[71,18],[79,46],[69,72]],"8":[[50,74],[30,72],[20,46],[27,18],[41,13],[70,18],[80,46],[70,72]],"9":[[50,74],[31,72],[20,46],[25,18],[40,12],[60,12],[75,18],[80,46],[69,72]]};
+  const SEAT_LAYOUTS = {"2":[[10,80],[50,18]],"3":[[10,80],[23,18],[77,18]],"4":[[10,80],[15,52],[23,18],[77,18]],"5":[[10,80],[15,52],[23,18],[77,18],[85,52]],"6":[[10,80],[12,50],[23,18],[50,15],[77,18],[88,50]],"7":[[10,80],[12,55],[23,18],[41,15],[59,15],[77,18],[88,55]],"8":[[10,80],[12,55],[18,18],[34,15],[50,15],[66,15],[82,18],[88,55]],"9":[[10,80],[11,65],[12,46],[23,18],[41,15],[59,15],[77,18],[88,46],[89,65]]};
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
   // every real seatIndex so two players can never share a slot.
@@ -12246,7 +12248,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   // A spectator gets one join position for the next available physical seat.
   const slotMap = displayList.map((p,i)=>i+(compactVacancy?1:0));
   const slotOf = i => slotMap[i] || 0;
-  const seatXY = i => isSeated && displayList[i]?.uid === user.uid ? [50,72] : slotXY(slotOf(i));
+  const seatXY = i => isSeated && displayList[i]?.uid === user.uid ? [10,80] : slotXY(slotOf(i));
   const seatPos = i => {
     const [x, y] = seatXY(i);
     return {
@@ -12315,6 +12317,14 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
     }
   },
+  React.createElement('header',{className:'synga-arena-header'},
+    React.createElement('img',{className:'synga-arena-logo',src:'assets/synga/midnight-wordmark.webp',alt:'SYNGA POKER'}),
+    React.createElement('div',{className:'synga-arena-context'},
+      React.createElement('button',{type:'button',onClick:onLeave},'LOBBY'),
+      React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setTableInfoOpen(true);},'aria-label':'Table details'},tableClubName || 'SYNGA CLUB'),
+      React.createElement('span',null,tableVariant)),
+    React.createElement('button',{type:'button',className:'synga-arena-sound','aria-label':'Sound settings',onClick:()=>setArenaSoundOpen(true)},React.createElement('i',{className:'fa-solid fa-volume-high','aria-hidden':true}))),
+  arenaSoundOpen && React.createElement(window.SyngaUI.SoundPanel,{onClose:()=>setArenaSoundOpen(false)}),
   tableInfoOpen && ReactDOM.createPortal(React.createElement('div', {className:'poker-info-overlay', onClick:closeTableInfo},
     React.createElement('section', {role:'dialog', 'aria-modal':true, 'aria-label':'Table details', className:'poker-info-dialog', onClick:e=>e.stopPropagation(), onKeyDown:e=>{if(e.key==='Escape'){e.stopPropagation();closeTableInfo();}else if(e.key==='Tab'){e.preventDefault();e.currentTarget.querySelector('button').focus();}}},
       React.createElement('button', {type:'button', autoFocus:true, onClick:closeTableInfo, 'aria-label':'Close table details'}, '✕'),
@@ -12558,7 +12568,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-wrap approved-poker-table"
   }, React.createElement("img", {
     className: "approved-poker-material",
-    src: "assets/synga/table-room.webp",
+    src: "assets/synga/midnight-table.webp",
     alt: "",
     draggable: false
   })), tableState.tournament && tableState.tournament.final && React.createElement("div", {
@@ -12923,7 +12933,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         right: 'auto',
         transform: 'translateX(-50%)'
       }
-    }, p.actionText), godBadge), isMe && heroHandStatus, isMe && p.bet > 0 && React.createElement('div', {
+    }, p.actionText), godBadge), isMe && heroHandStatus, isMe && isTurn && React.createElement('div',{className:'synga-arena-turn'},React.createElement('span',null,'YOUR TURN'),React.createElement('progress',{value:timerPct,max:1,'aria-label':'Time remaining'}),React.createElement('strong',null,Math.max(0,Math.ceil(timeLeft))+'s')), isMe && p.bet > 0 && React.createElement('div', {
       className:'poker-bet poker-bet-hero', 'data-player-uid':p.uid, 'data-bet-row':'hero'
     }, React.createElement(CasinoChipStack,{amount:p.bet,scale:0.55,unit:chipUnit})), isMe && p.sitOut && React.createElement("button", {
       type: "button",

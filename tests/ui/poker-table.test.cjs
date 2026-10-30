@@ -44,7 +44,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
   assert.equal(JSON.parse(w.localStorage.getItem('pkSkin')).felt,color.toLowerCase());
   assert.equal(doc.querySelector('[aria-label="Table color: '+color+'"]').getAttribute('aria-pressed'),'true');
   assert.ok(doc.querySelector('.poker-table').style.getPropertyValue('--table-filter'));
-  assert.equal(doc.querySelector('.approved-poker-material').getAttribute('src'),'assets/synga/table-room.webp','felt, rail and dealer use the SYNGA room material');
+  assert.equal(doc.querySelector('.approved-poker-material').getAttribute('src'),'assets/synga/midnight-table.webp','felt and rail use the selected Midnight Arena material');
  }
  await React.act(()=>doc.querySelector('[aria-label="Table color: Auto"]').click());
  await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Done').click());
@@ -241,9 +241,9 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    await React.act(async()=>tableNext(snapshot()));
    const seats=[...doc.querySelectorAll('.poker-seat')];
    assert.equal(Number(doc.querySelector('.poker-table').dataset.seatCount),seats.length);
-   const left=seats.filter(s=>s.dataset.seatSide==='left').length;
-   const right=seats.filter(s=>s.dataset.seatSide==='right').length;
-   assert.ok(Math.abs(left-right)<=1,'occupied ring remains balanced around the centered hero after stand-up');
+   const left=seats.filter(s=>!s.classList.contains('poker-seat-hero')&&s.dataset.seatSide==='left').length;
+   const right=seats.filter(s=>!s.classList.contains('poker-seat-hero')&&s.dataset.seatSide==='right').length;
+   assert.ok(Math.abs(left-right)<=1,'opponent ring remains balanced while hero stays in the dedicated lower-left lane');
    const ordered=Object.values(current.players).sort((a,b)=>a.seatIndex-b.seatIndex),my=ordered.findIndex(p=>p.uid==='me');
    assert.deepEqual(seats.map(s=>s.dataset.playerUid),[...ordered.slice(my),...ordered.slice(0,my)].map(p=>p.uid),'clockwise order survives compaction');
    assert.deepEqual(Object.fromEntries(Object.values(current.players).map(p=>[p.uid,p.seatIndex])),before,'visual compaction never changes physical/game seats');

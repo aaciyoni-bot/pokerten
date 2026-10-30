@@ -368,6 +368,9 @@ function afterAction(S, actorUid) {
     return;
   }
   g.activeTurnUid = null;
+  // No response remains: return the unmatched part before publishing the
+  // all-in snapshot, so every client sees the contested pot and real stacks.
+  C.returnUncalledBet(g, pl);
   if (actives.length > 1 && actives.filter((q) => q.stack > 0).length < 2) {
     g.allInReveal = true;
     revealActiveHands(S);

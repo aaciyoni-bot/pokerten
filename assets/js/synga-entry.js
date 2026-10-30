@@ -28,7 +28,7 @@
     const splash = document.createElement('section');
     splash.className = 'synga-brand-intro';
     splash.setAttribute('aria-label','SYNGA POKER introduction');
-    splash.innerHTML = '<img class="synga-intro-scene" src="assets/synga/midnight-table.webp" alt=""><div class="synga-intro-shade"></div><div class="synga-intro-brand"><span class="synga-intro-eyebrow">YOUR FRIENDS. YOUR TABLE.</span><img class="synga-intro-logo" src="assets/synga/midnight-wordmark.webp" alt="SYNGA POKER"><p>WELCOME TO YOUR POKER CLUB</p><button class="synga-intro-enter" type="button">ENTER SYNGA</button></div><small class="synga-intro-credit">BY ORIZIS TECHNOLOGY</small>';
+    splash.innerHTML = '<img class="synga-intro-scene" src="assets/synga/luminous-room.webp" alt=""><div class="synga-intro-shade"></div><div class="synga-intro-brand"><span class="synga-intro-eyebrow">YOUR FRIENDS. YOUR TABLE.</span><img class="synga-intro-logo" src="assets/synga/midnight-wordmark.webp" alt="SYNGA POKER"><p>WELCOME TO YOUR POKER CLUB</p><button class="synga-intro-enter" type="button">ENTER SYNGA</button></div><small class="synga-intro-credit">BY ORIZIS TECHNOLOGY</small>';
     surface.appendChild(splash);
     const orizis = document.getElementById('orizis-intro');
     if (orizis) surface.appendChild(orizis);

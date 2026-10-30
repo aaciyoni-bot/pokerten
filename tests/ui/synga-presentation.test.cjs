@@ -38,6 +38,22 @@ const type=(selector,value)=>React.act(()=>{const el=w.document.querySelector(se
  const sample=w.document.querySelector('audio');assert.ok(sample.controls);assert.match(sample.src,/synga-demo.mp3$/);
  assert.equal(w.document.querySelectorAll('.synga-sound-grid button').length,10);
  await click(w.document.querySelector('.synga-mute'));assert.ok([...w.document.querySelectorAll('.synga-sound-grid button')].every(e=>e.disabled));
+
+ // Both game pages remain reachable and retain the original join callbacks.
+ const joined=[];
+ w.HTMLElement.prototype.scrollTo=function(){};
+ await React.act(()=>root.render(React.createElement(w.SyngaUI.Lobby,{user:props.user,tablesLoaded:true,tables:[{id:'durak-test',type:'durak',settings:{buyIn:10},players:{}}],tournaments:[],clubSettings:{name:'Test'},onJoinDurak:t=>joined.push(t.id),onSettlement(){},onCreatePoker(){}})));
+ assert.ok(w.document.querySelector('[aria-label="TEXAS HOLD’EM"]'));
+ await click(w.document.querySelector('[aria-label="More games"]'));
+ assert.ok(w.document.querySelector('[aria-label="DURAK PLAY YOUR CARDS"]'));
+ assert.ok(w.document.querySelector('[aria-label="CHINESE POKER"]'));
+ assert.ok(w.document.querySelector('[aria-label="SPIN & CASH THREE PLAYERS"]'));
+ await click(w.document.querySelector('[aria-label="DURAK PLAY YOUR CARDS"]'));
+ await click(w.document.querySelector('.synga-play'));
+ assert.deepEqual(joined,['durak-test']);
+ await click(w.document.querySelector('[aria-label="Back to games"]'));
+ await click(w.document.querySelector('[aria-label="Previous games"]'));
+ assert.ok(w.document.querySelector('[aria-label="TEXAS HOLD’EM"]'));
  await React.act(()=>root.unmount());w.close();
 
  const host=new JSDOM('<div id="root"></div><div id="orizis-intro">ORIZIS</div>',{url:'http://localhost/preview.html',runScripts:'outside-only'}).window;

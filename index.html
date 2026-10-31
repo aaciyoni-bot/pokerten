@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="347">
-    <script src="assets/js/app-update.js?v=347" defer></script>
+    <meta name="app-version" content="348">
+    <script src="assets/js/app-update.js?v=348" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1124,7 +1124,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=347">
 <script src="assets/js/club-cashier.js?v=330"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
-<script src="assets/js/poker-sound-pack.js?v=337"></script>
+<script src="assets/js/poker-sound-pack.js?v=348"></script>
 <link rel="stylesheet" href="assets/css/reference-experience.css?v=340">
 <link rel="stylesheet" href="assets/css/login-reference.css?v=336">
 </head>
@@ -4190,9 +4190,25 @@ function useInstalledAppDisplay() {
   }, []);
   return installed;
 }
+function PokerMusicButton({tile=false}={}) {
+  const pack=window.PokerSoundPack;
+  const [enabled,setEnabled]=useState(()=>pack?.musicEnabled!==false);
+  useEffect(()=>{
+    const sync=()=>setEnabled(window.PokerSoundPack?.musicEnabled!==false);
+    window.addEventListener('pokerten-music-change',sync);
+    return()=>window.removeEventListener('pokerten-music-change',sync);
+  },[]);
+  if(!pack?.setMusicEnabled)return null;
+  return React.createElement('button',{type:'button',className:tile?'poker-menu-tile':undefined,'data-menu-tone':tile?'purple':undefined,
+    'aria-label':'Background music','aria-pressed':enabled,title:'Music only — game sounds stay unchanged',
+    onClick:()=>pack.setMusicEnabled(!pack.musicEnabled)},
+    React.createElement('i',{className:'fa-solid fa-music','aria-hidden':true,style:tile?{fontSize:28,width:48,height:48,display:'grid',placeItems:'center',color:enabled?'#d3a6ff':'#8290a4'}:undefined}),
+    React.createElement('span',{className:tile?'poker-menu-label':undefined},enabled?'MUSIC ON':'MUSIC OFF'));
+}
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 347. Check for updates'},'v347 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 348. Check for updates'},'v348 · Check update'),
+    React.createElement(PokerMusicButton),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -13729,6 +13745,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     'aria-pressed':!window.__pkMuted,
     className:'poker-menu-tile','data-menu-tone':'green'
   }, ...menuTile(window.__pkMuted ? 'muted' : 'sound', window.__pkMuted ? 'Sound off' : 'Sound on')),
+  React.createElement(PokerMusicButton,{tile:true}),
   window.PokerSoundPack && React.createElement('button',{type:'button',className:'poker-menu-tile','data-menu-tone':'purple',onClick:()=>{setToolsOpen(false);window.PokerSoundPack.openLibrary();}},...menuTile('sound','Sound library')),
   React.createElement('label', {className:'poker-menu-volume','data-menu-tone':'cyan'},
     React.createElement('span',null,'Volume · ',React.createElement('strong',null,Math.round(window.__pkVolume * 100)+'%')),

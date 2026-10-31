@@ -104,6 +104,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")" = com.pokerten.app
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/Info.plist")" = 1.0
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$APP/Info.plist")" = "$BUILD_NUMBER"
+          test "$(/usr/libexec/PlistBuddy -c 'Print ITSAppUsesNonExemptEncryption' "$APP/Info.plist")" = false
           test -s "$APP/public/index.html"
           test -s "$APP/public/vendor/firebase.js"
           test -s "$APP/public/account-deletion.html"
@@ -144,6 +145,12 @@ jobs:
             --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
           xcrun altool --upload-app -f "$IPA_PATH" -t ios \
             --apiKey "$APP_STORE_CONNECT_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+      - name: Verify Apple processing and prepare the existing TestFlight audience
+        env:
+          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          APP_STORE_CONNECT_KEY_ID: 7K6XDQ4KN9
+          APP_STORE_CONNECT_ISSUER_ID: 819c35bf-256f-4a5f-9cb5-57df23a71a8c
+        run: node mobile/scripts/testflight-release.mjs
       - name: Record remaining release work
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'TEXT'

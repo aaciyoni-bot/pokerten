@@ -39,7 +39,7 @@ jobs:
           for(const name of ['pkAct','pkActEurope','pkTick','pkSeat','pkClubDirectory']){
            const raw=read(['functions:log','--only',name+','+name.toLowerCase(),'--lines','1000']);
            if(!Array.isArray(raw)){console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,error:raw?.error||'unexpected-shape'}));continue;}
-           const cutoff=Date.now()-86400000,entries=raw.filter(e=>Date.parse(e.timestamp)>=cutoff);
+           const cutoff=Date.now()-15*60*1000,entries=raw.filter(e=>Date.parse(e.timestamp)>=cutoff);
            const requests=entries.filter(e=>e.httpRequest&&e.httpRequest.requestMethod==='POST');
            const latency=e=>typeof e.httpRequest.latency==='string'?parseFloat(e.httpRequest.latency)*1000:NaN;
            const revisionStats=[...new Set(requests.map(e=>e.resource?.labels?.revision_name||'unknown'))].map(revision=>{
@@ -49,7 +49,7 @@ jobs:
            const status={};for(const e of requests){const s=String(Number(e.httpRequest.status)||0);status[s]=(status[s]||0)+1;}
            const text=e=>JSON.stringify(e.jsonPayload||e.textPayload||'');
            const times=entries.map(e=>e.timestamp).sort();
-           console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,windowHours:24,returnedEntries:raw.length,recentEntries:entries.length,oldest:times[0]||null,newest:times.at(-1)||null,revisions:revisionStats,routes:{europe:entries.filter(e=>text(e).includes('POKER_ACTION_ROUTE')&&text(e).includes('europe')).length,localFallback:entries.filter(e=>text(e).includes('POKER_ACTION_ROUTE')&&text(e).includes('local-fallback')).length},postRequests:stats(requests.map(latency)),successRequests:stats(requests.filter(e=>e.httpRequest.status>=200&&e.httpRequest.status<300).map(latency)),status,coldStartMessages:entries.filter(e=>/Starting new instance|Cold start/i.test(text(e))).length,contentionMessages:entries.filter(e=>/too much contention|ABORTED|transaction.*conflict/i.test(text(e))).length,errors:entries.filter(e=>['ERROR','CRITICAL','ALERT','EMERGENCY'].includes(e.severity)).length}));
+           console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,windowMinutes:15,returnedEntries:raw.length,recentEntries:entries.length,oldest:times[0]||null,newest:times.at(-1)||null,revisions:revisionStats,routes:{europe:entries.filter(e=>text(e).includes('POKER_ACTION_ROUTE')&&text(e).includes('europe')).length,localFallback:entries.filter(e=>text(e).includes('POKER_ACTION_ROUTE')&&text(e).includes('local-fallback')).length},postRequests:stats(requests.map(latency)),successRequests:stats(requests.filter(e=>e.httpRequest.status>=200&&e.httpRequest.status<300).map(latency)),status,coldStartMessages:entries.filter(e=>/Starting new instance|Cold start/i.test(text(e))).length,contentionMessages:entries.filter(e=>/too much contention|ABORTED|transaction.*conflict/i.test(text(e))).length,errors:entries.filter(e=>['ERROR','CRITICAL','ALERT','EMERGENCY'].includes(e.severity)).length}));
           }
           
           JS

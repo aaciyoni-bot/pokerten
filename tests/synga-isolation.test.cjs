@@ -19,9 +19,8 @@ assert.equal(JSON.parse(read('manifest.json')).orientation,'landscape');
 console.log('SYNGA isolation: named database and prefixed functions, no original domain/deploy workflow, preview writes denied, assets present.');
 
 for(const file of ['index.html','privacy.html','delete-account.html','preview.html','manifest.json','sw.js','src/settlement-export.js',...fs.readdirSync(path.join(root,'assets/css')).map(n=>'assets/css/'+n),...fs.readdirSync(path.join(root,'assets/js')).filter(n=>n!=='synga-firebase.js').map(n=>'assets/js/'+n)])assert.ok(!/pokerten|mynga/i.test(read(file)),'No previous brand is shipped in product text: '+file);
-assert.ok(/id="orizis-intro"/.test(html)&&html.includes('>ORIZIS</div>')&&html.includes('>TECHNOLOGY</div>'),'ORIZIS entrance intro retained');
-const introBlock=source=>source.match(/<!-- ═══ ORIZIS INTRO[\s\S]+?<!-- ═══ \/ORIZIS INTRO ═══ -->/)[0];
-assert.equal(introBlock(read('preview.html')),introBlock(html),'Preview retains the same ORIZIS entrance intro.');
+assert.ok(!html.includes('id="orizis-intro"'),'Studio intro removed from live entry');
+assert.ok(!read('preview.html').includes('id="orizis-intro"'),'Studio intro removed from preview');
 const soundContext={window:{}};vm.runInNewContext(read('assets/js/synga-soundpack.js'),soundContext);
 for(const names of Object.values(soundContext.window.SYNGA_SOUNDS))for(const name of names){const bytes=fs.readFileSync(path.join(root,'assets/sounds',name+'.wav'));assert.equal(bytes.toString('ascii',0,4),'RIFF');assert.equal(bytes.toString('ascii',8,12),'WAVE');}
-console.log('SYNGA brand: ORIZIS intro, no prior product names, extracted WAV files verified.');
+console.log('SYNGA brand: direct entry, no prior product names, extracted WAV files verified.');

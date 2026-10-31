@@ -40,7 +40,8 @@ ${marker}`);
   }
   fs.writeFileSync(path.join(output, entry.name === 'index.js' ? 'synga-engine.js' : entry.name), source);
 }
-fs.writeFileSync(path.join(output, 'index.js'), "'use strict';\nexports.synga = require('./synga-engine');\n" +
+fs.copyFileSync(path.join(root,'synga-backend/siteAccess.js'),path.join(output,'siteAccess.js'));
+fs.writeFileSync(path.join(output, 'index.js'), "'use strict';\nexports.synga = require('./synga-engine');\nObject.assign(exports.synga,require('./siteAccess'));\n" +
   "exports.synga.backendStatus = require('firebase-functions/v2/https').onCall({region:'us-central1'},async()=>({brand:'SYNGA',databaseId:require('firebase-admin/firestore').getFirestore('synga').databaseId,release:1}));\n");
 const pkg = JSON.parse(fs.readFileSync(path.join(output, 'package.json')));
 pkg.name = 'synga-functions';

@@ -28,10 +28,9 @@
     const splash = document.createElement('section');
     splash.className = 'synga-brand-intro';
     splash.setAttribute('aria-label','SYNGA POKER introduction');
-    splash.innerHTML = '<img class="synga-intro-scene" src="assets/synga/luminous-room.webp" alt=""><div class="synga-intro-shade"></div><div class="synga-intro-brand"><span class="synga-intro-eyebrow">YOUR FRIENDS. YOUR TABLE.</span><img class="synga-intro-logo" src="assets/synga/midnight-wordmark.webp" alt="SYNGA POKER"><p>WELCOME TO YOUR POKER CLUB</p><button class="synga-intro-enter" type="button">ENTER SYNGA</button></div><small class="synga-intro-credit">BY ORIZIS TECHNOLOGY</small>';
+    splash.innerHTML = '<img class="synga-intro-scene" src="assets/synga/luminous-room.webp" alt=""><div class="synga-intro-shade"></div><div class="synga-intro-brand"><span class="synga-intro-eyebrow">YOUR FRIENDS. YOUR TABLE.</span><img class="synga-intro-logo" src="assets/synga/midnight-wordmark.webp" alt="SYNGA POKER"><p>WELCOME TO YOUR POKER CLUB</p><button class="synga-intro-enter" type="button">ENTER SYNGA</button></div>';
     surface.appendChild(splash);
-    const orizis = document.getElementById('orizis-intro');
-    if (orizis) surface.appendChild(orizis);
+
     document.body.appendChild(surface);
     let endTimer,hideTimer;
     const enter = () => {
@@ -55,11 +54,8 @@
     splash.addEventListener('keydown',event=>{if(event.key==='Escape')enter();});
     api.replay=()=>show(false);
     frame.setAttribute('inert','');
-    if (orizis) {
-      splash.setAttribute('inert','');
-      const observer=new MutationObserver(()=>{if(!orizis.isConnected){observer.disconnect();show();}});
-      observer.observe(surface,{childList:true});
-    } else show();
+    // Direct entry: no timed studio or brand splash blocks the game.
+    splash.hidden=true;frame.removeAttribute('inert');
   }
   if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',mount,{once:true});
   else mount();

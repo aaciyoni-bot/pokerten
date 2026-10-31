@@ -119,8 +119,8 @@
 
  const definitions=html.match(/<svg[^>]*>[\s\S]*?pcGBlk[\s\S]*?<\/svg>/)?.[0]||'';
  const clubCount=Number(query.get('clubs'))||3;
- const previewClubs=Array.from({length:clubCount},(_,i)=>({id:'club'+i,name:i===0?'SYNGA SOCIAL CLUB':i===1?'YONI’S FRIENDS':'ROYAL TABLES',ownerUid:'owner',logo:i===0?'assets/synga/icon-192.png':undefined}));
- const clubProps={user:{uid:'player',username:'Yoni',role:'player'},clubs:previewClubs,myMems:previewClubs.map(c=>({clubId:c.id,status:'approved',balance:1234567.89})),directoryReady:true};
+ const previewClubs=Array.from({length:clubCount},(_,i)=>({id:i===0?'synga_main':'club'+i,name:i===0?'SYNGA SOCIAL CLUB':i===1?'YONI’S FRIENDS':'ROYAL TABLES',ownerUid:'owner',logo:i===0?'assets/synga/icon-192.png':undefined}));
+ const clubProps={user:{uid:'player',username:'Yoni',role:'player'},clubs:previewClubs,myMems:previewClubs.map(c=>({clubId:c.id,status:query.has('pending')?'pending':'approved',balance:1234567.89})),directoryReady:true};
 
  const tables=[['NLH',.5,50,0],['NLH',.5,50,6],['Pineapple',.5,100,0],['Omaha 6',1,100,0],['Omaha 6',.5,10000000,0]].map(([baseGameType,blinds,minBuyIn,seated],i)=>({docId:'test'+i,type:'poker',settings:{baseGameType,blinds,minBuyIn,maxPlayers:6,serverEngine:true},players:Object.fromEntries(Array.from({length:seated},(_,j)=>['p'+j,{uid:'p'+j,name:'Player '+j,stack:100}])),gameState:{phase:seated?'flop':'waiting'},history:seated?[{at:Date.now()}]:[]}));
  if(true){

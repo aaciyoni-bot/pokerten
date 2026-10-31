@@ -23,6 +23,10 @@ test('packaged app has local executable dependencies and excludes server files',
   for (const src of new Set(images)) assert.ok((await readFile(new URL('../www/' + src, import.meta.url))).length, 'Missing packaged image: ' + src);
   const release = JSON.parse(await readFile(new URL('../../assets/release.json', import.meta.url), 'utf8'));
   assert.equal(html.match(/<meta name="app-version" content="(\d+)">/)?.[1], String(release.version));
+  assert.match(html, /assets\/video\/pokerten-orizis-intro\.mp4/);
+  for (const name of ['pokerten-orizis-intro.mp4', 'pokerten-orizis-poster.webp']) {
+    assert.deepEqual(await readFile(new URL('../www/assets/video/' + name, import.meta.url)), await readFile(new URL('../../assets/video/' + name, import.meta.url)));
+  }
   const updater = await readFile(new URL('../www/assets/js/native-update.js', import.meta.url), 'utf8');
   assert.doesNotMatch(updater, /serviceWorker|fetch\(|location\.replace/);
   assert.match(updater, /play\.google\.com\/store\/apps\/details\?id=com\.orizis\.pokerten/);

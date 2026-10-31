@@ -1,6 +1,6 @@
 # POKERTEN independent mobile apps
 
-Android release 9 (1.0.4) and the next iPhone build package game release 348. The lobby/account and table menus include a persistent MUSIC ON / MUSIC OFF control that leaves game effects unchanged. This snapshot also includes the current settlement interface and cashier scrolling fix. Store review and device verification are separate from compilation.
+Android release 9 (1.0.4) and the next iPhone build package game release 349. The lobby/account and table menus include a persistent MUSIC ON / MUSIC OFF control that leaves game effects unchanged. This snapshot also includes the current settlement interface and cashier scrolling fix. Store review and device verification are separate from compilation.
 The existing POKERTEN client is packaged locally using Capacitor. It connects to
 its existing Firebase backend. The website/game source, server rules, game logic,
 and GOD permissions are not changed by this mobile packaging.

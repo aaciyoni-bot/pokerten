@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="348">
-    <script src="assets/js/app-update.js?v=348" defer></script>
+    <meta name="app-version" content="349">
+    <script src="assets/js/app-update.js?v=349" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1111,7 +1111,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
-<link rel="stylesheet" href="assets/css/tournament-blue.css?v=345">
+<link rel="stylesheet" href="assets/css/tournament-blue.css?v=349">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=330">
@@ -4207,7 +4207,7 @@ function PokerMusicButton({tile=false}={}) {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 348. Check for updates'},'v348 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 349. Check for updates'},'v349 · Check update'),
     React.createElement(PokerMusicButton),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
@@ -18195,8 +18195,12 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     className: "pt-tournaments-list"
   }, sorted.map(tor => {
     const me = (tor.players || {})[user.uid];
-    const count = Object.values(tor.players || {}).filter(p=>!p.removed).length;
-    const alive = Object.values(tor.players || {}).filter(p => !p.out).length;
+    const entrants = Object.values(tor.players || {}).filter(p => p && !p.removed);
+    const count = entrants.length;
+    const alive = entrants.filter(p => !p.out).length;
+    const botCount = entrants.filter(p => p.isBot === true).length;
+    const showParticipantKinds = canManageGame(user, tor.game);
+    const participantKinds = showParticipantKinds ? (count-botCount)+' human · '+botCount+' bots' : null;
     const myTable = tor.status === 'running' && me && !me.out ? (tables || []).find(tb => tb.tournamentId === tor.id && tb.players && tb.players[user.uid]) : null;
     const h=React.createElement;
     const pool=tor.status==='done'?(tor.finalPrizePool??tor.prizePool??0):(tor.prizePool||0);
@@ -18218,8 +18222,9 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
           h("span",{className:"pt-tournament-label"},"PRIZE POOL"),
           h("strong",{dir:"ltr"},formatMoney(pool))),
         h("div",{className:"pt-tournament-stats"},
-          ...[['fa-coins','Buy-in',formatMoney(tor.buyIn)],['fa-circle-notch','Stack',formatShort(Number(tor.startStack)||1000)],['fa-users','Players',(tor.status==='running'?alive:count)+'/'+(tor.maxPlayers||36)],['fa-trophy','Format',tor.mttMode?'MTT':'Knockout']].map(([icon,label,value])=>h("div",{key:label,className:"pt-tournament-stat"},
+          ...[['fa-coins','Entry',formatMoney(tourEntryOf(tor))],['fa-circle-notch','Stack',formatShort(Number(tor.startStack)||1000)],['fa-users','Players',(tor.status==='running'?alive:count)+'/'+(tor.maxPlayers||36)],['fa-trophy','Format',tor.mttMode?'MTT':'Knockout']].map(([icon,label,value])=>h("div",{key:label,className:"pt-tournament-stat"},
             h("i",{className:'fa-solid '+icon,'aria-hidden':true}),h("div",null,h("span",null,label),h("b",null,value))))),
+        participantKinds&&h("p",{className:"pt-tournament-participant-kinds"},"Manager view · ",participantKinds),
         h("div",{className:"pt-tournament-rules"},
           tor.addon&&h("span",null,'Add-on at level '+(tor.addonLevel||3)),
           h("span",null,tourRegistrationLabel(tor)),
@@ -18267,7 +18272,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
           React.createElement("i",{className:"fa-solid fa-users",'aria-hidden':true}),
           React.createElement("div",null,React.createElement("span",null,React.createElement("b",null,regs.length)," of ",tor.maxPlayers||36," players registered"),React.createElement("progress",{value:regs.length,max:tor.maxPlayers||36,'aria-label':'Registered players'})),
           React.createElement("i",{className:'fa-solid fa-chevron-'+(open?'up':'right'),'aria-hidden':true})),
-        open&&React.createElement("div",{className:"pt-tournament-roster"},regs.length?regs.map(p=>React.createElement("div",{key:p.uid,className:"pt-tournament-roster-person"},React.createElement("span",null,isGodUser(user)&&p.isBot?'Bot · ':'',p.name,p.removalRequested?' · Removal pending':p.out?' · Eliminated':''),canManageGame(user,tor.game)&&tor.game==='poker'&&React.createElement("button",{type:"button",disabled:p.removalRequested,onClick:()=>removeTourPlayer(tor,p),"aria-label":"Remove "+p.name,className:"pt-tournament-remove-player"},p.removalRequested?'Pending':'Remove'))):React.createElement("span",null,"No players registered yet")),
+        open&&React.createElement("div",{className:"pt-tournament-roster"},regs.length?regs.map(p=>React.createElement("div",{key:p.uid,className:"pt-tournament-roster-person"},React.createElement("span",null,showParticipantKinds?(p.isBot?'Bot · ':'Human · '):'',p.name,p.removalRequested?' · Removal pending':p.out?' · Eliminated':''),canManageGame(user,tor.game)&&tor.game==='poker'&&React.createElement("button",{type:"button",disabled:p.removalRequested,onClick:()=>removeTourPlayer(tor,p),"aria-label":"Remove "+p.name,className:"pt-tournament-remove-player"},p.removalRequested?'Pending':'Remove'))):React.createElement("span",null,"No players registered yet")),
         tor.status==='reg'&&me&&!me.out&&React.createElement("div",{className:"pt-tournament-registered"},React.createElement("i",{className:"fa-solid fa-circle-check",'aria-hidden':true}),"You are registered"));
     })(), isGod && envPeek === tor.id && Array.isArray(tor.mysteryEnvelopes) && React.createElement("div", {
       className: "bg-amber-950/40 border border-amber-500/40 rounded-xl p-2.5 mb-2",
@@ -18420,7 +18425,16 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     return h(React.Fragment,{key:tor.id},h('button',{type:'button',className:'pt-tournament-lobby-row','data-tournament-row':tor.id,'aria-label':'Open tournament '+tor.name,onClick:()=>setExpandedTournament(tor.id)},
       h('img',{src:'assets/tournaments/gold-cup.webp',alt:'',width:48,height:56}),
       h('span',{className:'pt-tournament-row-title'},h('strong',null,tor.name),h('small',null,tourEntryOf(tor)===0?'FREEROLL · ':'',tor.pokerType||'NLH',' · ',tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE · '+alive+' left':tor.status==='cancelled'?'Cancelled':'Ended')),
-      h('span',{className:'pt-tournament-row-pool'},h('small',null,'PRIZE POOL'),h('strong',null,formatMoney(pool))),h('i',{className:'fa-solid fa-chevron-right','aria-hidden':true}),h(TournamentRowClock,{tournament:tor})),
+      h('span',{className:'pt-tournament-row-pool'},h('small',null,'PRIZE POOL'),h('strong',null,formatMoney(pool))),h('i',{className:'fa-solid fa-chevron-right','aria-hidden':true}),
+      h('span',{className:'pt-tournament-row-info',dir:'ltr'},
+        h('span',{className:'pt-tournament-row-players'},h('i',{className:'fa-solid fa-users','aria-hidden':true}),h('strong',null,count+(tor.status==='reg'?' / '+(tor.maxPlayers||36):'')), ' registered'),
+        tor.status==='running'&&h('span',null,h('strong',null,alive),' remaining'),
+        h('span',null,'Entry ',h('strong',null,tourEntryOf(tor)===0?'FREE':formatMoney(tourEntryOf(tor)))),
+        Number(tor.startStack)>0&&h('span',null,'Starting stack ',h('strong',null,formatShort(Number(tor.startStack)))),
+        tor.status==='running'&&h('span',null,tourLateRegOpen(tor)?'Late registration open':'Registration closed'),
+        ['reg','running'].includes(tor.status)&&me&&!me.removed&&!me.out&&h('span',{className:'pt-tournament-row-registered'},h('i',{className:'fa-solid fa-circle-check','aria-hidden':true}),' You are registered'),
+        participantKinds&&h('span',{className:'pt-tournament-participant-kinds'},'Manager view · ',participantKinds)),
+      h(TournamentRowClock,{tournament:tor})),
       expandedTournament===tor.id&&h(TournamentDialog,{title:tor.name,onClose:()=>setExpandedTournament(null),className:'pt-tournament-detail'},h('div',{className:'pt-tournaments'},card)));
   }), !compactMode && sorted.length === 0 && React.createElement("div", {
     className: "col-span-full text-center py-16 text-slate-500 font-bold glass-panel rounded-3xl border-dashed"

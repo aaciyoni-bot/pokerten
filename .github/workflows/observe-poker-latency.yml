@@ -29,23 +29,27 @@ jobs:
            try{return JSON.parse(p.stdout).result;}catch{return {error:'invalid-json'};}
           }
           const inventory=read(['functions:list']);
-          console.log('POKER_DIAGNOSTIC functions '+JSON.stringify(Array.isArray(inventory)?inventory.filter(f=>['pkAct','pkTick','pkDeal'].includes(f.id)).map(f=>({name:f.id,region:f.region,runtime:f.runtime,minInstances:f.minInstances??null,concurrency:f.concurrency??null,memoryMb:f.availableMemoryMb??null})):inventory?.error?inventory:{error:'unexpected-shape'}));
+          console.log('POKER_DIAGNOSTIC functions '+JSON.stringify(Array.isArray(inventory)?inventory.filter(f=>['pkAct','pkActEurope','pkTick','pkDeal'].includes(f.id)).map(f=>({name:f.id,region:f.region,runtime:f.runtime,minInstances:f.minInstances??null,concurrency:f.concurrency??null,memoryMb:f.availableMemoryMb??null})):inventory?.error?inventory:{error:'unexpected-shape'}));
           const databases=read(['firestore:databases:list']);
           console.log('POKER_DIAGNOSTIC databases '+JSON.stringify(Array.isArray(databases)?databases.map(d=>({defaultDatabase:d.name?.endsWith('/(default)'),location:d.locationId,type:d.type})):databases?.error?databases:{error:'unexpected-shape'}));
           function stats(values){
            const a=values.filter(Number.isFinite).sort((a,b)=>a-b),pct=p=>a.length?Math.round(a[Math.min(a.length-1,Math.ceil(a.length*p)-1)]):null;
            return {count:a.length,p50ms:pct(.5),p90ms:pct(.9),p95ms:pct(.95),maxMs:a.length?Math.round(a[a.length-1]):null,over2s:a.filter(x=>x>=2000).length,over3s:a.filter(x=>x>=3000).length};
           }
-          for(const name of ['pkAct','pkTick','pkDeal','pkSeat','pkTableCreate','pkClubDirectory','pkTournament']){
+          for(const name of ['pkAct','pkActEurope','pkTick','pkSeat','pkClubDirectory']){
            const raw=read(['functions:log','--only',name+','+name.toLowerCase(),'--lines','1000']);
            if(!Array.isArray(raw)){console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,error:raw?.error||'unexpected-shape'}));continue;}
            const cutoff=Date.now()-86400000,entries=raw.filter(e=>Date.parse(e.timestamp)>=cutoff);
            const requests=entries.filter(e=>e.httpRequest&&e.httpRequest.requestMethod==='POST');
            const latency=e=>typeof e.httpRequest.latency==='string'?parseFloat(e.httpRequest.latency)*1000:NaN;
+           const revisionStats=[...new Set(requests.map(e=>e.resource?.labels?.revision_name||'unknown'))].map(revision=>{
+           const rows=requests.filter(e=>(e.resource?.labels?.revision_name||'unknown')===revision),good=rows.filter(e=>e.httpRequest.status>=200&&e.httpRequest.status<300);
+           return {revision,oldest:rows.map(e=>e.timestamp).sort()[0],newest:rows.map(e=>e.timestamp).sort().at(-1),success:stats(good.map(latency)),failures:rows.length-good.length};
+          });
            const status={};for(const e of requests){const s=String(Number(e.httpRequest.status)||0);status[s]=(status[s]||0)+1;}
            const text=e=>JSON.stringify(e.jsonPayload||e.textPayload||'');
            const times=entries.map(e=>e.timestamp).sort();
-           console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,windowHours:24,returnedEntries:raw.length,recentEntries:entries.length,oldest:times[0]||null,newest:times.at(-1)||null,postRequests:stats(requests.map(latency)),successRequests:stats(requests.filter(e=>e.httpRequest.status>=200&&e.httpRequest.status<300).map(latency)),status,coldStartMessages:entries.filter(e=>/Starting new instance|Cold start/i.test(text(e))).length,contentionMessages:entries.filter(e=>/too much contention|ABORTED|transaction.*conflict/i.test(text(e))).length,errors:entries.filter(e=>['ERROR','CRITICAL','ALERT','EMERGENCY'].includes(e.severity)).length}));
+           console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,windowHours:24,returnedEntries:raw.length,recentEntries:entries.length,oldest:times[0]||null,newest:times.at(-1)||null,revisions:revisionStats,postRequests:stats(requests.map(latency)),successRequests:stats(requests.filter(e=>e.httpRequest.status>=200&&e.httpRequest.status<300).map(latency)),status,coldStartMessages:entries.filter(e=>/Starting new instance|Cold start/i.test(text(e))).length,contentionMessages:entries.filter(e=>/too much contention|ABORTED|transaction.*conflict/i.test(text(e))).length,errors:entries.filter(e=>['ERROR','CRITICAL','ALERT','EMERGENCY'].includes(e.severity)).length}));
           }
           
           JS

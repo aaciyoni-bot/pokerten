@@ -20,11 +20,12 @@ const clock=id=>row(id)?.querySelector('[data-tournament-clock]');
  await renderAs('player');
  assert.match(row('reg').textContent,/3 \/ 60 registered/,'bots count as participants and removed entries do not');
  assert.match(row('reg').textContent,/Entry 130/,'entry includes fee and bounty');
- assert.match(row('reg').textContent,/Starting stack 30/);assert.match(row('reg').textContent,/You are registered/);
- assert.match(row('running').textContent,/2 remaining/,'eliminated and removed players are excluded from remaining');
+ assert.ok(row('reg').querySelector('[aria-label="You are registered"]'));
+ assert.match(row('running').textContent,/2 left/,'eliminated and removed players are excluded from remaining');
  assert.match(row('running').textContent,/Registration closed/);
  assert.equal(w.document.querySelector('.pt-tournament-participant-kinds'),null,'player sees aggregate only');
  await React.act(()=>row('reg').click());
+ assert.match(w.document.querySelector('[role="dialog"]').textContent,/Stack30,000/,'starting stack remains available in details');
  await React.act(()=>w.document.querySelector('.pt-tournament-roster-toggle').click());
  assert.doesNotMatch(w.document.querySelector('.pt-tournament-roster').textContent,/Bot ·|Human ·/,'ordinary roster has no participant type markers');
  for(const role of ['manager','club_owner','super_admin']){

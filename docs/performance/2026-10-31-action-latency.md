@@ -64,3 +64,10 @@ The new revision's sample spans approximately 19:26:39–19:29:58 UTC. The proxy
 Post-rollout observations also showed elevated tails on still-US operations: the returned new pkSeat revision sample had median 1,554 ms and p95 5,768 ms (101 successes), and pkTick had median 390 ms and p95 3,176 ms (448 successes). These early post-deployment samples do not establish a causal regression, but must not be described as an overall game-wide speedup. They justify prioritizing presence and automatic-advance processing in the next stage.
 
 Some individual log reads failed during observation, including the second direct pkActEurope read and the latest pkClubDirectory read. These are diagnostic retrieval failures, not evidence of failed player actions. The successful legacy request records and route logs establish that the compatibility path is processing actions in Europe.
+
+## Follow-up sample — 31 October, 23:08 Israel time
+Read-only run: https://github.com/aaciyoni-bot/pokerten/actions/runs/41242107399
+
+The latest fifteen-minute legacy action sample contains 129 successful requests: median 306 ms, p95 1,731 ms, maximum 2,224 ms, three requests at least two seconds, none at least three seconds, zero failed POSTs, 129 European routes and zero local fallbacks. The direct European sample contains 128 successes with median 172 ms and p95 1,499 ms. Slight count differences reflect separate query times and window boundaries.
+
+Remaining US services are still slow at the tail: pkTick p95 3,532 ms (462 successes, latest roughly 4.5 minutes); pkSeat median 916 ms and p95 3,551 ms (257 successes); pkClubDirectory median 8,160 ms and p95 14,499 ms (42 successes, maximum 30,541 ms). These are server durations; an HTTP 200 in the server log does not establish that a client with a shorter timeout received the response. No further application deployment occurred during this follow-up; only the diagnostic was rerun with a recent fifteen-minute filter.

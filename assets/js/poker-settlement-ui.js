@@ -748,7 +748,8 @@
     act,
     onClose,
     busy,
-    error
+    error,
+    blocked = false
   }) {
     const parties = spec.type === 'agent' ? [spec.agentId, clubPartyId] : [spec.playerId, spec.agentId === 'club' ? clubPartyId : spec.agentId];
     const other = parties.find(p => p !== userId),
@@ -798,7 +799,7 @@
     })), /*#__PURE__*/React.createElement("div", {
       className: "st-actions"
     }, /*#__PURE__*/React.createElement("button", {
-      disabled: busy || !other || Number(amount) <= 0,
+      disabled: busy || blocked || !other || Number(amount) <= 0,
       type: "submit",
       className: "st-primary"
     }, "Send for confirmation"), /*#__PURE__*/React.createElement("button", {
@@ -838,30 +839,56 @@
       })
     }, "Cancel record")))));
   }
+  function Pager({
+    page,
+    pages,
+    total,
+    onPage
+  }) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "st-pager"
+    }, /*#__PURE__*/React.createElement("span", null, total, " entries \xB7 Page ", page + 1, " of ", pages), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+      disabled: page === 0,
+      onClick: () => onPage(page - 1)
+    }, "Previous"), /*#__PURE__*/React.createElement("button", {
+      disabled: page + 1 >= pages,
+      onClick: () => onPage(page + 1)
+    }, "Next")));
+  }
   function People({
     details = [],
     funds = [],
     onPay,
     canPay,
     periodLabel,
-    canSeeLifetime = false
+    canSeeLifetime = false,
+    agents = []
   }) {
     const [query, setQuery] = useState(''),
       [sort, setSort] = useState('closing'),
-      [expanded, setExpanded] = useState('');
-    const list = details.filter(p => (p.playerName || '').toLowerCase().includes(query.toLowerCase())).map(p => {
-      const f = funds.find(m => m.uid === p.playerId);
+      [expanded, setExpanded] = useState(''),
+      [agentFilter, setAgentFilter] = useState('all'),
+      [page, setPage] = useState(0);
+    const byId = new Map(funds.map(f => [f.uid, f]));
+    const list = details.filter(p => (p.playerName || '').toLowerCase().includes(query.toLowerCase()) && (agentFilter === 'all' || p.agentId === agentFilter)).map(p => {
+      const f = byId.get(p.playerId);
       return {
         ...p,
         balance: f?.chips ?? f?.balance,
         totalResult: f?.totalResult
       };
     }).sort((a, b) => sort === 'name' ? a.playerName.localeCompare(b.playerName) : sort === 'rake' ? b.totals.rake - a.totals.rake : sort === 'chips' ? (b.balance || 0) - (a.balance || 0) : Math.abs(b.closing) - Math.abs(a.closing));
+    const pages = Math.max(1, Math.ceil(list.length / 12)),
+      current = Math.min(page, pages - 1),
+      shown = list.slice(current * 12, current * 12 + 12);
+    useEffect(() => setPage(0), [query, sort, agentFilter]);
     return /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("div", {
       className: "st-section-head"
-    }, /*#__PURE__*/React.createElement("h3", null, "Player breakdown"), /*#__PURE__*/React.createElement("span", null, details.length, " settlement entries")), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h3", null, "Player breakdown"), /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, "Choose a player to open their account and games.")), /*#__PURE__*/React.createElement("span", null, details.length, " settlement entries")), /*#__PURE__*/React.createElement("div", {
       className: "st-filters"
     }, /*#__PURE__*/React.createElement("label", {
       className: "st-search"
@@ -870,7 +897,17 @@
       value: query,
       onChange: e => setQuery(e.target.value),
       placeholder: "Player name"
-    })), /*#__PURE__*/React.createElement("label", null, "Sort by", /*#__PURE__*/React.createElement("select", {
+    })), canSeeLifetime && /*#__PURE__*/React.createElement("label", null, "Agent", /*#__PURE__*/React.createElement("select", {
+      value: agentFilter,
+      onChange: e => setAgentFilter(e.target.value)
+    }, /*#__PURE__*/React.createElement("option", {
+      value: "all"
+    }, "All agents"), /*#__PURE__*/React.createElement("option", {
+      value: "club"
+    }, "Directly with club"), agents.map(a => /*#__PURE__*/React.createElement("option", {
+      key: a.agentId,
+      value: a.agentId
+    }, a.agentName)))), /*#__PURE__*/React.createElement("label", null, "Sort by", /*#__PURE__*/React.createElement("select", {
       value: sort,
       onChange: e => setSort(e.target.value)
     }, /*#__PURE__*/React.createElement("option", {
@@ -882,47 +919,187 @@
     }, "Chip balance \u2014 highest first"), /*#__PURE__*/React.createElement("option", {
       value: "name"
     }, "Name")))), /*#__PURE__*/React.createElement("div", {
-      className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Settlement balance"), /*#__PURE__*/React.createElement("th", null, "Actions"))), /*#__PURE__*/React.createElement("tbody", null, list.map(p => {
+      className: "st-account-list"
+    }, shown.map(p => {
       const key = JSON.stringify([p.agentId, p.playerId]);
-      return /*#__PURE__*/React.createElement(React.Fragment, {
+      return /*#__PURE__*/React.createElement("article", {
+        className: "st-account",
         key: key
-      }, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
-        className: "st-link",
+      }, /*#__PURE__*/React.createElement("button", {
+        className: "st-account-head",
         "aria-expanded": expanded === key,
         onClick: () => setExpanded(expanded === key ? '' : key)
-      }, p.playerName)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "st-person-mark"
+      }, p.playerName?.slice(0, 1) || 'P'), /*#__PURE__*/React.createElement("span", {
+        className: "st-account-name"
+      }, /*#__PURE__*/React.createElement("strong", null, p.playerName), /*#__PURE__*/React.createElement("small", null, agents.find(a => a.agentId === p.agentId)?.agentName || (p.agentId === 'club' ? 'Directly with club' : 'Player account'))), /*#__PURE__*/React.createElement("span", {
+        className: "st-account-result"
+      }, /*#__PURE__*/React.createElement("small", null, "Game result"), /*#__PURE__*/React.createElement(Amount, {
+        value: p.totals.result,
+        signed: true
+      })), /*#__PURE__*/React.createElement("span", {
+        className: "st-account-due"
+      }, /*#__PURE__*/React.createElement("small", null, p.closing < 0 ? 'Player pays' : p.closing > 0 ? 'Player receives' : 'Balanced'), /*#__PURE__*/React.createElement(Amount, {
+        value: Math.abs(p.closing)
+      })), /*#__PURE__*/React.createElement("span", {
+        className: "st-chevron",
+        "aria-hidden": "true"
+      }, expanded === key ? '−' : '+')), expanded === key && /*#__PURE__*/React.createElement("div", {
+        className: "st-account-detail"
+      }, /*#__PURE__*/React.createElement(FundsResult, {
         chips: p.balance,
         result: p.totals.result,
         totalResult: p.totalResult,
         canSeeLifetime: canSeeLifetime,
         periodLabel: periodLabel
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
+      }), /*#__PURE__*/React.createElement(Breakdown, {
+        opening: p.opening,
+        activity: p.activity,
+        paid: p.paid
+      }), /*#__PURE__*/React.createElement("div", {
+        className: "st-detail-facts"
+      }, /*#__PURE__*/React.createElement("span", null, "Rake ", /*#__PURE__*/React.createElement(Amount, {
         value: p.totals.rake
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
+      })), /*#__PURE__*/React.createElement("span", null, "Rakeback ", /*#__PURE__*/React.createElement(Amount, {
         value: p.totals.rakeback
-      })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-        value: Math.abs(p.closing)
-      }), /*#__PURE__*/React.createElement("small", null, p.closing < 0 ? "Player pays" : p.closing > 0 ? "Player receives" : "Balanced")), /*#__PURE__*/React.createElement("td", null, canPay(p) && /*#__PURE__*/React.createElement("button", {
+      }))), /*#__PURE__*/React.createElement(TableRows, {
+        rows: p.rows,
+        financial: true
+      }), canPay(p) && /*#__PURE__*/React.createElement("div", {
+        className: "st-actions"
+      }, /*#__PURE__*/React.createElement("button", {
+        className: "st-primary",
         onClick: () => onPay({
           type: 'player',
           agentId: p.agentId,
           playerId: p.playerId,
           name: p.playerName
         })
-      }, "Record payment"))), expanded === key && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-        colSpan: "6"
-      }, /*#__PURE__*/React.createElement(Breakdown, {
-        opening: p.opening,
-        activity: p.activity,
-        paid: p.paid
-      }), /*#__PURE__*/React.createElement(TableRows, {
-        rows: p.rows,
-        financial: true
-      }))));
-    })))), !list.length && /*#__PURE__*/React.createElement("p", {
+      }, "Record payment"))));
+    })), !list.length ? /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
-    }, "No players with activity in the selected cycle."));
+    }, "No players match your filters.") : /*#__PURE__*/React.createElement(Pager, {
+      page: current,
+      pages: pages,
+      total: list.length,
+      onPage: setPage
+    }));
+  }
+  function AgentAccounts({
+    data,
+    user,
+    canEdit,
+    onPay
+  }) {
+    const [query, setQuery] = useState(''),
+      [page, setPage] = useState(0),
+      [expanded, setExpanded] = useState('');
+    const rows = data.agents.filter(a => a.agentName.toLowerCase().includes(query.toLowerCase())),
+      pages = Math.max(1, Math.ceil(rows.length / 12)),
+      current = Math.min(page, pages - 1);
+    useEffect(() => setPage(0), [query]);
+    return /*#__PURE__*/React.createElement("section", {
+      className: "st-panel"
+    }, /*#__PURE__*/React.createElement("h3", null, "Agent settlement"), /*#__PURE__*/React.createElement("label", null, "Search agents", /*#__PURE__*/React.createElement("input", {
+      type: "search",
+      value: query,
+      onChange: e => setQuery(e.target.value),
+      placeholder: "Agent name"
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "st-agent-cards"
+    }, rows.slice(current * 12, current * 12 + 12).map(a => /*#__PURE__*/React.createElement("article", {
+      key: a.agentId,
+      className: "st-agent-card"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "st-section-head"
+    }, /*#__PURE__*/React.createElement("h3", null, a.agentName), /*#__PURE__*/React.createElement("span", {
+      className: "st-person-mark"
+    }, a.agentName.slice(0, 1))), /*#__PURE__*/React.createElement("small", null, a.closing > 0 ? 'Agent pays the club' : a.closing < 0 ? 'Club pays the agent' : 'Balanced'), /*#__PURE__*/React.createElement("strong", {
+      className: "st-agent-balance"
+    }, /*#__PURE__*/React.createElement(Amount, {
+      value: Math.abs(a.closing)
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "st-detail-facts"
+    }, /*#__PURE__*/React.createElement("span", null, "Player results ", /*#__PURE__*/React.createElement(Amount, {
+      value: a.playersResult,
+      signed: true
+    })), /*#__PURE__*/React.createElement("span", null, "Commission ", /*#__PURE__*/React.createElement(Amount, {
+      value: a.commission + a.leadsIncome
+    }))), /*#__PURE__*/React.createElement("button", {
+      className: "st-link",
+      "aria-expanded": expanded === a.agentId,
+      onClick: () => setExpanded(expanded === a.agentId ? '' : a.agentId)
+    }, "Account details"), expanded === a.agentId && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Breakdown, {
+      opening: a.opening,
+      activity: a.toClub,
+      paid: a.paid,
+      kind: "agent"
+    }), /*#__PURE__*/React.createElement("p", null, "Rake ", /*#__PURE__*/React.createElement(Amount, {
+      value: a.rake
+    }))), canEdit && user.uid === data.clubPartyId && /*#__PURE__*/React.createElement("button", {
+      onClick: () => onPay({
+        type: 'agent',
+        agentId: a.agentId,
+        name: a.agentName
+      })
+    }, "Record payment")))), rows.length ? /*#__PURE__*/React.createElement(Pager, {
+      page: current,
+      pages: pages,
+      total: rows.length,
+      onPage: setPage
+    }) : /*#__PURE__*/React.createElement("p", {
+      className: "st-empty"
+    }, "No agent activity in this cycle."));
+  }
+  function LiveStatus({
+    updated,
+    loading,
+    error,
+    history,
+    onRefresh
+  }) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "st-sync"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: 'st-sync-dot ' + (error ? 'is-stale' : '')
+    }), /*#__PURE__*/React.createElement("span", null, error ? 'Could not refresh' : loading ? 'Updating report…' : history ? 'Historical report' : 'Live club data', /*#__PURE__*/React.createElement("small", null, updated ? 'Last checked ' + new Date(updated).toLocaleTimeString('en-GB', {
+      timeZone: CLUB_TIME_ZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }) : 'Waiting for the server', !history ? ' · Refreshes every 30 seconds' : '')), /*#__PURE__*/React.createElement("button", {
+      onClick: onRefresh,
+      disabled: loading
+    }, "Refresh"));
+  }
+  function SessionGuide() {
+    return /*#__PURE__*/React.createElement("details", {
+      className: "st-guide"
+    }, /*#__PURE__*/React.createElement("summary", null, "Leaving and returning to a table"), /*#__PURE__*/React.createElement("p", null, "Each sitting contributes only its own result. Leaving with +300 and returning later with \u2212100 adds up to +200 in the same cycle. Closing a table does not count either sitting again."), /*#__PURE__*/React.createElement("p", null, "Completed hands count while a sitting is open. A hand still in progress counts after it finishes. Each saved cycle keeps its own activity; the next cycle follows the closing method chosen by the manager."), /*#__PURE__*/React.createElement("p", null, "Table details group the recorded segments for that table. A cycle boundary can split one sitting into two segments."));
+  }
+  function OverviewActions({
+    data,
+    onTab
+  }) {
+    const pending = (data.payments || []).filter(p => p.status === 'pending'),
+      mine = pending.filter(p => p.canConfirm),
+      staff = data.role !== 'player';
+    return /*#__PURE__*/React.createElement("section", {
+      className: "st-overview-actions"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => onTab('payments')
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "st-kicker"
+    }, "REQUIRES ATTENTION"), /*#__PURE__*/React.createElement("strong", null, mine.length), /*#__PURE__*/React.createElement("span", null, "Payments for your confirmation"), /*#__PURE__*/React.createElement("small", null, pending.length, " pending in this report \u2192")), staff ? /*#__PURE__*/React.createElement("button", {
+      onClick: () => onTab('players')
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "st-kicker"
+    }, "PLAYER ACCOUNTS"), /*#__PURE__*/React.createElement("strong", null, new Set((data.details || data.legacyReport?.players || []).map(p => p.playerId || p.uid)).size), /*#__PURE__*/React.createElement("span", null, "Players in this report"), /*#__PURE__*/React.createElement("small", null, "Search and open an account \u2192")) : /*#__PURE__*/React.createElement("button", {
+      onClick: () => onTab('games')
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "st-kicker"
+    }, "YOUR ACTIVITY"), /*#__PURE__*/React.createElement("strong", null, data.player?.totals?.hands ?? '—'), /*#__PURE__*/React.createElement("span", null, "Recorded hands"), /*#__PURE__*/React.createElement("small", null, "Open your game details \u2192")));
   }
   function CycleControls({
     data,
@@ -1046,10 +1223,19 @@
     setCycleId,
     act,
     busy,
-    retry
+    retry,
+    section = 'report'
   }) {
     const [query, setQuery] = useState(''),
-      [sort, setSort] = useState('chips');
+      [sort, setSort] = useState('chips'),
+      [page, setPage] = useState(0),
+      [expanded, setExpanded] = useState('');
+    useEffect(() => setPage(0), [query, sort]);
+    useEffect(() => {
+      setPage(0);
+      setQuery('');
+      setExpanded('');
+    }, [section]);
     const r = data.legacyReport,
       t = r.totals,
       staff = data.role !== 'player',
@@ -1058,6 +1244,11 @@
       closed = !range && data.cycle.status !== 'open',
       periodLabel = range ? "in selected dates" : closed ? "in selected cycle" : "in current cycle";
     const rows = r.players.filter(p => p.name.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : sort === 'result' ? b.result - a.result : sort === 'rake' ? b.rake - a.rake : b.chips - a.chips);
+    const pages = Math.max(1, Math.ceil(rows.length / 12)),
+      current = Math.min(page, pages - 1),
+      agentRows = (r.agents || []).filter(a => a.name.toLowerCase().includes(query.toLowerCase())),
+      agentPages = Math.max(1, Math.ceil(agentRows.length / 12)),
+      agentPage = Math.min(page, agentPages - 1);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("header", {
       className: "st-toolbar"
     }, !range && data.cycles.length > 0 && /*#__PURE__*/React.createElement(CyclePicker, {
@@ -1069,7 +1260,7 @@
     }, /*#__PURE__*/React.createElement("strong", null, range ? "Date range · Read only" : closed ? "Previous cycle · Closed" : "Current cycle · Open"), /*#__PURE__*/React.createElement("span", null, range ? rangeDates(range) : /*#__PURE__*/React.createElement(React.Fragment, null, date(data.cycle.startAt), " \u2013 ", closed ? date(data.cycle.endAt) : "Open until manually closed"))), /*#__PURE__*/React.createElement("button", {
       disabled: busy,
       onClick: retry
-    }, "Refresh")), /*#__PURE__*/React.createElement("section", {
+    }, "Refresh")), section === 'report' && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h2", null, range ? "Recorded results in selected dates" : closed ? "Cycle report saved at closing" : "Your current settlement"), /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
@@ -1098,30 +1289,48 @@
       value: t.commission
     }))), staff && /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "Commissions reflect amounts recorded in the displayed period. Rake is already included in game results.")), owner && /*#__PURE__*/React.createElement("section", {
+    }, "Commissions reflect amounts recorded in the displayed period. Rake is already included in game results.")), section === 'agents' && owner && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "Agents ", periodLabel), /*#__PURE__*/React.createElement("div", {
-      className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Agent"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Commission"), /*#__PURE__*/React.createElement("th", null, range ? 'Club settlement from selected dates' : 'Club settlement from cycle activity'))), /*#__PURE__*/React.createElement("tbody", null, r.agents.map(a => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Agents ", periodLabel), /*#__PURE__*/React.createElement("label", null, "Search agents", /*#__PURE__*/React.createElement("input", {
+      type: "search",
+      value: query,
+      onChange: e => setQuery(e.target.value),
+      placeholder: "Agent name"
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "st-agent-cards"
+    }, agentRows.slice(agentPage * 12, agentPage * 12 + 12).map(a => /*#__PURE__*/React.createElement("article", {
+      className: "st-agent-card",
       key: a.uid
-    }, /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+    }, /*#__PURE__*/React.createElement("h3", null, a.name), /*#__PURE__*/React.createElement("small", null, a.toClub > 0 ? 'Agent pays the club' : a.toClub < 0 ? 'Club pays the agent' : 'Balanced', " \xB7 Cycle activity after commission"), /*#__PURE__*/React.createElement("strong", {
+      className: "st-agent-balance"
+    }, /*#__PURE__*/React.createElement(Amount, {
+      value: Math.abs(a.toClub)
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "st-detail-facts"
+    }, /*#__PURE__*/React.createElement("span", null, "Game result ", /*#__PURE__*/React.createElement(Amount, {
+      value: a.result,
+      signed: true
+    })), /*#__PURE__*/React.createElement("span", null, "Commission ", /*#__PURE__*/React.createElement(Amount, {
+      value: a.commission
+    }))), /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "Account details"), /*#__PURE__*/React.createElement(FundsResult, {
       chips: a.chips,
       result: a.result,
       totalResult: a.totalResult,
       canSeeLifetime: owner,
       periodLabel: periodLabel,
       balanceLabel: closed ? 'Chips at closing' : 'Current balance'
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
+    }), /*#__PURE__*/React.createElement("p", null, "Rake ", /*#__PURE__*/React.createElement(Amount, {
       value: a.rake
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: a.commission
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: Math.abs(a.toClub)
-    }), /*#__PURE__*/React.createElement("small", null, a.toClub > 0 ? "Agent pays the club" : a.toClub < 0 ? "Club pays the agent" : "Balanced", " \xB7 After commission")))))))), data.role === 'agent' && /*#__PURE__*/React.createElement("section", {
+    })))))), /*#__PURE__*/React.createElement(Pager, {
+      page: agentPage,
+      pages: agentPages,
+      total: agentRows.length,
+      onPage: setPage
+    })), section === 'report' && data.role === 'agent' && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, range ? 'Club settlement from selected dates' : 'Club settlement from cycle activity'), /*#__PURE__*/React.createElement("strong", null, /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(t.toClub)
-    })), /*#__PURE__*/React.createElement("p", null, t.toClub > 0 ? "Agent pays the club" : t.toClub < 0 ? "Club pays the agent" : "Balanced", " \xB7 After recorded commission")), staff && /*#__PURE__*/React.createElement("section", {
+    })), /*#__PURE__*/React.createElement("p", null, t.toClub > 0 ? "Agent pays the club" : t.toClub < 0 ? "Club pays the agent" : "Balanced", " \xB7 After recorded commission")), section === 'players' && staff && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "Player breakdown"), /*#__PURE__*/React.createElement("div", {
       className: "st-filters"
@@ -1144,19 +1353,42 @@
     }, range ? "Result in selected dates" : "Cycle result"), /*#__PURE__*/React.createElement("option", {
       value: "name"
     }, "Name")))), /*#__PURE__*/React.createElement("div", {
-      className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Player"), /*#__PURE__*/React.createElement("th", null, "Balance and profit/loss"), /*#__PURE__*/React.createElement("th", null, range ? "Rake in selected dates" : "Cycle rake"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(p => /*#__PURE__*/React.createElement("tr", {
+      className: "st-account-list"
+    }, rows.slice(current * 12, current * 12 + 12).map(p => /*#__PURE__*/React.createElement("article", {
+      className: "st-account",
       key: p.uid
-    }, /*#__PURE__*/React.createElement("td", null, p.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(FundsResult, {
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "st-account-head",
+      "aria-expanded": expanded === p.uid,
+      onClick: () => setExpanded(expanded === p.uid ? '' : p.uid)
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "st-person-mark"
+    }, p.name.slice(0, 1)), /*#__PURE__*/React.createElement("span", {
+      className: "st-account-name"
+    }, /*#__PURE__*/React.createElement("strong", null, p.name), /*#__PURE__*/React.createElement("small", null, "Player account")), /*#__PURE__*/React.createElement("span", {
+      className: "st-account-due"
+    }, /*#__PURE__*/React.createElement("small", null, "Cycle result"), /*#__PURE__*/React.createElement(Amount, {
+      value: p.result,
+      signed: true
+    })), /*#__PURE__*/React.createElement("span", {
+      "aria-hidden": "true"
+    }, expanded === p.uid ? '−' : '+')), expanded === p.uid && /*#__PURE__*/React.createElement("div", {
+      className: "st-account-detail"
+    }, /*#__PURE__*/React.createElement(FundsResult, {
       chips: p.chips,
       result: p.result,
       totalResult: p.totalResult,
       canSeeLifetime: owner,
       periodLabel: periodLabel,
       balanceLabel: closed ? 'Chips at closing' : 'Current balance'
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
+    }), /*#__PURE__*/React.createElement("p", null, "Cycle rake ", /*#__PURE__*/React.createElement(Amount, {
       value: p.rake
-    }))))))), !rows.length && /*#__PURE__*/React.createElement("p", {
+    })))))), rows.length ? /*#__PURE__*/React.createElement(Pager, {
+      page: current,
+      pages: pages,
+      total: rows.length,
+      onPage: setPage
+    }) : /*#__PURE__*/React.createElement("p", {
       className: "st-empty"
     }, "No players found.")));
   }
@@ -1174,40 +1406,76 @@
       [payment, setPayment] = useState(null),
       [tab, setTab] = useState('report'),
       [remark, setRemark] = useState(''),
-      [range, setRange] = useState(null);
-    const actionRef = useRef(false);
+      [range, setRange] = useState(null),
+      [updated, setUpdated] = useState(0),
+      [refreshing, setRefreshing] = useState(false);
+    const actionRef = useRef(false),
+      refreshRef = useRef(() => {});
     useEffect(() => {
       let live = true,
-        inFlight = false;
+        inFlight = false,
+        queued = false;
       setData(null);
       setError('');
-      const load = () => {
-        if (!live || inFlight) return;
+      setUpdated(0);
+      setPayment(null);
+      const load = (queue = false) => {
+        if (!live) return;
+        if (inFlight) {
+          if (queue) queued = true;
+          return;
+        }
         inFlight = true;
-        return call('pkSettlementReport', {
+        setRefreshing(true);
+        return Promise.resolve().then(() => call('pkSettlementReport', {
           clubId,
           ...(range ? range : cycleId ? {
             cycleId
           } : {})
-        }).then(r => {
+        })).then(r => {
           if (range && (!r.readOnly || r.dateRange?.fromAt !== range.fromAt || r.dateRange?.toAt !== range.toAt)) throw Error('The requested date range could not be verified. Please try again.');
           if (live) {
             setData(r);
             setError('');
+            setUpdated(Date.now());
           }
         }).catch(e => {
           if (live) setError(settlementError(e));
         }).finally(() => {
           inFlight = false;
+          if (live) {
+            setRefreshing(false);
+            if (queued) {
+              queued = false;
+              load();
+            }
+          }
         });
       };
+      refreshRef.current = () => load(true);
       load();
-      const timer = range ? null : setInterval(load, 30000);
+      const wake = () => {
+        if (global.document.visibilityState !== 'hidden') load(true);
+      };
+      const timer = range ? null : setInterval(() => {
+        if (global.document.visibilityState !== 'hidden') load();
+      }, 30000);
+      global.addEventListener('pk-club-changed', wake);
+      global.addEventListener('online', wake);
+      global.document.addEventListener('visibilitychange', wake);
       return () => {
         live = false;
         if (timer) clearInterval(timer);
+        global.removeEventListener('pk-club-changed', wake);
+        global.removeEventListener('online', wake);
+        global.document.removeEventListener('visibilitychange', wake);
+        refreshRef.current = () => {};
       };
     }, [user.uid, user.role, clubId, cycleId, range, attempt]);
+    useEffect(() => {
+      setTab('report');
+      setRemark('');
+    }, [user.uid, user.role, clubId]);
     const applyRange = value => {
       setRange(value);
       setCycleId('');
@@ -1223,7 +1491,7 @@
       setRemark('');
     };
     const act = async (action, fields = {}) => {
-      if (actionRef.current || range || data?.readOnly) return false;
+      if (actionRef.current || range || data?.readOnly || error) return false;
       actionRef.current = true;
       setBusy(true);
       setError('');
@@ -1233,13 +1501,12 @@
           action,
           ...fields
         });
-        if (result.cycleId) setCycleId(result.cycleId);
-        setAttempt(n => n + 1);
+        if (result.cycleId) setCycleId(result.cycleId);else refreshRef.current();
         if (typeof global.dispatchEvent === 'function' && typeof global.Event === 'function') global.dispatchEvent(new global.Event('pk-club-changed'));
-        showToast(result.closing ? "Closing tables; waiting for games to finish" : result.cycleId ? "New cycle opened" : "Changes saved", 'success');
+        showToast(result.closing ? 'Closing tables; waiting for games to finish' : result.cycleId ? 'New cycle opened' : 'Changes saved', 'success');
         return true;
       } catch (e) {
-        setError(settlementError(e, "Could not save changes"));
+        setError(settlementError(e, 'Could not save changes'));
         return false;
       } finally {
         actionRef.current = false;
@@ -1264,8 +1531,7 @@
             if (result.cycleId) {
               setCycleId(result.cycleId);
               global.dispatchEvent(new global.Event('pk-club-changed'));
-            }
-            setAttempt(n => n + 1);
+            } else refreshRef.current();
           }
         } catch (e) {
           if (live) setError(settlementError(e, 'Could not check closing progress'));
@@ -1281,9 +1547,16 @@
     const errorBox = error && /*#__PURE__*/React.createElement("div", {
       role: "alert",
       className: "st-error"
-    }, error, /*#__PURE__*/React.createElement("button", {
-      onClick: () => setAttempt(n => n + 1)
+    }, error, updated > 0 && /*#__PURE__*/React.createElement("p", null, "Showing the last successful report. Changes are paused until the report refreshes."), /*#__PURE__*/React.createElement("button", {
+      onClick: () => refreshRef.current()
     }, "Try again"));
+    const sync = /*#__PURE__*/React.createElement(LiveStatus, {
+      updated: updated,
+      loading: refreshing,
+      error: error,
+      history: !!range || data?.cycle?.status !== 'open',
+      onRefresh: () => refreshRef.current()
+    });
     if (!data) return /*#__PURE__*/React.createElement("div", {
       className: "settlement-app",
       dir: "ltr"
@@ -1292,10 +1565,20 @@
     }, "Loading your settlement\u2026"), range && /*#__PURE__*/React.createElement("button", {
       onClick: currentCycle
     }, "Back to current cycle"));
+    const owner = data.role === 'owner',
+      agent = data.role === 'agent',
+      staff = owner || agent,
+      p = data.player,
+      a = data.agent,
+      c = data.club?.totals,
+      selectedCurrent = !range && !data.readOnly && data.cycle.id === data.currentCycleId,
+      periodLabel = data.cycle.id === 'all' ? 'across selected cycles' : selectedCurrent ? 'in current cycle' : 'in selected cycle';
+    const canEdit = selectedCurrent && !error && data.cycleClose?.status !== 'closing';
+    const canPay = pair => canEdit && (pair.agentId === user.uid || pair.playerId === user.uid || pair.agentId === 'club' && data.clubPartyId === user.uid);
     const closeCycle = /*#__PURE__*/React.createElement(CloseCyclePanel, {
       data: data,
       act: act,
-      busy: busy,
+      busy: busy || !!error,
       onCurrent: currentCycle
     });
     const reportDates = /*#__PURE__*/React.createElement(ReportDates, {
@@ -1305,20 +1588,9 @@
       onCurrent: currentCycle,
       busy: busy
     });
-    if (data.needsPeriodStart) return /*#__PURE__*/React.createElement("div", {
-      className: "settlement-app",
-      dir: "ltr"
-    }, errorBox, closeCycle, reportDates, /*#__PURE__*/React.createElement(PeriodStartRequired, {
-      data: data,
-      act: act,
-      busy: busy
-    }));
-    const excelExport = /*#__PURE__*/React.createElement("div", {
-      className: "st-actions"
-    }, /*#__PURE__*/React.createElement("button", {
+    const exportButton = /*#__PURE__*/React.createElement("button", {
       type: "button",
-      className: "st-primary",
-      disabled: busy || !!error,
+      disabled: busy || !!error || data.needsPeriodStart,
       onClick: () => {
         try {
           global.PokerSettlementExcel.download(data, {
@@ -1329,87 +1601,87 @@
           showToast(settlementError(e, 'Could not download the Excel report. Please try again.'), 'error');
         }
       }
-    }, "Download Excel"), /*#__PURE__*/React.createElement("span", {
-      className: "st-muted"
-    }, range ? rangeDates(range) : 'Selected cycle', " \xB7 ", data.role === 'player' ? 'Your results' : 'Agent summary, player totals and a separate tab for each agent'));
-    if (data.legacy) return /*#__PURE__*/React.createElement("div", {
-      className: "settlement-app",
+    }, "Download Excel");
+    const tabs = [['report', 'Overview'], ...(staff ? [['players', 'Players']] : !data.legacy ? [['games', 'My games']] : []), ...(owner ? [['agents', 'Agents']] : []), ...(!data.legacy ? [['payments', 'Payments'], ['approval', 'Report approval']] : []), ['history', 'History & export'], ...(owner ? [['cycles', 'Cycle management']] : [])];
+    return /*#__PURE__*/React.createElement("div", {
+      className: "settlement-app st-workspace",
       dir: "ltr"
-    }, errorBox, closeCycle, reportDates, excelExport, /*#__PURE__*/React.createElement(LegacyCurrent, {
+    }, /*#__PURE__*/React.createElement("header", {
+      className: "st-heading"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+      className: "st-kicker"
+    }, "POKERTEN / ", owner ? 'CLUB ACCOUNTS' : agent ? 'AGENT ACCOUNTS' : 'MY ACCOUNT'), /*#__PURE__*/React.createElement("h2", null, owner ? 'Your club. One clear picture.' : agent ? 'Your players. Your account.' : 'Your results, clearly.'), /*#__PURE__*/React.createElement("p", null, staff ? 'Results, balances and payments. Open only what you need.' : 'Your game results and payments, all in one place.')), /*#__PURE__*/React.createElement("span", {
+      className: "st-role"
+    }, owner ? 'Club manager' : agent ? 'Agent' : 'Player')), sync, errorBox, data.cycleClose?.status === 'closing' && tab !== 'cycles' && closeCycle, /*#__PURE__*/React.createElement("nav", {
+      className: "st-tabs st-main-tabs",
+      "aria-label": "Settlement information"
+    }, tabs.map(([id, label]) => /*#__PURE__*/React.createElement("button", {
+      key: id,
+      "aria-pressed": tab === id,
+      onClick: () => {
+        setTab(id);
+        setPayment(null);
+      }
+    }, label, id === 'payments' && (data.payments || []).some(p => p.canConfirm) && /*#__PURE__*/React.createElement("span", {
+      className: "st-count"
+    }, data.payments.filter(p => p.canConfirm).length)))), data.needsPeriodStart ? /*#__PURE__*/React.createElement(React.Fragment, null, reportDates, /*#__PURE__*/React.createElement(PeriodStartRequired, {
+      data: data,
+      act: act,
+      busy: busy || !!error
+    })) : /*#__PURE__*/React.createElement(React.Fragment, null, !data.legacy && /*#__PURE__*/React.createElement("header", {
+      className: "st-toolbar"
+    }, /*#__PURE__*/React.createElement(CyclePicker, {
+      data: data,
+      cycleId: cycleId,
+      setCycleId: id => {
+        setCycleId(id);
+        setPayment(null);
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "st-period"
+    }, /*#__PURE__*/React.createElement("strong", null, status[data.cycle.status]), /*#__PURE__*/React.createElement("span", null, date(data.cycle.startAt), " \u2013 ", data.cycle.status === 'open' ? 'Open until manually closed' : date(data.cycle.endAt)))), tab === 'history' ? /*#__PURE__*/React.createElement(React.Fragment, null, reportDates, /*#__PURE__*/React.createElement("section", {
+      className: "st-panel"
+    }, /*#__PURE__*/React.createElement("h3", null, "Export this report"), /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, "Download the selected period with the same access permissions as this screen."), exportButton), !data.legacy && /*#__PURE__*/React.createElement("details", {
+      className: "st-panel"
+    }, /*#__PURE__*/React.createElement("summary", null, "Pre-transition balances"), /*#__PURE__*/React.createElement(Archive, {
+      call: call,
+      clubId: clubId
+    }))) : tab === 'cycles' && owner ? /*#__PURE__*/React.createElement(React.Fragment, null, closeCycle, data.active && /*#__PURE__*/React.createElement(CycleControls, {
+      data: data,
+      act: act,
+      busy: busy || !!error
+    })) : data.legacy ? /*#__PURE__*/React.createElement(React.Fragment, null, range && reportDates, /*#__PURE__*/React.createElement(LegacyCurrent, {
+      key: data.cycle.id,
       data: data,
       cycleId: cycleId,
       setCycleId: setCycleId,
       act: act,
       busy: busy,
-      retry: () => setAttempt(n => n + 1)
-    }));
-    if (!data.active) return /*#__PURE__*/React.createElement("div", {
-      className: "settlement-app",
-      dir: "ltr"
-    }, errorBox, /*#__PURE__*/React.createElement("p", {
-      role: "alert"
-    }, "The current cycle report is unavailable. Refresh to try again."), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setAttempt(n => n + 1)
-    }, "Refresh"));
-    const owner = data.role === 'owner',
-      agent = data.role === 'agent',
-      p = data.player,
-      a = data.agent,
-      c = data.club?.totals,
-      selectedCurrent = !range && !data.readOnly && data.cycle.id === data.currentCycleId,
-      periodLabel = data.cycle.id === 'all' ? "across selected cycles" : selectedCurrent ? "in current cycle" : "in selected cycle";
-    const canEdit = selectedCurrent && data.cycleClose?.status !== 'closing';
-    const canPay = pair => canEdit && (pair.agentId === user.uid || pair.playerId === user.uid || pair.agentId === 'club' && data.clubPartyId === user.uid);
-    return /*#__PURE__*/React.createElement("div", {
-      className: "settlement-app",
-      dir: "ltr"
-    }, errorBox, closeCycle, reportDates, tab === 'report' && excelExport, /*#__PURE__*/React.createElement("header", {
-      className: "st-toolbar"
-    }, /*#__PURE__*/React.createElement(CyclePicker, {
-      data: data,
-      cycleId: cycleId,
-      setCycleId: setCycleId
-    }), /*#__PURE__*/React.createElement("div", {
-      className: "st-period"
-    }, /*#__PURE__*/React.createElement("strong", null, status[data.cycle.status]), /*#__PURE__*/React.createElement("span", null, date(data.cycle.startAt), " \u2013 ", data.cycle.status === 'open' ? 'Open until manually closed' : date(data.cycle.endAt))), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setAttempt(n => n + 1),
-      disabled: busy
-    }, "Refresh")), /*#__PURE__*/React.createElement("nav", {
-      className: "st-tabs",
-      "aria-label": "Settlement information"
+      retry: () => refreshRef.current(),
+      section: tab
+    }), tab === 'report' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+      className: "st-overview-actions"
     }, /*#__PURE__*/React.createElement("button", {
-      "aria-pressed": tab === 'report',
-      onClick: () => setTab('report')
-    }, "Settlement report"), owner && /*#__PURE__*/React.createElement("button", {
-      "aria-pressed": tab === 'cycles',
-      onClick: () => setTab('cycles')
-    }, "Cycle management"), /*#__PURE__*/React.createElement("button", {
-      "aria-pressed": tab === 'archive',
-      onClick: () => setTab('archive')
-    }, "Pre-transition balances")), tab === 'archive' ? /*#__PURE__*/React.createElement(Archive, {
-      call: call,
-      clubId: clubId
-    }) : tab === 'cycles' && owner ? /*#__PURE__*/React.createElement(CycleControls, {
-      data: data,
-      act: act,
-      busy: busy
-    }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+      onClick: () => setTab(staff ? 'players' : 'history')
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "st-kicker"
+    }, staff ? 'PLAYER ACCOUNTS' : 'YOUR HISTORY'), /*#__PURE__*/React.createElement("strong", null, data.legacyReport.players.length), /*#__PURE__*/React.createElement("span", null, staff ? 'Players in this report' : 'Personal account'), /*#__PURE__*/React.createElement("small", null, staff ? 'Search and open an account →' : 'Select a period or export your results →')), owner && /*#__PURE__*/React.createElement("button", {
+      onClick: () => setTab('agents')
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "st-kicker"
+    }, "AGENT ACCOUNTS"), /*#__PURE__*/React.createElement("strong", null, data.legacyReport.agents.length), /*#__PURE__*/React.createElement("span", null, "Agents in this report"), /*#__PURE__*/React.createElement("small", null, "Review balances and commissions \u2192"))), /*#__PURE__*/React.createElement(SessionGuide, null))) : !data.active ? /*#__PURE__*/React.createElement("p", {
+      role: "alert"
+    }, "The current cycle report is unavailable. Refresh to try again.") : /*#__PURE__*/React.createElement(React.Fragment, null, tab === 'report' && /*#__PURE__*/React.createElement(React.Fragment, null, range && reportDates, /*#__PURE__*/React.createElement("p", {
       className: "st-muted st-method"
-    }, !selectedCurrent && /*#__PURE__*/React.createElement("strong", null, "Historical report \xB7 Read only. "), "Completed hands count toward the current cycle even while a session remains open. An unfinished hand counts after it finishes. Pending payments do not change the amount due."), (owner || agent) && data.currentTotals && /*#__PURE__*/React.createElement("section", {
-      className: "st-panel st-funds-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, owner ? "All club players" : "My players"), /*#__PURE__*/React.createElement(FundsResult, {
-      chips: data.currentTotals.chips,
-      result: owner ? c.playersResult : a.playersResult,
-      totalResult: data.currentTotals.totalResult,
-      canSeeLifetime: owner,
-      periodLabel: periodLabel
-    })), owner ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
+    }, !selectedCurrent && /*#__PURE__*/React.createElement("strong", null, "Historical report \xB7 Read only. "), "Completed hands count while a sitting is open. Pending payments do not change the amount due."), owner ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
       value: c.closing,
       kind: "club"
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "Player results " + periodLabel,
+      label: 'Player results ' + periodLabel,
       value: c.playersResult,
       signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
@@ -1422,35 +1694,7 @@
       label: "Hands",
       value: c.hands,
       plain: true
-    })), /*#__PURE__*/React.createElement("section", {
-      className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "Agent settlement"), /*#__PURE__*/React.createElement("div", {
-      className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Agent"), /*#__PURE__*/React.createElement("th", null, "Player results"), /*#__PURE__*/React.createElement("th", null, "Rake"), /*#__PURE__*/React.createElement("th", null, "Commission"), /*#__PURE__*/React.createElement("th", null, "Balance with club"), /*#__PURE__*/React.createElement("th", null, "Payment"))), /*#__PURE__*/React.createElement("tbody", null, data.agents.map(x => /*#__PURE__*/React.createElement("tr", {
-      key: x.agentId
-    }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, x.agentName), /*#__PURE__*/React.createElement(Breakdown, {
-      opening: x.opening,
-      activity: x.toClub,
-      paid: x.paid,
-      kind: "agent"
-    }))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: x.playersResult,
-      signed: true
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: x.rake
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: x.commission + x.leadsIncome
-    })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Amount, {
-      value: Math.abs(x.closing)
-    }), /*#__PURE__*/React.createElement("small", null, x.closing > 0 ? "Agent pays the club" : x.closing < 0 ? "Club pays the agent" : "Balanced")), /*#__PURE__*/React.createElement("td", null, canEdit && user.uid === data.clubPartyId && /*#__PURE__*/React.createElement("button", {
-      onClick: () => setPayment({
-        type: 'agent',
-        agentId: x.agentId,
-        name: x.agentName
-      })
-    }, "Record payment"))))))), !data.agents.length && /*#__PURE__*/React.createElement("p", {
-      className: "st-empty"
-    }, "No agent activity in this cycle."))) : agent ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
+    }))) : agent ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
       value: a.closing
     }), /*#__PURE__*/React.createElement(Breakdown, {
       opening: a.opening,
@@ -1460,7 +1704,7 @@
     }), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
-      label: "My players’ results " + periodLabel,
+      label: 'My players’ results ' + periodLabel,
       value: a.playersResult,
       signed: true
     }), /*#__PURE__*/React.createElement(Metric, {
@@ -1477,29 +1721,22 @@
       onClick: () => setPayment({
         type: 'agent',
         agentId: user.uid,
-        name: "Club"
+        name: 'Club'
       })
-    }, "Record payment with club"), a.leads.length > 0 && /*#__PURE__*/React.createElement("section", {
-      className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "Referral commissions"), a.leads.map(l => /*#__PURE__*/React.createElement("div", {
-      className: "st-payment",
-      key: l.playerId
-    }, /*#__PURE__*/React.createElement("span", null, l.playerName), /*#__PURE__*/React.createElement(Amount, {
-      value: l.commission
-    }))))) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("section", {
-      className: "st-panel st-funds-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "My balance and profit/loss"), /*#__PURE__*/React.createElement(FundsResult, {
-      chips: data.chips ?? data.balance,
-      result: p.totals.result,
-      periodLabel: periodLabel
-    })), /*#__PURE__*/React.createElement(Net, {
+    }, "Record payment with club")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Net, {
       value: p.closing,
       kind: "player"
     }), /*#__PURE__*/React.createElement(Breakdown, {
       opening: p.opening,
       activity: p.totals.result + (p.rakebackTotal || 0),
       paid: p.paid
-    }), /*#__PURE__*/React.createElement("div", {
+    }), /*#__PURE__*/React.createElement("section", {
+      className: "st-panel st-funds-panel"
+    }, /*#__PURE__*/React.createElement("h3", null, "My balance and profit/loss"), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: data.chips ?? data.balance,
+      result: p.totals.result,
+      periodLabel: periodLabel
+    })), /*#__PURE__*/React.createElement("div", {
       className: "st-metrics"
     }, /*#__PURE__*/React.createElement(Metric, {
       label: "Hands played",
@@ -1508,40 +1745,73 @@
     }), p.hasRakeback && /*#__PURE__*/React.createElement(Metric, {
       label: "My rakeback",
       value: p.rakebackTotal
-    })), /*#__PURE__*/React.createElement("section", {
+    }))), /*#__PURE__*/React.createElement(OverviewActions, {
+      data: data,
+      onTab: setTab
+    }), agent && a.leads?.length > 0 && /*#__PURE__*/React.createElement("details", {
+      className: "st-panel"
+    }, /*#__PURE__*/React.createElement("summary", null, "Referral commissions"), a.leads.map(l => /*#__PURE__*/React.createElement("div", {
+      className: "st-payment",
+      key: l.playerId
+    }, /*#__PURE__*/React.createElement("span", null, l.playerName), /*#__PURE__*/React.createElement(Amount, {
+      value: l.commission
+    })))), staff && data.currentTotals && /*#__PURE__*/React.createElement("section", {
+      className: "st-panel st-funds-panel"
+    }, /*#__PURE__*/React.createElement("h3", null, owner ? 'All club players' : 'My players'), /*#__PURE__*/React.createElement(FundsResult, {
+      chips: data.currentTotals.chips,
+      result: owner ? c.playersResult : a.playersResult,
+      totalResult: data.currentTotals.totalResult,
+      canSeeLifetime: owner,
+      periodLabel: periodLabel
+    })), staff && /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, "Rake is already included in game results. Do not deduct it again."), /*#__PURE__*/React.createElement(SessionGuide, null)), tab === 'players' && staff && /*#__PURE__*/React.createElement(People, {
+      details: data.details,
+      funds: data.funds,
+      agents: data.agents || [],
+      onPay: setPayment,
+      canPay: canPay,
+      periodLabel: periodLabel,
+      canSeeLifetime: owner
+    }), tab === 'agents' && owner && /*#__PURE__*/React.createElement(AgentAccounts, {
+      data: data,
+      user: user,
+      canEdit: canEdit,
+      onPay: setPayment
+    }), tab === 'games' && !staff && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
     }, /*#__PURE__*/React.createElement("h3", null, "My games"), /*#__PURE__*/React.createElement(TableRows, {
       rows: p.rows
-    })), p.counterparties.map(x => /*#__PURE__*/React.createElement("div", {
+    }), /*#__PURE__*/React.createElement(SessionGuide, null)), tab === 'payments' && /*#__PURE__*/React.createElement(React.Fragment, null, !staff && p.counterparties.map(x => /*#__PURE__*/React.createElement("div", {
       className: "st-payment",
       key: x.id
-    }, /*#__PURE__*/React.createElement("span", null, x.name === 'club' ? "Club" : x.name, " \xB7 ", x.closing < 0 ? "You pay" : "You receive", " ", /*#__PURE__*/React.createElement(Amount, {
+    }, /*#__PURE__*/React.createElement("span", null, x.name === 'club' ? 'Club' : x.name, " \xB7 ", x.closing < 0 ? 'You pay' : 'You receive', " ", /*#__PURE__*/React.createElement(Amount, {
       value: Math.abs(x.closing)
     })), canEdit && /*#__PURE__*/React.createElement("button", {
       onClick: () => setPayment({
         type: 'player',
         agentId: x.id,
         playerId: user.uid,
-        name: x.name === 'club' ? "Club" : x.name
+        name: x.name === 'club' ? 'Club' : x.name
       })
-    }, "Record payment")))), (owner || agent) && /*#__PURE__*/React.createElement("p", {
+    }, "Record payment"))), agent && canEdit && /*#__PURE__*/React.createElement("button", {
+      className: "st-primary",
+      onClick: () => setPayment({
+        type: 'agent',
+        agentId: user.uid,
+        name: 'Club'
+      })
+    }, "Record payment with club"), owner && /*#__PURE__*/React.createElement("p", {
       className: "st-muted"
-    }, "Rake is already included in game results. The amount due to or from the club is calculated after commission; do not deduct rake again."), (owner || agent) && /*#__PURE__*/React.createElement(People, {
-      details: data.details,
-      funds: data.funds,
-      onPay: setPayment,
-      canPay: canPay,
-      periodLabel: periodLabel,
-      canSeeLifetime: owner
-    }), /*#__PURE__*/React.createElement(Payments, {
+    }, "To record a payment, open a player or agent account."), /*#__PURE__*/React.createElement(Payments, {
       items: data.payments,
       act: act,
-      busy: busy,
+      busy: busy || !!error,
       userId: user.uid,
       readOnly: !canEdit
-    }), canEdit && data.cycle.status !== 'locked' && /*#__PURE__*/React.createElement("section", {
+    })), tab === 'approval' && /*#__PURE__*/React.createElement("section", {
       className: "st-panel"
-    }, /*#__PURE__*/React.createElement("h3", null, "Approve report or add a note"), /*#__PURE__*/React.createElement("label", null, "Report note", /*#__PURE__*/React.createElement("textarea", {
+    }, /*#__PURE__*/React.createElement("h3", null, "Approve report or add a note"), canEdit && data.cycle.status !== 'locked' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "Report note", /*#__PURE__*/React.createElement("textarea", {
       maxLength: "1000",
       value: remark,
       onChange: e => setRemark(e.target.value),
@@ -1563,16 +1833,19 @@
         approved: false,
         remark
       })
-    }, "Send note")), data.approvals.map(x => /*#__PURE__*/React.createElement("p", {
+    }, "Send note"))) : /*#__PURE__*/React.createElement("p", {
+      className: "st-muted"
+    }, "This report is read only."), (data.approvals || []).map(x => /*#__PURE__*/React.createElement("p", {
       key: x.uid,
       className: "st-muted"
-    }, x.uid === user.uid ? "My approval" : x.uid, ": ", x.approved ? "Confirmed" : "Note", " \xB7 ", x.remark, " \xB7 ", date(x.at))))), payment && /*#__PURE__*/React.createElement(PaymentForm, {
+    }, x.uid === user.uid ? 'My approval' : x.uid, ": ", x.approved ? 'Confirmed' : 'Note', " \xB7 ", x.remark, " \xB7 ", date(x.at)))))), payment && /*#__PURE__*/React.createElement(PaymentForm, {
       spec: payment,
       userId: user.uid,
       clubPartyId: data.clubPartyId,
       act: act,
       onClose: () => setPayment(null),
       busy: busy,
+      blocked: !!error,
       error: error
     }));
   }
@@ -1682,6 +1955,7 @@
       [error, setError] = useState(''),
       [edit, setEdit] = useState(null),
       [search, setSearch] = useState(''),
+      [page, setPage] = useState(0),
       [busy, setBusy] = useState(false),
       [attempt, setAttempt] = useState(0);
     const lock = useRef(false);
@@ -1721,6 +1995,10 @@
         setBusy(false);
       }
     };
+    useEffect(() => setPage(0), [search]);
+    const filtered = (data?.members || []).filter(m => m.status === 'approved' && m.name.toLowerCase().includes(search.toLowerCase())),
+      pages = Math.max(1, Math.ceil(filtered.length / 12)),
+      current = Math.min(page, pages - 1);
     const agents = (data?.members || []).filter(m => ['agent', 'manager', 'club_owner'].includes(m.role) && m.status === 'approved');
     return /*#__PURE__*/React.createElement("section", {
       className: "settlement-app",
@@ -1742,11 +2020,16 @@
       placeholder: "Player or agent name"
     })), /*#__PURE__*/React.createElement("div", {
       className: "st-scroll"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Primary agent"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Edit"))), /*#__PURE__*/React.createElement("tbody", null, data.members.filter(m => m.status === 'approved' && m.name.toLowerCase().includes(search.toLowerCase())).map(m => /*#__PURE__*/React.createElement("tr", {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Primary agent"), /*#__PURE__*/React.createElement("th", null, "Rakeback"), /*#__PURE__*/React.createElement("th", null, "Edit"))), /*#__PURE__*/React.createElement("tbody", null, filtered.slice(current * 12, current * 12 + 12).map(m => /*#__PURE__*/React.createElement("tr", {
       key: m.uid
     }, /*#__PURE__*/React.createElement("td", null, m.name, /*#__PURE__*/React.createElement("small", null, ['agent', 'manager', 'club_owner'].includes(m.role) ? "Agent / Manager" : "Player")), /*#__PURE__*/React.createElement("td", null, agents.find(a => a.uid === m.primaryAgentId)?.name || "Club"), /*#__PURE__*/React.createElement("td", null, m.rakebackPct || 0, "%"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
       onClick: () => setEdit(m)
-    }, "Terms"))))))))), edit && /*#__PURE__*/React.createElement(TermsEditor, {
+    }, "Terms"))))))), /*#__PURE__*/React.createElement(Pager, {
+      page: current,
+      pages: pages,
+      total: filtered.length,
+      onPage: setPage
+    }))), edit && /*#__PURE__*/React.createElement(TermsEditor, {
       key: edit.uid,
       member: edit,
       agents: agents,

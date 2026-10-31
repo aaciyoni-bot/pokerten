@@ -54,6 +54,7 @@ const requestCard=name=>[...doc.querySelectorAll('button')].filter(b=>b.textCont
  assert.doesNotMatch(doc.body.textContent,/SECRET|No pending requests|Join requests/);
  assert.ok(button('Retry member list'));
  await React.act(async()=>button('Retry member list').click());
+ await React.act(()=>doc.querySelector('.management-tabs button[aria-pressed=false]').parentElement.querySelectorAll('button')[2].click());
  assert.match(doc.body.textContent,/Join requests \(3\)/);
  assert.ok(requestCard('New Alice'));
  assert.match(doc.body.textContent,/Could not refresh security alerts.*internal/);
@@ -100,7 +101,7 @@ const requestCard=name=>[...doc.querySelectorAll('button')].filter(b=>b.textCont
  // Revoke the same UID's manager role during a request: old promises cannot refill a narrower view.
  const manager={...owner,role:'manager'};
  await React.act(async()=>root.render(React.createElement(w.BackofficeTest,{user:manager,clubSettings:club,tables:[],showToast:(message,type)=>toasts.push({message,type})})));
- assert.ok(requestCard('New Carol'));
+ await React.act(()=>[...doc.querySelectorAll('.management-tabs button')].find(b=>b.textContent.startsWith('Join requests')).click());assert.ok(requestCard('New Carol'));
  holdDirectories=true;
  await React.act(async()=>w.dispatchEvent(new w.Event('pk-club-changed')));
  assert.equal(heldDirectories.length,1);
@@ -112,7 +113,7 @@ const requestCard=name=>[...doc.querySelectorAll('button')].filter(b=>b.textCont
  assert.doesNotMatch(doc.body.textContent,/New Alice|New Carol/,'late previous-role response cannot restore old data');
  const assigned={...pending('Assigned newcomer'),agentUid:agent.uid};
  await React.act(async()=>heldDirectories[1]({members:[agent,assigned],treasury:null}));
- assert.match(doc.body.textContent,/Assigned newcomer/);
+ await React.act(()=>[...doc.querySelectorAll('.management-tabs button')].find(b=>b.textContent.startsWith('Join requests')).click());assert.match(doc.body.textContent,/Assigned newcomer/);
  assert.match(doc.body.textContent,/Awaiting manager approval/);
  assert.equal(button('Approve'),undefined,'agent sees referral status but no approval action denied by server');
  assert.doesNotMatch(doc.body.textContent,/New Alice|New Carol/);

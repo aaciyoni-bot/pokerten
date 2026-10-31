@@ -66,7 +66,7 @@ export async function prepareBeta({ api, buildNumber, wait = sleep, log = consol
   let stage = 'test notes';
   try {
     const localizations = await api(`/v1/builds/${build.id}/betaBuildLocalizations`);
-    const notes = `Fix for the app remaining on Connecting to the game at launch on iPhone.\n\nUpdate to build ${buildNumber}, close and reopen POKERTEN, and check that the sign-in screen appears. Sign in using your Player ID and personal PIN, then check the lobby and table navigation. Close and reopen once more to check session restoration. Native Google sign-in is not available in this build.\n\nIf startup still fails, report your iPhone model, iOS version, connection type and the message shown. Do not include passwords or personal PINs.`;
+    const notes = `Background music can now be switched on or off from the lobby/account and table menus without muting game effects. The preference is saved between launches. This build also includes the current settlement screen and cashier scrolling fix.\n\nUpdate to build ${buildNumber}, open the club menu, switch MUSIC OFF, and confirm that game effects still play. Reopen the app and confirm that music stays off. Switch MUSIC ON to restore lobby music. Sign in using your Player ID and personal PIN; native Google sign-in is not available on iPhone.\n\nIf anything fails, report the iPhone model, iOS version and message shown. Do not include passwords or personal PINs.`;
     const existing = localizations.data.find(item => item.attributes.locale === 'en-US');
     if (existing) {
       await api(`/v1/betaBuildLocalizations/${existing.id}`, 'PATCH', { data: { type: 'betaBuildLocalizations', id: existing.id, attributes: { whatsNew: notes } } });

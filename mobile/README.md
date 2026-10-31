@@ -1,6 +1,6 @@
 # POKERTEN independent mobile apps
 
-Android release 8 (1.0.3) packages website/game release 345, including tournament row clocks, the bundled lobby logo and distinct Durak variant/deck colors. Store submission and device verification are tracked separately from successful compilation.
+Android release 9 (1.0.4) and the next iPhone build package game release 348. The lobby/account and table menus include a persistent MUSIC ON / MUSIC OFF control that leaves game effects unchanged. This snapshot also includes the current settlement interface and cashier scrolling fix. Store review and device verification are separate from compilation.
 The existing POKERTEN client is packaged locally using Capacitor. It connects to
 its existing Firebase backend. The website/game source, server rules, game logic,
 and GOD permissions are not changed by this mobile packaging.
@@ -27,7 +27,7 @@ iOS: Xcode 26+ on a local or cloud Mac.
 
 The proposed store identifier is `com.orizis.pokerten`. Verify existing app records
 in the owner's Apple and Google accounts before registering it. Do not create new
-developer accounts. Android version 1.0.3 / build 8; subsequent release build numbers must exceed any existing store build numbers.
+developer accounts. Android version 1.0.4 / build 9; subsequent release build numbers must exceed any existing store build numbers.
 
 ## Scope and known limitations
 

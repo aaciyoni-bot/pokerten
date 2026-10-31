@@ -1,0 +1,38 @@
+'use strict';
+const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
+const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;
+global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
+const React=require('react'),{createRoot}=require('react-dom/client'),{Simulate}=require('react-dom/test-utils'),fixture=require('./settlement-fixture.cjs');w.React=React;
+const intervals=new Map();let timerId=0;w.setInterval=fn=>{intervals.set(++timerId,fn);return timerId;};w.clearInterval=id=>intervals.delete(id);
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js'),'utf8'));
+const doc=w.document,root=createRoot(doc.getElementById('root'));
+let report=fixture('owner','owner'),fail=false,held=false,requests=0,writes=0;const pending=[];
+report.details=Array.from({length:29},(_,i)=>({...structuredClone(report.details[0]),agentId:'club',playerId:'p'+i,playerName:'Player '+String(i).padStart(2,'0')}));
+report.funds=report.details.map(p=>({uid:p.playerId,balance:10000,totalResult:200}));
+const call=async(name)=>{if(name!=='pkSettlementReport'){writes++;throw Error('Unexpected mutation');}requests++;if(held)return new Promise(resolve=>pending.push(resolve));if(fail)throw Error('Temporary refresh failure');return structuredClone(report);};
+const button=name=>[...doc.querySelectorAll('button')].find(b=>b.textContent===name);
+const click=async name=>React.act(async()=>button(name).click());
+const mount=async(user={uid:'owner',role:'owner'})=>React.act(async()=>root.render(React.createElement(w.PokerSettlement.Settlement,{user,clubId:'club',call})));
+const refresh=async()=>React.act(async()=>w.dispatchEvent(new w.Event('pk-club-changed')));
+(async()=>{
+ await mount();assert.equal(doc.querySelectorAll('table,.st-account').length,0,'overview never mounts the directory or table breakdowns');
+ await click('Players');assert.equal(doc.querySelectorAll('.st-account').length,12);assert.equal(doc.querySelector('table'),null);
+ await click('Next');assert.equal(doc.querySelectorAll('.st-account').length,12);await click('Next');assert.equal(doc.querySelectorAll('.st-account').length,5);
+ const search=()=>doc.querySelector('input[type=search]');await React.act(()=>Simulate.change(search(),{target:{value:'Player 00'}}));assert.equal(doc.querySelectorAll('.st-account').length,1);assert.match(doc.querySelector('.st-pager').textContent,/Page 1 of 1/);
+ await React.act(()=>doc.querySelector('.st-account-head').click());assert.ok(doc.querySelector('table'),'games mount only when requested');
+ await refresh();assert.equal(search().value,'Player 00');assert.equal(doc.querySelector('.st-account-head').getAttribute('aria-expanded'),'true','background refresh preserves open account');
+ await click('Record payment');const amount=doc.querySelector('[role=dialog] input[type=number]');await React.act(()=>Simulate.change(amount,{target:{value:'42'}}));
+ await refresh();assert.equal(doc.querySelector('[role=dialog] input[type=number]').value,'42','background refresh keeps a payment draft');
+ fail=true;await refresh();assert.match(doc.querySelector('[role=alert]').textContent,/last successful report/);assert.equal(doc.querySelector('[role=dialog] button[type=submit]').disabled,true);assert.equal(button('Cancel').disabled,false);await click('Cancel');assert.equal(button('Record payment'),undefined,'stale data cannot initiate payments');
+ fail=false;await click('Refresh');assert.ok(button('Record payment'));
+ // Visibility and scope changes must not duplicate or leak requests.
+ Object.defineProperty(doc,'visibilityState',{value:'hidden',configurable:true});let before=requests;await React.act(async()=>{for(const poll of intervals.values())poll();});assert.equal(requests,before);
+ Object.defineProperty(doc,'visibilityState',{value:'visible',configurable:true});await React.act(async()=>doc.dispatchEvent(new w.Event('visibilitychange')));assert.equal(requests,before+1);
+ held=true;await refresh();assert.equal(pending.length,1);await refresh();assert.equal(pending.length,1,'explicit refresh queues instead of overlapping');
+ const oldReport=structuredClone(report);report=fixture('player','personal');await mount({uid:'personal',role:'player'});assert.equal(pending.length,2);assert.equal(doc.querySelector('.st-account'),null);
+ await React.act(async()=>pending[0](oldReport));assert.equal(doc.querySelector('.st-workspace'),null,'old authorized report cannot repopulate another user');
+ await React.act(async()=>pending[1](structuredClone(report)));assert.doesNotMatch(doc.body.textContent,/Rake|Commission|Player 00|Cycle management|Lifetime/i);
+ await click('My games');assert.equal(doc.querySelectorAll('table').length,1);assert.doesNotMatch(doc.body.textContent,/Rake|Commission|Other human player/i);
+ await React.act(()=>root.unmount());assert.equal(intervals.size,0);before=requests;await refresh();assert.equal(requests,before,'unmount removes refresh listeners');assert.equal(writes,0);w.close();
+ console.log('PASS: compact overview, 12-row pagination/search, expandable games, preserved drafts, stale edit protection, visibility polling and user-scope isolation');
+})().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

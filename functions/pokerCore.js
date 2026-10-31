@@ -125,9 +125,26 @@ const bestScoreFull = (hole, board5, gameType) => {
   return best;
 };
 
-// index.html:2189-2216 — side-pot builder. Mutates gs.pots and zeroes bets,
+// Call only after betting has closed. Folded contributions still match a bet;
+// one eligible player is NOT proof that the other contributions are uncalled.
+const returnUncalledBet = (gs, playersObj) => {
+  const bettors = Object.values(playersObj).filter(p => p.bet > 0).sort((a, b) => b.bet - a.bet);
+  const player = bettors[0];
+  if (!player || player.status !== "active") return 0;
+  const matched = bettors[1]?.bet || 0;
+  const excess = round2(player.bet - matched);
+  if (excess <= 0) return 0;
+  player.stack = round2((player.stack || 0) + excess);
+  player.bet = matched;
+  if (player.actionText === "All-in") player.actionText = "Returned";
+  gs.highestBet = matched;
+  return excess;
+};
+
+// Side-pot builder. Mutates gs.pots and zeroes bets,
 // merging into the previous pot when the eligible set is identical.
 const gatherBetsToPots = (gs, playersObj) => {
+  returnUncalledBet(gs, playersObj);
   if (!gs.pots) gs.pots = [];
   let bettors = Object.values(playersObj).filter((p) => p.bet > 0).sort((a, b) => a.bet - b.bet);
   while (bettors.length > 0) {
@@ -175,6 +192,6 @@ const spinPrize = (buyIn, mult) => Math.floor((Number(buyIn) || 0) * (Number(mul
 
 module.exports = {
   round2, SUITS, CARD_VALUES, GAME_CARDS, HOLE_ORD, sortHoleCards, pokerDeck,
-  getCombinations, evaluate5Cards, handName, bestScoreFull, gatherBetsToPots,
+  getCombinations, evaluate5Cards, handName, bestScoreFull, gatherBetsToPots, returnUncalledBet,
   SPIN_WHEEL, SPIN_SEGS, spinDrawMult, spinPrize,
 };

@@ -25,7 +25,7 @@ jobs:
           const {spawnSync}=require('node:child_process');
           function read(args){
            const p=spawnSync('firebase',[...args,'--project','pokerten','--non-interactive','--json'],{encoding:'utf8',timeout:90000,maxBuffer:24*1024*1024,stdio:['ignore','pipe','pipe']});
-           if(p.status!==0){const s=String(p.stdout)+String(p.stderr);return {error:/403|permission|forbidden/i.test(s)?'permission-denied':/401|unauthenticated|credential/i.test(s)?'authentication-failed':'read-failed'};}
+           if(p.status!==0){const s=String(p.stdout)+String(p.stderr);return {error:/403|permission|forbidden/i.test(s)?'permission-denied':/401|unauthenticated|credential/i.test(s)?'authentication-failed':/429|quota|RESOURCE_EXHAUSTED/i.test(s)?'rate-limited':/timed out|timeout|DEADLINE_EXCEEDED/i.test(s)?'timed-out':'read-failed'};}
            try{return JSON.parse(p.stdout).result;}catch{return {error:'invalid-json'};}
           }
           const inventory=read(['functions:list']);
@@ -49,7 +49,7 @@ jobs:
            const status={};for(const e of requests){const s=String(Number(e.httpRequest.status)||0);status[s]=(status[s]||0)+1;}
            const text=e=>JSON.stringify(e.jsonPayload||e.textPayload||'');
            const times=entries.map(e=>e.timestamp).sort();
-           console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,windowHours:24,returnedEntries:raw.length,recentEntries:entries.length,oldest:times[0]||null,newest:times.at(-1)||null,revisions:revisionStats,postRequests:stats(requests.map(latency)),successRequests:stats(requests.filter(e=>e.httpRequest.status>=200&&e.httpRequest.status<300).map(latency)),status,coldStartMessages:entries.filter(e=>/Starting new instance|Cold start/i.test(text(e))).length,contentionMessages:entries.filter(e=>/too much contention|ABORTED|transaction.*conflict/i.test(text(e))).length,errors:entries.filter(e=>['ERROR','CRITICAL','ALERT','EMERGENCY'].includes(e.severity)).length}));
+           console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,windowHours:24,returnedEntries:raw.length,recentEntries:entries.length,oldest:times[0]||null,newest:times.at(-1)||null,revisions:revisionStats,routes:{europe:entries.filter(e=>text(e).includes('POKER_ACTION_ROUTE')&&text(e).includes('europe')).length,localFallback:entries.filter(e=>text(e).includes('POKER_ACTION_ROUTE')&&text(e).includes('local-fallback')).length},postRequests:stats(requests.map(latency)),successRequests:stats(requests.filter(e=>e.httpRequest.status>=200&&e.httpRequest.status<300).map(latency)),status,coldStartMessages:entries.filter(e=>/Starting new instance|Cold start/i.test(text(e))).length,contentionMessages:entries.filter(e=>/too much contention|ABORTED|transaction.*conflict/i.test(text(e))).length,errors:entries.filter(e=>['ERROR','CRITICAL','ALERT','EMERGENCY'].includes(e.severity)).length}));
           }
           
           JS

@@ -14,6 +14,26 @@ const row=id=>w.document.querySelector('[data-tournament-row="'+id+'"]');
 const clock=id=>row(id)?.querySelector('[data-tournament-clock]');
 (async()=>{
  await React.act(async()=>root.render(React.createElement(w.TourTest,{user:{uid:'viewer',role:'player'},game:'poker',tournaments:tours,tables:[],clubSettings:{},compactRows:true,showToast(){},onJoinTable(){}})));
+ const members={viewer:{uid:'viewer',name:'Alice'},bot_one:{uid:'bot_one',name:'Jordan',isBot:true},bot_two:{uid:'bot_two',name:'Casey',isBot:true,out:true},removed:{uid:'removed',name:'Removed',isBot:true,removed:true}};
+ const populated=tours.map(t=>({...t,players:members,maxPlayers:60,fee:5,bounty:25}));
+ const renderAs=async role=>React.act(async()=>root.render(React.createElement(w.TourTest,{user:{uid:'viewer',role},game:'poker',tournaments:populated,tables:[],clubSettings:{},compactRows:true,showToast(){},onJoinTable(){}})));
+ await renderAs('player');
+ assert.match(row('reg').textContent,/3 \/ 60 registered/,'bots count as participants and removed entries do not');
+ assert.match(row('reg').textContent,/Entry 130/,'entry includes fee and bounty');
+ assert.match(row('reg').textContent,/Starting stack 30/);assert.match(row('reg').textContent,/You are registered/);
+ assert.match(row('running').textContent,/2 remaining/,'eliminated and removed players are excluded from remaining');
+ assert.match(row('running').textContent,/Registration closed/);
+ assert.equal(w.document.querySelector('.pt-tournament-participant-kinds'),null,'player sees aggregate only');
+ await React.act(()=>row('reg').click());
+ await React.act(()=>w.document.querySelector('.pt-tournament-roster-toggle').click());
+ assert.doesNotMatch(w.document.querySelector('.pt-tournament-roster').textContent,/Bot ·|Human ·/,'ordinary roster has no participant type markers');
+ for(const role of ['manager','club_owner','super_admin']){
+  await renderAs(role);assert.match(row('reg').textContent,/Manager view · 1 human · 2 bots/);
+  assert.match(w.document.querySelector('.pt-tournament-roster').textContent,/Bot · Jordan/,'managers can distinguish roster participants');
+ }
+ await renderAs('agent');assert.equal(w.document.querySelector('.pt-tournament-participant-kinds'),null,'agents do not receive the manager breakdown');
+ await renderAs('player');
+ await React.act(()=>w.document.querySelector('.pt-tour-close').click());
  assert.match(clock('reg').textContent,/Starts in 01:01:01/);assert.match(clock('reg').querySelector('time').textContent,/29\/10, 21:01/,'scheduled time is in Israel time');
  assert.match(clock('running').textContent,/Running 01:01:01/,'elapsed time uses actual start rather than schedule');
  assert.match(clock('unknown').textContent,/Start time pending/);assert.equal(clock('unknown').querySelector('time'),null);
@@ -26,5 +46,5 @@ const clock=id=>row(id)?.querySelector('[data-tournament-clock]');
  await React.act(()=>root.render(React.createElement(w.HeaderTest,{club:{id:'main',name:'Demo'},tables:[],user:{uid:'viewer',role:'player'},balance:'0'})));
  const logo=w.document.querySelector('.reference-lobby-masthead>img');assert.equal(logo.getAttribute('src'),'assets/brand/orbital-icon192.png');assert.ok(fs.existsSync(path.resolve(__dirname,'../..',logo.getAttribute('src'))),'header asset exists under the native assets allowlist');
  assert.equal(writes.length,0,'display clocks issue no game or balance commands');
- await React.act(()=>root.unmount());w.close();console.log('PASS: ticking collapsed rows, actual start, Israel time, overdue/missing schedule, completed/cancelled history, details and bundled logo');
+ await React.act(()=>root.unmount());w.close();console.log('PASS: participant totals, removed/eliminated handling, entry costs, role-only breakdown, ticking collapsed rows, actual start, Israel time, overdue/missing schedule, completed/cancelled history, details and bundled logo');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

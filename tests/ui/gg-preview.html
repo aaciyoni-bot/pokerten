@@ -126,6 +126,13 @@
      ...['durak','ofc'].map(type=>({docId:'color-'+type,type,settings:{buyIn:100,stake:5,maxPlayers:2,deckSize:36,variant:'podkidnoy'},players:{},status:'waiting'})));
  }
  const props={cashierOnly:mode==='cashier',game:'poker',user:{...managementViewer,stats:demoMembers[0].stats},tables,tablesLoaded:true,tournaments:[],clubSettings:{name:'Netabel',rakePct:6},tab:'poker'};
+ if(mode==='tournaments'){
+  props.compactRows=true;
+  const entrants=Object.fromEntries(Array.from({length:18},(_,i)=>['entry'+i,{uid:'entry'+i,name:'Player '+(i+1),isBot:i%3===0,out:false}]));
+  entrants[managementViewer.uid]={uid:managementViewer.uid,name:'You'};
+  const common={clubId:'main',game:'poker',pokerType:'NLH',maxPlayers:60,startStack:30000,mttMode:true,payouts:[50,30,20],players:entrants};
+  props.tournaments=[{...common,id:'preview-free',name:'Saturday Freeroll',status:'reg',buyIn:0,prizePool:2000,startAt:Date.now()+3600000},{...common,id:'preview-paid',name:'Sunday 100',status:'reg',buyIn:100,fee:5,prizePool:1900,startAt:Date.now()+90000000},{...common,id:'preview-live',name:'Omaha Championship',pokerType:'Omaha 6',status:'running',buyIn:55,prizePool:1045,startedAt:Date.now()-3600000,players:{...entrants,entry1:{...entrants.entry1,out:true}}}];
+ }
  if(query.has('colors')&&['durak','ofc'].includes(query.get('game')))props.tab=query.get('game');
  let component=mode==='player-file'?'PreviewPlayerFile':mode==='tournaments'?'PreviewTournaments':mode==='auth'?'PreviewAuth':mode==='lobby'?'PreviewLobby':['admin','cashier'].includes(mode)?'PreviewAdmin':mode==='settlement'?'PreviewSettlement':mode==='profile'?'PreviewProfile':mode==='ranks'?'PreviewRanks':mode==='create'?'PreviewCreate':mode==='clubs'?'PreviewClubs':'PreviewTable';
  let propsCode=mode==='player-file'?JSON.stringify({mem:demoMembers[1],viewer:managementViewer,accounting:directory.accounting,canEdit:false,canManagePeriod:!['agent','player'].includes(managementRole),showRake:query.has('god')}):mode==='clubs'?JSON.stringify(clubProps):JSON.stringify(props);

@@ -68,10 +68,9 @@ async function assertFullManagement(fixture){
  assert.ok(manage(),'verified HAIM has the top Manage button despite stale membership metadata');
  await React.act(async()=>manage().click());
  assert.ok(doc.querySelector('.club-admin'),'the Manage button opens BackofficeView');
- assert.ok(doc.getElementById('bo-settings'),'full Club Settings are mounted');
+ const select=async label=>React.act(()=>[...doc.querySelectorAll('.management-tabs button')].find(b=>b.textContent===label).click());assert.equal(doc.getElementById('bo-players'),null,'overview does not mount the directory');await select('Settings');assert.ok(doc.getElementById('bo-settings'),'settings are reachable');assert.match(doc.body.textContent,/Club Settings/);await select('Agreements');assert.ok(doc.getElementById('bo-terms'),'terms are reachable');await select('Members');
  assert.ok(doc.getElementById('bo-players'),'member management is mounted');
- assert.ok(doc.getElementById('bo-terms'),'terms management is mounted');
- assert.match(doc.body.textContent,/Club Settings/);
+ assert.equal(doc.getElementById('bo-settings'),null,'inactive settings are unmounted');
  assert.doesNotMatch(doc.body.textContent,/Export full club report|Weekly Settlement/);
  assert.match(doc.body.textContent,/Other human player/);
  assert.ok(doc.querySelector('[title="Set role and agent assignment"]'),'management includes member-role controls');

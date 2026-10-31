@@ -87,7 +87,7 @@ async function assertStaffLinks(fixture){
   await React.act(async()=>(source==='navigation'||source==='cashier'?settlementNav():links[0]).click());
   assert.equal(new URL(w.location.href).searchParams.get('v'),'settlement');
   assert.equal(settlementNav().getAttribute('aria-current'),'page','the visible navigation marks the current report');
-  assert.match(doc.body.textContent,/Player breakdown/);assertEnglishUi(doc.body,'Staff settlement report');
+  assert.equal(doc.querySelectorAll('.st-account').length,0);await React.act(()=>button('Players').click());assert.match(doc.body.textContent,/Player breakdown/);assertEnglishUi(doc.body,'Staff settlement report');
   assert.match(doc.body.textContent,/Other human player/);
   const call=fixture.calls.findLast(c=>c.name==='pkSettlementReport');
   assert.equal(call.args.clubId,'main');
@@ -121,7 +121,7 @@ async function assertPlayerLinks(fixture){
  // A permission failure must remain an error with recovery, never turn into an empty successful report.
  haim.denyReports(true);await React.act(async()=>reportLink('Club settlement').click());
  assert.match(doc.querySelector('[role="alert"]').textContent,/permission/);assertEnglishUi(doc.body,'Settlement access failure');assert.doesNotMatch(doc.body.textContent,/Player breakdown/);
- haim.denyReports(false);await React.act(async()=>button('Try again').click());assert.match(doc.body.textContent,/Player breakdown/);assertEnglishUi(doc.body,'Staff settlement report');await back();
+ haim.denyReports(false);await React.act(async()=>button('Try again').click());assert.equal(doc.querySelectorAll('.st-account').length,0);await React.act(()=>button('Players').click());assert.match(doc.body.textContent,/Player breakdown/);assertEnglishUi(doc.body,'Staff settlement report');await back();
  await React.act(()=>root.render(null));
  const godOnly=firebaseFixture('info.bagso@gmail.com','approved');await mountAndEnter(godOnly);await assertPlayerLinks(godOnly);await React.act(()=>root.render(null));
  const ordinary=firebaseFixture('ordinary@example.invalid','approved');await mountAndEnter(ordinary);await assertPlayerLinks(ordinary);await React.act(()=>root.render(null));

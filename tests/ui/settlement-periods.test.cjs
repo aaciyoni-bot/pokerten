@@ -31,7 +31,7 @@ const mount=async()=>{await React.act(async()=>root.render(React.createElement(w
 const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent===text);
 const change=async(el,value)=>React.act(async()=>Simulate.change(el,{target:{value}}));
 const submit=async(el)=>React.act(async()=>Simulate.submit(el));
-const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="Report date range"]');await change(form.querySelectorAll('input')[0],from);await change(form.querySelectorAll('input')[1],to);await submit(form);};
+const setDates=async(from,to)=>{if(!doc.querySelector('form[aria-label="Report date range"]'))await React.act(()=>button('History & export').click());const form=doc.querySelector('form[aria-label="Report date range"]');await change(form.querySelectorAll('input')[0],from);await change(form.querySelectorAll('input')[1],to);await submit(form);};
 (async()=>{
  // A slow report can span multiple 30-second polling intervals without overlapping calls.
  current=legacy('player');let releaseReport;deferredReport=new Promise(resolve=>{releaseReport=resolve;});await mount();
@@ -75,7 +75,7 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  await React.act(()=>button('Close tables & start new cycle').click());assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writes);
  w.confirm=()=>true;await React.act(async()=>button('Close tables & start new cycle').click());assert.equal(calls.findLast(c=>c.name==='pkSettlement').args.action,'beginCloseAll');assert.equal(clubChanges,2);
  failMutation=true;await React.act(async()=>button('Close tables & start new cycle').click());assert.equal(clubChanges,2,'failed mutation emits no refresh event');assert.match(doc.querySelector('[role="alert"]').textContent,/not saved/);
- await React.act(()=>button('Settlement report').click());
+ await React.act(()=>button('Overview').click());
  // Selecting historical cycles disables financial/report editing.
  await change(doc.querySelector('select[aria-label="Select cycle"]'),'old-cycle');
  assert.match(doc.body.textContent,/Historical report · Read only/);assert.equal(button('Record payment'),undefined);assert.equal(button('Approve report'),undefined);
@@ -88,7 +88,7 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  const request=calls.findLast(c=>c.name==='pkSettlementReport');
  assert.deepEqual(JSON.parse(JSON.stringify(request.args)),{clubId:'example-club',fromAt:Date.parse('2025-01-31T22:00:00Z'),toAt:Date.parse('2025-02-02T22:00:00Z')});
  assert.match(doc.body.textContent,/Date range · Read only|Recorded results in selected dates|Current balance/);assert.match(doc.body.textContent,/in selected dates/);
- assert.doesNotMatch(doc.body.textContent,/At closing|Current cycle · Open/);assert.equal(button('Close tables & start new cycle'),undefined);assert.ok(button('Go to current cycle to close'),'history retains a visible route to the closing control');assert.equal(button('Record payment'),undefined);assert.equal(button('Approve report'),undefined);
+ assert.doesNotMatch(doc.body.textContent,/At closing|Current cycle · Open/);assert.equal(button('Close tables & start new cycle'),undefined);assert.ok(button('Cycle management'),'history retains access to cycle controls');assert.equal(button('Record payment'),undefined);assert.equal(button('Approve report'),undefined);
  assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writes);assertEnglishUi(doc.body,'Historical date range');
  assert.match(doc.body.textContent,/club time \(Asia\/Jerusalem\)/);
  let dateInputs=doc.querySelectorAll('form[aria-label="Report date range"] input');assert.equal(dateInputs[0].value,'2025-02-01');assert.equal(dateInputs[1].value,'2025-02-02');
@@ -99,7 +99,7 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  dateInputs=doc.querySelectorAll('form[aria-label="Report date range"] input');assert.equal(dateInputs[0].value,'2025-10-26');assert.equal(dateInputs[1].value,'2025-10-26');
  assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writes,'history never writes settlement data');assert.equal(clubChanges,2);
 
- await React.act(async()=>button('Go to current cycle to close').click());
+ await React.act(()=>button('Cycle management').click());await React.act(async()=>button('Go to current cycle to close').click());
  assert.deepEqual(JSON.parse(JSON.stringify(calls.findLast(c=>c.name==='pkSettlementReport').args)),{clubId:'example-club'});assert.match(doc.body.textContent,/in current cycle/);
 
  // A server that ignores the requested dates must not masquerade as a filtered report.
@@ -110,7 +110,7 @@ const setDates=async(from,to)=>{const form=doc.querySelector('form[aria-label="R
  current=legacy('player');rangeTrusted=true;await mount();await setDates('2025-02-01','2025-02-02');
  assert.match(doc.body.textContent,/Recorded results in selected dates/);assert.doesNotMatch(doc.body.textContent,/Lifetime profit\/loss|Rakeback|Rake generated|Commission/i);assert.equal(button('Save cycle start'),undefined);assert.equal(button('Close tables & start new cycle'),undefined);assert.equal(doc.querySelector('[aria-label="Start a new cycle"]'),null);
  // A manager sees the primary control above the report, including legacy mode.
- current=legacy('owner');await mount();assert.equal(doc.querySelector('.settlement-app').firstElementChild.getAttribute('aria-label'),'Start a new cycle');assert.ok(button('Close tables & start new cycle'));
+ current=legacy('owner');await mount();assert.equal(button('Close tables & start new cycle'),undefined);await React.act(()=>button('Cycle management').click());assert.ok(doc.querySelector('[aria-label="Start a new cycle"]'));assert.ok(button('Close tables & start new cycle'));
  // Continuation polling starts only for an explicitly queued server request.
  current.cycleClose={id:'test-closure-request',status:'closing',remaining:2};await mount();assert.equal(button('Close tables & start new cycle'),undefined);assert.match(doc.body.textContent,/Closing tables · 2 remaining/);
  writes=calls.filter(c=>c.name==='pkSettlement').length;

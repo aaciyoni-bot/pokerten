@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="345">
-    <script src="assets/js/app-update.js?v=345" defer></script>
+    <meta name="app-version" content="346">
+    <script src="assets/js/app-update.js?v=346" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1186,8 +1186,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
     <script src="assets/js/poker-auth.js?v=312"></script>
     <script src="assets/js/club-ui.js?v=312"></script>
-    <link rel="stylesheet" href="assets/css/settlement.css?v=313">
-    <script src="assets/js/poker-settlement-ui.js?v=313"></script>
+    <link rel="stylesheet" href="assets/css/settlement.css?v=346">
+    <script src="assets/js/poker-settlement-ui.js?v=346"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=338"></script>
     <script src="assets/js/poker-runtime.js?v=297"></script>
@@ -4192,7 +4192,7 @@ function useInstalledAppDisplay() {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 345. Check for updates'},'v345 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 346. Check for updates'},'v346 · Check update'),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
 function App() {
@@ -8904,6 +8904,9 @@ function BackofficeView({
   };
   const [search, setSearch] = useState('');
   const [memberSort,setMemberSort]=useState('name');
+  const [managementTab,setManagementTab]=useState('overview');
+  const [memberPage,setMemberPage]=useState(0),[requestPage,setRequestPage]=useState(0),[agentPage,setAgentPage]=useState(0);
+  useEffect(()=>{setManagementTab('overview');setMemberPage(0);setRequestPage(0);setAgentPage(0);},[directoryScope]);
   const currentAccounting=accounting?.scope===directoryScope?accounting.data:null;
   const accountNumbers=(value,balance)=>React.createElement(AccountNumbers,{value,balance,viewer:user,loading:accountingLoading,showRake:isGodUser(user),showLifetime:true,needsPeriodStart:currentAccounting?.needsPeriodStart===true});
 
@@ -9274,7 +9277,16 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   const clubBalance=canAdmin ? Number(treasury?.balance)||0 : Number(user.balance)||0;
   const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
-  const players = usersList.filter(u => ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>{const metric=m=>memberSort==='result'?currentAccounting?.players?.[m.uid]?.result||0:memberSort==='rake'?currentAccounting?.players?.[m.uid]?.rake||0:currentAccounting?.players?.[m.uid]?.chips??(Number(m.balance)||0);return memberSort==='name'?(a.username||'').localeCompare(b.username||''):metric(b)-metric(a)||(a.username||'').localeCompare(b.username||'');});
+  const players = usersList.filter(u => !u.isBot && ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>{const metric=m=>memberSort==='result'?currentAccounting?.players?.[m.uid]?.result||0:memberSort==='rake'?currentAccounting?.players?.[m.uid]?.rake||0:currentAccounting?.players?.[m.uid]?.chips??(Number(m.balance)||0);return memberSort==='name'?(a.username||'').localeCompare(b.username||''):metric(b)-metric(a)||(a.username||'').localeCompare(b.username||'');});
+  const memberPages=Math.max(1,Math.ceil(players.length/12)),visibleMemberPage=Math.min(memberPage,memberPages-1);
+  const visibleAgents=isAgentOnly?agents.filter(a=>a.uid===user.uid):agents;
+  const agentPages=Math.max(1,Math.ceil(visibleAgents.length/12)),visibleAgentPage=Math.min(agentPage,agentPages-1);
+  const requestPages=Math.max(1,Math.ceil(pendingUsers.length/12)),visibleRequestPage=Math.min(requestPage,requestPages-1);
+  useEffect(()=>setMemberPage(0),[search,memberSort,memFilter]);
+  const compactAccount=u=>React.createElement('div',{className:'management-compact-balance'},
+    React.createElement('span',null,'Current chips'),React.createElement('b',null,formatMoney(currentAccounting?.players?.[u.uid]?.chips??(Number(u.balance)||0))),
+    React.createElement('span',null,'Cycle result'),React.createElement('b',null,currentAccounting?.needsPeriodStart||!Number.isFinite(currentAccounting?.players?.[u.uid]?.result)?'—':formatMoney(currentAccounting.players[u.uid].result||0)));
+  const pageControl=(page,pages,total,setPage)=>React.createElement('div',{className:'management-pager'},React.createElement('span',null,total,' entries · Page ',page+1,' of ',pages),React.createElement('button',{type:'button',disabled:page===0,onClick:()=>setPage(page-1)},'Previous'),React.createElement('button',{type:'button',disabled:page+1>=pages,onClick:()=>setPage(page+1)},'Next'));
   const balanceMembers = usersList.filter(m => ["approved","banned"].includes(m.status) && !m.isBot && m.uid !== (canAdmin?clubOwnerUid:user.uid) && m.uid !== "bot_bank").filter(m => canManageAny || m.agentUid === user.uid);
   const statTiles = [{
     label: canAdmin ? 'Club treasury' : 'Your balance',
@@ -9446,29 +9458,14 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     }, "Cancel"))));
   })(), document.body), React.createElement("div", {
     className: "max-w-5xl mx-auto animate-fade-in relative z-10"
-  }, React.createElement("nav", {className:"admin-shortcuts","aria-label":"Management navigation"},
-    React.createElement("a",{href:"#bo-players",onClick:e=>{e.preventDefault();document.getElementById("bo-players")?.scrollIntoView({behavior:"smooth",block:"start"});}},"Players & accounts"),
-    React.createElement("a",{href:"#bo-terms",onClick:e=>{e.preventDefault();document.getElementById("bo-terms")?.scrollIntoView({behavior:"smooth",block:"start"});}},"Agents & commissions"),
-    React.createElement("a",{href:"#bo-settings",onClick:e=>{e.preventDefault();document.getElementById("bo-settings")?.scrollIntoView({behavior:"smooth",block:"start"});}},"Club settings")), React.createElement("div", {
+  }, accountingError&&managementTab!=='overview'&&React.createElement('div',{role:'alert',className:'auth-error mb-4'},accountingError,React.createElement('button',{type:'button',disabled:accountingLoading,onClick:()=>setAccountingAttempt(n=>n+1)},'Retry account totals')),React.createElement("div", {
     className: "flex items-center justify-between mb-6 flex-wrap gap-3"
   }, React.createElement("div", null, React.createElement("h2", {
     className: "text-2xl sm:text-3xl font-black text-white"
   }, "Club management"), React.createElement("p", {
     className: "text-sm text-slate-400 font-bold"
-  }, "Players, top-ups, approvals and terms")), React.createElement("p",{className:"text-xs text-slate-400"},"Add and remove bots from the table controls.")), canAdmin && React.createElement("div", {
-    // Console nav: one sticky bar — every management area is a tap away
-    className: "club-admin-sections sticky top-0 z-40 -mx-1 px-1 py-2 bg-slate-950/85 backdrop-blur-md flex flex-wrap items-center gap-2 mb-5 border-b border-white/5"
-  }, [
-    { id: 'bo-players', ico: 'fa-users', label: 'Members', badge: (usersList || []).filter(u2 => u2.status === 'pending').length },
-    { id: 'bo-terms', ico: 'fa-file-invoice-dollar', label: 'Agents', badge: 0 },
-    { id: 'bo-settings', ico: 'fa-sliders', label: 'Settings', badge: 0 }
-  ].map(s2 => React.createElement("button", {
-    key: s2.id,
-    onClick: () => { const el = document.getElementById(s2.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
-    className: "relative text-xs font-black px-4 py-2.5 rounded-xl border shrink-0 text-gold-400 border-gold-400/30 bg-slate-900/60 hover:bg-slate-800"
-  }, React.createElement("i", { className: `fa-solid ${s2.ico} mr-1` }), s2.label, s2.badge > 0 && React.createElement("span", {
-    className: "absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center border border-slate-900"
-  }, s2.badge)))), canAdmin && secAlerts.length > 0 && React.createElement("div", {
+  }, "Players, top-ups, approvals and terms")), React.createElement("p",{className:"text-xs text-slate-400"},"Add and remove bots from the table controls.")), React.createElement('nav',{className:'management-tabs','aria-label':'Management navigation'},
+  [['overview','Overview'],['members','Members'],['requests','Join requests'],['agents','Agents'],['terms','Agreements'],...(canAdmin?[['settings','Settings'],['security','Security']]:[])].map(([id,label])=>React.createElement('button',{key:id,type:'button','aria-pressed':managementTab===id,onClick:()=>setManagementTab(id)},label,id==='requests'&&pendingUsers.length>0&&React.createElement('span',{className:'management-count'},pendingUsers.length)))), managementTab==='security'&&canAdmin&&activityLoaded&&!activityError&&secAlerts.length===0&&React.createElement('p',{className:'management-empty'},'No security alerts in the loaded activity.'), managementTab === 'security' && (canAdmin && secAlerts.length > 0 && React.createElement("div", {
     className: "glass-panel rounded-2xl p-4 mb-5",
     style: { border: '1px solid rgba(244,63,94,.45)' }
   }, React.createElement("div", {
@@ -9520,7 +9517,10 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     title: "The signed-in account that actually performed the write (" + (a.authType || "?") + ")"
   }, "by ", a.byUid ? (usersList.find(m => m.uid === a.byUid) || {}).username || a.byUid.slice(0, 10) : "unknown"), (a.count || 1) > 1 && React.createElement("span", {
     className: "text-slate-500"
-  }, "×", a.count, " today, +", formatMoney(a.total || 0), " total"))))), React.createElement("div", {
+  }, "×", a.count, " today, +", formatMoney(a.total || 0), " total")))))), managementTab === 'overview' && React.createElement('div',{className:'management-home-actions'},
+    React.createElement('button',{onClick:()=>setManagementTab('members')},React.createElement('small',null,'MEMBERS'),React.createElement('strong',null,realPlayers.length),React.createElement('span',null,'Player accounts'),React.createElement('small',null,'Find a player and open their details →')),
+    React.createElement('button',{onClick:()=>setManagementTab('requests')},React.createElement('small',null,'JOIN REQUESTS'),React.createElement('strong',null,pendingUsers.length),React.createElement('span',null,'Awaiting review'),React.createElement('small',null,'Review membership requests →')),
+    onSettlement&&React.createElement('button',{onClick:onSettlement},React.createElement('small',null,'SETTLEMENT'),React.createElement('strong',null,'↗'),React.createElement('span',null,'Accounts & reports'),React.createElement('small',null,'Results, payments and saved cycles →'))),managementTab === 'overview' && (React.createElement("div", {
     className: "club-admin-metrics grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
   }, statTiles.map((t, i) => React.createElement("div", {
     key: i,
@@ -9535,14 +9535,14 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   })), React.createElement("p", {
     className: `text-xl sm:text-2xl font-black ${t.color}`,
     dir: "ltr"
-  }, t.value)))), React.createElement('section',{className:'management-cycle-summary',dir:'ltr'},
+  }, t.value))))), managementTab === 'overview' && (React.createElement('section',{className:'management-cycle-summary',dir:'ltr'},
     React.createElement('h3',null,canAdmin?'Club player totals · Current cycle':'My player totals · Current cycle'),
     Number.isFinite(currentAccounting?.start)&&React.createElement('small',null,'From ',new Date(currentAccounting.start).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem'}),' to now'),
     currentAccounting?.needsPeriodStart&&React.createElement('p',{className:'text-amber-300 text-sm','data-period-start-required':true},'The current cycle has no confirmed start date. Balances are preserved; results will appear after the start is confirmed.',canManageClub(user)&&onSettlement&&React.createElement('button',{type:'button',onClick:onSettlement,className:'block btn-outline rounded-xl px-3 py-2 mt-2'},'Set cycle start in Settlement')),
     accountingError&&React.createElement('div',{role:'alert',className:'text-amber-300 text-sm'},accountingError,React.createElement('button',{type:'button',disabled:accountingLoading,onClick:()=>setAccountingAttempt(n=>n+1)},'Try again')),
     accountNumbers(canAdmin?currentAccounting?.club:currentAccounting?.agents?.[user.uid],canAdmin?currentAccounting?.club?.balance:currentAccounting?.agents?.[user.uid]?.balance),
-    React.createElement('p',null,'Cycle profit / loss shows the player result for the current cycle. It is not a debt or the net settlement after commissions.')),
-    canAdmin && React.createElement("div", {
+    React.createElement('p',null,'Cycle profit / loss shows the player result for the current cycle. It is not a debt or the net settlement after commissions.'))),
+    managementTab === 'settings' && (canAdmin && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6 border border-amber-500/20"
   }, React.createElement("span", {
     id: "bo-settings",
@@ -9674,7 +9674,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white px-6 py-3 rounded-xl font-bold shadow-lg"
   }, "Save"), React.createElement("p", {
     className: "text-xs text-slate-500 font-bold basis-full"
-  }, "The rake applies to Rummy, Poker and all future games. Existing Poker Tables keep the rake set when they were opened."))), window.PokerSettlement && React.createElement(window.PokerSettlement.SettlementMembers,{clubId:CLUB_ID,call:pokerCommand}), React.createElement("div", {
+  }, "The rake applies to Rummy, Poker and all future games. Existing Poker Tables keep the rake set when they were opened.")))), managementTab === 'terms' && (window.PokerSettlement && React.createElement(window.PokerSettlement.SettlementMembers,{clubId:CLUB_ID,call:pokerCommand})), managementTab === 'requests' && (React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white mb-4 flex items-center gap-2"
@@ -9688,7 +9688,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "text-slate-500 text-sm font-bold"
   }, "No pending requests."), React.createElement("div", {
     className: "flex flex-col gap-2"
-  }, pendingUsers.map(u => React.createElement("div", {
+  }, pageControl(visibleRequestPage,requestPages,pendingUsers.length,setRequestPage),pendingUsers.slice(visibleRequestPage*12,visibleRequestPage*12+12).map(u => React.createElement("div", {
     key: u.id,
     className: "flex items-center justify-between bg-slate-900/70 rounded-2xl p-3 border border-white/5"
   }, React.createElement("div", {
@@ -9728,7 +9728,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "bg-slate-800 hover:bg-rose-900 text-slate-300 w-10 rounded-xl font-bold text-sm border border-white/10"
   }, React.createElement("i", {
     className: "fa-solid fa-xmark"
-  }))) : React.createElement("span",{className:"text-xs text-amber-300"},"Awaiting manager approval"))))), playerFile && React.createElement(PlayerFileModal, {
+  }))) : React.createElement("span",{className:"text-xs text-amber-300"},"Awaiting manager approval")))))), playerFile && React.createElement(PlayerFileModal, {
     mem: playerFile,
     viewer: user,
     accounting: currentAccounting,
@@ -9778,7 +9778,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   }, "Approve without agent assignment"), React.createElement("button", {
     onClick: () => setAssignFor(null),
     className: "text-slate-500 hover:text-white underline text-xs font-bold"
-  }, "Cancel"))), document.body), (canAdmin || isAgentOnly) && React.createElement("div", {
+  }, "Cancel"))), document.body), managementTab === 'agents' && ((canAdmin || isAgentOnly) && React.createElement("div", {
     className: "glass-panel p-6 rounded-3xl mb-6 border border-purple-500/20"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white flex items-center gap-2 mb-4"
@@ -9788,7 +9788,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "fa-solid fa-handshake text-purple-400 text-sm"
   })), "Agents ", isAgentOnly ? '- my area' : `(${agents.length})`), React.createElement("div", {
     className: "grid grid-cols-1 sm:grid-cols-2 gap-3"
-  }, (isAgentOnly ? agents.filter(a => a.uid === user.uid) : agents).map(a => {
+  }, pageControl(visibleAgentPage,agentPages,visibleAgents.length,setAgentPage),visibleAgents.slice(visibleAgentPage*12,visibleAgentPage*12+12).map(a => {
     const linked = usersList.filter(x => x.agentUid === a.uid && x.status === 'approved');
     const inviteLink = `https://pokerten.com/?agent=${a.agentCode || ''}&club=${CLUB_ID}`;
     return React.createElement("div", {
@@ -9823,7 +9823,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     }, p.username))));
   }), agents.length === 0 && !isAgentOnly && React.createElement("p", {
     className: "text-slate-500 text-sm font-bold"
-  }, "No agents yet - appoint an agent via ⚙️ next to a player."))), React.createElement("div", {
+  }, "No agents yet - appoint an agent via ⚙️ next to a player.")))), managementTab === 'members' && (React.createElement("div", {
     id: "bo-players",
     className: "glass-panel p-6 rounded-3xl mb-6",
     style: { scrollMarginTop: '76px' }
@@ -9847,14 +9847,14 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   })), React.createElement('select',{value:memberSort,onChange:e=>setMemberSort(e.target.value),'aria-label':'Sort players',className:'management-sort'},
     React.createElement('option',{value:'name'},'Name'),React.createElement('option',{value:'chips'},'Chips — high to low'),React.createElement('option',{value:'result'},'Cycle result — high to low'),currentAccounting?.rakeVisible&&React.createElement('option',{value:'rake'},'Cycle rake — high to low'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3',dir:'ltr'},'Balance and cycle profit / loss are shown separately. Chip top-ups are not winnings.'), React.createElement("div", {
     className: "flex gap-1.5 mb-3 flex-wrap"
-  }, [['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
+  }, pageControl(visibleMemberPage,memberPages,players.length,setMemberPage),[['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
     key: k2,
     onClick: () => setMemFilter(k2),
     "aria-pressed": memFilter === k2,
     className: `text-[11px] font-black px-3 py-1.5 rounded-full border ${memFilter === k2 ? 'bg-gold-400 text-slate-900 border-gold-400' : 'bg-slate-900 text-slate-400 border-white/10 hover:text-white'}`
   }, lb2))), React.createElement("div", {
     className: "club-player-grid"
-  }, players.map(u => React.createElement("div", {
+  },players.length===0&&React.createElement('p',{className:'management-empty'},'No members match your filters.'), players.slice(visibleMemberPage*12,visibleMemberPage*12+12).map(u => React.createElement("div", {
     key: u.id,
     className: "club-player-card flex items-center justify-between flex-wrap gap-y-2 bg-slate-900/70 rounded-2xl p-3 border border-white/5 hover:border-emerald-500/30 transition-colors"
   }, React.createElement("div", {
@@ -9889,9 +9889,9 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     dir: "ltr"
   }, "👤 ", u.googleName), u.agentUid && React.createElement("div", {
     className: "text-[10px] text-purple-300/90 font-bold truncate"
-  }, "🤝 ", agentName(u.agentUid), " (", u.agentPct || 0, "%)"))), React.createElement("div", {
+  }, "🤝 ", agentName(u.agentUid), " (", u.agentPct || 0, "%)"))), compactAccount(u),React.createElement("details", {className:"management-row-menu"},React.createElement('summary',null,'Actions & details'),React.createElement("div", {
     className: "club-member-actions flex items-center gap-2 sm:gap-3 shrink-0"
-  }, accountNumbers(currentAccounting?.players?.[u.uid],u.balance), React.createElement("button", {
+  }, React.createElement('div',{className:'management-row-account'},accountNumbers(currentAccounting?.players?.[u.uid],u.balance)), React.createElement("button", {
     onClick: () => adjustBalance(u, true),
     className: "w-9 h-9 rounded-xl bg-gradient-to-b from-emerald-500 to-emerald-800 hover:from-emerald-400 text-white font-black shadow-md",
     title: "Deposit chips"
@@ -9923,7 +9923,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     title: "Reset profile photo (censor)"
   }, React.createElement("i", {
     className: "fa-solid fa-user-slash text-xs"
-  })))))))), roleEditUser && React.createElement("div", {
+  })))))))))), roleEditUser && React.createElement("div", {
     className: "blue-secondary-backdrop fixed inset-0 z-[500] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setRoleEditUser(null)
   }, React.createElement("div", {

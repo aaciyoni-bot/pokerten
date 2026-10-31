@@ -15,10 +15,11 @@ w.fb={db:{},auth:{currentUser:{uid:'owner',email:'owner@example.test',emailVerif
 },setDoc:deny,updateDoc:deny,addDoc:deny,runTransaction:deny};
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.OwnNumbers=OwnBalanceNumbers;window.AccountNumbersTest=AccountNumbers;'));
 w.__club={id:'main',ownerUid:'owner'};const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
-const render=async key=>{await React.act(async()=>root.render(React.createElement(w.BO,{key,user:members[0],clubSettings:{rakePct:6},showToast(){}})));assertEnglishUi(doc.body,'Management '+key);};
+const render=async key=>{await React.act(async()=>root.render(React.createElement(w.BO,{key,user:members[0],clubSettings:{rakePct:6},showToast(){}})));assertEnglishUi(doc.body,'Management '+key);await select('Members');};
+const select=async label=>React.act(()=>[...doc.querySelectorAll('.management-tabs button')].find(b=>b.textContent===label).click());
 const own=async(user,extra={})=>{await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user,...extra})));assertEnglishUi(doc.body,'Player balance '+extra.key);};
 const accountRows=node=>[...node.querySelectorAll('[data-account-row]')].map(n=>n.dataset.accountRow);
-const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cycle-summary','.management-agent-totals']){const section=doc.querySelector(selector);assert.equal(section.querySelector('[data-player-result]').textContent,result,selector+' leads with the current-cycle sum');assert.equal(section.querySelector('.club-member-balance').textContent,chips,selector+' retains actual current chips');}};
+const assertStaffTotals=async(result,chips)=>{for(const [tab,selector] of [['Overview','.management-cycle-summary'],['Agents','.management-agent-totals']]){await select(tab);const section=doc.querySelector(selector);assert.equal(section.querySelector('[data-player-result]').textContent,result,selector+' leads with the current-cycle sum');assert.equal(section.querySelector('.club-member-balance').textContent,chips,selector+' retains actual current chips');}await select('Members');};
 (async()=>{
  await render('ordinary');
  const card=name=>[...doc.querySelectorAll('.club-player-card')].find(c=>c.textContent.includes(name));
@@ -31,17 +32,17 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  assert.match(card('Alice').querySelector('[data-account-row=cycle]').textContent,/Cycle profit \/ loss/);
  assert.match(card('Alice').querySelector('[data-account-row=lifetime]').textContent,/Lifetime profit \/ loss/);
  assert.match(card('Alice').querySelector('[data-player-result]').getAttribute('aria-label'),/Current cycle result/);
- assertStaffTotals('+480.00','1,159.83');
- assert.match(doc.querySelector('.management-cycle-summary [data-lifetime-result]').textContent,/-840\.17/);
- assert.match(doc.querySelector('.management-agent-totals [data-lifetime-result]').textContent,/-840\.17/);
- const sort=doc.querySelector('[aria-label="Sort players"]');assert.equal(sort.disabled,false);assert.equal([...sort.options].some(o=>o.value==='rake'),false);
+ await assertStaffTotals('+480.00','1,159.83');
+ await select('Overview');assert.match(doc.querySelector('.management-cycle-summary [data-lifetime-result]').textContent,/-840\.17/);
+ await select('Agents');assert.match(doc.querySelector('.management-agent-totals [data-lifetime-result]').textContent,/-840\.17/);
+ await select('Members');const sort=doc.querySelector('[aria-label="Sort players"]');assert.equal(sort.disabled,false);assert.equal([...sort.options].some(o=>o.value==='rake'),false);
  await React.act(()=>Simulate.change(sort,{target:{value:'chips'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
  await React.act(()=>Simulate.change(sort,{target:{value:'result'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
  assert.doesNotMatch(doc.body.textContent,/Weekly Settlement|Export full club report|Club rake/);
  god=true;w.fb.auth.currentUser.email='haim29071994@gmail.com';await render('god');assert.match(card('Alice').textContent,/Cycle rake: 8\.00/);assert.ok([...doc.querySelector('[aria-label="Sort players"]').options].some(o=>o.value==='rake'));
  await React.act(()=>Simulate.change(doc.querySelector('[aria-label="Sort players"]'),{target:{value:'rake'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Alice/);
  assert.equal(card('Bob').querySelector('[data-cycle-rake]').textContent,'Cycle rake: 3.00');
- for(const selector of ['.management-cycle-summary','.management-agent-totals'])assert.equal(doc.querySelector(selector+' [data-cycle-rake]').textContent,'Cycle rake: 11.00');
+ for(const [tab,selector] of [['Overview','.management-cycle-summary'],['Agents','.management-agent-totals']]){await select(tab);assert.equal(doc.querySelector(selector+' [data-cycle-rake]').textContent,'Cycle rake: 11.00');}
  god=false;await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{user:members[2],compact:true})));assert.equal(doc.querySelector('[data-current-balance]').textContent,'159.83');assert.equal(doc.querySelector('[data-player-result]').textContent,'-20.00');assert.doesNotMatch(doc.body.textContent,/Rake|Bob|Owner|Cumulative|Lifetime|-340\.17/i);
  await React.act(async()=>root.render(React.createElement(w.OwnNumbers,{key:'expanded',user:members[2]})));assert.equal(doc.querySelector('[data-player-result]').textContent,'-20.00');assert.equal(doc.querySelector('[data-lifetime-result]'),null);
  // A freshly opened cycle has real zeros even when historical losses are nonzero.
@@ -52,7 +53,7 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  await render('zero-cycle');
  assert.equal(card('Alice').querySelector('[data-player-result]').textContent,'0.00');
  assert.equal(card('Bob').querySelector('[data-player-result]').textContent,'0.00');
- assertStaffTotals('0.00','47.57');
+ await assertStaffTotals('0.00','47.57');
  assert.match(card('Alice').querySelector('[data-lifetime-result]').textContent,/-196\.00/);
  await own(members[2],{key:'zero-own'});
  assert.equal(doc.querySelector('[data-player-result]').textContent,'0.00');
@@ -75,7 +76,7 @@ const assertStaffTotals=(result,chips)=>{for(const selector of ['.management-cyc
  assert.equal(card('Alice').querySelector('[data-cycle-rake]'),null);
  assert.match(card('Alice').textContent,/159\.83/);
  assert.match(card('Alice').textContent,/must confirm the cycle start date/);
- for(const selector of ['.management-cycle-summary','.management-agent-totals'])assert.equal(doc.querySelector(selector+' [data-player-result]'),null);
+ for(const [tab,selector] of [['Overview','.management-cycle-summary'],['Agents','.management-agent-totals']]){await select(tab);assert.equal(doc.querySelector(selector+' [data-player-result]'),null);}await select('Overview');
  assert.ok(doc.querySelector('[data-period-start-required]'));
  await own(members[2],{key:'unconfirmed-player'});
  assert.equal(doc.querySelector('[data-player-result]'),null);assert.equal(doc.querySelector('[data-lifetime-result]'),null);

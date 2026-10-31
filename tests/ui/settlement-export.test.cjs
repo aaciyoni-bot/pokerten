@@ -16,7 +16,7 @@ const players=[{uid:'p1',name:'אביב & <לוי>',agentUid:'a',recordedHands:4
 const legacy=role=>({active:false,legacy:true,role,supportsDateRange:true,readOnly:true,dateRange:range,cycle:{id:'date_range',status:'range',startAt:range.fromAt,endAt:range.toAt},cycles:[],legacyReport:{asOf:range.toAt,players:structuredClone(players),agents:[{uid:'a',name:'סוכן אחד',commission:600},{uid:'b',name:'סוכן שני',commission:450}],totals:{balance:0,chips:65983,result:-21987,rake:2100,commission:0}}});
 let data=legacy('owner'),calls=[],fail=false,defer=null,key=0;
 const call=async(name,args)=>{calls.push({name,args});assert.equal(name,'pkSettlementReport');if(fail)throw Error('Report unavailable');if(defer)return defer;return structuredClone(data);};
-const mount=async()=>React.act(async()=>root.render(React.createElement(w.PokerSettlement.Settlement,{key:++key,user:{uid:data.role==='player'?'p1':data.role,role:data.role},clubId:'netabel',call})));
+const mount=async()=>{await React.act(async()=>root.render(React.createElement(w.PokerSettlement.Settlement,{key:++key,user:{uid:data.role==='player'?'p1':data.role,role:data.role},clubId:'netabel',call})));if(button('History & export'))await React.act(()=>button('History & export').click());};
 function unzip(bytes){
  const files={};let offset=0;
  while(bytes.readUInt32LE(offset)===0x04034b50){
@@ -97,7 +97,7 @@ const lookup=(file,sheet,key,value)=>file.sheets[sheet].records.find(r=>r[key]==
  data=fixture('owner','owner');data.details[0].rows[0].kind='tournament';file=await readFile(w.PokerSettlementExcel.createFile(data,{clubId:'netabel',userId:'owner'}));assert.match(lookup(file,'Players','Player','Other human player')['Hand count coverage'],/Partial/);
  // Unknown start, loading, rejected date range and stale failures cannot be exported.
  data=legacy('owner');data.needsPeriodStart=true;await mount();assert.equal(button('Download Excel'),undefined);
- data=legacy('owner');let release;defer=new Promise(resolve=>release=resolve);await mount();assert.equal(button('Download Excel'),undefined);defer=null;await React.act(()=>release(structuredClone(data)));assert.ok(button('Download Excel'));
+ data=legacy('owner');let release;defer=new Promise(resolve=>release=resolve);await mount();assert.equal(button('Download Excel'),undefined);defer=null;await React.act(()=>release(structuredClone(data)));await React.act(()=>button('History & export').click());assert.ok(button('Download Excel'));
  fail=true;await React.act(async()=>timers[timers.length-1]());assert.equal(button('Download Excel').disabled,true);fail=false;
  const dateForm=doc.querySelector('form[aria-label="Report date range"]');
  await React.act(()=>Simulate.change(dateForm.querySelectorAll('input')[0],{target:{value:'2026-10-06'}}));

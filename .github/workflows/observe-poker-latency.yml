@@ -36,7 +36,7 @@ jobs:
            const a=values.filter(Number.isFinite).sort((a,b)=>a-b),pct=p=>a.length?Math.round(a[Math.min(a.length-1,Math.ceil(a.length*p)-1)]):null;
            return {count:a.length,p50ms:pct(.5),p90ms:pct(.9),p95ms:pct(.95),maxMs:a.length?Math.round(a[a.length-1]):null,over2s:a.filter(x=>x>=2000).length,over3s:a.filter(x=>x>=3000).length};
           }
-          for(const name of ['pkAct','pkTick']){
+          for(const name of ['pkAct','pkTick','pkDeal','pkSeat','pkTableCreate','pkClubDirectory','pkTournament']){
            const raw=read(['functions:log','--only',name+','+name.toLowerCase(),'--lines','1000']);
            if(!Array.isArray(raw)){console.log('POKER_DIAGNOSTIC logs '+JSON.stringify({name,error:raw?.error||'unexpected-shape'}));continue;}
            const cutoff=Date.now()-86400000,entries=raw.filter(e=>Date.parse(e.timestamp)>=cutoff);

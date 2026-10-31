@@ -5,6 +5,15 @@ The existing POKERTEN client is packaged locally using Capacitor. It connects to
 its existing Firebase backend. The website/game source, server rules, game logic,
 and GOD permissions are not changed by this mobile packaging.
 
+The iOS startup fix initializes Firebase Auth with persistent native-compatible
+storage and no browser popup/redirect resolver. The previous `getAuth()` setup
+could wait for an OAuth iframe before the first readiness request, leaving
+TestFlight on “Connecting to the game…”. The regression test runs the real
+bundled Firebase SDK with an iPhone/Capacitor environment and unavailable browser
+login scripts; it must reach the readiness endpoint. Real-device verification
+of player-code login, relaunch and gameplay is still required after installing
+the updated TestFlight build.
+
 ## Build without owning a Mac
 
 GitHub Actions `Build POKERTEN mobile previews` builds:

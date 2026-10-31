@@ -30,6 +30,28 @@ export function nativeHtml(source) {
     'React.createElement(window.PokerAuthUI.CodeSettings, {user}), React.createElement("a", {href:"account-deletion.html", style:{display:"block",padding:"14px 0",color:"#87d6ff",textDecoration:"underline"}}, "Request account deletion / בקשת מחיקת חשבון")');
   return html;
 }
+export function nativeFirebaseSource(source) {
+  let firebaseSource = source.replace(/https:\/\/www\.gstatic\.com\/firebasejs\/10\.12\.2\/firebase-(app|auth|firestore|functions)\.js/g, 'firebase/$1');
+  firebaseSource = `import { Capacitor, registerPlugin } from '@capacitor/core';
+import { initializeAuth, signInWithCredential } from 'firebase/auth';
+import { createNativeAuth, nativeAuthError } from './src/native-auth.mjs';\n` + firebaseSource;
+  // getAuth() proactively loads a browser OAuth iframe on iOS. WKWebView can
+  // leave that initialization pending, which also blocks callable Functions
+  // before their network timeout starts. Native login uses credentials/codes,
+  // so initialize persistence directly without a popup/redirect resolver.
+  firebaseSource = replaceOnce(firebaseSource, 'const _auth = getAuth(app);',
+    'const _auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });');
+  firebaseSource = replaceOnce(firebaseSource, "getRedirectResult(_auth).catch(() => {});", `const nativeAuth = createNativeAuth({
+    platform: Capacitor.getPlatform(), google: registerPlugin('PokertenGoogleAuth'),
+    auth: _auth, persistence: _persist,
+    credential: token => GoogleAuthProvider.credential(token), signInWithCredential, signOut
+  });
+  window.fb.signIn = nativeAuth.signIn;
+  window.fb.signOut = nativeAuth.signOut;
+  window.nativeAuthError = nativeAuthError;`);
+  if (firebaseSource.includes('https://www.gstatic.com/firebasejs')) throw new Error('Unmapped Firebase SDK version');
+  return firebaseSource;
+}
 export async function buildWeb() {
   await rm(out, { recursive: true, force: true });
   await mkdir(path.join(out, 'vendor'), { recursive: true });
@@ -65,19 +87,7 @@ export async function buildWeb() {
   html = replaceOnce(html, 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css', 'vendor/fontawesome/css/all.min.css');
   const firebaseMatch = html.match(/<script type="module">([\s\S]*?)<\/script>/);
   if (!firebaseMatch?.[1].includes('initializeApp')) throw new Error('Firebase bootstrap not found');
-  let firebaseSource = firebaseMatch[1].replace(/https:\/\/www\.gstatic\.com\/firebasejs\/10\.12\.2\/firebase-(app|auth|firestore|functions)\.js/g, 'firebase/$1');
-  firebaseSource = `import { Capacitor, registerPlugin } from '@capacitor/core';
-import { signInWithCredential } from 'firebase/auth';
-import { createNativeAuth, nativeAuthError } from './src/native-auth.mjs';\n` + firebaseSource;
-  firebaseSource = replaceOnce(firebaseSource, "getRedirectResult(_auth).catch(() => {});", `const nativeAuth = createNativeAuth({
-    platform: Capacitor.getPlatform(), google: registerPlugin('PokertenGoogleAuth'),
-    auth: _auth, persistence: _persist,
-    credential: token => GoogleAuthProvider.credential(token), signInWithCredential, signOut
-  });
-  window.fb.signIn = nativeAuth.signIn;
-  window.fb.signOut = nativeAuth.signOut;
-  window.nativeAuthError = nativeAuthError;`);
-  if (firebaseSource.includes('https://www.gstatic.com/firebasejs')) throw new Error('Unmapped Firebase SDK version');
+  const firebaseSource = nativeFirebaseSource(firebaseMatch[1]);
   await build({ stdin: { contents: firebaseSource, resolveDir: mobile, loader: 'js' }, bundle: true, format: 'esm', minify: true, target: ['es2020'], outfile: path.join(out, 'vendor/firebase.js') });
   html = html.replace(firebaseMatch[0], '<script type="module" src="vendor/firebase.js"></script>');
   await writeFile(path.join(out, 'index.html'), html);

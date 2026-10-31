@@ -1111,7 +1111,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
-<link rel="stylesheet" href="assets/css/tournament-blue.css?v=349">
+<link rel="stylesheet" href="assets/css/tournament-blue.css?v=350">
 <link rel="stylesheet" href="assets/css/render-quality.css?v=292">
 <link rel="stylesheet" href="assets/css/poker-god-lobby.css?v=294">
 <link rel="stylesheet" href="assets/css/table-entry-blue.css?v=330">
@@ -18430,15 +18430,12 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     if(!compactMode)return card;
     return h(React.Fragment,{key:tor.id},h('button',{type:'button',className:'pt-tournament-lobby-row','data-tournament-row':tor.id,'aria-label':'Open tournament '+tor.name,onClick:()=>setExpandedTournament(tor.id)},
       h('img',{src:'assets/tournaments/gold-cup.webp',alt:'',width:48,height:56}),
-      h('span',{className:'pt-tournament-row-title'},h('strong',null,tor.name),h('small',null,tourEntryOf(tor)===0?'FREEROLL · ':'',tor.pokerType||'NLH',' · ',tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE · '+alive+' left':tor.status==='cancelled'?'Cancelled':'Ended')),
+      h('span',{className:'pt-tournament-row-title'},h('strong',null,tor.name),h('small',null,tourEntryOf(tor)===0?'FREEROLL · ':'',tor.pokerType||'NLH',' · ',tor.status==='reg'?'Registration open':tor.status==='running'?'LIVE · '+alive+' left · '+(tourLateRegOpen(tor)?'Late reg open':'Registration closed'):tor.status==='cancelled'?'Cancelled':'Ended')),
       h('span',{className:'pt-tournament-row-pool'},h('small',null,'PRIZE POOL'),h('strong',null,formatMoney(pool))),h('i',{className:'fa-solid fa-chevron-right','aria-hidden':true}),
       h('span',{className:'pt-tournament-row-info',dir:'ltr'},
         h('span',{className:'pt-tournament-row-players'},h('i',{className:'fa-solid fa-users','aria-hidden':true}),h('strong',null,count+(tor.status==='reg'?' / '+(tor.maxPlayers||36):'')), ' registered'),
-        tor.status==='running'&&h('span',null,h('strong',null,alive),' remaining'),
         h('span',null,'Entry ',h('strong',null,tourEntryOf(tor)===0?'FREE':formatMoney(tourEntryOf(tor)))),
-        Number(tor.startStack)>0&&h('span',null,'Starting stack ',h('strong',null,formatShort(Number(tor.startStack)))),
-        tor.status==='running'&&h('span',null,tourLateRegOpen(tor)?'Late registration open':'Registration closed'),
-        ['reg','running'].includes(tor.status)&&me&&!me.removed&&!me.out&&h('span',{className:'pt-tournament-row-registered'},h('i',{className:'fa-solid fa-circle-check','aria-hidden':true}),' You are registered'),
+        ['reg','running'].includes(tor.status)&&me&&!me.removed&&!me.out&&h('span',{className:'pt-tournament-row-registered','aria-label':'You are registered',title:'You are registered'},h('i',{className:'fa-solid fa-circle-check','aria-hidden':true}),' Joined'),
         participantKinds&&h('span',{className:'pt-tournament-participant-kinds'},'Manager view · ',participantKinds)),
       h(TournamentRowClock,{tournament:tor})),
       expandedTournament===tor.id&&h(TournamentDialog,{title:tor.name,onClose:()=>setExpandedTournament(null),className:'pt-tournament-detail'},h('div',{className:'pt-tournaments'},card)));

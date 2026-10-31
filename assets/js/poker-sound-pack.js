@@ -133,6 +133,14 @@
         bridge.emit(key(spec.music),0,.13,1,0,music,true);
     }catch(_){}finally{musicLoading=false;}
   }
+  function setMusicEnabled(enabled) {
+    musicOn=!!enabled;
+    try{localStorage.setItem('pkLobbyMusic',musicOn?'1':'0');}catch(_){}
+    const checkbox=dialog?.querySelector('input[aria-label="Lobby music"]');
+    if(checkbox)checkbox.checked=musicOn;
+    syncMusic();
+    if(root.dispatchEvent)root.dispatchEvent(new root.Event('pokerten-music-change'));
+  }
   function track(src) { sources.add(src);src.onended=()=>sources.delete(src); }
   function setView(next) {
     view=next;
@@ -158,7 +166,7 @@
     updateStatus();
     current.querySelector('.pk-sound-retry').addEventListener('click',async()=>{await refresh();updateStatus();});
     const checkbox=dialog.querySelector('input[type=checkbox]');checkbox.checked=musicOn;
-    checkbox.addEventListener('change',()=>{musicOn=checkbox.checked;try{localStorage.setItem('pkLobbyMusic',musicOn?'1':'0');}catch(_){}syncMusic();});
+    checkbox.addEventListener('change',()=>setMusicEnabled(checkbox.checked));
     const stopPreview=()=>{previewToken++;stop(preview);status.textContent='';};
     dialog.querySelector('header button').addEventListener('click',()=>current.close());
     dialog.querySelector('.pk-sound-stop').addEventListener('click',stopPreview);
@@ -213,7 +221,7 @@
   }
   const api={get active(){return active;},attach(b){bridge=b;preload();refresh();},preload,play,resolve,track,setView,syncMusic,openLibrary,refresh,
     // Catalog stays accessible without synthesizing unrelated game events.
-    metadata,loadClip,category,status};
+    metadata,loadClip,category,status,get musicEnabled(){return musicOn;},setMusicEnabled};
   root.PokerSoundPack=api;
   if(typeof module==='object'&&module.exports)module.exports=api;
   if(root.addEventListener){

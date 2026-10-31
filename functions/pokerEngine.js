@@ -1556,7 +1556,7 @@ async function playerAction(request) {
   });
 }
 const routePlayerAction=require('./pokerActionRegion').createActionRouter();
-exports.pkActEurope=onCall({region:'europe-west1',minInstances:1},playerAction);
+exports.pkActEurope=onCall({region:'europe-west1',minInstances:0},playerAction);
 exports.pkAct=onCall(CALL_OPTS,request=>{
   authedUid(request);
   require('./pokerSecurity').requirePokerAvailable();

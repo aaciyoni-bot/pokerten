@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="350">
-    <script src="assets/js/app-update.js?v=350" defer></script>
+    <meta name="app-version" content="352">
+    <script src="assets/js/app-update.js?v=352" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1107,7 +1107,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=312">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=327">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=352">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -4213,7 +4213,7 @@ function PokerMusicButton({tile=false}={}) {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 350. Check for updates'},'v350 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 352. Check for updates'},'v352 · Check update'),
     React.createElement(PokerMusicButton),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
@@ -10966,7 +10966,7 @@ function PokerTable({
   const [spectate, setSpectate] = useState(false);
   const [buyAmt, setBuyAmt] = useState(0);
   const [raiseAmt, setRaiseAmt] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [, setTurnClock] = useState(0);
   const [acting, setActing] = useState(false);
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [buyinEdit, setBuyinEdit] = useState(null);
@@ -11957,7 +11957,7 @@ try{const result=await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amou
       interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - gs.turnStartedAt) / 1000);
         const remaining = Math.max(0, (setts.actionTime || 30) - elapsed);
-        setTimeLeft(remaining);
+        setTurnClock(Date.now());
         if (remaining <= 5 && remaining > 0 && gs.activeTurnUid === user.uid) {
           try {
             playSnd('tick');
@@ -12840,7 +12840,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const sdReveal = !isMe && !hidden && gs.phase === 'showdown' && !gs.earlyWin && (p.status === 'active' || p.status === 'busted');
     const sdDelay = `${Math.min(i, 8) * 180}ms`;
     const folded = p.status === 'folded';
-    const timerPct = isTurn ? Math.max(0, timeLeft / (setts.actionTime || 30)) : 0;
+    // Derive the visible clock from this turn's timestamp, including the first
+    // render after a turn change or reconnect. The interval only refreshes it.
+    const turnDuration = setts.actionTime || 30;
+    const turnSeconds = isTurn && gs.turnStartedAt ? Math.min(turnDuration, Math.max(0, Math.ceil((Number(gs.turnStartedAt) + turnDuration * 1000 - Date.now()) / 1000))) : turnDuration;
+    const timerPct = isTurn ? turnSeconds / turnDuration : 0;
     const isWinner = gs.phase === 'showdown' && (gs.lastAwards?.length ? gs.lastAwards.some(a=>a.uid===p.uid) : gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name));
     const godLeading = godView && isGodUser(user) && godFinalLeaders.uids.includes(p.uid);
     const godTied = godFinalLeaders.uids.length > 1;
@@ -12856,6 +12860,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       // the bubble's own z is trapped inside the seat's stacking context
       className: "poker-seat " + (isWinner ? "poker-seat-winner " : "") + (isMe ? "poker-seat-hero " : "") + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
       'data-player-uid': p.uid,
+      'data-active-turn': isTurn ? 'true' : undefined,
+      'data-turn-urgent': isTurn && turnSeconds <= 5 ? 'true' : undefined,
       'data-hole-count': Math.max(1, dispCards.length),
       'data-cards-spread': isMe && gs.phase === 'discard',
       'data-seat-side': seatXv === 50 ? 'center' : seatXv < 50 ? 'left' : 'right',
@@ -13003,19 +13009,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }
-    }, godLeading && React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true}), isTurn && React.createElement("svg", {
-      className: "absolute inset-0 w-full h-full timer-ring",
-      viewBox: "0 0 40 40"
-    }, React.createElement("circle", {
-      cx: "20",
-      cy: "20",
-      r: "18",
-      fill: "none",
-      stroke: "rgba(245,200,96,0.9)",
-      strokeWidth: "3",
-      strokeDasharray: `${113 * timerPct} 113`,
-      strokeLinecap: "round"
-    }))), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
+    }, godLeading && React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true})), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
       className: "absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30"
     }, "DC"), React.createElement("div", {
       className: "poker-player-info mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
@@ -13035,7 +13029,14 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     }, React.createElement('i', {className: p.isBot === true ? 'fa-solid fa-robot' : 'fa-solid fa-user', 'aria-hidden': true})), React.createElement('span', {className:'truncate'}, isMe ? 'You' : p.name), gs.dealerUid === p.uid && React.createElement('span', {className:'poker-dealer-marker', 'aria-label':'Dealer'}, 'D')), React.createElement("div", {
       className: "poker-stack-amount text-gold-400 font-black text-[12px] leading-tight",
       dir: "ltr"
-    }, window.PokerRuntime.visibleStack(p.stack) === null ? '—' : formatShort(p.stack)), p.actionText && React.createElement("div", {
+    }, window.PokerRuntime.visibleStack(p.stack) === null ? '—' : formatShort(p.stack)), isTurn ? React.createElement('div', {
+      className:'poker-seat-action poker-turn-clock', role:'timer', 'aria-live':'off',
+      'aria-label':(isMe ? 'Your turn' : p.name + "'s turn") + ' · ' + turnSeconds + ' seconds remaining',
+      dir:'ltr'
+    }, React.createElement('span',{className:'poker-turn-label'},'TURN'),
+      React.createElement('strong',{className:'poker-turn-seconds'},turnSeconds + 's'),
+      React.createElement('span',{className:'poker-turn-track','aria-hidden':true},
+        React.createElement('span',{style:{transform:'scaleX(' + timerPct + ')'}}))) : p.actionText && React.createElement("div", {
       className: `poker-seat-action action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
       style: isMe ? {} : farPod ? {
         top: 'auto',

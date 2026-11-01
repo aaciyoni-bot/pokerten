@@ -1,6 +1,6 @@
 # POKERTEN independent mobile apps
 
-Android release 11 (1.0.6) and the next iPhone build package game release 350. The lobby/account and table menus include a persistent MUSIC ON / MUSIC OFF control that leaves game effects unchanged. This snapshot also includes the current settlement interface and cashier scrolling fix. Store review and device verification are separate from compilation.
+Android release 12 (1.0.7) and the next iPhone build package game release 352. The active player now has a visible name/stack outline, turn label, seconds and countdown bar; the final five seconds are red. The lobby/account and table menus include a persistent MUSIC ON / MUSIC OFF control that leaves game effects unchanged. This snapshot also includes the current settlement interface and cashier scrolling fix. Store review and device verification are separate from compilation.
 The approved POKERTEN launch film and separate BY ORIZIS TECHNOLOGY credit are bundled locally, with skip, optional sound, reduced motion and a loading timeout.
 The existing POKERTEN client is packaged locally using Capacitor. It connects to
 its existing Firebase backend. The website/game source, server rules, game logic,
@@ -28,7 +28,7 @@ iOS: Xcode 26+ on a local or cloud Mac.
 
 The proposed store identifier is `com.orizis.pokerten`. Verify existing app records
 in the owner's Apple and Google accounts before registering it. Do not create new
-developer accounts. Android version 1.0.6 / build 11; subsequent release build numbers must exceed any existing store build numbers.
+developer accounts. Android version 1.0.7 / build 12; subsequent release build numbers must exceed any existing store build numbers.
 
 ## Scope and known limitations
 

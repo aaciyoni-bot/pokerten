@@ -770,3 +770,28 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 .poker-room .poker-action-meta [role="status"].poker-showdown-summary{white-space:normal;color:#ffe49a;font-size:13px;line-height:18px;border:1px solid #d4af3766}
 .poker-showdown-summary strong{display:block;overflow-wrap:anywhere}
 .poker-showdown-summary small{display:block;font-size:10px;color:#cbd5e1}
+
+/* The name/stack panel stays above cards: turn information must never depend
+   on the obscured avatar arc. Outline adds emphasis without changing geometry. */
+.poker-room .poker-seat[data-active-turn="true"]{--poker-turn-color:#6df4d0}
+.poker-room .poker-seat[data-turn-urgent="true"]{--poker-turn-color:#ff737f}
+.poker-room .poker-seat[data-active-turn="true"] .poker-player-info{
+ outline:2px solid var(--poker-turn-color);outline-offset:1px;
+ background:#092a2b!important;box-shadow:0 0 14px #6df4d055,0 3px 8px #000b!important;
+ border-radius:5px!important;
+}
+.poker-room .poker-seat[data-turn-urgent="true"] .poker-player-info{background:#351720!important;box-shadow:0 0 16px #ff737f66,0 3px 8px #000b!important}
+.poker-room .poker-seat[data-active-turn="true"] .player-pod.active-glow{border-color:var(--poker-turn-color)!important;box-shadow:0 0 12px #6df4d055!important;animation:none!important}
+.poker-room .poker-player-info .poker-turn-clock{
+ position:relative!important;display:flex!important;align-items:center;justify-content:space-between;
+ gap:2px;min-height:20px;margin:2px 0 0;padding:1px 1px 5px!important;
+ color:var(--poker-turn-color)!important;background:transparent!important;
+ border:0!important;box-shadow:none!important;transform:none!important;
+ font-size:clamp(8px,2.1cqw,11px)!important;line-height:14px!important;
+ font-weight:800;white-space:nowrap;overflow:visible;
+}
+.poker-turn-label{letter-spacing:0}
+.poker-turn-seconds{font-variant-numeric:tabular-nums;font-size:12px;flex-shrink:0}
+.poker-turn-track{position:absolute;bottom:0;left:0;right:0;height:4px;border-radius:2px;background:#ffffff26;overflow:hidden}
+.poker-turn-track>span{display:block;width:100%;height:100%;background:var(--poker-turn-color);transform-origin:left center;transition:transform .2s linear}
+@media(prefers-reduced-motion:reduce){.poker-turn-track>span{transition:none}}

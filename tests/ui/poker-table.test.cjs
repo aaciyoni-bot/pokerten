@@ -20,6 +20,44 @@ w.document.documentElement.requestFullscreen=async options=>{assert.equal(option
 w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document.dispatchEvent(new w.Event('fullscreenchange'));};
 (async()=>{await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test-table',user:{uid:'me',role:'player',balance:500,playerId:'P123456789'},clubSettings:{name:'My Club',logo:'data:image/png;base64,test'},onLeave(){left++;},showToast:m=>messages.push(m)})));
  const doc=w.document;
+ // The visible timer belongs to the authoritative active seat, survives large
+ // card fans, resets on a new turn, and disappears at showdown.
+ const initialTurn=structuredClone(current),realNow=w.Date.now;
+ let clock=1900000000000;w.Date.now=()=>clock;
+ try{
+  current.settings.actionTime=15;current.gameState.turnStartedAt=clock-3000;
+  await React.act(async()=>tableNext(snapshot()));
+  const active=()=>doc.querySelector('[data-active-turn="true"]');
+  assert.equal(doc.querySelectorAll('[role="timer"]').length,1);
+  assert.equal(active().dataset.playerUid,'me');
+  assert.equal(active().querySelector('.poker-turn-label').textContent,'TURN');
+  assert.equal(active().querySelector('.poker-turn-seconds').textContent,'12s','reconnect uses remaining time, not a fresh full clock');
+  assert.equal(active().querySelector('.timer-ring'),null,'cards no longer obscure the primary clock');
+  assert.ok(active().querySelector('.poker-player-info [role="timer"]'));
+  assert.equal(active().querySelector('.poker-turn-track>span').style.transform,'scaleX(0.8)');
+  clock+=7000;
+  await React.act(async()=>{for(const timer of [...intervals.values()])if(timer.delay===1000)await timer.fn();});
+  assert.equal(active().querySelector('.poker-turn-seconds').textContent,'5s');
+  assert.equal(active().dataset.turnUrgent,'true');
+  current.gameState.activeTurnUid='other';current.gameState.turnStartedAt=clock;
+  await React.act(async()=>tableNext(snapshot()));
+  assert.equal(doc.querySelectorAll('[data-active-turn="true"]').length,1);
+  assert.equal(active().dataset.playerUid,'other');
+  assert.equal(active().querySelector('.poker-turn-label').textContent,'TURN');
+  assert.equal(active().querySelector('.poker-turn-seconds').textContent,'15s','new turn never inherits the previous countdown');
+  assert.equal(active().dataset.turnUrgent,undefined);
+  current.gameState.turnStartedAt=clock+2000;
+  await React.act(async()=>tableNext(snapshot()));
+  assert.equal(active().querySelector('.poker-turn-seconds').textContent,'15s','clock skew cannot overfill the bar');
+  current.gameState.turnStartedAt=clock-16000;
+  await React.act(async()=>tableNext(snapshot()));
+  assert.equal(active().querySelector('.poker-turn-seconds').textContent,'0s','expired clock never becomes negative');
+  current.gameState.phase='showdown';
+  await React.act(async()=>tableNext(snapshot()));
+  assert.equal(active(),null);assert.equal(doc.querySelector('[role="timer"]'),null);
+  assert.equal(doc.querySelector('[data-player-uid="other"] .poker-seat-action').textContent,'Check','normal action badge returns after the turn');
+ }finally{w.Date.now=realNow;current=initialTurn;await React.act(async()=>tableNext(snapshot()));}
+
  // A queued departure and an expired sit-out belong to server maintenance.
  // Ordinary players and spectators must not send manager-only kick requests.
  for(const spectator of [false,true]){

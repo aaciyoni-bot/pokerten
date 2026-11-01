@@ -30,7 +30,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
   const active=()=>doc.querySelector('[data-active-turn="true"]');
   assert.equal(doc.querySelectorAll('[role="timer"]').length,1);
   assert.equal(active().dataset.playerUid,'me');
-  assert.equal(active().querySelector('.poker-turn-label').textContent,'YOUR TURN');
+  assert.equal(active().querySelector('.poker-turn-label').textContent,'TURN');
   assert.equal(active().querySelector('.poker-turn-seconds').textContent,'12s','reconnect uses remaining time, not a fresh full clock');
   assert.equal(active().querySelector('.timer-ring'),null,'cards no longer obscure the primary clock');
   assert.ok(active().querySelector('.poker-player-info [role="timer"]'));
@@ -43,7 +43,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
   await React.act(async()=>tableNext(snapshot()));
   assert.equal(doc.querySelectorAll('[data-active-turn="true"]').length,1);
   assert.equal(active().dataset.playerUid,'other');
-  assert.equal(active().querySelector('.poker-turn-label').textContent,'TO ACT');
+  assert.equal(active().querySelector('.poker-turn-label').textContent,'TURN');
   assert.equal(active().querySelector('.poker-turn-seconds').textContent,'15s','new turn never inherits the previous countdown');
   assert.equal(active().dataset.turnUrgent,undefined);
   current.gameState.turnStartedAt=clock+2000;

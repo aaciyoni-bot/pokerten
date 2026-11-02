@@ -22,7 +22,17 @@ on:
       - '.github/workflows/deploy-hosting.yml'
       - 'scripts/wait-for-backend.cjs'
       - 'scripts/mobile-update-source.json'
+      - 'scripts/package-public-site.cjs'
+      - 'CNAME'
+      - '*.png'
+      - '*.js'
+      - 'src/**'
+      - 'docs/**'
   workflow_dispatch: {}
+
+concurrency:
+  group: public-site-deployment
+  cancel-in-progress: false
 
 jobs:
   validate:
@@ -78,3 +88,25 @@ jobs:
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: firebase deploy --only hosting --project pokerten --non-interactive
+
+      - name: Package the same game and Android update for pokerten.com
+        run: node scripts/package-public-site.cjs
+
+      - name: Upload public site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: .public-site
+
+  deploy-pages:
+    needs: deploy-hosting
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy game and compatible Android updates to the main domain
+        id: deployment
+        uses: actions/deploy-pages@v4

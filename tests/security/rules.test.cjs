@@ -25,6 +25,13 @@ before(async()=>{
 });
 after(async()=>{if(env)await env.cleanup();});
 const player=()=>env.authenticatedContext("player",{email:"player@example.com",email_verified:true}).firestore();
+test('delegated chat attribution stays server-only and public chat cannot be forged directly',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>setDoc(doc(ctx.firestore(),'_pkAudit/chat-attribution'),{action:'god-bot-chat',uid:'operator',targetUid:'character',text:'Good hand'}));
+ for(const ctx of [env.authenticatedContext('player',{email:'player@example.com',email_verified:true}),env.authenticatedContext('owner'),env.authenticatedContext('god',{email:'aaci.yoni@gmail.com',email_verified:true})]){
+  const db=ctx.firestore();await assertFails(getDoc(doc(db,'_pkAudit/chat-attribution')));await assertFails(setDoc(doc(db,'_pkAudit/chat-attribution'),{uid:'forged'}));
+  await assertFails(updateDoc(doc(db,'tables/protected'),{chat:[{uid:'character',name:'Alex',text:'Forged message'}]}));
+ }
+});
 test("direct +10,000 credit, forged receipts, other-wallet writes and deletion are denied",async()=>{
  const db=player();
  for(const patch of [{balance:10100},{balance:10100,lastRefundAt:Date.now(),stats:{totalProfit:10000}},{balance:10100,bonusOpen:0,clubProfits:10000},{balance:0}])await assertFails(updateDoc(doc(db,"memberships/player_club"),patch));

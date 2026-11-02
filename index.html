@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="354">
+    <meta name="app-version" content="355">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1193,6 +1193,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-auth.js?v=312"></script>
     <script src="assets/js/club-ui.js?v=312"></script>
     <link rel="stylesheet" href="assets/css/settlement.css?v=354">
+    <link rel="stylesheet" href="assets/css/bot-chat.css?v=355">
     <script src="assets/js/poker-settlement-ui.js?v=354"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=338"></script>
@@ -2328,7 +2329,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
       if (!m.gift && (m.emoji || m.text) && n - m.at < 5000) r[m.uid] = m.emoji || m.text;
     });
     return r;
-  }, [rawChat.length, pendChat.length, tick, mutedUids.length]);
+  }, [rawChat, pendChat, tick, mutedUids]);
   const nowT = Date.now();
   const gifts = chatArr.filter(m => m.gift && nowT - m.at < 2300);
   const liveCount = Object.keys(bubbles).length + gifts.length;
@@ -3596,13 +3597,36 @@ const botMissions = uid => {
   done.hands_50 = 50;
   return done;
 };
+function canChatAsBot(user,table,targetUid) {
+  const p=table?.players?.[targetUid];
+  return !!(isGodUser(user)&&table?.type==='poker'&&table?.authorityVersion===2&&table?.settings?.serverEngine===true&&!table.archived&&!table.tournament?.finished&&!table.tournament?.cancelled&&p?.uid===targetUid&&p.isBot===true&&p.status!=='out');
+}
+function BotChatComposer({name,onSend,muted=false}) {
+  const [text,setText]=React.useState(''),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[sent,setSent]=React.useState(false);
+  const lock=React.useRef(false),pending=React.useRef(null);
+  const send=async e=>{
+    e.preventDefault();const body=text.trim();if(lock.current||muted||!body||body.length>240)return;
+    if(pending.current?.text!==body)pending.current={text:body,requestId:crypto.randomUUID()};
+    lock.current=true;setBusy(true);setError('');setSent(false);
+    try{await onSend(body,pending.current.requestId);pending.current=null;setText('');setSent(true);}
+    catch(e){setError(e?.message||'Message did not send. Please try again.');}
+    finally{lock.current=false;setBusy(false);}
+  };
+  return React.createElement('form',{className:'bot-chat-compose',onSubmit:send,'aria-label':'Write as '+name},
+    React.createElement('label',null,'Sending as '+name,React.createElement('textarea',{value:text,rows:3,maxLength:240,dir:'auto',disabled:busy||muted,placeholder:'Write a message…','aria-label':'Message as '+name,onChange:e=>{setText(e.target.value);setError('');setSent(false);}})),
+    React.createElement('div',{className:'bot-chat-compose-footer'},React.createElement('span',null,text.length+'/240'),React.createElement('button',{type:'submit',disabled:busy||muted||!text.trim()},busy?'Sending…':'Send')),
+    muted&&React.createElement('p',{role:'status'},'Table chat is muted.'),error&&React.createElement('p',{role:'alert'},error),sent&&React.createElement('p',{role:'status'},'Message sent'));
+}
 const PlayerPeek = ({
   peek,
   onClose,
   clubId,
-  onKick
+  onKick,
+  onChatAs,
+  chatMuted = false
 }) => {
   const [mi, setMi] = React.useState(null);
+  const [compose,setCompose] = React.useState(false);
   React.useEffect(() => {
     let dead = false;
     (async () => {
@@ -3624,6 +3648,7 @@ const PlayerPeek = ({
   const doneCount = mi ? MISSIONS.filter(m => (mi[m.k] || 0) >= m.goal).length : 0;
   return React.createElement("div", {
     className: "fixed right-2 top-16 z-[450] w-56 glass-panel border border-amber-500/40 rounded-2xl p-3 shadow-2xl animate-pop-in",
+    style:{maxHeight:"calc(100dvh - 90px)",overflowY:"auto"},
     dir: "ltr"
   }, React.createElement("div", {
     className: "flex items-center justify-between mb-2"
@@ -3649,7 +3674,7 @@ const PlayerPeek = ({
     // manager action lives HERE, not as a permanent ✕ on every seat
     onClick: onKick,
     className: "w-full mt-2.5 bg-rose-950/60 hover:bg-rose-800 border border-rose-500/40 text-rose-300 hover:text-white py-2 rounded-xl font-black text-[11px]"
-  }, "🚪 Remove from table"));
+  }, "🚪 Remove from table"), onChatAs && React.createElement("button",{type:"button",className:"w-full mt-2.5 bg-teal-950 border border-teal-400/40 text-teal-200 py-2 rounded-xl font-black text-xs",onClick:()=>setCompose(v=>!v),"aria-expanded":compose},"Write as "+peek.name),onChatAs&&compose&&React.createElement(BotChatComposer,{name:peek.name,onSend:onChatAs,muted:chatMuted}));
 };
 const SPIN_SEGS = [2, 3, 5, 2, 10, 3, 2, 5, 3, 25, 2, 3];
 const SEG_COL = {
@@ -13430,6 +13455,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     prize: tableState.spin.prize,
     buyIn: Number(setts.spinBuyIn) || 50
   }), peek && React.createElement(PlayerPeek, {
+    key:tableDocId+':'+peek.uid,
+    onChatAs:canChatAsBot(user,tableState,peek.uid)?async(text,requestId)=>{
+      await pokerCommand('pkBotChat',{tableId:tableDocId,targetUid:peek.uid,text,requestId});
+      playSnd('msg');
+    }:null,
+    chatMuted:ch.chatMuted,
     peek: peek,
     onClose: () => setPeek(null),
     clubId: CLUB_ID,

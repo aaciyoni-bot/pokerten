@@ -1693,6 +1693,7 @@ exports.godLobbyCounts = require("./godLobby").createCallable({onCall, HttpsErro
 
 // godPeek — protocol §3.9. GOD accounts only: all hands + the coming runout.
 exports.godPeek = require("./godPeek").createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS});
+exports.pkBotChat = require("./godBotChat").createCallable({onCall, HttpsError, isGodAuth, CALL_OPTS});
 
 // admFixGameLog — protocol §3.10: delete duplicate gameLog docs for a club.
 exports.admFixGameLog = onCall(CALL_OPTS, async (request) => {

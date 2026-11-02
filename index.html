@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="352">
-    <script src="assets/js/app-update.js?v=352" defer></script>
+    <meta name="app-version" content="353">
+    <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1107,7 +1107,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=312">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=352">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=353">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -4213,7 +4213,7 @@ function PokerMusicButton({tile=false}={}) {
 }
 function AppReleaseControls() {
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 352. Check for updates'},'v352 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 353. Check for updates'},'v353 · Check update'),
     React.createElement(PokerMusicButton),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
@@ -12917,16 +12917,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     })), p.leaveReq && !tableState.tournamentId && React.createElement("div", {
       className: "absolute -top-2 left-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5",
       dir: "ltr"
-    }, "🚪 after hand"), p.leavingAt && !tableState.tournamentId && (() => {
-      const lms = Math.max(0, p.leavingAt - Date.now());
-      return React.createElement("div", {
-        className: "absolute right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-rose-500/50 text-rose-300 rounded-full px-2 py-0.5",
-        style: {
-          top: p.sitOut ? 12 : -8
-        },
-        dir: "ltr"
-      }, "🚪 ", Math.floor(lms / 60000), ":", String(Math.floor(lms % 60000 / 1000)).padStart(2, '0'));
-    })(), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
+    }, "🚪 after hand"), ch.gifts.filter(g => g.to === p.uid).map((g, gi) => React.createElement("div", {
       key: 'g' + gi,
       className: "gift-fx"
     }, g.giftE)), showCards && (isMe || !fanBelow) && (() => {
@@ -13029,7 +13020,14 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     }, React.createElement('i', {className: p.isBot === true ? 'fa-solid fa-robot' : 'fa-solid fa-user', 'aria-hidden': true})), React.createElement('span', {className:'truncate'}, isMe ? 'You' : p.name), gs.dealerUid === p.uid && React.createElement('span', {className:'poker-dealer-marker', 'aria-label':'Dealer'}, 'D')), React.createElement("div", {
       className: "poker-stack-amount text-gold-400 font-black text-[12px] leading-tight",
       dir: "ltr"
-    }, window.PokerRuntime.visibleStack(p.stack) === null ? '—' : formatShort(p.stack)), isTurn ? React.createElement('div', {
+    }, window.PokerRuntime.visibleStack(p.stack) === null ? '—' : formatShort(p.stack)), !isMe && p.leavingAt && !tableState.tournamentId && (() => {
+      const lms = Math.max(0, p.leavingAt - Date.now());
+      return React.createElement("div", {
+        className: "poker-leave-status",
+        title: "Standing up in",
+        dir: "ltr"
+      }, "🚪 ", Math.floor(lms / 60000), ":", String(Math.floor(lms % 60000 / 1000)).padStart(2, '0'));
+    })(), isTurn ? React.createElement('div', {
       className:'poker-seat-action poker-turn-clock', role:'timer', 'aria-live':'off',
       'aria-label':(isMe ? 'Your turn' : p.name + "'s turn") + ' · ' + turnSeconds + ' seconds remaining',
       dir:'ltr'

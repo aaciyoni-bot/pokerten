@@ -28,6 +28,7 @@ export function nativeHtml(source) {
   if (!html.includes("(gErr||error)&&h('p', {role:'alert'")) throw new Error('Login error display not found');
   html = replaceOnce(html, 'React.createElement(window.PokerAuthUI.CodeSettings, {user})',
     'React.createElement(window.PokerAuthUI.CodeSettings, {user}), React.createElement("a", {href:"account-deletion.html", style:{display:"block",padding:"14px 0",color:"#87d6ff",textDecoration:"underline"}}, "Request account deletion / בקשת מחיקת חשבון")');
+  html = replaceOnce(html, "const [fbReady, setFbReady] = useState(false);", "const [fbReady, setFbReady] = useState(false); useEffect(() => { if(fbReady)window.PokerAppUpdate?.ready(); }, [fbReady]);");
   // Native update safety follows server-confirmed rosters, not just the screen name.
   html = replaceOnce(html, "const [activeMem, setActiveMem] = useState(null);", `const [activeMem, setActiveMem] = useState(null);
   const [updateTablesKey, setUpdateTablesKey] = useState('');

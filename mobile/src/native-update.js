@@ -34,10 +34,10 @@ window.PokerAppUpdate = {
   version, storeUrl,
   check(manual=false){return controller?.check(manual);},
   reload(){return this.check(true);},
-  setView(view){
+  ready(){
     // React has rendered successfully; acknowledge the bundle to enable rollback protection.
     if(!ready && Capacitor.isNativePlatform()){ready=true;CapacitorUpdater.notifyAppReady().catch(()=>{});}
-    controller?.setView(view);
   },
+  setView(view){controller?.setView(view);},
   setGameContext(context){controller?.setGameContext(context);}
 };

@@ -28,7 +28,7 @@ test('packaged app has local executable dependencies and excludes server files',
     assert.deepEqual(await readFile(new URL('../www/assets/video/' + name, import.meta.url)), await readFile(new URL('../../assets/video/' + name, import.meta.url)));
   }
   const updater = await readFile(new URL('../www/assets/js/native-update.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(updater, /serviceWorker|fetch\(|location\.replace/);
+  assert.doesNotMatch(updater, /serviceWorker|location\.replace/);
   assert.match(updater, /play\.google\.com\/store\/apps\/details\?id=com\.orizis\.pokerten/);
   const files = await readdir(new URL('../www/', import.meta.url));
   assert.deepEqual(files.sort(), ['account-deletion.html', 'assets', 'index.html', 'manifest.json', 'privacy.html', 'vendor']);

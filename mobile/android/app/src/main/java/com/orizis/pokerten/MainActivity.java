@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(PokertenGoogleAuthPlugin.class);
+        registerPlugin(PokertenAppUpdatePlugin.class);
         super.onCreate(savedInstanceState);
         hideSystemBars();
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {

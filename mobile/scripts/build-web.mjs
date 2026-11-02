@@ -28,6 +28,26 @@ export function nativeHtml(source) {
   if (!html.includes("(gErr||error)&&h('p', {role:'alert'")) throw new Error('Login error display not found');
   html = replaceOnce(html, 'React.createElement(window.PokerAuthUI.CodeSettings, {user})',
     'React.createElement(window.PokerAuthUI.CodeSettings, {user}), React.createElement("a", {href:"account-deletion.html", style:{display:"block",padding:"14px 0",color:"#87d6ff",textDecoration:"underline"}}, "Request account deletion / בקשת מחיקת חשבון")');
+  // Native update safety follows server-confirmed rosters, not just the screen name.
+  html = replaceOnce(html, "const [activeMem, setActiveMem] = useState(null);", `const [activeMem, setActiveMem] = useState(null);
+  const [updateTablesKey, setUpdateTablesKey] = useState('');
+  const [updateToursKey, setUpdateToursKey] = useState('');
+  useEffect(() => {
+    const key = dbUser?.uid + ':' + activeClub?.id;
+    window.PokerAppUpdate?.setGameContext({uid:dbUser?.uid, clubId:activeClub?.id,
+      ready:!!activeClub && updateTablesKey===key && updateToursKey===key,
+      tables:tablesDB, tournaments:toursDB});
+  }, [dbUser?.uid, activeClub?.id, tablesDB, toursDB, updateTablesKey, updateToursKey]);`);
+  html = replaceOnce(html, 'const changeView = (view, tableObj = null) => {',
+    'const changeView = (view, tableObj = null) => { window.PokerAppUpdate?.setView(view);');
+  const tableMarker = 'const unsubT = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tables"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {';
+  html = replaceOnce(html, tableMarker, tableMarker.replace(')), s => {', ')), {includeMetadataChanges:true}, s => {') +
+    "setUpdateTablesKey(s.metadata.fromCache ? '' : dbUser.uid + ':' + activeClub.id);");
+  const tourMarker = 'const unsubTours = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournaments"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {';
+  html = replaceOnce(html, tourMarker, tourMarker.replace(')), s => {', ')), {includeMetadataChanges:true}, s => {') +
+    "setUpdateToursKey(s.metadata.fromCache ? '' : dbUser.uid + ':' + activeClub.id);");
+  html = replaceOnce(html, 'return () => { unsubT(); unsubTours(); };',
+    "return () => { unsubT(); unsubTours(); setUpdateTablesKey(''); setUpdateToursKey(''); window.PokerAppUpdate?.setGameContext(null); };");
   return html;
 }
 export function nativeFirebaseSource(source) {
@@ -57,7 +77,7 @@ export async function buildWeb() {
   await mkdir(path.join(out, 'vendor'), { recursive: true });
   // Explicit allowlist: never include Functions, credentials, tests or repo files.
   await cp(path.join(repo, 'assets'), path.join(out, 'assets'), { recursive: true });
-  await cp(path.join(mobile, 'src/native-update.js'), path.join(out, 'assets/js/native-update.js'));
+  await build({ entryPoints:[path.join(mobile, 'src/native-update.js')], bundle:true, format:'iife', minify:true, target:['es2020'], outfile:path.join(out, 'assets/js/native-update.js') });
   await rm(path.join(out, 'assets/js/app-update.js'));
   for (const name of ['privacy.html', 'manifest.json']) await cp(path.join(repo, name), path.join(out, name));
   await cp(path.join(mobile, 'account-deletion.html'), path.join(out, 'account-deletion.html'));

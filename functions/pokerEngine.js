@@ -178,8 +178,12 @@ function executeDeal(S, gameType) {
   const pl = S.players;
   const {sb: sbAmt, bb: bbAmt} = blindsOf(S);
   const actives = activesOf(pl);
-  const deck = shuffledDeck();
   const n = C.GAME_CARDS[gameType] || 2;
+  if (gameType === 'Omaha 7' && !C.gameFitsTable(gameType, S.settings, Object.keys(pl).length)) {
+    throw new HttpsError('failed-precondition', 'PLO7 requires a table with at most 5 seats');
+  }
+  if (actives.length * n + 8 > 52) throw new HttpsError('failed-precondition', 'Not enough cards for this game');
+  const deck = shuffledDeck();
   actives.forEach((p) => {
     const hand = C.sortHoleCards(deck.splice(0, n)); // FRONT of the deck (index.html:9396)
     S.priv[p.uid] = hand;
@@ -321,7 +325,7 @@ function applyAction(S, actorUid, action, amount, auto) {
   } else if (action === "raise") {
     const maxT = round2((p.bet || 0) + p.stack);
     let target = Math.min(round2(Number(amount) || 0), maxT);
-    if ((g.currentGameType || "").startsWith("Omaha") && S.settings.omahaPotLimit !== false) {
+    if ((g.currentGameType || "").startsWith("Omaha") && (g.currentGameType === 'Omaha 7' || S.settings.omahaPotLimit !== false)) {
       const toCallP = round2(Math.max(0, g.highestBet - (p.bet || 0)));
       const potNow = round2((g.pots || []).reduce((s, x) => s + x.amount, 0) + Object.values(pl).reduce((s, q) => s + (q.bet || 0), 0));
       target = Math.min(target, round2(g.highestBet + potNow + toCallP));
@@ -397,7 +401,7 @@ function canRunTwice(S) {
 // Run-it-twice offer — protocol §3.5. Only when both boards can be dealt.
 function maybeOfferRit(S) {
   const g = S.gameState;
-  if (!S.settings.runTwice || S.table.tournamentId) return;
+  if (!S.settings.runTwice || S.table.tournamentId || S.gameState.currentGameType === 'Omaha 7') return;
   if ((g.board || []).length >= 5) return;
   if (!canRunTwice(S)) return;
   const acts = activesOf(S.players);
@@ -1053,7 +1057,7 @@ function botActionCore(S, uid) {
   const snap = (x) => Math.max(bb, Math.round(x / bb) * bb);
   const gt = g.currentGameType || S.settings.baseGameType || 'NLH';
   const maxRaise = Math.min(round2(stack + (b.bet || 0)),
-    gt.startsWith('Omaha') && S.settings.omahaPotLimit !== false ? round2(g.highestBet + potNow + toCall) : Infinity);
+    gt.startsWith('Omaha') && (gt === 'Omaha 7' || S.settings.omahaPotLimit !== false) ? round2(g.highestBet + potNow + toCall) : Infinity);
   const raiseTo = (x) => round2(Math.min(Math.max(snap(x), round2(g.highestBet + (g.minRaise || bb))), maxRaise));
   const style=b.botStyle||['tight','balanced','aggressive'][Array.from(uid).reduce((n,c)=>n+c.charCodeAt(0),0)%3];
   const r=Math.min(.999,rnd()/(style==='aggressive'?1.35:style==='tight'?.75:1));
@@ -1389,7 +1393,7 @@ async function tickTable(id, testNow) {
       const stuck = now - (g.turnStartedAt || 0);
       const picker = pl[g.dcUid];
       if (picker && picker.isBot && stuck > 2200) {
-        const keys = Object.keys(C.GAME_CARDS);
+        const keys = Object.keys(C.GAME_CARDS).filter(game => C.gameFitsTable(game, S.settings, Object.keys(pl).length));
         executeDeal(S, keys[crypto.randomInt(0, keys.length)]);
         dirty = true;
       } else if (stuck > 25000) {

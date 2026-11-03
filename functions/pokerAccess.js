@@ -11,7 +11,11 @@ const available=()=>require('./pokerSecurity').requirePokerAvailable();
 function tableSettings(raw={}){
  const s={};for(const [k,min,max,def]of [['blinds',.01,100000,.5],['minBuyIn',.01,10000000,40],['maxBuyIn',.01,10000000,200],['minBuyInBB',0,100000,0],['maxBuyInBB',0,100000,0],['maxPlayers',2,9,6],['autoStart',2,9,2],['actionTime',10,120,30],['rakePercent',0,20,0],['rakeCap',0,100000,0],['ante',0,100000,0],['bombEvery',0,1000,0],['bombAnte',0,100,2],['leaveNoticeMins',0,120,0],['leaveNoticeBB',0,100000,0],['spinBuyIn',.01,100000,50],['spinStack',10,10000000,1000],['spinLevelSec',30,3600,180]])s[k]=number(raw[k],def,min,max);
  for(const k of ['isDealerChoice','straddle','spinMode','runTwice','autoMuck'])s[k]=raw[k]===true;
- s.omahaPotLimit=raw.omahaPotLimit!==false;s.baseGameType=String(raw.baseGameType||'NLH').replace(/^Omaha([456])$/,'Omaha $1');if(!C.GAME_CARDS[s.baseGameType])fail('invalid-argument','Unknown poker game');
+ s.omahaPotLimit=raw.omahaPotLimit!==false;s.baseGameType=String(raw.baseGameType||'NLH').replace(/^Omaha([4567])$/,'Omaha $1');if(!C.GAME_CARDS[s.baseGameType])fail('invalid-argument','Unknown poker game');
+ if(s.baseGameType==='Omaha 7'){
+  if(s.spinMode)fail('invalid-argument','PLO7 is not available in Spin & Cash');
+  s.maxPlayers=Math.min(5,s.maxPlayers);s.omahaPotLimit=true;s.runTwice=false;
+ }
  if(s.maxBuyIn<s.minBuyIn)fail('invalid-argument','Maximum is below minimum');s.maxPlayers=capacity(s);s.autoStart=Math.min(Math.floor(s.autoStart),s.maxPlayers);s.serverEngine=true;
  s.aofEvery=raw.aofEvery==='orbit'?'orbit':number(raw.aofEvery,0,0,1000,true);s.name=String(raw.name||'').slice(0,60);
  if(s.spinMode)Object.assign(s,{maxPlayers:3,autoStart:3,rakePercent:0});return s;

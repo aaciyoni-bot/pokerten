@@ -34,7 +34,7 @@ const key=c=>c.val+c.suit;
  assert.ok(Number.isFinite(knownPeriod.directory.accounting.start));
  assert.equal(knownPeriod.directory.accounting.players.p1.result,350);
  assert.equal(knownPeriod.directory.accounting.players.p1.totalResult,230,'preview distinguishes current-cycle result from prior history');
- for(const [mode,count,seats] of [['nlh',2,9],['pineapple',3,9],['omaha4',4,9],['omaha5',5,9],['omaha',6,6]]){
+ for(const [mode,count,seats] of [['nlh',2,9],['pineapple',3,9],['omaha4',4,9],['omaha5',5,9],['omaha',6,6],['omaha7',7,5]]){
   const f=await fixture(`mode=${mode}&seats=${seats}&full&opponents`);
   assert.equal(f.privateCards.length,count,`${mode}: the local private hand is present`);
   assert.equal(f.scenario.heroExpected,count);
@@ -97,5 +97,5 @@ const key=c=>c.val+c.suit;
   w.document.querySelector('.poker-result-meta').getBoundingClientRect=()=>rect(20,0,68,0);
   assert.equal(w.__previewLayoutReport().cardPanelOverlaps.length,0,'hidden or empty result metadata does not report a collision');
  }finally{diagnosticDom.window.close();}
- console.log('GG preview fixture: 2–6 local cards, unique realistic deals, consistent public/GOD hands, RIT reservation, explicit geometry stress and cross-seat result overlap diagnostics passed');
+ console.log('GG preview fixture: 2–7 local cards, unique realistic deals, consistent public/GOD hands, RIT reservation, explicit geometry stress and cross-seat result overlap diagnostics passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

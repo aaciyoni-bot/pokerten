@@ -97,3 +97,19 @@ test('GOD sees an atomic private snapshot in both games; ordinary, unverified an
   await assert.rejects(f.run('pkCardPeek',data,'alice'),e=>e.code==='permission-denied');
  }
 });
+
+
+test('Durak/OFC heartbeat updates chosen appearance in public and private seats without changing cards or chips',async()=>{
+ for(const type of ['durak','ofc']){
+  const f=fixture(),{tableId:id}=await f.run('pkCardTableCreate',{clubId:'club',type});
+  f.records.get('users/alice').avatarSeed='av3d::cat';await f.run('pkCardGame',{tableId:id,op:'join'},'alice');
+  assert.equal(f.pub(id).players.alice.avatarSeed,'av3d::cat');
+  const before=clone(f.engine(id).players.alice),balance=f.balance('alice');
+  Object.assign(f.records.get('users/alice'),{avatarSeed:'av3d::astronaut',photo:''});
+  await f.run('pkCardGame',{tableId:id,op:'heartbeat',avatarSeed:'av3d::pig'},'alice');
+  const next=f.engine(id).players.alice;
+  assert.equal(next.avatarSeed,'av3d::astronaut');assert.equal(f.pub(id).players.alice.avatarSeed,next.avatarSeed);
+  assert.deepEqual({...next,avatarSeed:before.avatarSeed,photo:before.photo,lastSeen:before.lastSeen,stayAt:before.stayAt},{...before,stayAt:before.stayAt});
+  assert.equal(f.balance('alice'),balance);
+ }
+});

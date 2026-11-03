@@ -101,7 +101,7 @@ exports.pkCardGame=onCall(opts,async r=>{
    const amount=A.number(r.data.amount,t.settings.buyIn,.01,1000000);effects.push({type:'credit',uid,amount:-amount});p.stack=A.cash(p.stack+amount);p.buyTotal=A.cash(p.buyTotal+amount);
   }else if(op==='wait'||op==='unwait'){
    t.waitlist=t.waitlist.filter(w=>w.uid!==uid);if(op==='wait'&&!p){if(t.waitlist.length>=30)A.fail('resource-exhausted','Queue full');const u=await tx.get(db.doc('users/'+uid));t.waitlist.push({uid,name:u.data()?.username||'Player',at:now});}
-  }else if(op==='heartbeat'||op==='stay'){if(!p)return{ok:true};p.lastSeen=now;p.stayAt=now;
+  }else if(op==='heartbeat'||op==='stay'){if(!p)return{ok:true};p.lastSeen=now;p.stayAt=now;if(!p.isBot){const profile=await tx.get(db.doc('users/'+uid));if(profile.exists)Object.assign(p,require('./pokerIdentity').appearance(profile.data(),uid));}
   }else if(op==='chat'||op==='floor'){
    if(t.chatMuted)await A.tableManager(tx,db,t.clubId,r);
    const last=t.chat.filter(m=>m.uid===uid).at(-1);if(last&&now-last.at<750)A.fail('resource-exhausted','Please wait');

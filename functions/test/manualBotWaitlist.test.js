@@ -223,3 +223,11 @@ for(const count of [0,1])for(const earlyWin of [false,true])test(`settled ${earl
  const stable=copy(after);await f.tick(id);assert.deepEqual(f.table(id),stable,'Idle maintenance does not repeatedly change the table');
  if(count){await f.seat(id,'owner');await f.tick(id);assert.equal(f.table(id).gameState.phase,'preflop');assert.equal(f.table(id).gameState.handN,8);assert.deepEqual(f.table(id).gameState.board,[]);assert.equal(f.table(id).players.human.cardCount,2);assert.equal(total(f,id),chips,'A second player starts a fresh, conserved hand');}
 });
+
+test('PLO7 cash creation normalizes seven cards, five seats, Pot Limit and one board on the server',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({baseGameType:'Omaha7',maxPlayers:9,omahaPotLimit:false,runTwice:true});
+ const t=f.table(id);assert.equal(t.settings.baseGameType,'Omaha 7');assert.equal(t.settings.maxPlayers,5);assert.equal(t.settings.omahaPotLimit,true);assert.equal(t.settings.runTwice,false);assert.equal(Object.keys(t.players).length,5);
+ await f.tick(id);for(const p of Object.values(f.table(id).players)){assert.equal(p.cardCount,7);assert.equal(f.docs.get(`tables/${id}/priv/${p.uid}`).cards.length,7);}
+ f.docs.get('tables/'+id).settings.maxPlayers=9; // stale settings cannot admit a sixth player
+ await assert.rejects(()=>f.seat(id),/full/);await assert.rejects(()=>f.create({baseGameType:'Omaha 7',spinMode:true}),/Spin & Cash/);
+});

@@ -806,3 +806,16 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 /* Leave countdown stays in the information panel, never on a hole card.
    Hero already has the full countdown and Cancel control above the table. */
 .poker-room .poker-player-info .poker-leave-status{position:static!important;display:block;transform:none!important;margin:1px 0;color:#fda4af;font-size:9px!important;line-height:12px;white-space:nowrap}
+
+/* Three centred cards above four; display order still follows the player's sorting preference. */
+.poker-room .poker-seat-hero[data-hand-layout="rows"]{--poker-fan-width:clamp(30px,8.3cqw,40px);--poker-fan-span:calc(var(--poker-fan-width) * 4 + 12px)}
+.poker-room .poker-seat-hero .poker-own-fan[data-hand-layout="rows"]{display:grid!important;grid-template-columns:repeat(8,1fr);gap:4px 2px!important;width:var(--poker-fan-span);left:calc(50% + 60px);top:calc(var(--poker-hero-size,64px) * .72 - var(--poker-fan-width) * 2.8 - 5px)}
+.poker-room .poker-own-fan[data-hand-layout="rows"]>span{margin:0!important;transform:none!important;grid-column:span 2;width:var(--poker-fan-width)}
+.poker-room .poker-own-fan[data-hand-layout="rows"]>span[data-card-position="0"]{grid-column:2/span 2;grid-row:1}
+.poker-room .poker-own-fan[data-hand-layout="rows"]>span[data-card-position="1"]{grid-column:4/span 2;grid-row:1}
+.poker-room .poker-own-fan[data-hand-layout="rows"]>span[data-card-position="2"]{grid-column:6/span 2;grid-row:1}
+.poker-room .poker-own-fan[data-hand-layout="rows"]>span[data-card-position="3"]{grid-column:1/span 2;grid-row:2}
+.poker-room .poker-own-fan[data-hand-layout="rows"]>span[data-card-position="4"]{grid-column:3/span 2;grid-row:2}
+.poker-room .poker-own-fan[data-hand-layout="rows"]>span[data-card-position="5"]{grid-column:5/span 2;grid-row:2}
+.poker-room .poker-own-fan[data-hand-layout="rows"]>span[data-card-position="6"]{grid-column:7/span 2;grid-row:2}
+.poker-room .poker-seat:not(.poker-seat-hero)[data-hole-count="7"]{--poker-fan-step:.23}

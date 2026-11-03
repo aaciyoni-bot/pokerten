@@ -1,0 +1,44 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
+const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
+global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
+const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;
+w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');
+const cards=['A','K','Q','J','10','9'].map((val,i)=>({id:'c'+i,val,suit:['♠','♥','♦','♣'][i%4]}));
+let current={settings:{serverEngine:false,maxPlayers:6,baseGameType:'Omaha6',actionTime:30,blinds:5},gameState:{__seq:1,phase:'preflop',activeTurnUid:'me',turnStartedAt:Date.now(),highestBet:10,minRaise:10,board:[],pots:[],currentGameType:'Omaha6',handN:1},players:{me:{uid:'me',name:'Me',stack:100,bet:0,cards,status:'active',seatIndex:0,lastSeen:Date.now()},other:{uid:'other',name:'Other',stack:200,bet:10,cards:[],status:'active',seatIndex:1,lastSeen:Date.now(),actionText:'Check'}}};
+let privateHand=[],fxCalls=[];
+const intervals=new Map(),nativeInterval=w.setInterval.bind(w),nativeClearInterval=w.clearInterval.bind(w);
+w.setInterval=(fn,delay)=>{const id=nativeInterval(fn,delay);intervals.set(id,{fn,delay});return id;};
+w.clearInterval=id=>{intervals.delete(id);nativeClearInterval(id);};
+const ref=(...args)=>({id:args.at(-1),path:args.slice(1).join('/')});let tableNext,tableFail,writes=[],messages=[];
+const snapshot=()=>({id:'test-table',exists:()=>true,data:()=>structuredClone(current),metadata:{fromCache:false}});
+w.fb={db:{},doc:ref,collection:ref,query:r=>r,where:()=>({}),fx:async(name,args)=>{fxCalls.push({name,args});return{};},getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),updateDoc:async()=>{},setDoc:async()=>{},addDoc:async()=>({id:'x'}),deleteDoc:async()=>{},onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;if(r.path==='tables/test-table'){tableNext=cb;tableFail=error;queueMicrotask(()=>cb(snapshot()));}else if(r.path==='tables/test-table/priv/me') queueMicrotask(()=>cb({exists:()=>true,data:()=>({cards:privateHand})}));else queueMicrotask(()=>cb({exists:()=>false,docs:[]}));return()=>{};},runTransaction:async(_,fn)=>fn({get:async()=>snapshot(),update:(r,data)=>{writes.push(data);current={...current,...data};}})};
+const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');const source=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;window.CreateTest=PokerCreateView;');w.eval(source);w.__pkMuted=true;
+const root=ReactDOM.createRoot(w.document.getElementById('root'));
+
+(async()=>{
+ const doc=w.document,change=async patch=>{Object.assign(current,patch);current.gameState.__seq++;await React.act(async()=>tableNext(snapshot()));};
+ await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test-table',user:{uid:'me',role:'player',balance:500},clubSettings:{},onLeave(){},showToast:m=>messages.push(m)})));
+ const hand=text=>text.split(' ').map(id=>({id,val:id.slice(0,-1),suit:id.slice(-1)}));
+ current.settings={...current.settings,baseGameType:'Omaha 7',maxPlayers:5};current.players.me.cards=hand('A♠ K♠ Q♥ J♦ 9♣ 8♥ 2♣');
+ current.gameState={...current.gameState,currentGameType:'Omaha 7',phase:'preflop',board:[],handN:2};await change({});
+ assert.equal(doc.querySelectorAll('.poker-own-fan .card-face').length,7);
+ assert.equal(doc.querySelector('[aria-label="Highlight current hand"]'),null,'no made-hand aid before the flop');
+ const flop=hand('Q♠ 7♠ Q♦');current.gameState.phase='flop';current.gameState.board=flop;await change({});
+ assert.equal(doc.querySelector('[aria-label="Highlight current hand"]'),null);
+ assert.equal(doc.querySelectorAll('[data-current-hand="true"]').length,0);
+ current.gameState.phase='turn';current.gameState.board=[...flop,...hand('3♠')];await change({});
+ await React.act(()=>doc.querySelector('[title="Table menu"]').click());await React.act(()=>doc.querySelector('[title="My table look — only you see it"]').click());
+ const select=doc.querySelector('[aria-label="PLO7 hand layout"]');assert.ok(select);const {Simulate}=require('react-dom/test-utils');await React.act(()=>Simulate.change(select,{target:{value:'rows'}}));
+ await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Done').click());
+ assert.equal(doc.querySelector('.poker-own-fan').dataset.handLayout,'rows');assert.equal(doc.querySelector('.poker-seat-hero').dataset.handLayout,'rows');assert.equal(w.localStorage.getItem('pkPlo7Layout'),'rows');assert.equal(doc.querySelectorAll('.poker-own-fan .card-face').length,7);assert.equal(doc.querySelectorAll('[data-current-hand="true"]').length,0);
+ current.gameState.handN=3;await change({});assert.equal(doc.querySelectorAll('[data-current-hand="true"]').length,0,'no hand highlighting');
+ current.gameState.phase='dc_selection';current.gameState.dcUid='me';current.settings.isDealerChoice=true;current.settings.maxPlayers=6;await change({});assert.equal([...doc.querySelectorAll('button')].some(b=>b.textContent.includes('Omaha 7')),false,'six-seat DC cannot select PLO7');
+ current.settings.maxPlayers=5;await change({});assert.equal([...doc.querySelectorAll('button')].some(b=>b.textContent.includes('Omaha 7')),true);
+ // Exercise the actual form, starting from nine seats and NLO.
+ await React.act(async()=>root.render(React.createElement(w.CreateTest,{user:{uid:'owner',role:'club_owner'},clubSettings:{},onBack(){},onCreated(){},showToast(){}})));
+ const game=doc.querySelector('select'),max=()=>[...doc.querySelectorAll('select')].find(s=>[...s.options].some(o=>o.textContent==='5 Players'));
+ await React.act(()=>Simulate.change(max(),{target:{value:'9'}}));await React.act(()=>Simulate.change(game,{target:{value:'Omaha 7'}}));assert.equal(max().value,'5');assert.equal([...max().options].some(o=>Number(o.value)>5),false);
+ const pot=[...doc.querySelectorAll('input[type="checkbox"]')].find(e=>e.parentElement.textContent.includes('Omaha plays'));assert.equal(pot.checked,true);assert.equal(pot.disabled,true);
+ await React.act(()=>root.unmount());w.close();console.log('PASS: PLO7 seven visible cards, no current-hand highlight, 3+4 layout, DC seats and creation limits');
+})().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

@@ -1,7 +1,7 @@
 (function(root){
 'use strict';
 const copy=x=>JSON.parse(JSON.stringify(x)),cash=n=>Math.round(n*100)/100;
-const capacity=t=>Math.max(2,Math.min(9,Math.floor(44/(Number(String(t.pokerType||'').match(/Omaha\s*(\d)/i)?.[1])||2)),Math.floor(Number(t.tableSize)||9)));
+const capacity=t=>Math.max(2,Math.min(/^Omaha\s*7$/i.test(t.pokerType||'')?5:9,Math.floor(44/(Number(String(t.pokerType||'').match(/Omaha\s*(\d)/i)?.[1])||2)),Math.floor(Number(t.tableSize)||9)));
 // Keep the public result visible before dealing, moving seats or finishing.
 const showdownDelay=g=>g?.earlyWin?5000:8000;
 const idle=t=>['waiting','showdown'].includes(t.gameState?.phase||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Object.values(t.players||{}).some(p=>p.bet>0);

@@ -23,6 +23,14 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  assert.deepEqual(Array.from(defaults.payouts),[35,30,20,15]);assert.deepEqual(Array.from(defaults.structure.slice(0,2),r=>[r.sb,r.bb,r.ante,r.mins]),[[100,200,0,10],[150,300,0,10]]);assert.ok(defaults.structure.every(r=>r.ante===0));assert.equal(writes.length,0);
  const serverConfig=require('../../functions/pokerTournaments').config(defaults,'main','owner',Date.now());assert.equal(serverConfig.prizePool,4000);assert.equal(serverConfig.anteType,'none');assert.equal(serverConfig.minPlayers,5);assert.equal(serverConfig.maxReentries,10);assert.equal(serverConfig.tableSize,8);
  await React.act(()=>button('New tournament').click());
+ await React.act(()=>Simulate.change(field('Poker type'),{target:{value:'Omaha 7'}}));
+ assert.equal(field('Seats per table').value,'5');assert.equal(field('Seats per table').max,'5');
+ await React.act(()=>Simulate.change(field('Seats per table'),{target:{value:'6'}}));assert.equal(field('Seats per table').value,'5');
+ assert.equal(field('Max entries').value,'60','Five seats is a per-table limit, not a tournament entry limit');
+ await React.act(async()=>button('Open registration').click());
+ const plo7Request=calls.filter(c=>c.args.op==='create').at(-1);assert.equal(plo7Request.args.settings.pokerType,'Omaha 7');assert.equal(plo7Request.args.settings.tableSize,5);
+ assert.equal(require('../../functions/pokerTournaments').config(plo7Request.args.settings,'main','owner',Date.now()).tableSize,5);
+ await React.act(()=>button('New tournament').click());
  // Reset restores this preset while preserving the tournament's identity/time.
  await React.act(()=>Simulate.change(control('Starting small blind (SB)'),{target:{value:'50'}}));await React.act(()=>button('Restore default settings').click());assert.equal(control('Starting small blind (SB)').value,'100');assert.equal(field('Tournament name').value,'Default settings check');assert.equal(w.document.querySelector('input[type=date]').value,'2026-10-28');
  for(const label of ['Re-entry price (0 = free)','Maximum re-entries per player','Seats per table','Bounty type','Mystery bounty starts at level','Progressive bounty paid now (%)','Club bounty reserve'])assert.ok(field(label),label);

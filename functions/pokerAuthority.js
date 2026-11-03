@@ -29,7 +29,7 @@ async function command(r,scope,body){
  return db.runTransaction(async tx=>{const old=await tx.get(ref);if(old.exists){if(old.data().signature!==signature)fail('invalid-argument','Request identifier already used');return old.data().result;}
   const result=await body(tx,db,user,Date.now());tx.set(ref,{uid:user,scope,signature,result,at:Date.now()});return result;});
 }
-const capacity=s=>Math.max(2,Math.min(9,Math.floor(44/(s.isDealerChoice?6:(require('./pokerCore').GAME_CARDS[s.baseGameType||s.pokerType]||2))),Math.floor(Number(s.maxPlayers||s.tableSize)||9)));
+const capacity=s=>{const game=String(s.baseGameType||s.pokerType||'').replace(/^Omaha([4567])$/,'Omaha $1');return Math.max(2,Math.min(game==='Omaha 7'?5:9,Math.floor(44/(s.isDealerChoice?6:(require('./pokerCore').GAME_CARDS[game]||2))),Math.floor(Number(s.maxPlayers||s.tableSize)||9)));};
 const idle=t=>['waiting','showdown'].includes(t.gameState?.phase||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Object.values(t.players||{}).some(p=>p.bet>0);
 const payee=p=>p.isBot?key(p.fundingUid,'bot sponsor'):key(p.uid);
 module.exports={fail,key,cash,number,root,uid,owner,clubManager,tableManager,assertClubOpen,activeClub,member,command,capacity,idle,payee};

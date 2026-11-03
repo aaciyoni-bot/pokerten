@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="356">
+    <meta name="app-version" content="357">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -4268,8 +4268,9 @@ function PokerMusicButton({tile=false}={}) {
     React.createElement('span',{className:tile?'poker-menu-label':undefined},enabled?'MUSIC ON':'MUSIC OFF'));
 }
 function AppReleaseControls() {
+  const release=window.PokerAppUpdate?.version||document.querySelector('meta[name="app-version"]')?.content||'';
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 353. Check for updates'},'v353 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':`Version ${release}. Check for updates`},`v${release} · Check update`),
     React.createElement(PokerMusicButton),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
@@ -6205,7 +6206,7 @@ function ProfileView({
   const setSeed = async seed => {
     try {
       await pokerCommand('pkProfile',{patch:{avatarSeed:seed,photo:''}});
-      showToast("Avatar updated! It takes effect at Tables on next login", "success");
+      showToast("Avatar updated!", "success");
     } catch (e) {showToast(e.message||"Could not update profile","error");}
   };
   const onPhotoPick = e => {
@@ -11152,10 +11153,6 @@ throw new Error('Game state is managed by the server');
     const minB = Math.max(buyInMin(setts), lock);
     if (buyAmt < minB) setBuyAmt(round2(minB));
   }, [tableState]);
-  // Self-heal MY seat identity: if a write ever left my entry with a blank or
-  // corrupt name/avatar/uid (the "I have no avatar" report), repair it from
-  // the live profile. Converges in one write, no loops.
-  useEffect(() => {}, [tableState?.players?.[user.uid]?.name, tableState?.players?.[user.uid]?.photo, tableState?.players?.[user.uid]?.avatarSeed]);
   const [preCF, setPreCF] = useState(false);
   useEffect(() => {
     if (!isMyTurn || !preCF) return;
@@ -11172,7 +11169,7 @@ throw new Error('Game state is managed by the server');
   useEffect(() => {
     if (!['preflop', 'flop', 'turn', 'river'].includes(gs.phase) || myPlayer?.status !== 'active') setPreCF(false);
   }, [gs.phase, myPlayer?.status]);
-  useEffect(() => {if(!tableState?.players?.[user.uid])return;const beat=()=>pokerCommand('pkSeat',{tableId:tableDocId,op:'heartbeat'}).catch(()=>{});beat();const iv=setInterval(beat,12000);return()=>clearInterval(iv);}, [isSeated, tableDocId]);
+  useEffect(() => {if(!tableState?.players?.[user.uid])return;const beat=()=>pokerCommand('pkSeat',{tableId:tableDocId,op:'heartbeat'}).catch(()=>{});beat();const iv=setInterval(beat,12000);return()=>clearInterval(iv);}, [isSeated, tableDocId, user.photo, user.avatarSeed]);
   const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
   useEffect(() => {
     const on = () => setOffline(false),

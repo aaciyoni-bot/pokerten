@@ -431,3 +431,22 @@ test('PLO7 tournaments keep five-seat tables through late entry, balancing and t
  assert.equal(Object.values(done.players).filter(p=>!p.out).length,1);assert.equal(done.results.reduce((sum,p)=>sum+p.prize,0),120);
  t.diagnostic(JSON.stringify({ticks,entrants:12,tableLimit:5,finalCompleted:sawFinal}));
 });
+
+
+test('tournaments retain selected avatars at registration, manual/scheduled start and late entry',async()=>{
+ for(const scheduled of [false,true]){
+  const f=fixture(94),id=await create(f,{startAt:f.now()+1000,lateRegUntilLevel:2});
+  for(const uid of ['avatarA','avatarB']){f.member(uid);f.docs.get('users/'+uid).avatarSeed='av3d::cat';await f.command(uid,'register',{tournamentId:id});assert.equal(f.tour(id).players[uid].avatarSeed,'av3d::cat');}
+  // A player can choose again after registration, before anyone has a seat.
+  f.docs.get('users/avatarA').avatarSeed='av3d::astronaut';
+  if(scheduled){f.advance(2000);await f.tours.tickTournament(id,f.now());}else await f.command('owner','start',{tournamentId:id});
+  assert.equal(f.tour(id).players.avatarA.avatarSeed,'av3d::astronaut');
+  assert.equal(f.tables(id).find(row=>row.players.avatarA).players.avatarA.avatarSeed,'av3d::astronaut');
+  assert.equal(f.tables(id).find(row=>row.players.avatarB).players.avatarB.avatarSeed,'av3d::cat');
+  f.member('lateAvatar');Object.assign(f.docs.get('users/lateAvatar'),{photo:'data:image/png;base64,AAAA',avatarSeed:''});await f.command('lateAvatar','register',{tournamentId:id});
+  const seat=f.tables(id).find(row=>row.players.lateAvatar).players.lateAvatar;
+  assert.equal(seat.photo,'data:image/png;base64,AAAA');assert.equal(seat.avatarSeed,'lateAvatar');
+  assert.equal(f.tour(id).players.lateAvatar.photo,seat.photo);
+  assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
+ }
+});

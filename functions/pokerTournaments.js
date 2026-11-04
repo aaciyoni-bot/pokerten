@@ -3,6 +3,7 @@ const crypto=require('node:crypto'),{onCall}=require('firebase-functions/v2/http
 const A=require('./pokerAuthority'),T=require('./pokerTournamentCore'),C=require('./pokerCore'),{prepareLedger}=require('./pokerLedger');
 const {key,cash,number,fail,payee}=A;
 const {botName,renameGenericBots}=require('./botNames');
+const {appearance}=require('./pokerIdentity');
 const all=t=>Object.values(t.players||{}),entryBuyIn=(t,reentry=false)=>reentry?(t.reentryBuyIn??t.buyIn):t.buyIn,price=(t,reentry=false)=>cash(entryBuyIn(t,reentry)+t.fee+(t.bountyFree?0:t.bounty));
 const clock=(t,now=Date.now())=>T.clock(t,t.structure,now);
 async function tables(tx,db,id){const q=await tx.get(db.collection('tables').where('tournamentId','==',id));return q.docs.map(d=>({...d.data(),docId:d.id}));}
@@ -46,7 +47,7 @@ function removeSeat(t,row,uid,now){
  if(p){t.initialChips=cash(t.initialChips-p.stack-(p.pendingTournamentChips||0));delete row.players[uid];row.changed=true;}
  Object.assign(e,{out:true,removed:true,removalRequested:false,removedAt:now,rank:null});delete e.tableId;return true;
 }
-function seat(p,index,stack){return{uid:p.uid,name:p.name,photo:p.photo||'',avatarSeed:p.uid,playerId:p.playerId||'',isBot:!!p.isBot,...(p.isBot?{fundingUid:p.fundingUid,botStyle:p.botStyle}:{}),seatIndex:index,stack,bet:0,buyTotal:0,status:'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',lastSeen:Date.now()};}
+function seat(p,index,stack){return{uid:p.uid,name:p.name,...appearance(p,p.uid),playerId:p.playerId||'',isBot:!!p.isBot,...(p.isBot?{fundingUid:p.fundingUid,botStyle:p.botStyle}:{}),seatIndex:index,stack,bet:0,buyTotal:0,status:'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',lastSeen:Date.now()};}
 function tableDoc(t,players,now){return{authorityVersion:2,type:'poker',clubId:t.clubId,createdBy:t.creatorUid,createdAt:now,tournamentId:t.id,players,chat:[],tournament:{name:t.name,torId:t.id,mttMode:true,startedAt:t.startedAt,structure:t.structure,levelMins:t.levelMins,anteType:t.anteType,anteFromLevel:t.anteFromLevel,breakEvery:t.breakEvery,breakMins:t.breakMins,rebuyUntil:t.rebuys?t.rebuyUntilLevel-1:-1,addonAt:t.addon?t.addonLevel-1:-1,startStack:t.startStack,bounty:t.bounty,round:1,final:false,finished:false,demoOnly:t.demoOnly},settings:{serverEngine:true,baseGameType:t.pokerType,maxPlayers:t.tableSize,blinds:t.structure[0].sb,actionTime:t.actionTime,rakePercent:0,autoStart:2,omahaPotLimit:true,demoOnly:t.demoOnly,botGodGuard:false},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:t.structure[0].bb,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}};}
 function docOf(t){const {id,...doc}=t;return doc;}
 function funding(t,effects,p,reentry=false){const {pool:buyIn,fee}=T.entryFunding(t,reentry),cost=price(t,reentry);if(t.bountyFree&&t.bountyBudgetRemaining<t.bounty)fail('failed-precondition','Club bounty reserve needs funding');if(cost)effects.push({type:'credit',uid:payee(p),amount:-cost});p.paid=cash((p.paid||0)+cost);p.feesPaid=cash((p.feesPaid||0)+fee);p.bountyValue=t.bounty;t.prizePool=cash(t.prizePool+buyIn);t.feeTotal=cash(t.feeTotal+fee);t.bountyPool=cash(t.bountyPool+t.bounty);if(t.bountyFree)t.bountyBudgetRemaining=cash(t.bountyBudgetRemaining-t.bounty);}
@@ -55,6 +56,11 @@ function entryStack(t,p,now,reentry=false){
 }
 function addBots(t,ownerUid,effects,now,limit=Infinity){
  const added=[];const missing=Math.min(limit,t.maxPlayers-all(t).filter(p=>!p.out).length);for(let i=0,n=0;n<missing;i++){const uid='bot_'+t.id+'_'+i;if(t.players[uid]||t.removedPlayers?.[uid])continue;n++;const p={uid,name:botName(uid,all(t).map(p=>p.name),{tableNames:[]}),isBot:true,fundingUid:ownerUid,botStyle:['tight','balanced','aggressive'][i%3],out:false,rank:null,bounties:0,bountyWon:0,paid:0,rebuys:0,reentries:0,addon:false};entryStack(t,p,now);funding(t,effects,p);t.players[uid]=p;t.entryCount++;added.push(p);}return added;
+}
+async function refreshEntrantAvatars(tx,db,t){
+ const humans=all(t).filter(p=>!p.isBot&&!p.out);if(!humans.length)return;
+ const profiles=await tx.getAll(...humans.map(p=>db.doc('users/'+p.uid)));
+ profiles.forEach((snap,i)=>{if(snap.exists)Object.assign(humans[i],appearance(snap.data(),humans[i].uid));});
 }
 function start(tx,db,t,now){
  const entrants=all(t).filter(p=>!p.out);if(entrants.length<t.minPlayers)fail('failed-precondition','Not enough registered players');for(let i=entrants.length-1;i>0;i--){const j=crypto.randomInt(i+1);[entrants[i],entrants[j]]=[entrants[j],entrants[i]];}
@@ -79,7 +85,7 @@ async function tickTournament(id,now=Date.now()){
   const namesChanged=renameGenericBots(t.players,null,{table:false});
   if(t.status==='reg'){
    if(now<t.startAt){if(namesChanged)tx.set(ref,docOf(t));return{};}if(t.botFill){const c=await tx.get(db.doc('clubs/'+t.clubId));if(!c.exists||!c.data().ownerUid)fail('failed-precondition','Bot sponsor missing');if(c.data().botsAuto!==false)addBots(t,c.data().ownerUid,effects,now);}if(all(t).length<t.minPlayers){if(namesChanged)tx.set(ref,docOf(t));return{};}
-   const write=await prepareLedger(db,tx,t.clubId,effects,'tournament:'+id,now);write();start(tx,db,t,now);tx.set(ref,docOf(t));return{started:true};
+   await refreshEntrantAvatars(tx,db,t);const write=await prepareLedger(db,tx,t.clubId,effects,'tournament:'+id,now);write();start(tx,db,t,now);tx.set(ref,docOf(t));return{started:true};
   }
   if(t.status!=='running')return{};const rebuySettingsChanged=t.rebuys===true||t.botRebuys===true||t.maxRebuys>0;t.rebuys=false;t.botRebuys=false;t.maxRebuys=0;t.rebuyUntilLevel=0;const rows=await tables(tx,db,id),banks=new Map();let changed=namesChanged||rebuySettingsChanged;for(const row of rows)if(row.tournament?.rebuyUntil>=0){row.tournament.rebuyUntil=-1;row.changed=true;changed=true;}
   for(const [uid,e]of Object.entries(t.players||{}))if(e.removalRequested){const row=rows.find(row=>row.players?.[uid]);if(removeSeat(t,row,uid,now))changed=true;}
@@ -126,7 +132,7 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
    if(t.removedPlayers?.[uid]||mine?.removed||mine?.removalRequested)fail('permission-denied','You were removed from this tournament');
    if(t.demoOnly)fail('failed-precondition','This demonstration is bots only');if(!['reg','running'].includes(t.status)||t.status==='running'&&!late)fail('failed-precondition','Registration closed');if(mine&&!mine.out)return{ok:true,tournamentId:id};if(mine&&(!t.reentry||(mine.reentries||0)>=t.maxReentries))fail('failed-precondition','Re-entry unavailable');if(all(t).filter(p=>!p.out).length>=t.maxPlayers)fail('failed-precondition','Tournament full');
    const us=await tx.get(db.doc('users/'+uid)),profile=us.exists?us.data():{};for(const row of rows){const old=row.players[uid];if(old){if(!T.idle(row)||!mine?.out||old.stack!==0||old.bet>0)fail('failed-precondition','Previous hand still settling');delete row.players[uid];row.changed=true;}}
-   const p={uid,name:profile.username||'Player',photo:profile.photo||'',playerId:profile.playerId||'',isBot:false,out:false,rank:null,bounties:mine?.bounties||0,bountyWon:mine?.bountyWon||0,paid:mine?.paid||0,feesPaid:mine?.feesPaid||0,settlementHands:mine?.settlementHands||0,rebuys:0,reentries:mine?(mine.reentries||0)+1:0,addon:false};entryStack(t,p,now,!!mine);funding(t,effects,p,!!mine);t.players[uid]=p;t.entryCount++;
+   const p={uid,name:profile.username||'Player',...appearance(profile,uid),playerId:profile.playerId||'',isBot:false,out:false,rank:null,bounties:mine?.bounties||0,bountyWon:mine?.bountyWon||0,paid:mine?.paid||0,feesPaid:mine?.feesPaid||0,settlementHands:mine?.settlementHands||0,rebuys:0,reentries:mine?(mine.reentries||0)+1:0,addon:false};entryStack(t,p,now,!!mine);funding(t,effects,p,!!mine);t.players[uid]=p;t.entryCount++;
    if(t.status==='running'){
     let row=mine?null:rows.filter(T.idle).filter(row=>Object.values(row.players).filter(p=>p.status!=='out').length<t.tableSize).sort((a,b)=>Object.keys(a.players).length-Object.keys(b.players).length)[0];
     if(!row){const tid='tour_'+id+'_'+t.entryCount;row={...tableDoc(t,{},now),docId:tid,isNew:true};rows.push(row);}for(const [who,old]of Object.entries(row.players))if(old.status==='out'&&old.stack===0)delete row.players[who];const used=new Set(Object.values(row.players).map(p=>p.seatIndex));let si=0;while(used.has(si))si++;row.players[uid]=seat(p,si,t.startStack);p.tableId=row.docId;row.changed=true;t.initialChips+=t.startStack;
@@ -191,7 +197,7 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
   }else if(op==='cancel'){
    if(t.status==='cancelled')return{ok:true,tournamentId:id};if(t.status!=='reg')fail('failed-precondition','Only an unstarted tournament can be cancelled');for(const p of all(t))effects.push({type:'credit',uid:payee(p),amount:p.paid});effects.push({type:'credit',uid:t.bountyFundingUid,amount:cash(t.addedPrize+t.bountyBudgetRemaining+(t.bountyFree?t.bountyPool:0))});t.status='cancelled';t.prizePool=t.feeTotal=t.bountyPool=t.bountyBudgetRemaining=0;t.refundedAt=now;
   }else fail('invalid-argument','Unknown tournament operation');
-  const write=await prepareLedger(db,tx,t.clubId,effects,'tournament:'+id,now);write();if(op==='start')start(tx,db,t,now);
+  if(op==='start')await refreshEntrantAvatars(tx,db,t);const write=await prepareLedger(db,tx,t.clubId,effects,'tournament:'+id,now);write();if(op==='start')start(tx,db,t,now);
   for(const row of rows)if(row.changed){if(row.isNew){const {docId,isNew,changed,...doc}=row;tx.set(db.doc('tables/'+docId),doc);}else tx.update(db.doc('tables/'+row.docId),{players:row.players,...(row.archiveTournament?{tournament:row.tournament}:{}),'gameState.__seq':(row.gameState?.__seq||0)+1});}tx.set(ref,docOf(t));return{ok:true,tournamentId:id,queued,tableId:op==='register'?t.players[uid]?.tableId||null:null};
  });
 });

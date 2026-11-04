@@ -23,7 +23,8 @@
       "PREDEPLOY.md",
       "tests/**",
       "scripts/**",
-      "*.log"
+      "*.log",
+      "mobile/**"
     ],
     "rewrites": [
       {
@@ -92,6 +93,28 @@
           {
             "key": "Cache-Control",
             "value": "no-store, max-age=0"
+          }
+        ]
+      },
+      {
+        "source": "/mobile-updates/**/latest.json",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store, max-age=0"
+          },
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "https://localhost"
+          }
+        ]
+      },
+      {
+        "source": "/mobile-updates/**/*.zip",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
           }
         ]
       }

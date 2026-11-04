@@ -20,7 +20,12 @@ const GAME_CARDS = {
   "Omaha 4": 4,
   "Omaha 5": 5,
   "Omaha 6": 6,
+  "Omaha 7": 7,
 };
+// Reserve five board cards and three burns. PLO7 has a five-seat product
+// limit, including Dealer Choice (even when a sixth seat is empty).
+const gameFitsTable = (game, settings = {}, playerCount = 0) =>
+  !!GAME_CARDS[game] && Math.max(playerCount, Number(settings.maxPlayers) || (game === 'Omaha 7' ? 5 : 6)) <= (game === 'Omaha 7' ? 5 : Math.floor(44 / GAME_CARDS[game]));
 const HOLE_ORD = {
   "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
   "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14,
@@ -112,7 +117,8 @@ const bestScoreFull = (hole, board5, gameType) => {
   const omaha = (gameType || "").startsWith("Omaha");
   let best = 0;
   if (omaha) {
-    getCombinations(hole, 2).forEach((h) => getCombinations(board5, 3).forEach((b) => {
+    const boardCombos = getCombinations(board5, 3);
+    getCombinations(hole, 2).forEach((h) => boardCombos.forEach((b) => {
       const s = evaluate5Cards([...h, ...b]);
       if (s > best) best = s;
     }));
@@ -191,7 +197,7 @@ const spinDrawMult = (rnd) => {
 const spinPrize = (buyIn, mult) => Math.floor((Number(buyIn) || 0) * (Number(mult) || 0));
 
 module.exports = {
-  round2, SUITS, CARD_VALUES, GAME_CARDS, HOLE_ORD, sortHoleCards, pokerDeck,
+  round2, SUITS, CARD_VALUES, GAME_CARDS, gameFitsTable, HOLE_ORD, sortHoleCards, pokerDeck,
   getCombinations, evaluate5Cards, handName, bestScoreFull, gatherBetsToPots, returnUncalledBet,
   SPIN_WHEEL, SPIN_SEGS, spinDrawMult, spinPrize,
 };

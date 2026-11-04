@@ -34,12 +34,15 @@ function fixture(seed=1){
    require:name=>name==='firebase-admin/firestore'?{getFirestore:()=>db}:name==='firebase-functions/v2/https'?{...localRequire(name),onCall:(_,fn)=>fn}:name==='firebase-functions/v2/scheduler'?{onSchedule:(_,fn)=>fn}:name==='./pokerSecurity'?{requirePokerAvailable(){},POKER_SECURITY_PAUSED:false}:['crypto','node:crypto'].includes(name)?{...crypto,randomInt}:['./pokerAuthority','./pokerTournaments','./pokerEngine','./pokerAccess'].includes(name)?load(name.slice(2)+'.js'):localRequire(name)
   },{filename:file});cached[file]=module.exports;return module.exports;
  }
- const access=load('pokerAccess.js'),engineApi=load('pokerEngine.js'),engine=engineApi.__engineInternals;
+ const access=load('pokerAccess.js'),profileApi=load('pokerProfile.js'),engineApi=load('pokerEngine.js'),engine=engineApi.__engineInternals;
  const auth=uid=>({uid,token:{email:uid+'@example.test',email_verified:true}});
  return{docs,db,engine,now:()=>now,advance:ms=>{now+=ms;},table:id=>docs.get('tables/'+id),balance:uid=>docs.get(`memberships/${uid}_clubA`).balance,
   create:(settings,botCount='full')=>access.pkTableCreate({auth:auth('owner'),data:{clubId:'clubA',manual:true,requestId:'manual-create-request-'+(++request),settings:{baseGameType:'NLH',blinds:.5,minBuyIn:50,maxBuyIn:200,maxPlayers:4,...settings},botCount}}),
   wait:id=>access.pkSeat({auth:auth('human'),data:{op:'wait',tableId:id,amount:100,requestId:'manual-wait-request-'+(++request)}}),
   act:(id,action)=>{const g=docs.get('tables/'+id).gameState;return engineApi.pkAct({auth:auth(g.activeTurnUid),data:{tableId:id,action,requestId:"showdown-action-"+(++request),expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}}});},
+  profile:patch=>profileApi.pkProfile({auth:auth('human'),data:{patch,requestId:'profile-update-'+(++request)}}),
+  seatOp:(id,op,extra={})=>access.pkSeat({auth:auth('human'),data:{tableId:id,op,...extra,requestId:'seat-operation-'+(++request)}}),
+  joinClub:clubId=>access.pkJoinClub({auth:auth('human'),data:{clubId}}),
   seat:(id,uid='human')=>access.pkSeat({auth:auth(uid),data:{tableId:id,op:'join',amount:100,requestId:'join-player-request-'+(++request)}}),
   leave:(id,uid,data={})=>engineApi.pkLeave({auth:auth(uid),data:{tableId:id,...data}}),
   deal:(id,uid)=>engineApi.pkDeal({auth:auth(uid),data:{tableId:id}}),
@@ -222,4 +225,40 @@ for(const count of [0,1])for(const earlyWin of [false,true])test(`settled ${earl
  if(count){assert.equal(after.players.human.cardCount,0);assert.deepEqual(after.players.human.cards,[]);assert.deepEqual(f.docs.get(`tables/${id}/priv/human`).cards,[],'Private old cards are also cleared');}
  const stable=copy(after);await f.tick(id);assert.deepEqual(f.table(id),stable,'Idle maintenance does not repeatedly change the table');
  if(count){await f.seat(id,'owner');await f.tick(id);assert.equal(f.table(id).gameState.phase,'preflop');assert.equal(f.table(id).gameState.handN,8);assert.deepEqual(f.table(id).gameState.board,[]);assert.equal(f.table(id).players.human.cardCount,2);assert.equal(total(f,id),chips,'A second player starts a fresh, conserved hand');}
+});
+
+test('PLO7 cash creation normalizes seven cards, five seats, Pot Limit and one board on the server',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({baseGameType:'Omaha7',maxPlayers:9,omahaPotLimit:false,runTwice:true});
+ const t=f.table(id);assert.equal(t.settings.baseGameType,'Omaha 7');assert.equal(t.settings.maxPlayers,5);assert.equal(t.settings.omahaPotLimit,true);assert.equal(t.settings.runTwice,false);assert.equal(Object.keys(t.players).length,5);
+ await f.tick(id);for(const p of Object.values(f.table(id).players)){assert.equal(p.cardCount,7);assert.equal(f.docs.get(`tables/${id}/priv/${p.uid}`).cards.length,7);}
+ f.docs.get('tables/'+id).settings.maxPlayers=9; // stale settings cannot admit a sixth player
+ await assert.rejects(()=>f.seat(id),/full/);await assert.rejects(()=>f.create({baseGameType:'Omaha 7',spinMode:true}),/Spin & Cash/);
+});
+
+
+test('chosen profile avatar reaches cash/Spin seats and repairs a seated player without changing gameplay or balances',async()=>{
+ for(const spinMode of [false,true]){
+  const f=fixture(),{tableId:id}=await f.create({spinMode},0);
+  await f.profile({avatarSeed:'av3d::cat',photo:''});await f.seat(id);
+  assert.equal(f.table(id).players.human.avatarSeed,'av3d::cat');
+  assert.equal(f.docs.get('memberships/human_clubA').avatarSeed,'av3d::cat');
+  // Reproduce the old UID-based seat, including an already running tournament.
+  f.table(id).players.human.avatarSeed='human';
+  f.table(id).players.human.cards=[{val:'A',suit:'♠'}];f.table(id).players.human.bet=7;
+  f.table(id).gameState.phase='flop';f.table(id).gameState.activeTurnUid='human';
+  f.table(id).tournamentId='avatarEvent';f.docs.set('tournaments/avatarEvent',{players:{human:{uid:'human',avatarSeed:'human',paid:100,tableId:id}},prizePool:400,status:'running'});
+  const money=[f.balance('owner'),f.balance('human')];
+  for(const patch of [{avatarSeed:'av3d::astronaut',photo:''},{avatarSeed:'',photo:'data:image/png;base64,AAAA'},{avatarSeed:'',photo:''}]){
+   await f.profile(patch);const before=copy(f.table(id)),event=copy(f.docs.get('tournaments/avatarEvent'));
+   await f.seatOp(id,'heartbeat',{avatarSeed:'av3d::pig',photo:'forged',targetUid:'owner'});
+   const after=f.table(id),expectedSeed=patch.avatarSeed||'human';
+   assert.equal(after.players.human.avatarSeed,expectedSeed);assert.equal(after.players.human.photo,patch.photo);
+   const expected=copy(before);Object.assign(expected.players.human,{avatarSeed:expectedSeed,photo:patch.photo,lastSeen:f.now()});expected.gameState.__seq++;
+   assert.deepEqual(after,expected,'Only appearance, presence and the snapshot sequence change');
+   Object.assign(event.players.human,{avatarSeed:expectedSeed,photo:patch.photo});assert.deepEqual(f.docs.get('tournaments/avatarEvent'),event);
+   assert.deepEqual([f.balance('owner'),f.balance('human')],money);
+  }
+  f.docs.set('clubs/newClub',{ownerUid:'owner'});await f.profile({avatarSeed:'av3d::professor',photo:''});await f.joinClub('newClub');
+  assert.equal(f.docs.get('memberships/human_newClub').avatarSeed,'av3d::professor');
+ }
 });

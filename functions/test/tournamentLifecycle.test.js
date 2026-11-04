@@ -407,3 +407,46 @@ test('until-start bonus includes all pre-start registrants and automatic fill, b
  await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).status,'running');assert.equal(T.chips(f.tables(id)),360);
  assert.equal(T.earlyRegistrationBonus(f.tour(id),f.now()),0);
 });
+
+test('PLO7 tournaments keep five-seat tables through late entry, balancing and the final',async t=>{
+ const f=fixture(173),id=await create(f,{pokerType:'Omaha 7',tableSize:9,maxPlayers:20,lateRegUntilLevel:1,structure:[{sb:50,bb:100,ante:0,mins:120}]});
+ assert.equal(f.tour(id).tableSize,5);assert.equal(f.tour(id).maxPlayers,20);
+ await startHumans(f,id,11);assert.equal(f.tables(id).length,3);
+ f.member('latePlo7');await f.command('latePlo7','register',{tournamentId:id});assert.equal(f.tour(id).entryCount,12);
+ f.tour(id).lateRegUntilLevel=0;
+ let ticks=0,sawSevenCards=false,sawFinal=false;
+ for(;ticks<800&&f.tour(id).status==='running';ticks++){
+  f.advance(2000);await f.tours.tickTournament(id,f.now());
+  if(f.tour(id).status!=='running')break;
+  assert.equal(f.tour(id).integrityIssue||null,null);assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
+  for(const row of f.tables(id)){
+   assert.equal(row.settings.maxPlayers,5);assert.equal(row.settings.omahaPotLimit,true);assert.equal(row.settings.rakePercent,0);
+   assert.ok(Object.keys(row.players).length<=5,'No sixth seat during balancing or consolidation');
+   sawFinal ||= row.tournament.final===true;
+   sawSevenCards ||= Object.values(row.players).some(p=>p.cardCount===7);
+   await playOne(f,row);
+  }
+ }
+ const done=f.tour(id);assert.equal(done.status,'done');assert.ok(sawSevenCards);assert.ok(sawFinal);assert.equal(done.results.length,12);
+ assert.equal(Object.values(done.players).filter(p=>!p.out).length,1);assert.equal(done.results.reduce((sum,p)=>sum+p.prize,0),120);
+ t.diagnostic(JSON.stringify({ticks,entrants:12,tableLimit:5,finalCompleted:sawFinal}));
+});
+
+
+test('tournaments retain selected avatars at registration, manual/scheduled start and late entry',async()=>{
+ for(const scheduled of [false,true]){
+  const f=fixture(94),id=await create(f,{startAt:f.now()+1000,lateRegUntilLevel:2});
+  for(const uid of ['avatarA','avatarB']){f.member(uid);f.docs.get('users/'+uid).avatarSeed='av3d::cat';await f.command(uid,'register',{tournamentId:id});assert.equal(f.tour(id).players[uid].avatarSeed,'av3d::cat');}
+  // A player can choose again after registration, before anyone has a seat.
+  f.docs.get('users/avatarA').avatarSeed='av3d::astronaut';
+  if(scheduled){f.advance(2000);await f.tours.tickTournament(id,f.now());}else await f.command('owner','start',{tournamentId:id});
+  assert.equal(f.tour(id).players.avatarA.avatarSeed,'av3d::astronaut');
+  assert.equal(f.tables(id).find(row=>row.players.avatarA).players.avatarA.avatarSeed,'av3d::astronaut');
+  assert.equal(f.tables(id).find(row=>row.players.avatarB).players.avatarB.avatarSeed,'av3d::cat');
+  f.member('lateAvatar');Object.assign(f.docs.get('users/lateAvatar'),{photo:'data:image/png;base64,AAAA',avatarSeed:''});await f.command('lateAvatar','register',{tournamentId:id});
+  const seat=f.tables(id).find(row=>row.players.lateAvatar).players.lateAvatar;
+  assert.equal(seat.photo,'data:image/png;base64,AAAA');assert.equal(seat.avatarSeed,'lateAvatar');
+  assert.equal(f.tour(id).players.lateAvatar.photo,seat.photo);
+  assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
+ }
+});

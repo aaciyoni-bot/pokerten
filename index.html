@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="353">
+    <meta name="app-version" content="358">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1107,7 +1107,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=312">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=353">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=356">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -1192,12 +1192,13 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
     <script src="assets/js/poker-auth.js?v=312"></script>
     <script src="assets/js/club-ui.js?v=312"></script>
-    <link rel="stylesheet" href="assets/css/settlement.css?v=346">
-    <script src="assets/js/poker-settlement-ui.js?v=346"></script>
+    <link rel="stylesheet" href="assets/css/settlement.css?v=354">
+    <link rel="stylesheet" href="assets/css/bot-chat.css?v=355">
+    <script src="assets/js/poker-settlement-ui.js?v=354"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
-    <script src="assets/js/poker-tournament.js?v=338"></script>
-    <script src="assets/js/poker-runtime.js?v=297"></script>
-    <script src="assets/js/poker-range-model.js?v=304"></script>
+    <script src="assets/js/poker-tournament.js?v=356"></script>
+    <script src="assets/js/poker-runtime.js?v=356"></script>
+    <script src="assets/js/poker-range-model.js?v=356"></script>
 <script>
 
 const pokerCommand=async(name,data,scope='')=>{const clean=JSON.parse(JSON.stringify(data));const key=String(window.fb.auth?.currentUser?.uid||'')+':'+scope+':'+name+':'+JSON.stringify(clean),pending=window.__pkPending||(window.__pkPending=new Map());if(pending.has(key))return pending.get(key);const payload={...clean,requestId:clean.requestId||crypto.randomUUID()};const task=(async()=>{for(let attempt=0;;attempt++){try{const result=await window.fb.fx(name,payload);if(['pkClubMember','pkProfile'].includes(name)&&window.dispatchEvent&&window.Event)window.dispatchEvent(new window.Event('pk-club-changed'));return result;}catch(e){if(attempt>=1||!['functions/unavailable','functions/deadline-exceeded'].includes(e.code))throw e;}}})();pending.set(key,task);try{return await task;}finally{pending.delete(key);}};
@@ -2018,6 +2019,14 @@ const VARIANT_STYLE = {
     spine: 'linear-gradient(180deg,#c026d3,#86198f)',
     hue: '#e879f9'
   },
+  'Omaha 7': {
+    chip: 'bg-orange-500/15 text-orange-300 border-orange-500/50',
+    ico: 'text-orange-400',
+    icoBg: 'bg-orange-900/30 border-orange-700/40',
+    bar: 'from-orange-500 to-orange-700',
+    spine: 'linear-gradient(180deg,#f97316,#9a3412)',
+    hue: '#fb923c'
+  },
   'Pineapple': {
     chip: 'bg-amber-500/15 text-amber-300 border-amber-500/50',
     ico: 'text-amber-400',
@@ -2035,6 +2044,7 @@ const variantLabel = (gt, s) => {
     'Omaha 4': nlo ? 'NLO' : 'PLO',
     'Omaha 5': nlo ? 'NLO5' : 'PLO5',
     'Omaha 6': nlo ? 'NLO6' : 'PLO6',
+    'Omaha 7': 'PLO7',
     'Pineapple': 'PINE'
   }[gt] || gt;
 };
@@ -2328,7 +2338,7 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
       if (!m.gift && (m.emoji || m.text) && n - m.at < 5000) r[m.uid] = m.emoji || m.text;
     });
     return r;
-  }, [rawChat.length, pendChat.length, tick, mutedUids.length]);
+  }, [rawChat, pendChat, tick, mutedUids]);
   const nowT = Date.now();
   const gifts = chatArr.filter(m => m.gift && nowT - m.at < 2300);
   const liveCount = Object.keys(bubbles).length + gifts.length;
@@ -2649,7 +2659,8 @@ const GAME_CARDS = {
   'Pineapple': 3,
   'Omaha 4': 4,
   'Omaha 5': 5,
-  'Omaha 6': 6
+  'Omaha 6': 6,
+  'Omaha 7': 7
 };
 const HOLE_ORD = {
   '2': 2,
@@ -2788,7 +2799,8 @@ const bestScoreFull = (hole, board5, gameType) => {
   const omaha = (gameType || '').startsWith('Omaha');
   let best = 0;
   if (omaha) {
-    getCombinations(hole, 2).forEach(h => getCombinations(board5, 3).forEach(b => {
+    const boardCombos = getCombinations(board5, 3);
+    getCombinations(hole, 2).forEach(h => boardCombos.forEach(b => {
       const s = evaluate5Cards([...h, ...b]);
       if (s > best) best = s;
     }));
@@ -2800,6 +2812,8 @@ const bestScoreFull = (hole, board5, gameType) => {
   }
   return best;
 };
+const pokerGameFitsTable = (game, settings = {}, playerCount = 0) =>
+  !!GAME_CARDS[game] && Math.max(playerCount, Number(settings.maxPlayers) || (game === 'Omaha 7' ? 5 : 6)) <= (game === 'Omaha 7' ? 5 : Math.floor(44 / GAME_CARDS[game]));
 const bestScoreNow = (hole, board, gameType) => {
   if (!hole || hole.length === 0) return 0;
   const omaha = (gameType || '').startsWith('Omaha');
@@ -3118,7 +3132,7 @@ function botDecisionCore(S, uid) {
   const snap = (x) => Math.max(bb, Math.round(x / bb) * bb);
   const gt = g.currentGameType || S.settings.baseGameType || 'NLH';
   const maxRaise = Math.min(round2(stack + (b.bet || 0)),
-    gt.startsWith('Omaha') && S.settings.omahaPotLimit !== false ? round2(g.highestBet + potNow + toCall) : Infinity);
+    gt.startsWith('Omaha') && (gt === 'Omaha 7' || S.settings.omahaPotLimit !== false) ? round2(g.highestBet + potNow + toCall) : Infinity);
   const raiseTo = (x) => round2(Math.min(Math.max(snap(x), round2(g.highestBet + (g.minRaise || bb))), maxRaise));
   const style=b.botStyle||['tight','balanced','aggressive'][Array.from(uid).reduce((n,c)=>n+c.charCodeAt(0),0)%3];
   const r=Math.min(.999,Math.random()/(style==='aggressive'?1.35:style==='tight'?.75:1));
@@ -3596,13 +3610,36 @@ const botMissions = uid => {
   done.hands_50 = 50;
   return done;
 };
+function canChatAsBot(user,table,targetUid) {
+  const p=table?.players?.[targetUid];
+  return !!(isGodUser(user)&&table?.type==='poker'&&table?.authorityVersion===2&&table?.settings?.serverEngine===true&&!table.archived&&!table.tournament?.finished&&!table.tournament?.cancelled&&p?.uid===targetUid&&p.isBot===true&&p.status!=='out');
+}
+function BotChatComposer({name,onSend,muted=false}) {
+  const [text,setText]=React.useState(''),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[sent,setSent]=React.useState(false);
+  const lock=React.useRef(false),pending=React.useRef(null);
+  const send=async e=>{
+    e.preventDefault();const body=text.trim();if(lock.current||muted||!body||body.length>240)return;
+    if(pending.current?.text!==body)pending.current={text:body,requestId:crypto.randomUUID()};
+    lock.current=true;setBusy(true);setError('');setSent(false);
+    try{await onSend(body,pending.current.requestId);pending.current=null;setText('');setSent(true);}
+    catch(e){setError(e?.message||'Message did not send. Please try again.');}
+    finally{lock.current=false;setBusy(false);}
+  };
+  return React.createElement('form',{className:'bot-chat-compose',onSubmit:send,'aria-label':'Write as '+name},
+    React.createElement('label',null,'Sending as '+name,React.createElement('textarea',{value:text,rows:3,maxLength:240,dir:'auto',disabled:busy||muted,placeholder:'Write a message…','aria-label':'Message as '+name,onChange:e=>{setText(e.target.value);setError('');setSent(false);}})),
+    React.createElement('div',{className:'bot-chat-compose-footer'},React.createElement('span',null,text.length+'/240'),React.createElement('button',{type:'submit',disabled:busy||muted||!text.trim()},busy?'Sending…':'Send')),
+    muted&&React.createElement('p',{role:'status'},'Table chat is muted.'),error&&React.createElement('p',{role:'alert'},error),sent&&React.createElement('p',{role:'status'},'Message sent'));
+}
 const PlayerPeek = ({
   peek,
   onClose,
   clubId,
-  onKick
+  onKick,
+  onChatAs,
+  chatMuted = false
 }) => {
   const [mi, setMi] = React.useState(null);
+  const [compose,setCompose] = React.useState(false);
   React.useEffect(() => {
     let dead = false;
     (async () => {
@@ -3624,6 +3661,7 @@ const PlayerPeek = ({
   const doneCount = mi ? MISSIONS.filter(m => (mi[m.k] || 0) >= m.goal).length : 0;
   return React.createElement("div", {
     className: "fixed right-2 top-16 z-[450] w-56 glass-panel border border-amber-500/40 rounded-2xl p-3 shadow-2xl animate-pop-in",
+    style:{maxHeight:"calc(100dvh - 90px)",overflowY:"auto"},
     dir: "ltr"
   }, React.createElement("div", {
     className: "flex items-center justify-between mb-2"
@@ -3649,7 +3687,7 @@ const PlayerPeek = ({
     // manager action lives HERE, not as a permanent ✕ on every seat
     onClick: onKick,
     className: "w-full mt-2.5 bg-rose-950/60 hover:bg-rose-800 border border-rose-500/40 text-rose-300 hover:text-white py-2 rounded-xl font-black text-[11px]"
-  }, "🚪 Remove from table"));
+  }, "🚪 Remove from table"), onChatAs && React.createElement("button",{type:"button",className:"w-full mt-2.5 bg-teal-950 border border-teal-400/40 text-teal-200 py-2 rounded-xl font-black text-xs",onClick:()=>setCompose(v=>!v),"aria-expanded":compose},"Write as "+peek.name),onChatAs&&compose&&React.createElement(BotChatComposer,{name:peek.name,onSend:onChatAs,muted:chatMuted}));
 };
 const SPIN_SEGS = [2, 3, 5, 2, 10, 3, 2, 5, 3, 25, 2, 3];
 const SEG_COL = {
@@ -3915,6 +3953,24 @@ const positionPokerCommunity = field => {
     bet.style.setProperty('--poker-bet-clear-x',dx+'px');
     bet.style.setProperty('--poker-bet-clear-y',dy+'px');
   });
+  // A two-row PLO7 hand reaches above the hero. If a neighbour's bet
+  // enters that space, keep it beside its owner, below the owner's labels.
+  const rowsHand=field.querySelector('.poker-own-fan[data-hand-layout="rows"]');
+  if(rowsHand){
+    const cards=[...rowsHand.children].map(n=>n.getBoundingClientRect());
+    field.querySelectorAll('.poker-bet[data-player-uid]').forEach(bet=>{
+      const seat=[...field.querySelectorAll('.poker-seat[data-player-uid]')].find(n=>n.dataset.playerUid===bet.dataset.playerUid);
+      if(!seat||seat.classList.contains('poker-seat-hero')||seat.dataset.seatSide==='center')return;
+      const br=bet.getBoundingClientRect();
+      if(!cards.some(r=>br.left<r.right+4&&br.right>r.left-4&&br.top<r.bottom+4&&br.bottom>r.top-4))return;
+      const labels=[...seat.querySelectorAll('.poker-player-info,.poker-result-meta')].map(n=>n.getBoundingClientRect()).filter(r=>r.width&&r.height);
+      if(!labels.length)return;
+      const label=labels[0],left=seat.dataset.seatSide==='left'?label.left+4:label.right-br.width-4;
+      const top=Math.max(...labels.map(r=>r.bottom))+4;
+      bet.style.setProperty('--poker-bet-clear-x',((parseFloat(bet.style.getPropertyValue('--poker-bet-clear-x'))||0)+left-br.left)+'px');
+      bet.style.setProperty('--poker-bet-clear-y',((parseFloat(bet.style.getPropertyValue('--poker-bet-clear-y'))||0)+top-br.top)+'px');
+    });
+  }
   // Reset before measuring so repeated renders/resizes never accumulate a shift.
   community.style.setProperty('--poker-board-shift','0px');
   community.removeAttribute('data-caption-obscured');
@@ -4212,8 +4268,9 @@ function PokerMusicButton({tile=false}={}) {
     React.createElement('span',{className:tile?'poker-menu-label':undefined},enabled?'MUSIC ON':'MUSIC OFF'));
 }
 function AppReleaseControls() {
+  const release=window.PokerAppUpdate?.version||document.querySelector('meta[name="app-version"]')?.content||'';
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':'Version 353. Check for updates'},'v353 · Check update'),
+    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':`Version ${release}. Check for updates`},`v${release} · Check update`),
     React.createElement(PokerMusicButton),
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
 }
@@ -6149,7 +6206,7 @@ function ProfileView({
   const setSeed = async seed => {
     try {
       await pokerCommand('pkProfile',{patch:{avatarSeed:seed,photo:''}});
-      showToast("Avatar updated! It takes effect at Tables on next login", "success");
+      showToast("Avatar updated!", "success");
     } catch (e) {showToast(e.message||"Could not update profile","error");}
   };
   const onPhotoPick = e => {
@@ -6695,10 +6752,11 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
   const [opened, setOpened] = useState('');
   const requestLock = useRef(false);
   const panelId = React.useId();
-  const games = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
-  const gameLabel = game === 'NLH' ? 'Texas Hold’em' : game;
+  const games = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Omaha 7', 'Pineapple'];
+  const gameLabel = game === 'NLH' ? 'Texas Hold’em' : game === 'Omaha 7' ? 'OMAHA 7 · PLO7' : game;
   const allowed = canManageGame(user, 'poker');
-  const valid = games.includes(game) && ['0.5','1','2'].includes(blinds) && ['4','6'].includes(seats) && ['0','1','2'].includes(vacancies) &&
+  const seatOptions = game === 'Omaha 7' ? [4,5] : [4,6];
+  const valid = games.includes(game) && ['0.5','1','2'].includes(blinds) && seatOptions.includes(Number(seats)) && ['0','1','2'].includes(vacancies) &&
     [minBuy,maxBuy,rake].every(v => v !== '' && Number.isFinite(Number(v))) && Number(minBuy) >= 0.01 && Number(maxBuy) >= Number(minBuy) && Number(maxBuy) <= 10000000 && Number(rake) >= 0 && Number(rake) <= 20;
   const botCount = Number(seats) - Number(vacancies);
   // Match the server's 100 BB buy-in, capped to the selected table limits.
@@ -6729,13 +6787,13 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
       React.createElement('p', {className:'text-xs text-slate-300 mb-3'}, 'Open one table with the game, blinds and seats you choose. Tables open only when you request them.'),
       React.createElement('div', {className:'grid grid-cols-2 gap-3'},
         React.createElement('label', {className:labelClass}, 'Game', React.createElement('select', {'aria-label':'Quick table game', value:game, disabled:busy, className:inputClass,
-          onChange:e => {setGame(e.target.value);setSeats(['Omaha 4','Omaha 5','Pineapple'].includes(e.target.value) ? '4' : '6');clearNotice();}},
-          games.map(g => React.createElement('option', {key:g, value:g}, g === 'NLH' ? 'Texas Hold’em (NLH)' : g)))),
+          onChange:e => {setGame(e.target.value);setSeats(e.target.value === 'Omaha 7' ? '5' : ['Omaha 4','Omaha 5','Pineapple'].includes(e.target.value) ? '4' : '6');clearNotice();}},
+          games.map(g => React.createElement('option', {key:g, value:g}, g === 'NLH' ? 'Texas Hold’em (NLH)' : g === 'Omaha 7' ? 'OMAHA 7 · PLO7' : g)))),
         React.createElement('label', {className:labelClass}, 'Blinds', React.createElement('select', {'aria-label':'Quick table blinds', value:blinds, disabled:busy, className:inputClass, dir:'ltr',
           onChange:e => {setBlinds(e.target.value);setMinBuy(String(Number(e.target.value)*100));setMaxBuy(String(Number(e.target.value)*400));clearNotice();}},
           ['0.5','1','2'].map(b => React.createElement('option', {key:b, value:b}, b + '/' + Number(b)*2)))),
         React.createElement('label', {className:labelClass}, 'Seats', React.createElement('select', {'aria-label':'Quick table seats', value:seats, disabled:busy, className:inputClass,
-          onChange:e => {setSeats(e.target.value);clearNotice();}}, [4,6].map(n => React.createElement('option', {key:n, value:n}, n + ' seats')))),
+          onChange:e => {setSeats(e.target.value);clearNotice();}}, seatOptions.map(n => React.createElement('option', {key:n, value:n}, n + ' seats')))),
         React.createElement('label', {className:labelClass}, 'Bot seats', React.createElement('select', {'aria-label':'Quick table bot seats', value:vacancies, disabled:busy, className:inputClass,
           onChange:e => {setVacancies(e.target.value);clearNotice();}},
           React.createElement('option', {value:'0'}, 'Full · ' + seats + ' bots'),
@@ -6847,7 +6905,7 @@ function LobbyView({
     showToast('Loaded template: ' + tp.name, 'info');
   };
   const delDurakTpl = nm => persistDTpls(dTpls.filter(x => x.name !== nm));
-  const GAME_ORDER = ['NLH', 'Pineapple', 'Omaha 4', 'Omaha 5', 'Omaha 6'];
+  const GAME_ORDER = ['NLH', 'Pineapple', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Omaha 7'];
   const gtRank = t => {
     const idx = GAME_ORDER.indexOf((t.settings || {}).baseGameType || 'NLH');
     return idx < 0 ? 99 : idx;
@@ -6893,7 +6951,7 @@ function LobbyView({
       showToast(e.message || 'Could not open table', 'error');
     } finally { templateCreateLock.current = false; setOpeningTemplate(null); }
   };
-  const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Pineapple'];
+  const ALL_POKER_VARIANTS = ['NLH', 'Omaha 4', 'Omaha 5', 'Omaha 6', 'Omaha 7', 'Pineapple'];
   const lobbyVariantLabel = (gt, settings) => gt === 'Omaha 4' ? (settings?.omahaPotLimit === false ? 'NLO4' : 'PLO4') : gt === 'Pineapple' ? 'Pineapple' : variantLabel(gt, settings);
   const variantCount = v => pokerTables.filter(t => !(t.settings || {}).spinMode && ((t.settings || {}).baseGameType || 'NLH') === v).length;
   // Spin & Cash lives in its OWN section (where the tournaments block sits),
@@ -10103,10 +10161,10 @@ function PokerCreateView({
     spinStack: 1000,
     actionDeal: 'mild'
   });
-  const upd = (k, v) => setS(prev => ({
-    ...prev,
-    [k]: v
-  }));
+  const normalizePlo7 = next => next.baseGameType === 'Omaha 7'
+    ? {...next, maxPlayers:Math.min(5, Number(next.maxPlayers)||5), autoStart:Math.min(5, Number(next.autoStart)||2), showcaseBots:next.showcaseBots==='full'?'full':Math.min(Number(next.showcaseBots)||0,5), omahaPotLimit:true, runTwice:false, spinMode:false}
+    : next;
+  const upd = (k, v) => setS(prev => normalizePlo7({...prev, [k]:v}));
   const [spinOpen, setSpinOpen] = useState(false);
   const [sf, setSf] = useState({ gt: 'NLH', buy: 50, stack: 1000, sb: 10, levelSec: 180 });
   const createSpin = async () => {
@@ -10171,10 +10229,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
     showToast && showToast('Template saved: ' + nm, 'success');
   };
   const loadTpl = tp => {
-    setS(prev => ({
-      ...prev,
-      ...tp.settings
-    }));
+    setS(prev => normalizePlo7({...prev, ...tp.settings}));
     showToast && showToast('Loaded template: ' + tp.name, 'info');
   };
   const delTpl = nm => persistTpls(tpls.filter(x => x.name !== nm));
@@ -10225,7 +10280,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
   }, Object.keys(GAME_CARDS).map(g => React.createElement("option", {
     key: g,
     value: g
-  }, g, " (", GAME_CARDS[g], " cards)")))), React.createElement(Field, {
+  }, g === 'Omaha 7' ? 'OMAHA 7 · PLO7' : g, " (", GAME_CARDS[g], " cards)")))), React.createElement(Field, {
     label: "Dealer's Choice"
   }, React.createElement("label", {
     className: `flex items-center justify-between rounded-xl px-4 py-3 border cursor-pointer ${s.isDealerChoice ? 'bg-rose-500/10 border-rose-500/60' : 'bg-slate-900 border-white/10'}`
@@ -10253,7 +10308,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
     value: s.maxPlayers,
     onChange: e => upd('maxPlayers', parseInt(e.target.value)),
     className: sel
-  }, [2, 3, 4, 5, 6, 7, 8, 9].map(n => React.createElement("option", {
+  }, [2, 3, 4, 5, 6, 7, 8, 9].filter(n => s.baseGameType !== 'Omaha 7' || n <= 5).map(n => React.createElement("option", {
     key: n,
     value: n
   }, n, " Players")))), React.createElement(Field, {
@@ -10307,7 +10362,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
     className: sel
   }, React.createElement("option", {
     value: 0
-  }, "Off"), React.createElement("option",{value:"full"},"Fill every seat with bots"), [2, 3, 4, 5, 6, 7, 8, 9].filter(n=>n<=Math.min(Number(s.maxPlayers)||6,Math.floor(44/(s.isDealerChoice?6:(GAME_CARDS[String(s.baseGameType).replace(/^Omaha([456])$/,'Omaha $1')]||2))))).map(n => React.createElement("option", {
+  }, "Off"), React.createElement("option",{value:"full"},"Fill every seat with bots"), [2, 3, 4, 5, 6, 7, 8, 9].filter(n=>n<=Math.min(Number(s.maxPlayers)||6,Math.floor(44/(s.isDealerChoice?6:(GAME_CARDS[String(s.baseGameType).replace(/^Omaha([4567])$/,'Omaha $1')]||2))))).map(n => React.createElement("option", {
     key: n,
     value: n
   }, n, " bots, playing non-stop"))), React.createElement("div", {
@@ -10381,6 +10436,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
   }, React.createElement("input", {
     type: "checkbox",
     checked: !!s.runTwice,
+    disabled: s.baseGameType === 'Omaha 7',
     onChange: e => upd('runTwice', e.target.checked),
     className: "accent-cyan-500 w-4 h-4"
   }), React.createElement("span", {
@@ -10390,19 +10446,21 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
   }, React.createElement("input", {
     type: "checkbox",
     checked: s.omahaPotLimit !== false,
+    disabled: s.baseGameType === 'Omaha 7',
     onChange: e => upd('omahaPotLimit', e.target.checked),
     className: "accent-amber-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-white text-sm font-bold"
   }, "Omaha plays ", React.createElement("b", {
     className: "text-amber-400"
-  }, "POT LIMIT"), " (PLO) — uncheck for No-Limit (NLO)"))), React.createElement(Field, {
+  }, "POT LIMIT"), s.baseGameType === 'Omaha 7' ? " — PLO7 always uses Pot Limit and one board" : " (PLO) — uncheck for No-Limit (NLO)"))), React.createElement(Field, {
     label: "🎡 Spin & Cash"
   }, React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer bg-slate-900 border border-amber-500/30 rounded-xl p-3"
   }, React.createElement("input", {
     type: "checkbox",
     checked: !!s.spinMode,
+    disabled: s.baseGameType === 'Omaha 7',
     onChange: e => {
       const on = e.target.checked;
       setS(prev => ({
@@ -10666,6 +10724,9 @@ function PokerTable({
   const godView = godViewRequested && isGodUser(user);
   useEffect(() => setGodView(false), [user.uid]);
   const [rabbit, setRabbit] = useState([]);
+  const [plo7Layout, setPlo7Layout] = useState(() => {
+    try { return localStorage.getItem('pkPlo7Layout') === 'fan' ? 'fan' : 'rows'; } catch (_) { return 'rows'; }
+  });
   const [betFx, setBetFx] = useState([]);
   const [discFx, setDiscFx] = useState(null);
   const [discHide, setDiscHide] = useState(null);
@@ -11092,10 +11153,6 @@ throw new Error('Game state is managed by the server');
     const minB = Math.max(buyInMin(setts), lock);
     if (buyAmt < minB) setBuyAmt(round2(minB));
   }, [tableState]);
-  // Self-heal MY seat identity: if a write ever left my entry with a blank or
-  // corrupt name/avatar/uid (the "I have no avatar" report), repair it from
-  // the live profile. Converges in one write, no loops.
-  useEffect(() => {}, [tableState?.players?.[user.uid]?.name, tableState?.players?.[user.uid]?.photo, tableState?.players?.[user.uid]?.avatarSeed]);
   const [preCF, setPreCF] = useState(false);
   useEffect(() => {
     if (!isMyTurn || !preCF) return;
@@ -11112,7 +11169,7 @@ throw new Error('Game state is managed by the server');
   useEffect(() => {
     if (!['preflop', 'flop', 'turn', 'river'].includes(gs.phase) || myPlayer?.status !== 'active') setPreCF(false);
   }, [gs.phase, myPlayer?.status]);
-  useEffect(() => {if(!tableState?.players?.[user.uid])return;const beat=()=>pokerCommand('pkSeat',{tableId:tableDocId,op:'heartbeat'}).catch(()=>{});beat();const iv=setInterval(beat,12000);return()=>clearInterval(iv);}, [isSeated, tableDocId]);
+  useEffect(() => {if(!tableState?.players?.[user.uid])return;const beat=()=>pokerCommand('pkSeat',{tableId:tableDocId,op:'heartbeat'}).catch(()=>{});beat();const iv=setInterval(beat,12000);return()=>clearInterval(iv);}, [isSeated, tableDocId, user.photo, user.avatarSeed]);
   const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
   useEffect(() => {
     const on = () => setOffline(false),
@@ -11513,6 +11570,7 @@ throw new Error('Game state is managed by the server');
       return;
     }
     const n = GAME_CARDS[gameType] || 2;
+    if (actives.length * n + 8 > 52 || gameType === 'Omaha 7' && !pokerGameFitsTable(gameType, setts, Object.keys(pl).length)) { showToast('PLO7 requires a table with at most 5 seats', 'error'); return; }
     actives.forEach(p => {
       p.cards = sortHoleCards(deck.splice(0, n));
       p.bet = 0;
@@ -11873,7 +11931,7 @@ try{const result=await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amou
     }
     if (gs.phase === 'dc_selection' && gs.dcUid && players[gs.dcUid]?.isBot) {
       const tm = setTimeout(() => {
-        const opts = Object.keys(GAME_CARDS);
+        const opts = Object.keys(GAME_CARDS).filter(game => pokerGameFitsTable(game, setts, Object.keys(players).length));
         selectDCGame(opts[Math.floor(Math.random() * opts.length)], gs.dcUid);
       }, 2200);
       return () => clearTimeout(tm);
@@ -12408,7 +12466,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "bg-amber-900/80 border border-amber-500/50 text-amber-300 text-[11px] font-black px-3 py-1 rounded-lg animate-pulse",
     dir: "ltr"
   }, "ALL-IN · ", realEq[user.uid], "%"));
-  const potLimited = String(gs.currentGameType || '').startsWith('Omaha') && setts.omahaPotLimit !== false;
+  const potLimited = String(gs.currentGameType || '').startsWith('Omaha') && (gs.currentGameType === 'Omaha 7' || setts.omahaPotLimit !== false);
   const potCapTo = round2((gs.highestBet || 0) + totalPot + toCallMe);
   const myMaxBet = round2(Math.min((myPlayer?.bet || 0) + (myPlayer?.stack || 0), potLimited ? potCapTo : Infinity));
   const canShowBuyIn = !isSeated && !spectate;
@@ -12515,6 +12573,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: `flex-1 py-2.5 rounded-lg border-2 text-xs font-black transition-transform ${!!skin.deck4 === val ? 'border-amber-400 bg-amber-500/15 text-white' : 'border-white/20 text-slate-400'}`
   }, label))), React.createElement("label", {
     className: "block text-xs font-bold text-slate-300 mb-4"
+  }, 'PLO7 hand layout', React.createElement('select', {
+    'aria-label':'PLO7 hand layout', value:plo7Layout,
+    onChange:e=>{setPlo7Layout(e.target.value);try{localStorage.setItem('pkPlo7Layout',e.target.value);}catch(_){}},
+    className:'block w-full mt-2 p-2.5 rounded-lg bg-slate-900 border border-white/20 text-white'
+  }, React.createElement('option',{value:'rows'},'3 above · 4 below (default)'), React.createElement('option',{value:'fan'},'Fan'))), React.createElement('label', {
+    className:'block text-xs font-bold text-slate-300 mb-4'
   }, "Your hand order", React.createElement("select", {
     "aria-label": "Your hand order",
     value: handOrder,
@@ -12863,6 +12927,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       'data-active-turn': isTurn ? 'true' : undefined,
       'data-turn-urgent': isTurn && turnSeconds <= 5 ? 'true' : undefined,
       'data-hole-count': Math.max(1, dispCards.length),
+      'data-hand-layout': isMe && dispCards.length === 7 ? plo7Layout : undefined,
       'data-cards-spread': isMe && gs.phase === 'discard',
       'data-seat-side': seatXv === 50 ? 'center' : seatXv < 50 ? 'left' : 'right',
       'data-seat-row': seatYv <= 22 ? 'top' : seatYv <= 40 ? 'upper' : seatYv <= 50 ? 'middle' : seatYv <= 71 ? 'lower' : 'bottom',
@@ -12928,6 +12993,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       const ang = hidden ? 3 : 4;
       return React.createElement("div", {
         'data-card-count': nC,
+        'data-hand-layout': isMe && nC === 7 ? plo7Layout : undefined,
         className: `poker-hole-cards ${!isMe ? 'poker-opponent-fan' + (hidden ? ' is-hidden' : '') : 'poker-own-fan'} ${!hidden && !isMe ? 'poker-revealed-hand' : ''} flex z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
         style: {
           transform: `translateX(${Math.round(inX * 8)}px)`
@@ -12958,6 +13024,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         size: "xl"
       })) : doFan ? React.createElement("span", {
         key: `h${handKey}:${ci}${sdReveal ? ':sd' : ''}`,
+        'data-card-position': displayIndex,
         className: "inline-block",
         style: {
           marginLeft: displayIndex === 0 ? 0 : ovl,
@@ -13210,7 +13277,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "text-slate-400 text-sm font-bold mb-5"
   }, "You're the dealer - pick the game for the next hand"), React.createElement("div", {
     className: "grid grid-cols-2 gap-3"
-  }, Object.keys(GAME_CARDS).map(g => React.createElement("button", {
+  }, Object.keys(GAME_CARDS).filter(game => pokerGameFitsTable(game, setts, Object.keys(players).length)).map(g => React.createElement("button", {
     key: g,
     onClick: () => selectDCGame(g),
     className: "bg-gradient-to-b from-slate-700 to-slate-900 hover:from-rose-600 hover:to-rose-800 border border-white/10 text-white py-4 rounded-2xl font-black transition-all"
@@ -13430,6 +13497,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     prize: tableState.spin.prize,
     buyIn: Number(setts.spinBuyIn) || 50
   }), peek && React.createElement(PlayerPeek, {
+    key:tableDocId+':'+peek.uid,
+    onChatAs:canChatAsBot(user,tableState,peek.uid)?async(text,requestId)=>{
+      await pokerCommand('pkBotChat',{tableId:tableDocId,targetUid:peek.uid,text,requestId});
+      playSnd('msg');
+    }:null,
+    chatMuted:ch.chatMuted,
     peek: peek,
     onClose: () => setPeek(null),
     clubId: CLUB_ID,
@@ -17274,6 +17347,7 @@ function TournamentsTab({
     setOpts(prev => ({
       ...prev,
       ...tp.opts,
+      tableSize:tp.opts.pokerType==='Omaha 7'?Math.min(5,Number(tp.opts.tableSize)||5):(tp.opts.tableSize??prev.tableSize),
       reentryBuyIn:tp.opts.reentryBuyIn??tp.opts.buyIn??0,
       reentryToPrizePool:tp.opts.reentryToPrizePool??true,
       lateRegCloseTime:'',
@@ -17751,7 +17825,8 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     value: opts.pokerType,
     onChange: e => setOpts({
       ...opts,
-      pokerType: e.target.value
+      pokerType: e.target.value,
+      tableSize:e.target.value==='Omaha 7'?Math.min(5,Number(opts.tableSize)||5):opts.tableSize
     }),
     className: "w-full bg-slate-900 text-white border border-slate-700 rounded-xl p-3 outline-none focus:border-purple-500 font-bold"
   }, Object.keys(GAME_CARDS).map(g => React.createElement("option", {
@@ -17954,7 +18029,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   }, "🎁 Club-funded bounty — free for players")), React.createElement("p", {
     className: "text-[10px] text-emerald-300/70 font-bold mt-1"
   }, "Players don't pay the bounty component (perfect for freerolls) — knockouts still pay real bounty money, on the club.")), isPoker && React.createElement('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-3', 'data-tournament-options':true},
- ...[['tableSize','Seats per table',2,9],['actionTime','Action time (seconds)',10,120],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
+ ...[['tableSize','Seats per table',2,opts.pokerType==='Omaha 7'?5:9],['actionTime','Action time (seconds)',10,120],['maxReentries','Maximum re-entries per player',0,20],['reentryBuyIn','Re-entry price (0 = free)',0,10000000],['progressiveCashPct','Progressive bounty paid now (%)',1,100],['mysteryStartLevel','Mystery bounty starts at level',1,100],['bountyBudgetRemaining','Club bounty reserve',0,10000000]].map(([key,label,min,max])=>React.createElement(Field,{key,label},React.createElement('input',{type:'number',min,max,step:key==='reentryBuyIn'?'0.01':1,value:opts[key],onChange:e=>setOpts({...opts,[key]:key==='tableSize'&&opts.pokerType==='Omaha 7'?Math.min(5,Number(e.target.value)):Number(e.target.value)}),className:'w-full bg-slate-900 text-white border border-slate-700 rounded-lg p-2'}))),
  React.createElement(Field,{label:'Bounty type'},React.createElement('select',{value:opts.bountyMode,onChange:e=>setOpts({...opts,bountyMode:e.target.value}),className:'w-full bg-slate-900 text-white p-2 rounded-lg'},...['fixed','progressive','mystery'].map(x=>React.createElement('option',{key:x,value:x},x)))),
  React.createElement('p',{className:'text-xs text-slate-300 sm:col-span-2'},opts.prizePoolMode==='fixed'?'Fixed pool: every entry and re-entry is club income. The prize total does not change.':'Choose whether the re-entry price increases the prize pool or is club income. Club entry fee and any player-funded bounty are added to the displayed total.'),
  ...[['reentry','Allow re-entry during late registration'],['reentryToPrizePool','Add re-entry price to the prize pool']].map(([key,label])=>React.createElement('label',{key,className:'text-sm text-slate-200 flex gap-2 items-center'},React.createElement('input',{type:'checkbox',disabled:key==='reentryToPrizePool'&&opts.prizePoolMode==='fixed',checked:key==='reentryToPrizePool'&&opts.prizePoolMode==='fixed'?false:opts[key],onChange:e=>setOpts({...opts,[key]:e.target.checked})}),label)),

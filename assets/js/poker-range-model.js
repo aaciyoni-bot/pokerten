@@ -88,14 +88,16 @@ function likelihood(f,event,priorEvents,read,preflopTier){
 }
 function sampleCards(pool,n,random){const result=pool.slice();for(let i=0;i<n;i++){const j=i+Math.floor(random()*(result.length-i));[result[i],result[j]]=[result[j],result[i]];}return result.slice(0,n);}
 function combos(pool,n,limit,random){if(n===2){const out=[];for(let i=0;i<pool.length;i++)for(let j=i+1;j<pool.length;j++)out.push([pool[i],pool[j]]);return out;}const seen=new Set(),out=[];while(out.length<limit){const h=sampleCards(pool,n,random),key=h.map(cardKey).sort().join('|');if(!seen.has(key)){seen.add(key);out.push(h);}}return out;}
-function buildRange({uid,hero,board,gameType,history,model={},holeCount},core){
- if(!Number.isInteger(holeCount)||holeCount<2||holeCount>6)throw Error('Invalid hole-card count');
+function buildRange({uid,hero,board,gameType,history,model={},holeCount,excluded=null,candidateLimit=null},core){
+ if(!Number.isInteger(holeCount)||holeCount<2||holeCount>7)throw Error('Invalid hole-card count');
  let cache=rangeCaches.get(core.score);if(!cache){cache=new Map();rangeCaches.set(core.score,cache);}
  const cacheKey=holeCount===2?JSON.stringify([uid,hero.map(cardKey).sort(),board.map(cardKey),gameType,history.filter(e=>e.uid===uid),model]):null;
  if(cacheKey&&cache.has(cacheKey))return cache.get(cacheKey);
- const boardIds=new Set(board.map(cardKey)),heroIds=new Set(hero.map(cardKey)),pool=core.deck.filter(c=>!boardIds.has(cardKey(c)));
+ const boardIds=new Set(board.map(cardKey)),heroIds=new Set(hero.map(cardKey)),pool=core.deck.filter(c=>!boardIds.has(cardKey(c))&&!(excluded?.has(cardKey(c))));
  const read=modelRead(model),events=history.filter(e=>e.uid===uid&&streets.includes(e.street));
- const candidates=combos(pool,holeCount,gameType.startsWith('Omaha')?480:600,core.random),out=[],blocked={value:0,bluff:0,valueAll:0,bluffAll:0},categoryMass={};
+ if(pool.length<holeCount)throw Error('Not enough cards for a compatible range');
+ const possible=Array.from({length:holeCount},(_,i)=>(pool.length-i)/(i+1)).reduce((n,x)=>n*x,1);
+ const candidates=combos(pool,holeCount,Math.min(Math.round(possible),candidateLimit||(gameType.startsWith('Omaha')?480:600)),core.random),out=[],blocked={value:0,bluff:0,valueAll:0,bluffAll:0},categoryMass={};
  for(const hand of candidates){
   const tier=core.preflop(hand);let weight=.05+read.vpip+tier*.2;const prior=[];
   for(const event of events){const streetBoard=event.board||board.slice(0,event.street==='flop'?3:event.street==='turn'?4:event.street==='river'?5:0);const f=features(hand,streetBoard,gameType,core);weight*=likelihood(f,event,prior,read,tier);prior.push({...event,_draw:f.drawOuts>=4});}
@@ -110,6 +112,10 @@ function buildRange({uid,hero,board,gameType,history,model={},holeCount},core){
  const categories=Object.entries(categoryMass).map(([category,mass])=>({category,percent:Math.round(mass/total*1000)/10})).sort((a,b)=>b.percent-a.percent);
  const nutBlocker=hero.some(c=>rank(c)===14&&board.filter(b=>b.suit===c.suit).length===3)? .12:0;
  const result={uid,combos:out,categories,read,exact:holeCount===2,blockerScore:nutBlocker+(blocked.valueAll?blocked.value/blocked.valueAll:0)-(blocked.bluffAll?blocked.bluff/blocked.bluffAll:0)};
+ // At a full PLO7 table, independent particle lists can have no compatible
+ // seventh-card hand left. Resample a small conditional *weighted* range
+ // from remaining cards instead of discarding the whole simulated deal.
+ if(holeCount===7)result.conditional=used=>buildRange({uid,hero,board,gameType,history,model,holeCount,excluded:used,candidateLimit:8},core);
  if(cacheKey){if(cache.size>=24)cache.delete(cache.keys().next().value);cache.set(cacheKey,result);}return result;
 }
 function pick(range,random,used){
@@ -122,12 +128,12 @@ function equity(input,ranges,core){
  const score=(h,b)=>core.score(kept(h,b),b,gameType);
  const own=missing===0?score(hero,board):null;
  if(missing===0&&ranges.length===1){let eq=0;for(const c of ranges[0].combos){const other=gameType==='Pineapple'?score(c.hand,board):c.features.score;eq+=c.weight*(own>other?1:own===other?.5:0);}return{equity:eq,callEquity:potTotal?pots.reduce((n,p)=>n+p.amount*(p.opponents.includes(0)?eq:1),0)/potTotal:eq,samples:ranges[0].combos.length,method:ranges[0].exact?'exact-weighted-river':'weighted-particle-river'};}
- const iterations=gameType.startsWith('Omaha')?160:500;let total=0,callTotal=0,done=0;
+ const iterations=gameType==='Omaha 7'?90:gameType.startsWith('Omaha')?160:500;let total=0,callTotal=0,done=0;
  for(let i=0;i<iterations;i++){
-  const used=new Set(known),selected=new Array(ranges.length),order=ranges.map((_,i)=>i);
+  const used=new Set(known),selected=new Array(ranges.length),selectedScores=new Array(ranges.length),order=ranges.map((_,i)=>i);
   for(let j=order.length-1;j>0;j--){const k=Math.floor(core.random()*(j+1));[order[j],order[k]]=[order[k],order[j]];}
-  let valid=true;for(const o of order){const c=pick(ranges[o],core.random,used);if(!c){valid=false;break;}selected[o]=c.hand;c.hand.forEach(c=>used.add(cardKey(c)));}if(!valid)continue;
-  const future=[...board,...sampleCards(core.deck.filter(c=>!used.has(cardKey(c))),missing,core.random)],my=own??score(hero,future),scores=selected.map(h=>score(h,future));
+  let valid=true;for(const o of order){let c=pick(ranges[o],core.random,used);if(!c&&ranges[o].conditional)c=pick(ranges[o].conditional(used),core.random,used);if(!c){valid=false;break;}selected[o]=c.hand;selectedScores[o]=c.features.score;c.hand.forEach(c=>used.add(cardKey(c)));}if(!valid)continue;
+  const future=[...board,...sampleCards(core.deck.filter(c=>!used.has(cardKey(c))),missing,core.random)],my=own??score(hero,future),scores=missing===0&&gameType!=='Pineapple'?selectedScores:selected.map(h=>score(h,future));
   const share=ids=>{let ties=1;for(const o of ids){if(scores[o]>my)return 0;if(scores[o]===my)ties++;}return 1/ties;};
   const all=share(ranges.map((_,i)=>i));total+=all;callTotal+=potTotal?pots.reduce((n,p)=>n+p.amount*share(p.opponents),0)/potTotal:all;done++;
  }
@@ -143,7 +149,7 @@ function relativeClass(f,eq,ranges){
 }
 function decide(input,core){
  const {hero,board,gameType,opponents,uid,history:rawHistory=[],price,stack,bet=0,highestBet=0,minRaise=1,bb=1,pot=0,maxRaise=stack+bet}=input;
- if(hero.length<2||hero.length>6||board.length<3||board.length>5||!opponents.length)throw Error('Invalid public decision state');
+ if(hero.length<2||hero.length>7||board.length<3||board.length>5||!opponents.length)throw Error('Invalid public decision state');
  const street=board.length===5?'river':board.length===4?'turn':'flop',history=rawHistory.map(e=>({...e}));
  // Old live hands and standalone callers may predate action journaling. The
  // outstanding visible bet is still evidence; it never becomes a random range.

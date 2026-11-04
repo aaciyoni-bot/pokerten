@@ -34,6 +34,23 @@ const mount=async role=>{await React.act(async()=>root.render(React.createElemen
  assertFunds(chipMetric(),'800.00','-200.00','-619.33');
  assert.match(doc.body.textContent,/Cycle management/);assert.equal(doc.querySelectorAll('table').length,0);await React.act(()=>[...doc.querySelectorAll('.st-main-tabs button')].find(b=>b.textContent==='Players').click());assert.match(doc.body.textContent,/Other human player/);await React.act(()=>doc.querySelector('.st-account-head').click());
  const buttons=()=>[...doc.querySelectorAll('button')];await React.act(()=>buttons().find(b=>b.textContent==='Agents').click());await React.act(()=>buttons().find(b=>b.textContent==='Record payment').click());const dialog=doc.querySelector('[role="dialog"]');assert.ok(dialog);assertEnglishUi(dialog,'Payment form');await React.act(()=>Simulate.change(dialog.querySelector('input[type=number]'),{target:{value:'50.25'}}));await React.act(async()=>Simulate.submit(dialog));assert.equal(calls.findLast(c=>c.name==='pkSettlement').args.amount,50.25);assert.equal(calls.findLast(c=>c.name==='pkSettlement').args.action,'payment');
+ // Collapsed mobile rows show the signed settlement balance, not an unsigned
+ // magnitude or a misleading expansion plus. Results can differ from closing.
+ data=fixture('owner','owner');
+ const signedCases=[[-10000,'-100.00','st-loss','Player pays'],[-29114,'-291.14','st-loss','Player pays'],[109242,'+1,092.42','st-gain','Player receives'],[0,'0.00',null,'Balanced']];
+ data.details=signedCases.map(([closing],i)=>({...structuredClone(data.details[0]),playerId:'signed-'+i,playerName:'Signed player '+i,closing,totals:{...data.details[0].totals,result:777}}));
+ const beforeSigned=structuredClone(data),writesBeforeSigned=calls.filter(c=>c.name==='pkSettlement').length;
+ await mount('owner-signed-balances');await React.act(()=>buttons().find(b=>b.textContent==='Players').click());
+ for(const [i,[,amount,color,label]] of signedCases.entries()){
+  const row=[...doc.querySelectorAll('.st-account')].find(n=>n.querySelector('.st-account-name strong').textContent==='Signed player '+i);
+  const due=row.querySelector('.st-account-due');assert.equal(text(due.querySelector('bdi')),amount);assert.equal(text(due.querySelector('small')),label);
+  if(color)assert.ok(due.querySelector('bdi').classList.contains(color));else assert.ok(!due.querySelector('.st-loss,.st-gain'));
+  assert.equal(text(row.querySelector('.st-account-result bdi')),'+7.77','game result remains separate from settlement balance');
+  const head=row.querySelector('button');assert.equal(head.getAttribute('aria-expanded'),'false');assert.ok(head.querySelector('svg.st-chevron[aria-hidden="true"]'));assert.equal(text(head.querySelector('.st-chevron')),'');
+  await React.act(()=>head.click());assert.equal(head.getAttribute('aria-expanded'),'true');assert.ok(row.querySelector('.st-account-detail'));
+  await React.act(()=>head.click());assert.equal(head.getAttribute('aria-expanded'),'false');assert.equal(row.querySelector('.st-account-detail'),null);
+ }
+ assert.deepEqual(data,beforeSigned,'formatting and expansion do not mutate accounting data');assert.equal(calls.filter(c=>c.name==='pkSettlement').length,writesBeforeSigned,'expanding a signed row never writes payments');
  const legacyPlayer={uid:'player',name:'Player',balance:80000,onTables:0,chips:80000,result:-20000,totalResult:-19600,openSessions:0};
  data={active:false,legacy:true,role:'player',canClose:false,cycle:{id:'legacy_current',number:0,status:'open',startAt:Date.now()-86400000,endAt:null},cycles:[],currentCycleId:'legacy_current',legacyReport:{players:[legacyPlayer],totals:legacyPlayer,asOf:Date.now()}};await mount('legacy-player');
  assert.match(doc.body.textContent,/Current cycle · Open/);assert.match(doc.body.textContent,/800\.00/);assert.match(doc.body.textContent,/-200\.00/);assert.doesNotMatch(doc.body.textContent,/Rake|Commission|Open new cycle|Close cycle|196\.00|Lifetime profit|Cumulative/i);

@@ -42,6 +42,24 @@ jobs:
       - name: Install Firebase CLI
         run: npm install -g firebase-tools
 
+      # Publish the destination before the legacy URL starts forwarding. A failed
+      # European deploy leaves the existing production handlers untouched.
+      - name: Deploy the European action destination first
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: firebase deploy --only functions:pkActEurope --project pokerten --non-interactive
+
+      - name: Verify European callable is serving and enforcing authentication
+        run: |
+          node --input-type=module <<'JS'
+          const response = await fetch('https://europe-west1-pokerten.cloudfunctions.net/pkActEurope', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:{}}), signal:AbortSignal.timeout(15000)
+          });
+          const body = await response.json();
+          if (response.status !== 401 || body.error?.status !== 'UNAUTHENTICATED') throw new Error('European action destination is not ready');
+          console.log('European action endpoint ready; unauthenticated actions rejected. No game state was changed.');
+          JS
+
       - name: Select poker functions only
         id: targets
         run: |

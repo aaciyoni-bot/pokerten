@@ -37,9 +37,10 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  await React.act(()=>toggle.click());assert.equal(toggle.getAttribute('aria-expanded'),'true');
  assert.equal(control('Quick table rake').value,'6','Current club rake is retained by default');
  await change('Quick table rake',4);
- for(const game of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple']){
+ for(const game of ['NLH','Omaha 4','Omaha 5','Omaha 6','Omaha 7','Pineapple']){
   await change('Quick table game',game);
-  const seats=['Omaha 4','Omaha 5','Pineapple'].includes(game)?4:6;
+  const seats=game==='Omaha 7'?5:['Omaha 4','Omaha 5','Pineapple'].includes(game)?4:6;
+  if(game==='Omaha 7')assert.deepEqual([...control('Quick table seats').options].map(o=>Number(o.value)),[4,5]);
   assert.equal(control('Quick table seats').value,String(seats),'Small Omaha and Pineapple tables default to four seats');
   for(const [index,sb] of [.5,1,2].entries()){
    await change('Quick table blinds',sb);await change('Quick table bot seats',index);
@@ -81,5 +82,5 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  await render('manager','banned');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null);
  w.fb.auth.currentUser={uid:'spectating-manager',email:'haim29071994@gmail.com',emailVerified:true};await render('player','pending');assert.ok(doc.querySelector('[aria-label="Quick bot tables"]'),'Existing verified oversight identity gets the same controls');
  w.fb.auth.currentUser.emailVerified=false;await render('player','approved');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null,'An unverified email does not grant management controls');
- await React.act(()=>root.unmount());w.close();console.log('PASS: saved templates and manual bot tables across five games / three stakes, seat and fill choices, funding, permissions, duplicate prevention and failure recovery');
+ await React.act(()=>root.unmount());w.close();console.log('PASS: saved templates and manual bot tables across six games / three stakes, seat and fill choices, funding, permissions, duplicate prevention and failure recovery');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

@@ -4,7 +4,7 @@
  const managementRole=['club_owner','manager','super_admin','agent','player'].includes(query.get('managementRole'))?query.get('managementRole'):query.has('agent')?'agent':query.has('player')?'player':'club_owner';
  const menuRole=['player','manager','super_admin','god'].includes(query.get('menuRole'))?query.get('menuRole'):'player';
  if(menuRole==='god')query.set('god','');
- const capacity=Math.min(9,Math.max(2,Number(query.get('seats'))||7));
+ const capacity=Math.min(mode==='omaha7'?5:9,Math.max(2,Number(query.get('seats'))||(mode==='omaha7'?5:7)));
  const frame=document.querySelector('iframe');frame.width=Number(query.get('width'))||(query.get('size')==='desktop'?1100:369);frame.height=Number(query.get('height'))||800;
  const projectRoot=new URL('../../',location.href),reviewStamp=Date.now();
  const localAsset=path=>{const url=new URL(path,projectRoot);url.searchParams.set('review',reviewStamp);return url.href;};
@@ -26,8 +26,8 @@
  if(query.has('god'))code=code.replace('const [godViewRequested, setGodView] = useState(false);','const [godViewRequested, setGodView] = useState(true);').replace('useEffect(() => setGodView(false), [user.uid]);','useEffect(() => setGodView(true), [user.uid]);').replace(/const GOD_EMAILS = \[[^;]+;/,"const GOD_EMAILS = ['preview@example.invalid'];");
  code=code.replaceAll('assets/design/table-blue-v333.webp',localAsset('assets/design/table-blue-v333.webp'));
  if(query.has('motion'))code+='\nwindow.PreviewMotion={DiscardFly,BetCollect,PotAward,pokerVisualPoint,useReducedPokerMotion};';
- const variants={nlh:['NLH',2],pineapple:['Pineapple',3],omaha4:['Omaha 4',4],omaha5:['Omaha 5',5],omaha:['Omaha 6',6]};const [variant,holeCount]=variants[mode]||variants.nlh;
- const cards=['A','K','Q','J','10','9'].map((val,i)=>({val,suit:['♠','♥','♦','♣'][i%4]}));
+ const variants={nlh:['NLH',2],pineapple:['Pineapple',3],omaha4:['Omaha 4',4],omaha5:['Omaha 5',5],omaha:['Omaha 6',6],omaha7:['Omaha 7',7]};const [variant,holeCount]=variants[mode]||variants.nlh;
+ const cards=['A','K','Q','J','10','9','8'].map((val,i)=>({val,suit:['♠','♥','♦','♣'][i%4]}));
  const players={};['Sharon',null,'Maya','MindStack','David',null,'Robin'].forEach((name,i)=>{if(name)players['p'+i]={uid:'p'+i,name,stack:[2225.60,0,354.77,437.91,1100.07,0,1692.11][i],bet:0,seatIndex:i,status:'active',cards:[],cardCount:i===3?2:0,photo:'/BearFace_2k.png',lastSeen:Date.now()};});
  if(query.has('full')){for(const id of Object.keys(players))if(players[id].seatIndex>=capacity)delete players[id];for(let i=0;i<capacity;i++)if(!players['p'+i])players['p'+i]={uid:'p'+i,name:'Player '+i,stack:100,bet:0,seatIndex:i,status:'active',cards:[],cardCount:0,photo:'/BearFace_2k.png',lastSeen:Date.now()};}
  if(mode!=='reference'){for(const p of Object.values(players))p.cardCount=holeCount;delete players.p0;players.me={uid:'me',name:'You',stack:99.5,bet:.5,seatIndex:0,status:'active',cards:[],cardCount:holeCount,photo:'/BearFace_2k.png',lastSeen:Date.now()};}
@@ -37,6 +37,7 @@
  if(query.has('bets'))Object.values(players).forEach((p,i)=>p.bet=[.5,12,345,8,50,2,65][i%7]);
  const state={authorityVersion:2,settings:{serverEngine:true,maxPlayers:capacity,baseGameType:variant,actionTime:30,blinds:.5,buyIn:100},gameState:{__seq:1,phase:'flop',activeTurnUid:mode==='reference'?'p3':'me',turnStartedAt:Date.now(),highestBet:1,minRaise:1,pots:[{amount:115}],board:[{val:'7',suit:'♠'},{val:'7',suit:'♦'},{val:'4',suit:'♣'}],currentGameType:variant,handN:1,dealerUid:'p3'},players};
  if(query.has('sitout')&&players.me){players.me.sitOut=true;players.me.sitOutAt=Date.now()-90000;players.me.status='sitout';players.me.cardCount=0;}
+ if(query.has('leaving'))for(const p of Object.values(players))p.leavingAt=Date.now()+283000;
  if(query.has('remaining'))state.gameState.turnStartedAt-=Math.max(0,30-Number(query.get('remaining')))*1000;
  if(query.has('turn')&&players[query.get('turn')])state.gameState.activeTurnUid=query.get('turn');
  if(query.has('longname')&&players[state.gameState.activeTurnUid])players[state.gameState.activeTurnUid].name='Liat Shapira — Very long player name';

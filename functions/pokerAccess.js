@@ -7,11 +7,16 @@ const opts={region:'us-central1'};
 const {botName}=require('./botNames');
 const {session:botSession}=require('./botSessions');
 const {normalizeWaitlist}=require('./pokerWaitlist');
+const {appearance}=require('./pokerIdentity');
 const available=()=>require('./pokerSecurity').requirePokerAvailable();
 function tableSettings(raw={}){
  const s={};for(const [k,min,max,def]of [['blinds',.01,100000,.5],['minBuyIn',.01,10000000,40],['maxBuyIn',.01,10000000,200],['minBuyInBB',0,100000,0],['maxBuyInBB',0,100000,0],['maxPlayers',2,9,6],['autoStart',2,9,2],['actionTime',10,120,30],['rakePercent',0,20,0],['rakeCap',0,100000,0],['ante',0,100000,0],['bombEvery',0,1000,0],['bombAnte',0,100,2],['leaveNoticeMins',0,120,0],['leaveNoticeBB',0,100000,0],['spinBuyIn',.01,100000,50],['spinStack',10,10000000,1000],['spinLevelSec',30,3600,180]])s[k]=number(raw[k],def,min,max);
  for(const k of ['isDealerChoice','straddle','spinMode','runTwice','autoMuck'])s[k]=raw[k]===true;
- s.omahaPotLimit=raw.omahaPotLimit!==false;s.baseGameType=String(raw.baseGameType||'NLH').replace(/^Omaha([456])$/,'Omaha $1');if(!C.GAME_CARDS[s.baseGameType])fail('invalid-argument','Unknown poker game');
+ s.omahaPotLimit=raw.omahaPotLimit!==false;s.baseGameType=String(raw.baseGameType||'NLH').replace(/^Omaha([4567])$/,'Omaha $1');if(!C.GAME_CARDS[s.baseGameType])fail('invalid-argument','Unknown poker game');
+ if(s.baseGameType==='Omaha 7'){
+  if(s.spinMode)fail('invalid-argument','PLO7 is not available in Spin & Cash');
+  s.maxPlayers=Math.min(5,s.maxPlayers);s.omahaPotLimit=true;s.runTwice=false;
+ }
  if(s.maxBuyIn<s.minBuyIn)fail('invalid-argument','Maximum is below minimum');s.maxPlayers=capacity(s);s.autoStart=Math.min(Math.floor(s.autoStart),s.maxPlayers);s.serverEngine=true;
  s.aofEvery=raw.aofEvery==='orbit'?'orbit':number(raw.aofEvery,0,0,1000,true);s.name=String(raw.name||'').slice(0,60);
  if(s.spinMode)Object.assign(s,{maxPlayers:3,autoStart:3,rakePercent:0});return s;
@@ -29,7 +34,7 @@ exports.pkTableCreate=onCall(opts,async r=>{available();return command(r,'table-
 exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(tx,db,uid,now)=>{
  const tid=key(r.data.tableId),ref=db.doc('tables/'+tid),snap=await tx.get(ref);if(!snap.exists)fail('not-found','Table missing');const t=snap.data(),s=t.settings||{},cid=t.clubId||'main';
  if(t.authorityVersion!==2||!s.serverEngine)fail('failed-precondition','Open a protected table');await member(tx,db,cid,r);
- const us=await tx.get(db.doc('users/'+uid)),profile=us.exists?us.data():{},op=r.data.op,pl=t.players||{},p=pl[uid],idle=A.idle(t),patch={},effects=[],waiting=normalizeWaitlist(t,now),humanWaiters=waiting.filter(entry=>entry.isBot!==true);let result={ok:true};
+ const us=await tx.get(db.doc('users/'+uid)),profile=us.exists?us.data():{},op=r.data.op,pl=t.players||{},p=pl[uid],idle=A.idle(t),patch={},effects=[],waiting=normalizeWaitlist(t,now),humanWaiters=waiting.filter(entry=>entry.isBot!==true);let result={ok:true},avatarEvent=null;
  if(['join','wait','addbot','fillbots','topup','rebuy'].includes(op))await A.activeClub(tx,db,cid);
  if(t.tournamentId&&['join','topup','rebuy','addbot','fillbots'].includes(op))fail('failed-precondition','Use tournament registration');
  if(t.closeRequested&&['join','topup','rebuy','addbot','fillbots','wait'].includes(op))fail('failed-precondition','This table is closing after the current hand');
@@ -56,7 +61,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   let seat=Number.isInteger(r.data.seatIndex)&&r.data.seatIndex>=0&&r.data.seatIndex<cap&&!taken.has(r.data.seatIndex)?r.data.seatIndex:0;while(taken.has(seat)&&seat<cap)seat++;if(seat>=cap)fail('failed-precondition','No seat available');
   const min=s.minBuyIn??40*s.blinds*2,max=s.maxBuyIn??200*s.blinds*2,buy=s.spinMode?s.spinBuyIn:op==='addbot'?Math.min(max,Math.max(min,100*s.blinds*2)):number(r.data.amount,NaN,min,max);
   const last=t.leftStacks?.[who];if(last&&now-last.at<43200000&&buy<last.amount)fail('failed-precondition','Return with at least your previous stack');effects.push({type:'credit',uid:funding,amount:-buy});
-  patch[`players.${who}`]={uid:who,name,photo:op==='addbot'?'':profile.photo||'',avatarSeed:who,seatIndex:seat,stack:s.spinMode?s.spinStack:buy,buyTotal:s.spinMode?0:buy,spinPaid:s.spinMode?buy:0,bet:0,status:idle?'active':'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',isBot:op==='addbot',...(op==='addbot'?{...botSession(who,now),fundingUid:funding,botStyle:['tight','balanced','aggressive'][Object.keys(pl).length%3]}:{}),lastSeen:now};patch[`leftStacks.${who}`]=null;patch.waitlist=waiting.filter(w=>w.uid!==who);
+  patch[`players.${who}`]={uid:who,name,...appearance(op==='addbot'?{}:profile,who),seatIndex:seat,stack:s.spinMode?s.spinStack:buy,buyTotal:s.spinMode?0:buy,spinPaid:s.spinMode?buy:0,bet:0,status:idle?'active':'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',isBot:op==='addbot',...(op==='addbot'?{...botSession(who,now),fundingUid:funding,botStyle:['tight','balanced','aggressive'][Object.keys(pl).length%3]}:{}),lastSeen:now};patch[`leftStacks.${who}`]=null;patch.waitlist=waiting.filter(w=>w.uid!==who);
  }else if(op==='wait'||op==='unwait'){
   let humans=humanWaiters.filter(entry=>entry.uid!==uid);const bots=waiting.filter(entry=>entry.isBot===true&&entry.uid!==uid);
   if(op==='wait'&&!p){
@@ -79,7 +84,18 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
    const add=number(r.data.amount,NaN,op==='rebuy'?(s.minBuyIn??40*s.blinds*2):.01,10000000),max=s.maxBuyIn??200*s.blinds*2;
    if(cash(p.stack+(p.bet||0)+(p.pendingTopUp||0)+add)>max)fail('invalid-argument','Buy-in limit exceeded');
    effects.push({type:'credit',uid,amount:-add});result.queued=!idle;patch[`players.${uid}.${idle?'stack':'pendingTopUp'}`]=cash((idle?p.stack:p.pendingTopUp||0)+add);patch[`players.${uid}.buyTotal`]=cash((p.buyTotal||0)+add);if(idle){patch[`players.${uid}.status`]='waiting';patch[`players.${uid}.sitOut`]=false;}
-  }else if(op==='heartbeat')patch[`players.${uid}.lastSeen`]=now;
+  }else if(op==='heartbeat'){
+   patch[`players.${uid}.lastSeen`]=now;
+   if(us.exists&&!p.isBot){
+    const next=appearance(profile,uid);
+    for(const [field,value]of Object.entries(next))if(p[field]!==value)patch[`players.${uid}.${field}`]=value;
+    // Repair existing tournament entries too, so moving tables/results retain it.
+    if(t.tournamentId&&Object.keys(patch).length>1){
+     const event=await tx.get(db.doc('tournaments/'+key(t.tournamentId)));
+     if(event.exists&&event.data().players?.[uid])avatarEvent={ref:event.ref,patch:Object.fromEntries(Object.entries(next).map(([field,value])=>[`players.${uid}.${field}`,value]))};
+    }
+   }
+  }
   else if(op==='leave-request')patch[`players.${uid}.leaveReq`]=now;
   else if(op==='cancel-leave'){patch[`players.${uid}.leaveReq`]=null;patch[`players.${uid}.leavingAt`]=null;patch[`players.${uid}.sitOutNext`]=false;}
   else if(op==='straddle'){if(!s.straddle||t.tournamentId||s.spinMode)fail('failed-precondition','Straddle unavailable');patch[`players.${uid}.straddleNext`]=r.data.enabled===true;}
@@ -88,15 +104,15 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   else if(op==='sitout'){patch[`players.${uid}.${idle?'sitOut':'sitOutNext'}`]=true;patch[`players.${uid}.sitOutAt`]=now;}
   else fail('invalid-argument','Unknown seat operation');
  }
- const write=await prepareLedger(db,tx,cid,effects,tid,now);write();patch['gameState.__seq']=(t.gameState?.__seq||0)+1;tx.update(ref,patch);return result;
+ const write=await prepareLedger(db,tx,cid,effects,tid,now);write();if(avatarEvent)tx.update(avatarEvent.ref,avatarEvent.patch);patch['gameState.__seq']=(t.gameState?.__seq||0)+1;tx.update(ref,patch);return result;
 });});
 exports.pkJoinClub=onCall(opts,async r=>{const uid=A.uid(r),cid=key(r.data?.clubId),db=require('firebase-admin/firestore').getFirestore();return db.runTransaction(async tx=>{
  const [c,m,u]=await tx.getAll(db.doc('clubs/'+cid),db.doc(`memberships/${uid}_${cid}`),db.doc('users/'+uid));if(!c.exists||!u.exists)fail('not-found','Club or profile missing');A.assertClubOpen(c.data());if(m.exists)return{status:m.data().status};const p=u.data(),admin=root(r)||c.data().ownerUid===uid;let referral={};if(r.data.agentUid){const a=await tx.get(db.doc(`memberships/${key(r.data.agentUid)}_${cid}`));if(!a.exists||!['agent','manager'].includes(a.data().role)||a.data().status!=='approved')fail('failed-precondition','Agent is not approved');referral={agentUid:a.data().uid,agentPct:number(a.data().agentSharePct,50,0,100)};}
- tx.set(m.ref,{...referral,uid,clubId:cid,username:p.username||'Player',playerId:p.playerId||'',photo:p.photo||'',role:admin?'club_owner':'player',status:admin?'approved':'pending',balance:0,clubProfits:0,agentProfits:0,createdAt:Date.now()});return{status:admin?'approved':'pending'};
+ tx.set(m.ref,{...referral,uid,clubId:cid,username:p.username||'Player',playerId:p.playerId||'',...appearance(p,uid),role:admin?'club_owner':'player',status:admin?'approved':'pending',balance:0,clubProfits:0,agentProfits:0,createdAt:Date.now()});return{status:admin?'approved':'pending'};
 });});
 exports.pkClubCreate=onCall(opts,async r=>command(r,'club-create',async(tx,db,uid,now)=>{
  const name=String(r.data.name||'').trim();if(name.length<2||name.length>30)fail('invalid-argument','Club name must be 2–30 characters');const u=await tx.get(db.doc('users/'+uid));if(!u.exists)fail('failed-precondition','Finish profile registration');const id='club_'+crypto.createHash('sha256').update(uid+r.data.requestId).digest('hex').slice(0,18),old=await tx.get(db.doc('clubs/'+id));if(old.exists)return{id,...old.data()};const p=u.data();
- tx.set(db.doc('clubs/'+id),{name,ownerUid:uid,ownerName:p.username||'Owner',createdAt:now});tx.set(db.doc(`memberships/${uid}_${id}`),{uid,clubId:id,username:p.username||'Owner',playerId:p.playerId||'',role:'club_owner',status:'approved',balance:0,clubProfits:0,agentProfits:0});return{id,name,ownerUid:uid};
+ tx.set(db.doc('clubs/'+id),{name,ownerUid:uid,ownerName:p.username||'Owner',createdAt:now});tx.set(db.doc(`memberships/${uid}_${id}`),{uid,clubId:id,username:p.username||'Owner',playerId:p.playerId||'',...appearance(p,uid),role:'club_owner',status:'approved',balance:0,clubProfits:0,agentProfits:0});return{id,name,ownerUid:uid};
 }));
 exports.pkClubMember=onCall(opts,async r=>command(r,'club-member',async(tx,db,uid,now)=>{
  const cid=key(r.data.clubId),club=await A.clubManager(tx,db,cid,r),target=key(r.data.targetUid),ref=db.doc(`memberships/${target}_${cid}`),m=await tx.get(ref);if(!m.exists)fail('not-found','Membership missing');const op=r.data.op,p=m.data(),audit={clubId:cid,uid,targetUid:target,at:now,action:'member-'+op};

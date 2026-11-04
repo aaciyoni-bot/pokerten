@@ -520,6 +520,23 @@
       className: 'st-money ' + (signed ? value < 0 ? 'st-loss' : value > 0 ? 'st-gain' : '' : '')
     }, signed && value > 0 ? '+' : '', money(value));
   }
+  function AccountChevron() {
+    return /*#__PURE__*/React.createElement("svg", {
+      className: "st-chevron",
+      width: "18",
+      height: "18",
+      viewBox: "0 0 24 24",
+      "aria-hidden": "true",
+      focusable: "false"
+    }, /*#__PURE__*/React.createElement("path", {
+      d: "m9 5 7 7-7 7",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: "2",
+      strokeLinecap: "round",
+      strokeLinejoin: "round"
+    }));
+  }
   function Metric({
     label,
     value,
@@ -941,11 +958,9 @@
       })), /*#__PURE__*/React.createElement("span", {
         className: "st-account-due"
       }, /*#__PURE__*/React.createElement("small", null, p.closing < 0 ? 'Player pays' : p.closing > 0 ? 'Player receives' : 'Balanced'), /*#__PURE__*/React.createElement(Amount, {
-        value: Math.abs(p.closing)
-      })), /*#__PURE__*/React.createElement("span", {
-        className: "st-chevron",
-        "aria-hidden": "true"
-      }, expanded === key ? '−' : '+')), expanded === key && /*#__PURE__*/React.createElement("div", {
+        value: p.closing,
+        signed: true
+      })), /*#__PURE__*/React.createElement(AccountChevron, null)), expanded === key && /*#__PURE__*/React.createElement("div", {
         className: "st-account-detail"
       }, /*#__PURE__*/React.createElement(FundsResult, {
         chips: p.balance,
@@ -1370,9 +1385,7 @@
     }, /*#__PURE__*/React.createElement("small", null, "Cycle result"), /*#__PURE__*/React.createElement(Amount, {
       value: p.result,
       signed: true
-    })), /*#__PURE__*/React.createElement("span", {
-      "aria-hidden": "true"
-    }, expanded === p.uid ? '−' : '+')), expanded === p.uid && /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement(AccountChevron, null)), expanded === p.uid && /*#__PURE__*/React.createElement("div", {
       className: "st-account-detail"
     }, /*#__PURE__*/React.createElement(FundsResult, {
       chips: p.chips,

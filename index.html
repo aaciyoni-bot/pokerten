@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="357">
+    <meta name="app-version" content="358">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -10725,7 +10725,7 @@ function PokerTable({
   useEffect(() => setGodView(false), [user.uid]);
   const [rabbit, setRabbit] = useState([]);
   const [plo7Layout, setPlo7Layout] = useState(() => {
-    try { return localStorage.getItem('pkPlo7Layout') === 'rows' ? 'rows' : 'fan'; } catch (_) { return 'fan'; }
+    try { return localStorage.getItem('pkPlo7Layout') === 'fan' ? 'fan' : 'rows'; } catch (_) { return 'rows'; }
   });
   const [betFx, setBetFx] = useState([]);
   const [discFx, setDiscFx] = useState(null);
@@ -12577,7 +12577,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     'aria-label':'PLO7 hand layout', value:plo7Layout,
     onChange:e=>{setPlo7Layout(e.target.value);try{localStorage.setItem('pkPlo7Layout',e.target.value);}catch(_){}},
     className:'block w-full mt-2 p-2.5 rounded-lg bg-slate-900 border border-white/20 text-white'
-  }, React.createElement('option',{value:'fan'},'Fan'), React.createElement('option',{value:'rows'},'3 above · 4 below'))), React.createElement('label', {
+  }, React.createElement('option',{value:'rows'},'3 above · 4 below (default)'), React.createElement('option',{value:'fan'},'Fan'))), React.createElement('label', {
     className:'block text-xs font-bold text-slate-300 mb-4'
   }, "Your hand order", React.createElement("select", {
     "aria-label": "Your hand order",

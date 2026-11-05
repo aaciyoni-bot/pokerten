@@ -4,13 +4,13 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require
 const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),ReactDOM=require('react-dom/client'),{Simulate}=require('react-dom/test-utils');w.React=React;w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js'),'utf8'));const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document,fixture=require('./settlement-fixture.cjs');
 const text=node=>node.textContent.replace(/[\u200e\u200f]/g,'');
-const assertFunds=(node,balance,result,lifetime)=>{
+const assertFunds=(node,balance,result)=>{
  assert.ok(node,'financial rows are rendered');
- assert.deepEqual([...node.children].map(n=>n.className),['st-balance-line','st-cycle-line',...(lifetime===undefined?[]:['st-lifetime-note'])],'balance, cycle P/L and authorized lifetime are separate ordered rows');
+ assert.deepEqual([...node.children].map(n=>n.className),['st-balance-line','st-cycle-line'],'balance and cycle P/L remain separate; lifetime is hidden for every role');
  assert.equal(text(node.querySelector('.st-balance-line strong')),balance);
  assert.equal(text(node.querySelector('.st-cycle-line strong')),result);
  assert.doesNotMatch(text(node.querySelector('.st-cycle-line strong')),/[()]/,'cycle P/L is not squeezed beside the balance');
- if(lifetime!==undefined)assert.equal(text(node.querySelector('.st-lifetime-note bdi')),lifetime);
+ assert.equal(node.querySelector('.st-lifetime-note'),null);
 };
 let data,calls=[];const call=async(name,args)=>{calls.push({name,args});if(name==='pkSettlementReport')return structuredClone(data);if(name==='pkSettlement')return{ok:true};if(name==='pkSettlementTerms')return{role:'owner',members:[{uid:'player',name:'Player One',role:'player',status:'approved',primaryAgentId:'agent',rakebackPct:0},{uid:'agent',name:'Agent One',role:'agent',status:'approved',agentPct:50}]};throw Error('Unexpected request '+name);};
 const mount=async role=>{await React.act(async()=>root.render(React.createElement(w.PokerSettlement.Settlement,{key:role,user:{uid:role==='owner'?'owner':'player',role},clubId:'club',call})));assertEnglishUi(doc.body,'Settlement '+role);};
@@ -19,7 +19,7 @@ const mount=async role=>{await React.act(async()=>root.render(React.createElemen
  // The current cycle wins even when the API contains a conflicting lifetime total.
  data.chips=4757;data.totalResult=-20157;data.player.totals.result=0;await mount('player-zero-cycle');
  const chipMetric=()=>doc.querySelector('.st-funds-panel .st-funds-result');
- assert.match(chipMetric().textContent,/Cycle profit\/loss/);assertFunds(chipMetric(),'47.57','0.00');
+ assert.match(chipMetric().textContent,/Current cycle profit\/loss/);assertFunds(chipMetric(),'47.57','0.00');
  assert.doesNotMatch(doc.body.textContent,/201\.57|Cumulative|Lifetime profit|All cycles/i);
  assert.equal(doc.querySelector('option[value="all"]'),null,'player cannot select an aggregate lifetime report');
  data.player.totals.result=50000;await mount('player-winning-cycle');assertFunds(chipMetric(),'47.57','+500.00');
@@ -34,18 +34,18 @@ const mount=async role=>{await React.act(async()=>root.render(React.createElemen
  assertFunds(chipMetric(),'800.00','-200.00','-619.33');
  assert.match(doc.body.textContent,/Cycle management/);assert.equal(doc.querySelectorAll('table').length,0);await React.act(()=>[...doc.querySelectorAll('.st-main-tabs button')].find(b=>b.textContent==='Players').click());assert.match(doc.body.textContent,/Other human player/);await React.act(()=>doc.querySelector('.st-account-head').click());
  const buttons=()=>[...doc.querySelectorAll('button')];await React.act(()=>buttons().find(b=>b.textContent==='Agents').click());await React.act(()=>buttons().find(b=>b.textContent==='Record payment').click());const dialog=doc.querySelector('[role="dialog"]');assert.ok(dialog);assertEnglishUi(dialog,'Payment form');await React.act(()=>Simulate.change(dialog.querySelector('input[type=number]'),{target:{value:'50.25'}}));await React.act(async()=>Simulate.submit(dialog));assert.equal(calls.findLast(c=>c.name==='pkSettlement').args.amount,50.25);assert.equal(calls.findLast(c=>c.name==='pkSettlement').args.action,'payment');
- // Collapsed mobile rows show the signed settlement balance, not an unsigned
- // magnitude or a misleading expansion plus. Results can differ from closing.
+ // Collapsed mobile rows use the signed selected-cycle game result, even
+ // when accumulated closing has the opposite sign.
  data=fixture('owner','owner');
  const signedCases=[[-10000,'-100.00','st-loss','Player pays'],[-29114,'-291.14','st-loss','Player pays'],[109242,'+1,092.42','st-gain','Player receives'],[0,'0.00',null,'Balanced']];
- data.details=signedCases.map(([closing],i)=>({...structuredClone(data.details[0]),playerId:'signed-'+i,playerName:'Signed player '+i,closing,totals:{...data.details[0].totals,result:777}}));
+ data.details=signedCases.map(([result],i)=>({...structuredClone(data.details[0]),playerId:'signed-'+i,playerName:'Signed player '+i,closing:777,totals:{...data.details[0].totals,result}}));
  const beforeSigned=structuredClone(data),writesBeforeSigned=calls.filter(c=>c.name==='pkSettlement').length;
  await mount('owner-signed-balances');await React.act(()=>buttons().find(b=>b.textContent==='Players').click());
  for(const [i,[,amount,color,label]] of signedCases.entries()){
   const row=[...doc.querySelectorAll('.st-account')].find(n=>n.querySelector('.st-account-name strong').textContent==='Signed player '+i);
   const due=row.querySelector('.st-account-due');assert.equal(text(due.querySelector('bdi')),amount);assert.equal(text(due.querySelector('small')),label);
   if(color)assert.ok(due.querySelector('bdi').classList.contains(color));else assert.ok(!due.querySelector('.st-loss,.st-gain'));
-  assert.equal(text(row.querySelector('.st-account-result bdi')),'+7.77','game result remains separate from settlement balance');
+  assert.equal(row.querySelector('.st-account-result'),null,'the result is not duplicated in the collapsed row');
   const head=row.querySelector('button');assert.equal(head.getAttribute('aria-expanded'),'false');assert.ok(head.querySelector('svg.st-chevron[aria-hidden="true"]'));assert.equal(text(head.querySelector('.st-chevron')),'');
   await React.act(()=>head.click());assert.equal(head.getAttribute('aria-expanded'),'true');assert.ok(row.querySelector('.st-account-detail'));
   await React.act(()=>head.click());assert.equal(head.getAttribute('aria-expanded'),'false');assert.equal(row.querySelector('.st-account-detail'),null);
@@ -64,5 +64,5 @@ const mount=async role=>{await React.act(async()=>root.render(React.createElemen
  const commandCount=calls.filter(c=>c.name==='pkSettlement').length;w.confirm=()=>false;await React.act(()=>buttons().find(b=>b.textContent==='Close tables & start new cycle').click());assert.equal(calls.filter(c=>c.name==='pkSettlement').length,commandCount);
  let confirmation='';w.confirm=text=>{confirmation=text;return true;};await React.act(async()=>buttons().find(b=>b.textContent==='Close tables & start new cycle').click());assert.equal(calls.findLast(c=>c.name==='pkSettlement').args.action,'beginCloseAll');assert.match(confirmation,/final results are saved.*do not carry forward/);
  await React.act(async()=>root.render(React.createElement(w.PokerSettlement.SettlementMembers,{clubId:'club',call})));assert.match(doc.body.textContent,/Agents and rates/);assert.doesNotMatch(doc.body.textContent,/Player results|Settlement balance/);await React.act(()=>buttons().find(b=>b.textContent==='Terms').click());assert.match(doc.body.textContent,/Primary agent|Player rakeback/);assertEnglishUi(doc.body,'Settlement terms form');
- await React.act(()=>root.unmount());w.close();console.log('PASS: current/selected-cycle result before lifetime, zero and positive cycle results, player lifetime/word privacy, role-specific reports and payment/terms flows');
+ await React.act(()=>root.unmount());w.close();console.log('PASS: current/selected-cycle result, hidden lifetime, zero and positive cycle results, player lifetime/word privacy, role-specific reports and payment/terms flows');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

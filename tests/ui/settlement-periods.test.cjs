@@ -63,7 +63,7 @@ const setDates=async(from,to)=>{if(!doc.querySelector('form[aria-label="Report d
  const setStart=calls.findLast(c=>c.name==='pkSettlement');
  assert.deepEqual(JSON.parse(JSON.stringify(setStart.args)),{clubId:'example-club',action:'setLegacyPeriodStart',startAt:Date.parse('2025-02-01T07:30:00Z')});
  assert.equal(clubChanges,1,'confirmed start refreshes management and balance widgets');
- assert.match(doc.body.textContent,/Current cycle · Open/);assert.equal(doc.querySelector('.st-net .st-balance-line strong').textContent,'675.43');assert.equal(doc.querySelector('.st-net .st-cycle-line strong').textContent,'-125.00');assert.match(doc.querySelector('.st-net .st-lifetime-note').textContent,/Lifetime profit\/loss/);
+ assert.match(doc.body.textContent,/Current cycle · Open/);assert.equal(doc.querySelector('.st-net .st-balance-line strong').textContent,'675.43');assert.equal(doc.querySelector('.st-net .st-cycle-line strong').textContent,'-125.00');assert.equal(doc.querySelector('.st-net .st-lifetime-note'),null,'lifetime is hidden for managers too');
  assert.ok(!calls.some(c=>c.name==='pkSettlement'&&/close|activate|setEnd/i.test(c.args.action)),'setting the period does not close or reset anything');
 
  // Stale automatic settings cannot produce automatic controls or closing calls.

@@ -17,3 +17,21 @@ test('direct GOD endpoint rejects anonymous, unverified and non-designated calle
   await assert.rejects(godPeek.run({auth,data:{tableId:'test'}}),e=>['unauthenticated','permission-denied'].includes(e.code));
  }
 });
+
+test('each table GOD account passes the server check for a PLO7 snapshot',async()=>{
+ const {createCallable,godCardContext}=require('../functions/godPeek');
+ const engine=fs.readFileSync(require.resolve('../functions/pokerEngine'),'utf8');
+ const guard=vm.runInNewContext(engine.match(/const GOD_EMAILS = [^;]+;/)[0]+engine.match(/const isGodAuth = [^;]+;/)[0]+'isGodAuth');
+ const hand=['2','3','4','5','6','7','8'].map(val=>({val,suit:'♦'}));
+ const board=['9','10','J','Q','K'].map(val=>({val,suit:'♣'}));
+ const table={gameState:{phase:'river',currentGameType:'Omaha 7',board},players:{a:{cardCount:7}}};
+ const ref={collection:()=>ref,doc:()=>ref};
+ const snap=data=>({exists:true,data:()=>data});
+ const db=()=>({...ref,runTransaction:fn=>fn({get:async()=>snap(table),getAll:async()=>[snap({deck:[]}),snap({cards:hand})]})});
+ const peek=createCallable({onCall:(_,fn)=>fn,HttpsError:Error,db,isGodAuth:guard,CALL_OPTS:{}});
+ for(const email of emails){
+  const result=await peek({auth:{uid:'observer',token:{email,email_verified:true}},data:{tableId:'plo7',contextKey:godCardContext(table)}});
+  assert.deepEqual(result.hands.a,hand,email);
+  assert.deepEqual(result.finalBoard,board,email);
+ }
+});

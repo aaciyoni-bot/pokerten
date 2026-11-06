@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="359">
+    <meta name="app-version" content="360">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -10655,7 +10655,8 @@ const pokerFinalHandLeaders = (players, board, gameType, phase, privateHands) =>
   const eligible = Object.values(players || {}).filter(p => p && !p.left && (p.status === 'active' || phase === 'showdown' && p.status === 'busted'));
   if (eligible.length < 2) return empty;
   const omaha = String(gameType || '').startsWith('Omaha');
-  const expected = omaha ? Number(String(gameType).match(/[456]/)?.[0] || 4) : 2;
+  const omahaType = String(gameType || '').replace(/^Omaha\s*(\d+)$/, 'Omaha $1');
+  const expected = omaha ? GAME_CARDS[omahaType] || 4 : 2;
   const seen = new Set();
   const validCards = cards => cards.every(c => {
     if (!c || !['2','3','4','5','6','7','8','9','10','J','Q','K','A'].includes(String(c.val)) || !['♠','♥','♦','♣'].includes(c.suit)) return false;
@@ -11016,6 +11017,7 @@ function PokerTable({
       setGodSnapshot(null);
       if (/permission-denied|unauthenticated/.test(error?.code || '')) {
         setGodView(false);
+        showToast('GOD view requires a verified sign-in with an authorized account.', 'error');
         return;
       }
       // Retry reads only; never replay a poker or wallet action.
@@ -12451,8 +12453,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const godRunout = godView && (!srvEngine || godSnapshotReady)
     ? srvEngine ? godFinal : pokerFullRunout(gs.board, gs.deck)
     : [];
-  const godFinalLeaders = godView && isGodUser(user) && (!srvEngine || godSnapshotReady)
-    ? pokerFinalHandLeaders(players,godRunout,gs.currentGameType || setts.baseGameType,gs.phase,srvEngine ? godHands : null)
+  const godGameType = gs.currentGameType || setts.baseGameType;
+  const mayShowProjectedLeader = !/^Omaha\s*7$/.test(godGameType) || !isSeated || gs.phase === 'showdown';
+  const godFinalLeaders = godView && mayShowProjectedLeader && isGodUser(user) && (!srvEngine || godSnapshotReady)
+    ? pokerFinalHandLeaders(players,godRunout,godGameType,gs.phase,srvEngine ? godHands : null)
     : {uids:[],score:null};
   const godFutureVisible = godView && isGodUser(user) && godRunout.length === 5 && ['preflop','discard','flop','turn'].includes(gs.phase);
   const heroHandStatus = isSeated && myPlayer?.status === 'active' && myCards.length > 0 && !['waiting', 'showdown'].includes(gs.phase) && React.createElement("div", {

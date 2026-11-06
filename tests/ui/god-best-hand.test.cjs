@@ -21,6 +21,13 @@ const royal=['A','K','Q','J','10'].map(v=>c(v,'♥'));
 assert.deepEqual(leaders(simplePlayers,royal,'NLH','river',{a:hands.alpha,b:hands.beta}).uids,['a','b'],'all tied leaders are returned');
 const omahaBoard=[c('A','♣'),c('2','♦'),c('3','♠'),c('9','♣'),c('8','♦')],omahaHands={a:[c('4','♣'),c('5','♦'),c('K','♠'),c('Q','♦'),c('J','♣'),c('10','♥')],b:[c('A','♥'),c('A','♦'),c('K','♥'),c('Q','♥'),c('J','♥'),c('10','♦')]};
 assert.deepEqual(leaders(simplePlayers,omahaBoard,'Omaha 6','flop',omahaHands).uids,['a'],'Omaha six uses exactly two hole cards and three final board cards');
+const plo7Board=[c('2','♥'),c('3','♥'),c('4','♥'),c('9','♠'),c('K','♦')];
+const plo7Hands={
+ a:[c('A','♠'),c('A','♦'),c('Q','♣'),c('J','♦'),c('8','♠'),c('7','♦'),c('10','♣')],
+ b:[c('K','♣'),c('Q','♦'),c('J','♠'),c('8','♣'),c('7','♣'),c('5','♥'),c('6','♥')]
+};
+assert.deepEqual(leaders(simplePlayers,plo7Board,'Omaha 7','preflop',plo7Hands).uids,['b'],'both final hole cards can make the winning straight flush');
+assert.deepEqual(leaders(simplePlayers,plo7Board,'Omaha 7','river',{...plo7Hands,b:plo7Hands.b.slice(0,6)}).uids,[],'incomplete seven-card hands suppress the projection');
 const flushBoard=[c('A','♥'),c('K','♥'),c('Q','♥'),c('9','♥'),c('2','♠')],flushHands={a:[c('J','♥'),c('10','♥'),c('3','♦'),c('4','♦'),c('5','♣'),c('6','♣')],b:[c('8','♥'),c('7','♣'),c('A','♦'),c('A','♠'),c('K','♣'),c('K','♠')]};
 assert.deepEqual(leaders(simplePlayers,flushBoard,'Omaha 6','river',flushHands).uids,['a'],'one heart in an Omaha hand is never a flush');
 assert.deepEqual(leaders(simplePlayers,current.gameState.board,'Pineapple','discard',{a:[...hands.alpha,c('3','♣')],b:[...hands.beta,c('4','♣')]}).uids,[],'Pineapple cannot project without a complete runout');
@@ -54,6 +61,27 @@ const toggle=async()=>{await menu();const button=byTitle('GOD view');assert.ok(b
  current.gameState={...current.gameState,phase:'river',board:royal,__seq:3};await React.act(async()=>tableNext(snapshot()));assert.deepEqual(uids(),['alpha','beta']);assert.equal(doc.querySelectorAll('.poker-god-future-card').length,0,'river has five real cards and no ghosts');assert.ok(badges().every(b=>b.textContent.includes('TIED BEST')));
  current.gameState={...current.gameState,phase:'preflop',board:[],handN:2,__seq:4};await React.act(async()=>tableNext(snapshot()));assert.deepEqual(uids(),['beta'],'complete runout predicts the same winner before the flop');assert.equal(doc.querySelectorAll('.poker-god-future-card').length,5);
  current.gameState={...current.gameState,phase:'flop',board:omahaBoard,currentGameType:'Omaha 6',__seq:5};current.settings.baseGameType='Omaha 6';hands={alpha:omahaHands.a,beta:omahaHands.b,folded:[]};current.players.alpha.cardCount=6;current.players.beta.cardCount=6;current.players.folded.cardCount=0;await React.act(async()=>tableNext(snapshot()));assert.deepEqual(uids(),['alpha']);assert.match(badges()[0].getAttribute('aria-label'),/Straight/);
+ suppliedRunout=plo7Board;
+ current.settings.baseGameType='Omaha 7';
+ current.players.alpha.cardCount=7;current.players.beta.cardCount=7;
+ hands={alpha:plo7Hands.a,beta:plo7Hands.b,folded:[]};
+ current.gameState={...current.gameState,phase:'preflop',board:[],currentGameType:'Omaha 7',handN:3};
+ await React.act(async()=>tableNext(snapshot()));
+ assert.deepEqual(uids(),['beta'],'authorized PLO7 observer sees the winner');
+ assert.match(badges()[0].title,/Straight Flush/);
+ for(const email of JSON.parse(html.match(/const GOD_EMAILS = (\[[^;]+);/)[1].replace(/'/g,'"'))){
+   w.fb.auth.currentUser={uid:'viewer',email,emailVerified:true};
+   await render();await menu();
+   assert.ok(byTitle('GOD view'),email+' has the PLO7 menu control');
+   await menu();assert.deepEqual(uids(),['beta'],email+' sees the PLO7 observer marker');
+ }
+ current.players.viewer={...current.players.folded,uid:'viewer',seatIndex:0};
+ await React.act(async()=>tableNext(snapshot()));
+ assert.deepEqual(uids(),[],'a seated player does not see the PLO7 prediction during betting');
+ current.gameState={...current.gameState,phase:'showdown',board:plo7Board};
+ await React.act(async()=>tableNext(snapshot()));
+ assert.deepEqual(uids(),['beta'],'the PLO7 result is available after betting closes');
+ delete current.players.viewer;
  suppliedRunout=pineappleBoard;hands={alpha:pineappleHands.a,beta:pineappleHands.b,folded:[]};current.players.alpha.cardCount=3;current.players.beta.cardCount=3;current.settings.baseGameType='Pineapple';current.gameState={...current.gameState,phase:'preflop',board:[],currentGameType:'Pineapple',handN:3,__seq:6};await React.act(async()=>tableNext(snapshot()));
  assert.deepEqual(uids(),['alpha'],'Pineapple has a GOD leader before the flop');assert.match(badges()[0].textContent,/BEST POTENTIAL/);assert.match(badges()[0].title,/actual discard can change the winner/);assert.equal(doc.querySelectorAll('.poker-god-future-card').length,5);
  current.gameState={...current.gameState,phase:'discard',board:pineappleBoard.slice(0,3),__seq:7};await React.act(async()=>tableNext(snapshot()));assert.deepEqual(uids(),['alpha'],'Pineapple retains the potential marker during discards');assert.match(badges()[0].textContent,/BEST POTENTIAL/);

@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="360">
+    <meta name="app-version" content="361">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1197,7 +1197,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-settlement-ui.js?v=359"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=356"></script>
-    <script src="assets/js/poker-runtime.js?v=356"></script>
+    <script src="assets/js/poker-runtime.js?v=361"></script>
     <script src="assets/js/poker-range-model.js?v=356"></script>
 <script>
 
@@ -1371,10 +1371,7 @@ const GAMES = [{
   label: 'Chinese Poker (OFC)',
   live: true
 }];
-const GOD_EMAILS = ['aaci.yoni@gmail.com', 'info.bagso@gmail.com', 'avi057278@gmail.com', 'khnby749@gmail.com', 'bykhn3234@gmail.com', 'haim29071994@gmail.com', 'tomerbitan481@gmail.com'];
-const SUPER_ADMIN_EMAIL = 'aaci.yoni@gmail.com';
-// Match pokerAuthority.root and firestore.rules; table GOD view is separate.
-const CLUB_OVERSIGHT_EMAILS = [SUPER_ADMIN_EMAIL, 'haim29071994@gmail.com', 'tomerbitan481@gmail.com'];
+
 const DEFAULT_RAKE_PCT = 6;
 const TURN_SECONDS = 60;
 const FIRST_MELD_MIN = 30;
@@ -1460,15 +1457,11 @@ const BOT_NAMES = BOT_NAMES_PK;
 // Privileges come only from the signed-in, verified Firebase identity.
 // Firestore profile emails, roles, memberships and local preferences are untrusted.
 const isGodUser = u => {
-  const authUser = window.fb?.auth?.currentUser;
-  return !!(u && authUser && u.uid === authUser.uid && authUser.emailVerified === true &&
-    GOD_EMAILS.includes(String(authUser.email || '').toLowerCase().trim()));
+  const identity = window.fb?.auth?.currentUser, grant = window.fb?.viewerGrant;
+  return !!(u && identity && identity.uid === u.uid && identity.emailVerified === true &&
+    grant?.uid === identity.uid && grant.email === identity.email && grant.god === true);
 };
-const isClubOversightUser = u => {
-  const authUser = window.fb?.auth?.currentUser;
-  return !!(u && authUser && u.uid === authUser.uid && authUser.emailVerified === true &&
-    CLUB_OVERSIGHT_EMAILS.includes(String(authUser.email || '').toLowerCase().trim()));
-};
+const isClubOversightUser = u => isGodUser(u) && window.fb.viewerGrant.oversight === true;
 // A verified oversight account already has server access, even when its club
 // membership still says "player" or no membership exists. Use that identity at
 // every management entry point instead of relying only on a cached role.
@@ -4310,6 +4303,7 @@ function App() {
     setShowInstall(true);
   };
   const [tablesDB, setTablesDB] = useState([]);
+  const [observerClub, setObserverClub] = useState(null);
   const [tablesLoaded, setTablesLoaded] = useState(false); // lobby shows a skeleton until the first snapshot
   const [toursDB, setToursDB] = useState([]);
   const toursRef = useRef([]);
@@ -4461,11 +4455,29 @@ function App() {
   }, []);
   useEffect(() => {
     if (!fbReady) return;
-    let stopped = false, attempt = 0;
+    let stopped = false, attempt = 0, retry;
+    const loadGrant = async (identity, current) => {
+      if (!identity?.emailVerified) return;
+      const email=identity.email,uid=identity.uid;
+      try {
+        const grant = await window.fb.fx('godLobbyCounts',{mode:'access'});
+        if (stopped || current !== attempt || window.fb.auth.currentUser?.uid !== uid || window.fb.auth.currentUser?.email !== email || !window.fb.auth.currentUser?.emailVerified) return;
+        window.fb.viewerGrant = grant?.uid === uid ? {...grant,email} : null;
+        setDbUser(profile=>profile?.uid===identity.uid ? {...profile} : profile);
+      } catch (error) {
+        if (stopped || current !== attempt) return;
+        window.fb.viewerGrant=null;
+        setDbUser(profile=>profile?.uid===identity.uid ? {...profile} : profile);
+        if (!/unauthenticated|permission-denied/.test(error?.code || '')) retry=setTimeout(()=>loadGrant(identity,current),5000);
+      }
+    };
     // Token refreshes may update the verified identity without signing out.
     // Reload the effective profile so management visibility follows it too.
     const unsub = (window.fb.onIdTokenChanged || window.fb.onAuthStateChanged)(window.fb.auth, async user => {
       const current = ++attempt;
+      clearTimeout(retry);
+      if (!user?.emailVerified || window.fb.viewerGrant?.uid !== user.uid || window.fb.viewerGrant?.email !== user.email) window.fb.viewerGrant=null;
+      loadGrant(user,current);
       setAuthError('');
       if (!user) { setAuthLoading(false); setDbUser(null); setCurrentView('auth'); return; }
       setAuthLoading(true);
@@ -4480,7 +4492,7 @@ function App() {
         if (!stopped && current === attempt) setAuthLoading(false);
       }
     });
-    return () => { stopped = true; attempt++; unsub(); };
+    return () => { stopped = true; attempt++; clearTimeout(retry); unsub(); };
   }, [fbReady]);
   useEffect(() => {
     if (!fbReady) return;
@@ -4649,6 +4661,11 @@ function App() {
         ...d.data()
       })));
       setTablesLoaded(true);
+      setObserverClub(null);
+    }, error => {
+      if (/permission-denied/.test(error?.code||'')) {
+        setTablesDB([]);setTablesLoaded(true);setObserverClub({uid:dbUser.uid,clubId:activeClub.id});
+      }
     });
     const unsubTours = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournaments"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {
       setToursDB(s.docs.map(d => ({
@@ -4658,6 +4675,11 @@ function App() {
     });
     return () => { unsubT(); unsubTours(); };
   }, [fbReady, dbUser?.uid, activeClub?.id]);
+  useEffect(() => {
+    if (!signedInGod || !activeClub || observerClub?.uid !== dbUser?.uid || observerClub?.clubId !== activeClub.id) return;
+    return window.PokerRuntime.watchGodTables({clubId:activeClub.id,allowed:()=>isGodUser(dbUser),call:window.fb.fx,
+      onTables:rows=>{setTablesDB(rows);setTablesLoaded(true);},onError:()=>setTablesDB([])});
+  },[signedInGod,observerClub,dbUser?.uid,activeClub?.id]);
   useEffect(() => {
     if (!fbReady || !dbUser?.uid) return;
     // Keep the profile subscription independent of the selected club.
@@ -5325,8 +5347,10 @@ function playerHistoryDayStart(value, nextDay=false) {
   }
   return epoch;
 }
+const memberAccessOp = member => member.removedFromClub ? 'restore' : member.status === 'banned' ? 'unban' : 'ban';
+const memberAccessLabel = member => member.removedFromClub ? 'Restore membership' : member.status === 'banned' ? 'Restore access' : 'Suspend player';
 function PlayerFileModal({
-  mem, agentName, canEdit, onClose, showToast, viewer,
+  mem, agentName, canEdit, onClose, showToast, viewer, onAccess,
   accounting=null, accountingLoading=false, onSettlement, canManagePeriod=false, showRake=false
 }) {
   const [log, setLog] = useState(null), [logError,setLogError] = useState(''), [logAttempt,setLogAttempt] = useState(0);
@@ -5367,6 +5391,9 @@ function PlayerFileModal({
           h('div',{className:'text-slate-400 text-xs font-bold truncate',dir:'ltr'},mem.email||''),
           h('div',{className:'text-[11px] font-bold mt-0.5'},mem.agentUid?h('span',{className:'text-purple-300'},'Agent: ',agentName(mem.agentUid),' (',mem.agentPct||0,'%)'):h('span',{className:'text-slate-500'},'No agent assigned'))),
         h('button',{onClick:onClose,'aria-label':'Close player file',className:'text-slate-500 hover:text-white shrink-0'},h('i',{className:'fa-solid fa-xmark text-lg'}))),
+      onAccess && h('div',{className:'flex flex-wrap gap-2 mb-4','aria-label':'Club access'},
+        h('button',{type:'button',onClick:()=>onAccess(mem,memberAccessOp(mem)),className:'btn-outline rounded-xl px-4 py-2 text-sm'},memberAccessLabel(mem)),
+        !mem.removedFromClub && h('button',{type:'button',onClick:()=>onAccess(mem,'remove'),className:'btn-outline rounded-xl px-4 py-2 text-sm text-rose-300'},'Remove from club')),
       canEdit&&h('div',{className:'grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4'},
         h('input',{value:phone,onChange:e=>setPhone(e.target.value),placeholder:'Phone','aria-label':'Player phone',className:fieldClass,dir:'ltr'}),
         h('div',{className:'flex gap-2'},h('input',{value:notes,onChange:e=>setNotes(e.target.value),placeholder:'Notes','aria-label':'Player notes',className:'flex-1 min-w-0 '+fieldClass}),h('button',{onClick:saveDetails,className:'bg-emerald-700 hover:bg-emerald-600 text-white px-4 rounded-xl font-black text-xs shrink-0'},'Save'))),
@@ -5727,7 +5754,7 @@ function ClubsView({
   });
   const pendingClubs = availableClubs.filter(c => {
     const m = memOf(c.id);
-    return m && m.status !== 'approved' && !god;
+    return m && m.status !== 'approved' && !m.removedFromClub && !god;
   });
   const otherClubs = availableClubs.filter(c => !memOf(c.id) && !god);
   const [searchCode, setSearchCode] = useState('');
@@ -6071,7 +6098,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
       React.createElement('div',{className:'blue-club-details','aria-live':'polite','aria-atomic':true},
         React.createElement('span',{className:'sr-only'},selected.c?.name || 'Create club'),
         selected.kind==='create' ? React.createElement('p',{className:'blue-create-description'},'Bring your players together in your own club.') : React.createElement('div',{className:'cl-balance'},React.createElement('span',{className:'cl-balance-label'},'YOUR BALANCE'),React.createElement('strong',{className:'cl-balance-amount',dir:'ltr'},selectedMem && Number.isFinite(selectedMem.balance)?formatMoney(selectedMem.balance):'—')),
-        selected.kind==='pending' && React.createElement('div',{className:'cl-cta cl-cta-wait'},React.createElement('i',{className:'fa-solid fa-hourglass-half','aria-hidden':true}),' Pending approval')),
+        selected.kind==='pending' && React.createElement('div',{className:'cl-cta cl-cta-wait'},React.createElement('i',{className:'fa-solid fa-hourglass-half','aria-hidden':true}),selectedMem?.status==='banned'?' Access suspended':' Pending approval')),
       React.createElement('div',{className:'cl-dots'},deck.map((d,ix)=>React.createElement('button',{key:ix,type:'button',onClick:()=>moveTo(ix),'aria-label':d.kind==='create'?'Show Create Club':'Show '+d.c.name,'aria-current':ix===slide?'true':undefined,className:'cl-dot'+(ix===slide?' cl-dot-on':'')},d.kind==='create'?React.createElement('i',{className:'fa-solid fa-plus','aria-hidden':true}):null))),
       React.createElement('button',{className:'blue-create-club',type:'button',style:{visibility:selected.kind==='create'?'hidden':undefined},'aria-hidden':selected.kind==='create'?true:undefined,tabIndex:selected.kind==='create'?-1:undefined,onClick:()=>setCreateOpen(true)},React.createElement('i',{className:'fa-solid fa-circle-plus','aria-hidden':true}), 'Create club'),
       archivedClubs.length > 0 && React.createElement('button',{type:'button',className:'blue-archived-clubs',onClick:()=>{setArchivedOpen(true);setArchiveError('');}},React.createElement('i',{className:'fa-solid fa-box-archive','aria-hidden':true}), 'Archived clubs (',archivedClubs.length,')'));
@@ -8970,16 +8997,25 @@ function BackofficeView({
       showToast("Error broadcasting", "error");
     }
   };
-  // Ban / unban: flips club access. Balance and identity stay; if they are
-  // mid-session at a table, remove them from the seat via the table screen.
-  const toggleBan = async target => {
-    const banned = target.status === 'banned';
-    if (!window.confirm(banned ? `Unban ${target.username}? They regain access to the club.` : `Ban ${target.username}? They lose access to the club. Balance and history are kept.`)) return;
+  const changeMemberAccess = async (target, op) => {
+    const name = target.username || 'this player';
+    const prompts = {
+      ban: `Suspend ${name}? They will lose access to this club. Their chips and history are kept.`,
+      unban: `Restore club access for ${name}?`,
+      remove: `Remove ${name} from this club? Their chips and history are kept. You can restore them under Removed.`,
+      restore: `Restore club membership and access for ${name}?`
+    };
+    if (!window.confirm(prompts[op])) return;
     try {
-      await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:target.uid,op:banned?'unban':'ban'});
-      showToast(banned ? `${target.username} unbanned` : `${target.username} banned 🚫`, "success");
-    } catch (e) {
-      showToast("Update failed", "error");
+      const result = await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:target.uid,op,
+        expectedStatus:target.status,expectedRemoved:!!target.removedFromClub});
+      const update = row => row?.uid === target.uid ? {...row,status:result.status,removedFromClub:result.removedFromClub} : row;
+      setUsersList(rows => rows.map(update));
+      setPlayerFile(row => op === 'remove' && row?.uid === target.uid ? null : update(row));
+      showToast(({ban:'Player suspended',unban:'Club access restored',remove:'Player removed from club',restore:'Membership restored'})[op],'success');
+    } catch (error) {
+      setDirectoryAttempt(n=>n+1);
+      showToast(clubRequestError(error,'Could not change club access. Refresh the member list and try again.'),'error');
     }
   };
   const [search, setSearch] = useState('');
@@ -9354,10 +9390,12 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   // super-admin looking in from outside. They are not members of this club and
   // the owner must never see them. The club's own owner is never hidden.
   const clubOwnerUid = treasury?.uid || (window.__club || {}).ownerUid;
+  const memberAccessHandler = member => canAdmin && !directoryError && member?.uid && !member.isBot &&
+    member.uid !== user.uid && member.uid !== clubOwnerUid && ['approved','banned'].includes(member.status) ? changeMemberAccess : undefined;
   const clubBalance=canAdmin ? Number(treasury?.balance)||0 : Number(user.balance)||0;
   const isGhostOversight = u => u.role === ROLES.SUPER_ADMIN && u.uid !== clubOwnerUid;
   const realPlayers = usersList.filter(u => u.status === 'approved' && !u.isBot && !isGhostOversight(u));
-  const players = usersList.filter(u => !u.isBot && ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>{const metric=m=>memberSort==='result'?currentAccounting?.players?.[m.uid]?.result||0:memberSort==='rake'?currentAccounting?.players?.[m.uid]?.rake||0:currentAccounting?.players?.[m.uid]?.chips??(Number(m.balance)||0);return memberSort==='name'?(a.username||'').localeCompare(b.username||''):metric(b)-metric(a)||(a.username||'').localeCompare(b.username||'');});
+  const players = usersList.filter(u => !u.isBot && ['approved', 'banned'].includes(u.status) && u.uid !== user.uid && u.uid !== clubOwnerUid && !isGhostOversight(u)).filter(u => (canAdmin || canManageAny) ? true : (u.agentUid === user.uid)).filter(u => !search || (u.username || '').toLowerCase().includes(search.toLowerCase()) || (u.email || '').toLowerCase().includes(search.toLowerCase()) || (u.playerId || '').toLowerCase().includes(search.toLowerCase())).filter(u => memFilter === 'removed' ? u.removedFromClub === true : u.removedFromClub ? false : memFilter === 'all' ? true : memFilter === 'banned' ? u.status === 'banned' : memFilter === 'agents' ? u.role === ROLES.AGENT : memFilter === 'managers' ? [ROLES.MANAGER, ROLES.CLUB_OWNER].includes(u.role) : true).sort((a,b)=>{const metric=m=>memberSort==='result'?currentAccounting?.players?.[m.uid]?.result||0:memberSort==='rake'?currentAccounting?.players?.[m.uid]?.rake||0:currentAccounting?.players?.[m.uid]?.chips??(Number(m.balance)||0);return memberSort==='name'?(a.username||'').localeCompare(b.username||''):metric(b)-metric(a)||(a.username||'').localeCompare(b.username||'');});
   const memberPages=Math.max(1,Math.ceil(players.length/12)),visibleMemberPage=Math.min(memberPage,memberPages-1);
   const visibleAgents=isAgentOnly?agents.filter(a=>a.uid===user.uid):agents;
   const agentPages=Math.max(1,Math.ceil(visibleAgents.length/12)),visibleAgentPage=Math.min(agentPage,agentPages-1);
@@ -9398,7 +9436,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     directoryNotice || React.createElement('p',{role:'status',className:'text-center py-8 text-amber-400'},'Loading club members…'));
   if(cashierOnly&&window.ClubCashier)return React.createElement('div',{className:'club-admin cashier-host'},directoryNotice,
     React.createElement(window.ClubCashier.Cashier,{key:directoryScope,members:usersList,treasury,accounting:currentAccounting,loading:directoryLoading||accountingLoading,error:accountingError,
-      canTransfer:canAdmin&&!directoryError,clubId:CLUB_ID,viewerId:user.uid,avatarUrl,onBack,onManage,onSettlement,onMember:setPlayerFile,call:pokerCommand,onRefresh:()=>{setDirectoryAttempt(n=>n+1);setAccountingAttempt(n=>n+1);}}),playerFile&&React.createElement(PlayerFileModal,{mem:playerFile,viewer:user,accounting:currentAccounting,accountingLoading,canManagePeriod:canManageClub(user),showRake:isGodUser(user),onSettlement,agentName,canEdit:canAdmin||canManageAny||playerFile.agentUid===user.uid,onClose:()=>setPlayerFile(null),showToast}));
+      canTransfer:canAdmin&&!directoryError,clubId:CLUB_ID,viewerId:user.uid,avatarUrl,onBack,onManage,onSettlement,onMember:setPlayerFile,call:pokerCommand,onRefresh:()=>{setDirectoryAttempt(n=>n+1);setAccountingAttempt(n=>n+1);}}),playerFile&&React.createElement(PlayerFileModal,{mem:playerFile,viewer:user,onAccess:memberAccessHandler(playerFile),accounting:currentAccounting,accountingLoading,canManagePeriod:canManageClub(user),showRake:isGodUser(user),onSettlement,agentName,canEdit:canAdmin||canManageAny||playerFile.agentUid===user.uid,onClose:()=>setPlayerFile(null),showToast}));
   return React.createElement("div", {
     style: {
       overflowX: "hidden"
@@ -9810,6 +9848,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     className: "fa-solid fa-xmark"
   }))) : React.createElement("span",{className:"text-xs text-amber-300"},"Awaiting manager approval")))))), playerFile && React.createElement(PlayerFileModal, {
     mem: playerFile,
+    onAccess: memberAccessHandler(playerFile),
     viewer: user,
     accounting: currentAccounting,
     accountingLoading,
@@ -9927,7 +9966,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   })), React.createElement('select',{value:memberSort,onChange:e=>setMemberSort(e.target.value),'aria-label':'Sort players',className:'management-sort'},
     React.createElement('option',{value:'name'},'Name'),React.createElement('option',{value:'chips'},'Chips — high to low'),React.createElement('option',{value:'result'},'Cycle result — high to low'),currentAccounting?.rakeVisible&&React.createElement('option',{value:'rake'},'Cycle rake — high to low'))), React.createElement('p',{className:'text-sm text-slate-400 mb-3',dir:'ltr'},'Balance and cycle profit / loss are shown separately. Chip top-ups are not winnings.'), React.createElement("div", {
     className: "flex gap-1.5 mb-3 flex-wrap"
-  }, pageControl(visibleMemberPage,memberPages,players.length,setMemberPage),[['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Banned']].map(([k2, lb2]) => React.createElement("button", {
+  }, pageControl(visibleMemberPage,memberPages,players.length,setMemberPage),[['all', 'All'], ['agents', 'Agents'], ['managers', 'Managers'], ['banned', 'Suspended'], ...(canAdmin ? [['removed','Removed']] : [])].map(([k2, lb2]) => React.createElement("button", {
     key: k2,
     onClick: () => setMemFilter(k2),
     "aria-pressed": memFilter === k2,
@@ -9969,7 +10008,9 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     dir: "ltr"
   }, "👤 ", u.googleName), u.agentUid && React.createElement("div", {
     className: "text-[10px] text-purple-300/90 font-bold truncate"
-  }, "🤝 ", agentName(u.agentUid), " (", u.agentPct || 0, "%)"))), compactAccount(u),React.createElement("details", {className:"management-row-menu"},React.createElement('summary',null,'Actions & details'),React.createElement("div", {
+  }, "🤝 ", agentName(u.agentUid), " (", u.agentPct || 0, "%)"))), compactAccount(u),memberAccessHandler(u) && React.createElement('button',{
+    type:'button',onClick:()=>changeMemberAccess(u,memberAccessOp(u)),title:memberAccessLabel(u),
+    className:'btn-outline rounded-xl px-3 py-2 text-sm'},memberAccessLabel(u)),React.createElement("details", {className:"management-row-menu"},React.createElement('summary',null,'Actions & details'),React.createElement("div", {
     className: "club-member-actions flex items-center gap-2 sm:gap-3 shrink-0"
   }, React.createElement('div',{className:'management-row-account'},accountNumbers(currentAccounting?.players?.[u.uid],u.balance)), React.createElement("button", {
     onClick: () => adjustBalance(u, true),
@@ -9991,12 +10032,6 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
     title: "Set role and agent assignment"
   }, React.createElement("i", {
     className: "fa-solid fa-user-gear text-xs"
-  })), canAdmin && !u.isBot && u.uid !== user.uid && React.createElement("button", {
-    onClick: () => toggleBan(u),
-    className: `w-9 h-9 rounded-full border font-black ${u.status === 'banned' ? 'bg-rose-900/70 border-rose-500/60 text-rose-200' : 'bg-slate-800 hover:bg-rose-900 text-slate-400 hover:text-white border-white/10'}`,
-    title: u.status === 'banned' ? 'Banned — tap to unban' : 'Ban from the club'
-  }, React.createElement("i", {
-    className: "fa-solid fa-ban text-xs"
   })), canAdmin && (u.photo || u.avatarSeed) && React.createElement("button", {
     onClick: () => censorPhoto(u),
     className: "w-9 h-9 rounded-full bg-slate-800 hover:bg-rose-900 text-slate-400 hover:text-white border border-white/10",
@@ -11119,7 +11154,18 @@ throw new Error('Game state is managed by the server');
       if (!received) setTableError('The table is taking too long to connect. Retry to reconnect.');
     }, 12000);
     const unsub = window.PokerRuntime.watchSnapshot(
-      (next, fail) => window.fb.onSnapshot(tblRef(), { includeMetadataChanges: true }, next, fail), d => {
+      (next, fail) => {
+        let stopObserver;
+        const stopDirect=window.fb.onSnapshot(tblRef(), {includeMetadataChanges:true},next,error=>{
+          if (!isGod || !/permission-denied/.test(error?.code||'')) return fail(error);
+          stopObserver=window.PokerRuntime.watchGodTables({clubId:CLUB_ID,tableId:tableDocId,
+            allowed:()=>isGodUser(user),call:window.fb.fx,onError:fail,onTables:rows=>{
+              const row=rows.find(t=>t.docId===tableDocId);
+              next({id:tableDocId,exists:()=>!!row,data:()=>row,metadata:{fromCache:false}});
+            }});
+        });
+        return ()=>{stopDirect();stopObserver?.();};
+      }, d => {
       if (tableSessionRef.current !== session) return;
       received = true;
       clearTimeout(timeout);
@@ -11147,7 +11193,7 @@ throw new Error('Game state is managed by the server');
       clearTimeout(advanceRef.current);
       clearTimeout(nextHandRef.current);
     };
-  }, [tableDocId, connectionRetry]);
+  }, [tableDocId, connectionRetry, isGod, user.uid]);
   useEffect(() => {
     if (!tableState) return;
     const left = (tableState.leftStacks || {})[user.uid];
@@ -12454,8 +12500,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     ? srvEngine ? godFinal : pokerFullRunout(gs.board, gs.deck)
     : [];
   const godGameType = gs.currentGameType || setts.baseGameType;
-  const mayShowProjectedLeader = !/^Omaha\s*7$/.test(godGameType) || !isSeated || gs.phase === 'showdown';
-  const godFinalLeaders = godView && mayShowProjectedLeader && isGodUser(user) && (!srvEngine || godSnapshotReady)
+  const godFinalLeaders = godView && isGodUser(user) && (!srvEngine || godSnapshotReady)
     ? pokerFinalHandLeaders(players,godRunout,godGameType,gs.phase,srvEngine ? godHands : null)
     : {uids:[],score:null};
   const godFutureVisible = godView && isGodUser(user) && godRunout.length === 5 && ['preflop','discard','flop','turn'].includes(gs.phase);
@@ -13774,7 +13819,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: `fa-solid ${toolsOpen ? 'fa-xmark' : 'fa-bars'}`
   }), !toolsOpen && (myPlayer?.sitOut || myPlayer?.sitOutNext || (myPlayer?.pendingTopUp || 0) > 0) && React.createElement("span", {
     className: "absolute -top-1 -right-1 w-3 h-3 rounded-full bg-amber-400 border border-slate-900 animate-pulse"
-  })), waitlist.length > 0 && React.createElement('span', {className:'poker-menu-wait-count', 'aria-label':'Waitlist: '+waitlist.length}, waitlist.length)), toolsOpen && ReactDOM.createPortal(React.createElement("div", {
+  })), isGod && !toolsOpen && React.createElement('button',{
+    type:'button','aria-label':'Toggle GOD view','aria-pressed':godView,title:godView?'GOD view on':'Enable GOD view',
+    className:'glass-panel rounded-xl px-2 h-9 text-xs font-black '+(godView?'text-amber-300':'text-slate-300'),
+    onClick:()=>setGodView(!godView)
+  },'GOD'), waitlist.length > 0 && React.createElement('span', {className:'poker-menu-wait-count', 'aria-label':'Waitlist: '+waitlist.length}, waitlist.length)), toolsOpen && ReactDOM.createPortal(React.createElement("div", {
     className: "poker-menu-overlay fixed inset-0 z-[230]",
     onClick: closeTableMenu
   }, React.createElement("div", {

@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../god-session-fixture.cjs');
 const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
@@ -8,7 +9,7 @@ let current={authorityVersion:2,clubId:'main',settings:{serverEngine:true,maxPla
 let hands={alpha:[c('A','♠'),c('A','♦')],beta:[c('K','♠'),c('K','♦')],folded:[c('Q','♥'),c('Q','♦')]},peekCalls=0,tableNext,suppliedRunout=null;
 const ref=(...a)=>({path:a.slice(1).join('/')}),snapshot=()=>({id:'test',exists:()=>true,data:()=>structuredClone(current),metadata:{fromCache:false}});
 w.fb={db:{},auth:{currentUser:{uid:'viewer',email:'ordinary@example.invalid',emailVerified:true}},doc:ref,collection:ref,query:r=>r,where:()=>({}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),fx:async(name,args)=>{if(name==='pkTick')return{};if(name==='godPeek'){peekCalls++;return peekResponse(args);}throw Error('Unexpected write: '+name);},onSnapshot:(r,opts,fn)=>{const cb=typeof opts==='function'?opts:fn;if(r.path==='tables/test'){tableNext=cb;queueMicrotask(()=>cb(snapshot()));}else queueMicrotask(()=>cb({exists:()=>false,docs:[]}));return()=>{};}};
-const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;window.currentLeaders=pokerFinalHandLeaders;');w.eval(script);w.__pkMuted=true;
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;window.currentLeaders=pokerFinalHandLeaders;');require('../god-session-fixture.cjs').mockComponentGrant(w.fb);w.eval(script);w.__pkMuted=true;
 const leaders=(ps,board,type,phase,hh)=>JSON.parse(JSON.stringify(w.currentLeaders(ps,board,type,phase,hh)));
 const finalBoard=[...current.gameState.board,c('K','♥'),c('K','♣')];
 const simplePlayers={a:{uid:'a',status:'active'},b:{uid:'b',status:'active'},fold:{uid:'fold',status:'folded'}};
@@ -49,12 +50,12 @@ assert.deepEqual(leaders(simplePlayers,pineappleBoard,'Pineapple','turn',pineapp
 function peekResponse(args){return {tableId:args.tableId,contextKey:args.contextKey,hands:structuredClone(hands),finalBoard:suppliedRunout||(current.gameState.board.length===5?current.gameState.board:finalBoard)};}
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const byTitle=t=>doc.querySelector('button[title="'+t+'"]'),badges=()=>[...doc.querySelectorAll('.poker-god-best-badge')],uids=()=>badges().map(b=>b.closest('[data-player-uid]').dataset.playerUid).sort();
-const render=async(role='player')=>React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test',user:{uid:'viewer',email:'aaci.yoni@gmail.com',role,godMode:true,balance:1000},clubSettings:{},onLeave(){},showToast(){}})));
+const render=async(role='player')=>React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test',user:{uid:'viewer',email:identities.owner,role,godMode:true,balance:1000},clubSettings:{},onLeave(){},showToast(){}})));
 const menu=()=>React.act(()=>byTitle('Table menu').click());
 const toggle=async()=>{await menu();const button=byTitle('GOD view');assert.ok(button);await React.act(async()=>button.click());};
 (async()=>{
- for(const role of ['player','manager','club_owner','super_admin']){await render(role);const watch=[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table');if(watch)await React.act(()=>watch.click());assert.equal(badges().length,0);await menu();assert.equal(byTitle('GOD view'),null,role+' with forged profile identity is not GOD');await menu();}assert.equal(peekCalls,0,'ordinary identities fetch no private hands');assert.equal(doc.querySelector('.poker-god-future-card'),null,'ordinary identities never render future cards');
- w.fb.auth.currentUser={uid:'viewer',email:'aaci.yoni@gmail.com',emailVerified:true};await render();assert.equal(badges().length,0,'verified GOD with view off has no marker');await toggle();
+ for(const role of ['player','manager','club_owner','super_admin']){await render(role);const watch=[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table');if(watch)await React.act(()=>watch.click());assert.equal(badges().length,0);await menu();assert.equal(byTitle('GOD view'),null,role+' with forged profile identity is not GOD');await menu();}assert.equal(doc.querySelector('[aria-label="Toggle GOD view"]'),null);assert.equal(peekCalls,0,'ordinary identities fetch no private hands');assert.equal(doc.querySelector('.poker-god-future-card'),null,'ordinary identities never render future cards');
+ w.fb.auth.currentUser={uid:'viewer',email:identities.owner,emailVerified:true};await render();assert.equal(badges().length,0,'verified GOD with view off has no marker');await toggle();
  assert.equal(doc.querySelector('.poker-god-runout'),null,'no upper banner obscures the hands');assert.equal(doc.querySelectorAll('.poker-board-primary .poker-god-future-card').length,2);assert.deepEqual([...doc.querySelectorAll('.poker-god-future-card')].map(n=>n.dataset.boardSlot),['3','4']);assert.equal(doc.querySelectorAll('.poker-board-primary .card-face').length,5);
  assert.deepEqual(uids(),['beta'],'projected river quads win even while aces lead on the flop');assert.match(badges()[0].getAttribute('aria-label'),/Best hand on full board:/);assert.match(badges()[0].textContent,/BEST HAND/);assert.ok(badges()[0].closest('.poker-player-info'),'badge has its own row below the stack');assert.equal(badges()[0].closest('.poker-hole-cards'),null,'badge is outside the cards');assert.ok(doc.querySelector('[data-player-uid=beta] .player-pod').classList.contains('poker-god-leading'));assert.equal(doc.querySelector('[data-player-uid=alpha] .poker-stack-amount').textContent,'125.5');
  current.gameState={...current.gameState,phase:'turn',board:finalBoard.slice(0,4),__seq:3};await React.act(async()=>tableNext(snapshot()));assert.deepEqual(uids(),['beta'],'turn retains the full-board winner');assert.equal(doc.querySelectorAll('.poker-god-future-card').length,1);assert.equal(doc.querySelector('.poker-god-future-card').dataset.boardSlot,'4');
@@ -69,15 +70,23 @@ const toggle=async()=>{await menu();const button=byTitle('GOD view');assert.ok(b
  await React.act(async()=>tableNext(snapshot()));
  assert.deepEqual(uids(),['beta'],'authorized PLO7 observer sees the winner');
  assert.match(badges()[0].title,/Straight Flush/);
- for(const email of JSON.parse(html.match(/const GOD_EMAILS = (\[[^;]+);/)[1].replace(/'/g,'"'))){
+ for(const email of require('../god-session-fixture.cjs').emails){
    w.fb.auth.currentUser={uid:'viewer',email,emailVerified:true};
    await render();await menu();
    assert.ok(byTitle('GOD view'),email+' has the PLO7 menu control');
    await menu();assert.deepEqual(uids(),['beta'],email+' sees the PLO7 observer marker');
  }
- current.players.viewer={...current.players.folded,uid:'viewer',seatIndex:0};
+ current.players.viewer={...current.players.alpha,uid:'viewer',seatIndex:0};
+ hands.viewer=[c('2','♠'),c('3','♠'),c('4','♠'),c('5','♠'),c('6','♠'),c('7','♠'),c('10','♠')];
  await React.act(async()=>tableNext(snapshot()));
- assert.deepEqual(uids(),[],'a seated player does not see the PLO7 prediction during betting');
+ assert.deepEqual(uids(),['beta'],'taking a seat keeps the authorized PLO7 projection');
+ for(const email of require('../god-session-fixture.cjs').emails){
+   w.fb.auth.currentUser={uid:'viewer',email,emailVerified:true};await render();
+   const control=doc.querySelector('[aria-label="Toggle GOD view"]');
+   assert.ok(control,email+' has a direct table toggle');
+   await React.act(async()=>control.click());assert.equal(badges().length,0);
+   await React.act(async()=>control.click());assert.deepEqual(uids(),['beta'],email+' sees the PLO7 projection while seated');
+ }
  current.gameState={...current.gameState,phase:'showdown',board:plo7Board};
  await React.act(async()=>tableNext(snapshot()));
  assert.deepEqual(uids(),['beta'],'the PLO7 result is available after betting closes');
@@ -87,6 +96,6 @@ const toggle=async()=>{await menu();const button=byTitle('GOD view');assert.ok(b
  current.gameState={...current.gameState,phase:'discard',board:pineappleBoard.slice(0,3),__seq:7};await React.act(async()=>tableNext(snapshot()));assert.deepEqual(uids(),['alpha'],'Pineapple retains the potential marker during discards');assert.match(badges()[0].textContent,/BEST POTENTIAL/);
  hands.alpha=afterDiscard.a;current.players.alpha.cardCount=2;current.gameState.__seq=8;await React.act(async()=>tableNext(snapshot()));assert.deepEqual(uids(),['beta'],'actual discarded card can change the forecast');assert.match(badges()[0].textContent,/BEST POTENTIAL/,'another unresolved discard still requires a conditional label');
  hands.beta=afterDiscard.b;current.players.beta.cardCount=2;current.gameState={...current.gameState,phase:'flop',__seq:9};await React.act(async()=>tableNext(snapshot()));assert.deepEqual(uids(),['beta']);assert.match(badges()[0].textContent,/BEST HAND/);assert.doesNotMatch(badges()[0].title,/discard|potential/i,'after discards, compare only the actual legal hands');
- await toggle();assert.equal(badges().length,0,'turning GOD view off removes every marker');assert.equal(doc.querySelector('.poker-god-future-card'),null,'GOD off removes future cards');await toggle();assert.deepEqual(uids(),['beta']);w.fb.auth.currentUser.emailVerified=false;await render();assert.equal(badges().length,0,'revoked verification clears marker in the same render');assert.equal(doc.querySelector('.poker-god-leading'),null);assert.equal(doc.querySelector('.poker-god-future-card'),null,'revocation removes future cards in the same render');w.fb.auth.currentUser={uid:'different',email:'aaci.yoni@gmail.com',emailVerified:true};await render('super_admin');assert.equal(badges().length,0,'mismatched allowlisted UID cannot retain leader data');
+ await toggle();assert.equal(badges().length,0,'turning GOD view off removes every marker');assert.equal(doc.querySelector('.poker-god-future-card'),null,'GOD off removes future cards');await toggle();assert.deepEqual(uids(),['beta']);w.fb.auth.currentUser.emailVerified=false;await render();assert.equal(badges().length,0,'revoked verification clears marker in the same render');assert.equal(doc.querySelector('.poker-god-leading'),null);assert.equal(doc.querySelector('.poker-god-future-card'),null,'revocation removes future cards in the same render');w.fb.auth.currentUser={uid:'different',email:identities.owner,emailVerified:true};await render('super_admin');assert.equal(badges().length,0,'mismatched allowlisted UID cannot retain leader data');
  await React.act(()=>root.unmount());w.close();console.log('PASS: GOD-only full-runout winners from preflop, legal conditional Pineapple discard forecasts, every tie, legal Omaha evaluation, missing-runout suppression, privacy and revocation');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../../tests/god-session-fixture.cjs');
 // Verify the real UI predicates and callable permission boundary together.
 // No Firebase credentials or production reads/writes are used.
 const {test}=require('node:test');
@@ -9,10 +10,11 @@ const vm=require('node:vm');
 const A=require('../pokerAuthority');
 const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
 const profileSource=fs.readFileSync(path.join(__dirname,'../pokerProfile.js'),'utf8');
-const HAIM='haim29071994@gmail.com',TOMER='tomerbitan481@gmail.com';
+const SUPERVISOR_A=identities.supervisors[0],SUPERVISOR_B=identities.supervisors[1];
 function ui(auth){
  const window={fb:{auth:{currentUser:auth}}};
- const definitions=['ROLES','GOD_EMAILS','SUPER_ADMIN_EMAIL','CLUB_OVERSIGHT_EMAILS'].map(name=>{
+ window.fb.viewerGrant=require('../../tests/god-session-fixture.cjs').grantFor(auth);
+ const definitions=['ROLES'].map(name=>{
   const match=html.match(new RegExp('const '+name+' = [\\s\\S]*?;'));
   assert(match,'Missing declaration: '+name);return match[0];
  }).join('\n');
@@ -21,11 +23,11 @@ function ui(auth){
  vm.runInNewContext(definitions+'\n'+predicates+'\nthis.access={isGodUser,isClubOversightUser,canManageClub,canOpenBackoffice};',context);
  return context.access;
 }
-const user={uid:'haim-auth-uid',role:'player',status:'pending'};
-const auth=(email=HAIM,verified=true)=>({uid:user.uid,email,emailVerified:verified});
-const requestAuth=(email=HAIM,verified=true)=>({uid:user.uid,token:{email,email_verified:verified}});
+const user={uid:'supervisorA-auth-uid',role:'player',status:'pending'};
+const auth=(email=SUPERVISOR_A,verified=true)=>({uid:user.uid,email,emailVerified:verified});
+const requestAuth=(email=SUPERVISOR_A,verified=true)=>({uid:user.uid,token:{email,email_verified:verified}});
 
-for(const email of [HAIM,TOMER])test('verified '+email+' can open management despite a stale player/pending membership role',()=>{
+for(const [i,email] of [SUPERVISOR_A,SUPERVISOR_B].entries())test('Verified supervisor '+(i+1)+' can open management despite a stale player/pending membership role',()=>{
  const access=ui(auth(email));
  assert.equal(access.isGodUser(user),true);
  assert.equal(access.isClubOversightUser(user),true);
@@ -34,20 +36,20 @@ for(const email of [HAIM,TOMER])test('verified '+email+' can open management des
  assert.equal(A.root({auth:requestAuth(email)}),true,'Server recognizes the same oversight identity');
 });
 test('management does not depend on a username, profile email or another signed-in UID',()=>{
- for(const identity of [auth('someone@example.test'),auth(HAIM,false),auth(TOMER,false),{...auth(TOMER),uid:'different-uid'},null]){
-  const access=ui(identity),forged={...user,username:'HAIM2907',email:HAIM};
+ for(const identity of [auth('someone@example.test'),auth(SUPERVISOR_A,false),auth(SUPERVISOR_B,false),{...auth(SUPERVISOR_B),uid:'different-uid'},null]){
+  const access=ui(identity),forged={...user,username:'SUPERVISOR01',email:SUPERVISOR_A};
   assert.equal(access.isClubOversightUser(forged),false);
   assert.equal(access.canManageClub(forged),false);
   assert.equal(access.canOpenBackoffice(forged),false);
  }
 });
 test('only the designated server root allowlist gets identity-based management access',()=>{
- for(const email of [HAIM,TOMER,'aaci.yoni@gmail.com','info.bagso@gmail.com','stranger@example.test']){
+ for(const email of [SUPERVISOR_A,SUPERVISOR_B,identities.owner,identities.observer,'stranger@example.test']){
   const access=ui(auth(email));
   assert.equal(access.isClubOversightUser(user),A.root({auth:requestAuth(email)}),email);
  }
- assert.equal(ui(auth('  HAIM29071994@GMAIL.COM ')).isClubOversightUser(user),true);
- assert.equal(ui(auth('Tomerbitan481@gmail.com')).isClubOversightUser(user),true);
+ assert.equal(ui(auth(('  '+identities.supervisors[0].toUpperCase()+' '))).isClubOversightUser(user),true);
+ assert.equal(ui(auth(identities.supervisors[1].toUpperCase())).isClubOversightUser(user),true);
 });
 test('club manager and agent scopes remain distinct; pending/banned members get neither entry',()=>{
  const access=ui(auth('ordinary@example.test'));
@@ -77,14 +79,14 @@ function directoryFixture(){
  vm.runInNewContext(profileSource,context);
  return{run:auth=>context.exports.pkClubDirectory({auth,data:{clubId:'clubA',includeReports:true}}),reads};
 }
-for(const email of [HAIM,TOMER])test('server lets verified '+email+' see all club results without creating a membership',async()=>{
+for(const [i,email] of [SUPERVISOR_A,SUPERVISOR_B].entries())test('Server lets verified supervisor '+(i+1)+' see all club results without creating a membership',async()=>{
  const fixture=directoryFixture(),result=await fixture.run(requestAuth(email));
  assert.deepEqual(Array.from(result.gameLog,row=>row.uid),['alice','bob']);
  assert.equal(result.members.length,3);
  assert.equal(fixture.reads.filter(ref=>ref.name==='gameLog').length,1);
 });
-test('an unverified or different identity cannot reuse HAIM management report access',async()=>{
- for(const identity of [requestAuth(HAIM,false),requestAuth(TOMER,false),requestAuth('someone@example.test')]){
+test('an unverified or different identity cannot reuse SUPERVISOR_A management report access',async()=>{
+ for(const identity of [requestAuth(SUPERVISOR_A,false),requestAuth(SUPERVISOR_B,false),requestAuth('someone@example.test')]){
   const fixture=directoryFixture();
   await assert.rejects(fixture.run(identity),error=>error.code==='permission-denied');
   assert.equal(fixture.reads.some(ref=>ref.name==='gameLog'),false);

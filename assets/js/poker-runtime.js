@@ -178,7 +178,38 @@
       events?.removeEventListener?.('online', resume);
     };
   }
-  const api = { godCardContext, handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
+  // Firestore listeners normally provide live state. This read-only fallback is
+  // for verified observers whose club membership cannot authorize a listener.
+  function watchGodTables({clubId,tableId,allowed,call,onTables,onError}) {
+    let stopped=false,timer,busy=false;
+    const visible=()=>root.document?.visibilityState!=='hidden';
+    async function refresh(){
+      if(stopped || busy || !allowed() || !visible()) return;
+      busy=true;
+      try{
+        let cursor=null;
+        const rows=[];
+        do {
+          const page=await call('godLobbyCounts',{mode:'watch',clubId,...(tableId?{tableId}:{}),...(cursor?{cursor}:{})});
+          if(stopped || !allowed()) return;
+          rows.push(...page.rows);
+          cursor=page.cursor;
+        } while(cursor);
+        onTables(rows);
+      }catch(error){
+        if(!stopped) onError(error);
+        if(/permission-denied|unauthenticated/.test(error?.code||'')) stopped=true;
+      }finally{
+        busy=false;
+        if(!stopped && allowed()) timer=setTimeout(refresh,tableId?1800:6000);
+      }
+    }
+    const wake=()=>{clearTimeout(timer);refresh();};
+    root.document?.addEventListener('visibilitychange',wake);
+    refresh();
+    return ()=>{stopped=true;clearTimeout(timer);root.document?.removeEventListener('visibilitychange',wake);};
+  }
+  const api = { watchGodTables, godCardContext, handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PokerRuntime = api;
 })(typeof window !== 'undefined' ? window : globalThis);

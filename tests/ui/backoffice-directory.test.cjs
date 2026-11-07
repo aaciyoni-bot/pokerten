@@ -45,6 +45,7 @@ w.fb={db:{},auth:{currentUser:{uid:'owner',email:'owner@example.invalid',emailVe
 w.selectTestClub(club);
 const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const requestCard=name=>[...doc.querySelectorAll('button')].filter(b=>b.textContent.trim()==='Approve').map(b=>b.parentElement.parentElement).find(card=>card.textContent.includes(name));
+require('../god-session-fixture.cjs').mockComponentGrant(w.fb);
 (async()=>{
  await React.act(async()=>root.render(React.createElement(w.BackofficeTest,{user:owner,clubSettings:club,tables:[],showToast:(message,type)=>toasts.push({message,type})})));
  assert.match(doc.body.textContent,/Loading club members/);

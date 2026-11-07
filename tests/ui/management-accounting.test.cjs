@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../god-session-fixture.cjs');
 const assertEnglishUi=require('./english-ui.cjs');
 const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;
@@ -13,7 +14,7 @@ w.fb={db:{},auth:{currentUser:{uid:'owner',email:'owner@example.test',emailVerif
  if(name==='pkClubDirectory'){if(args.accountingOnly){if(holdAccounting)return new Promise(resolve=>pendingAccounting.push(resolve));return{accounting:accountingOverride||report()};}if(args.reportSection)return{records:[],hasMore:false,nextCursor:null};return{members,treasury:{uid:'owner',balance:5000}};}
  throw Error('Unexpected callable '+name);
 },setDoc:deny,updateDoc:deny,addDoc:deny,runTransaction:deny};
-const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.OwnNumbers=OwnBalanceNumbers;window.AccountNumbersTest=AccountNumbers;'));
+const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');require('../god-session-fixture.cjs').mockComponentGrant(w.fb);w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.BO=BackofficeView;window.OwnNumbers=OwnBalanceNumbers;window.AccountNumbersTest=AccountNumbers;'));
 w.__club={id:'main',ownerUid:'owner'};const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const render=async key=>{await React.act(async()=>root.render(React.createElement(w.BO,{key,user:members[0],clubSettings:{rakePct:6},showToast(){}})));assertEnglishUi(doc.body,'Management '+key);await select('Members');};
 const select=async label=>React.act(()=>[...doc.querySelectorAll('.management-tabs button')].find(b=>b.textContent===label).click());
@@ -39,7 +40,7 @@ const assertStaffTotals=async(result,chips)=>{for(const [tab,selector] of [['Ove
  await React.act(()=>Simulate.change(sort,{target:{value:'chips'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
  await React.act(()=>Simulate.change(sort,{target:{value:'result'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Bob/);
  assert.doesNotMatch(doc.body.textContent,/Weekly Settlement|Export full club report|Club rake/);
- god=true;w.fb.auth.currentUser.email='haim29071994@gmail.com';await render('god');assert.match(card('Alice').textContent,/Cycle rake: 8\.00/);assert.ok([...doc.querySelector('[aria-label="Sort players"]').options].some(o=>o.value==='rake'));
+ god=true;w.fb.auth.currentUser.email=identities.supervisors[0];await render('god');assert.match(card('Alice').textContent,/Cycle rake: 8\.00/);assert.ok([...doc.querySelector('[aria-label="Sort players"]').options].some(o=>o.value==='rake'));
  await React.act(()=>Simulate.change(doc.querySelector('[aria-label="Sort players"]'),{target:{value:'rake'}}));assert.match(doc.querySelector('.club-player-card').textContent,/Alice/);
  assert.equal(card('Bob').querySelector('[data-cycle-rake]').textContent,'Cycle rake: 3.00');
  for(const [tab,selector] of [['Overview','.management-cycle-summary'],['Agents','.management-agent-totals']]){await select(tab);assert.equal(doc.querySelector(selector+' [data-cycle-rake]').textContent,'Cycle rake: 11.00');}
@@ -108,7 +109,7 @@ const assertStaffTotals=async(result,chips)=>{for(const [tab,selector] of [['Ove
  for(const viewer of [{uid:'viewer',role:'agent',status:'approved'},{uid:'viewer',role:'player',status:'approved'},{uid:'viewer',role:'manager',status:'pending'}]){
    await numbers(viewer);assert.deepEqual(accountRows(doc),['balance','cycle']);assert.equal(doc.querySelector('[data-lifetime-result]'),null);assert.doesNotMatch(doc.body.textContent,/987\.65|Lifetime profit/);
  }
- w.fb.auth.currentUser={uid:'viewer',email:'info.bagso@gmail.com',emailVerified:true};
+ w.fb.auth.currentUser={uid:'viewer',email:identities.observer,emailVerified:true};
  await numbers({uid:'viewer',role:'player',status:'approved'});assert.deepEqual(accountRows(doc),['balance','cycle'],'GOD-only access does not confer manager lifetime access');
  await React.act(()=>root.unmount());w.close();console.log('PASS: current-cycle P/L and rake lead for player/agent/club, cycle sorting, staff-only lifetime context');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

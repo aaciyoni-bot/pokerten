@@ -1,10 +1,9 @@
 'use strict';
 const {test}=require('node:test'), assert=require('node:assert/strict'), fs=require('node:fs'), vm=require('node:vm');
 const html=fs.readFileSync(require.resolve('../index.html'),'utf8');
-const list=html.match(/const GOD_EMAILS = ([\s\S]*?);/)[0];
+const {emails,grantFor}=require('./god-session-fixture.cjs');
 const predicate=html.slice(html.indexOf('const isGodUser ='),html.indexOf('const canManageGame ='));
-function gate(profile,identity){const window={fb:{auth:{currentUser:identity}}};return vm.runInNewContext(list+predicate+'isGodUser(profile)',{window,profile});}
-const emails=vm.runInNewContext(list+'GOD_EMAILS');
+function gate(profile,identity){const window={fb:{auth:{currentUser:identity},viewerGrant:grantFor(identity)}};return vm.runInNewContext(predicate+'isGodUser(profile)',{window,profile});}
 test('GOD UI trusts only the matching verified sign-in, never profile roles or email',()=>{
  const profile={uid:'me',email:emails[0],role:'superadmin'};
  for(const identity of [null,{uid:'me',email:'other@example.com',emailVerified:true},{uid:'me',email:emails[0],emailVerified:false},{uid:'else',email:emails[0],emailVerified:true}]) assert.equal(gate(profile,identity),false);

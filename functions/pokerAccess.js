@@ -124,9 +124,18 @@ exports.pkClubMember=onCall(opts,async r=>command(r,'club-member',async(tx,db,ui
    if(amount<0&&-amount>cash(Math.max(0,balance-bonus)))fail('failed-precondition','Claim Back exceeds available regular chips. Bonus and table chips cannot be claimed.');
   }
   const fundingUid=key(club.ownerUid);if(target===fundingUid)fail('invalid-argument','Choose a member other than the club treasury');const value=number(r.data.amount,NaN,-10000000,10000000);if(!value)fail('invalid-argument','Amount required');const write=await prepareLedger(db,tx,cid,[{type:'credit',uid:fundingUid,amount:-value},{type:'credit',uid:target,amount:value}],`transfer:${uid}`,now);write();Object.assign(audit,{fundingUid,amount:value});
- }else if(op==='ban'||op==='unban'){
-  if(target===club.ownerUid)fail('failed-precondition','Cannot ban the club owner');
-  tx.update(ref,{status:op==='ban'?'banned':'approved'});
+ }else if(['ban','unban','remove','restore'].includes(op)){
+  if(target===club.ownerUid || target===uid || p.isBot)fail('failed-precondition','Choose another club member');
+  const removed=p.removedFromClub===true;
+  if(('expectedStatus' in r.data && r.data.expectedStatus!==p.status) ||
+     ('expectedRemoved' in r.data && r.data.expectedRemoved!==removed))
+   fail('failed-precondition','Club access changed. Refresh and try again.');
+  if(!['approved','banned'].includes(p.status) || (removed && op!=='restore') || (!removed && op==='restore'))
+   fail('failed-precondition','This action is unavailable for this membership');
+  const access={status:op==='ban'||op==='remove'?'banned':'approved',removedFromClub:op==='remove'};
+  tx.update(ref,access);
+  tx.set(db.collection('_pkAudit').doc(),audit);
+  return{ok:true,...access};
  }else if(op==='details'){
   const phone=String(r.data.phone||'').trim(),notes=String(r.data.notes||'').trim();
   if(phone.length>40||notes.length>2000)fail('invalid-argument','Player details are too long');

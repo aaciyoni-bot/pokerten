@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../god-session-fixture.cjs');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
@@ -19,8 +20,8 @@ w.eval(fs.readFileSync(path.join(__dirname,'../../assets/js/club-ui.js'),'utf8')
 const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
 let source=[...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(m=>m[1]).sort((a,b)=>b.length-a.length)[0];
 source=source.replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.SettlementTest=SettlementSection;');
-w.eval(source);w.__club={ownerUid:'owner',closedWeeks:{}};const root=ReactDOM.createRoot(w.document.getElementById('root'));
-const render=uid=>{w.fb.auth.currentUser={uid,email:uid==='owner'?'aaci.yoni@gmail.com':uid+'@example.invalid',emailVerified:true};return React.act(async()=>root.render(React.createElement(w.SettlementTest,{key:uid,user:{uid,email:uid+'@example.invalid',role:uid==='owner'?'club_owner':uid==='manager'?'manager':'agent'},showToast:()=>{}})));};
+require('../god-session-fixture.cjs').mockComponentGrant(w.fb);w.eval(source);w.__club={ownerUid:'owner',closedWeeks:{}};const root=ReactDOM.createRoot(w.document.getElementById('root'));
+const render=uid=>{w.fb.auth.currentUser={uid,email:uid==='owner'?identities.owner:uid+'@example.invalid',emailVerified:true};return React.act(async()=>root.render(React.createElement(w.SettlementTest,{key:uid,user:{uid,email:uid+'@example.invalid',role:uid==='owner'?'club_owner':uid==='manager'?'manager':'agent'},showToast:()=>{}})));};
 (async()=>{
   await render('owner');assert.equal(w.document.querySelectorAll('.club-account-card').length,4);
   assert.match(w.document.body.textContent,/Player rake12\.00/);assert.match(w.document.body.textContent,/Agent cuts \(verified\)3\.00/);assert.match(w.document.body.textContent,/Owner rake \(verified\)9\.00/);

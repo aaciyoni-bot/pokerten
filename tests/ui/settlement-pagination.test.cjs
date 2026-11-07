@@ -30,6 +30,7 @@ w.fb={auth:{currentUser:{uid:'owner',email:'owner@example.invalid',emailVerified
 }};
 const doc=w.document,root=ReactDOM.createRoot(doc.getElementById('root'));
 const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
+require('../god-session-fixture.cjs').mockComponentGrant(w.fb);
 (async()=>{
  await React.act(async()=>root.render(React.createElement(w.SettlementTest,{user:members[0],showToast(){}})));
  assert.equal(typeof rejectMiddle,'function','report reached its second game-history page');

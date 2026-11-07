@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../god-session-fixture.cjs');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
@@ -10,7 +11,7 @@ let current={settings:{serverEngine:true,maxPlayers:6,baseGameType:'NLH',actionT
 let tableNext,privateNext,tokenNext,pending=[],calls=[],tableId='test-table';
 const ref=(...args)=>({id:args.at(-1),path:args.slice(1).join('/')});
 const snap=()=>({id:tableId,exists:()=>true,data:()=>structuredClone(current),metadata:{fromCache:false}});
-w.fb={db:{},auth:{currentUser:{uid:'me',email:'haim29071994@gmail.com',emailVerified:true}},doc:ref,collection:ref,query:r=>r,where:()=>({}),
+w.fb={db:{},auth:{currentUser:{uid:'me',email:identities.supervisors[0],emailVerified:true}},doc:ref,collection:ref,query:r=>r,where:()=>({}),
  onIdTokenChanged:(_,cb)=>{tokenNext=cb;return()=>{tokenNext=null;};},
  fx:(name,args)=>{calls.push({name,args});if(name==='godPeek')return new Promise((resolve,reject)=>pending.push({args,resolve,reject}));return Promise.resolve({});},
  getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),updateDoc:async()=>{},setDoc:async()=>{},addDoc:async()=>({id:'x'}),deleteDoc:async()=>{},
@@ -18,7 +19,7 @@ w.fb={db:{},auth:{currentUser:{uid:'me',email:'haim29071994@gmail.com',emailVeri
  else if(r.path==='tables/'+tableId+'/priv/me'){privateNext=cb;queueMicrotask(()=>cb({exists:()=>true,data:()=>({cards:oldHands.me})}));}
  else queueMicrotask(()=>cb({exists:()=>false,docs:[]}));return()=>{};}};
 const html=fs.readFileSync(process.env.POKER_TEST_INDEX||path.join(__dirname,'../../index.html'),'utf8');
-const source=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;');w.eval(source);w.__pkMuted=true;
+const source=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;');require('../god-session-fixture.cjs').mockComponentGrant(w.fb);w.eval(source);w.__pkMuted=true;
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const props=()=>({tableDocId:tableId,user:{uid:'me',role:'player',balance:500},clubSettings:{name:'Club'},onLeave(){},showToast(){}});
 const render=()=>React.act(async()=>root.render(React.createElement(w.TableTest,props())));
@@ -60,12 +61,12 @@ const toggle=async()=>{await React.act(()=>doc.querySelector('[title="Table menu
  // Forged profile role/email never bypasses the signed-in identity guard.
  w.fb.auth.currentUser={uid:'me',email:'ordinary@example.invalid',emailVerified:true};
  const count=calls.filter(c=>c.name==='godPeek').length;
- await React.act(async()=>root.render(React.createElement(w.TableTest,{...props(),user:{uid:'me',role:'super_admin',email:'haim29071994@gmail.com',godMode:true}})));
+ await React.act(async()=>root.render(React.createElement(w.TableTest,{...props(),user:{uid:'me',role:'super_admin',email:identities.supervisors[0],godMode:true}})));
  await React.act(()=>doc.querySelector('[title="Table menu"]').click());assert.equal(doc.querySelector('[title="GOD view"]'),null);
  assert.equal(calls.filter(c=>c.name==='godPeek').length,count);
  await React.act(()=>doc.querySelector('[aria-label="Close table menu"]').click());
  // A table change with a pending response must not reuse its old context.
- w.fb.auth.currentUser={uid:'me',email:'haim29071994@gmail.com',emailVerified:true};await render();await toggle();const oldTable=pending.shift();
+ w.fb.auth.currentUser={uid:'me',email:identities.supervisors[0],emailVerified:true};await render();await toggle();const oldTable=pending.shift();
  tableId='other-table';await render();const newTable=pending.shift();assert.equal(faces().length,0);
  await reply(oldTable,oldHands);assert.equal(faces().length,0,'old-table response ignored');
  await reply(newTable,newHands);assert.deepEqual(ranks(),['5','6']);

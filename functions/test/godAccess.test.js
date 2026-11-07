@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../../tests/god-session-fixture.cjs');
 // Exercise the real callable with isolated Firestore reads, never live cards.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
@@ -8,7 +9,7 @@ const vm=require('node:vm');
 const {createRequire}=require('node:module');
 const enginePath=path.join(__dirname,'../pokerEngine.js');
 const source=fs.readFileSync(enginePath,'utf8'),engineRequire=createRequire(enginePath);
-const HAIM='haim29071994@gmail.com',TOMER='tomerbitan481@gmail.com',REVOKED='easymarcelos@gmail.com';
+const SUPERVISOR_A=identities.supervisors[0],SUPERVISOR_B=identities.supervisors[1],REVOKED=identities.revoked;
 function fixture(){
  const reads=[],board=['A','K','Q','J','10'].map(val=>({val,suit:'♠'})),cards=[{val:'2',suit:'♥'},{val:'3',suit:'♥'}];
  let transactions=0;
@@ -28,29 +29,29 @@ function fixture(){
  return{peek:context.exports.godPeek,reads,board,cards,contextKey,get transactions(){return transactions;}};
 }
 const auth=(email,verified=true)=>({uid:'verified-account',token:{email,email_verified:verified}});
-for(const email of [HAIM,TOMER])test(email+' can read the existing GOD callable after verified sign-in',async()=>{
+for(const [i,email] of [SUPERVISOR_A,SUPERVISOR_B].entries())test('Authorized observer '+(i+1)+' can read the existing GOD callable after verified sign-in',async()=>{
  const f=fixture(),result=await f.peek({auth:auth(email),data:{tableId:'test',contextKey:f.contextKey}});
  assert.deepEqual(JSON.parse(JSON.stringify(result)),{tableId:'test',contextKey:f.contextKey,handN:23,hands:{p1:f.cards},finalBoard:f.board});
  assert.deepEqual(f.reads.sort(),['tables/test','tables/test/priv/_engine','tables/test/priv/p1']);
  assert.equal(f.transactions,1,'the real engine callable uses one coherent transaction');
 });
-test('revoked EASYMARCELOS and unverified/forged identities cannot read any private document',async()=>{
- for(const identity of [auth(REVOKED),auth(HAIM,false),auth(TOMER,false),auth('ordinary@example.invalid'),{uid:'verified-account',email:TOMER,role:'super_admin',token:{email:'ordinary@example.invalid',email_verified:true}},null]){
+test('revoked former observer and unverified/forged identities cannot read any private document',async()=>{
+ for(const identity of [auth(REVOKED),auth(SUPERVISOR_A,false),auth(SUPERVISOR_B,false),auth('ordinary@example.invalid'),{uid:'verified-account',email:SUPERVISOR_B,role:'super_admin',token:{email:'ordinary@example.invalid',email_verified:true}},null]){
   const f=fixture();
-  await assert.rejects(f.peek({auth:identity,data:{tableId:'test',email:HAIM,role:'super_admin'}}),e=>e.code===(identity?'permission-denied':'unauthenticated'));
+  await assert.rejects(f.peek({auth:identity,data:{tableId:'test',email:SUPERVISOR_A,role:'super_admin'}}),e=>e.code===(identity?'permission-denied':'unauthenticated'));
   assert.deepEqual(f.reads,[]);
   assert.equal(f.transactions,0,'authorization must run before starting a private read transaction');
  }
 });
 test('UI GOD identity guard agrees with the callable including revocation',()=>{
  const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
- const clientList=vm.runInNewContext(html.match(/const GOD_EMAILS = (\[[^;]+);/)[1]);
- const serverList=vm.runInNewContext(source.match(/const GOD_EMAILS = (\[[^;]+);/)[1]);
- assert.deepEqual(Array.from(clientList).sort(),Array.from(serverList).sort());
- assert.ok(clientList.includes(HAIM));assert.ok(clientList.includes(TOMER));assert.equal(clientList.includes(REVOKED),false);
- const context={window:{fb:{auth:{currentUser:{uid:'haim',email:HAIM,emailVerified:true}}}}};
- vm.runInNewContext(html.match(/const GOD_EMAILS = [^;]+;/)[0]+'\n'+html.slice(html.indexOf('const isGodUser ='),html.indexOf('const isClubOversightUser ='))+'\nthis.allowed=isGodUser;',context);
- assert.equal(context.allowed({uid:'haim'}),true);
- context.window.fb.auth.currentUser.email=REVOKED;assert.equal(context.allowed({uid:'haim',email:HAIM}),false);
- context.window.fb.auth.currentUser.email=HAIM;assert.equal(context.allowed({uid:'other',email:HAIM}),false);
+ const {emails,grantFor}=require('../../tests/god-session-fixture.cjs');
+ assert.ok(emails.includes(SUPERVISOR_A));assert.ok(emails.includes(SUPERVISOR_B));assert.equal(emails.includes(REVOKED),false);
+ for (const email of emails)assert.equal(html.includes(email),false,'viewer email list must not ship with the app');
+ const user={uid:'supervisorA',email:SUPERVISOR_A,emailVerified:true};
+ const context={window:{fb:{auth:{currentUser:user},viewerGrant:grantFor(user)}}};
+ vm.runInNewContext(html.slice(html.indexOf('const isGodUser ='),html.indexOf('const isClubOversightUser ='))+'\nthis.allowed=isGodUser;',context);
+ assert.equal(context.allowed({uid:'supervisorA'}),true);
+ context.window.fb.auth.currentUser.email=REVOKED;assert.equal(context.allowed({uid:'supervisorA',email:SUPERVISOR_A}),false);
+ context.window.fb.auth.currentUser.email=SUPERVISOR_A;assert.equal(context.allowed({uid:'other',email:SUPERVISOR_A}),false);
 });

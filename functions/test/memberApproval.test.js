@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../../tests/god-session-fixture.cjs');
 // Run the real pkClubMember callable, authority predicates and idempotent command
 // through the actual Firestore transaction SDK. Only the RPC transport is fake;
 // no credentials, production documents or hand-written transaction are used.
@@ -116,14 +117,14 @@ test('cashier honors legacy bonus fallback and revalidates balance on each new r
  const before=f.all();await assert.rejects(f.run({targetUid:'player',op:'cashier-transfer',amount:-70,requestId:'cashier_legacy_0002'}),/available regular chips/);assert.deepEqual(f.all(),before);
 });
 
-test('approved manager and verified HAIM can approve and reject pending members using the real callable',async()=>{
- for(const auth of [identity(),identity('haim','haim29071994@gmail.com')])for(const op of ['approve','reject']){
+test('approved manager and verified SUPERVISOR_A can approve and reject pending members using the real callable',async()=>{
+ for(const auth of [identity(),identity('supervisorA',identities.supervisors[0])])for(const op of ['approve','reject']){
   const f=fixture();
   assert.deepEqual(await f.run({op},auth),{ok:true});
   assert.equal(f.records.get('memberships/new-player_clubA').status,op==='approve'?'approved':'rejected');
   assert.equal(f.audit().length,1);
   assert.deepEqual({...f.audit()[0],at:0},{clubId:'clubA',uid:auth.uid,targetUid:'new-player',at:0,action:'member-'+op});
-  assert.equal(f.records.has('memberships/haim_clubA'),false,'Oversight does not create or impersonate a manager membership');
+  assert.equal(f.records.has('memberships/supervisorA_clubA'),false,'Oversight does not create or impersonate a manager membership');
   assert.equal(f.commits.length,1);
   assert.ok(f.requests[0].request.newTransaction.readWrite,'The actual SDK starts a write transaction');
   f.assertBalancesUntouched();
@@ -145,11 +146,11 @@ test('approval attaches only a valid approved agent and copies its configured pe
 test('pending/banned managers, agents, players and unverified/forged oversight cannot approve or reject',async()=>{
  for(const auth of [
   identity('pending-manager'),identity('banned-manager'),identity('agent'),identity('player'),
-  identity('haim','haim29071994@gmail.com',false),
-  {...identity('outsider','ordinary@example.test'),email:'haim29071994@gmail.com',role:'super_admin'},null,
+  identity('supervisorA',identities.supervisors[0],false),
+  {...identity('outsider','ordinary@example.test'),email:identities.supervisors[0],role:'super_admin'},null,
  ])for(const op of ['approve','reject']){
   const f=fixture(),before=f.all();
-  await assert.rejects(f.run({op,email:'haim29071994@gmail.com',role:'manager'},auth),e=>e.code===(auth?'permission-denied':'unauthenticated'));
+  await assert.rejects(f.run({op,email:identities.supervisors[0],role:'manager'},auth),e=>e.code===(auth?'permission-denied':'unauthenticated'));
   assert.deepEqual(f.all(),before);assert.equal(f.commits.length,0);assert.equal(f.audit().length,0);
  }
 });
@@ -162,4 +163,17 @@ test('retrying the same request returns its receipt without a second audit, and 
  await assert.rejects(f.run({op:'reject',agentUid:'agent'}),e=>e.code==='invalid-argument');
  assert.deepEqual(f.all(),after);assert.equal(f.audit().length,1);
  f.assertBalancesUntouched();
+});
+
+test('club removal preserves the ledger, cannot be undone by a stale unban, and can be restored',async()=>{
+ const f=fixture(),path='memberships/player_clubA',before=clone(f.records.get(path));
+ const change=(op,id,extra={})=>f.run({targetUid:'player',op,requestId:'member_access_'+id.padStart(6,'0'),...extra});
+ await change('ban','1');
+ await change('remove','2',{expectedStatus:'banned',expectedRemoved:false});
+ assert.deepEqual(f.records.get(path),{...before,status:'banned',removedFromClub:true});
+ await assert.rejects(change('unban','3'),e=>e.code==='failed-precondition');
+ await change('restore','4',{expectedStatus:'banned',expectedRemoved:true});
+ assert.deepEqual(f.records.get(path),{...before,removedFromClub:false});
+ await assert.rejects(change('remove','5',{expectedStatus:'banned',expectedRemoved:true}),e=>e.code==='failed-precondition');
+ for(const uid of ['owner','manager'])await assert.rejects(f.run({op:'remove',targetUid:uid}),e=>e.code==='failed-precondition');
 });

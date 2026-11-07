@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../god-session-fixture.cjs');
 const assertEnglishUi=require('./english-ui.cjs');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
@@ -14,7 +15,7 @@ w.fb={db:{},auth:{currentUser:{uid:'viewer',email:'player@example.invalid',email
  getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),
  fx:async(name,args)=>{calls.push({name,args});return name==='godPeek'?{tableId:args.tableId,contextKey:args.contextKey,hands:{},finalBoard:[]}:{ok:true};},
  onSnapshot:(r,opts,fn)=>{const cb=typeof opts==='function'?opts:fn;let active=true;queueMicrotask(()=>{if(!active)return;if(r.path==='tables/menu-test'){tableNext=cb;cb(snapshot());}else cb({exists:()=>false,docs:[]});});return()=>{active=false;};}};
-const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8'),source=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;');w.eval(source);w.__pkMuted=true;
+const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8'),source=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.TableTest=PokerTable;');require('../god-session-fixture.cjs').mockComponentGrant(w.fb);w.eval(source);w.__pkMuted=true;
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const title=t=>doc.querySelector('button[title="'+t+'"]');
 const privileged=['GOD view','Add bot','Fill empty seats with bots','Create a new table','Deal now','Force-unstick a frozen table','Edit table settings','Sit out and open Club Management'];
@@ -45,15 +46,15 @@ function present(titles,label){for(const t of titles)assert.ok(title(t),label+':
  }
  await render({role:'super_admin'});present([...staff,'Deal now','Force-unstick a frozen table'],'super admin');absent(['GOD view'],'role alone');
  // No prior admin render, role flag or callback may persist after demotion.
- await render({role:'player',email:'haim29071994@gmail.com',godMode:true});absent(privileged,'demoted player with forged profile GOD fields');
+ await render({role:'player',email:identities.supervisors[0],godMode:true});absent(privileged,'demoted player with forged profile GOD fields');
  // A GOD-only account has peek access without gaining management permissions.
- w.fb.auth.currentUser={uid:'viewer',email:'info.bagso@gmail.com',emailVerified:true};await render();present(['GOD view'],'verified GOD');absent(privileged.filter(t=>t!=='GOD view'),'GOD-only player');
+ w.fb.auth.currentUser={uid:'viewer',email:identities.observer,emailVerified:true};await render();present(['GOD view'],'verified GOD');absent(privileged.filter(t=>t!=='GOD view'),'GOD-only player');
  assert.equal(calls.filter(c=>c.name==='godPeek').length,0,'opening a menu never requests hidden cards');
  w.fb.auth.currentUser.emailVerified=false;
  await React.act(async()=>tokenNext(w.fb.auth.currentUser));absent(privileged,'verification revoked while menu open');
- w.fb.auth.currentUser={uid:'another-user',email:'haim29071994@gmail.com',emailVerified:true};await render();absent(privileged,'different signed-in UID');
+ w.fb.auth.currentUser={uid:'another-user',email:identities.supervisors[0],emailVerified:true};await render();absent(privileged,'different signed-in UID');
  // Verified oversight keeps its existing owner/manager-equivalent access.
- w.fb.auth.currentUser={uid:'viewer',email:'haim29071994@gmail.com',emailVerified:true};await render();present([...staff,'GOD view'],'verified oversight player');absent(['Deal now','Force-unstick a frozen table'],'oversight player role');
+ w.fb.auth.currentUser={uid:'viewer',email:identities.supervisors[0],emailVerified:true};await render();present([...staff,'GOD view'],'verified oversight player');absent(['Deal now','Force-unstick a frozen table'],'oversight player role');
  w.fb.auth.currentUser={uid:'viewer',email:'player@example.invalid',emailVerified:true};await render({role:'manager'});
  current.tournamentId='event1';await update();absent(['Add bot','Fill empty seats with bots','Edit table settings'],'tournament');
  delete current.tournamentId;current.closeRequested={by:'owner',at:Date.now()};await update();absent(['Add bot','Fill empty seats with bots','Edit table settings'],'closing table');

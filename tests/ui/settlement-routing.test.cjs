@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../god-session-fixture.cjs');
 const assertEnglishUi=require('./english-ui.cjs');
 // Exercise the real App -> club entry -> visible navigation and both report links -> internal report/back flow.
 // Only Firebase is simulated; no UI component or access predicate is replaced.
@@ -17,14 +18,14 @@ w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js')
 w.eval(script);w.__pkMuted=true;
 w.open=()=>assert.fail('Reports must not open another site or lose the current authenticated session');
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
-const HAIM='haim29071994@gmail.com';
+const SUPERVISOR_A=identities.supervisors[0];
 const club={id:'main',name:'Management Regression Club',ownerUid:'owner',rakePct:6};
 const record=(id,data)=>({id,exists:()=>data!==null,data:()=>structuredClone(data),metadata:{fromCache:false}});
 const records=rows=>{const docs=rows.map(row=>record(row.id||row.uid,row));return{docs,empty:docs.length===0,size:docs.length,metadata:{fromCache:false},forEach:fn=>docs.forEach(fn)};};
 function firebaseFixture(email,membershipStatus,role='player'){
- const identity={uid:'haim-auth-uid',email,emailVerified:true};
- // Profile metadata deliberately claims HAIM even for the ordinary identity.
- const profile={uid:identity.uid,username:'HAIM2907',email:HAIM,role:'player',status:'approved',playerId:'P123456789',balance:0};
+ const identity={uid:'supervisorA-auth-uid',email,emailVerified:true};
+ // Profile metadata deliberately claims SUPERVISOR_A even for the ordinary identity.
+ const profile={uid:identity.uid,username:'SUPERVISOR01',email:SUPERVISOR_A,role:'player',status:'approved',playerId:'P123456789',balance:0};
  const membership={id:identity.uid+'_main',uid:identity.uid,clubId:'main',username:profile.username,role,status:membershipStatus,balance:25};
  const other={id:'other_main',uid:'other',clubId:'main',username:'Other human player',role:'player',status:'approved',balance:80};
  const owner={id:'owner_main',uid:'owner',clubId:'main',username:'Owner',role:'club_owner',status:'approved',balance:1000};
@@ -49,8 +50,9 @@ function firebaseFixture(email,membershipStatus,role='player'){
   onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;fn(snapshot(target));return()=>{};},
   fx:async(name,args)=>{
    calls.push({name,args});
-   if(name==='pkSettlementReport'){if(reportDenied)throw Object.assign(new Error('You do not have permission to view settlement'),{code:'functions/permission-denied'});return require('./settlement-fixture.cjs')(email===HAIM||role==='manager'?'owner':role==='agent'?'agent':'player',identity.uid);}
+   if(name==='pkSettlementReport'){if(reportDenied)throw Object.assign(new Error('You do not have permission to view settlement'),{code:'functions/permission-denied'});return require('./settlement-fixture.cjs')(email===SUPERVISOR_A||role==='manager'?'owner':role==='agent'?'agent':'player',identity.uid);}
    if(name==='pkGameHistory')return{records:[{uid:identity.uid,game:'NLH',clubId:'main',profit:25,at:Date.now()}],nextCursor:null};
+   if(name==='godLobbyCounts' && args.mode==='access')return require('../god-session-fixture.cjs').grantFor(identity);
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
    if(name==='pkClubDirectory'&&args.accountingOnly)return{accounting:{players:{[membership.uid]:{balance:membership.balance,chips:membership.balance,totalResult:-200,result:-200,onTables:0}}}};
    if(name==='pkClubDirectory'&&reportDenied)throw Object.assign(new Error('Club staff only'),{code:'functions/permission-denied'});
@@ -117,13 +119,13 @@ async function assertPlayerLinks(fixture){
  assert.equal(fixture.writes.length,0);
 }
 (async()=>{
- const haim=firebaseFixture(HAIM,'pending');await mountAndEnter(haim);await assertStaffLinks(haim);
+ const supervisorA=firebaseFixture(SUPERVISOR_A,'pending');await mountAndEnter(supervisorA);await assertStaffLinks(supervisorA);
  // A permission failure must remain an error with recovery, never turn into an empty successful report.
- haim.denyReports(true);await React.act(async()=>reportLink('Club settlement').click());
+ supervisorA.denyReports(true);await React.act(async()=>reportLink('Club settlement').click());
  assert.match(doc.querySelector('[role="alert"]').textContent,/permission/);assertEnglishUi(doc.body,'Settlement access failure');assert.doesNotMatch(doc.body.textContent,/Player breakdown/);
- haim.denyReports(false);await React.act(async()=>button('Try again').click());assert.equal(doc.querySelectorAll('.st-account').length,0);await React.act(()=>button('Players').click());assert.match(doc.body.textContent,/Player breakdown/);assertEnglishUi(doc.body,'Staff settlement report');await back();
+ supervisorA.denyReports(false);await React.act(async()=>button('Try again').click());assert.equal(doc.querySelectorAll('.st-account').length,0);await React.act(()=>button('Players').click());assert.match(doc.body.textContent,/Player breakdown/);assertEnglishUi(doc.body,'Staff settlement report');await back();
  await React.act(()=>root.render(null));
- const godOnly=firebaseFixture('info.bagso@gmail.com','approved');await mountAndEnter(godOnly);await assertPlayerLinks(godOnly);await React.act(()=>root.render(null));
+ const godOnly=firebaseFixture(identities.observer,'approved');await mountAndEnter(godOnly);await assertPlayerLinks(godOnly);await React.act(()=>root.render(null));
  const ordinary=firebaseFixture('ordinary@example.invalid','approved');await mountAndEnter(ordinary);await assertPlayerLinks(ordinary);await React.act(()=>root.render(null));
  const manager=firebaseFixture('manager@example.invalid','approved','manager');await mountAndEnter(manager);await assertStaffLinks(manager);await React.act(()=>root.render(null));
  const agent=firebaseFixture('agent@example.invalid','approved','agent');await mountAndEnter(agent);await assertStaffLinks(agent);

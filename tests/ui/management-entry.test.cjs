@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../god-session-fixture.cjs');
 // Exercise the real App -> club entry -> navigation -> BackofficeView flow.
 // Only Firebase is simulated; no UI component or access predicate is replaced.
 const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
@@ -12,14 +13,14 @@ const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js'),'utf8'));
 w.eval(script);w.__pkMuted=true;
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
-const HAIM='haim29071994@gmail.com';
+const SUPERVISOR_A=identities.supervisors[0];
 const club={id:'main',name:'Management Regression Club',ownerUid:'owner',rakePct:6};
 const record=(id,data)=>({id,exists:()=>data!==null,data:()=>structuredClone(data),metadata:{fromCache:false}});
 const records=rows=>{const docs=rows.map(row=>record(row.id||row.uid,row));return{docs,empty:docs.length===0,size:docs.length,metadata:{fromCache:false},forEach:fn=>docs.forEach(fn)};};
 function firebaseFixture(email,membershipStatus){
- const identity={uid:'haim-auth-uid',email,emailVerified:true};
- // Profile metadata deliberately claims HAIM even for the ordinary identity.
- const profile={uid:identity.uid,username:'HAIM2907',email:HAIM,role:'player',status:'approved',playerId:'P123456789',balance:0};
+ const identity={uid:'supervisorA-auth-uid',email,emailVerified:true};
+ // Profile metadata deliberately claims SUPERVISOR_A even for the ordinary identity.
+ const profile={uid:identity.uid,username:'SUPERVISOR01',email:SUPERVISOR_A,role:'player',status:'approved',playerId:'P123456789',balance:0};
  const membership={id:identity.uid+'_main',uid:identity.uid,clubId:'main',username:profile.username,role:'player',status:membershipStatus,balance:25};
  const other={id:'other_main',uid:'other',clubId:'main',username:'Other human player',role:'player',status:'approved',balance:80};
  const owner={id:'owner_main',uid:'owner',clubId:'main',username:'Owner',role:'club_owner',status:'approved',balance:1000};
@@ -44,6 +45,7 @@ function firebaseFixture(email,membershipStatus){
   fx:async(name,args)=>{
    calls.push({name,args});
    if(name==='pkSettlementTerms')return{role:'owner',members:[]};
+   if(name==='godLobbyCounts' && args.mode==='access')return require('../god-session-fixture.cjs').grantFor(identity);
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};
    if(name==='pkClubDirectory'&&args.accountingOnly)return{accounting:{players:{[membership.uid]:{balance:membership.balance,chips:membership.balance,totalResult:-200,result:-200,onTables:0}}}};
    if(name==='pkClubDirectory'&&args.reportSection)return{records:[],hasMore:false,nextCursor:null};
@@ -65,7 +67,7 @@ async function mountAndEnter(fixture){
  assert.ok([...doc.querySelectorAll('nav button')].find(button=>button.textContent.trim()==='Clubs'),'club entry reaches the real app navigation');
 }
 async function assertFullManagement(fixture){
- assert.ok(manage(),'verified HAIM has the top Manage button despite stale membership metadata');
+ assert.ok(manage(),'verified SUPERVISOR_A has the top Manage button despite stale membership metadata');
  await React.act(async()=>manage().click());
  assert.ok(doc.querySelector('.club-admin'),'the Manage button opens BackofficeView');
  const select=async label=>React.act(()=>[...doc.querySelectorAll('.management-tabs button')].find(b=>b.textContent===label).click());assert.equal(doc.getElementById('bo-players'),null,'overview does not mount the directory');await select('Settings');assert.ok(doc.getElementById('bo-settings'),'settings are reachable');assert.match(doc.body.textContent,/Club Settings/);await select('Agreements');assert.ok(doc.getElementById('bo-terms'),'terms are reachable');await select('Members');
@@ -79,27 +81,27 @@ async function assertFullManagement(fixture){
  assert.equal(fixture.writes.length,0,'oversight entry must not create or promote a membership');
 }
 (async()=>{
- const haim=firebaseFixture(HAIM,'pending');
- await mountAndEnter(haim);
- await assertFullManagement(haim);
- assert.equal(haim.membership.role,'player');assert.equal(haim.membership.status,'pending');
+ const supervisorA=firebaseFixture(SUPERVISOR_A,'pending');
+ await mountAndEnter(supervisorA);
+ await assertFullManagement(supervisorA);
+ assert.equal(supervisorA.membership.role,'player');assert.equal(supervisorA.membership.status,'pending');
  // Revocation changes the trusted identity on the same mounted App and UID.
- haim.identity.emailVerified=false;
- await React.act(async()=>haim.refresh());
+ supervisorA.identity.emailVerified=false;
+ await React.act(async()=>supervisorA.refresh());
  assert.equal(manage(),null,'an unverified identity cannot retain Manage');
  assert.equal(doc.querySelector('.club-admin'),null,'revocation removes the privileged view');
  await React.act(()=>root.render(null));
 
  const ordinary=firebaseFixture('ordinary@example.invalid','approved');
  await mountAndEnter(ordinary);
- assert.equal(manage(),null,'an ordinary approved player gets no Manage button from HAIM profile name/email');
+ assert.equal(manage(),null,'an ordinary approved player gets no Manage button from SUPERVISOR_A profile name/email');
  assert.equal(doc.querySelector('.club-admin'),null);
  assert.equal(ordinary.calls.some(call=>call.name==='pkClubDirectory'&&!call.args.accountingOnly),false,'ordinary club entry loads only its own totals, never management reports');
  // A verified identity refresh must update access without signing out/remounting.
- ordinary.identity.email=HAIM;
+ ordinary.identity.email=SUPERVISOR_A;
  await React.act(async()=>ordinary.refresh());
  await assertFullManagement(ordinary);
  assert.equal(ordinary.calls.filter(call=>call.name==='pkEnsurePlayer').length,2,'both initial login and token refresh load the effective account');
  await React.act(()=>root.unmount());w.close();
- console.log('PASS: real App club entry grants verified HAIM full management with stale membership, denies forged profile identity, and follows token refresh/revocation');
+ console.log('PASS: real App club entry grants verified SUPERVISOR_A full management with stale membership, denies forged profile identity, and follows token refresh/revocation');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

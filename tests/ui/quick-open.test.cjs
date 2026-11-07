@@ -1,4 +1,5 @@
 'use strict';
+const {identities}=require('../god-session-fixture.cjs');
 const fs=require('node:fs'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom');
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
@@ -10,6 +11,7 @@ w.fb={db:{},auth:{currentUser:{uid:'owner'}},fx:(name,args)=>{if(name==='pkClubD
 const templates=[{name:'My NLH',settings:{serverEngine:false,baseGameType:'NLH',blinds:'2',buyIn:'200',maxPlayers:6}},{name:'My PLO6',settings:{baseGameType:'Omaha6',tableName:'Six card night',blinds:'5',buyIn:'500',maxPlayers:7,showcaseBots:3}}];
 w.localStorage.setItem('pokerTpl_main',JSON.stringify(templates));
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8'),script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function LobbyView('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.LobbyTest=LobbyView;');w.eval(script);
+require('../god-session-fixture.cjs').mockComponentGrant(w.fb);
 const root=ReactDOM.createRoot(w.document.getElementById('root'));
 (async()=>{
  await React.act(async()=>root.render(React.createElement(w.LobbyTest,{tablesLoaded:true,user:{uid:'owner',role:'club_owner'},tables:[],tournaments:[],clubSettings:{},tab:'poker',setTab(){},showToast:(m,type)=>messages.push({m,type})})));
@@ -80,7 +82,7 @@ const root=ReactDOM.createRoot(w.document.getElementById('root'));
  await render('player');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null);assert.equal(doc.querySelector('[aria-label="Fill table with bots"]'),null);assert.equal(writes.length,0);
  await render('agent','approved');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null);
  await render('manager','banned');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null);
- w.fb.auth.currentUser={uid:'spectating-manager',email:'haim29071994@gmail.com',emailVerified:true};await render('player','pending');assert.ok(doc.querySelector('[aria-label="Quick bot tables"]'),'Existing verified oversight identity gets the same controls');
+ w.fb.auth.currentUser={uid:'spectating-manager',email:identities.supervisors[0],emailVerified:true};await render('player','pending');assert.ok(doc.querySelector('[aria-label="Quick bot tables"]'),'Existing verified oversight identity gets the same controls');
  w.fb.auth.currentUser.emailVerified=false;await render('player','approved');assert.equal(doc.querySelector('[aria-label="Quick bot tables"]'),null,'An unverified email does not grant management controls');
  await React.act(()=>root.unmount());w.close();console.log('PASS: saved templates and manual bot tables across six games / three stakes, seat and fill choices, funding, permissions, duplicate prevention and failure recovery');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

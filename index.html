@@ -12816,7 +12816,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), React.createElement("div", {
     className: "poker-community" + ((gs.board2 || []).length ? " has-second-board" : ""),
     "aria-label": "Community cards"
-  }, tournamentEnded && React.createElement('div',{className:'poker-break-center',dir:'ltr'},React.createElement('strong',null,'Tournament complete'),React.createElement('div',{className:'poker-final-ranks'},(tourRanks?.list || []).map(p=>React.createElement('div',{key:p.uid},'#',p.rank,' · ',p.name,p.prize>0?' · '+formatMoney(p.prize):''))),tourStandBtn), tableOnBreak && React.createElement('div', {className:'poker-break-center',role:'status',dir:'ltr'},React.createElement('strong',null,'☕ BREAK'),React.createElement('div',{className:'poker-break-clock'},Math.floor(breakSeconds/60),':',String(breakSeconds%60).padStart(2,'0')),React.createElement('span',null,'Resuming at ',formatShort(breakClock.row.sb),' / ',formatShort(breakClock.row.bb)),tourStandBtn), (totalPot > 0 || resultPot > 0) && gs.phase !== 'waiting' && React.createElement("div", {
+  }, tournamentEnded && React.createElement('div',{className:'poker-break-center',dir:'ltr'},React.createElement('strong',null,'Tournament complete'),React.createElement('div',{className:'poker-final-ranks'},(tourRanks?.list || []).map(p=>React.createElement('div',{key:p.uid},'#',p.rank,' · ',p.name,p.prize>0?' · '+formatMoney(p.prize):''))),tourStandBtn), tableOnBreak && React.createElement('div', {className:'poker-break-center',role:'status',dir:'ltr'},React.createElement('strong',null,breakClock.dayBreak?'Day 1 complete':'☕ BREAK'),React.createElement('div',{className:'poker-break-clock'},breakClock.dayBreak?'Day 2 · '+tourDayTime(breakClock.phaseEndsAt):Math.floor(breakSeconds/60)+':'+String(breakSeconds%60).padStart(2,'0')),React.createElement('span',null,'Resuming at ',formatShort(breakClock.row.sb),' / ',formatShort(breakClock.row.bb)),tourStandBtn), (totalPot > 0 || resultPot > 0) && gs.phase !== 'waiting' && React.createElement("div", {
     className: "poker-total-pot absolute left-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
     style: {
       background: 'radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.22) 60%, rgba(0,0,0,0) 100%)',
@@ -13503,10 +13503,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       className: "bg-sky-950/85 border-b border-sky-500/40 px-3 py-2 flex items-center justify-center gap-3 text-[12px] font-black z-30 shrink-0 flex-wrap"
     }, React.createElement("span", {
       className: "text-sky-300"
-    }, "☕ BREAK — all tables"), React.createElement("span", {
+    }, tc.dayBreak?"Day 2 resumes":"☕ BREAK — all tables"), React.createElement("span", {
       className: "text-white font-mono",
       dir: "ltr"
-    }, mm, ":", String(ss).padStart(2, '0')), React.createElement("span", {
+    }, tc.dayBreak?tourDayTime(tc.phaseEndsAt):mm+":"+String(ss).padStart(2, '0')), React.createElement("span", {
       className: "text-sky-300"
     }, "resuming at ", formatShort(sb), "/", formatShort(bb)), tourStandBtn, isSeated && myPlayer && lvl === (tour.addonAt ?? -1) && !['out', 'busted'].includes(myPlayer.status) && React.createElement("button", {
       onClick: tourAddon,
@@ -15991,6 +15991,7 @@ const tourRegistrationTime = value => {
  for(let i=0;i<3;i++)at+=wall-Date.parse(tourRegistrationInput(at)+'Z');
  return tourRegistrationInput(at)===value?at:NaN;
 };
+const tourDayTime = at => new Date(at).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' Israel time';
 const tourRegistrationLabel = tor => tor.lateRegClosesAt>0?'Late registration until '+new Date(tor.lateRegClosesAt).toLocaleString('en-GB',{timeZone:'Asia/Jerusalem',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' (Israel time)':tor.lateRegUntilLevel>0?'Late registration through the end of level '+tor.lateRegUntilLevel:'Late registration off';
 function TournamentEarlyBonusFields({value,onChange}){
  const h=React.createElement,pct=Number(value.earlyRegistrationBonusPct)||0,stack=Number(value.startStack)||0;
@@ -17323,21 +17324,27 @@ function TournamentRowClock({tournament:tor,now=Date.now()}) {
   const h=React.createElement;
   const validTime=value=>Number.isFinite(Number(value))&&Number(value)>0?Number(value):0;
   const duration=ms=>{const seconds=Math.max(0,Math.floor(ms/1000));return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');};
-  let at=0,label='';
+  let at=0,label='',overnight=false;
   if(tor.status==='reg') {
     at=validTime(tor.startAt);
     label=!at?'Start time pending':at>now?'Starts in '+duration(at-now):'Awaiting start';
   } else if(tor.status==='running') {
     at=validTime(tor.startedAt)||validTime(tor.startAt);
     label=at?'Running '+duration(now-at):'In progress';
+    if(tor.dayBreak){
+      const clock=window.PokerTournament.clock(tor,tourStructOf(tor),now);
+      overnight=!!clock.dayBreak;
+      if(overnight){at=clock.phaseEndsAt;label='Day 2 in '+duration(at-now);}
+      else label=(clock.lvl<tor.dayBreak.afterLevel?'Day 1':'Day 2')+' · Level '+(clock.lvl+1);
+    }
   } else {
     at=validTime(tor.status==='cancelled'?tor.cancelledAt:tor.finishedAt);
     label=tor.status==='cancelled'?'Cancelled':'Ended';
   }
   return h('span',{className:'pt-tournament-row-clock','data-tournament-clock':tor.id,'data-status':tor.status,dir:'ltr'},
     h('span',null,h('i',{className:'fa-regular fa-clock','aria-hidden':true}),h('strong',{role:'timer','aria-live':'off'},label)),
-    at>0&&h('time',{dateTime:new Date(at).toISOString(),title:(tor.status==='running'?'Started · ':'')+'Israel time'},
-      (tor.status==='running'?'Started ':'')+new Date(at).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})));
+    at>0&&h('time',{dateTime:new Date(at).toISOString(),title:(overnight?'Resumes · ':tor.status==='running'?'Started · ':'')+'Israel time'},
+      (overnight?'Resumes ':tor.status==='running'?'Started ':'')+new Date(at).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'})));
 }
 
 function TournamentsTab({
@@ -17572,7 +17579,16 @@ function TournamentsTab({
     try{await createTournament();}finally{creationLock.current=false;setCreatingTournament(false);}
   };
   const createTournament = async () => {
-if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=tourRegistrationTime(opts.date+'T'+(opts.time||'20:00'));if(!Number.isFinite(startAt))return showToast('Choose a valid start date and time (Israel time).','error');const lateRegClosesAt=opts.lateRegMode==='time'?tourRegistrationTime(opts.lateRegCloseTime):0;if(opts.lateRegMode==='time'&&(!Number.isFinite(lateRegClosesAt)||lateRegClosesAt<=startAt))return showToast('Late registration closing time must be after the tournament start.','error');try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,earlyRegistrationBonusPct:Number(opts.earlyRegistrationBonusPct)||0,rebuys:false,maxRebuys:0,botRebuys:false,finishAtPaidPlaces:false,startAt,lateRegClosesAt,structure:structRows,pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
+if(isPoker){if(!opts.name.trim()||!opts.date)return showToast('Choose a name and start date.','error');const startAt=tourRegistrationTime(opts.date+'T'+(opts.time||'20:00'));if(!Number.isFinite(startAt))return showToast('Choose a valid start date and time (Israel time).','error');const lateRegClosesAt=opts.lateRegMode==='time'?tourRegistrationTime(opts.lateRegCloseTime):0;if(opts.lateRegMode==='time'&&(!Number.isFinite(lateRegClosesAt)||lateRegClosesAt<=startAt))return showToast('Late registration closing time must be after the tournament start.','error');
+    let dayBreak=null;
+    if(opts.twoDay){
+      const afterLevel=Number(opts.dayEndLevel),resumeAt=tourRegistrationTime(opts.dayResumeTime);
+      const levels=[...window.PokerTournament.levelSchedule(opts,structRows,startAt)];
+      if(!Number.isInteger(afterLevel)||afterLevel<1||afterLevel>=levels.length)return showToast('Choose a final level for Day 1 that leaves at least one level for Day 2.','error');
+      if(!Number.isFinite(resumeAt)||resumeAt<=levels[afterLevel-1].end)return showToast('Choose a Day 2 start after Day 1 finishes (Israel time).','error');
+      dayBreak={afterLevel,resumeAt};
+    }
+    try{await pokerCommand('pkTournament',{op:'create',clubId:CLUB_ID,settings:{...opts,dayBreak,earlyRegistrationBonusPct:Number(opts.earlyRegistrationBonusPct)||0,rebuys:false,maxRebuys:0,botRebuys:false,finishAtPaidPlaces:false,startAt,lateRegClosesAt,structure:structRows,pokerType:opts.pokerType,lateRegUntilLevel:Number(opts.lateRegLevel),anteType:opts.anteMode,payouts:opts.paidMode==='pct'?[50,30,20]:(opts.payouts||[]).slice(0,opts.paidPlaces),paidPct:opts.paidMode==='pct'?Number(opts.paidPct):0,bountyBudgetRemaining:opts.bountyFree?Number(opts.bountyBudgetRemaining):0}});setShowCreate(false);showToast("Tournament open for registration.",'success');}catch(e){showToast(e.message||String(e),'error');}return;}
 
     if (!opts.name.trim()) return showToast("Name the tournament", "error");
     if (!opts.date) return showToast("Choose a start date", "error");
@@ -17901,6 +17917,12 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
   })), isPoker && React.createElement("div", {
     className: "col-span-full tournament-blind-settings", 'aria-label':'Blinds and ante'
   }, React.createElement('h3',{className:'tournament-blind-title'},'Blinds and ante'),
+  React.createElement('label',{className:'tournament-no-ante'},React.createElement('input',{
+    type:'checkbox','aria-label':'Two-day tournament',checked:!!opts.twoDay,onChange:e=>setOpts({...opts,twoDay:e.target.checked,dayEndLevel:opts.dayEndLevel??Math.min(10,structRows.length-1)})
+  }),'Two-day tournament'),
+  opts.twoDay&&React.createElement('div',{className:'tournament-ante-controls'},
+    React.createElement(Field,{label:'Day 1 final level'},React.createElement('input',{type:'number',min:1,max:structRows.length-1,value:opts.dayEndLevel,'aria-label':'Day 1 final level',onChange:e=>setOpts({...opts,dayEndLevel:e.target.value})})),
+    React.createElement(Field,{label:'Day 2 start (Israel time)'},React.createElement('input',{type:'datetime-local',value:opts.dayResumeTime||'','aria-label':'Day 2 start',onChange:e=>setOpts({...opts,dayResumeTime:e.target.value})}))),
   React.createElement('label',{className:'tournament-no-ante'},React.createElement('input',{
     type:'checkbox','aria-label':'No ante',checked:opts.anteMode==='none',onChange:e=>setAnteSettings({anteMode:e.target.checked?'none':'bb'})
   }),'No ante'),
@@ -18361,6 +18383,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
         h("div",{className:"pt-tournament-rules"},
           tor.addon&&h("span",null,'Add-on at level '+(tor.addonLevel||3)),
           h("span",null,tourRegistrationLabel(tor)),
+          tor.dayBreak&&h('span',null,'Day 1 ends after level '+tor.dayBreak.afterLevel+' · Day 2 starts '+tourDayTime(tor.dayBreak.resumeAt)),
           Number(tor.earlyRegistrationBonusPct)>0&&h('span',null,'Early registration +'+tor.earlyRegistrationBonusPct+'% · '+formatMoney(Number(tor.startStack)+Math.floor(Number(tor.startStack)*Number(tor.earlyRegistrationBonusPct)/100))+(tor.earlyRegistrationBonusUntilStart?' chips before play starts':' chips before the scheduled start')),
           tor.players?.[user.uid]?.earlyRegistrationBonusChips>0&&h('span',{role:'status'},'Your entry: '+formatMoney(tor.players[user.uid].entryStartStack)+' chips including '+formatMoney(tor.players[user.uid].earlyRegistrationBonusChips)+' early bonus'),
           tor.reentry&&h("span",null,'Re-entry '+formatMoney(tourEntryOf(tor,true))+' · '+(tor.prizePoolMode==='fixed'||tor.reentryToPrizePool===false?'Club income':'Added to prize pool'))),

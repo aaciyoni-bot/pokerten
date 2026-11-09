@@ -450,3 +450,39 @@ test('tournaments retain selected avatars at registration, manual/scheduled star
   assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
  }
 });
+
+test('two-day tables finish their hand, keep chip balances overnight and resume at the next level',async()=>{
+ const f=fixture(),resumeAt=NOW+86400000;
+ const rows=Array.from({length:4},(_,i)=>({sb:i+1,bb:2*(i+1),mins:5}));
+ const id=await create(f,{startAt:NOW,structure:rows,dayBreak:{afterLevel:1,resumeAt},breakEvery:1,breakMins:2,lateRegUntilLevel:2});
+ await startHumans(f,id,8);
+ const tables=f.tables(id);
+ assert.equal(tables.length,2);
+ await Promise.all(tables.map(row=>f.action(row.docId,s=>f.engine.startHand(s))));
+ f.advance(5*60000);
+ assert.equal(f.tours.clock(f.tour(id),f.now()).dayBreak,true);
+ for(const row of tables){
+  await f.action(row.docId,s=>{
+   while(s.gameState.activeTurnUid)f.engine.applyAction(s,s.gameState.activeTurnUid,'fold',0,false);
+   assert.equal(s.gameState.phase,'showdown');
+  });
+ }
+ f.advance(9000);
+ await f.tours.tickTournament(id,f.now());
+ const retained=f.tables(id).map(row=>[row.docId,row.gameState.handN,Object.fromEntries(Object.entries(row.players).map(([uid,p])=>[uid,p.stack]))]);
+ for(const row of f.tables(id))assert.equal(await f.action(row.docId,s=>f.engine.startHand(s)),'waiting');
+ assert.equal(T.chips(f.tables(id)),800);
+ f.advance(resumeAt-f.now()-1);
+ await f.tours.tickTournament(id,f.now());
+ assert.deepEqual(f.tables(id).map(row=>[row.docId,row.gameState.handN,Object.fromEntries(Object.entries(row.players).map(([uid,p])=>[uid,p.stack]))]),retained);
+ assert.equal(T.lateRegistrationDeadline(f.tour(id),rows),resumeAt+5*60000);
+ f.advance(1);
+ assert.equal(f.tours.clock(f.tour(id),f.now()).lvl,1);
+ for(const row of f.tables(id)){
+  assert.equal(row.tournament.dayBreak.resumeAt,resumeAt);
+  assert.equal(await f.action(row.docId,s=>f.engine.startHand(s)),'dealt');
+ }
+ assert.equal(T.chips(f.tables(id)),800);
+ assert.equal(f.balance('human0'),989);
+ assert.equal(f.tour(id).status,'running');
+});

@@ -29,6 +29,12 @@ function config(raw,clubId,creatorUid,now){
  if(!raw.lateRegClosesAt&&t.mysteryBounty&&t.mysteryStartLevel<=Math.max(t.lateRegUntilLevel,t.rebuys?t.rebuyUntilLevel:0))fail('invalid-argument','Mystery starts after entry and rebuy close');
  const rows=raw.structure||Array.from({length:25},(_,i)=>({sb:Math.round(10*Math.pow(1.5,i)),bb:Math.round(20*Math.pow(1.5,i)),ante:i+1>=t.anteFromLevel?Math.round((t.anteType==='each'?10:20)*Math.pow(1.5,i)):0,mins:t.levelMins}));
  if(!Array.isArray(rows)||!rows.length||rows.length>100)fail('invalid-argument','Blind structure must have 1–100 levels');t.structure=rows.map((r,i)=>{const label='Blind structure level '+(i+1),sb=tournamentNumber(r.sb,NaN,.01,10000000,false,label+' small blind');return{sb,bb:tournamentNumber(r.bb,NaN,sb,10000000,false,label+' big blind'),ante:tournamentNumber(r.ante,0,0,10000000,false,label+' ante'),mins:tournamentNumber(r.mins,t.levelMins,1,120,false,label+' minutes')};});
+ if(raw.dayBreak!=null){
+  const afterLevel=tournamentNumber(raw.dayBreak.afterLevel,NaN,1,t.structure.length-1,true,'Day 1 final level');
+  const finalLevel=[...T.levelSchedule(t,t.structure,t.startAt)].find(level=>level.i+1===afterLevel);
+  const resumeAt=tournamentNumber(raw.dayBreak.resumeAt,NaN,finalLevel.end+1,8640000000000000,true,'Day 2 start');
+  t.dayBreak={afterLevel,resumeAt};
+ }
  if(raw.lateRegClosesAt!=null&&raw.lateRegClosesAt!==0)t.lateRegClosesAt=registrationDeadline(t,raw.lateRegClosesAt,now);
  t.payouts=Array.isArray(raw.payouts)&&raw.payouts.length?raw.payouts.map((v,i)=>tournamentNumber(v,NaN,0,100,false,'Prize for place '+(i+1)+' (%)')):[50,30,20];if(Math.abs(t.payouts.reduce((a,b)=>a+b,0)-100)>.01)fail('invalid-argument','Prize percentages must total 100');
  t.prizePoolMode=prizePoolMode(raw.prizePoolMode);if(t.prizePoolMode==='fixed'&&t.addedPrize<=0)fail('invalid-argument','Fixed prize pool must be greater than zero');
@@ -38,7 +44,7 @@ function config(raw,clubId,creatorUid,now){
 function prizePoolMode(value){const mode=value??'entries';if(!['entries','fixed'].includes(mode))fail('invalid-argument','Invalid prize pool type');return mode;}
 function registrationDeadline(t,value,now){
  const start=t.startedAt||t.startAt||now,deadline=tournamentNumber(value,NaN,Math.max(now+1000,start+1),Math.max(now,start)+7*86400000,true,'Late registration closing date/time');
- if(t.mysteryBounty){let at=start;for(let i=0;i<t.mysteryStartLevel-1;i++){at+=(t.structure[i]?.mins||t.levelMins)*60000;if(t.breakEvery&&(i+1)%t.breakEvery===0)at+=t.breakMins*60000;}if(deadline>at)fail('invalid-argument','Late registration must close before mystery bounties start');}
+ if(t.mysteryBounty){const preceding=[...T.levelSchedule(t,t.structure,start)].find(level=>level.i+2===t.mysteryStartLevel);const at=preceding?.nextStart??(t.mysteryStartLevel===1?start:Infinity);if(deadline>at)fail('invalid-argument','Late registration must close before mystery bounties start');}
  return deadline;
 }
 function removeSeat(t,row,uid,now){
@@ -48,7 +54,7 @@ function removeSeat(t,row,uid,now){
  Object.assign(e,{out:true,removed:true,removalRequested:false,removedAt:now,rank:null});delete e.tableId;return true;
 }
 function seat(p,index,stack){return{uid:p.uid,name:p.name,...appearance(p,p.uid),playerId:p.playerId||'',isBot:!!p.isBot,...(p.isBot?{fundingUid:p.fundingUid,botStyle:p.botStyle}:{}),seatIndex:index,stack,bet:0,buyTotal:0,status:'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',lastSeen:Date.now()};}
-function tableDoc(t,players,now){return{authorityVersion:2,type:'poker',clubId:t.clubId,createdBy:t.creatorUid,createdAt:now,tournamentId:t.id,players,chat:[],tournament:{name:t.name,torId:t.id,mttMode:true,startedAt:t.startedAt,structure:t.structure,levelMins:t.levelMins,anteType:t.anteType,anteFromLevel:t.anteFromLevel,breakEvery:t.breakEvery,breakMins:t.breakMins,rebuyUntil:t.rebuys?t.rebuyUntilLevel-1:-1,addonAt:t.addon?t.addonLevel-1:-1,startStack:t.startStack,bounty:t.bounty,round:1,final:false,finished:false,demoOnly:t.demoOnly},settings:{serverEngine:true,baseGameType:t.pokerType,maxPlayers:t.tableSize,blinds:t.structure[0].sb,actionTime:t.actionTime,rakePercent:0,autoStart:2,omahaPotLimit:true,demoOnly:t.demoOnly,botGodGuard:false},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:t.structure[0].bb,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}};}
+function tableDoc(t,players,now){return{authorityVersion:2,type:'poker',clubId:t.clubId,createdBy:t.creatorUid,createdAt:now,tournamentId:t.id,players,chat:[],tournament:{name:t.name,torId:t.id,mttMode:true,startedAt:t.startedAt,structure:t.structure,levelMins:t.levelMins,anteType:t.anteType,anteFromLevel:t.anteFromLevel,breakEvery:t.breakEvery,breakMins:t.breakMins,...(t.dayBreak?{dayBreak:t.dayBreak}:{}),rebuyUntil:t.rebuys?t.rebuyUntilLevel-1:-1,addonAt:t.addon?t.addonLevel-1:-1,startStack:t.startStack,bounty:t.bounty,round:1,final:false,finished:false,demoOnly:t.demoOnly},settings:{serverEngine:true,baseGameType:t.pokerType,maxPlayers:t.tableSize,blinds:t.structure[0].sb,actionTime:t.actionTime,rakePercent:0,autoStart:2,omahaPotLimit:true,demoOnly:t.demoOnly,botGodGuard:false},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:t.structure[0].bb,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}};}
 function docOf(t){const {id,...doc}=t;return doc;}
 function funding(t,effects,p,reentry=false){const {pool:buyIn,fee}=T.entryFunding(t,reentry),cost=price(t,reentry);if(t.bountyFree&&t.bountyBudgetRemaining<t.bounty)fail('failed-precondition','Club bounty reserve needs funding');if(cost)effects.push({type:'credit',uid:payee(p),amount:-cost});p.paid=cash((p.paid||0)+cost);p.feesPaid=cash((p.feesPaid||0)+fee);p.bountyValue=t.bounty;t.prizePool=cash(t.prizePool+buyIn);t.feeTotal=cash(t.feeTotal+fee);t.bountyPool=cash(t.bountyPool+t.bounty);if(t.bountyFree)t.bountyBudgetRemaining=cash(t.bountyBudgetRemaining-t.bounty);}
 function entryStack(t,p,now,reentry=false){

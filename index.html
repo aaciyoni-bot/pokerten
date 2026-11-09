@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="361">
+    <meta name="app-version" content="362">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1107,7 +1107,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=312">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=356">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=362">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -3367,6 +3367,7 @@ const PCard = ({
   return React.createElement("div", {
     className: `${D.w} card-face relative overflow-hidden`,
     "data-card-size": size || 'md',
+    "data-card-rank": card.val,
     "data-winning-card": hl ? "true" : undefined,
     style: {
       height: D.h,
@@ -12318,7 +12319,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         chatKey,acts:Object.fromEntries(Object.entries(players).map(([uid,p])=>[uid,p.actionText]))};
       return;
     }
-    if (bl > ps.board) playSnd('flip', bl - ps.board);
+    if (bl > ps.board) playSnd('flip', bl - ps.board, 0.055);
     if (gs.phase === 'preflop' && ['waiting', 'showdown', 'dc_selection'].includes(ps.phase)) {
       const acts = Object.values(players).filter(p => p.status === 'active').sort((x, y) => x.seatIndex - y.seatIndex);
       const dIdx = Math.max(0, acts.findIndex(p => p.uid === gs.dealerUid));
@@ -12329,7 +12330,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       });
       const perHand = GAME_CARDS[gs.currentGameType] || 2;
       const total = ordered.length * perHand;
-      const iv = Math.max(0.11, Math.min(0.26, 3.2 / Math.max(1, total)));
+      const iv = Math.min(0.075, 1 / Math.max(1, total));
       dealAnimRef.current = {
         t0: Date.now(),
         order,
@@ -12370,7 +12371,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, 'Retry connection'), React.createElement('button', { className: 'text-slate-300 underline', onClick: onLeave }, 'Back to lobby'));
   const dealDelay = (uid, ci) => {
     const dd = dealAnimRef.current;
-    if (!dd || dd.order[uid] == null) return ci * 45;
+    if (!dd || dd.order[uid] == null) return ci * 22;
     const k = uid + ':' + ci;
     if (dd.cache[k] == null) dd.cache[k] = Math.max(0, Math.round((ci * dd.n + dd.order[uid]) * dd.iv * 1000 - (Date.now() - dd.t0)));
     return dd.cache[k];
@@ -12848,7 +12849,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     key: i,
     className: "card-reveal",
     style: {
-      animationDelay: `${i * 150}ms`
+      animationDelay: `${i * 55}ms`
     }
   }, React.createElement(PCard, {
     card: c,
@@ -12860,7 +12861,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     key: i,
     className: "card-reveal",
     style: {
-      animationDelay: `${i % 3 * 220}ms`
+      animationDelay: `${i % 3 * 55}ms`
     }
   }, React.createElement(PCard, {
     card: c,
@@ -12958,6 +12959,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const turnDuration = setts.actionTime || 30;
     const turnSeconds = isTurn && gs.turnStartedAt ? Math.min(turnDuration, Math.max(0, Math.ceil((Number(gs.turnStartedAt) + turnDuration * 1000 - Date.now()) / 1000))) : turnDuration;
     const timerPct = isTurn ? turnSeconds / turnDuration : 0;
+    const seatAward = gs.phase === 'showdown' && gs.lastAwards?.find(a => a.uid === p.uid);
     const isWinner = gs.phase === 'showdown' && (gs.lastAwards?.length ? gs.lastAwards.some(a=>a.uid===p.uid) : gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name));
     const godLeading = godView && isGodUser(user) && godFinalLeaders.uids.includes(p.uid);
     const godTied = godFinalLeaders.uids.length > 1;
@@ -13150,7 +13152,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     }, React.createElement('span',{className:'poker-turn-label'},'TURN'),
       React.createElement('strong',{className:'poker-turn-seconds'},turnSeconds + 's'),
       React.createElement('span',{className:'poker-turn-track','aria-hidden':true},
-        React.createElement('span',{style:{transform:'scaleX(' + timerPct + ')'}}))) : p.actionText && React.createElement("div", {
+        React.createElement('span',{style:{transform:'scaleX(' + timerPct + ')'}}))) : seatAward?.amount > 0 ? React.createElement('div', {
+      className:'poker-seat-action action-badge badge-win', dir:'ltr',
+      'aria-label':'Won ' + formatShort(seatAward.amount)
+    }, '+' + formatShort(seatAward.amount)) : p.actionText && React.createElement("div", {
       className: `poker-seat-action action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
       style: isMe ? {} : farPod ? {
         top: 'auto',
@@ -13284,7 +13289,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       }));
     }
     if (!awards.length) return null;
-    const dur = Math.min(0.9, 0.42 + Math.log10(1 + awards[0].amount) * 0.08);
+    const dur = 2;
     return awards.map((a, k) => React.createElement(PotAward, {
       unit: chipUnit,
       key: 'pa' + (displayList[a.ix]?.uid || a.ix) + '_' + (gs.showdownAt || 0),
@@ -13292,7 +13297,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       toUid: displayList[a.ix]?.uid,
       amount: a.amount,
       dur: dur,
-      delay: 2500 + k * 180,
+      delay: (gs.earlyWin ? 1200 : 2500) + k * 120,
       snd: !headless && k === 0
     }));
   })(), (() => {

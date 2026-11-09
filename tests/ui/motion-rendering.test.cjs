@@ -54,10 +54,9 @@ const scene=(component,props)=>React.createElement('div',{className:'poker-table
   await render(null);
   const fallback={left:'50%',top:'35%'};assert.equal(pokerVisualPoint(null,null,fallback),fallback);assert.equal(pokerVisualPoint({getBoundingClientRect:()=>rect(0,0,0,0)},{getBoundingClientRect:()=>rect(0,0,10,10)},fallback),fallback,'hidden or unmeasured layouts retain a safe path');
   assert.match(html,/\.timer-ring circle\s*\{\s*transition: stroke-dasharray 1s linear/);
-  const durationStatement=source.match(/const dur = [^;]*awards\[0\]\.amount[^;]*;/)?.[0];assert.ok(durationStatement);
-  const awardDuration=new Function('awards',durationStatement+'return dur;');
-  const durations=[.01,25,100,1000,1000000000].map(amount=>awardDuration([{amount}]));
-  assert.ok(durations.every(d=>d>0&&d<=.9),'small and very large wins finish their travel within 900ms');assert.ok(durations.slice(1).every((d,i)=>d>=durations[i]),'larger awards do not move faster than small awards');
+  assert.match(source,/const dur = 2;\s+return awards.map/, 'pot travels for two seconds on every win');
+  assert.match(source,/delay: \(gs.earlyWin \? 1200 : 2500\)/, 'fold wins land inside the five-second result window');
+  assert.match(source,/1 \/ Math.max\(1, total\)/, 'dealing is paced to finish the round within a second');
   w.PokerSoundPack={active:true};
   await render(PotAward,{to:{left:'20%',top:'78%'},amount:125,dur:.6,snd:true});
   assert.ok(![...timers.values()].some(t=>t.delay===3100),'imported crowd-win must not be followed by a card-flip cue when the pot lands');

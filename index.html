@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="362">
+    <meta name="app-version" content="363">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -418,6 +418,11 @@
             55%  { opacity: 1; }
             100% { opacity: 1; transform: none; }
         }
+        @keyframes pokerAwardTravel {
+            from { visibility: visible; transform: translate(0, 0); }
+            to { visibility: visible; transform: var(--award-destination); }
+        }
+        @keyframes pokerAwardFade { from { opacity: 1; } to { opacity: 0; } }
         .card-reveal { display: inline-block; animation: cardReveal 0.32s cubic-bezier(0.2,0.85,0.25,1) both; transform-origin: 50% 50%; }
         @media (prefers-reduced-motion: reduce) { .card-reveal { animation-duration: 0.01s; } }
         /* End of hand: the old cards visibly leave the table (muck) after the
@@ -4120,38 +4125,34 @@ const PotAward = ({
   amount,
   dur,
   snd,
-  delay = 2500,
+  delay = 800,
+  showdownAt,
   unit
 }) => {
   const flight = React.useRef(null);
   const points = usePokerFlightPoints(flight, {left:'50%',top:'63.5%'}, to, {fromPot:true,toUid});
   const reduced = useReducedPokerMotion();
-  const [go, setGo] = React.useState(false);
+  // Seek into the hand's presentation when a snapshot arrives late. Ordinary
+  // presence/bet updates must not restart a flight already on screen.
+  const [observedAt] = React.useState(Date.now);
+  const elapsed = showdownAt > 0 ? Math.max(0, observedAt - showdownAt) : 0;
+  const startDelay = delay - elapsed;
+  const arrival = startDelay + dur * 1000;
+  const destination = `translate(calc(${points.to.left} - ${points.from.left}), calc(${points.to.top} - ${points.from.top}))`;
   React.useEffect(() => {
-    const timer = setTimeout(() => setGo(true), delay);
+    if (!snd || window.PokerSoundPack?.active || arrival < 0) return;
+    const timer = setTimeout(() => playSnd('tile'), arrival);
     return () => clearTimeout(timer);
-  }, [delay]);
-  // Keep the full award readable while the cards are being revealed.
-  const [shown, setShown] = React.useState(amount);
-  React.useEffect(() => {
-    const t = setTimeout(() => setShown(amount), 40);
-    return () => clearTimeout(t);
-  }, [amount]);
-  React.useEffect(() => {
-    // Play one soft settle after the reveal pause and the chip flight.
-    const tm = snd && !window.PokerSoundPack?.active ? setTimeout(() => playSnd('tile'), delay + Math.max(300, dur * 1000)) : null;
-    return () => {
-      if (tm) clearTimeout(tm);
-    };
-  }, [delay, dur, snd]);
+  }, [arrival, snd]);
   return (React.createElement("div", {
       ref: flight,
       className: "poker-pot-award absolute inset-0 z-[120] pointer-events-none",
       style: {
-        visibility: go ? 'visible' : 'hidden',
-        opacity: go ? 0 : 1,
-        transform: go ? `translate(calc(${points.to.left} - ${points.from.left}), calc(${points.to.top} - ${points.from.top}))` : 'translate(0, 0)',
-        transition: reduced ? 'none' : `transform ${dur}s ease-in-out, opacity 0.18s ease-in ${dur}s`
+        '--award-destination': destination,
+        visibility: reduced ? 'visible' : 'hidden',
+        transform: reduced ? destination : undefined,
+        animation: reduced ? 'none' :
+          `pokerAwardTravel ${dur}s linear ${startDelay}ms forwards, pokerAwardFade .3s ease-out ${arrival + 750}ms forwards`
       }
     }, React.createElement("div", {
       className: "absolute",
@@ -4165,11 +4166,7 @@ const PotAward = ({
     }, React.createElement("div", {
       className: "win-amt text-[15px] font-black text-gold-400 tabular-nums bg-slate-950/90 px-2.5 py-0.5 rounded-md border border-gold-400/40 shadow-lg",
       dir: "ltr"
-    }, "+", React.createElement(CountNum, {
-      value: shown,
-      fmt: formatShort,
-      dur: Math.max(300, Math.min(900, dur * 700))
-    })), React.createElement(CasinoChipStack, {
+    }, "+", formatShort(amount)), React.createElement(CasinoChipStack, {
       amount: amount,
       scale: 1.05,
       showLabel: false,
@@ -13289,7 +13286,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       }));
     }
     if (!awards.length) return null;
-    const dur = 2;
+    const dur = 4;
     return awards.map((a, k) => React.createElement(PotAward, {
       unit: chipUnit,
       key: 'pa' + (displayList[a.ix]?.uid || a.ix) + '_' + (gs.showdownAt || 0),
@@ -13297,7 +13294,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       toUid: displayList[a.ix]?.uid,
       amount: a.amount,
       dur: dur,
-      delay: (gs.earlyWin ? 1200 : 2500) + k * 120,
+      delay: (gs.earlyWin ? 200 : 800) + Math.min(k, 3) * 80,
+      showdownAt: gs.showdownAt,
       snd: !headless && k === 0
     }));
   })(), (() => {

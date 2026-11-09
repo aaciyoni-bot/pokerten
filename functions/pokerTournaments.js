@@ -4,6 +4,7 @@ const A=require('./pokerAuthority'),T=require('./pokerTournamentCore'),C=require
 const {key,cash,number,fail,payee}=A;
 const {botName,renameGenericBots}=require('./botNames');
 const {appearance}=require('./pokerIdentity');
+const Flights=require('./pokerFlights');
 const all=t=>Object.values(t.players||{}),entryBuyIn=(t,reentry=false)=>reentry?(t.reentryBuyIn??t.buyIn):t.buyIn,price=(t,reentry=false)=>cash(entryBuyIn(t,reentry)+t.fee+(t.bountyFree?0:t.bounty));
 const clock=(t,now=Date.now())=>T.clock(t,t.structure,now);
 async function tables(tx,db,id){const q=await tx.get(db.collection('tables').where('tournamentId','==',id));return q.docs.map(d=>({...d.data(),docId:d.id}));}
@@ -29,12 +30,6 @@ function config(raw,clubId,creatorUid,now){
  if(!raw.lateRegClosesAt&&t.mysteryBounty&&t.mysteryStartLevel<=Math.max(t.lateRegUntilLevel,t.rebuys?t.rebuyUntilLevel:0))fail('invalid-argument','Mystery starts after entry and rebuy close');
  const rows=raw.structure||Array.from({length:25},(_,i)=>({sb:Math.round(10*Math.pow(1.5,i)),bb:Math.round(20*Math.pow(1.5,i)),ante:i+1>=t.anteFromLevel?Math.round((t.anteType==='each'?10:20)*Math.pow(1.5,i)):0,mins:t.levelMins}));
  if(!Array.isArray(rows)||!rows.length||rows.length>100)fail('invalid-argument','Blind structure must have 1–100 levels');t.structure=rows.map((r,i)=>{const label='Blind structure level '+(i+1),sb=tournamentNumber(r.sb,NaN,.01,10000000,false,label+' small blind');return{sb,bb:tournamentNumber(r.bb,NaN,sb,10000000,false,label+' big blind'),ante:tournamentNumber(r.ante,0,0,10000000,false,label+' ante'),mins:tournamentNumber(r.mins,t.levelMins,1,120,false,label+' minutes')};});
- if(raw.dayBreak!=null){
-  const afterLevel=tournamentNumber(raw.dayBreak.afterLevel,NaN,1,t.structure.length-1,true,'Day 1 final level');
-  const finalLevel=[...T.levelSchedule(t,t.structure,t.startAt)].find(level=>level.i+1===afterLevel);
-  const resumeAt=tournamentNumber(raw.dayBreak.resumeAt,NaN,finalLevel.end+1,8640000000000000,true,'Day 2 start');
-  t.dayBreak={afterLevel,resumeAt};
- }
  if(raw.lateRegClosesAt!=null&&raw.lateRegClosesAt!==0)t.lateRegClosesAt=registrationDeadline(t,raw.lateRegClosesAt,now);
  t.payouts=Array.isArray(raw.payouts)&&raw.payouts.length?raw.payouts.map((v,i)=>tournamentNumber(v,NaN,0,100,false,'Prize for place '+(i+1)+' (%)')):[50,30,20];if(Math.abs(t.payouts.reduce((a,b)=>a+b,0)-100)>.01)fail('invalid-argument','Prize percentages must total 100');
  t.prizePoolMode=prizePoolMode(raw.prizePoolMode);if(t.prizePoolMode==='fixed'&&t.addedPrize<=0)fail('invalid-argument','Fixed prize pool must be greater than zero');
@@ -44,7 +39,7 @@ function config(raw,clubId,creatorUid,now){
 function prizePoolMode(value){const mode=value??'entries';if(!['entries','fixed'].includes(mode))fail('invalid-argument','Invalid prize pool type');return mode;}
 function registrationDeadline(t,value,now){
  const start=t.startedAt||t.startAt||now,deadline=tournamentNumber(value,NaN,Math.max(now+1000,start+1),Math.max(now,start)+7*86400000,true,'Late registration closing date/time');
- if(t.mysteryBounty){const preceding=[...T.levelSchedule(t,t.structure,start)].find(level=>level.i+2===t.mysteryStartLevel);const at=preceding?.nextStart??(t.mysteryStartLevel===1?start:Infinity);if(deadline>at)fail('invalid-argument','Late registration must close before mystery bounties start');}
+ if(t.mysteryBounty){let at=start;for(let i=0;i<t.mysteryStartLevel-1;i++){at+=(t.structure[i]?.mins||t.levelMins)*60000;if(t.breakEvery&&(i+1)%t.breakEvery===0)at+=t.breakMins*60000;}if(deadline>at)fail('invalid-argument','Late registration must close before mystery bounties start');}
  return deadline;
 }
 function removeSeat(t,row,uid,now){
@@ -54,7 +49,7 @@ function removeSeat(t,row,uid,now){
  Object.assign(e,{out:true,removed:true,removalRequested:false,removedAt:now,rank:null});delete e.tableId;return true;
 }
 function seat(p,index,stack){return{uid:p.uid,name:p.name,...appearance(p,p.uid),playerId:p.playerId||'',isBot:!!p.isBot,...(p.isBot?{fundingUid:p.fundingUid,botStyle:p.botStyle}:{}),seatIndex:index,stack,bet:0,buyTotal:0,status:'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',lastSeen:Date.now()};}
-function tableDoc(t,players,now){return{authorityVersion:2,type:'poker',clubId:t.clubId,createdBy:t.creatorUid,createdAt:now,tournamentId:t.id,players,chat:[],tournament:{name:t.name,torId:t.id,mttMode:true,startedAt:t.startedAt,structure:t.structure,levelMins:t.levelMins,anteType:t.anteType,anteFromLevel:t.anteFromLevel,breakEvery:t.breakEvery,breakMins:t.breakMins,...(t.dayBreak?{dayBreak:t.dayBreak}:{}),rebuyUntil:t.rebuys?t.rebuyUntilLevel-1:-1,addonAt:t.addon?t.addonLevel-1:-1,startStack:t.startStack,bounty:t.bounty,round:1,final:false,finished:false,demoOnly:t.demoOnly},settings:{serverEngine:true,baseGameType:t.pokerType,maxPlayers:t.tableSize,blinds:t.structure[0].sb,actionTime:t.actionTime,rakePercent:0,autoStart:2,omahaPotLimit:true,demoOnly:t.demoOnly,botGodGuard:false},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:t.structure[0].bb,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}};}
+function tableDoc(t,players,now){return{authorityVersion:2,type:'poker',clubId:t.clubId,createdBy:t.creatorUid,createdAt:now,tournamentId:t.id,players,chat:[],tournament:{name:t.name,torId:t.id,mttMode:true,startedAt:t.startedAt,structure:t.structure,levelMins:t.levelMins,anteType:t.anteType,anteFromLevel:t.anteFromLevel,breakEvery:t.breakEvery,breakMins:t.breakMins,rebuyUntil:t.rebuys?t.rebuyUntilLevel-1:-1,addonAt:t.addon?t.addonLevel-1:-1,startStack:t.startStack,bounty:t.bounty,round:1,final:false,finished:false,demoOnly:t.demoOnly},settings:{serverEngine:true,baseGameType:t.pokerType,maxPlayers:t.tableSize,blinds:t.structure[0].sb,actionTime:t.actionTime,rakePercent:0,autoStart:2,omahaPotLimit:true,demoOnly:t.demoOnly,botGodGuard:false},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:t.structure[0].bb,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}};}
 function docOf(t){const {id,...doc}=t;return doc;}
 function funding(t,effects,p,reentry=false){const {pool:buyIn,fee}=T.entryFunding(t,reentry),cost=price(t,reentry);if(t.bountyFree&&t.bountyBudgetRemaining<t.bounty)fail('failed-precondition','Club bounty reserve needs funding');if(cost)effects.push({type:'credit',uid:payee(p),amount:-cost});p.paid=cash((p.paid||0)+cost);p.feesPaid=cash((p.feesPaid||0)+fee);p.bountyValue=t.bounty;t.prizePool=cash(t.prizePool+buyIn);t.feeTotal=cash(t.feeTotal+fee);t.bountyPool=cash(t.bountyPool+t.bounty);if(t.bountyFree)t.bountyBudgetRemaining=cash(t.bountyBudgetRemaining-t.bounty);}
 function entryStack(t,p,now,reentry=false){
@@ -90,6 +85,14 @@ async function tickTournament(id,now=Date.now()){
   if(['reg','running'].includes(t.status)){const club=await tx.get(db.doc('clubs/'+t.clubId));if(club.exists&&club.data().archived===true)return{};}
   const namesChanged=renameGenericBots(t.players,null,{table:false});
   if(t.status==='reg'){
+   if(t.flightIds){
+    if(now<t.startAt||!await Flights.finalReady(tx,db,t))return {};
+    if(!all(t).length){
+     const write=await prepareLedger(db,tx,t.clubId,t.addedPrize?[{type:'credit',uid:t.bountyFundingUid,amount:t.addedPrize}]:[],id,now);
+     write();tx.update(ref,{status:'cancelled',cancelledAt:now,prizePool:0});return {cancelled:true};
+    }
+   }
+   if(t.flightOf&&now>=Flights.endTime(t))return Flights.seal(tx,db,t,[],now);
    if(now<t.startAt){if(namesChanged)tx.set(ref,docOf(t));return{};}if(t.botFill){const c=await tx.get(db.doc('clubs/'+t.clubId));if(!c.exists||!c.data().ownerUid)fail('failed-precondition','Bot sponsor missing');if(c.data().botsAuto!==false)addBots(t,c.data().ownerUid,effects,now);}if(all(t).length<t.minPlayers){if(namesChanged)tx.set(ref,docOf(t));return{};}
    await refreshEntrantAvatars(tx,db,t);const write=await prepareLedger(db,tx,t.clubId,effects,'tournament:'+id,now);write();start(tx,db,t,now);tx.set(ref,docOf(t));return{started:true};
   }
@@ -105,7 +108,8 @@ async function tickTournament(id,now=Date.now()){
    if(!canRebuy(t,e,now)||p.isBot&&now-p.bustedAt>=3000||now-p.bustedAt>=45000){e.out=true;e.outAt=now;e.rank=all(t).filter(p=>!p.out).length+1;p.status='out';row.changed=true;changed=true;}
   }}
   if(Math.abs(T.chips(rows)-t.initialChips)>.001){tx.update(ref,{integrityIssue:'chip-conservation'});return{issue:'chip-conservation'};}
-  const plan=T.plan(t,rows,now);if(plan.issue){tx.update(ref,{integrityIssue:plan.issue});return{issue:plan.issue};}if(plan.champion||plan.finishers){await final(tx,db,t,rows,plan.finishers||plan.champion,now,effects);return{done:true};}
+  if(t.flightOf&&now>=Flights.endTime(t))return Flights.seal(tx,db,t,rows,now);
+  const plan=T.plan(t,rows,now);if(plan.issue){tx.update(ref,{integrityIssue:plan.issue});return{issue:plan.issue};}if(plan.champion||plan.finishers){if(t.flightOf)return Flights.seal(tx,db,t,rows,now);await final(tx,db,t,rows,plan.finishers||plan.champion,now,effects);return{done:true};}
   const write=await prepareLedger(db,tx,t.clubId,effects,'tournament:'+id,now);write();const updated=new Set();for(const u of plan.updates){renameGenericBots(u.patch.players,t.players);tx.update(db.doc('tables/'+u.id),u.patch);updated.add(u.id);for(const p of Object.values(u.patch.players))if(t.players[p.uid]&&!t.players[p.uid].out)t.players[p.uid].tableId=u.id;}
   for(const x of plan.deletes)tx.delete(db.doc('tables/'+x));for(const row of rows)if(row.changed&&!updated.has(row.docId)&&!plan.deletes.includes(row.docId))tx.update(db.doc('tables/'+row.docId),{players:row.players,tournament:row.tournament,'gameState.__seq':(row.gameState?.__seq||0)+1});
   if(changed||plan.updates.length||plan.deletes.length||t.integrityIssue){t.integrityIssue=null;t.tableRevision=(t.tableRevision||0)+1;tx.set(ref,docOf(t));}return{};
@@ -128,12 +132,27 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
  if(op==='tick'){const db=getFirestore(),ref=db.doc('tournaments/'+key(r.data.tournamentId)),s=await ref.get();if(!s.exists)fail('not-found','Tournament missing');const m=await db.doc(`memberships/${uid}_${s.data().clubId}`).get();if(!A.root(r)&&(!m.exists||m.data().status!=='approved'))fail('permission-denied','Club membership required');return tickTournament(r.data.tournamentId);}
  return A.command(r,'tournament',async(tx,db,uid,now)=>{
   const id=op==='create'?'event_'+crypto.createHash('sha256').update(uid+r.data.requestId).digest('hex').slice(0,24):key(r.data.tournamentId),ref=db.doc('tournaments/'+id),snap=await tx.get(ref),effects=[];
-  if(op==='create'){const cid=key(r.data.clubId),club=await A.tableManager(tx,db,cid,r);A.assertClubOpen(club);if(snap.exists)return{ok:true,tournamentId:id};const t=config(r.data.settings||{},cid,uid,now);t.bountyFundingUid=club.ownerUid;const cost=cash(t.addedPrize+t.bountyBudgetRemaining),write=await prepareLedger(db,tx,cid,cost?[{type:'credit',uid:club.ownerUid,amount:-cost}]:[],id,now);write();tx.set(ref,t);return{ok:true,tournamentId:id};}
+  if(op==='create'){const cid=key(r.data.clubId),club=await A.tableManager(tx,db,cid,r);A.assertClubOpen(club);if(snap.exists)return{ok:true,tournamentId:id};const t=config(r.data.settings||{},cid,uid,now);t.bountyFundingUid=club.ownerUid;const cost=cash(t.addedPrize+t.bountyBudgetRemaining),write=await prepareLedger(db,tx,cid,cost?[{type:'credit',uid:club.ownerUid,amount:-cost}]:[],id,now);const multi=r.data.settings.flightSchedule;
+   const series=multi?Flights.schedule(t,id,multi,now):null;
+   write();
+   if(series){series.flights.forEach((flight,i)=>tx.set(db.doc('tournaments/'+series.ids[i]),flight));tx.set(ref,series.final);}
+   else tx.set(ref,t);
+   return{ok:true,tournamentId:id};}
   if(!snap.exists)fail('not-found','Tournament missing');const t={...snap.data(),id};if(t.authorityVersion!==2)fail('failed-precondition','Protected tournaments only');
   const managing=['start','fillbots','registration','prizeconfig','cancel','archive','removeplayer'].includes(op),club=managing?await A.tableManager(tx,db,t.clubId,r):null;if(!managing)await A.member(tx,db,t.clubId,r);
   if(t.archived){if(op==='archive')return{ok:true,tournamentId:id};fail('failed-precondition','This tournament was deleted');}
   if(['register','start','fillbots','registration','prizeconfig','rebuy','addon'].includes(op)){if(club)A.assertClubOpen(club);else await A.activeClub(tx,db,t.clubId);}
   const rows=t.status==='running'?await tables(tx,db,id):[],mine=t.players[uid],late=t.status==='running'&&T.lateRegistrationOpen(t,t.structure,now);let queued=false;
+  if(t.flightIds&&['register','unregister','start','fillbots','registration','prizeconfig','addon','rebuy','removeplayer'].includes(op))
+   fail('failed-precondition','The final seats qualified players from their sealed bags.');
+  if(t.flightIds&&['archive','cancel'].includes(op)&&t.status!=='done'&&t.status!=='cancelled'&&
+     (Object.keys(t.bags).length||!await Flights.finalReady(tx,db,t)))fail('failed-precondition','The series still has flights or sealed chip bags.');
+  if(t.flightOf){
+   if(['start','register','fillbots'].includes(op)&&now>=Flights.endTime(t))fail('failed-precondition','Flight is bagging chips.');
+   if(op==='start'&&now<t.startAt)fail('failed-precondition','Wait for the scheduled flight.');
+   if(op==='prizeconfig'||op==='registration'||(op==='archive'&&t.status==='running'))fail('failed-precondition','The flight uses the series schedule and prize pool.');
+   if(op==='register')await Flights.checkEntry(tx,db,t,uid);
+  }
   if(op==='register'){
    if(t.removedPlayers?.[uid]||mine?.removed||mine?.removalRequested)fail('permission-denied','You were removed from this tournament');
    if(t.demoOnly)fail('failed-precondition','This demonstration is bots only');if(!['reg','running'].includes(t.status)||t.status==='running'&&!late)fail('failed-precondition','Registration closed');if(mine&&!mine.out)return{ok:true,tournamentId:id};if(mine&&(!t.reentry||(mine.reentries||0)>=t.maxReentries))fail('failed-precondition','Re-entry unavailable');if(all(t).filter(p=>!p.out).length>=t.maxPlayers)fail('failed-precondition','Tournament full');

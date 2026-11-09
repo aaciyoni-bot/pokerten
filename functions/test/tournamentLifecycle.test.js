@@ -451,38 +451,89 @@ test('tournaments retain selected avatars at registration, manual/scheduled star
  }
 });
 
-test('two-day tables finish their hand, keep chip balances overnight and resume at the next level',async()=>{
- const f=fixture(),resumeAt=NOW+86400000;
- const rows=Array.from({length:4},(_,i)=>({sb:i+1,bb:2*(i+1),mins:5}));
- const id=await create(f,{startAt:NOW,structure:rows,dayBreak:{afterLevel:1,resumeAt},breakEvery:1,breakMins:2,lateRegUntilLevel:2});
- await startHumans(f,id,8);
- const tables=f.tables(id);
- assert.equal(tables.length,2);
- await Promise.all(tables.map(row=>f.action(row.docId,s=>f.engine.startHand(s))));
- f.advance(5*60000);
- assert.equal(f.tours.clock(f.tour(id),f.now()).dayBreak,true);
- for(const row of tables){
-  await f.action(row.docId,s=>{
-   while(s.gameState.activeTurnUid)f.engine.applyAction(s,s.gameState.activeTurnUid,'fold',0,false);
-   assert.equal(s.gameState.phase,'showdown');
-  });
+test('separate flights independently seal real stacks, then seed just those stacks in one final',async()=>{
+ const f=fixture(),day=86400000,start=NOW+1000;
+ const structure=[{sb:1,bb:2,mins:1},{sb:2,bb:4,mins:1},{sb:4,bb:8,mins:1}];
+ const id=await create(f,{startAt:start,structure,flightSchedule:{starts:[start,start+day],finalAt:start+2*day,bagAfter:1}});
+ const [a,b]=f.tour(id).flightIds;
+ for(const uid of ['A','B','C','D'])f.member(uid);
+ for(const uid of ['A','B'])await f.command(uid,'register',{tournamentId:a});
+ await assert.rejects(f.command('A','register',{tournamentId:b}),/another flight/);
+ for(const uid of ['C','D'])await f.command(uid,'register',{tournamentId:b});
+ await assert.rejects(f.command('D','register',{tournamentId:id}),/sealed bags/);
+ async function playFlight(flight){
+  await f.tours.tickTournament(flight,f.now());
+  const row=f.tables(flight)[0];
+  await f.action(row.docId,s=>f.engine.startHand(s));
+  f.advance(60000);
+  assert.equal((await f.tours.tickTournament(flight,f.now())).finishing,true);
+  await f.action(row.docId,s=>f.engine.applyAction(s,s.gameState.activeTurnUid,'fold',0,false));
+  f.advance(9000);
+  const before=f.tables(flight)[0].players;
+  assert.equal(await f.action(row.docId,s=>f.engine.startHand(s)),'waiting');
+  await f.tours.tickTournament(flight,f.now());
+  assert.equal(f.tour(flight).status,'done');
+  for(const [uid,p] of Object.entries(before)){
+   assert.equal(f.tour(id).bags[uid].amount,p.stack);
+   assert.equal(f.tour(flight).bags[uid].name,p.name);
+  }
+  const snapshot=copy(f.tour(id));
+  await f.tours.tickTournament(flight,f.now());
+  assert.deepEqual(f.tour(id),snapshot,'sealing twice does not duplicate stacks or the prize pool');
  }
- f.advance(9000);
- await f.tours.tickTournament(id,f.now());
- const retained=f.tables(id).map(row=>[row.docId,row.gameState.handN,Object.fromEntries(Object.entries(row.players).map(([uid,p])=>[uid,p.stack]))]);
- for(const row of f.tables(id))assert.equal(await f.action(row.docId,s=>f.engine.startHand(s)),'waiting');
- assert.equal(T.chips(f.tables(id)),800);
- f.advance(resumeAt-f.now()-1);
- await f.tours.tickTournament(id,f.now());
- assert.deepEqual(f.tables(id).map(row=>[row.docId,row.gameState.handN,Object.fromEntries(Object.entries(row.players).map(([uid,p])=>[uid,p.stack]))]),retained);
- assert.equal(T.lateRegistrationDeadline(f.tour(id),rows),resumeAt+5*60000);
- f.advance(1);
- assert.equal(f.tours.clock(f.tour(id),f.now()).lvl,1);
- for(const row of f.tables(id)){
-  assert.equal(row.tournament.dayBreak.resumeAt,resumeAt);
-  assert.equal(await f.action(row.docId,s=>f.engine.startHand(s)),'dealt');
+ f.advance(start-f.now());await playFlight(a);
+ await assert.rejects(f.command('A','register',{tournamentId:b}),/qualified player/);
+ f.advance(start+day-f.now());await playFlight(b);
+ assert.equal(Object.keys(f.tour(id).bags).length,4);
+ assert.equal(f.tour(id).prizePool,40);
+ await f.tours.tickTournament(id,f.now());assert.equal(f.tables(id).length,0);
+ f.advance(start+2*day-f.now());await f.tours.tickTournament(id,f.now());
+ const seats=f.tables(id)[0].players;
+ for(const uid of ['A','B','C','D']){
+  assert.equal(seats[uid].stack,f.tour(id).bags[uid].amount);
+  assert.equal(f.balance(uid),989,'final does not charge another buy-in');
  }
- assert.equal(T.chips(f.tables(id)),800);
- assert.equal(f.balance('human0'),989);
- assert.equal(f.tour(id).status,'running');
+ assert.equal(T.chips(f.tables(id)),400);
+ assert.equal(f.tour(id).structure[0].bb,4);
+ for(let i=0;i<150&&f.tour(id).status==='running';i++){
+  f.advance(10000);await f.tours.tickTournament(id,f.now());
+  if(f.tour(id).status==='running')for(const row of f.tables(id))await playOne(f,row);
+ }
+ assert.equal(f.tour(id).status,'done');
+ assert.equal(f.tour(id).results.reduce((n,r)=>n+r.prize,0),40);
+});
+
+test('flight final waits for every flight to close, even when the final start date has passed',async()=>{
+ const f=fixture(),start=NOW+1000,dates=[start,start+86400000],finalAt=start+2*86400000;
+ const id=await create(f,{startAt:start,structure:[{sb:1,bb:2,mins:1},{sb:2,bb:4,mins:1}],
+  flightSchedule:{starts:dates,finalAt,bagAfter:1}});
+ const [a,b]=f.tour(id).flightIds;
+ f.member('solo');await f.command('solo','register',{tournamentId:a});
+ f.advance(finalAt-f.now());
+ await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).status,'reg');
+ await f.tours.tickTournament(a,f.now());await f.tours.tickTournament(b,f.now());
+ assert.equal(f.tour(b).qualifiedCount,0);
+ await f.tours.tickTournament(id,f.now());await f.tours.tickTournament(id,f.now());
+ assert.equal(f.tour(id).status,'done');assert.equal(f.tour(id).bags.solo.amount,100);
+ assert.equal(f.tour(id).results[0].prize,10);
+});
+
+test('a busted player can choose a subsequent flight, and an active entry cannot also enter a different flight',async()=>{
+ const f=fixture(43),start=NOW+1000;
+ const id=await create(f,{startAt:start,structure:[{sb:2,bb:4,mins:20},{sb:4,bb:8,mins:10}],
+  flightSchedule:{starts:[start,start+86400000],finalAt:start+2*86400000,bagAfter:1}});
+ const [a,b]=f.tour(id).flightIds;
+ for(const uid of ['alice','bob']){f.member(uid);await f.command(uid,'register',{tournamentId:a});}
+ f.advance(1000);await f.tours.tickTournament(a,f.now());
+ let bust;
+ for(let i=0;i<100&&!bust;i++){
+  await playOne(f,f.tables(a)[0]);f.advance(10000);
+  bust=Object.values(f.tour(a).players).find(p=>p.out);
+ }
+ assert.ok(bust);
+ await f.tours.tickTournament(a,f.now());
+ await f.command(bust.uid,'register',{tournamentId:b});
+ assert.equal(f.balance(bust.uid),978,'the subsequent flight is a separately paid entry');
+ assert.equal(f.tour(id).bags[bust.uid],undefined);
+ assert.equal(Object.keys(f.tour(id).bags).length,1);
 });

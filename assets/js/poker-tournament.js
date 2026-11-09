@@ -6,34 +6,26 @@ const capacity=t=>Math.max(2,Math.min(/^Omaha\s*7$/i.test(t.pokerType||'')?5:9,M
 const showdownDelay=g=>g?.earlyWin?5000:8000;
 const idle=t=>['waiting','showdown'].includes(t.gameState?.phase||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Object.values(t.players||{}).some(p=>p.bet>0);
 const chips=rows=>cash(rows.reduce((sum,t)=>sum+Object.values(t.players||{}).reduce((n,p)=>n+Number(p.stack||0)+Number(p.bet||0)+Number(p.pendingTournamentChips||0),0)+(t.gameState?.pots||[]).reduce((n,p)=>n+Number(p.amount||0),0),0));
-// One timeline drives the server deal gate, table clocks and registration deadlines.
-function* levelSchedule(t,rows,start){
- let at=start;
- for(let i=0;i<rows.length;i++){
-  const end=at+Math.max(1,Number(rows[i].mins)||5)*60000;
-  const ordinaryBreak=i+1<rows.length&&t.breakEvery>0&&(i+1)%t.breakEvery===0;
-  const dayBreak=t.dayBreak?.afterLevel===i+1;
-  const nextStart=dayBreak?Math.max(end,t.dayBreak.resumeAt):end+(ordinaryBreak?(Number(t.breakMins)||0)*60000:0);
-  yield {i,end,nextStart,dayBreak};
-  at=nextStart;
- }
-}
 function clock(t,rows,now=Date.now()){
- for(const {i,end,nextStart,dayBreak} of levelSchedule(t,rows,Number(t.startedAt)||now)){
-  const row=rows[i],next=rows[i+1]||null;
-  if(now<end)return {lvl:i,row,inBreak:false,phaseEndsAt:end,next,breakNext:nextStart>end};
-  if(now<nextStart)return {lvl:i+1,row:next,inBreak:true,phaseEndsAt:nextStart,next,breakNext:false,dayBreak};
+ const started=Number(t.startedAt)||now,elapsed=Math.max(0,now-started),every=Math.max(0,Math.floor(Number(t.breakEvery)||0)),pause=Math.max(0,Number(t.breakMins)||0)*60000;let acc=0;
+ for(let i=0;i<rows.length;i++){
+  const row=rows[i],duration=Math.max(1,Number(row.mins)||5)*60000,breakNext=!!(every&&pause&&(i+1)%every===0&&i+1<rows.length);
+  if(elapsed<acc+duration)return{lvl:i,row,inBreak:false,phaseEndsAt:started+acc+duration,next:rows[i+1]||null,breakNext};acc+=duration;
+  if(breakNext){if(elapsed<acc+pause)return{lvl:i+1,row:rows[i+1],inBreak:true,phaseEndsAt:started+acc+pause,next:rows[i+1],breakNext:false};acc+=pause;}
  }
  return{lvl:rows.length-1,row:rows.at(-1),inBreak:false,phaseEndsAt:Infinity,next:null,breakNext:false};
 }
-// End of the selected level excludes its own break.
+// End of the selected level, including earlier breaks but not the break after it.
 function lateRegistrationDeadline(t,rows){
  if(Number(t.lateRegClosesAt)>0)return Number(t.lateRegClosesAt);
  const level=Math.min(rows.length,Math.max(0,Math.floor(Number(t.lateRegUntilLevel)||0)));
- for(const {i,end} of levelSchedule(t,rows,Number(t.startedAt)||Number(t.startAt)||0)){
-  if(i+1===level)return end;
+ if(!level)return 0;
+ let end=Number(t.startedAt)||Number(t.startAt)||0;
+ for(let i=0;i<level;i++){
+  end+=Math.max(1,Number(rows[i].mins)||5)*60000;
+  if(i+1<level&&t.breakEvery&&(i+1)%t.breakEvery===0)end+=Math.max(0,Number(t.breakMins)||0)*60000;
  }
- return 0;
+ return end;
 }
 function lateRegistrationOpen(t,rows,now=Date.now()){
  if(!t||t.archived)return false;if(t.status==='reg')return true;if(t.status!=='running')return false;
@@ -93,6 +85,6 @@ function plan(t,input,now=Date.now()){
  const src=live.at(-1),dst=live[0];if(occupied(src).length-occupied(dst).length>=2&&movable(src)&&occupied(dst).length<cap){if(!hold([src,dst]))return finish();const ordered=occupied(src).sort((a,b)=>a.seatIndex-b.seatIndex),dealer=ordered.findIndex(p=>p.uid===src.gameState?.dealerUid);move(src,dst,ordered[(Math.max(-1,dealer)+3)%ordered.length]);for(const row of[src,dst]){row.tournament={...row.tournament,balanceHoldUntil:0};save(row);}}
  return finish();
 }
-const api={levelSchedule,showdownDelay,capacity,idle,chips,clock,lateRegistrationDeadline,lateRegistrationOpen,earlyRegistrationBonus,entryFunding,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
+const api={showdownDelay,capacity,idle,chips,clock,lateRegistrationDeadline,lateRegistrationOpen,earlyRegistrationBonus,entryFunding,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
 })(typeof window!=='undefined'?window:globalThis);
 

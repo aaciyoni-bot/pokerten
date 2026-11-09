@@ -641,6 +641,13 @@ body.poker-theme .cl-page:has(.cl-deck) .cl-banner{width:100%;max-width:500px;ma
 .poker-room .poker-seat-hero{--poker-fan-width:var(--poker-hero-face,clamp(40px,11cqw,66px));--poker-fan-step:.28;--poker-fan-overlap:calc(var(--poker-fan-step) - 1);--poker-fan-span:calc(var(--poker-fan-width) * (1 + (var(--poker-card-count,2) - 1) * var(--poker-fan-step)));left:max(18px,calc(var(--poker-fan-span) / 2 - var(--poker-hero-size,64px) / 2 + 18px))!important;right:auto;width:var(--poker-hero-size,64px)!important}
 .poker-room .poker-seat-hero[data-hole-count="2"]{--poker-fan-step:.65}
 .poker-room .poker-seat-hero[data-hole-count="3"]{--poker-fan-step:.4}
+/* Expose the full rank in crowded fans, including a two-digit ten. */
+.poker-room .poker-seat-hero:is([data-hole-count="4"],[data-hole-count="5"],[data-hole-count="6"],[data-hole-count="7"]:not([data-hand-layout="rows"])){--poker-fan-step:.40}
+.poker-room :is(.poker-own-fan,.poker-opponent-fan):not([data-hand-layout="rows"]) .card-face[data-card-rank="10"] .poker-card-index{left:3%!important;align-items:flex-start}
+.poker-room :is(.poker-own-fan,.poker-opponent-fan):not([data-hand-layout="rows"]) .card-face[data-card-rank="10"] .poker-card-index>span:first-child{transform:scaleX(.76);transform-origin:left}
+@media(prefers-reduced-motion:no-preference){
+ .poker-room .poker-hole-cards .card-reveal,.poker-room .poker-board .card-reveal{animation-duration:.16s}
+}
 .poker-room .poker-seat-hero>.relative.flex.flex-col.items-center{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:0;height:auto}
 .poker-room .poker-seat-hero .poker-own-fan{--poker-fan-width:inherit;--poker-fan-overlap:inherit;position:absolute;top:calc(var(--poker-hero-size,64px) * .72 - var(--poker-fan-width) * 1.4 - 7px);left:50%;right:auto;bottom:auto;transform:translateX(-50%)!important;align-self:auto;justify-self:auto;margin:0!important;z-index:20}
 .poker-room .poker-hole-cards>span{line-height:0;flex-shrink:0}

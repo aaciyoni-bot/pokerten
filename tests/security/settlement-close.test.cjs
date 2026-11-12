@@ -3,6 +3,7 @@ const {test,after}=require('node:test'),assert=require('node:assert/strict'),cry
 if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('Cycle closure tests require the Firestore emulator; never production');
 const admin=require('../../functions/node_modules/firebase-admin');admin.initializeApp({projectId:'demo-pokerten-security'});const db=admin.firestore();
 require('../../functions/pokerSecurity').requirePokerAvailable=()=>{};
+const {showdownDelay}=require('../../functions/pokerTournamentCore');
 const Settlement=require('../../functions/pokerSettlement'),Access=require('../../functions/pokerAccess'),Engine=require('../../functions/pokerEngine');
 const api={...Settlement,...Access,...Engine},get=async p=>(await db.doc(p).get()).data();let serial=0;
 after(async()=>{await db.terminate();await admin.app().delete();});
@@ -31,7 +32,9 @@ test('bulk close waits for the real hand, returns all chips once, then saves the
  const g=t.gameState;await f.call('pkAct',g.activeTurnUid,{tableId:live,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
  t=await get('tables/'+live);const expected=Object.fromEntries([f.a,f.b].map(uid=>[uid,Math.round((t.players[uid].stack+(t.players[uid].pendingTopUp||0)-t.players[uid].buyTotal)*100)]));
  // Age only the display timer; keep the ledger's recording time at real now.
- await db.doc('tables/'+live).update({'gameState.showdownAt':Date.now()-6000});await Engine.__engineInternals.tickTable(live);
+ await Engine.__engineInternals.tickTable(live,t.gameState.showdownAt+showdownDelay(t.gameState)-1);
+ assert.ok(await get('tables/'+live),'the table stays open while the award is visible');
+ await db.doc('tables/'+live).update({'gameState.showdownAt':Date.now()-showdownDelay(t.gameState)});await Engine.__engineInternals.tickTable(live);
  // A server continuation finishes even if the initiating browser disappeared.
  await Settlement.pkSettlementTick.run({});assert.equal((await get(f.root)).currentCycleId,'cycle_1');
  const old=await f.report(f.owner,'legacy_current');for(const uid of [f.a,f.b])assert.equal(old.legacyReport.players.find(p=>p.uid===uid).result,expected[uid]);

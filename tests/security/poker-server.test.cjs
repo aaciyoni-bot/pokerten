@@ -11,6 +11,7 @@ const req=(user,data)=>({auth:{uid:user,token:{email:user+'@example.invalid',ema
 const Profile=require('../../functions/pokerProfile');
 const call=(name,user,data)=>({...Access,...Engine,...Tours,...Profile}[name]).run(req(user,data));
 const get=async path=>(await db.doc(path).get()).data();
+const awardEndsAt = game => game.showdownAt + Core.showdownDelay(game);
 const bank=async u=>(await get(`memberships/${u}_${club}`)).balance;
 const rows=async id=>(await db.collection('tables').where('tournamentId','==',id).get()).docs.map(d=>({...d.data(),docId:d.id}));
 const fresh=async(user,balance=100000)=>{await db.doc('users/'+user).set({username:user});await db.doc(`memberships/${user}_${club}`).set({uid:user,clubId:club,status:'approved',role:user===owner?'club_owner':'player',balance});};
@@ -158,7 +159,10 @@ test('cash rebuy queues once during another hand and joins only the next deal, e
  assert.equal(await bank(u),balance-40);assert.equal(t.players[u].stack,0);assert.equal(t.players[u].pendingTopUp,40);assert.equal(t.players[u].cardCount,0);assert.deepEqual(t.gameState.pots,before.gameState.pots);assert.equal(t.gameState.activeTurnUid,before.gameState.activeTurnUid);
  await assert.rejects(call('pkSeat',u,{tableId,op:'rebuy',amount:40}),/already queued/);assert.equal(await bank(u),balance-40);
  const g=t.gameState;await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
- await Engine.__engineInternals.tickTable(tableId,Date.now()+6000);t=await get('tables/'+tableId);
+ const end=awardEndsAt((await get('tables/'+tableId)).gameState);
+ await Engine.__engineInternals.tickTable(tableId,end-1);t=await get('tables/'+tableId);
+ assert.equal(t.gameState.phase,'showdown');assert.equal(t.players[u].pendingTopUp,40);
+ await Engine.__engineInternals.tickTable(tableId,end);t=await get('tables/'+tableId);
  assert.equal(t.gameState.handN,before.gameState.handN+1);assert.equal(t.players[u].pendingTopUp,0);assert.equal(t.players[u].stack+t.players[u].bet,40);assert.equal(t.players[u].cardCount,2);assert.equal(await bank(u),balance-40);assert.equal(Core.chips([t]),340);
 });
 test('spectators and undealt seats leave immediately; queued top-ups refund once and dealt players wait',async()=>{
@@ -204,8 +208,8 @@ test('closing a live cash table preserves its hand, settles its real winner and 
  assert.deepEqual(await Promise.all([bank(a),bank(b)]),balances);
  const g=t.gameState;await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
  t=await get('tables/'+tableId);assert.equal(t.gameState.phase,'showdown');assert.equal(Core.chips([t])+Object.values(t.players).reduce((n,p)=>n+(p.pendingTopUp||0),0),240);const expected=[a,b].map((u,i)=>balances[i]+t.players[u].stack+(t.players[u].pendingTopUp||0));
- await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+1000);assert.ok(await get('tables/'+tableId),'winner display stays visible');
- await Promise.all([1,2].map(()=>Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+9000)));
+ await Engine.__engineInternals.tickTable(tableId,awardEndsAt(t.gameState)-1);assert.ok(await get('tables/'+tableId),'winner display stays visible until the deadline');
+ await Promise.all([1,2].map(()=>Engine.__engineInternals.tickTable(tableId,awardEndsAt(t.gameState))));
  assert.equal(await get('tables/'+tableId),undefined);assert.deepEqual(await Promise.all([bank(a),bank(b)]),expected);assert.equal((await get('_pkClosedTables/'+tableId)).gameState.handN,before.gameState.handN);
  await call('pkTableManage',owner,{tableId,op:'delete'});assert.deepEqual(await Promise.all([bank(a),bank(b)]),expected);
 });
@@ -254,8 +258,11 @@ test('already paid legacy pending chips survive disabling rebuy and join only th
  // Seed a receipt accepted before the feature was disabled: funded chips must remain owned.
  const balance=await bank(u);await db.doc('memberships/'+u+'_'+club).update({balance:balance-22});await db.doc('tournaments/'+id).update({initialChips:400,['players.'+u+'.rebuys']:1,['players.'+u+'.paid']:44,rebuys:true});await db.doc('tables/'+tableId).update({['players.'+u+'.pendingTournamentChips']:100});
  let t=await get('tables/'+tableId),g=t.gameState;assert.equal(t.players[u].stack,0);assert.equal(t.players[u].cardCount,0);assert.equal(Core.chips([t]),400);await assert.rejects(call('pkTournament',u,{op:'rebuy',tournamentId:id}));
- await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});await Tours.tickTournament(id,Date.now()+6000);assert.equal((await get('tournaments/'+id)).players[u].out,false);
- await Engine.__engineInternals.tickTable(tableId,Date.now()+7000);t=await get('tables/'+tableId);assert.equal(t.players[u].pendingTournamentChips,0);assert.equal(t.players[u].stack+t.players[u].bet,100);assert.equal(t.players[u].cardCount,2);assert.equal(Core.chips([t]),400);assert.equal(await bank(u),balance-22);
+ await call('pkAct',g.activeTurnUid,{tableId,action:'fold',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
+ const end=awardEndsAt((await get('tables/'+tableId)).gameState);
+ await Tours.tickTournament(id,end-1);assert.equal((await get('tournaments/'+id)).players[u].out,false);
+ await Engine.__engineInternals.tickTable(tableId,end-1);assert.equal((await get('tables/'+tableId)).players[u].pendingTournamentChips,100);
+ await Engine.__engineInternals.tickTable(tableId,end);t=await get('tables/'+tableId);assert.equal(t.players[u].pendingTournamentChips,0);assert.equal(t.players[u].stack+t.players[u].bet,100);assert.equal(t.players[u].cardCount,2);assert.equal(Core.chips([t]),400);assert.equal(await bank(u),balance-22);
 });
 test('cancelling registration returns funded bot entries, guaranteed prize and unused bounty reserve exactly once',async()=>{
  const b=await bank(owner),r=await call('pkTournament',owner,{op:'create',clubId:club,settings:{name:'Cancel checks',buyIn:10,fee:1,bounty:5,bountyFree:true,bountyBudgetRemaining:100,addedPrize:50,maxPlayers:4,startAt:Date.now()+600000}}),id=r.tournamentId;
@@ -349,8 +356,8 @@ test('lobby settings queue through an active hand, keep its rake and stacks, and
  let t=await get('tables/'+tableId);assert.equal(t.settings.blinds,1);assert.equal(t.settings.rakePercent,6);assert.deepEqual(t.players,before.players);
  const act=async action=>{const t=await get('tables/'+tableId),g=t.gameState;await call('pkAct',g.activeTurnUid,{tableId,action,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});};
  await act('call');await act('call');t=await get('tables/'+tableId);assert.equal(t.gameState.phase,'flop');await act('fold');t=await get('tables/'+tableId);assert.equal(t.gameState.phase,'showdown');assert.equal(t.gameState.lastWinAmount,3.76,'the settled pot still uses the original 6% rake');
- const chips=Core.chips([t]);await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+1000);t=await get('tables/'+tableId);assert.equal(t.pendingSettings,null);assert.equal(t.settings.blinds,5);assert.equal(t.settings.minBuyIn,100);assert.equal(t.settings.maxBuyIn,500);assert.equal(t.settings.rakePercent,20);assert.equal(Core.chips([t]),chips);
- await Engine.__engineInternals.tickTable(tableId,t.gameState.showdownAt+9000);t=await get('tables/'+tableId);assert.equal(t.gameState.highestBet,10);assert.equal(Core.chips([t]),chips);
+ const chips=Core.chips([t]);await Engine.__engineInternals.tickTable(tableId,awardEndsAt(t.gameState)-1);t=await get('tables/'+tableId);assert.equal(t.pendingSettings,null);assert.equal(t.settings.blinds,5);assert.equal(t.settings.minBuyIn,100);assert.equal(t.settings.maxBuyIn,500);assert.equal(t.settings.rakePercent,20);assert.equal(Core.chips([t]),chips);
+ await Engine.__engineInternals.tickTable(tableId,awardEndsAt(t.gameState));t=await get('tables/'+tableId);assert.equal(t.gameState.highestBet,10);assert.equal(Core.chips([t]),chips);
 });
 test('cash bot rotation is staggered, boundary-only, preserves funds and removes obsolete private cards',async()=>{
  const {tableId}=await call('pkTableCreate',owner,{manual:true,clubId:club,botCount:3,settings:{maxPlayers:3,blinds:1,minBuyIn:40,maxBuyIn:100}});let t=await get('tables/'+tableId);const ids=Object.keys(t.players),now=Date.now();

@@ -3,6 +3,7 @@
 // Every payout uses the existing table lifecycle transaction. A retry never
 // pays an archived table again, and no new play can cross the club barrier.
 const A=require('./pokerAuthority'),S=require('./settlementStore'),Legacy=require('./pokerLegacyTables');
+const {showdownDelay}=require('./pokerTournamentCore');
 const stateRef=(db,cid)=>S.root(db,cid).collection('state').doc('tableClosure');
 const activeEvent=t=>!['done','cancelled'].includes(t.status);
 const protectedTable=t=>t.authorityVersion===2&&(t.settings?.serverEngine===true||t.cardGameVersion===1);
@@ -38,7 +39,7 @@ async function advance(db,cid,id,finish){
    if(t.tournamentId){const event=S.data(await tx.get(db.doc('tournaments/'+A.key(t.tournamentId))));if(!event||activeEvent(event))A.fail('failed-precondition','Finish the active tournament before closing its table.');return life.archiveTable(tx,db,d.ref,t,initial.by,now);}
    if(!protectedTable(t))return Legacy.archiveTable(tx,db,d.ref,t,initial.by,now);
    if(spinRunning(t))return;
-   if(A.idle(t)&&(t.gameState?.phase!=='showdown'||now-(t.gameState.showdownAt||0)>=5000))return life.closeTable(tx,db,d.ref,t,initial.by,now);
+   if(A.idle(t)&&(t.gameState?.phase!=='showdown'||now-(t.gameState.showdownAt||0)>=showdownDelay(t.gameState)))return life.closeTable(tx,db,d.ref,t,initial.by,now);
    if(!t.closeRequested)tx.update(d.ref,{closeRequested:{by:initial.by,at:now,cycleClosureId:id},'gameState.__seq':(t.gameState?.__seq||0)+1});
   });}catch(e){error=String(e.message||'A table could not be closed.').slice(0,300);}
  }

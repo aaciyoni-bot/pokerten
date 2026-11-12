@@ -30,7 +30,7 @@ function fixture(seed=1){
   },{filename:file});cached[file]=module.exports;return module.exports;
  }
  const tours=load('pokerTournaments.js'),engine=load('pokerEngine.js').__engineInternals;
- const f={docs,db,tours,engine,now:()=>now,advance:ms=>{now+=ms;},tables:id=>[...docs].filter(([p,d])=>p.split('/').length===2&&p.startsWith('tables/')&&d.tournamentId===id).map(([p,d])=>({...copy(d),docId:p.split('/')[1]})),tour:id=>docs.get('tournaments/'+id),balance:uid=>docs.get(`memberships/${uid}_clubA`).balance,
+ const f={docs,db,tours,engine,botTurn:load('pokerEngine.js').pkBotTurn,now:()=>now,advance:ms=>{now+=ms;},tables:id=>[...docs].filter(([p,d])=>p.split('/').length===2&&p.startsWith('tables/')&&d.tournamentId===id).map(([p,d])=>({...copy(d),docId:p.split('/')[1]})),tour:id=>docs.get('tournaments/'+id),balance:uid=>docs.get(`memberships/${uid}_clubA`).balance,
   member(uid){docs.set('users/'+uid,{username:uid});docs.set(`memberships/${uid}_clubA`,{uid,clubId:'clubA',role:'player',status:'approved',balance:1000});},
   command:(uid,op,extra={},rid)=>tours.pkTournament({auth:{uid,token:{email:uid+'@example.test',email_verified:true}},data:{op,clubId:'clubA',requestId:rid||'tournament-request-'+(++request),...extra}}),
   async action(id,mutate){return db.runTransaction(async tx=>{const s=await engine.loadState(tx,id,{withCards:true});s.now=now;const result=mutate(s);await engine.commitState(tx,s,{});return result;});}
@@ -236,7 +236,7 @@ test('removed participant gets no final prize while all entry fees remain accoun
 test('coordinator removes eliminated zero seats only at safe hand boundaries',()=>{
  const seat=(uid,stack,status='active')=>({uid,stack,status,bet:0,seatIndex:uid==='a'?0:1});
  const t={id:'tor',status:'running',tableSize:2,players:{a:{},b:{},gone:{out:true}}};
- const row={docId:'one',tournamentId:'tor',tournament:{final:true},players:{a:seat('a',100),b:seat('b',100),gone:seat('gone',0,'out')},gameState:{phase:'showdown',showdownAt:NOW-9000,pots:[]}};
+ const row={docId:'one',tournamentId:'tor',tournament:{final:true},players:{a:seat('a',100),b:seat('b',100),gone:seat('gone',0,'out')},gameState:{phase:'showdown',showdownAt:NOW-T.showdownDelay({}),pots:[]}};
  const cleaned=T.plan(t,[row],NOW);assert.equal(cleaned.issue,null);assert.equal(cleaned.updates[0].patch.players.gone,undefined);assert.equal(T.chips([row]),T.chips([{...row,...cleaned.updates[0].patch}]));
  row.gameState.phase='river';assert.equal(T.plan(t,[row],NOW).updates.length,0);assert.ok(row.players.gone);
 });
@@ -246,12 +246,12 @@ test('new deal reaps eliminated seats but retains paid pending rebuy',async()=>{
  await f.action(row.docId,s=>f.engine.startHand(s));assert.equal(f.tables(id)[0].players.human2,undefined);
 });
 test('consolidation holds busy tables before their next deal, preventing missed showdown windows',()=>{
- const now=NOW,roster={},rows=[2,2,1].map((count,i)=>{const players={};for(let j=0;j<count;j++){const uid='p'+i+j;roster[uid]={};players[uid]={uid,stack:100,bet:0,status:'active',seatIndex:j};}return{docId:'t'+i,tournamentId:'tor',players,tournament:{},gameState:{phase:i===1?'river':'showdown',showdownAt:now-10000,pots:[]}};});
+ const now=NOW,roster={},rows=[2,2,1].map((count,i)=>{const players={};for(let j=0;j<count;j++){const uid='p'+i+j;roster[uid]={};players[uid]={uid,stack:100,bet:0,status:'active',seatIndex:j};}return{docId:'t'+i,tournamentId:'tor',players,tournament:{},gameState:{phase:i===1?'river':'showdown',showdownAt:now-T.showdownDelay({}),pots:[]}};});
  const t={id:'tor',status:'running',tableSize:3,players:roster};const hold=T.plan(t,rows,now);
  assert.equal(hold.deletes.length,0);assert.equal(hold.updates.length,3);assert.equal(hold.updates.find(u=>u.id==='t1').patch.gameState.phase,'river');
  for(const u of hold.updates)Object.assign(rows.find(r=>r.docId===u.id),u.patch);
  rows[1].gameState={...rows[1].gameState,phase:'showdown',showdownAt:now+1000};
- const moved=T.plan(t,rows,now+10000);assert.equal(moved.issue,null);assert.equal(moved.deletes.length,1);assert.equal(moved.updates.reduce((sum,u)=>sum+Object.keys(u.patch.players).length,0),5);
+ const moved=T.plan(t,rows,now+1000+T.showdownDelay({}));assert.equal(moved.issue,null);assert.equal(moved.deletes.length,1);assert.equal(moved.updates.reduce((sum,u)=>sum+Object.keys(u.patch.players).length,0),5);
 });
 test('legacy rebuy grace exits immediately without charge; re-entry waits alone with a funded stack',async()=>{
  const f=fixture(),id=await create(f,{reentry:true,maxReentries:2,lateRegUntilLevel:4,reentryBuyIn:50,bounty:5,fee:2});await startHumans(f,id,3);
@@ -449,4 +449,86 @@ test('tournaments retain selected avatars at registration, manual/scheduled star
   assert.equal(f.tour(id).players.lateAvatar.photo,seat.photo);
   assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
  }
+});
+
+function manualHandFixture(game = 'NLH') {
+  const f = fixture(13), tableId = 'tableA', targetUid = 'botA';
+  const settings = {baseGameType: game, actionTime: 15, blinds: 1, serverEngine: true};
+  const players = {};
+  for (const [i, uid] of ['botA', 'other', 'third'].entries()) {
+    players[uid] = {uid, name: uid, seatIndex: i, isBot: i === 0, stack: 100, bet: 0, status: 'active', cardCount: 0};
+  }
+  players.other.bet = 2;
+  f.docs.set('tables/' + tableId, {type:'poker', authorityVersion:2, clubId:'clubA', settings, players,
+    gameState:{handN:42,phase:'preflop',currentGameType:game,handBB:2,board:[],pots:[],activeTurnUid:targetUid,
+      highestBet:2,minRaise:2,turnStartedAt:f.now(),dealerUid:'third'}});
+  // Use two distinct identities accepted by the engine's verified GOD check.
+  const godEmails = require('node:fs').readFileSync(path.join(__dirname,'../pokerEngine.js'),'utf8')
+    .match(/const GOD_EMAILS = (\[[^;]+\]);/)[1];
+  const [email,secondEmail] = JSON.parse(godEmails);
+  f.member('op'); f.member('op2');
+  const auth = {uid:'op', token:{email,email_verified:true}};
+  const other = {uid:'op2',token:{email:secondEmail,email_verified:true}};
+  const table = () => f.docs.get('tables/' + tableId);
+  let n = 0;
+  const command = (op, extra = {}, identity = auth) => {
+    const g = table().gameState;
+    return f.botTurn({auth:identity,data:{requestId:'manual-bot-request-' + (++n),tableId,targetUid,op,
+      handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet,...extra}});
+  };
+  return {f, table, command, other};
+}
+
+test('manual bot play enforces identity, exclusive hand ownership, exact turn and pot-limit bounds', async () => {
+  const {f, table, command, other} = manualHandFixture('Omaha 7');
+  await assert.rejects(command('claim',{},null),{code:'unauthenticated'});
+  await assert.rejects(command('claim',{}, {uid:'op',token:{email:'nobody@example.test',email_verified:true}}),{code:'permission-denied'});
+  await assert.rejects(command('claim',{targetUid:'other'}),{code:'failed-precondition'});
+  await assert.rejects(command('claim',{handN:41}),{code:'failed-precondition'});
+  const {controlId} = await command('claim');
+  assert.equal((await command('claim')).controlId,controlId);
+  await assert.rejects(command('claim',{},other),{code:'permission-denied'});
+  await assert.rejects(command('release',{controlId:'old'}),{code:'failed-precondition'});
+  await assert.rejects(command('check',{controlId}),{code:'failed-precondition'});
+  await assert.rejects(command('call',{controlId,turnStartedAt:0}),{code:'failed-precondition'});
+  for (const amount of [3,6.01,9,Infinity,'5']) await assert.rejects(command('raise',{controlId,amount}),{code:'invalid-argument'});
+  const turn = table().gameState.turnStartedAt;
+  const data = {controlId,amount:6,requestId:'replay-manual-raise-001',turnStartedAt:turn,highestBet:2};
+  await command('raise',data); await command('raise',data);
+  assert.equal(table().players.botA.bet,6);assert.equal(table().players.botA.stack,94);
+  assert.equal(table().players.botA.manuallyPlayedHand,42);
+  assert.equal([...f.docs].filter(([k,v])=>k.startsWith('_pkAudit/') && v.op==='raise').length,1);
+  await assert.rejects(command('fold',{controlId}),{code:'failed-precondition'});
+  await command('release',{controlId}); assert.equal(table().players.botA.manualControl,null);
+});
+
+test('off-turn claims, check, call, fold, delegation and automatic recovery use the real betting engine', async () => {
+  for (const op of ['check','call','fold','autoTurn']) {
+    const {f, table, command} = manualHandFixture();
+    const row=table(), start=row.gameState.turnStartedAt;
+    row.gameState.activeTurnUid='other';
+    const {controlId}=await command('claim');
+    await assert.rejects(command(op,{controlId}),{code:'failed-precondition'});
+    table().gameState.activeTurnUid='botA';
+    if (op==='check') table().players.botA.bet=2;
+    await f.engine.tickTable('tableA',start+3000);
+    assert.equal(table().gameState.activeTurnUid,'botA','automatic tick waits during manual control');
+    await command(op,{controlId});
+    assert.notEqual(table().gameState.activeTurnUid,'botA');
+    if(op==='fold')assert.equal(table().players.botA.status,'folded');
+    if(op==='call')assert.equal(table().players.botA.stack,98);
+    if(op==='check')assert.equal(table().players.botA.stack,100);
+  }
+  const {f,table,command}=manualHandFixture(),start=table().gameState.turnStartedAt;
+  const {controlId}=await command('claim');
+  f.advance(16000);
+  await assert.rejects(command('fold',{controlId}),{code:'failed-precondition'});
+  await f.engine.tickTable('tableA',f.now());
+  assert.notEqual(table().gameState.activeTurnUid,'botA');
+  assert.equal(table().players.botA.manualControl,undefined);
+  const fresh=manualHandFixture();
+  const claim=await fresh.command('claim');
+  await fresh.f.action('tableA',S=>fresh.f.engine.startHand(S));
+  assert.equal(fresh.table().players.botA.manualControl,undefined);
+  await assert.rejects(fresh.command('fold',{controlId:claim.controlId,handN:42}),{code:'failed-precondition'});
 });

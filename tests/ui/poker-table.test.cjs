@@ -104,6 +104,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  await React.act(async()=>doc.exitFullscreen());assert.ok(doc.querySelector('[aria-label="Enter fullscreen"]'),'system exit updates the control without re-entering fullscreen');await React.act(()=>doc.querySelector('.poker-menu-panel').dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(doc.querySelector('.poker-menu-panel'),null);assert.equal(doc.activeElement,menuTrigger);
  assert.equal(doc.querySelector('.btn-call .poker-action-amount').textContent,'10');
  const hero=doc.querySelector('.poker-seat-hero');assert.equal(hero.querySelectorAll('.card-face').length,6);assert.equal(hero.querySelector('.poker-own-fan').children.length,6);assert.ok([...hero.querySelector('.poker-own-fan').children].every(c=>c.style.transform.includes('rotate(')));assert.ok(doc.querySelector('.poker-player-info .poker-seat-action'));
+ if(process.env.CI||process.env.CHROME_BIN)require('./fan-browser-check.cjs')(html,hero.outerHTML);
  current.players.other.cards=cards;
  await React.act(async()=>tableNext(snapshot()));
  let opponent=doc.querySelector('.poker-seat:not(.poker-seat-hero) .poker-opponent-fan');
@@ -296,7 +297,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
   }
  }
  current.settings.serverEngine=true;current.tournamentId='break-test';current.tournament={startedAt:Date.now()-61000,status:'running',breakEvery:1,breakMins:4,structure:[{sb:5,bb:10,ante:0,mins:1},{sb:10,bb:20,ante:0,mins:10}]};
- current.gameState={...current.gameState,phase:'showdown',showdownAt:Date.now()-9000,board:cards.slice(0,5),pots:[],activeTurnUid:null};
+ current.gameState={...current.gameState,phase:'showdown',showdownAt:Date.now()-w.PokerTournament.showdownDelay({})-1,board:cards.slice(0,5),pots:[],activeTurnUid:null};
  await React.act(async()=>tableNext(snapshot()));
  assert.ok(doc.querySelector('.poker-on-break .poker-break-center'),'settled break has central countdown');
  assert.match(doc.querySelector('.poker-break-clock').textContent,/^3:/);

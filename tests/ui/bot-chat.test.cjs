@@ -4,10 +4,10 @@ const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
 const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),{createRoot}=require('react-dom/client'),{Simulate}=require('react-dom/test-utils');w.React=React;
-w.eval('const {useState,useEffect,useRef,useMemo}=React;const isGodUser=u=>u.god===true;const MISSIONS=[];const botMissions=()=>({});const canManageGame=()=>false;'+
+w.eval('const {useState,useEffect,useRef,useMemo}=React;const round2=n=>Math.round(n*100)/100;const isGodUser=u=>u.god===true;const MISSIONS=[];const botMissions=()=>({});const canManageGame=()=>false;'+
  html.slice(html.indexOf('function canChatAsBot('),html.indexOf('const SPIN_SEGS ='))+
  html.slice(html.indexOf('function useTableChat('),html.indexOf('function ChatPanel('))+
- '\nwindow.testApi={canChatAsBot,BotChatComposer,PlayerPeek,useTableChat};');
+ '\nwindow.testApi={canChatAsBot,BotChatComposer,BotTurnPanel,PlayerPeek,useTableChat};');
 const api=w.testApi,root=createRoot(w.document.getElementById('root')),doc=w.document;
 const table={type:'poker',authorityVersion:2,settings:{serverEngine:true},players:{b:{uid:'b',name:'Alex',isBot:true,status:'active'},h:{uid:'h',isBot:false}}};
 let calls=[],complete;
@@ -31,6 +31,23 @@ const mountProfile=async(user,target='b',muted=false)=>React.act(()=>root.render
  await mountProfile({god:true},'h');assert.equal(doc.querySelector('textarea'),null,'human profile has no delegated composer');
  await mountProfile({god:true},'b',true);await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Write as Alex').click());
  input=doc.querySelector('textarea');assert.equal(input.value,'','changing profile clears its previous draft');assert.equal(input.disabled,true);assert.match(doc.body.textContent,/Table chat is muted/);
+ const turnTable={...table,gameState:{handN:7,phase:'preflop',activeTurnUid:'h',turnStartedAt:123,highestBet:2,minRaise:2,currentGameType:'Omaha 7'}};
+ const bot={...table.players.b,bet:0,stack:100};
+ const moves=[];const send=async payload=>{moves.push(payload);return {controlId:'record-a'};};
+ const panel=async()=>React.act(()=>root.render(React.createElement(api.PlayerPeek,{key:'betting',peek:bot,clubId:'c',onClose(){},
+   botTurnPanel:React.createElement(api.BotTurnPanel,{table:turnTable,tableId:'table-a',player:bot,pot:2,send})})));
+ const btn=label=>[...doc.querySelectorAll('button')].find(b=>b.textContent===label);
+ await panel();await React.act(()=>btn('Play this hand').click());assert.equal(moves[0].op,'claim');
+ bot.manualControl={handN:7,id:'record-a'};await panel();assert.match(doc.body.textContent,/Waiting for Alex/);assert.equal(btn('Fold'),undefined);
+ turnTable.gameState.activeTurnUid='b';await panel();
+ assert.ok(btn('Call 2'));assert.ok(btn('Fold'));assert.equal(btn('Check'),undefined);
+ let raiseInput=doc.querySelector('input[type=number]');assert.equal(raiseInput.min,'4');assert.equal(raiseInput.max,'6');
+ await React.act(()=>Simulate.change(raiseInput,{target:{value:'7'}}));assert.equal(btn('Raise to 7').disabled,true);
+ await React.act(()=>Simulate.change(raiseInput,{target:{value:'6'}}));await React.act(()=>btn('Raise to 6').click());
+ assert.equal(moves[1].op,'raise');assert.equal(moves[1].amount,6);assert.equal(moves[1].targetUid,'b');assert.equal(moves[1].turnStartedAt,123);
+ bot.bet=2;turnTable.gameState.turnStartedAt=456;await panel();
+ assert.ok(btn('Check'));await React.act(()=>btn('Let bot decide this turn').click());assert.equal(moves.at(-1).op,'autoTurn');
+ await React.act(()=>btn('Return to automatic play').click());assert.equal(moves.at(-1).op,'release');
  let hook;
  function ChatProbe({state}){hook=api.useTableChat(state,'t',{uid:'me'},'poker',()=>{});return null;}
  const old=Array.from({length:60},(_,i)=>({uid:'h',text:'Old '+i,at:0}));

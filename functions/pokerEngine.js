@@ -125,6 +125,8 @@ function startHand(S, forcedGameType) {
       p.sitOutNext = false;
     }
     if (p.leaveReq && !S.table.tournamentId) p.sitOut = true;
+    delete p.manualControl;
+    delete p.manuallyPlayedHand;
     p.cards = [];
     p.cardCount = 0;
     p.bet = 0;
@@ -1225,6 +1227,13 @@ async function runEffects(S) {
 
 /* ============================ tick orchestration ============================ */
 
+function botBettingDelay(settings, player, game) {
+  if (player.manualControl && player.manualControl.handN === game.handN) {
+    return (Number(settings.actionTime) || 30) * 1000;
+  }
+  return 2200;
+}
+
 // Avoid locking the table and loading private cards while a player is still
 // thinking. Recheck inside the transaction so racing viewers cannot act early.
 function tickMayAdvance(t,now){
@@ -1232,7 +1241,7 @@ function tickMayAdvance(t,now){
   if(BETTING.includes(g.phase)){
     if(g.allInReveal)return !!g.ritOffer||elapsed>=1300;
     const actor=pl[g.activeTurnUid];if(!actor||actor.status!=='active')return true;
-    if(actor.isBot)return elapsed>2200;
+    if(actor.isBot)return elapsed>botBettingDelay(t.settings,actor,g);
     const gone=actor.lastSeen&&now-actor.lastSeen>20000;
     return elapsed>(actor.sitOut?1500:gone?9000:(Number(t.settings?.actionTime)||30)*1000+1000);
   }
@@ -1434,7 +1443,8 @@ async function tickTable(id, testNow) {
             g.turnStartedAt = now;
           }
           dirty = true;
-        } else if (actor.isBot && stuck > 2200) {
+        } else if (actor.isBot && stuck > botBettingDelay(S.settings, actor, g)) {
+          delete actor.manualControl;
           const move = botAction(S, actor.uid);
           applyAction(S, actor.uid, move.action, move.amount, false);
           dirty = true;
@@ -1565,6 +1575,77 @@ exports.pkAct=onCall(CALL_OPTS,request=>{
   authedUid(request);
   require('./pokerSecurity').requirePokerAvailable();
   return routePlayerAction(request,playerAction);
+});
+
+// A claim covers the current hand. Its private audit record also identifies
+// its operator; the seat carries only the record ID and hand number.
+exports.pkBotTurn = onCall(CALL_OPTS, async request => {
+  authedUid(request);
+  if (!isGodAuth(request.auth)) A.fail('permission-denied', 'GOD MODE access required');
+  require('./pokerSecurity').requirePokerAvailable();
+  const id = reqTableId(request), data = request.data;
+  const target = A.key(data.targetUid, 'bot'), op = data.op;
+  if (!['claim', 'release', 'autoTurn', 'fold', 'check', 'call', 'raise'].includes(op)) A.fail('invalid-argument', 'Unknown bot action');
+  return A.command(request, 'god-bot-turn', async (tx, database, uid) => {
+    const betting = !['claim', 'release'].includes(op);
+    const S = await loadState(tx, id, {withCards: betting});
+    await A.member(tx, database, S.table.clubId, request);
+    const g = S.gameState, p = S.players[target], t = S.raw;
+    if (t.type !== 'poker' || t.archived || t.spinDone || t.tournament?.finished || t.tournament?.cancelled ||
+        (S.tor && S.tor.status !== 'running') || !p || p.uid !== target || p.isBot !== true ||
+        p.status !== 'active' || !(p.stack > 0) || g.allInReveal || !BETTING.includes(g.phase) ||
+        !Number.isInteger(g.handN) || g.handN !== data.handN) {
+      A.fail('failed-precondition', 'This bot has no betting decision in that hand');
+    }
+    const control = p.manualControl?.handN === g.handN ? p.manualControl : null;
+    const audit = database.collection('_pkAudit');
+    if (control) {
+      const claim = (await tx.get(audit.doc(control.id))).data();
+      if (!claim || claim.uid !== uid || claim.tableId !== id || claim.targetUid !== target) {
+        A.fail('permission-denied', 'Another operator controls this bot');
+      }
+      if (op !== 'claim' && data.controlId !== control.id) A.fail('failed-precondition', 'Bot control has changed');
+      if (g.activeTurnUid === target && S.now - g.turnStartedAt > botBettingDelay(S.settings, p, g)) {
+        A.fail('failed-precondition', 'This turn has expired');
+      }
+    } else if (op !== 'claim') {
+      A.fail('failed-precondition', 'Take control of this hand first');
+    }
+    if (op === 'claim' && control) return {controlId: control.id};
+    const record = audit.doc();
+    const details = {action: 'god-bot-turn', op, uid, tableId: id, clubId: S.table.clubId,
+      targetUid: target, handN: g.handN, phase: g.phase, turnStartedAt: g.turnStartedAt, at: S.now};
+    if (betting) {
+      if (g.activeTurnUid !== target || data.phase !== g.phase || data.turnStartedAt !== g.turnStartedAt ||
+          data.highestBet !== g.highestBet) A.fail('failed-precondition', 'This turn has changed');
+      const bet = p.bet || 0, call = round2(Math.max(0, g.highestBet - bet));
+      if ((op === 'check' && call > 0) || (op === 'call' && call === 0)) A.fail('failed-precondition', 'The call amount has changed');
+      if (op === 'raise') {
+        const stackTotal = round2(bet + p.stack);
+        const min = Math.min(stackTotal, round2(g.highestBet + g.minRaise));
+        const pot = (g.pots || []).reduce((sum,x) => sum + x.amount, 0) +
+          Object.values(S.players).reduce((sum,x) => sum + (x.bet || 0), 0);
+        const potLimit = String(g.currentGameType).startsWith('Omaha') && (g.currentGameType === 'Omaha 7' || S.settings.omahaPotLimit !== false);
+        const max = potLimit ? Math.min(stackTotal, round2(g.highestBet + pot + call)) : stackTotal;
+        if (typeof data.amount !== 'number' || !Number.isFinite(data.amount) || round2(data.amount) !== data.amount ||
+            data.amount <= g.highestBet || data.amount < min || data.amount > max) A.fail('invalid-argument', 'Raise is outside the legal range');
+        details.raiseTo = data.amount;
+      }
+      if (op === 'autoTurn') {
+        const move = botAction(S, target);
+        applyAction(S, target, move.action, move.amount, false);
+      } else {
+        p.manuallyPlayedHand = g.handN;
+        applyAction(S, target, op === 'check' ? 'call' : op, data.amount, false);
+      }
+      await commitState(tx, S);
+    } else {
+      const next = op === 'claim' ? {id: record.id, handN: g.handN} : null;
+      tx.update(tRef(id), {['players.' + target + '.manualControl']: next, 'gameState.__seq': (g.__seq || 0) + 1});
+    }
+    tx.set(record, details);
+    return op === 'claim' ? {controlId: record.id} : {ok: true};
+  });
 });
 
 // pkTick — protocol §3.3. Called by every viewer; cheap + idempotent.

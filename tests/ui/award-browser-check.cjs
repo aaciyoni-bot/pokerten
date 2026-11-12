@@ -22,7 +22,7 @@ module.exports = function checkAwardInBrowser(index, award) {
       const animations=flight.getAnimations();
       if(animations.length!==2)throw Error('Expected travel and fade');
       animations.forEach(a=>a.pause());
-      const samples=[0,200,1200,2200,3200,4200,4800,5250].map(t=>{
+      const samples=[0,400,1650,2900,4150,5400,7800,8250].map(t=>{
         animations.forEach(a=>a.currentTime=t);
         const rect=label.getBoundingClientRect(),style=getComputedStyle(flight);
         return [Math.round(rect.left+rect.width/2),Math.round(rect.top+rect.height/2),Number(style.opacity),style.visibility];
@@ -34,7 +34,7 @@ module.exports = function checkAwardInBrowser(index, award) {
       '--user-data-dir='+path.join(dir,'profile'),'--dump-dom',pathToFileURL(file).href
     ], {encoding:'utf8',timeout:20000,stdio:['ignore','pipe','pipe']});
     const samples=JSON.parse(out.match(/<output>([^<]+)<\/output>/)[1]);
-    assert.equal(samples[0][3],'hidden');
+    assert.deepEqual(samples[0],[140,320,1,'visible']);
     assert.deepEqual(samples.slice(1,7),[
       [140,320,1,'visible'],[125,400,1,'visible'],[110,480,1,'visible'],
       [95,560,1,'visible'],[80,640,1,'visible'],[80,640,1,'visible']

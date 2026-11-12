@@ -27,7 +27,7 @@ const A = require('./pokerAuthority');
 const Tours = require('./pokerTournaments');
 const {showdownDelay} = require('./pokerTournamentCore');
 const {botName,renameGenericBots} = require('./botNames');
-const {session:botSession,rotationGap} = require('./botSessions');
+const {session:botSession,rotationGap,cashBotBuyIn} = require('./botSessions');
 const {prepareLedger} = require('./pokerLedger');
 
 let _db = null;
@@ -1322,7 +1322,7 @@ async function tickTable(id, testNow) {
       const due=yieldSeat?candidates.sort((a,b)=>Number(b.p.status==='busted'||!!b.p.leaveReq)-Number(a.p.status==='busted'||!!a.p.leaveReq)||a.at-b.at||a.p.seatIndex-b.p.seatIndex)[0]:now>=(S.raw.botRotateAfter||0)?candidates.filter(x=>x.at<=now).sort((a,b)=>a.at-b.at||a.p.seatIndex-b.p.seatIndex)[0]:null;
       if(due){
         const old=due.p,sponsor=A.payee(old),refund=round2((old.stack||0)+(old.bet||0)),bbNow=blindsOf(S).bb;
-        const buy=round2(Math.min(S.settings.maxBuyIn||200*bbNow,Math.max(bbNow*100,S.settings.minBuyIn||0)));
+        const buy=cashBotBuyIn(S.settings,bbNow);
         const enough=!yieldSeat&&(await fundedBalance(sponsor))+refund>=buy;
         // With a vacancy already reserved, an unfunded replacement must not
         // cause another healthy bot to leave solely because a human is waiting.
@@ -1358,7 +1358,7 @@ async function tickTable(id, testNow) {
         // game is still running whenever somebody looks. buyTotal records it,
         // so the chip audit still balances (guardTables reads that receipt).
         if (p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot) && !(manualHumanWaiting && Object.keys(pl).length >= A.capacity(S.settings))) {
-          const bbNow=blindsOf(S).bb,buy=round2(Math.min(S.settings.maxBuyIn||200*bbNow,Math.max(bbNow*100,S.settings.minBuyIn||0))),sponsor=A.payee(p);
+          const bbNow=blindsOf(S).bb,buy=cashBotBuyIn(S.settings,bbNow),sponsor=A.payee(p);
           if((await fundedBalance(sponsor))<buy){removeSeat(S,p.uid,false);dirty=true;continue;}
           S.effects.push({type:'credit',uid:sponsor,amount:-buy});
           p.stack = buy;

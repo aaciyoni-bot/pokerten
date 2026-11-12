@@ -5,10 +5,17 @@ const A=require('./pokerAuthority'),C=require('./pokerCore'),{prepareLedger}=req
 const {key,fail,cash,number,root,member,command,capacity}=A;
 const opts={region:'us-central1'};
 const {botName}=require('./botNames');
-const {session:botSession}=require('./botSessions');
+const {session:botSession,cashBotBuyIn}=require('./botSessions');
 const {normalizeWaitlist}=require('./pokerWaitlist');
 const {appearance}=require('./pokerIdentity');
 const available=()=>require('./pokerSecurity').requirePokerAvailable();
+function botEntryCost(s,amount){
+ if(s.spinMode)return s.spinBuyIn;
+ if(amount===undefined)return cashBotBuyIn(s);
+ if(typeof amount!=='number')fail('invalid-argument','Enter a numeric buy-in per bot');
+ const bb=(s.blinds??0.5)*2;
+ return cash(number(amount,NaN,s.minBuyIn??40*bb,s.maxBuyIn??200*bb));
+}
 function tableSettings(raw={}){
  const s={};for(const [k,min,max,def]of [['blinds',.01,100000,.5],['minBuyIn',.01,10000000,40],['maxBuyIn',.01,10000000,200],['minBuyInBB',0,100000,0],['maxBuyInBB',0,100000,0],['maxPlayers',2,9,6],['autoStart',2,9,2],['actionTime',10,120,30],['rakePercent',0,20,0],['rakeCap',0,100000,0],['ante',0,100000,0],['bombEvery',0,1000,0],['bombAnte',0,100,2],['leaveNoticeMins',0,120,0],['leaveNoticeBB',0,100000,0],['spinBuyIn',.01,100000,50],['spinStack',10,10000000,1000],['spinLevelSec',30,3600,180]])s[k]=number(raw[k],def,min,max);
  for(const k of ['isDealerChoice','straddle','spinMode','runTwice','autoMuck'])s[k]=raw[k]===true;
@@ -26,7 +33,8 @@ exports.pkTableCreate=onCall(opts,async r=>{available();return command(r,'table-
  A.assertClubOpen(club);
  if(r.data.manual!==true)fail('failed-precondition','Open tables manually from the lobby. Reload the app before creating a table.');
  const id='secure_'+crypto.createHash('sha256').update(uid+':'+r.data.requestId).digest('hex').slice(0,28),ref=db.doc('tables/'+id),old=await tx.get(ref);if(old.exists)return{ok:true,tableId:id};
- const players={},cost=s.spinMode?s.spinBuyIn:Math.min(s.maxBuyIn,Math.max(s.minBuyIn,100*s.blinds*2));
+ const players={},cost=botEntryCost(s,r.data.botBuyIn);
+ if(!s.spinMode&&r.data.botBuyIn!==undefined)s.botBuyIn=cost;
  const write=await prepareLedger(db,tx,cid,n?[{type:'credit',uid:club.ownerUid,amount:-cash(n*cost)}]:[],id,now);
  for(let i=0;i<n;i++){const bid='bot_'+id+'_'+i;players[bid]={uid:bid,name:botName(bid,Object.values(players).map(p=>p.name)),isBot:true,...botSession(bid,now),fundingUid:club.ownerUid,botStyle:['tight','balanced','aggressive'][i%3],seatIndex:i,stack:s.spinMode?s.spinStack:cost,buyTotal:s.spinMode?0:cost,spinPaid:s.spinMode?cost:0,bet:0,status:'active',cards:[],cardCount:0};}
  write();tx.set(ref,{authorityVersion:2,type:'poker',botLobbyExcluded:true,clubId:cid,createdBy:uid,createdAt:now,settings:s,players,chat:[],leftStacks:{},gameState:{phase:'waiting',board:[],pots:[],highestBet:0,minRaise:s.blinds*2,activeTurnUid:null,turnStartedAt:null,handN:0,__seq:0}});return{ok:true,tableId:id};
@@ -43,7 +51,8 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   if(s.spinMode&&t.spin)fail('failed-precondition','Spin already started');
   const n=cap-Object.keys(pl).length;if(n<=0)return{ok:true,added:0};
   if(humanWaiters.length)fail('failed-precondition','Waiting players have priority over bots');
-  const min=s.minBuyIn??40*s.blinds*2,max=s.maxBuyIn??200*s.blinds*2,buy=s.spinMode?s.spinBuyIn:Math.min(max,Math.max(min,100*s.blinds*2));
+  if(r.data.expectedSeats!==undefined&&r.data.expectedSeats!==n)fail('failed-precondition','Open seats changed. Choose the bot buy-in again.');
+  const buy=botEntryCost(s,r.data.amount);
   const taken=new Set(Object.values(pl).map(p=>p.seatIndex)),names=Object.values(pl).map(p=>p.name);
   for(let i=0;i<n;i++){let seat=0;while(taken.has(seat))seat++;taken.add(seat);
    const who='bot_'+crypto.createHash('sha256').update(uid+':'+r.data.requestId+':'+i).digest('hex').slice(0,24),name=botName(who,names);names.push(name);
@@ -59,7 +68,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   }else if(humanWaiters.length)fail('failed-precondition','Waiting players have priority over bots');
   const cap=capacity(s),taken=new Set(Object.values(pl).map(p=>p.seatIndex));if(Object.keys(pl).length>=cap||s.spinMode&&t.spin)fail('failed-precondition','Table is full or Spin started');
   let seat=Number.isInteger(r.data.seatIndex)&&r.data.seatIndex>=0&&r.data.seatIndex<cap&&!taken.has(r.data.seatIndex)?r.data.seatIndex:0;while(taken.has(seat)&&seat<cap)seat++;if(seat>=cap)fail('failed-precondition','No seat available');
-  const min=s.minBuyIn??40*s.blinds*2,max=s.maxBuyIn??200*s.blinds*2,buy=s.spinMode?s.spinBuyIn:op==='addbot'?Math.min(max,Math.max(min,100*s.blinds*2)):number(r.data.amount,NaN,min,max);
+  const min=s.minBuyIn??40*s.blinds*2,max=s.maxBuyIn??200*s.blinds*2,buy=s.spinMode?s.spinBuyIn:op==='addbot'?botEntryCost(s,r.data.amount):number(r.data.amount,NaN,min,max);
   const last=t.leftStacks?.[who];if(last&&now-last.at<43200000&&buy<last.amount)fail('failed-precondition','Return with at least your previous stack');effects.push({type:'credit',uid:funding,amount:-buy});
   patch[`players.${who}`]={uid:who,name,...appearance(op==='addbot'?{}:profile,who),seatIndex:seat,stack:s.spinMode?s.spinStack:buy,buyTotal:s.spinMode?0:buy,spinPaid:s.spinMode?buy:0,bet:0,status:idle?'active':'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',isBot:op==='addbot',...(op==='addbot'?{...botSession(who,now),fundingUid:funding,botStyle:['tight','balanced','aggressive'][Object.keys(pl).length%3]}:{}),lastSeen:now};patch[`leftStacks.${who}`]=null;patch.waitlist=waiting.filter(w=>w.uid!==who);
  }else if(op==='wait'||op==='unwait'){

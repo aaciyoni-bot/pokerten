@@ -20,9 +20,16 @@ const menu=async()=>React.act(()=>byTitle('Table menu').click());
  for(const role of ['club_owner','manager','super_admin']){
   await render(role);await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table').click());await menu();
   const fill=byTitle('Fill empty seats with bots');assert.ok(fill);assert.ok(byTitle('Add bot'));assert.ok(byTitle('Create a new table'));assert.equal(byTitle('Add chips'),null);
-  const before=calls.length;await React.act(async()=>{fill.click();fill.click();});assert.equal(calls.length,before+1);assert.equal(calls.at(-1).args.op,'fillbots');assert.equal(calls.at(-1).args.tableId,'test');
+  const before=calls.length;await React.act(async()=>{fill.click();fill.click();});assert.equal(calls.length,before);
+  const confirm=doc.querySelector('[aria-label="Confirm bot buy-in"]');await React.act(()=>{confirm.click();confirm.click();});assert.equal(calls.at(-1).args.amount,200);assert.equal(calls.length,before+1);assert.equal(calls.at(-1).args.op,'fillbots');assert.equal(calls.at(-1).args.tableId,'test');
   await React.act(async()=>settle.reject(new Error('Insufficient club funds')));assert.equal(messages.at(-1).m,'Insufficient club funds');
-  await menu();await React.act(async()=>byTitle('Fill empty seats with bots').click());await React.act(async()=>settle.resolve({ok:true,added:6}));assert.match(messages.at(-1).m,/6 bots/);
+  await menu();await React.act(async()=>byTitle('Fill empty seats with bots').click());await React.act(()=>doc.querySelector('[aria-label="Confirm bot buy-in"]').click());await React.act(async()=>settle.resolve({ok:true,added:6}));assert.match(messages.at(-1).m,/6 bots/);
+  await menu();await React.act(()=>byTitle('Add bot').click());
+  const amount=doc.querySelector('[aria-label="Buy-in per bot"]');
+  await React.act(()=>require('react-dom/test-utils').Simulate.change(amount,{target:{value:'72.50'}}));
+  await React.act(()=>doc.querySelector('[aria-label="Confirm bot buy-in"]').click());
+  assert.equal(calls.at(-1).args.op,'addbot');assert.equal(calls.at(-1).args.amount,72.5);
+  await React.act(async()=>settle.resolve({ok:true}));
   await menu();await React.act(()=>byTitle('Create a new table').click());
  }
  assert.equal(newTables,3);

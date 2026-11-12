@@ -45,3 +45,36 @@ test('offline or corrupt download keeps game usable',async()=>{
 test('native upgrades open only Google consent, with no additional custom prompt',async()=>{
  const f=fixture({fetchRelease:async()=>({...release,version:current.version})});f.options.store.check=async()=>({status:'available'});f.start();await flush();assert.equal(f.events.filter(e=>e[0]==='store').length,1);
 });
+test('the club-picker button checks the published manifest and explains where to install', async () => {
+  let reads = 0;
+  const f = fixture({fetchRelease: async () => { reads++; return release; }});
+  f.updater.setView('clubs');
+  const message = await f.updater.check(true);
+  assert.match(message, /v353 is available.*Enter a club/);
+  assert.equal(reads, 1);
+  assert.equal(f.events.some(([type]) => type === 'apply' || type === 'store'), false);
+});
+test('manual checks report current, blocked, and offline states without changing play', async () => {
+  const currentClient = fixture({fetchRelease:async () => currentManifest()});
+  function currentManifest() { return {...release, version:current.version}; }
+  currentClient.updater.setView('clubs');
+  assert.match(await currentClient.updater.check(true), /up to date.*v352/);
+  const seated=fixture();seated.updater.setView('lobby');
+  seated.updater.setGameContext({...context,tables:[{players:{p1:{}}}]});
+  assert.match(await seated.updater.check(true), /Stand up from your table/);
+  const offline=fixture({fetchRelease:async()=>{throw Error('offline');}});
+  offline.updater.setView('clubs');
+  assert.match(await offline.updater.check(true), /Could not check/);
+});
+test('manual retry allows a slow download, and a late result cannot install after another hand starts', async () => {
+  let download, timeoutMs, expires;
+  const f=fixture({delay:(fn,ms)=>{expires=fn;timeoutMs=ms;return 1;}});
+  f.options.ota.download=()=>new Promise(resolve=>{download=resolve;});
+  f.start();await flush(); assert.equal(timeoutMs,15000);
+  expires(); await flush(); download({id:'old'}); await flush();
+  const retry = f.updater.check(true); await flush();
+  assert.equal(timeoutMs,60000);
+  f.updater.setView('poker-table');download({id:'retry'});
+  assert.match(await retry,/Return to the club lobby/);
+  assert.equal(f.events.some(([type])=>type==='apply'),false);
+});

@@ -25,8 +25,14 @@ if (Capacitor.getPlatform() === 'android') {
   controller = createAutoUpdater({ota:CapacitorUpdater,store,current:release,render,
     hasResume:()=>{try{return !!localStorage.getItem('pkResume');}catch(_){return true;}},
     fetchRelease:async()=>{
-      const response=await fetch('https://pokerten.com/mobile-updates/'+release.runtime+'/latest.json',{cache:'no-store',signal:AbortSignal.timeout(5000)});
-      if(!response.ok)throw Error('Update unavailable');return response.json();
+      const abort = new AbortController();
+      const deadline = setTimeout(() => abort.abort(), 8000);
+      try {
+        const url = 'https://pokerten.com/mobile-updates/' + release.runtime + '/latest.json?check=' + Date.now();
+        const response = await fetch(url, {cache:'no-store', signal:abort.signal});
+        if (!response.ok) throw Error('Update unavailable');
+        return await response.json();
+      } finally { clearTimeout(deadline); }
     }});
   CapacitorUpdater.addListener('download',event=>controller.progress(event.percent)).catch(()=>{});
 }

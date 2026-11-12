@@ -101,6 +101,7 @@ function firstAfterDealer(S) {
 
 // startHand port — index.html:9494-9563. Returns 'dealt'|'dc'|'waiting'.
 function tournamentReady(S) {
+  if(S.tor?.flightOf&&S.now>=require('./pokerFlights').endTime(S.tor))return false;
   return !S.tor || S.tor.status==='running' && !S.raw.tournament?.finished && !(S.raw.tournament?.balanceHoldUntil>S.now) && !Tours.clock(S.tor,S.now).inBreak;
 }
 function startHand(S, forcedGameType) {

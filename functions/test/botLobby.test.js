@@ -92,6 +92,15 @@ test('manual table opening preserves game choices, blinds, chip funding and dupl
  }
  assert.equal(f.tables().length,5);const count=f.tables().length;await B.maintainBotLobbies(f.db,900000000);assert.equal(f.tables().length,count);
 });
+test('custom starting buy-in is the funded table default and charges the sponsor once',async()=>{
+ const f=fixture(10000),create=callable(f,'pkTableCreate');
+ const request={auth:auth(),data:{manual:true,clubId:'netabel',requestId:'custom-seed-buyin',settings:{...settings,minBuyIn:50,maxBuyIn:200},botCount:3,botBuyIn:87.75}};
+ const before=sponsoredChips(f),id=(await create(request)).tableId,t=f.state.get('tables/'+id);
+ assert.equal(t.settings.botBuyIn,87.75);assert.equal(Object.keys(t.players).length,3);
+ for(const p of Object.values(t.players)){assert.equal(p.stack,87.75);assert.equal(p.buyTotal,87.75);}
+ assert.equal(f.state.get('memberships/owner_netabel').balance,10000-3*87.75);
+ await create(request);assert.equal(sponsoredChips(f),before);
+});
 test('manual opening still requires approved manager or owner authority and rejects archived clubs',async()=>{
  for(const scenario of ['anonymous','player','pending-manager','archived']){
   const f=fixture();f.state.set('memberships/player_netabel',{uid:'player',role:scenario==='pending-manager'?'manager':'player',status:scenario==='pending-manager'?'pending':'approved'});

@@ -7,14 +7,13 @@ const {onCall}=require('firebase-functions/v2/https');
 const A=require('./pokerAuthority');
 const {showdownDelay}=require('./pokerTournamentCore');
 const {botName}=require('./botNames');
-const {session,rotationGap}=require('./botSessions');
+const {session,rotationGap,cashBotBuyIn:buyIn}=require('./botSessions');
 const {normalizeWaitlist}=require('./pokerWaitlist');
 const PROFILES=[0,1,2];
 const TABLE_ROTATION_GAP_MS=10*60*1000;
 const hash=value=>crypto.createHash('sha256').update(String(value)).digest('hex');
 const humans=(t,now=Date.now())=>Object.values(t.players||{}).some(p=>p.isBot!==true)||normalizeWaitlist(t,now).some(p=>p.isBot!==true);
 const safeCash=t=>t.authorityVersion===2&&t.type==='poker'&&t.settings?.serverEngine===true&&!t.tournamentId&&!t.settings.spinMode&&!t.settings.demoOnly&&A.capacity(t.settings)>=4;
-const buyIn=s=>A.cash(Math.min(s.maxBuyIn,Math.max(s.minBuyIn,100*s.blinds*2)));
 const expiry=(seed,now)=>now+(60+parseInt(hash(seed).slice(0,4),16)%61)*60000;
 function bot(uid,seat,buy,funding,now,names){
  return{uid,name:botName(uid,names),isBot:true,...session(uid,now),fundingUid:funding,botStyle:['tight','balanced','aggressive'][parseInt(hash(uid).slice(0,2),16)%3],seatIndex:seat,stack:buy,buyTotal:buy,bet:0,status:'active',cards:[],cardCount:0,hasActed:false,actionText:'',avatarSeed:uid,lastSeen:now};

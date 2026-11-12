@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="363">
+    <meta name="app-version" content="364">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -6763,6 +6763,31 @@ function PokerWaitlistIndicator({ table, uid, className = 'tbl-waitlist', showEm
     !hideBotDetails && queue.bots > 0 && React.createElement('span', { className: 'waitlist-bots' }, ' · 🤖 ', queue.bots, queue.bots === 1 ? ' bot' : ' bots'),
     queue.position > 0 && React.createElement('span', { className: 'waitlist-position', title: hideBotDetails ? 'Your position in the waiting list.' : 'Your position among waiting players. Players are seated before bots.' }, ' · You: #', queue.position));
 }
+function defaultBotEntry(s){
+  return Math.min(buyInMax(s),Math.max(buyInMin(s),s.botBuyIn??round2((Number(s.blinds)||0.5)*200)));
+}
+function validBotEntry(value,s){
+  const amount=Number(value);
+  return value!=='' && Number.isFinite(amount) && amount>0 && amount>=buyInMin(s) && amount<=buyInMax(s) && Math.abs(round2(amount)-amount)<1e-7;
+}
+function BotBuyInField({settings,value,onChange,disabled}){
+  return React.createElement('label',{className:'block text-sm font-bold text-slate-200'},'Buy-in per bot',
+    React.createElement('input',{type:'number',inputMode:'decimal',step:'0.01',min:buyInMin(settings),max:buyInMax(settings),
+      'aria-label':'Buy-in per bot',value,disabled,onChange:e=>onChange(e.target.value),dir:'ltr',
+      className:'block w-full mt-1 rounded-xl bg-slate-950 border border-white/15 px-3 py-2 text-white'}));
+}
+function BotBuyInDialog({settings,count,fill,onClose,onConfirm}){
+  const [value,setValue]=useState(()=>String(defaultBotEntry(settings)));
+  const valid=validBotEntry(value,settings)&&count>0;
+  const h=React.createElement,title=fill?'Fill empty seats with bots':'Add bot';
+  return h(TournamentDialog,{title,onClose,layer:410},
+    h('h2',{className:'pt-tour-title'},title),
+    h('form',{onSubmit:e=>{e.preventDefault();if(valid)onConfirm(Number(value));}},
+      h(BotBuyInField,{settings,value,onChange:setValue}),
+      h('p',{className:'text-sm text-slate-300 mt-2'},'Table limits: '+formatShort(buyInMin(settings))+' – '+formatShort(buyInMax(settings))),
+      valid&&h('p',{className:'my-3 text-amber-200'},'Club chips: '+formatShort(count*Number(value))+' · '+count+(count===1?' bot':' bots')),
+      h('button',{type:'submit',disabled:!valid,'aria-label':'Confirm bot buy-in',className:'pt-tour-primary disabled:opacity-40'},fill?'Seat bots':'Seat bot')));
+}
 function QuickBotTableCreate({user, clubSettings, showToast}) {
   const [expanded, setExpanded] = useState(false);
   const [game, setGame] = useState('NLH');
@@ -6771,6 +6796,7 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
   const [vacancies, setVacancies] = useState('1');
   const [minBuy, setMinBuy] = useState('50');
   const [maxBuy, setMaxBuy] = useState('200');
+  const [botDraft,setBotDraft] = useState(null);
   const [rake, setRake] = useState(String(clubSettings?.rakePct ?? DEFAULT_RAKE_PCT));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -6781,11 +6807,11 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
   const gameLabel = game === 'NLH' ? 'Texas Hold’em' : game === 'Omaha 7' ? 'OMAHA 7 · PLO7' : game;
   const allowed = canManageGame(user, 'poker');
   const seatOptions = game === 'Omaha 7' ? [4,5] : [4,6];
-  const valid = games.includes(game) && ['0.5','1','2'].includes(blinds) && seatOptions.includes(Number(seats)) && ['0','1','2'].includes(vacancies) &&
+  const entrySettings={blinds,minBuyIn:minBuy,maxBuyIn:maxBuy};
+  const botBuy=botDraft??defaultBotEntry(entrySettings);
+  const valid = validBotEntry(botBuy,entrySettings) && games.includes(game) && ['0.5','1','2'].includes(blinds) && seatOptions.includes(Number(seats)) && ['0','1','2'].includes(vacancies) &&
     [minBuy,maxBuy,rake].every(v => v !== '' && Number.isFinite(Number(v))) && Number(minBuy) >= 0.01 && Number(maxBuy) >= Number(minBuy) && Number(maxBuy) <= 10000000 && Number(rake) >= 0 && Number(rake) <= 20;
   const botCount = Number(seats) - Number(vacancies);
-  // Match the server's 100 BB buy-in, capped to the selected table limits.
-  const botBuy = Math.min(Number(maxBuy), Math.max(Number(minBuy), Number(blinds) * 200));
   const clearNotice = () => {setError('');setOpened('');};
   const create = async () => {
     if (!allowed || requestLock.current || !valid) return;
@@ -6795,7 +6821,7 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
       await pokerCommand('pkTableCreate', {manual:true, clubId:CLUB_ID, settings:{
         name:title, baseGameType:game, blinds:Number(blinds), minBuyIn:Number(minBuy), maxBuyIn:Number(maxBuy),
         rakePercent:Number(rake), maxPlayers:Number(seats), autoStart:2, actionTime:30, omahaPotLimit:true, serverEngine:true
-      }, botCount:vacancies === '0' ? 'full' : botCount});
+      }, ...(botDraft!==null?{botBuyIn:Number(botBuy)}:{}), botCount:vacancies === '0' ? 'full' : botCount});
       setOpened(title + ' opened with ' + botCount + ' bots.');
       showToast?.(title + ' opened with ' + botCount + ' bots.', 'success');
     } catch (e) {setError(e.message || 'Could not open this table. Try again.');}
@@ -6826,10 +6852,11 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
           React.createElement('option', {value:'2'}, '2 free seats · ' + (Number(seats)-2) + ' bots'))),
         React.createElement('label', {className:labelClass}, 'Min buy-in', React.createElement('input', {'aria-label':'Quick table min buy-in', type:'number', min:0.01, max:10000000, step:'0.01', value:minBuy, disabled:busy, className:inputClass, dir:'ltr', onChange:e => {setMinBuy(e.target.value);clearNotice();}})),
         React.createElement('label', {className:labelClass}, 'Max buy-in', React.createElement('input', {'aria-label':'Quick table max buy-in', type:'number', min:0.01, max:10000000, step:'0.01', value:maxBuy, disabled:busy, className:inputClass, dir:'ltr', onChange:e => {setMaxBuy(e.target.value);clearNotice();}})),
+        React.createElement(BotBuyInField,{settings:entrySettings,value:botBuy,disabled:busy,onChange:v=>{setBotDraft(v);clearNotice();}}),
         React.createElement('label', {className:labelClass}, 'Rake (%)', React.createElement('input', {'aria-label':'Quick table rake', type:'number', min:0, max:20, step:'0.01', value:rake, disabled:busy, className:inputClass, dir:'ltr', onChange:e => {setRake(e.target.value);clearNotice();}}))),
       valid && React.createElement('p', {'aria-label':'Initial bot funding', className:'mt-3 text-sm text-amber-200'},
         'Initial club chips: ', formatMoney(botCount * botBuy), ' · ', botCount, ' bots × ', formatMoney(botBuy), ' chips. ', Number(vacancies) ? vacancies + (vacancies === '1' ? ' seat available for a player.' : ' seats available for players.') : 'Players can join the waitlist.'),
-      !valid && React.createElement('p', {className:'mt-3 text-xs text-amber-200'}, 'Enter valid buy-in limits and a rake from 0% to 20%.'),
+      !valid && React.createElement('p', {className:'mt-3 text-xs text-amber-200'}, 'Check the table limits, buy-in per bot and rake (0%–20%).'),
       error && React.createElement('p', {role:'alert', className:'mt-3 text-sm text-rose-300'}, error),
       opened && React.createElement('p', {role:'status', className:'mt-3 text-sm text-emerald-300'}, opened),
       React.createElement('button', {type:'button', 'aria-label':'Create bot table', disabled:busy || !valid, 'aria-busy':busy, onClick:create,
@@ -6951,10 +6978,12 @@ function LobbyView({
   })();
   const [fillingTables,setFillingTables]=useState({});
   const fillLocks=useRef(new Set());
-  const fillFromLobby=async(e,t)=>{
-    e.stopPropagation();const id=t.docId||t.id;if(fillLocks.current.has(id))return;
+  const [fillTableId,setFillTableId]=useState(null);
+  const fillTable=pokerTables.find(t=>(t.docId||t.id)===fillTableId);
+  const fillFromLobby=async(t,amount,expectedSeats)=>{
+    setFillTableId(null);const id=t.docId||t.id;if(fillLocks.current.has(id))return;
     fillLocks.current.add(id);setFillingTables(x=>({...x,[id]:true}));
-    try{const result=await pokerCommand('pkSeat',{tableId:id,op:'fillbots'});showToast(result.added?result.added+' bots added':'The table is already full','success');}
+    try{const result=await pokerCommand('pkSeat',{tableId:id,op:'fillbots',amount,expectedSeats});showToast(result.added?result.added+' bots added':'The table is already full','success');}
     catch(err){showToast(err.message||'Could not fill this table','error');}
     finally{fillLocks.current.delete(id);setFillingTables(x=>({...x,[id]:false}));}
   };
@@ -6969,6 +6998,7 @@ function LobbyView({
         manual: true,
         clubId: CLUB_ID,
         settings: {...st, name: st.name || st.tableName || tp.name, serverEngine: true},
+        ...(st.showcaseBots&&!st.spinMode&&st.botBuyIn!=null?{botBuyIn:Number(st.botBuyIn)}:{}),
         botCount: st.showcaseBots==='full'?'full':Number(st.showcaseBots)||0
       });
       showToast('Table opened from "' + tp.name + '"', 'success');
@@ -7251,7 +7281,9 @@ function LobbyView({
       overflowX: "hidden"
     },
     className: "club-lobby scrollable-content aurora-bg p-4 sm:p-6"
-  }, buyinEdit && React.createElement(TableSettingsEditor,{table:buyinEdit,onClose:()=>setBuyinEdit(null),showToast}), cashierOpen && ReactDOM.createPortal(React.createElement("div", {
+  }, fillTable&&canManageGame(user,'poker')&&React.createElement(BotBuyInDialog,{key:fillTableId,settings:fillTable.settings||{},fill:true,
+    count:(fillTable.settings?.maxPlayers||6)-Object.keys(fillTable.players||{}).length,onClose:()=>setFillTableId(null),
+    onConfirm:amount=>fillFromLobby(fillTable,amount,(fillTable.settings?.maxPlayers||6)-Object.keys(fillTable.players||{}).length)}), buyinEdit && React.createElement(TableSettingsEditor,{table:buyinEdit,onClose:()=>setBuyinEdit(null),showToast}), cashierOpen && ReactDOM.createPortal(React.createElement("div", {
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => setCashierOpen(false)
   }, React.createElement("div", {
@@ -7849,7 +7881,7 @@ function LobbyView({
       style: { fontSize: '9px', fontWeight: 900, color: '#fcd34d', lineHeight: 1, marginTop: '2px', whiteSpace: 'nowrap' },
       dir: "ltr"
     }, "WIN ", formatShort((Number(s.spinBuyIn) || 50) * 100))), React.createElement('div',{className:'tbl-vpip',title:'VPIP statistics are not available for this table'},React.createElement('small',null,'VPIP'),React.createElement('strong',null,'—')), React.createElement('span',{className:'blue-table-enter','aria-hidden':true},React.createElement('i',{className:'fa-solid fa-chevron-right'})), React.createElement(BlueTableActions, null, canManageGame(user,'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && seated<cap && React.createElement('button',{
-      onClick:e=>fillFromLobby(e,t),disabled:!!fillingTables[t.docId||t.id],title:'Fill table with bots','aria-label':'Fill table with bots',className:'tbl-del disabled:opacity-40',style:{color:'#a7f3d0'}
+      onClick:e=>{e.stopPropagation();setFillTableId(t.docId||t.id);},disabled:!!fillingTables[t.docId||t.id],title:'Fill table with bots','aria-label':'Fill table with bots',className:'tbl-del disabled:opacity-40',style:{color:'#a7f3d0'}
     },React.createElement('i',{className:fillingTables[t.docId||t.id]?'fa-solid fa-spinner fa-spin':'fa-solid fa-robot'})), canManageGame(user, 'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && React.createElement("button", {
       onClick: e => {
         e.stopPropagation();
@@ -10232,7 +10264,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{bas
     return out;
   };
   const handleCreate = async () => {
-try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...s,serverEngine:true},botCount:s.showcaseBots==='full'?'full':Number(s.showcaseBots)||0});onCreated();}catch(e){showToast(e.message||String(e),'error');}
+try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...s,serverEngine:true},...(s.showcaseBots&&!s.spinMode&&s.botBuyIn!=null?{botBuyIn:Number(s.botBuyIn)}:{}),botCount:s.showcaseBots==='full'?'full':Number(s.showcaseBots)||0});onCreated();}catch(e){showToast(e.message||String(e),'error');}
 };
   const TPL_KEY = 'pokerTpl_' + CLUB_ID;
   const [tpls, setTpls] = useState(() => {
@@ -10400,7 +10432,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
     value: n
   }, n, " bots, playing non-stop"))), React.createElement("div", {
     className: "text-[11px] text-slate-400 mt-1 leading-snug"
-  }, "Seats the bots now and lets the server run the game, so the lobby shows a live table even when nobody is watching. Real players can sit down at any time — the bots stop seeing cards the moment one does.")), React.createElement(Field, {
+  }, "Seats the bots now and lets the server run the game, so the lobby shows a live table even when nobody is watching. Real players can sit down at any time — the bots stop seeing cards the moment one does.")), !!s.showcaseBots&&!s.spinMode&&React.createElement(BotBuyInField,{settings:s,value:s.botBuyIn??defaultBotEntry(s),onChange:v=>upd('botBuyIn',v)}), React.createElement(Field, {
     label: "Min buy-in (₪) — type any amount"
   }, React.createElement("input", {
     type: "number",
@@ -10604,6 +10636,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
     className: "fa-solid fa-bookmark ml-1"
   }), "Save as template")), React.createElement("button", {
     onClick: handleCreate,
+    disabled:!!s.showcaseBots&&!s.spinMode&&!validBotEntry(s.botBuyIn??defaultBotEntry(s),s),
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-4 rounded-2xl font-black text-lg shadow-[0_8px_25px_rgba(245,158,11,0.35)]"
   }, React.createElement("i", {
     className: "fa-solid fa-diamond ml-2"
@@ -10767,6 +10800,7 @@ function PokerTable({
   const [, setMuteTick] = useState(0);
   const [toolsOpen, setToolsOpen] = useState(false);
   const botAddLock = useRef(false);
+  const [botEntry,setBotEntry]=useState(null);
   const [addingBots, setAddingBots] = useState(false);
   const [tableInfoOpen, setTableInfoOpen] = useState(false);
   const tableMenuTrigger = useRef(null);
@@ -11928,9 +11962,15 @@ try{const result=await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amou
       if(queued){leaveArmedRef.current=true;showToast('Leaving after this hand.','info');}else onLeave();
     }catch(e){showToast(e.message||String(e),'error');}
 };
-  const handleAddBot = async (fill=false) => {
+  const chooseBotEntry = fill => {
+    setToolsOpen(false);
+    if(tableState.tournamentId||setts.spinMode)handleAddBot(fill);
+    else setBotEntry({tableId:tableDocId,fill});
+  };
+  const handleAddBot = async (fill=false,amount,expectedSeats) => {
+    setBotEntry(null);
     if(botAddLock.current)return;botAddLock.current=true;setAddingBots(true);
-    try{if(tableState.tournamentId){await pokerCommand('pkTournament',{tournamentId:tableState.tournamentId,op:'fillbots'});showToast('One bot entered. Tables will balance between hands.','success');return;}const r=await pokerCommand('pkSeat',{tableId:tableDocId,op:fill?'fillbots':'addbot'});showToast(fill?(r.added?`${r.added} bots seated.`:'Table is already full.'):'Bot seated.','success');}
+    try{if(tableState.tournamentId){await pokerCommand('pkTournament',{tournamentId:tableState.tournamentId,op:'fillbots'});showToast('One bot entered. Tables will balance between hands.','success');return;}const r=await pokerCommand('pkSeat',{tableId:tableDocId,op:fill?'fillbots':'addbot',...(amount!==undefined?{amount}:{}),...(expectedSeats!==undefined?{expectedSeats}:{})});showToast(fill?(r.added?`${r.added} bots seated.`:'Table is already full.'):'Bot seated.','success');}
     catch(e){showToast(e.message||String(e),'error');}finally{botAddLock.current=false;setAddingBots(false);}
   };
   useEffect(() => {
@@ -13532,7 +13572,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       onClick: tourAddon,
       className: "bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded-lg"
     }, "🚀 Add-on"));
-  })(), tourRegistrationOpen && tourEntryState && React.createElement(TournamentDialog,{title:'Late registration',layer:330,onClose:()=>setTourRegistrationOpen(false)},React.createElement('h2',{className:'pt-tour-title'},'Late registration'),React.createElement(TournamentRegistrationEditor,{key:tourEntryState.id,tor:tourEntryState,showToast,onSaved:()=>setTourRegistrationOpen(false)})), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourEntryState?.players?.[user.uid]?.out||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
+  })(), botEntry&&botEntry.tableId===tableDocId&&canManageGame(user,'poker')&&React.createElement(BotBuyInDialog,{settings:setts,fill:botEntry.fill,
+    count:botEntry.fill?(setts.maxPlayers||6)-Object.keys(players).length:1,onClose:()=>setBotEntry(null),
+    onConfirm:amount=>handleAddBot(botEntry.fill,amount,botEntry.fill?(setts.maxPlayers||6)-Object.keys(players).length:undefined)}), tourRegistrationOpen && tourEntryState && React.createElement(TournamentDialog,{title:'Late registration',layer:330,onClose:()=>setTourRegistrationOpen(false)},React.createElement('h2',{className:'pt-tour-title'},'Late registration'),React.createElement(TournamentRegistrationEditor,{key:tourEntryState.id,tor:tourEntryState,showToast,onSaved:()=>setTourRegistrationOpen(false)})), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourEntryState?.players?.[user.uid]?.out||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
     className: "absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse",
     dir: "ltr"
   }, React.createElement("span", {
@@ -13921,14 +13963,13 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className:'poker-menu-tile','data-menu-tone':'orange'
   }, ...menuTile("god", godView ? "GOD view on" : "GOD view")), canManageGame(user,'poker') && (!tableState.tournamentId || tourLateRegOpen(tourEntryState)) && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
     onClick: () => {
-      setToolsOpen(false);
-      handleAddBot();
+      chooseBotEntry(false);
     },
     title: "Add bot",
     disabled: addingBots || (tableState.tournamentId ? Object.values(tourEntryState?.players||{}).filter(p=>!p.out).length >= tourEntryState.maxPlayers : Object.keys(players).length >= (setts.maxPlayers||6)),
     className:'poker-menu-tile','data-menu-tone':'cyan'
   }, ...menuTile("bot", "Add bot")), canManageGame(user,'poker') && tourEntryState && ['reg','running'].includes(tourEntryState.status) && React.createElement("button",{onClick:()=>{setToolsOpen(false);setTourRegistrationOpen(true);},title:"Late registration",className:"poker-menu-tile",'data-menu-tone':"cyan"},...menuTile("fa-clock","Late registration")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
-    onClick:()=>{setToolsOpen(false);handleAddBot(true);},title:"Fill empty seats with bots",disabled:addingBots||Object.keys(players).length>=(setts.maxPlayers||6),
+    onClick:()=>chooseBotEntry(true),title:"Fill empty seats with bots",disabled:addingBots||Object.keys(players).length>=(setts.maxPlayers||6),
     className:'poker-menu-tile','data-menu-tone':'cyan'
   },...menuTile("bot-group","Fill bots")), !isSeated && onCreateTable && canManageGame(user,'poker') && React.createElement("button", {
     onClick:()=>{setToolsOpen(false);onCreateTable();},title:"Create a new table",className:'poker-menu-tile','data-menu-tone':'green'

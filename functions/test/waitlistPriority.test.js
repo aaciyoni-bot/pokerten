@@ -162,3 +162,21 @@ test('returning after lease expiry rejoins behind currently live players',async(
  assert.equal(f.table().waitlist[1].at,NOW);assert.equal(f.table().waitlist[1].seenAt,NOW);
  assert.equal(f.balance('alice'),1000);
 });
+
+test('custom bot buy-in charges each seat once and rejects invalid or unfunded requests atomically',async()=>{
+ const f=fixture();
+ await f.run('owner','addbot',{amount:85.25},'custom-addbot-request');
+ await f.run('owner','addbot',{amount:85.25},'custom-addbot-request');
+ assert.equal(f.balance('owner'),914.75);
+ const single=Object.values(f.table().players)[0];assert.equal(single.stack,85.25);assert.equal(single.buyTotal,85.25);
+ const before=copy([...f.docs]);
+ for(const amount of [49,201,72.001,0,'',null,true]){
+  await assert.rejects(f.run('owner','fillbots',{amount}),e=>e.code==='invalid-argument');
+ }
+ await assert.rejects(f.run('owner','fillbots',{amount:200}),/Insufficient balance/);
+ await assert.rejects(f.run('owner','fillbots',{amount:100,expectedSeats:6}),/Open seats changed/);
+ assert.deepEqual([...f.docs],before);
+ await f.run('owner','fillbots',{amount:120.5,expectedSeats:5});
+ assert.equal(f.balance('owner'),312.25);
+ assert.equal(Object.values(f.table().players).filter(p=>p.stack===120.5&&p.buyTotal===120.5).length,5);
+});

@@ -164,7 +164,7 @@ for(const earlyWin of [false,true])test(`public ${earlyWin?'fold win':'showdown'
  const before=copy(f.table(id));assert.equal(before.gameState.phase,'showdown');assert.equal(before.gameState.earlyWin,earlyWin);
  assert.equal(total(f,id),initialTotal,'settlement conserves chips');
  assert.equal(Math.round(before.gameState.lastAwards.reduce((n,a)=>n+a.amount,0)*100),Math.round(before.gameState.lastWinAmount*100));
- const delay=earlyWin?9500:11000,actor=Object.keys(before.players)[0];
+ const delay=earlyWin?6500:8000,actor=Object.keys(before.players)[0];
  f.advance(before.gameState.showdownAt-f.now()+delay-1);await f.tick(id);await f.deal(id,actor);
  assert.deepEqual(copy(f.table(id).gameState),before.gameState,'background ticks and manual deal cannot erase the public result');
  assert.deepEqual(copy(f.table(id).players),before.players,'winner and revealed cards remain visible');
@@ -216,7 +216,7 @@ for(const count of [0,1])for(const earlyWin of [false,true])test(`settled ${earl
  const table=f.table(id),cards=[{val:'J',suit:'♠'},{val:'5',suit:'♦'},{val:'5',suit:'♥'},{val:'9',suit:'♣'},{val:'A',suit:'♥'}];
  Object.assign(table.gameState,{phase:'showdown',handN:7,showdownAt:f.now(),earlyWin,board:copy(cards),board2:copy(cards),pots:[],lastAwards:[{uid:'previous',name:'Previous',amount:50}],lastWinAmount:50,lastWinners:'Previous'});
  if(count){table.players.human.cards=cards.slice(0,2);table.players.human.cardCount=2;table.players.human.actionText='Call';f.docs.set(`tables/${id}/priv/human`,{cards:cards.slice(0,2)});}
- const before=copy(table),bank=f.balance('human'),chips=total(f,id),delay=earlyWin?9500:11000;
+ const before=copy(table),bank=f.balance('human'),chips=total(f,id),delay=earlyWin?6500:8000;
  f.advance(delay-1);await f.tick(id);assert.deepEqual(f.table(id).gameState,before.gameState,'The result remains for its full interval');
  f.advance(1);await f.tick(id);const after=f.table(id);
  assert.equal(after.gameState.phase,'waiting');assert.deepEqual(after.gameState.board,[]);assert.equal(after.gameState.board2,null);

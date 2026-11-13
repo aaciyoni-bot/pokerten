@@ -6,10 +6,12 @@ global.window=w;global.document=w.document;Object.defineProperty(global,'navigat
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 const card=(val,suit)=>({val,suit}),c=card;
 let current={type:"poker",authorityVersion:2,clubId:'main',settings:{serverEngine:true,maxPlayers:6,baseGameType:'NLH',blinds:1,minBuyIn:40,maxBuyIn:200},players:{alpha:{uid:'alpha',name:'Alpha',isBot:true,fundingUid:'sponsor',stack:125.5,bet:2,cards:[],cardCount:2,status:'active',seatIndex:1},beta:{uid:'beta',name:'Beta',stack:99.25,bet:2,cards:[],cardCount:2,status:'active',seatIndex:3},folded:{uid:'folded',name:'Folded',stack:80,bet:0,cards:[],cardCount:2,status:'folded',seatIndex:5}},gameState:{phase:'flop',currentGameType:'NLH',activeTurnUid:'alpha',turnStartedAt:Date.now(),highestBet:2,minRaise:2,handN:1,__seq:2,pots:[],board:[c('Q','♠'),c('7','♦'),c('2','♣')]}};
-const quickMoves=[],purchases=[],lineupChanges=[];
+const quickMoves=[],purchases=[],lineupChanges=[],removals=[],notices=[];
+let removalResponse;
 let hands={alpha:[c('A','♠'),c('A','♦')],beta:[c('K','♠'),c('K','♦')],folded:[c('Q','♥'),c('Q','♦')]},peekCalls=0,tableNext,suppliedRunout=null;
 const ref=(...a)=>({path:a.slice(1).join('/')}),snapshot=()=>({id:'test',exists:()=>true,data:()=>structuredClone(current),metadata:{fromCache:false}});
 w.fb={db:{},auth:{currentUser:{uid:'viewer',email:'ordinary@example.invalid',emailVerified:true}},doc:ref,collection:ref,query:r=>r,where:()=>({}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({docs:[]}),fx:async(name,args)=>{if(name==='pkTick')return{};
+ if(name==='pkLeave'){removals.push(args);return removalResponse();}
  if(name==='pkTableManage' && ['bot-rotation','bot-seat'].includes(args.op)){
    lineupChanges.push(args);
    if(args.op==='bot-rotation')current.settings.botRotation=args.mode;
@@ -58,7 +60,7 @@ assert.deepEqual(leaders(simplePlayers,pineappleBoard,'Pineapple','turn',pineapp
 function peekResponse(args){return {tableId:args.tableId,contextKey:args.contextKey,hands:structuredClone(hands),finalBoard:suppliedRunout||(current.gameState.board.length===5?current.gameState.board:finalBoard)};}
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const byTitle=t=>doc.querySelector('button[title="'+t+'"]'),badges=()=>[...doc.querySelectorAll('.poker-god-best-badge')],uids=()=>badges().map(b=>b.closest('[data-player-uid]').dataset.playerUid).sort();
-const render=async(role='player')=>React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test',user:{uid:'viewer',email:identities.owner,role,godMode:true,balance:1000},clubSettings:{},onLeave(){},showToast(){}})));
+const render=async(role='player')=>React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'test',user:{uid:'viewer',email:identities.owner,role,godMode:true,balance:1000},clubSettings:{},onLeave(){},showToast(message){notices.push(message);}})));
 const menu=()=>React.act(()=>byTitle('Table menu').click());
 const toggle=async()=>{await menu();const button=byTitle('GOD view');assert.ok(button);await React.act(async()=>button.click());};
 (async()=>{
@@ -80,6 +82,32 @@ const toggle=async()=>{await menu();const button=byTitle('GOD view');assert.ok(b
  await toggle();
  w.Date.now=actualNow;
  assert.equal(doc.querySelector('.poker-quick-bot'),null);
+ const openRemoval=async (uid,part='.player-pod')=>{
+   await React.act(()=>doc.querySelector('[data-player-uid="'+uid+'"] '+part).click());
+   const button=[...doc.querySelectorAll('button')].find(b=>b.textContent.includes('Remove from table'));
+   assert.ok(button);await React.act(()=>button.click());
+ };
+ const removalDialog=()=>doc.querySelector('[role=dialog][aria-label="Remove from table"]');
+ const dialogButton=text=>[...removalDialog().querySelectorAll('button')].find(b=>b.textContent===text);
+ await openRemoval('alpha','.poker-opponent-fan .card-back');assert.match(removalDialog().textContent,/sponsor/);
+ await React.act(()=>dialogButton('Cancel').click());assert.equal(removals.length,0);
+ const peekClose=()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='✕');
+ await React.act(()=>peekClose().click());
+ await openRemoval('beta','.poker-player-info');assert.match(removalDialog().textContent,/Beta/);
+ removalResponse=async()=>{throw Error('Table manager required');};
+ await React.act(async()=>dialogButton('Remove').click());
+ assert.match(removalDialog().querySelector('[role=alert]').textContent,/Table manager required/);
+ let acknowledge;
+ removalResponse=()=>new Promise(resolve=>{acknowledge=resolve;});
+ await React.act(async()=>{const button=dialogButton('Remove');button.click();button.click();});
+ assert.equal(removals.length,2,'failed request plus exactly one retry');assert.equal(removals[1].requestId,removals[0].requestId);
+ assert.equal(removals[1].targetUid,'beta');assert.equal(removals[1].intent,'kick');assert.equal(removals[1].tableId,'test');
+ assert.ok(dialogButton('Removing…').disabled);
+ await React.act(async()=>acknowledge({ok:true,queued:true}));assert.equal(removalDialog(),null);
+ assert.ok(notices.includes('Beta will leave after this hand.'));
+ await openRemoval('alpha');removalResponse=async()=>({ok:true,queued:false});
+ await React.act(async()=>dialogButton('Remove').click());
+ assert.equal(removalDialog(),null);assert.ok(notices.includes('Alpha has left the table.'));
  await React.act(()=>doc.querySelector('[data-player-uid="alpha"] .player-pod').click());
  const topUp=[...doc.querySelectorAll('button')].find(b=>b.textContent==='Add chips');assert.ok(topUp);
  await React.act(()=>topUp.click());

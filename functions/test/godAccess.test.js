@@ -55,3 +55,27 @@ test('UI GOD identity guard agrees with the callable including revocation',()=>{
  context.window.fb.auth.currentUser.email=REVOKED;assert.equal(context.allowed({uid:'supervisorA',email:SUPERVISOR_A}),false);
  context.window.fb.auth.currentUser.email=SUPERVISOR_A;assert.equal(context.allowed({uid:'other',email:SUPERVISOR_A}),false);
 });
+
+test('GOD-only callables bind the private allowlist and reject every non-designated role',async()=>{
+ const {accessSecret,isGodAuth}=require('../godIdentity');
+ const api={...require('../pokerEngine'),...require('../cardGames')};
+ const restricted=['godPeek','godLobbyCounts','pkCardPeek','pkBotChat','pkBotTurn'];
+ const data={tableId:'fixture',clubId:'fixture',mode:'watch'};
+ for(const name of restricted){
+  const handler=api[name];
+  assert.ok(handler.__endpoint.secretEnvironmentVariables.some(binding=>binding.key===accessSecret),name);
+  for(const role of ['player','manager','club_owner','super_admin']){
+   const identity={uid:'ordinary',token:{email:'ordinary@example.invalid',email_verified:true,role,god:true}};
+   await assert.rejects(handler.run({auth:identity,data}),{code:'permission-denied'},name);
+  }
+  await assert.rejects(handler.run({auth:null,data}),{code:'unauthenticated'},name);
+ }
+ const original=process.env[accessSecret],authorized=auth(SUPERVISOR_A);
+ try{
+  assert.equal(isGodAuth(authorized),true);
+  for(const invalid of [undefined,'invalid','{}','[]',JSON.stringify([SUPERVISOR_A,null])]){
+   if(invalid===undefined)delete process.env[accessSecret];else process.env[accessSecret]=invalid;
+   assert.equal(isGodAuth(authorized),false);
+  }
+ }finally{process.env[accessSecret]=original;}
+});

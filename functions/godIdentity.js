@@ -8,7 +8,7 @@ function isGodAuth(auth) {
   if (!email) return false;
   try {
     const accounts = JSON.parse(process.env[accessSecret] || '[]');
-    return Array.isArray(accounts) && accounts.includes(email);
+    return Array.isArray(accounts) && accounts.every(value => typeof value === 'string' && value.length > 0) && accounts.includes(email);
   } catch {
     return false;
   }

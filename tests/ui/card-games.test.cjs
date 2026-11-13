@@ -34,8 +34,26 @@ async function emit(t){state=C.publish(t);privateState=C.personal(t,'owner');awa
   const button=w.document.querySelector('[aria-label="GOD MODE"]');assert.ok(button);
   await React.act(async()=>button.click());assert.equal(button.getAttribute('aria-pressed'),'true');assert.equal(calls.at(-1).name,'pkCardPeek');
   if(type==='durak')assert.ok(w.document.querySelector('.card-game-god-stock'),'Durak GOD shows the actual next draw order');
-  await React.act(async()=>button.click());assert.equal(button.getAttribute('aria-pressed'),'false');assert.equal(w.document.querySelector('.card-game-god-stock'),null);
-  peekState={...peekState,seq:t.seq-1};await React.act(async()=>button.click());assert.equal(button.getAttribute('aria-pressed'),'false','Stale private snapshots never render as GOD view');
+  const ready=peekState;
+  let finishOld,finishNew;
+  peekState=new Promise(resolve=>{finishOld=resolve;});
+  await React.act(async()=>button.click());
+  await React.act(async()=>button.click());
+  w.fb.auth.currentUser={uid:'owner',email:identities.revoked,emailVerified:true};
+  const renderCard=()=>React.act(async()=>root.render(React.createElement(w.CardsTest[type==='durak'?'DurakTable':'OFCTable'],{key:'god-'+type,tableDocId:'table',user,clubSettings:{},showToast:toast,onLeave(){}})));
+  await renderCard();
+  assert.equal(w.document.querySelector('[aria-label="GOD MODE"]'),null);
+  await React.act(async()=>finishOld(ready));
+  assert.equal(w.document.querySelector('.card-game-god-stock'),null);
+  peekState=new Promise(resolve=>{finishNew=resolve;});
+  w.fb.auth.currentUser={uid:'owner',email:identities.supervisors[0],emailVerified:true};
+  await renderCard();
+  const freshButton=w.document.querySelector('[aria-label="GOD MODE"]');
+  assert.equal(freshButton.getAttribute('aria-pressed'),'false','new identity cannot reuse previous private snapshot at the same sequence');
+  await React.act(async()=>finishNew(ready));assert.equal(freshButton.getAttribute('aria-pressed'),'true');
+  peekState=ready;
+  await React.act(async()=>freshButton.click());assert.equal(freshButton.getAttribute('aria-pressed'),'false');assert.equal(w.document.querySelector('.card-game-god-stock'),null);
+  peekState={...peekState,seq:t.seq-1};await React.act(async()=>freshButton.click());assert.equal(freshButton.getAttribute('aria-pressed'),'false','Stale private snapshots never render as GOD view');
  }
  w.fb.auth.currentUser={uid:'owner',email:'owner@example.test'};
  for(const type of ['durak','ofc']){

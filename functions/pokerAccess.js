@@ -123,7 +123,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
    }
   }
   else if(op==='leave-request')patch[`players.${uid}.leaveReq`]=now;
-  else if(op==='cancel-leave'){patch[`players.${uid}.leaveReq`]=null;patch[`players.${uid}.leavingAt`]=null;patch[`players.${uid}.sitOutNext`]=false;}
+  else if(op==='cancel-leave'){if(p.managerRemoval)fail('failed-precondition','A manager scheduled removal after this hand');patch[`players.${uid}.leaveReq`]=null;patch[`players.${uid}.leavingAt`]=null;patch[`players.${uid}.sitOutNext`]=false;}
   else if(op==='straddle'){if(!s.straddle||t.tournamentId||s.spinMode)fail('failed-precondition','Straddle unavailable');patch[`players.${uid}.straddleNext`]=r.data.enabled===true;}
   else if(op==='pause'){patch[`players.${uid}.${idle?'sitOut':'sitOutNext'}`]=true;patch[`players.${uid}.sitOutAt`]=now;}
   else if(op==='return'||op==='sitout'&&(p.sitOut||p.sitOutNext))Object.assign(patch,{[`players.${uid}.sitOut`]:false,[`players.${uid}.sitOutNext`]:false,[`players.${uid}.missed`]:0});

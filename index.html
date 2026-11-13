@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="373">
+    <meta name="app-version" content="374">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -11233,10 +11233,34 @@ function PokerTable({
   }, [tableDocId, user.uid]);
   const [pickSeat, setPickSeat] = useState(null); // seat chosen by tapping a "+" disc
   const [confirmBox, setConfirmBox] = useState(null);
-  const askConfirm = msg => new Promise(resolve => setConfirmBox({
-    msg,
-    resolve
-  }));
+  const removalLock = useRef(null);
+  const [removing, setRemoving] = useState(false);
+  const [removalError, setRemovalError] = useState('');
+  useEffect(() => {
+    removalLock.current=null;setRemoving(false);setConfirmBox(null);setRemovalError('');setPeek(null);
+  },[tableDocId,user.uid]);
+  const closeRemoval = () => {
+    if (!removalLock.current) setConfirmBox(null);
+  };
+  const confirmRemoval = async () => {
+    const target=confirmBox;
+    if (!target || target.tableId!==tableDocId || removalLock.current) return;
+    if (!tableRef.current?.players?.[target.uid]) {
+      setConfirmBox(null);setPeek(null);showToast('This seat is already empty.','info');return;
+    }
+    removalLock.current=target;setRemoving(true);setRemovalError('');
+    try {
+      const result=await pokerCommand('pkLeave',{tableId:target.tableId,targetUid:target.uid,intent:'kick',requestId:target.requestId});
+      if (!result?.ok) throw Error('Removal was not confirmed. Try again.');
+      if (removalLock.current!==target) return;
+      setConfirmBox(null);setPeek(null);
+      showToast(result.queued?target.name+' will leave after this hand.':target.name+' has left the table.', 'success');
+    } catch (error) {
+      if (removalLock.current===target) setRemovalError(error.message||'Could not remove this seat. Try again.');
+    } finally {
+      if (removalLock.current===target) {removalLock.current=null;setRemoving(false);}
+    }
+  };
   const [topUpBox, setTopUpBox] = useState(null);
   const topUpPending = useRef(false);
   const [rebuyBusy, setRebuyBusy] = useState(false);
@@ -12037,7 +12061,7 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amount:Number(buy
       // window (a rebuy re-arms a fresh bounty, which the rebuy price funds).
       if (tour.bounty > 0 && knockers.length) {
         tourReportBust(tableState.tournamentId, bustedNow, knockers, tour.bounty || 0, true, {
-          markOut: false
+          markOut: false, showToast
         });
       }
     }
@@ -12829,32 +12853,22 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
      React.createElement("option", { value: "dealt" }, "As dealt"))), React.createElement("button", {
     onClick: () => setSkinOpen(false),
     className: "w-full bg-gradient-to-b from-amber-500 to-amber-700 hover:from-amber-400 text-white py-2.5 rounded-xl font-black text-sm"
-  }, "Done"))), document.body), buyinEdit && React.createElement(TableSettingsEditor,{table:buyinEdit,onClose:()=>setBuyinEdit(null),showToast}), confirmBox && ReactDOM.createPortal(React.createElement("div", {
-    className: "fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4",
-    onClick: () => {
-      confirmBox.resolve(false);
-      setConfirmBox(null);
-    }
-  }, React.createElement("div", {
-    className: "glass-panel rounded-3xl p-6 w-full max-w-xs text-center border border-white/10 animate-pop-in",
-    onClick: e => e.stopPropagation()
-  }, React.createElement("p", {
-    className: "text-white font-bold text-sm mb-5 whitespace-pre-line"
-  }, confirmBox.msg), React.createElement("div", {
-    className: "flex gap-2.5"
-  }, React.createElement("button", {
-    onClick: () => {
-      confirmBox.resolve(false);
-      setConfirmBox(null);
-    },
-    className: "flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
-  }, "Cancel"), React.createElement("button", {
-    onClick: () => {
-      confirmBox.resolve(true);
-      setConfirmBox(null);
-    },
-    className: "flex-1 bg-gradient-to-b from-rose-600 to-rose-800 hover:from-rose-500 text-white py-3 rounded-2xl font-black shadow-lg"
-  }, "Yes")))), document.body), topUpBox && topUpBox.tableId===tableDocId && ReactDOM.createPortal(React.createElement("div", {
+  }, "Done"))), document.body), buyinEdit && React.createElement(TableSettingsEditor,{table:buyinEdit,onClose:()=>setBuyinEdit(null),showToast}), confirmBox && confirmBox.tableId===tableDocId && ReactDOM.createPortal(React.createElement('div',{
+    className:'fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4',
+    onClick:closeRemoval
+  },React.createElement('section',{role:'dialog','aria-modal':true,'aria-label':'Remove from table',
+    className:'glass-panel rounded-3xl p-6 w-full max-w-xs text-center border border-white/10',
+    onClick:e=>e.stopPropagation(),onKeyDown:e=>{if(e.key==='Escape')closeRemoval();}
+  },React.createElement('p',{className:'text-white font-bold text-sm mb-3'},'Remove '+confirmBox.name+' from the table?'),
+  React.createElement('p',{className:'text-xs text-slate-300 mb-4'},setts.spinMode?
+    (tableState.spinDone?'This Spin has ended. Its prize is settled separately.':'The entry fee returns to the funding account before the Spin starts.'):confirmBox.isBot?
+    'If this bot is in a hand, removal waits until it ends. Remaining chips return to its sponsor.':
+    'If this player is in a hand, removal waits until it ends. Remaining chips return to their wallet.'),
+  removalError && React.createElement('p',{role:'alert',className:'text-sm text-rose-300 mb-3'},removalError),
+  React.createElement('div',{className:'flex gap-2.5'},
+    React.createElement('button',{type:'button',autoFocus:true,disabled:removing,onClick:closeRemoval,className:'flex-1 bg-slate-800 text-slate-300 py-3 rounded-2xl font-black'},'Cancel'),
+    React.createElement('button',{type:'button',disabled:removing,onClick:confirmRemoval,className:'flex-1 bg-rose-800 text-white py-3 rounded-2xl font-black'},removing?'Removing…':'Remove')
+  ))),document.body), topUpBox && topUpBox.tableId===tableDocId && ReactDOM.createPortal(React.createElement("div", {
     className: "fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4",
     onClick: () => {if(!topUpPending.current)setTopUpBox(null);}
   }, React.createElement("div", {
@@ -13105,6 +13119,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   })(), displayList.map((p, i) => {
     const isTurn = gs.activeTurnUid === p.uid && inBetting;
     const isMe = p.uid === user.uid;
+    const openSeatDetails = e => {
+      e.stopPropagation();
+      setPeek({uid:p.uid,name:isMe?'You':p.name,isBot:!!p.isBot});
+    };
     const topSeat = parseFloat(seatPos(i).top) < 34;
     const seatXv = parseFloat(seatPos(i).left);
     const seatYv = parseFloat(seatPos(i).top);
@@ -13235,6 +13253,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       return React.createElement("div", {
         'data-card-count': nC,
         'data-hand-layout': isMe && nC === 7 ? plo7Layout : undefined,
+        onClick:isMe?undefined:openSeatDetails,
         className: `poker-hole-cards ${!isMe ? 'poker-opponent-fan' + (hidden ? ' is-hidden' : '') : 'poker-own-fan'} ${!hidden && !isMe ? 'poker-revealed-hand' : ''} flex z-0 ${doFan ? '' : isMe ? 'gap-1' : 'gap-0.5'}`,
         style: {
           transform: `translateX(${Math.round(inX * 8)}px)`
@@ -13296,14 +13315,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       })); }));
     })(), React.createElement("div", {
-      onClick: e => {
-        e.stopPropagation();
-        setPeek({
-          uid: p.uid,
-          name: isMe ? 'You' : p.name,
-          isBot: !!p.isBot
-        });
-      },
+      onClick:openSeatDetails,
+      role:'button',tabIndex:0,'aria-label':'View '+(isMe?'your seat':p.name),
+      onKeyDown:e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openSeatDetails(e);}},
       className: `player-pod cursor-pointer ${isTurn ? 'active-glow' : ''} ${isWinner ? 'winner-glow' : ''} ${isMe ? 'w-[58px] h-[58px]' : ''} ${godLeading ? 'poker-god-leading' : ''}`,
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
@@ -13311,6 +13325,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     }, godLeading && React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true})), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
       className: "absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30"
     }, "DC"), React.createElement("div", {
+      onClick:openSeatDetails,
       className: "poker-player-info mt-1 px-2.5 py-0.5 rounded-lg bg-slate-950/85 border border-white/10 shadow-md text-center",
       style: {
         // far pods slimmer (spec: 72px far / 88px near = 0.24T);
@@ -13379,6 +13394,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       const ang = hidden ? 3 : 4;
       return React.createElement("div", {
         'data-card-count': nC,
+        onClick:openSeatDetails,
         className: `poker-hole-cards poker-opponent-fan ${hidden ? 'is-hidden' : ''} ${!hidden ? 'poker-revealed-hand' : ''} flex mt-1 z-20 ${doFan ? '' : 'gap-0.5'}`,
         style: {
           transform: `translateX(${Math.round(inX * 12)}px)`
@@ -13766,12 +13782,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     peek: peek,
     onClose: () => setPeek(null),
     clubId: CLUB_ID,
-    onKick: !lineupSeat && peek.uid !== user.uid && canManageGame(user, 'poker') ? async () => {
-      if (await askConfirm(`Remove ${peek.name} from the table? Their stack returns to their wallet.`)) {
-        kickSeat(peek.uid, true);
-        setPeek(null);
-      }
-    } : null
+    onKick: !lineupSeat && !tableState.tournamentId && !(setts.spinMode && tableState.spin && !tableState.spinDone) &&
+      srvEngine && players[peek.uid] && !players[peek.uid].managerRemoval && peek.uid!==user.uid && canManageGame(user,'poker') ? () => {
+        setRemovalError('');
+        setConfirmBox({tableId:tableDocId,uid:peek.uid,name:peek.name,isBot:peek.isBot,requestId:crypto.randomUUID()});
+      } : null
   }), podium && React.createElement(PodiumScreen, {
     place: podium.place,
     amount: podium.amount,
@@ -14388,38 +14403,49 @@ const beatsCard = (c, t, trump) => c.suit === t.suit && c.v > t.v || c.suit === 
 function useCardGame(tableDocId,user,showToast,onLeave,wantPeek=false){
   const [publicState,setPublic]=useState(null),[privateState,setPrivate]=useState(null),[peek,setPeek]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[clock,setClock]=useState(Date.now());
   const current=useRef(null),lock=useRef(false);
+  const peekEmail=wantPeek && isGodUser(user) ? window.fb.auth.currentUser.email : null;
   useEffect(()=>{
-    setPublic(null);setPrivate(null);setPeek(null);setError('');
+    let watching=true;
+    current.current=null;setPublic(null);setPrivate(null);setPeek(null);setError('');
     const fail=e=>{setError(e.message||'Unable to load the table');showToast(e.message||'Unable to load the table','error');};
     const pub=window.fb.onSnapshot(window.fb.doc(window.fb.db,'tables',tableDocId),snap=>{
+      if(!watching)return;
       if(!snap.exists()){showToast('The table closed','info');onLeave();return;}
       const t={...snap.data(),id:snap.id,docId:snap.id};
       if(t.cardGameVersion!==1){setError('This is a legacy table. Open a new table from the lobby.');return;}
       current.current=t;setPublic(t);
     },fail);
-    const priv=window.fb.onSnapshot(window.fb.doc(window.fb.db,'tables',tableDocId,'priv',user.uid),snap=>setPrivate(snap.exists()?snap.data():null),fail);
-    return()=>{pub();priv();};
+    const priv=window.fb.onSnapshot(window.fb.doc(window.fb.db,'tables',tableDocId,'priv',user.uid),snap=>{
+      if(watching)setPrivate(snap.exists()?{tableId:tableDocId,uid:user.uid,data:snap.data()}:null);
+    },fail);
+    return()=>{watching=false;pub();priv();};
   },[tableDocId,user.uid]);
   useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),1000);return()=>clearInterval(timer);},[]);
   useEffect(()=>{
-    if(!publicState||!wantPeek||!isGodUser(user)){setPeek(null);return;}
+    setPeek(null);
+    if(!peekEmail || publicState?.id!==tableDocId)return;
     let stopped=false;
-    window.fb.fx('pkCardPeek',{tableId:tableDocId,seq:publicState.seq}).then(p=>{if(!stopped)setPeek(p);}).catch(()=>{if(!stopped)setPeek(null);});
+    const seq=publicState.seq;
+    window.fb.fx('pkCardPeek',{tableId:tableDocId,seq}).then(data=>{
+      if(!stopped && data?.seq===seq && isGodUser(user) && window.fb.auth.currentUser.email===peekEmail)
+        setPeek({tableId:tableDocId,uid:user.uid,email:peekEmail,data});
+    }).catch(()=>{if(!stopped)setPeek(null);});
     return()=>{stopped=true;};
-  },[wantPeek,publicState?.seq,tableDocId,user.uid]);
-  const godView=!!(wantPeek&&isGodUser(user)&&peek&&peek.seq===publicState?.seq);
+  },[peekEmail,publicState?.id,publicState?.seq,tableDocId,user.uid]);
+  const godView=!!(peekEmail && publicState?.id===tableDocId && peek?.tableId===tableDocId &&
+    peek.uid===user.uid && peek.email===peekEmail && peek.data.seq===publicState.seq);
   const table=useMemo(()=>{
-    if(!publicState)return null;
+    if(!publicState || publicState.id!==tableDocId)return null;
     const t={...publicState,players:{...publicState.players},deck:Array.from({length:publicState.deckCount||0},(_,i)=>({id:'stock-'+i,hidden:true}))};
     if(t.players[user.uid]){
       const p={...t.players[user.uid]};
-      if(privateState?.seq===t.seq)Object.assign(p,privateState);
+      if(privateState?.uid===user.uid && privateState.tableId===tableDocId && privateState.data.seq===t.seq)Object.assign(p,privateState.data);
       else if(t.type==='durak')p.cards=[];else p.pending=[];
       t.players[user.uid]=p;
     }
-    if(godView)Object.assign(t,{players:peek.players,deck:peek.deck,pairs:peek.pairs});
+    if(godView)Object.assign(t,{players:peek.data.players,deck:peek.data.deck,pairs:peek.data.pairs});
     return t;
-  },[publicState,privateState,godView,peek,user.uid]);
+  },[publicState,privateState,godView,peek,user.uid,tableDocId]);
   const run=async(op,data={})=>{
     if(lock.current)return false;lock.current=true;setBusy(true);
     try{await pokerCommand('pkCardGame',{tableId:tableDocId,op,...(['play','take','pass','accept','challenge','confirm'].includes(op)?{seq:current.current?.seq}:{}),...data});return true;}
@@ -16878,9 +16904,9 @@ const tourReportBust = async (torId, bustedUids, winnerUids, bountyAmt, payBount
     });
   } catch (e) {}
   for (const [w, amt] of bountyCuts) await creditBalance(w, amt);
-  if (mysteryHit && typeof showToast === 'function') {
+  if (mysteryHit && typeof opts?.showToast === 'function') {
     try {
-      showToast(`🎁 MYSTERY JACKPOT! ${formatMoney(mysteryHit.amount)} bounty!`, "success");
+      opts.showToast(`🎁 MYSTERY JACKPOT! ${formatMoney(mysteryHit.amount)} bounty!`, "success");
     } catch (e2) {}
   }
 };

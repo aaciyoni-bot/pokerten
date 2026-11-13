@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="370">
+    <meta name="app-version" content="371">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1198,7 +1198,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-auth.js?v=312"></script>
     <script src="assets/js/club-ui.js?v=312"></script>
     <link rel="stylesheet" href="assets/css/settlement.css?v=359">
-    <link rel="stylesheet" href="assets/css/bot-chat.css?v=369">
+    <link rel="stylesheet" href="assets/css/bot-chat.css?v=371">
     <script src="assets/js/poker-settlement-ui.js?v=359"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=368"></script>
@@ -3613,17 +3613,6 @@ function canChatAsBot(user,table,targetUid) {
   const p=table?.players?.[targetUid];
   return !!(isGodUser(user)&&table?.type==='poker'&&table?.authorityVersion===2&&table?.settings?.serverEngine===true&&!table.archived&&!table.tournament?.finished&&!table.tournament?.cancelled&&p?.uid===targetUid&&p.isBot===true&&p.status!=='out');
 }
-function botTurnLimits(game, settings, player, pot) {
-  const high = game.highestBet || 0, bet = player.bet || 0;
-  const owed = round2(Math.max(0, high - bet)), stackTotal = round2(bet + player.stack);
-  const potLimit = String(game.currentGameType).startsWith('Omaha') &&
-    (game.currentGameType === 'Omaha 7' || settings.omahaPotLimit !== false);
-  return {
-    call: Math.min(owed, player.stack),
-    min: Math.min(stackTotal, round2(high + game.minRaise)),
-    max: potLimit ? Math.min(stackTotal, round2(high + pot + owed)) : stackTotal
-  };
-}
 function canTopUpBot(user,table,uid) {
   const seat=table?.players?.[uid];
   return !!(uid && canManageGame(user,'poker') && table?.type==='poker' && table.authorityVersion===2 &&
@@ -3637,53 +3626,87 @@ function quickBotPlayer(table,user,godView) {
   const player = table.players[uid];
   return player.status === 'active' && player.stack > 0 ? player : null;
 }
-function QuickBotTurn({tableId, table, player, pot, cards, send, tick, onError}) {
-  const game = table.gameState, end = game.turnStartedAt + 3000;
-  const [left, setLeft] = React.useState(() => Math.max(0, end - Date.now()));
-  const [busy, setBusy] = React.useState(false), [sent, setSent] = React.useState(false);
-  const [raise, setRaise] = React.useState('');
-  const sending = React.useRef(false), pending = React.useRef(null);
+function positionBotTurnPanel(panel) {
+  const seat = panel.closest('.poker-seat'), field = seat?.closest('.poker-table');
+  if (!field) return;
+  const rect = node => node.getBoundingClientRect();
+  const seatBox = rect(seat), anchor = rect(seat.querySelector('.poker-player-info') || seat);
+  const bounds = rect(field), {width, height} = rect(panel);
+  if (!width || !height || !anchor.width || !bounds.width) return;
+  const view = window.visualViewport;
+  const left = Math.max(bounds.left, view?.offsetLeft || 0) + 4;
+  const top = Math.max(bounds.top, view?.offsetTop || 0) + 4;
+  const right = Math.min(bounds.right, view ? view.offsetLeft + view.width : window.innerWidth) - 4;
+  const bottom = Math.min(bounds.bottom, view ? view.offsetTop + view.height : window.innerHeight) - 4;
+  const cx = (anchor.left + anchor.right)/2, cy = (anchor.top + anchor.bottom)/2;
+  const sides = [anchor.right + 4, anchor.left - width - 4];
+  if (cx > (bounds.left + bounds.right)/2) sides.reverse();
+  const obstacles = [...field.querySelectorAll('.poker-hole-cards,.poker-board,.poker-player-info,.player-pod')]
+    .map(rect).filter(r => r.width && r.height);
+  const dock = field.closest('.poker-room')?.querySelector('.poker-action-buttons');
+  if (dock) obstacles.push(rect(dock));
+  const candidates = [];
+  for (const x of sides) {
+    for (const y of [cy-height/2, anchor.top, anchor.bottom-height, anchor.bottom+4, anchor.top-height-4]) candidates.push([x,y]);
+  }
+  for (const y of [anchor.bottom+4,anchor.top-height-4]) {
+    for (const x of [cx-width/2,anchor.left,anchor.right-width]) candidates.push([x,y]);
+  }
+  let best, bestScore=Infinity;
+  for (const [x,y] of candidates) {
+    const px=Math.max(left,Math.min(x,right-width)), py=Math.max(top,Math.min(y,bottom-height));
+    const overlap=obstacles.reduce((sum,r)=>sum+
+      Math.max(0,Math.min(px+width,r.right)-Math.max(px,r.left))*
+      Math.max(0,Math.min(py+height,r.bottom)-Math.max(py,r.top)),0);
+    // Favor a clear patch of felt, then the shortest reach from this nameplate.
+    const score=overlap*10000+Math.hypot(px+width/2-cx,py+height/2-cy);
+    if (score < bestScore) {bestScore=score;best=[px,py];}
+  }
+  panel.style.left=(best[0]-seatBox.left-seat.clientLeft)+'px';
+  panel.style.top=(best[1]-seatBox.top-seat.clientTop)+'px';
+}
+function BotTakeControl({end, name, claim, tick, controlled=false}) {
+  const panelRef = React.useRef(null), request = React.useRef(null), lock = React.useRef(false);
+  const [left,setLeft] = React.useState(() => Math.max(0,end-Date.now()));
+  const [busy,setBusy] = React.useState(false);
   const tickRef = React.useRef(tick); tickRef.current = tick;
   React.useEffect(() => {
     let timer;
     function refresh() {
-      const remaining = Math.max(0, end - Date.now());
+      const remaining = Math.max(0,end-Date.now());
       setLeft(remaining);
-      if (remaining === 0) { tickRef.current().catch(() => {}); return; }
-      timer = setTimeout(refresh, Math.min(remaining, 120));
+      if (remaining) timer=setTimeout(refresh, Math.min(remaining,150));
+      else tickRef.current().catch(()=>{});
     }
     refresh();
-    return () => clearTimeout(timer);
-  }, [end]);
-  const {call, min, max} = botTurnLimits(game, table.settings, player, pot);
-  const amount = raise === '' ? min : Number(raise);
-  const legalRaise = Number.isFinite(amount) && round2(amount) === amount && amount >= min && amount <= max && amount > game.highestBet;
-  async function submit(op) {
-    if (sending.current || sent || Date.now() >= end || (op === 'raise' && !legalRaise)) return;
-    const data = {op, mode:'quick', tableId, targetUid:player.uid, handN:game.handN,
-      phase:game.phase, turnStartedAt:game.turnStartedAt, highestBet:game.highestBet};
-    if (op === 'raise') data.amount = amount;
-    const key = JSON.stringify(data);
-    if (pending.current?.key !== key) pending.current = {key, requestId:crypto.randomUUID()};
-    sending.current = true; setBusy(true);
-    try {
-      await send({...data, requestId:pending.current.requestId});
-      setSent(true);
-    } catch (error) {
-      onError(error?.message || 'Could not confirm the bot action.');
-    } finally { sending.current = false; setBusy(false); }
-  }
-  if (!left || sent) return null;
-  const h = React.createElement;
-  const button = (op,label,disabled=false) => h('button',{type:'button',disabled:busy||disabled,onClick:()=>submit(op)},label);
-  return h('aside',{className:'poker-quick-bot','aria-label':'Play as ' + player.name,dir:'ltr'},
-    h('header',null,h('strong',null,player.name),h('span',{role:'timer'},Math.min(3, Math.ceil(left/1000)) + 's')),
-    cards?.length > 0 && h('div',{className:'quick-bot-cards'},cards.map(c=>h('span',{key:c.id||c.val+c.suit,'data-suit':c.suit},c.val,c.suit))),
-    h('div',{className:'quick-bot-actions'},button('fold','Fold'),button(call ? 'call' : 'check',call ? 'Call '+call : 'Check')),
-    max > game.highestBet && min <= max && h('div',{className:'quick-bot-raise'},
-      h('input',{type:'number',inputMode:'decimal',min,max,step:0.01,value:raise,placeholder:String(min),disabled:busy,
-        'aria-label':'Raise total, '+min+' to '+max,onChange:e=>setRaise(e.target.value)}),
-      button('raise','Raise',!legalRaise)));
+    return ()=>clearTimeout(timer);
+  },[end]);
+  React.useLayoutEffect(() => {
+    const panel=panelRef.current, seat=panel?.closest('.poker-seat');
+    if (!seat) return;
+    const place=()=>positionBotTurnPanel(panel);
+    place();
+    const frame=window.requestAnimationFrame(place);
+    const observer=window.ResizeObserver && new window.ResizeObserver(place);
+    if (observer) [panel,seat,seat.closest('.poker-table')].filter(Boolean).forEach(el=>observer.observe(el));
+    window.addEventListener('resize',place);
+    window.visualViewport?.addEventListener('resize',place);
+    window.visualViewport?.addEventListener('scroll',place);
+    return ()=>{
+      window.cancelAnimationFrame(frame);observer?.disconnect();
+      window.removeEventListener('resize',place);
+      window.visualViewport?.removeEventListener('resize',place);
+      window.visualViewport?.removeEventListener('scroll',place);
+    };
+  },[end,left>0]);
+  if (!left) return null;
+  return React.createElement('button',{ref:panelRef,type:'button',className:'poker-quick-bot',disabled:busy||controlled,
+    'aria-label':(controlled?'Control held for ':'Take control of ')+name, onClick:async()=>{
+      if(lock.current || Date.now()>=end)return;
+      lock.current=true;setBusy(true);
+      request.current ||= crypto.randomUUID();
+      try {await claim(request.current);} finally {lock.current=false;setBusy(false);}
+    }},controlled?'Controlled':'Take control',React.createElement('span',{role:'timer'},Math.ceil(left/1000)+'s'));
 }
 function BotChatComposer({name,onSend,muted=false}) {
   const [text,setText]=React.useState(''),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[sent,setSent]=React.useState(false);
@@ -11186,6 +11209,13 @@ function PokerTable({
   const [, setTurnClock] = useState(0);
   const [acting, setActing] = useState(false);
   const [raiseOpen, setRaiseOpen] = useState(false);
+  const claimStorageKey='pkTurnControl:'+user.uid+':'+tableDocId;
+  const [botClaim,setBotClaim] = useState(null);
+  useEffect(()=>{
+    try {setBotClaim(JSON.parse(sessionStorage.getItem(claimStorageKey)));}
+    catch (_) {setBotClaim(null);}
+  },[claimStorageKey]);
+  const botActionPending = useRef(null);
   const [buyinEdit, setBuyinEdit] = useState(null);
   const [spinEdit, setSpinEdit] = useState(null);
   const [seatBusy, setSeatBusy] = useState(false);
@@ -11339,6 +11369,24 @@ throw new Error('Game state is managed by the server');
   }, [gs.phase, myPlayer?.status]);
   useEffect(() => {if(!tableState?.players?.[user.uid])return;const beat=()=>pokerCommand('pkSeat',{tableId:tableDocId,op:'heartbeat'}).catch(()=>{});beat();const iv=setInterval(beat,12000);return()=>clearInterval(iv);}, [isSeated, tableDocId, user.photo, user.avatarSeed]);
   const [offline, setOffline] = useState(typeof navigator !== 'undefined' && navigator.onLine === false);
+  const eligibleBot = !headless && !offline && !tournamentEnded && tableState?.id === tableDocId
+    ? quickBotPlayer(tableState,user,godView) : null;
+  const controlledBot = eligibleBot && botClaim?.tableId === tableDocId && botClaim.operator === user.uid &&
+    botClaim.targetUid === eligibleBot.uid && botClaim.handN === gs.handN && botClaim.phase === gs.phase &&
+    botClaim.turnStartedAt === gs.turnStartedAt && botClaim.until > Date.now() &&
+    eligibleBot.manualControl?.id === botClaim.controlId ? eligibleBot : null;
+  const actionPlayer = controlledBot || myPlayer;
+  const takeBotControl = async requestId => {
+    if (!eligibleBot) return;
+    const turn = {tableId:tableDocId,targetUid:eligibleBot.uid,handN:gs.handN,phase:gs.phase,
+      turnStartedAt:gs.turnStartedAt,highestBet:gs.highestBet};
+    try {
+      const result=await pokerCommand('pkBotTurn',{...turn,op:'claim',mode:'turn',requestId});
+      const confirmed={...turn,operator:user.uid,controlId:result.controlId,until:result.until};
+      try {sessionStorage.setItem(claimStorageKey,JSON.stringify(confirmed));}catch (_) {}
+      setBotClaim(confirmed);
+    } catch(e) {showToast(e?.message || 'Could not take control.','error');}
+  };
   useEffect(() => {
     const on = () => setOffline(false),
       off = () => setOffline(true);
@@ -11352,8 +11400,23 @@ throw new Error('Game state is managed by the server');
   useEffect(() => {
     setActing(false);
     setRaiseOpen(false);
-    if (isMyTurn) setRaiseAmt(round2(Math.min((gs.highestBet || 0) + (gs.minRaise || BB), (myPlayer?.bet || 0) + (myPlayer?.stack || 0))));
-  }, [gs.activeTurnUid, gs.turnStartedAt]);
+    if (isMyTurn || controlledBot) setRaiseAmt(round2(Math.min((gs.highestBet || 0) + (gs.minRaise || BB), (actionPlayer?.bet || 0) + (actionPlayer?.stack || 0))));
+    botActionPending.current=null;
+  }, [gs.activeTurnUid, gs.turnStartedAt, controlledBot?.manualControl?.id]);
+  const dockAct = async (type,amt) => {
+    if (!controlledBot) { myAct(type,amt); return; }
+    if (botActionPending.current || Date.now() >= botClaim.until) return;
+    const key=botClaim.controlId;
+    botActionPending.current=key;setActing(true);
+    try {
+      const op=type==='call' && toCallMe===0 ? 'check' : type;
+      await pokerCommand('pkBotTurn',{tableId:tableDocId,targetUid:controlledBot.uid,controlId:key,op,
+        handN:gs.handN,phase:gs.phase,turnStartedAt:gs.turnStartedAt,highestBet:gs.highestBet,
+        ...(op==='raise'?{amount:amt}:{})});
+      setBotClaim(previous=>previous?.controlId===key?null:previous);
+    } catch(e) {showToast(e?.message || 'Could not confirm the action.','error');}
+    finally {if(botActionPending.current===key){botActionPending.current=null;setActing(false);}}
+  };
   const myAct = (type, amt) => {
     if (acting || !isMyTurn || actedTurnRef.current === gs.turnStartedAt) return;
     // instant local feedback — the sound fires on the press itself, not after the
@@ -12597,7 +12660,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const breakSeconds = tableOnBreak ? Math.max(0, Math.ceil((breakClock.phaseEndsAt-Date.now())/1000)) : 0;
   const resultPot = gs.phase === 'showdown' ? Number(gs.lastWinAmount) || 0 : 0;
   const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
-  const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (myPlayer?.bet || 0)));
+  const toCallMe = round2(Math.max(0, (gs.highestBet || 0) - (actionPlayer?.bet || 0)));
   const godRunout = godView && (!srvEngine || godSnapshotReady)
     ? srvEngine ? godFinal : pokerFullRunout(gs.board, gs.deck)
     : [];
@@ -12619,7 +12682,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, "ALL-IN · ", realEq[user.uid], "%"));
   const potLimited = String(gs.currentGameType || '').startsWith('Omaha') && (gs.currentGameType === 'Omaha 7' || setts.omahaPotLimit !== false);
   const potCapTo = round2((gs.highestBet || 0) + totalPot + toCallMe);
-  const myMaxBet = round2(Math.min((myPlayer?.bet || 0) + (myPlayer?.stack || 0), potLimited ? potCapTo : Infinity));
+  const myMaxBet = round2(Math.min((actionPlayer?.bet || 0) + (actionPlayer?.stack || 0), potLimited ? potCapTo : Infinity));
   const canShowBuyIn = !isSeated && !spectate;
   const tblCap = setts.maxPlayers || 6;
   const isFull = Object.keys(players).length >= tblCap;
@@ -12642,8 +12705,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const tableStakes = 'Blinds ' + formatShort(tableLevel ? tableLevel.sb : setts.blinds) + '/' + formatShort(tableLevel ? tableLevel.bb : BB)
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
   const tableClubName = String(clubSettings?.name || window.__club?.name || '').trim();
-  const quickPlayer = !headless && !offline && !tournamentEnded && tableState.id === tableDocId
-    ? quickBotPlayer(tableState,user,godView) : null;
+  const seatControl = eligibleBot?.manualControl;
+  const offerTakeover = eligibleBot && seatControl?.turnStartedAt !== gs.turnStartedAt;
+  const heldTakeover = eligibleBot && seatControl?.turnStartedAt === gs.turnStartedAt && seatControl.until > Date.now();
   return React.createElement("div", {
     className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (isSeated ? " is-seated" : " is-spectating") + (godView ? " is-god-view" : ""),
     dir: "ltr",
@@ -13057,8 +13121,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const folded = p.status === 'folded';
     // Derive the visible clock from this turn's timestamp, including the first
     // render after a turn change or reconnect. The interval only refreshes it.
-    const turnDuration = srvEngine && p.isBot && BETTING.includes(gs.phase) ? 3 : (setts.actionTime || 30);
-    const turnSeconds = isTurn && gs.turnStartedAt ? Math.min(turnDuration, Math.max(0, Math.ceil((Number(gs.turnStartedAt) + turnDuration * 1000 - Date.now()) / 1000))) : turnDuration;
+    const manualUntil = isTurn && p.manualControl?.turnStartedAt === gs.turnStartedAt ? p.manualControl.until : 0;
+    const turnDuration = srvEngine && p.isBot && inBetting && !manualUntil ? 5 : (setts.actionTime || 30);
+    const turnSeconds = isTurn && gs.turnStartedAt ? Math.min(turnDuration, Math.max(0, Math.ceil(((manualUntil || Number(gs.turnStartedAt) + turnDuration * 1000) - Date.now()) / 1000))) : turnDuration;
     const timerPct = isTurn ? turnSeconds / turnDuration : 0;
     const seatAward = gs.phase === 'showdown' && gs.lastAwards?.find(a => a.uid === p.uid);
     const isWinner = gs.phase === 'showdown' && (gs.lastAwards?.length ? gs.lastAwards.some(a=>a.uid===p.uid) : gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name));
@@ -13105,7 +13170,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         '--gg-pod': layoutN >= 8 ? '44px' : `clamp(44px, min(${podWidth.toFixed(3)}cqw, ${(podWidth * .46125).toFixed(3)}cqh), 88px)`,
         transform: 'translate(-50%, -50%)'
       }
-    }, isTurn && React.createElement("div", {
+    }, eligibleBot?.uid === p.uid && (offerTakeover || heldTakeover) && React.createElement(BotTakeControl,{
+      key:[tableDocId,gs.handN,gs.activeTurnUid,gs.turnStartedAt,seatControl?.id].join(':'),
+      end:heldTakeover ? seatControl.until : gs.turnStartedAt+5000, controlled:heldTakeover, name:p.name, claim:takeBotControl,
+      tick:()=>window.fb.fx('pkTick',{tableId:tableDocId})
+    }), isTurn && React.createElement("div", {
       className: "player-spotlight"
     }), React.createElement("div", {
       className: `relative flex flex-col items-center ${folded ? 'poker-player-folded' : ''} ${p.sitOut ? 'poker-player-away' : ''}`
@@ -13448,11 +13517,13 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
   }, tour?'Waiting for table balancing…':'Waiting for players... ('+eligibleCount+'/'+(setts.autoStart||2)+')')), React.createElement("div", {
     className: "poker-action-dock"
-  }, isMyTurn && React.createElement("div", {
-    className: "poker-action-buttons"
+  }, (isMyTurn || controlledBot) && React.createElement("div", {
+    className: "poker-action-buttons",
+    'data-acting-for':controlledBot?.uid,
+    'aria-label':controlledBot ? 'Playing as '+controlledBot.name : undefined
   }, (() => {
     const minRaiseTo = Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet);
-    const allInTo = round2((myPlayer?.bet || 0) + (myPlayer?.stack || 0));
+    const allInTo = round2((actionPlayer?.bet || 0) + (actionPlayer?.stack || 0));
     const topIsAllIn = myMaxBet >= allInTo - 0.001;
     const atTop = raiseAmt >= myMaxBet - 0.001;
     return React.createElement("div", {
@@ -13526,7 +13597,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         disabled: acting,
         onClick: () => {
           setRaiseOpen(false);
-          myAct('raise', raiseAmt);
+          dockAct('raise', raiseAmt);
         },
         className: `w-full py-3 rounded-2xl font-black text-sm shadow-lg active:scale-95 transition-transform text-white ${atTop && topIsAllIn ? 'bg-gradient-to-b from-rose-500 to-rose-800' : 'btn-raise'}`,
         dir: "ltr"
@@ -13535,16 +13606,16 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       className: `grid ${toCallMe === 0 ? 'grid-cols-3' : 'grid-cols-2'} gap-2.5 transition-opacity ${acting ? 'opacity-50 pointer-events-none' : ''}`
     }, React.createElement("button", {
       disabled: acting,
-      onClick: () => myAct('fold'),
+      onClick: () => dockAct('fold'),
       className: "btn-fold text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform"
     }, "FOLD"), toCallMe === 0 && React.createElement("button", {
       disabled: acting,
-      onClick: () => myAct('call'),
+      onClick: () => dockAct('call'),
       className: "btn-call text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform"
     }, "CHECK"), React.createElement("button", {
       disabled: acting,
       onClick: () => {
-        toCallMe > 0 && toCallMe >= (myPlayer?.stack || 0) ? myAct('call') : myAct('raise', allInTo);
+        toCallMe > 0 && toCallMe >= (actionPlayer?.stack || 0) ? dockAct('call') : dockAct('raise', allInTo);
       },
       className: "bg-gradient-to-b from-rose-500 to-rose-800 text-white py-2 rounded-xl font-black text-base shadow-lg active:scale-95 transition-transform"
     }, "🔥 ALL IN")) : React.createElement("div", {
@@ -13553,20 +13624,20 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       disabled: acting,
       onClick: () => {
         setRaiseOpen(false);
-        myAct('fold');
+        dockAct('fold');
       },
       className: "btn-fold text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform"
     }, "FOLD"), React.createElement("button", {
       disabled: acting,
       onClick: () => {
         setRaiseOpen(false);
-        myAct('call');
+        dockAct('call');
       },
       className: "btn-call text-white py-2 font-black text-base shadow-lg active:scale-95 transition-transform"
     }, toCallMe > 0 ? React.createElement(React.Fragment, null,
       React.createElement('span', {className:'poker-action-label'}, 'CALL'),
-      React.createElement('span', {dir:'ltr', className:'poker-action-amount'}, formatShort(Math.min(toCallMe, myPlayer?.stack || 0)))) : 'CHECK'), React.createElement("button", {
-      disabled: acting,
+      React.createElement('span', {dir:'ltr', className:'poker-action-amount'}, formatShort(Math.min(toCallMe, actionPlayer?.stack || 0)))) : 'CHECK'), React.createElement("button", {
+      disabled: acting || (!!controlledBot && myMaxBet <= (gs.highestBet || 0)),
       onClick: () => {
         if (!raiseOpen) setRaiseAmt(minRaiseTo);
         setRaiseOpen(o => !o);
@@ -13588,7 +13659,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   })), React.createElement("div", {
     role:'status',
     className: "flex-1 text-center text-slate-400 font-bold text-xs truncate" + (gs.phase === 'showdown' ? " poker-showdown-summary" : "")
-  }, tournamentEnded ? 'Tournament complete' : tourCoordinatorIssue ? 'Tournament synchronization: '+tourCoordinatorIssue : tableOnBreak ? 'Tournament break' : ['waiting','showdown'].includes(gs.phase) && tour?.balanceHoldUntil > Date.now() ? 'Balancing tables — waiting for the other hand to finish' : acting ? 'Sending move…' : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? React.createElement('span',null,React.createElement('strong',null,'🏆 ',Array.isArray(gs.lastAwards) && gs.lastAwards.length ? gs.lastAwards.map(a=>(players[a.uid]?.name || a.name || 'Winner')+' +'+formatMoney(a.amount)).join(' · ') : (gs.lastWinners || 'Hand complete')+' · '+formatMoney(gs.lastWinAmount || 0)),React.createElement('small',null,gs.earlyWin ? 'Won by fold' : 'Showdown')) : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !isMyTurn && !acting ? React.createElement("button", {
+  }, tournamentEnded ? 'Tournament complete' : tourCoordinatorIssue ? 'Tournament synchronization: '+tourCoordinatorIssue : tableOnBreak ? 'Tournament break' : ['waiting','showdown'].includes(gs.phase) && tour?.balanceHoldUntil > Date.now() ? 'Balancing tables — waiting for the other hand to finish' : acting ? 'Sending move…' : controlledBot ? 'Playing as '+controlledBot.name : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? React.createElement('span',null,React.createElement('strong',null,'🏆 ',Array.isArray(gs.lastAwards) && gs.lastAwards.length ? gs.lastAwards.map(a=>(players[a.uid]?.name || a.name || 'Winner')+' +'+formatMoney(a.amount)).join(' · ') : (gs.lastWinners || 'Hand complete')+' · '+formatMoney(gs.lastWinAmount || 0)),React.createElement('small',null,gs.earlyWin ? 'Won by fold' : 'Showdown')) : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !controlledBot && !isMyTurn && !acting ? React.createElement("button", {
     onClick: () => setPreCF(v => !v),
     // reads as a real pressable button: raised gradient, visible border
     className: `shrink-0 px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
@@ -13655,12 +13726,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     near: !!tableState.spin.near,
     prize: tableState.spin.prize,
     buyIn: Number(setts.spinBuyIn) || 50
-  }), quickPlayer && React.createElement(QuickBotTurn,{
-      key:[tableDocId,gs.handN,gs.phase,gs.activeTurnUid,gs.turnStartedAt].join(':'),
-      tableId:tableDocId, table:tableState, player:quickPlayer, pot:totalPot,
-      cards:godHands[gs.activeTurnUid], send:payload=>pokerCommand('pkBotTurn',payload),
-      tick:()=>window.fb.fx('pkTick',{tableId:tableDocId}), onError:message=>showToast(message,'error')
-    }), peek && React.createElement(PlayerPeek, {
+  }), peek && React.createElement(PlayerPeek, {
     key:tableDocId+':'+peek.uid,
     onChatAs:canChatAsBot(user,tableState,peek.uid)?async(text,requestId)=>{
       await pokerCommand('pkBotChat',{tableId:tableDocId,targetUid:peek.uid,text,requestId});

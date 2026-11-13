@@ -42,7 +42,7 @@ exports.pkTableCreate=onCall(opts,async r=>{available();return command(r,'table-
 exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(tx,db,uid,now)=>{
  const tid=key(r.data.tableId),ref=db.doc('tables/'+tid),snap=await tx.get(ref);if(!snap.exists)fail('not-found','Table missing');const t=snap.data(),s=t.settings||{},cid=t.clubId||'main';
  if(t.authorityVersion!==2||!s.serverEngine)fail('failed-precondition','Open a protected table');await member(tx,db,cid,r);
- const us=await tx.get(db.doc('users/'+uid)),profile=us.exists?us.data():{},op=r.data.op,pl=t.players||{},p=pl[uid],idle=A.idle(t),patch={},effects=[],waiting=normalizeWaitlist(t,now),humanWaiters=waiting.filter(entry=>entry.isBot!==true);let result={ok:true},avatarEvent=null;
+ const us=await tx.get(db.doc('users/'+uid)),profile=us.exists?us.data():{},op=r.data.op,pl=t.players||{},p=pl[uid],idle=A.idle(t),patch={},effects=[],waiting=normalizeWaitlist(t,now),humanWaiters=waiting.filter(entry=>entry.isBot!==true);let result={ok:true},avatarEvent=null,topUpAudit=null;
  if(['join','wait','addbot','fillbots','topup','rebuy'].includes(op))await A.activeClub(tx,db,cid);
  if(t.tournamentId&&['join','topup','rebuy','addbot','fillbots'].includes(op))fail('failed-precondition','Use tournament registration');
  if(t.closeRequested&&['join','topup','rebuy','addbot','fillbots','wait'].includes(op))fail('failed-precondition','This table is closing after the current hand');
@@ -84,16 +84,31 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
  }else if(op==='floor'){
   const last=(t.chat||[]).filter(m=>m.uid===uid&&m.floor).at(-1);if(last&&now-last.at<60000)fail('resource-exhausted','Floor already called — please wait');
   const entry={uid,name:profile.username||'Player',at:now};patch.floorCall=entry;patch.chat=[...(t.chat||[]).slice(-59),{...entry,text:'',floor:true}];
+ }else if(op==='topup'||op==='rebuy'){
+  let seatUid=uid,seat=p,payer=uid;
+  const forBot=op==='topup' && r.data.botUid!==undefined;
+  if(forBot){
+   await A.tableManager(tx,db,cid,r);
+   seatUid=key(r.data.botUid,'bot');seat=pl[seatUid];
+   if(t.type!=='poker'||t.archived||!seat||seat.uid!==seatUid||seat.isBot!==true||seat.leaveReq||seat.leavingAt||seat.status==='out')fail('failed-precondition','This bot is no longer available for a top-up');
+   payer=A.payee(seat);
+  }
+  if(!seat)fail('failed-precondition','You are not seated');
+  if(s.spinMode)fail('failed-precondition','Spin does not allow top-ups');
+  if(op==='rebuy'&&seat.stack>0)fail('failed-precondition','Use Add chips while you still have chips');
+  if(op==='rebuy'&&seat.pendingTopUp>0)fail('failed-precondition','Your rebuy is already queued for the next hand');
+  const add=number(r.data.amount,NaN,op==='rebuy'?(s.minBuyIn??40*s.blinds*2):.01,10000000);
+  const max=s.maxBuyIn??(s.maxBuyInBB||200)*(Number(s.blinds)||0.5)*2;
+  if(cash(seat.stack+(seat.bet||0)+(seat.pendingTopUp||0)+add)>max)fail('invalid-argument','Buy-in limit exceeded');
+  effects.push({type:'credit',uid:payer,amount:-add});
+  result.queued=!idle;
+  patch[`players.${seatUid}.${idle?'stack':'pendingTopUp'}`]=cash((idle?seat.stack:seat.pendingTopUp||0)+add);
+  patch[`players.${seatUid}.buyTotal`]=cash((seat.buyTotal||0)+add);
+  if(idle){patch[`players.${seatUid}.status`]='waiting';patch[`players.${seatUid}.sitOut`]=false;}
+  if(forBot)topUpAudit={action:'bot-topup',uid,targetUid:seatUid,fundingUid:payer,amount:add,queued:!idle,clubId:cid,tableId:tid,at:now};
  }else{
   if(!p)fail('failed-precondition','You are not seated');
-  if(op==='topup'||op==='rebuy'){
-   if(s.spinMode)fail('failed-precondition','Spin does not allow top-ups');
-   if(op==='rebuy'&&p.stack>0)fail('failed-precondition','Use Add chips while you still have chips');
-   if(op==='rebuy'&&p.pendingTopUp>0)fail('failed-precondition','Your rebuy is already queued for the next hand');
-   const add=number(r.data.amount,NaN,op==='rebuy'?(s.minBuyIn??40*s.blinds*2):.01,10000000),max=s.maxBuyIn??200*s.blinds*2;
-   if(cash(p.stack+(p.bet||0)+(p.pendingTopUp||0)+add)>max)fail('invalid-argument','Buy-in limit exceeded');
-   effects.push({type:'credit',uid,amount:-add});result.queued=!idle;patch[`players.${uid}.${idle?'stack':'pendingTopUp'}`]=cash((idle?p.stack:p.pendingTopUp||0)+add);patch[`players.${uid}.buyTotal`]=cash((p.buyTotal||0)+add);if(idle){patch[`players.${uid}.status`]='waiting';patch[`players.${uid}.sitOut`]=false;}
-  }else if(op==='heartbeat'){
+  if(op==='heartbeat'){
    patch[`players.${uid}.lastSeen`]=now;
    if(us.exists&&!p.isBot){
     const next=appearance(profile,uid);
@@ -113,7 +128,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   else if(op==='sitout'){patch[`players.${uid}.${idle?'sitOut':'sitOutNext'}`]=true;patch[`players.${uid}.sitOutAt`]=now;}
   else fail('invalid-argument','Unknown seat operation');
  }
- const write=await prepareLedger(db,tx,cid,effects,tid,now);write();if(avatarEvent)tx.update(avatarEvent.ref,avatarEvent.patch);patch['gameState.__seq']=(t.gameState?.__seq||0)+1;tx.update(ref,patch);return result;
+ const write=await prepareLedger(db,tx,cid,effects,tid,now);write();if(topUpAudit)tx.set(db.collection('_pkAudit').doc(),topUpAudit);if(avatarEvent)tx.update(avatarEvent.ref,avatarEvent.patch);patch['gameState.__seq']=(t.gameState?.__seq||0)+1;tx.update(ref,patch);return result;
 });});
 exports.pkJoinClub=onCall(opts,async r=>{const uid=A.uid(r),cid=key(r.data?.clubId),db=require('firebase-admin/firestore').getFirestore();return db.runTransaction(async tx=>{
  const [c,m,u]=await tx.getAll(db.doc('clubs/'+cid),db.doc(`memberships/${uid}_${cid}`),db.doc('users/'+uid));if(!c.exists||!u.exists)fail('not-found','Club or profile missing');A.assertClubOpen(c.data());if(m.exists)return{status:m.data().status};const p=u.data(),admin=root(r)||c.data().ownerUid===uid;let referral={};if(r.data.agentUid){const a=await tx.get(db.doc(`memberships/${key(r.data.agentUid)}_${cid}`));if(!a.exists||!['agent','manager'].includes(a.data().role)||a.data().status!=='approved')fail('failed-precondition','Agent is not approved');referral={agentUid:a.data().uid,agentPct:number(a.data().agentSharePct,50,0,100)};}

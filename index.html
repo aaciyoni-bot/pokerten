@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="369">
+    <meta name="app-version" content="370">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -3624,6 +3624,12 @@ function botTurnLimits(game, settings, player, pot) {
     max: potLimit ? Math.min(stackTotal, round2(high + pot + owed)) : stackTotal
   };
 }
+function canTopUpBot(user,table,uid) {
+  const seat=table?.players?.[uid];
+  return !!(uid && canManageGame(user,'poker') && table?.type==='poker' && table.authorityVersion===2 &&
+    table.settings?.serverEngine && !table.tournamentId && !table.settings.spinMode && !table.closeRequested && !table.archived &&
+    seat?.uid===uid && seat.isBot===true && seat.fundingUid && !seat.leaveReq && !seat.leavingAt && seat.status!=='out');
+}
 function quickBotPlayer(table,user,godView) {
   const game = table?.gameState, uid = game?.activeTurnUid;
   if (!uid || !godView || table.spinDone || !Number.isFinite(game.turnStartedAt) || game.allInReveal ||
@@ -3701,6 +3707,7 @@ const PlayerPeek = ({
   clubId,
   onKick,
   onChatAs,
+  onBotTopUp,
   chatMuted = false
 }) => {
   const [mi, setMi] = React.useState(null);
@@ -3737,6 +3744,7 @@ const PlayerPeek = ({
     className: "w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white text-xs font-black shrink-0"
   }, "✕")),
     onChatAs && React.createElement("button",{type:"button",className:"w-full mt-2.5 bg-teal-950 border border-teal-400/40 text-teal-200 py-2 rounded-xl font-black text-xs",onClick:()=>setCompose(v=>!v),"aria-expanded":compose},"Write as "+peek.name),onChatAs&&compose&&React.createElement(BotChatComposer,{name:peek.name,onSend:onChatAs,muted:chatMuted}),
+    onBotTopUp && React.createElement('button',{type:'button',onClick:onBotTopUp,className:'w-full mt-2 bg-emerald-950 border border-emerald-400/40 text-emerald-200 py-2 rounded-xl font-black text-xs'},'Add chips'),
     React.createElement("div", {
     className: "text-[10px] font-black text-amber-300 mb-2"
   }, "💍 ", doneCount, "/", MISSIONS.length, " rings"), React.createElement("div", {
@@ -11194,6 +11202,7 @@ function PokerTable({
     resolve
   }));
   const [topUpBox, setTopUpBox] = useState(null);
+  const topUpPending = useRef(false);
   const [rebuyBusy, setRebuyBusy] = useState(false);
   const tableRef = useRef(null);
   const tableSessionRef = useRef(null);
@@ -11979,31 +11988,34 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amount:Number(buy
   const toggleSitOut = async () => {
 try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'sitout'});}catch(e){showToast(e.message||String(e),'error');}
 };
-  const topUpChips = () => {
+  const topUpChips = (botUid) => {
     const t = tableRef.current;
-    if (!t || t.tournamentId) return;
-    if ((t.settings || {}).spinMode) return showToast("Spin & Cash plays with tournament chips — no top-ups", "info");
-    const BBv = round2((Number(setts.blinds) || 1) * 2);
-    const maxBuy2 = buyInMax(setts);
-    const meP = t.players[user.uid];
-    if (!meP) return;
-    const pend = round2(meP.pendingTopUp || 0);
-    const room = round2(maxBuy2 - (meP.stack || 0) - (meP.bet || 0) - pend);
-    if (room <= 0) return showToast(`You're at the table cap (${formatMoney(maxBuy2)})`, "info");
-    const inHand = !['waiting', 'showdown'].includes((t.gameState || {}).phase) || (t.gameState?.pots || []).some(p=>p.amount>0) || Object.values(t.players||{}).some(p=>p.bet>0);
-    setTopUpBox({
-      room,
-      inHand,
-      val: String(Math.min(room, BBv * 50))
-    });
+    if (!t || t.tournamentId || topUpPending.current) return;
+    if (t.settings?.spinMode) return showToast('Spin does not allow top-ups.', 'info');
+    if (botUid && !canTopUpBot(user,t,botUid)) return;
+    const seat = t.players[botUid || user.uid];
+    if (!seat) return;
+    const max = buyInMax(t.settings);
+    const room = round2(max - seat.stack - (seat.bet || 0) - (seat.pendingTopUp || 0));
+    if (room <= 0) return showToast((botUid ? seat.name : 'You') + ' · Table limit ' + formatMoney(max), 'info');
+    const inHand = !['waiting','showdown'].includes(t.gameState?.phase || 'waiting') ||
+      t.gameState?.pots?.some(p=>p.amount>0) || Object.values(t.players).some(p=>p.bet>0);
+    if (botUid) setPeek(null);
+    setTopUpBox({tableId:tableDocId, botUid, name:botUid ? seat.name : '', room, inHand,
+      val:String(Math.min(room, (Number(t.settings?.blinds)||0.5)*100)), requestId:crypto.randomUUID(), busy:false});
   };
-  const doTopUp = async (amount, inHand, room) => {
-try{const result=await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amount:Number(amount)});showToast(result.queued?'Chips purchased; added after this hand.':'Chips added.','success');setTopUpBox(null);}catch(e){showToast(e.message||String(e),'error');}
-};
-  const kickSeat = async (uid, byAdmin) => {
-    if(byAdmin!==true || !canManageGame(user,'poker') || uid===user.uid)return;
-    try{await window.fb.fx('pkLeave',{tableId:tableDocId,targetUid:uid,intent:'kick'});}
-    catch(e){showToast(e.message||String(e),'error');}
+  const doTopUp = async box => {
+    const amount = Number(box.val);
+    if (topUpPending.current || box.tableId!==tableDocId || !(amount>0 && amount<=box.room && round2(amount)===amount)) return;
+    topUpPending.current=true;
+    setTopUpBox({...box,busy:true,error:''});
+    try {
+      const result=await pokerCommand('pkSeat',{tableId:box.tableId,op:'topup',amount,requestId:box.requestId,...(box.botUid?{botUid:box.botUid}:{})});
+      showToast((box.name?box.name+' · ':'') + (result.queued?'Chips added for the next hand.':'Chips added.'),'success');
+      setTopUpBox(null);
+    } catch(e) {
+      setTopUpBox({...box,busy:false,error:e?.message || 'Could not confirm the purchase. Try again.'});
+    } finally { topUpPending.current=false; }
   };
   // Queued departures and idle seats are reaped by the authoritative server.
   // A player's browser must never issue admin kicks for other players.
@@ -12758,53 +12770,51 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       setConfirmBox(null);
     },
     className: "flex-1 bg-gradient-to-b from-rose-600 to-rose-800 hover:from-rose-500 text-white py-3 rounded-2xl font-black shadow-lg"
-  }, "Yes")))), document.body), topUpBox && ReactDOM.createPortal(React.createElement("div", {
+  }, "Yes")))), document.body), topUpBox && topUpBox.tableId===tableDocId && ReactDOM.createPortal(React.createElement("div", {
     className: "fixed inset-0 z-[2000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4",
-    onClick: () => setTopUpBox(null)
+    onClick: () => {if(!topUpPending.current)setTopUpBox(null);}
   }, React.createElement("div", {
+    role:'dialog','aria-modal':true,'aria-label':topUpBox.name?'Add chips · '+topUpBox.name:'Add chips',
     className: "glass-panel rounded-3xl p-6 w-full max-w-xs text-center border border-emerald-500/30 animate-pop-in",
     onClick: e => e.stopPropagation()
   }, React.createElement("div", {
     className: "text-2xl mb-1"
   }, "💰"), React.createElement("h3", {
     className: "text-white font-black text-lg mb-1"
-  }, "Add chips"), React.createElement("p", {
+  }, topUpBox.name ? "Add chips · "+topUpBox.name : "Add chips"), React.createElement("p", {
     className: "text-slate-400 text-xs font-bold mb-4"
-  }, topUpBox.inHand ? 'Applied to your stack at the end of this hand' : 'Added to your stack now', " · max ", formatMoney(topUpBox.room)), React.createElement("input", {
+  }, topUpBox.inHand ? 'Available next hand' : 'Added to the stack now', " · max ", formatMoney(topUpBox.room)), React.createElement("input", {
     type: "number",
     inputMode: "decimal",
     autoFocus: true,
     value: topUpBox.val,
-    min: 0,
+    min: 0.01, step:0.01, disabled:topUpBox.busy,
     max: topUpBox.room,
     onChange: e => setTopUpBox({
       ...topUpBox,
-      val: e.target.value
+      requestId:crypto.randomUUID(), error:'', val: e.target.value
     }),
     className: "w-full bg-slate-900 text-white text-center text-xl font-black border border-emerald-600/40 rounded-2xl p-3 outline-none focus:border-emerald-400 mb-2",
     dir: "ltr"
   }), React.createElement("div", {
     className: "flex gap-1.5 mb-4 justify-center"
   }, [0.25, 0.5, 1].map(fr => React.createElement("button", {
-    key: fr,
+    key: fr, disabled:topUpBox.busy,
     onClick: () => setTopUpBox({
       ...topUpBox,
-      val: String(round2(topUpBox.room * fr))
+      requestId:crypto.randomUUID(), error:'', val: String(round2(topUpBox.room * fr))
     }),
     className: "flex-1 text-[10px] bg-slate-800 border border-white/10 px-2 py-1.5 rounded-lg font-black text-slate-300"
   }, fr === 1 ? 'MAX' : `${fr * 100}%`))), React.createElement("div", {
     className: "flex gap-2.5"
   }, React.createElement("button", {
-    onClick: () => setTopUpBox(null),
+    onClick: () => {if(!topUpPending.current)setTopUpBox(null);},
     className: "flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Cancel"), React.createElement("button", {
-    onClick: () => {
-      const b = topUpBox;
-      setTopUpBox(null);
-      doTopUp(b.val, b.inHand, b.room);
-    },
+    disabled:topUpBox.busy || !(Number(topUpBox.val)>0 && Number(topUpBox.val)<=topUpBox.room && round2(Number(topUpBox.val))===Number(topUpBox.val)),
+    onClick:()=>doTopUp(topUpBox),
     className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-slate-900 py-3 rounded-2xl font-black shadow-lg"
-  }, "Add")))), document.body), React.createElement("div", {
+  }, topUpBox.busy?"Adding…":"Add")), topUpBox.error && React.createElement("p",{role:"alert",className:"mt-2 text-rose-200 text-xs"},topUpBox.error))), document.body), React.createElement("div", {
     className: "pt-stage flex-1 relative flex items-center justify-center px-0 pt-0 pb-0 sm:p-5 min-h-0"
   }, React.createElement("div", {
     'data-seat-count': layoutN,
@@ -13656,6 +13666,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       await pokerCommand('pkBotChat',{tableId:tableDocId,targetUid:peek.uid,text,requestId});
       playSnd('msg');
     }:null,
+    onBotTopUp:canTopUpBot(user,tableState,peek.uid)?()=>topUpChips(peek.uid):null,
     chatMuted:ch.chatMuted,
     peek: peek,
     onClose: () => setPeek(null),

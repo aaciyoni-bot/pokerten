@@ -41,6 +41,7 @@ function fixture(seed=1){
   wait:id=>access.pkSeat({auth:auth('human'),data:{op:'wait',tableId:id,amount:100,requestId:'manual-wait-request-'+(++request)}}),
   act:(id,action)=>{const g=docs.get('tables/'+id).gameState;return engineApi.pkAct({auth:auth(g.activeTurnUid),data:{tableId:id,action,requestId:"showdown-action-"+(++request),expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}}});},
   profile:patch=>profileApi.pkProfile({auth:auth('human'),data:{patch,requestId:'profile-update-'+(++request)}}),
+  topUp:(id,uid,botUid,amount,requestId='bot-topup-request-'+(++request))=>access.pkSeat({auth:auth(uid),data:{tableId:id,op:'topup',botUid,amount,requestId}}),
   seatOp:(id,op,extra={})=>access.pkSeat({auth:auth('human'),data:{tableId:id,op,...extra,requestId:'seat-operation-'+(++request)}}),
   joinClub:clubId=>access.pkJoinClub({auth:auth('human'),data:{clubId}}),
   seat:(id,uid='human')=>access.pkSeat({auth:auth(uid),data:{tableId:id,op:'join',amount:100,requestId:'join-player-request-'+(++request)}}),
@@ -261,4 +262,42 @@ test('chosen profile avatar reaches cash/Spin seats and repairs a seated player 
   f.docs.set('clubs/newClub',{ownerUid:'owner'});await f.profile({avatarSeed:'av3d::professor',photo:''});await f.joinClub('newClub');
   assert.equal(f.docs.get('memberships/human_newClub').avatarSeed,'av3d::professor');
  }
+});
+
+test('cash bot top-ups use its sponsor, queue during play and replay a single receipt', async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:2,maxBuyIn:500});
+ const botUid=Object.keys(f.table(id).players)[0];
+ f.docs.set('memberships/manager_clubA',{uid:'manager',clubId:'clubA',role:'manager',status:'approved',balance:17});
+ f.docs.set('memberships/sponsor_clubA',{uid:'sponsor',clubId:'clubA',role:'player',status:'approved',balance:40});
+ f.table(id).players[botUid].fundingUid='sponsor';
+ const owner=f.balance('owner'),initial=f.table(id).players[botUid].stack;
+ const idle=await f.topUp(id,'manager',botUid,5.25);
+ assert.equal(idle.queued,false);assert.equal(f.table(id).players[botUid].stack,initial+5.25);
+ await f.tick(id);const before=copy(f.table(id)),b=before.players[botUid];
+ const receipt='cash-bot-topup-request-replay';
+ const result=await f.topUp(id,'manager',botUid,24.75,receipt);
+ assert.equal(result.queued,true);await f.topUp(id,'manager',botUid,24.75,receipt);
+ let t=f.table(id),seat=t.players[botUid];
+ assert.equal(f.balance('sponsor'),10);assert.equal(f.balance('owner'),owner);assert.equal(f.balance('manager'),17);
+ assert.equal(seat.stack,b.stack);assert.equal(seat.bet,b.bet);assert.equal(seat.pendingTopUp,24.75);assert.equal(seat.buyTotal,b.buyTotal+24.75);
+ assert.equal(t.gameState.activeTurnUid,before.gameState.activeTurnUid);assert.deepEqual(t.gameState.pots,before.gameState.pots);
+ await assert.rejects(f.topUp(id,'manager',botUid,5,receipt),/already used/);
+ await assert.rejects(f.topUp(id,'manager',botUid,11));assert.equal(f.balance('sponsor'),10);
+ assert.equal([...f.docs.values()].filter(d=>d.action==='bot-topup'&&d.targetUid===botUid&&d.fundingUid==='sponsor').length,2);
+ await f.act(id,'fold');t=f.table(id);const settled=t.players[botUid].stack;
+ f.advance(require('../pokerTournamentCore').showdownDelay(t.gameState)+5);await f.tick(id);
+ seat=f.table(id).players[botUid];assert.equal(seat.pendingTopUp,0);assert.equal(seat.stack+seat.bet,settled+24.75);
+});
+
+test('bot funding rejects non-managers, human targets, closing tables, tournament chips and over-cap requests',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:3,maxBuyIn:200},1);
+ await f.seat(id);const botUid=Object.keys(f.table(id).players).find(u=>f.table(id).players[u].isBot);
+ const bank=f.balance('owner'),t=f.table(id);
+ await assert.rejects(f.topUp(id,'human',botUid,1),{code:'permission-denied'});
+ await assert.rejects(f.topUp(id,'owner','human',1),{code:'failed-precondition'});
+ await assert.rejects(f.topUp(id,'owner','gone',1),{code:'failed-precondition'});
+ await assert.rejects(f.topUp(id,'owner',botUid,201),{code:'invalid-argument'});
+ t.settings.spinMode=true;await assert.rejects(f.topUp(id,'owner',botUid,1),/Spin/);t.settings.spinMode=false;
+ t.tournamentId='event';await assert.rejects(f.topUp(id,'owner',botUid,1),/tournament/);delete t.tournamentId;
+ t.closeRequested={by:'owner'};await assert.rejects(f.topUp(id,'owner',botUid,1),/closing/);assert.equal(f.balance('owner'),bank);
 });

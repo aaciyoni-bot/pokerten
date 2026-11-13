@@ -7,7 +7,7 @@ const React=require('react'),{createRoot}=require('react-dom/client'),{Simulate}
 w.eval('const {useState,useEffect,useRef,useMemo}=React;const round2=n=>Math.round(n*100)/100;const isGodUser=u=>u.god===true;const MISSIONS=[];const botMissions=()=>({});const canManageGame=()=>false;'+
  html.slice(html.indexOf('function canChatAsBot('),html.indexOf('const SPIN_SEGS ='))+
  html.slice(html.indexOf('function useTableChat('),html.indexOf('function ChatPanel('))+
- '\nwindow.testApi={canChatAsBot,BotChatComposer,QuickBotTurn,quickBotPlayer,PlayerPeek,useTableChat};');
+ '\nwindow.testApi={canChatAsBot,BotChatComposer,BotTakeControl,quickBotPlayer,positionBotTurnPanel,PlayerPeek,useTableChat};');
 const api=w.testApi,root=createRoot(w.document.getElementById('root')),doc=w.document;
 const table={type:'poker',authorityVersion:2,settings:{serverEngine:true},players:{b:{uid:'b',name:'Alex',isBot:true,status:'active'},h:{uid:'h',isBot:false}}};
 let calls=[],complete;
@@ -37,30 +37,38 @@ const mountProfile=async(user,target='b',muted=false)=>React.act(()=>root.render
  input=doc.querySelector('textarea');assert.equal(input.value,'','changing profile clears its previous draft');assert.equal(input.disabled,true);assert.match(doc.body.textContent,/Table chat is muted/);
  const turnTable={...table,gameState:{handN:7,phase:'preflop',activeTurnUid:'b',turnStartedAt:10000,highestBet:2,minRaise:2,currentGameType:'Omaha 7'}};
  const bot={...table.players.b,bet:0,stack:100};turnTable.players={...table.players,b:bot};
- const moves=[], errors=[];let ticks=0, now=10000;
+ const moves=[];let ticks=0, now=10000;
  const oldNow=w.Date.now;w.Date.now=()=>now;
- function panel(){
-   const player=api.quickBotPlayer(turnTable,{god:true},true);
-   return React.act(()=>root.render(player && React.createElement(api.QuickBotTurn,{
-     key:turnTable.gameState.turnStartedAt,table:turnTable,tableId:'table-a',player,pot:2,cards:[{val:'A',suit:'♠'}],
-     send:async p=>{moves.push(p);},tick:async()=>{ticks++;},onError:m=>errors.push(m)
-   })));
- }
- const btn=label=>[...doc.querySelectorAll('button')].find(b=>b.textContent===label);
+ const panel=()=>React.act(()=>root.render(React.createElement(api.BotTakeControl,{
+   key:turnTable.gameState.turnStartedAt,end:turnTable.gameState.turnStartedAt+5000,name:bot.name,
+   claim:async id=>moves.push(id),tick:async()=>{ticks++;}
+ })));
  assert.equal(api.quickBotPlayer(turnTable,{god:false},true),null);
  assert.equal(api.quickBotPlayer(turnTable,{god:true},false),null);
- await panel();assert.equal(doc.querySelector('[role=timer]').textContent,'3s');assert.ok(btn('Fold'));assert.ok(btn('Call 2'));assert.equal(btn('Check'),undefined);
- assert.match(doc.querySelector('aside').textContent,/A♠/);
- const inputAmount=doc.querySelector('input[type=number]');assert.equal(inputAmount.min,'4');assert.equal(inputAmount.max,'6');
- await React.act(()=>Simulate.change(inputAmount,{target:{value:'7'}}));assert.ok(btn('Raise').disabled);
- await React.act(()=>Simulate.change(inputAmount,{target:{value:'6'}}));await React.act(()=>btn('Raise').click());
- assert.equal(moves.length,1);assert.equal(moves[0].op,'raise');assert.equal(moves[0].mode,'quick');assert.equal(moves[0].amount,6);
- assert.equal(moves[0].targetUid,'b');assert.equal(doc.querySelector('aside'),null);
- bot.bet=2;now=11000;turnTable.gameState.turnStartedAt=11000;await panel();assert.ok(btn('Check'));
- now=14000;await React.act(()=>btn('Check').click());assert.equal(moves.length,1);
- await React.act(async()=>{await new Promise(r=>setTimeout(r,160));});assert.equal(ticks,1);
- assert.equal(doc.querySelector('aside'),null);w.Date.now=oldNow;assert.deepEqual(errors,[]);
+ await panel();assert.equal(doc.querySelector('[role=timer]').textContent,'5s');
+ now=14999;await React.act(()=>doc.querySelector('[aria-label="Take control of Alex"]').click());
+ assert.equal(moves.length,1);assert.ok(moves[0].length>=16);
+ now=15000;await React.act(()=>doc.querySelector('[aria-label="Take control of Alex"]').click());
+ assert.equal(moves.length,1);await React.act(async()=>{await new Promise(r=>setTimeout(r,170));});
+ assert.equal(ticks,1);assert.equal(doc.querySelector('.poker-quick-bot'),null);w.Date.now=oldNow;
  turnTable.gameState.activeTurnUid='h';assert.equal(api.quickBotPlayer(turnTable,{god:true},true),null);
+ // Geometry is viewport based, while the button itself lives inside the active seat.
+ const rect=(left,top,width,height)=>({left,top,width,height,right:left+width,bottom:top+height});
+ for(const width of [320,393,768]){
+   for(const side of ['left','right','top','bottom']){
+     const x=side==='left'?10:side==='right'?width-80:width/2-35;
+     const y=side==='top'?50:side==='bottom'?560:300;
+     const seatBox=rect(x,y,70,62), anchor=rect(x,y+42,70,20), fan=rect(x,y-30,70,30);
+     const el=r=>({getBoundingClientRect:()=>r});
+     const field={getBoundingClientRect:()=>rect(0,0,width,640),querySelectorAll:()=>[el(anchor),el(seatBox),el(fan)],closest:()=>null};
+     const seat={getBoundingClientRect:()=>seatBox,querySelector:()=>el(anchor),closest:()=>field,clientLeft:0,clientTop:0};
+     const badge={getBoundingClientRect:()=>rect(x,y,100,34),closest:()=>seat,style:{}};
+     api.positionBotTurnPanel(badge);const px=x+parseFloat(badge.style.left),py=y+parseFloat(badge.style.top);
+     assert.ok(px>=0 && px+100<=width && py>=0 && py+34<=640);
+     for(const obstacle of [anchor,fan])assert.ok(px>=obstacle.right||px+100<=obstacle.left||py>=obstacle.bottom||py+34<=obstacle.top);
+     assert.ok(Math.hypot(px+50-anchor.left-35,py+17-anchor.top-10)<115,'button stays near this nameplate');
+   }
+ }
  let hook;
  function ChatProbe({state}){hook=api.useTableChat(state,'t',{uid:'me'},'poker',()=>{});return null;}
  const old=Array.from({length:60},(_,i)=>({uid:'h',text:'Old '+i,at:0}));

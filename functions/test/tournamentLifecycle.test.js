@@ -511,7 +511,7 @@ test('off-turn claims, check, call, fold, delegation and automatic recovery use 
     await assert.rejects(command(op,{controlId}),{code:'failed-precondition'});
     table().gameState.activeTurnUid='botA';
     if (op==='check') table().players.botA.bet=2;
-    await f.engine.tickTable('tableA',start+2999);
+    await f.engine.tickTable('tableA',start+4999);
     assert.equal(table().gameState.activeTurnUid,'botA','automatic tick waits during manual control');
     await command(op,{controlId});
     assert.notEqual(table().gameState.activeTurnUid,'botA');
@@ -521,7 +521,7 @@ test('off-turn claims, check, call, fold, delegation and automatic recovery use 
   }
   const {f,table,command}=manualHandFixture(),start=table().gameState.turnStartedAt;
   const {controlId}=await command('claim');
-  f.advance(3000);
+  f.advance(5000);
   await assert.rejects(command('fold',{controlId}),{code:'failed-precondition'});
   await f.engine.tickTable('tableA',f.now());
   assert.notEqual(table().gameState.activeTurnUid,'botA');
@@ -533,7 +533,7 @@ test('off-turn claims, check, call, fold, delegation and automatic recovery use 
   await assert.rejects(fresh.command('fold',{controlId:claim.controlId,handN:42}),{code:'failed-precondition'});
 });
 
-test('quick intervention is GOD-only, applies once before three seconds and yields to the bot at the deadline',async()=>{
+test('quick intervention is GOD-only, applies once before five seconds and yields to the bot at the deadline',async()=>{
   for(const op of ['check','fold','call','raise']){
     const {f,table,command}=manualHandFixture();
     if(op==='check')table().players.botA.bet=2;
@@ -544,7 +544,7 @@ test('quick intervention is GOD-only, applies once before three seconds and yiel
     await assert.rejects(command(op,{...data,targetUid:'other'}),{code:'failed-precondition'});
     await assert.rejects(command(op,{...data,turnStartedAt:turnStartedAt-1}),{code:'failed-precondition'});
     await assert.rejects(command('raise',{...data,amount:-2}),{code:'invalid-argument'});
-    f.advance(2999);await f.engine.tickTable('tableA',f.now());
+    f.advance(4999);await f.engine.tickTable('tableA',f.now());
     assert.equal(table().gameState.activeTurnUid,'botA');
     await command(op,data);await command(op,data);
     assert.equal(table().players.botA.manuallyPlayedHand,42);
@@ -553,11 +553,43 @@ test('quick intervention is GOD-only, applies once before three seconds and yiel
     assert.notEqual(table().gameState.activeTurnUid,'botA');
   }
   const {f,table,command}=manualHandFixture(), g=table().gameState;
-  f.advance(3000);
+  f.advance(5000);
   await assert.rejects(command('fold',{mode:'quick'}),/expired/);
   await f.engine.tickTable('tableA',f.now());assert.notEqual(table().gameState.activeTurnUid,'botA');
   const seq=table().gameState.__seq;
   await f.engine.tickTable('tableA',f.now());assert.equal(table().gameState.__seq,seq);
   assert.equal(table().players.botA.manuallyPlayedHand,undefined);
   await assert.rejects(command('fold',{mode:'quick',turnStartedAt:g.turnStartedAt}),{code:'failed-precondition'});
+});
+
+test('Take control at 4.999s grants a fresh player clock for this turn only', async()=>{
+ const {f,table,command,other}=manualHandFixture();
+ const original=f.now(),opts={mode:'turn',turnStartedAt:original,requestId:'test-control-first-claim'};
+ f.advance(4999);
+ const {controlId,until}=await command('claim',opts);
+ assert.equal(until,f.now()+15000);assert.equal(table().gameState.turnStartedAt,original);
+ assert.equal((await command('claim',opts)).until,until);
+ f.advance(1000);await f.engine.tickTable('tableA',f.now());
+ assert.equal(table().gameState.activeTurnUid,'botA','ordinary bot timer cannot act during ownership');
+ assert.equal((await command('claim',{mode:'turn'})).until,until,'reopening does not extend the timer');
+ await assert.rejects(command('claim',{mode:'turn'},other),{code:'permission-denied'});
+ await assert.rejects(command('raise',{controlId,amount:6},other),{code:'permission-denied'});
+ f.advance(13999);await command('raise',{controlId,amount:6});
+ assert.equal(table().players.botA.bet,6);assert.equal(table().players.botA.manualControl,undefined);
+ assert.notEqual(table().gameState.activeTurnUid,'botA');
+ await assert.rejects(command('claim',{...opts,requestId:'a-stale-claim-request'}),{code:'failed-precondition'});
+});
+test('an unclaimed turn expires at five seconds; an owned turn times out with the normal Check/Fold',async()=>{
+ const first=manualHandFixture();first.f.advance(5000);
+ await assert.rejects(first.command('claim',{mode:'turn'}),/expired/);
+ for(const owes of [true,false]){
+  const {f,table,command}=manualHandFixture();
+  if(!owes)table().players.botA.bet=2;
+  const {controlId,until}=await command('claim',{mode:'turn'});
+  f.advance(until-f.now());
+  await assert.rejects(command(owes?'call':'check',{controlId}),/expired/);
+  await f.engine.tickTable('tableA',f.now());
+  const seat=table().players.botA;assert.equal(seat.manualControl,undefined);
+  assert.equal(seat.actionText,owes?'Fold':'Check');assert.equal(seat.stack,100);
+ }
 });

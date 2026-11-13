@@ -1227,7 +1227,12 @@ async function runEffects(S) {
 
 /* ============================ tick orchestration ============================ */
 
-const BOT_BETTING_WINDOW_MS = 3000;
+const BOT_BETTING_WINDOW_MS = 5000;
+function botBettingDeadline(g, player) {
+  const control = player.manualControl;
+  return control?.handN === g.handN && control?.turnStartedAt === g.turnStartedAt && Number.isFinite(control?.until)
+    ? control.until : g.turnStartedAt + BOT_BETTING_WINDOW_MS;
+}
 
 // Avoid locking the table and loading private cards while a player is still
 // thinking. Recheck inside the transaction so racing viewers cannot act early.
@@ -1236,7 +1241,7 @@ function tickMayAdvance(t,now){
   if(BETTING.includes(g.phase)){
     if(g.allInReveal)return !!g.ritOffer||elapsed>=1300;
     const actor=pl[g.activeTurnUid];if(!actor||actor.status!=='active')return true;
-    if(actor.isBot)return elapsed>=BOT_BETTING_WINDOW_MS;
+    if(actor.isBot)return now>=botBettingDeadline(g,actor);
     const gone=actor.lastSeen&&now-actor.lastSeen>20000;
     return elapsed>(actor.sitOut?1500:gone?9000:(Number(t.settings?.actionTime)||30)*1000+1000);
   }
@@ -1438,9 +1443,10 @@ async function tickTable(id, testNow) {
             g.turnStartedAt = now;
           }
           dirty = true;
-        } else if (actor.isBot && stuck >= BOT_BETTING_WINDOW_MS) {
+        } else if (actor.isBot && now >= botBettingDeadline(g, actor)) {
+          const controlled = actor.manualControl?.turnStartedAt === g.turnStartedAt;
           delete actor.manualControl;
-          const move = botAction(S, actor.uid);
+          const move = controlled ? {action:g.highestBet > (actor.bet || 0) ? 'fold' : 'call'} : botAction(S, actor.uid);
           applyAction(S, actor.uid, move.action, move.amount, false);
           dirty = true;
         } else if (!actor.isBot) {
@@ -1593,9 +1599,12 @@ exports.pkBotTurn = onCall(CALL_OPTS, async request => {
       A.fail('failed-precondition', 'This bot has no betting decision in that hand');
     }
     const control = p.manualControl?.handN === g.handN ? p.manualControl : null;
+    const takeover = op === 'claim' && data.mode === 'turn';
+    if (takeover && (g.activeTurnUid !== target || data.turnStartedAt !== g.turnStartedAt ||
+        data.phase !== g.phase || data.highestBet !== g.highestBet)) A.fail('failed-precondition','This turn has changed');
     const quick = data.mode === 'quick' && ['fold','check','call','raise'].includes(op);
     if ((betting || op === 'claim') && g.activeTurnUid === target &&
-        (!Number.isFinite(g.turnStartedAt) || S.now >= g.turnStartedAt + BOT_BETTING_WINDOW_MS)) {
+        (!Number.isFinite(g.turnStartedAt) || S.now >= botBettingDeadline(g,p))) {
       A.fail('failed-precondition', 'This turn has expired');
     }
     const audit = database.collection('_pkAudit');
@@ -1608,7 +1617,9 @@ exports.pkBotTurn = onCall(CALL_OPTS, async request => {
     } else if (op !== 'claim' && !quick) {
       A.fail('failed-precondition', 'Take control of this hand first');
     }
-    if (op === 'claim' && control) return {controlId: control.id};
+    if (op === 'claim' && control && (!takeover || control.turnStartedAt === g.turnStartedAt)) {
+      return control.until ? {controlId:control.id, until:control.until} : {controlId:control.id};
+    }
     const record = audit.doc();
     const details = {action: 'god-bot-turn', op, uid, tableId: id, clubId: S.table.clubId,
       targetUid: target, handN: g.handN, phase: g.phase, turnStartedAt: g.turnStartedAt, at: S.now};
@@ -1635,12 +1646,19 @@ exports.pkBotTurn = onCall(CALL_OPTS, async request => {
         p.manuallyPlayedHand = g.handN;
         applyAction(S, target, op === 'check' ? 'call' : op, data.amount, false);
       }
+      if (control?.turnStartedAt != null) delete p.manualControl;
       await commitState(tx, S);
     } else {
       const next = op === 'claim' ? {id: record.id, handN: g.handN} : null;
+      if (takeover) {
+        next.turnStartedAt = g.turnStartedAt;
+        next.until = S.now + (Number(S.settings.actionTime) || 30)*1000;
+        details.until = next.until;
+      }
       tx.update(tRef(id), {['players.' + target + '.manualControl']: next, 'gameState.__seq': (g.__seq || 0) + 1});
     }
     tx.set(record, details);
+    if (takeover) return {controlId:record.id, until:details.until};
     return op === 'claim' ? {controlId: record.id} : {ok: true};
   });
 });

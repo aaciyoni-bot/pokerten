@@ -27,7 +27,7 @@ const A = require('./pokerAuthority');
 const Tours = require('./pokerTournaments');
 const {showdownDelay} = require('./pokerTournamentCore');
 const {botName,renameGenericBots} = require('./botNames');
-const {session:botSession,rotationGap,cashBotBuyIn} = require('./botSessions');
+const {session:botSession,rotationGap,cashBotBuyIn,fixedCashLineup} = require('./botSessions');
 const {prepareLedger} = require('./pokerLedger');
 
 let _db = null;
@@ -112,7 +112,7 @@ function startHand(S, forcedGameType) {
     if (!S.tor && p.pendingTopUp>0) {
       const max=S.settings.maxBuyIn || (S.settings.maxBuyInBB||200)*blindsOf(S).bb;
       const add=Math.min(p.pendingTopUp,Math.max(0,round2(max-p.stack))),refund=round2(p.pendingTopUp-add);
-      if(S.settings.botRotation==='fixed' && p.isBot && p.stack===0 && add>0){p.sitOut=false;p.sitOutNext=false;}
+      if(fixedCashLineup(S.settings,S.tor) && p.isBot && p.stack===0 && add>0){p.sitOut=false;p.sitOutNext=false;}
       p.stack=round2(p.stack+add);p.pendingTopUp=0;
       if(refund){p.buyTotal=round2((p.buyTotal||0)-refund);S.effects.push({type:'credit',uid:A.payee(p),amount:refund});}
     }
@@ -1277,7 +1277,7 @@ function changeCashBotSeat(S, old, replace, buy, history) {
 }
 
 async function applyFixedLineup(S, fundedBalance, extraTop) {
-  if (S.settings.botRotation !== 'fixed' || S.tor || S.settings.spinMode || S.raw.closeRequested || !A.idle(S.raw) ||
+  if (!fixedCashLineup(S.settings,S.tor) || S.tor || S.settings.spinMode || S.raw.closeRequested || !A.idle(S.raw) ||
       (S.gameState.phase==='showdown' && S.now-S.gameState.showdownAt<showdownDelay(S.gameState))) return false;
   let changed=false;
   for (const seat of Object.values(S.players)) {
@@ -1409,7 +1409,7 @@ async function tickTable(id, testNow) {
     // vacancy at the settled boundary, including on manually opened tables.
     // No human is automatically seated or charged by this maintenance path.
     const manualHumanWaiting=!S.raw.botLobby&&require('./pokerWaitlist').normalizeWaitlist({...S.raw,players:pl},now).some(p=>p.isBot!==true);
-    if(S.settings.botRotation!=='fixed'&&!S.raw.botLobby&&!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&
+    if(!fixedCashLineup(S.settings,S.tor)&&!S.raw.botLobby&&!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&
        (g.phase!=='showdown'||now-(g.showdownAt||0)>=showdownDelay(g))){
       const yieldSeat=manualHumanWaiting&&Object.keys(pl).length>=A.capacity(S.settings);
       const candidates=Object.values(pl).filter(p=>p.isBot&&p.fundingUid&&!p.pendingTopUp).map(p=>({p,at:p.botLeavesAt||botSession(p.uid,p.botJoinedAt||S.raw.createdAt||now).botLeavesAt}));
@@ -1431,7 +1431,7 @@ async function tickTable(id, testNow) {
     // --- Seat reaping (cash only): leaveReq/sitOut/busted between hands ---
     if (!S.raw.closeRequested && !S.settings.spinMode && !S.tor && A.idle(S.raw) && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=showdownDelay(g))) {
       for (const p of Object.values(pl)) {
-        if (p.isBot && S.settings.botRotation==='fixed' && !p.leaveReq) continue;
+        if (p.isBot && fixedCashLineup(S.settings,S.tor) && !p.leaveReq) continue;
         const idle = p.leaveReq || (p.sitOut && p.sitOutAt && now - p.sitOutAt > 600000) ||
           (p.leavingAt && now >= p.leavingAt) ||
           (p.status === "busted" && !p.pendingTopUp && p.bustedAt && (p.isBot || now - p.bustedAt > 300000));
@@ -1440,7 +1440,7 @@ async function tickTable(id, testNow) {
         // human in it, a busted bot re-buys instead of standing up, so the
         // game is still running whenever somebody looks. buyTotal records it,
         // so the chip audit still balances (guardTables reads that receipt).
-        if (S.settings.botRotation!=='fixed' && p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot) && !(manualHumanWaiting && Object.keys(pl).length >= A.capacity(S.settings))) {
+        if (!fixedCashLineup(S.settings,S.tor) && p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot) && !(manualHumanWaiting && Object.keys(pl).length >= A.capacity(S.settings))) {
           const bbNow=blindsOf(S).bb,buy=cashBotBuyIn(S.settings,bbNow),sponsor=A.payee(p);
           if((await fundedBalance(sponsor))<buy){removeSeat(S,p.uid,false);dirty=true;continue;}
           S.effects.push({type:'credit',uid:sponsor,amount:-buy});
@@ -1458,7 +1458,7 @@ async function tickTable(id, testNow) {
     }
 
     // --- Next hand from waiting / showdown ---
-    const eligible = Object.values(pl).filter((p) => (p.stack > 0 || (S.tor ? p.pendingTournamentChips : p.pendingTopUp) > 0) && (S.tor || S.settings.spinMode || !p.sitOut || S.settings.botRotation==='fixed' && p.isBot && p.stack===0 && p.pendingTopUp>0) && p.status!=="out" && (p.status!=="busted" || (S.tor ? p.pendingTournamentChips : p.pendingTopUp)>0));
+    const eligible = Object.values(pl).filter((p) => (p.stack > 0 || (S.tor ? p.pendingTournamentChips : p.pendingTopUp) > 0) && (S.tor || S.settings.spinMode || !p.sitOut || fixedCashLineup(S.settings,S.tor) && p.isBot && p.stack===0 && p.pendingTopUp>0) && p.status!=="out" && (p.status!=="busted" || (S.tor ? p.pendingTournamentChips : p.pendingTopUp)>0));
     const activeSpin=extraTop.spin||S.raw.spin;
     const spinGate = !S.raw.closeRequested && tournamentReady(S) && (S.settings.spinMode ? activeSpin && !activeSpin.fundingPending && now >= (extraTop.spinStartAt||S.raw.spinStartAt||Infinity) && !S.raw.spinDone && !extraTop.spinDone : true);
     if (g.phase === "waiting" && eligible.length >= 2 && spinGate) {
@@ -1781,7 +1781,7 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
       S = null;
       return; // already gone — success
     }
-    if(p.isBot && S.settings.botRotation==='fixed' && target!==uid){
+    if(p.isBot && fixedCashLineup(S.settings,S.tor) && target!==uid){
       if(!request.data?.intent){ignored=true;S=null;return;}
       throw new HttpsError('failed-precondition','Use Free seat after hand for a fixed lineup bot');
     }

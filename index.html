@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="374">
+    <meta name="app-version" content="375">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1478,6 +1478,7 @@ const buyInMin = s => {
   s = s || {};
   return s.minBuyIn != null ? round2(Number(s.minBuyIn) || 0) : round2((Number(s.minBuyInBB) || 40) * (Number(s.blinds) || 0.5) * 2);
 };
+const manualBuyInThreshold = 300;
 const buyInMax = s => {
   s = s || {};
   return s.maxBuyIn != null ? round2(Number(s.maxBuyIn) || 0) : round2((Number(s.maxBuyInBB) || 200) * (Number(s.blinds) || 0.5) * 2);
@@ -10288,20 +10289,27 @@ const Field = ({
 }, label), children);
 function TableSettingsEditor({table,onClose,showToast}) {
   const initial=table.settings||{};
-  const [draft,setDraft]=useState({blinds:initial.blinds??0.5,minBuyIn:buyInMin(initial),maxBuyIn:buyInMax(initial),rakePercent:initial.rakePercent??0});
+  const originals={blinds:initial.blinds??0.5,minBuyIn:buyInMin(initial),maxBuyIn:buyInMax(initial),rakePercent:initial.rakePercent??0};
+  const [draft,setDraft]=useState(originals),[error,setError]=useState('');
   const [busy,setBusy]=useState(false),lock=useRef(false);
   const save=async()=>{
     if(lock.current)return;
-    if(Object.values(draft).some(v=>v===''||!Number.isFinite(Number(v))))return showToast('Enter valid numeric settings.','error');
-    lock.current=true;setBusy(true);
-    try{const result=await pokerCommand('pkTableManage',{tableId:table.id,op:'settings',patch:Object.fromEntries(Object.entries(draft).map(([k,v])=>[k,Number(v)]))});showToast(result.queued?'Settings saved — applied after this hand.':'Table settings updated.','success');onClose();}
-    catch(e){showToast(e.message||'Could not update table settings.','error');}finally{lock.current=false;setBusy(false);}
+    if(Object.values(draft).some(v=>v===''||!Number.isFinite(Number(v))))return setError('Enter valid numeric settings.');
+    const patch=Object.fromEntries(Object.entries(draft).map(([k,v])=>[k,Number(v)]).filter(([k,v])=>v!==Number(originals[k])));
+    if(Number(draft.minBuyIn)>Number(draft.maxBuyIn))return setError('Max buy-in must be at least '+draft.minBuyIn+'.');
+    if(!Object.keys(patch).length){onClose();return;}
+    lock.current=true;setBusy(true);setError('');
+    try{const result=await pokerCommand('pkTableManage',{tableId:table.id,op:'settings',patch});
+      showToast(result.queued?'Saved. Blinds and rake change after this hand.':'Table settings updated.','success');onClose();}
+    catch(e){setError(e.message||'Could not update table settings.');}finally{lock.current=false;setBusy(false);}
   };
   return ReactDOM.createPortal(React.createElement('div',{className:'fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4',onClick:()=>!busy&&onClose()},
     React.createElement('div',{role:'dialog','aria-modal':true,'aria-label':'Table settings',dir:'ltr',className:'glass-panel rounded-3xl p-6 w-full max-w-sm border border-white/10 max-h-[90dvh] overflow-y-auto',onClick:e=>e.stopPropagation()},
       React.createElement('h3',{className:'text-lg font-black text-white mb-2'},'Table settings — ',table.name),
-      React.createElement('p',{className:'text-slate-400 text-xs mb-4'},'During a hand, changes apply after it ends. Existing player stacks stay unchanged.'),
-      [['blinds','Small blind (big blind = ×2)',0.01,100000],['minBuyIn','Min buy-in',0.01,10000000],['maxBuyIn','Max buy-in',0.01,10000000],['rakePercent','Rake (%)',0,20]].map(([key,label,min,max])=>React.createElement('label',{key,className:'block text-slate-300 text-xs font-bold mb-3'},label,React.createElement('input',{type:'number',step:'0.01',min,max,'aria-label':label,value:draft[key],disabled:busy,onChange:e=>setDraft(d=>({...d,[key]:e.target.value})),className:'block w-full mt-1 bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white'}))),
+      React.createElement('p',{className:'text-slate-400 text-xs mb-4'},'Buy-in limits apply to new entries immediately. Blinds and rake change after the hand.'),
+      Number(draft.minBuyIn)>=manualBuyInThreshold && React.createElement('p',{className:'text-xs text-amber-200 mb-3'},'Minimum 300 or more: bot changes are manual.'),
+      error && React.createElement('p',{role:'alert',className:'text-sm text-rose-300 mb-3'},error),
+      [['minBuyIn','Min buy-in',0.01,10000000],['maxBuyIn','Max buy-in',0.01,10000000],['blinds','Small blind (big blind = ×2)',0.01,100000],['rakePercent','Rake (%)',0,20]].map(([key,label,min,max])=>React.createElement('label',{key,className:'block text-slate-300 text-xs font-bold mb-3'},label,React.createElement('input',{type:'number',step:'0.01',min,max,'aria-label':label,value:draft[key],disabled:busy,onChange:e=>setDraft(d=>({...d,[key]:e.target.value})),className:'block w-full mt-1 bg-slate-950 border border-white/15 rounded-xl px-3 py-2 text-white'}))),
       React.createElement('div',{className:'flex gap-2'},React.createElement('button',{onClick:save,disabled:busy,className:'flex-1 bg-emerald-600 text-white p-3 rounded-xl font-bold'},busy?'Saving…':'Save'),React.createElement('button',{onClick:onClose,disabled:busy,className:'bg-slate-800 text-slate-300 p-3 rounded-xl'},'Cancel')))),document.body);
 }
 function PokerCreateView({
@@ -10545,7 +10553,7 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
   }, n, " bots, playing non-stop"))), React.createElement("div", {
     className: "text-[11px] text-slate-400 mt-1 leading-snug"
   }, "Bots take their seats when the table opens and can play while nobody is watching.")), !s.spinMode&&React.createElement(Field,{label:'Bot rotation'},React.createElement('select',{
-    'aria-label':'Bot rotation',value:s.botRotation||'automatic',className:sel,onChange:e=>upd('botRotation',e.target.value)
+    'aria-label':'Bot rotation',disabled:buyInMin(s)>=manualBuyInThreshold,value:buyInMin(s)>=manualBuyInThreshold?'fixed':s.botRotation||'automatic',className:sel,onChange:e=>upd('botRotation',e.target.value)
   },React.createElement('option',{value:'automatic'},'Automatic'),React.createElement('option',{value:'fixed'},'Fixed lineup'))), !!s.showcaseBots&&!s.spinMode&&React.createElement(BotBuyInField,{settings:s,value:s.botBuyIn??defaultBotEntry(s),onChange:v=>upd('botBuyIn',v)}), React.createElement(Field, {
     label: "Min buy-in (₪) — type any amount"
   }, React.createElement("input", {
@@ -11380,6 +11388,7 @@ throw new Error('Game state is managed by the server');
     const lock = left && Date.now() - left.at < 12 * 60 * 60 * 1000 ? left.amount : 0;
     const minB = Math.max(buyInMin(setts), lock);
     if (buyAmt < minB) setBuyAmt(round2(minB));
+    else if(buyAmt>buyInMax(setts)&&minB<=buyInMax(setts))setBuyAmt(buyInMax(setts));
   }, [tableState]);
   const [preCF, setPreCF] = useState(false);
   useEffect(() => {
@@ -12030,13 +12039,14 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'unwait'});}catch(e){show
     const timer = setInterval(async () => {
       if (stopped || pending) return;
       pending = true;
-      try { await pokerCommand('pkSeat', {tableId:tableDocId, op:'wait', amount:Number(queuedBuyIn)}); }
+      try { await pokerCommand('pkSeat', {tableId:tableDocId, op:'wait', heartbeat:true, amount:Number(queuedBuyIn)}); }
       catch (_) { /* The server expires an offline or ineligible player's lease. */ }
       finally { pending = false; }
     }, 60000);
     return () => { stopped = true; clearInterval(timer); };
   }, [queueHeartbeatActive, queuedBuyIn, tableDocId, user.uid]);
-  useEffect(() => {if(!srvEngine)return;const t=tableState;const next=pokerWaitlistSummary(t,user.uid).firstPlayer;if(!t||t.closeRequested||t.players?.[user.uid]||next?.uid!==user.uid||Object.keys(t.players||{}).length>=(t.settings.maxPlayers||6)||promotingRef.current)return;promotingRef.current=true;pokerCommand('pkSeat',{tableId:tableDocId,op:'join',amount:next.buyAmt??buyAmt,fromWaitlist:true}).then(()=>setSpectate(false)).catch(e=>showToast(e.message,'error')).finally(()=>{promotingRef.current=false;});}, [tableState, user.uid]);
+  const queuePriceChanged=!!queuedPlayer && (queuedBuyIn<buyInMin(setts)||queuedBuyIn>buyInMax(setts));
+  useEffect(() => {if(!srvEngine)return;const t=tableState;const next=pokerWaitlistSummary(t,user.uid).firstPlayer;if(!t||queuePriceChanged||t.closeRequested||t.players?.[user.uid]||next?.uid!==user.uid||Object.keys(t.players||{}).length>=(t.settings.maxPlayers||6)||promotingRef.current)return;promotingRef.current=true;pokerCommand('pkSeat',{tableId:tableDocId,op:'join',amount:next.buyAmt??buyAmt,fromWaitlist:true}).then(()=>setSpectate(false)).catch(e=>showToast(e.message,'error')).finally(()=>{promotingRef.current=false;});}, [tableState, user.uid]);
   const handleRebuy = async () => {
 try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'topup',amount:Number(buyAmt)});showToast("Chips purchased.",'success');}catch(e){showToast(e.message||String(e),'error');}
 };
@@ -12747,7 +12757,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
   const tableClubName = String(clubSettings?.name || window.__club?.name || '').trim();
   const canSetLineup=canManageGame(user,'poker') && srvEngine && !tableState.tournamentId && !setts.spinMode && !tableState.closeRequested && !tableState.archived;
-  const fixedLineup=setts.botRotation==='fixed' && !tableState.tournamentId && !setts.spinMode;
+  const entryLocksLineup=!tableState.tournamentId && !setts.spinMode && buyInMin(setts)>=manualBuyInThreshold;
+  const fixedLineup=entryLocksLineup || (setts.botRotation==='fixed' && !tableState.tournamentId && !setts.spinMode);
   const lineupSeat=canSetLineup && fixedLineup && peek && players[peek.uid]?.isBot===true ? players[peek.uid] : null;
   const seatControl = eligibleBot?.manualControl;
   const offerTakeover = eligibleBot && seatControl?.turnStartedAt !== gs.turnStartedAt;
@@ -14150,7 +14161,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     disabled: addingBots || (tableState.tournamentId ? Object.values(tourEntryState?.players||{}).filter(p=>!p.out).length >= tourEntryState.maxPlayers : Object.keys(players).length >= (setts.maxPlayers||6)),
     className:'poker-menu-tile','data-menu-tone':'cyan'
   }, ...menuTile("bot", "Add bot")), canSetLineup && React.createElement('button',{
-    type:'button',title:'Bot rotation',role:'switch','aria-checked':fixedLineup,disabled:lineupBusy,
+    type:'button',title:'Bot rotation',role:'switch','aria-checked':fixedLineup,disabled:lineupBusy||entryLocksLineup,
     className:'poker-menu-tile','data-menu-tone':fixedLineup?'green':'cyan',
     onClick:()=>manageLineup({op:'bot-rotation',mode:fixedLineup?'automatic':'fixed'})
   },...menuTile('fa-users',fixedLineup?'Fixed lineup':'Automatic rotation')), canManageGame(user,'poker') && tourEntryState && ['reg','running'].includes(tourEntryState.status) && React.createElement("button",{onClick:()=>{setToolsOpen(false);setTourRegistrationOpen(true);},title:"Late registration",className:"poker-menu-tile",'data-menu-tone':"cyan"},...menuTile("fa-clock","Late registration")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
@@ -14181,7 +14192,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     },
     title: "Edit table settings",
     className:'poker-menu-tile','data-menu-tone':'purple'
-  }, ...menuTile("settings", "Settings")), onManage && canManageClub(user) && React.createElement("button", {
+  }, ...menuTile("settings", "Buy-in & settings")), onManage && canManageClub(user) && React.createElement("button", {
     onClick: async () => {
       setToolsOpen(false);
       try {
@@ -14361,7 +14372,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "pt-buyin-waitlist"
   }, React.createElement("div", {
     className: "pt-buyin-waitlist-title"
-  }, "🪑 On the waitlist — player position ", myWaitPos + 1, " · ", waitlist.length, " waiting"), React.createElement('p', {className:'pt-buyin-notice'}, 'Keep this table open to hold your place. Your place expires after 5 minutes offline.'), React.createElement("button", {
+  }, "🪑 On the waitlist — player position ", myWaitPos + 1, " · ", waitlist.length, " waiting"), queuePriceChanged && React.createElement('button',{type:'button',onClick:joinWaitlist,className:'pt-buyin-button pt-buyin-primary'},'Confirm new buy-in · '+formatMoney(buyAmt)), React.createElement('p', {className:'pt-buyin-notice'}, 'Keep this table open to hold your place. Your place expires after 5 minutes offline.'), React.createElement("button", {
     onClick: leaveWaitlist,
     className: "pt-buyin-button pt-buyin-secondary"
   }, "Leave waitlist")), !(requiresWaitlist && !needRebuy) && React.createElement("button", {

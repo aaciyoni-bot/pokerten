@@ -41,7 +41,7 @@ assert.deepEqual(table, before, 'Rendering queue status must never reserve seats
 assert.equal(pokerWaitlistSummary({players:{me:{uid:'me'}},waitlist:[{uid:'me'},{uid:'other'},{uid:'other'},null]},'me').count,1,'Seated/duplicate entries must not inflate queue counts');
 
 const heartbeatStart=html.indexOf('  const queuedPlayer = pokerWaitlistSummary(');
-const heartbeatEnd=html.indexOf('  useEffect(() => {if(!srvEngine)return;',heartbeatStart);
+const heartbeatEnd=html.indexOf('  const queuePriceChanged=',heartbeatStart);
 assert.ok(heartbeatStart>0&&heartbeatEnd>heartbeatStart,'Load the actual queue lease effect');
 function heartbeatFixture(state){
   let callback=null,cleanup=null,delay=null,cleared=false;
@@ -57,7 +57,7 @@ function heartbeatFixture(state){
   const live=heartbeatFixture(table);
   assert.equal(live.delay,60000);
   await live.tick();
-  assert.deepEqual(live.calls,[{name:'pkSeat',data:{tableId:'tableA',op:'wait',amount:100}}],'A heartbeat refreshes interest with the saved buy-in, never purchases a seat');
+  assert.deepEqual(live.calls,[{name:'pkSeat',data:{tableId:'tableA',op:'wait',heartbeat:true,amount:100}}],'A heartbeat refreshes interest with the saved buy-in, never purchases a seat');
   live.stop();await live.tick();
   assert.equal(live.wasCleared(),true);assert.equal(live.calls.length,1,'Leaving the table stops lease renewal');
   for(const state of [{waitlist:[]},{...table,players:{me:{uid:'me'}}},{...table,closeRequested:true}])assert.equal(heartbeatFixture(state).hasTimer,false,'Only an unseated queued player keeps a lease');

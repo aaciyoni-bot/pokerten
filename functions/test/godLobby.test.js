@@ -4,10 +4,9 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
 const {createCallable} = require('../godLobby');
 const engine = fs.readFileSync(path.join(__dirname, '../pokerEngine.js'), 'utf8');
-const guard = vm.runInNewContext(engine.match(/const GOD_EMAILS = [^;]+;/)[0] + '\n' + engine.match(/const isGodAuth = [^\n]+/)[0] + '\nisGodAuth;');
+const {isGodAuth:guard}=require('../godIdentity');
 const SUPERVISOR_A = identities.supervisors[0];
 const auth = (email, verified = true) => ({uid: 'viewer', token: {email, email_verified: verified}});
 const ordinary = auth('manager@example.invalid');
@@ -52,7 +51,7 @@ test('request bounds and document path validation run before any read', async ()
   }
 });
 test('callable is wired to the engine GOD predicate, not a role predicate', () => {
-  assert.match(engine, /exports\.godLobbyCounts = require\("\.\/godLobby"\)\.createCallable\(\{onCall, HttpsError, db, isGodAuth, CALL_OPTS\}\)/);
+  assert.match(engine, /exports\.godLobbyCounts = require\("\.\/godLobby"\)\.createCallable\(\{onCall, HttpsError, db, isGodAuth, CALL_OPTS:GOD_CALL_OPTS\}\)/);
 });
 
 test('each signed-in session receives only its own verified permissions without reading any table',async()=>{

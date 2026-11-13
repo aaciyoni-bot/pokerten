@@ -38,6 +38,7 @@ function fixture(seed=1){
  const auth=uid=>({uid,token:{email:uid+'@example.test',email_verified:true}});
  return{docs,db,engine,now:()=>now,advance:ms=>{now+=ms;},table:id=>docs.get('tables/'+id),balance:uid=>docs.get(`memberships/${uid}_clubA`).balance,
   create:(settings,botCount='full')=>access.pkTableCreate({auth:auth('owner'),data:{clubId:'clubA',manual:true,requestId:'manual-create-request-'+(++request),settings:{baseGameType:'NLH',blinds:.5,minBuyIn:50,maxBuyIn:200,maxPlayers:4,...settings},botCount}}),
+  lineup:(id,uid,data)=>access.pkTableManage({auth:auth(uid),data:{tableId:id,requestId:'lineup-test-request-'+(++request),...data}}),
   wait:id=>access.pkSeat({auth:auth('human'),data:{op:'wait',tableId:id,amount:100,requestId:'manual-wait-request-'+(++request)}}),
   act:(id,action)=>{const g=docs.get('tables/'+id).gameState;return engineApi.pkAct({auth:auth(g.activeTurnUid),data:{tableId:id,action,requestId:"showdown-action-"+(++request),expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}}});},
   profile:patch=>profileApi.pkProfile({auth:auth('human'),data:{patch,requestId:'profile-update-'+(++request)}}),
@@ -300,4 +301,86 @@ test('bot funding rejects non-managers, human targets, closing tables, tournamen
  t.settings.spinMode=true;await assert.rejects(f.topUp(id,'owner',botUid,1),/Spin/);t.settings.spinMode=false;
  t.tournamentId='event';await assert.rejects(f.topUp(id,'owner',botUid,1),/tournament/);delete t.tournamentId;
  t.closeRequested={by:'owner'};await assert.rejects(f.topUp(id,'owner',botUid,1),/closing/);assert.equal(f.balance('owner'),bank);
+});
+
+for(const managed of [false,true])test('fixed lineup retains stacks, waitlisted seats and busted bots on '+(managed?'managed':'manual')+' cash tables',async()=>{
+ const f=fixture(),{id,departing}=await settled(f),t=f.table(id);
+ if(managed){delete t.botLobbyExcluded;t.botLobby={version:1,profile:2,fundingUid:'owner'};}
+ await f.lineup(id,'owner',{op:'bot-rotation',mode:'fixed'});
+ const row=f.table(id),ids=Object.keys(row.players),busted=ids.find(u=>u!==departing);
+ Object.values(row.players).forEach(p=>{p.botLeavesAt=1;});row.botRotateAfter=0;
+ row.players[departing].stack+=row.players[busted].stack;Object.assign(row.players[busted],{stack:0,status:'busted',bustedAt:1});
+ await f.wait(id);const bank=f.balance('owner'),chips=total(f,id);
+ await f.tick(id);let after=f.table(id);
+ assert.deepEqual(Object.keys(after.players).sort(),ids.sort());assert.equal(after.players[busted].status,'sitout');assert.equal(after.players[busted].sitOut,true);
+ assert.equal(after.players[busted].cardCount,0);assert.equal(after.waitlist[0].uid,'human');assert.equal(after.players.human,undefined);
+ assert.equal(after.players[departing].name,row.players[departing].name);
+ assert.equal(f.balance('owner'),bank);assert.equal(total(f,id),chips);
+ await f.leave(id,'owner',{targetUid:busted});assert.ok(f.table(id).players[busted],'legacy automated kick cannot evict a fixed seat');
+ await f.topUp(id,'owner',busted,40);
+ while(f.table(id).gameState.activeTurnUid)await f.act(id,'fold');
+ const end=f.table(id).gameState;f.advance(end.showdownAt+require('../pokerTournamentCore').showdownDelay(end)-f.now());
+ await f.tick(id);after=f.table(id);assert.equal(after.players[busted].sitOut,false);assert.equal(after.players[busted].cardCount,2);
+ assert.equal(after.players[busted].stack+after.players[busted].bet,40);assert.equal(total(f,id),chips);
+});
+
+for(const action of ['replace','free'])test('manual '+action+' waits through the award and pays the original sponsor once via either deal path',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:3,botRotation:'fixed'});
+ await f.tick(id);const t=f.table(id),uid=t.gameState.activeTurnUid,old=copy(t.players[uid]),before=copy(t.gameState);
+ const data={op:'bot-seat',targetUid:uid,action,requestId:'fixed-seat-change-receipt'};
+ const bank=f.balance('owner'),chips=total(f,id);
+ await f.lineup(id,'owner',data);await f.lineup(id,'owner',data);
+ await assert.rejects(f.lineup(id,'owner',{...data,requestId:'another-seat-change-receipt'}),/already pending/);
+ await assert.rejects(f.lineup(id,'owner',{op:'bot-rotation',mode:'automatic'}),/pending/);
+ await f.tick(id);assert.equal(f.table(id).gameState.activeTurnUid,before.activeTurnUid);assert.equal(f.table(id).players[uid].stack,old.stack);
+ while(f.table(id).gameState.activeTurnUid)await f.act(id,'fold');
+ const showdown=f.table(id).gameState,paid=f.table(id).players[uid].stack,delay=require('../pokerTournamentCore').showdownDelay(showdown);
+ f.advance(showdown.showdownAt+delay-1-f.now());await f.tick(id);assert.ok(f.table(id).players[uid]);
+ f.advance(1);
+ if(action==='free')await f.wait(id);
+ if(action==='replace')await f.deal(id,uid);else await f.tick(id);
+ const after=f.table(id),replacement=Object.values(after.players).find(p=>p.seatIndex===old.seatIndex);
+ assert.equal(after.players[uid],undefined);assert.equal(f.docs.has('tables/'+id+'/priv/'+uid),false);
+ if(action==='replace'){assert.ok(replacement?.isBot);assert.notEqual(replacement.name,old.name);assert.equal(replacement.fundingUid,'owner');assert.equal(replacement.buyTotal,100);}
+ else{assert.equal(replacement,undefined);assert.equal(after.waitlist[0].uid,'human');assert.equal(after.players.human,undefined);}
+ assert.equal(f.balance('owner'),bank+paid-(action==='replace'?100:0));assert.equal(total(f,id),chips);
+ await f.lineup(id,'owner',data);await f.tick(id);
+ assert.equal(audits(f,id).filter(a=>a.action==='fixed-bot-seat'&&a.status==='completed').length,1);
+});
+
+test('lineup controls reject non-managers and non-cash tables; unfunded replacement leaves the incumbent and game intact',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:3});
+ const target=Object.keys(f.table(id).players)[0];
+ await assert.rejects(f.lineup(id,'human',{op:'bot-rotation',mode:'fixed'}),{code:'permission-denied'});
+ await assert.rejects(f.lineup(id,'owner',{op:'bot-seat',targetUid:target,action:'free'}),/Fixed lineup/);
+ await assert.rejects(f.lineup(id,'owner',{op:'bot-rotation',mode:'other'}),/Unknown/);
+ f.table(id).settings.spinMode=true;await assert.rejects(f.lineup(id,'owner',{op:'bot-rotation',mode:'fixed'}),/cash/);f.table(id).settings.spinMode=false;
+ f.table(id).tournamentId='event';await assert.rejects(f.lineup(id,'owner',{op:'bot-rotation',mode:'fixed'}),/cash/);delete f.table(id).tournamentId;
+ await f.lineup(id,'owner',{op:'bot-rotation',mode:'fixed'});await f.tick(id);
+ await f.lineup(id,'owner',{op:'bot-seat',targetUid:target,action:'replace'});
+ while(f.table(id).gameState.activeTurnUid)await f.act(id,'fold');
+ const row=f.table(id);row.players[target].stack=5;f.docs.get('memberships/owner_clubA').balance=0;
+ f.advance(20000);await f.tick(id);const seat=f.table(id).players[target];assert.ok(seat);assert.equal(seat.lineupRequest,undefined);
+ assert.match(seat.lineupError,/Insufficient/);assert.equal(f.balance('owner'),0);
+ await f.lineup(id,'owner',{op:'bot-rotation',mode:'automatic'});assert.equal(f.table(id).settings.botRotation,'automatic');
+});
+
+test('two lineup decisions settle to the original sponsor and preserve a held seat when automatic rotation is restored',async()=>{
+ const f=fixture(),{id}=await settled(f);
+ await f.lineup(id,'owner',{op:'bot-rotation',mode:'fixed'});
+ const rows=Object.values(f.table(id).players),[paid,freed,busted]=rows;
+ const sponsor='sponsor',sponsorPath='memberships/'+sponsor+'_clubA';
+ f.docs.set(sponsorPath,{uid:sponsor,clubId:'clubA',status:'approved',role:'player',balance:33});
+ paid.fundingUid=sponsor;freed.fundingUid=sponsor;
+ const expected=33+paid.stack+freed.stack-100,owner=f.balance('owner');
+ rows[3].stack+=busted.stack;busted.stack=0;busted.status='busted';
+ await f.lineup(id,'owner',{op:'bot-seat',targetUid:paid.uid,action:'replace'});
+ await f.lineup(id,'owner',{op:'bot-seat',targetUid:freed.uid,action:'free'});
+ await f.tick(id);
+ const after=f.table(id).players,added=Object.values(after).find(p=>p.seatIndex===paid.seatIndex);
+ assert.equal(added.fundingUid,sponsor);assert.equal(after[freed.uid],undefined);assert.equal(after[paid.uid],undefined);
+ assert.equal(f.balance('owner'),owner);assert.equal(f.balance(sponsor),expected);
+ assert.equal(after[busted.uid].sitOut,true);
+ await f.lineup(id,'owner',{op:'bot-rotation',mode:'automatic'});
+ assert.equal(f.table(id).players[busted.uid].status,'busted');assert.equal(f.table(id).players[busted.uid].sitOut,false);
 });

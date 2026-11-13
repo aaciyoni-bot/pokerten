@@ -3,9 +3,9 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {createRequire}=require('node:module');
 const localRequire=createRequire(path.join(__dirname,'../pokerEngine.js'));
-const engine=fs.readFileSync(path.join(__dirname,'../pokerEngine.js'),'utf8');
-const guard={};vm.runInNewContext(engine.match(/const GOD_EMAILS = [^;]+;/)[0]+'\n'+engine.match(/const isGodAuth = [^;]+;/)[0]+'\nthis.check=isGodAuth;',guard);
-const GOD='haim29071994@gmail.com',OTHER_GOD='info.bagso@gmail.com';
+const {identities}=require('../../tests/god-session-fixture.cjs');
+const {isGodAuth}=require('../godIdentity');
+const GOD=identities.supervisors[0],OTHER_GOD=identities.observer;
 function fixture(){
  const docs=new Map([['tables/tableA',{type:'poker',authorityVersion:2,clubId:'clubA',settings:{serverEngine:true},
   players:{botA:{uid:'botA',name:'Alex',isBot:true,stack:125,status:'active'},human:{uid:'human',name:'Human',isBot:false,stack:50,status:'active'}},
@@ -23,7 +23,7 @@ function fixture(){
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../pokerAuthority.js'),'utf8'),a);
  const c={module:{exports:{}},require:n=>n==='./pokerAuthority'?a.module.exports:localRequire(n)};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../godBotChat.js'),'utf8'),c);
- const call=c.module.exports.createCallable({onCall:(_,fn)=>fn,HttpsError:localRequire('firebase-functions/v2/https').HttpsError,isGodAuth:guard.check,CALL_OPTS:{}});
+ const call=c.module.exports.createCallable({onCall:(_,fn)=>fn,HttpsError:localRequire('firebase-functions/v2/https').HttpsError,isGodAuth,CALL_OPTS:{}});
  const request=(data={},auth={uid:'god',token:{email:GOD,email_verified:true}})=>({auth,data:{tableId:'tableA',targetUid:'botA',text:'Good hand!',requestId:'chat-request-00000001',...data}});
  return{docs,reads,request,call,advance:ms=>{now+=ms;},get transactions(){return transactions;}};
 }
@@ -41,7 +41,7 @@ test('GOD posts under the seated character, privately records the operator, and 
 });
 test('ordinary managers, forged profile fields and unverified or revoked GOD identities cannot post',async()=>{
  for(const auth of [null,{uid:'god',token:{email:GOD,email_verified:false}},{uid:'god',token:{email:'ordinary@example.test',email_verified:true},role:'super_admin'},
-  {uid:'god',token:{email:'easymarcelos@gmail.com',email_verified:true}}]){
+  {uid:'god',token:{email:'unlisted-0@example.invalid',email_verified:true}}]){
   const f=fixture();await assert.rejects(f.call(f.request({role:'super_admin',email:GOD},auth)),e=>e.code===(auth?'permission-denied':'unauthenticated'));
   assert.equal(f.transactions,0);assert.equal(f.reads.length,0);
  }

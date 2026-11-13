@@ -67,7 +67,7 @@ async function maintainBotLobbies() {
 // cannot mint chips or change the dealer/board mid-hand.
 async function reconcileManagedSeats(S,removeSeat,fundedBalance){
  const t=S.raw,tag=t.botLobby,g=S.gameState,now=S.now,players=S.players;
- if(tag?.version!==1||tag.disabled||t.closeRequested||S.tor||S.settings.spinMode||!A.idle({...t,players,gameState:g})||(g.phase==='showdown'&&now-(g.showdownAt||0)<showdownDelay(g)))return{};
+ if(tag?.version!==1||tag.disabled||S.settings.botRotation==='fixed'||t.closeRequested||S.tor||S.settings.spinMode||!A.idle({...t,players,gameState:g})||(g.phase==='showdown'&&now-(g.showdownAt||0)<showdownDelay(g)))return{};
  const patch={},humanCount=Object.values(players).filter(p=>p.isBot!==true).length;
  let queue=normalizeWaitlist({...t,players},now);
  const humanWaiting=queue.some(p=>p.isBot!==true),capacity=A.capacity(S.settings);

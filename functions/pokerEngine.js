@@ -33,10 +33,7 @@ const {prepareLedger} = require('./pokerLedger');
 let _db = null;
 const db = () => (_db = _db || getFirestore());
 
-// index.html:1048-1049 — keep in sync with the client list.
-const GOD_EMAILS = ["aaci.yoni@gmail.com", "info.bagso@gmail.com", "avi057278@gmail.com", "khnby749@gmail.com", "bykhn3234@gmail.com", "haim29071994@gmail.com", "tomerbitan481@gmail.com"];
-const SUPER_ADMIN_EMAIL = "aaci.yoni@gmail.com";
-const isGodAuth = (auth) => !!(auth && auth.uid && auth.token && auth.token.email_verified === true && GOD_EMAILS.includes(String(auth.token.email || "").toLowerCase().trim()));
+const {accessSecret, isGodAuth} = require('./godIdentity');
 
 const BETTING = ["preflop", "flop", "turn", "river"]; // index.html:8951
 const rnd = () => crypto.randomInt(0, 1000000) / 1000000; // CSPRNG in [0,1)
@@ -115,6 +112,7 @@ function startHand(S, forcedGameType) {
     if (!S.tor && p.pendingTopUp>0) {
       const max=S.settings.maxBuyIn || (S.settings.maxBuyInBB||200)*blindsOf(S).bb;
       const add=Math.min(p.pendingTopUp,Math.max(0,round2(max-p.stack))),refund=round2(p.pendingTopUp-add);
+      if(S.settings.botRotation==='fixed' && p.isBot && p.stack===0 && add>0){p.sitOut=false;p.sitOutNext=false;}
       p.stack=round2(p.stack+add);p.pendingTopUp=0;
       if(refund){p.buyTotal=round2((p.buyTotal||0)-refund);S.effects.push({type:'credit',uid:A.payee(p),amount:refund});}
     }
@@ -1193,6 +1191,7 @@ async function commitState(tx, S, extraTop) {
   for(const uid of S.modelsDirty||[])tx.set(db().doc('_pkOpponentModels/'+crypto.createHash('sha256').update(JSON.stringify([S.table.clubId,uid])).digest('hex')),{...S.publicModels[uid],updatedAt:S.now});
   if(S.botDecisionDebug)tx.set(db().doc('_pkBotDecisions/'+S.id+'_'+(S.gameState.__seq%256)),{...S.botDecisionDebug,tableId:S.id,clubId:S.table.clubId,handN:S.gameState.handN||0,at:S.now});
   if(S.botRotation)tx.set(db().collection("_pkAudit").doc(),S.botRotation);
+  for(const audit of S.lineupAudits||[])tx.set(db().collection("_pkAudit").doc(),audit);
   for(const uid of S.privateDeletes||[])tx.delete(privRef(S.id,uid));
   if(S.torDirty){const {id,...doc}=S.tor;tx.set(db().doc('tournaments/'+id),doc);}
   const top = {
@@ -1227,11 +1226,19 @@ async function runEffects(S) {
 
 /* ============================ tick orchestration ============================ */
 
-const BOT_BETTING_WINDOW_MS = 5000;
-function botBettingDeadline(g, player) {
+const BOT_CONTROL_WINDOW_MS = 5000;
+function claimedBotDeadline(g, player) {
   const control = player.manualControl;
-  return control?.handN === g.handN && control?.turnStartedAt === g.turnStartedAt && Number.isFinite(control?.until)
-    ? control.until : g.turnStartedAt + BOT_BETTING_WINDOW_MS;
+  if (control?.handN === g.handN && control?.turnStartedAt === g.turnStartedAt && Number.isFinite(control?.until)) return control.until;
+}
+
+function botActionDeadline(g, player) {
+  const heldUntil = claimedBotDeadline(g, player);
+  if (heldUntil !== undefined) return heldUntil;
+  // Every viewer, scheduler and transaction retry uses the same delay for this turn.
+  const turn = JSON.stringify([player.uid, g.handN, g.phase, g.turnStartedAt]);
+  const extraSeconds = crypto.createHash('sha256').update(turn).digest().readUInt32BE(0) % 3;
+  return g.turnStartedAt + BOT_CONTROL_WINDOW_MS + extraSeconds * 1000;
 }
 
 // Avoid locking the table and loading private cards while a player is still
@@ -1241,13 +1248,78 @@ function tickMayAdvance(t,now){
   if(BETTING.includes(g.phase)){
     if(g.allInReveal)return !!g.ritOffer||elapsed>=1300;
     const actor=pl[g.activeTurnUid];if(!actor||actor.status!=='active')return true;
-    if(actor.isBot)return now>=botBettingDeadline(g,actor);
+    if(actor.isBot)return now>=botActionDeadline(g,actor);
     const gone=actor.lastSeen&&now-actor.lastSeen>20000;
     return elapsed>(actor.sitOut?1500:gone?9000:(Number(t.settings?.actionTime)||30)*1000+1000);
   }
   if(g.phase==='dc_selection')return elapsed>(pl[g.dcUid]?.isBot?2200:25000);
   if(g.phase==='discard')return elapsed>(Object.values(pl).some(p=>p.isBot&&p.status==='active'&&p.cardCount===3)?1600:25000);
   return true;
+}
+
+function changeCashBotSeat(S, old, replace, buy, history) {
+  const pl=S.players, g=S.gameState, now=S.now, sponsor=A.payee(old);
+  const newUid='bot_'+crypto.createHash('sha256').update(S.id+':'+old.uid+':'+now).digest('hex').slice(0,24);
+  const others=Object.values(pl).filter(p=>p.uid!==old.uid).map(p=>p.name);
+  const past=[...history,old.name].slice(-20);
+  removeSeat(S,old.uid,false);delete S.priv[old.uid];S.privateDeletes=[...(S.privateDeletes||[]),old.uid];
+  if(replace){
+    const name=botName(newUid,[...others,...past],{tableNames:others});
+    pl[newUid]={uid:newUid,name,isBot:true,...botSession(newUid,now),fundingUid:sponsor,botStyle:['tight','balanced','aggressive'][crypto.createHash('sha256').update(newUid).digest()[0]%3],seatIndex:old.seatIndex,stack:buy,buyTotal:buy,bet:0,status:'active',cards:[],cardCount:0,hasActed:false,actionText:'',avatarSeed:newUid,lastSeen:now};
+    S.effects.push({type:'credit',uid:sponsor,amount:-buy});
+  }
+  if(g.dealerUid===old.uid){
+    const active=Object.values(pl).filter(p=>p.stack>0&&!p.sitOut).sort((a,b)=>a.seatIndex-b.seatIndex);
+    g.dealerUid=replace?newUid:active.filter(p=>p.seatIndex<old.seatIndex).at(-1)?.uid||active.at(-1)?.uid||null;
+  }
+  if(replace){if(g.dcUid===old.uid)g.dcUid=newUid;if(g.dcAnchor===old.uid)g.dcAnchor=newUid;}
+  return {joined:replace?newUid:null,history:past,rotationKey:newUid};
+}
+
+async function applyFixedLineup(S, fundedBalance, extraTop) {
+  if (S.settings.botRotation !== 'fixed' || S.tor || S.settings.spinMode || S.raw.closeRequested || !A.idle(S.raw) ||
+      (S.gameState.phase==='showdown' && S.now-S.gameState.showdownAt<showdownDelay(S.gameState))) return false;
+  let changed=false;
+  for (const seat of Object.values(S.players)) {
+    if (!seat.isBot) continue;
+    const request=seat.lineupRequest;
+    if (request) {
+      const replace=request.action==='replace', sponsor=A.payee(seat);
+      const refund=round2(seat.stack+(seat.bet||0)+(seat.pendingTopUp||0));
+      const buy=replace?cashBotBuyIn(S.settings,blindsOf(S).bb):0;
+      const audit={action:'fixed-bot-seat',tableId:S.id,clubId:S.table.clubId,targetUid:seat.uid,at:S.now,requestId:request.id};
+      const balance=await fundedBalance(sponsor);
+      const missingAccount=!Number.isFinite(balance);
+      if ((!missingAccount || (!replace && refund===0)) && (!replace || balance+refund>=buy)) {
+        const change=changeCashBotSeat(S,seat,replace,buy,extraTop.botNameHistory||S.raw.botNameHistory||[]);
+        extraTop.botNameHistory=change.history;
+        Object.assign(audit,{status:'completed',joined:change.joined,buy,refund,fundingUid:sponsor});
+      } else {
+        delete seat.lineupRequest;
+        seat.lineupError=missingAccount?'Funding account missing':'Insufficient funds for replacement';
+        audit.status=missingAccount?'missing-account':'insufficient-funds';
+      }
+      (S.lineupAudits ||= []).push(audit);
+      changed=true;
+    }
+    if (S.players[seat.uid] && seat.stack===0 && !seat.pendingTopUp &&
+        (seat.status!=='sitout' || !seat.sitOut)) {
+      seat.status='sitout';seat.sitOut=true;seat.sitOutNext=false;seat.sitAuto=false;
+      seat.sitOutAt=S.now;changed=true;
+    }
+  }
+  return changed;
+}
+
+function availableBotFunding(S,tx) {
+  const balances=new Map();
+  return async sponsor=>{
+    if(!balances.has(sponsor)){
+      const account=await tx.get(db().doc(`memberships/${sponsor}_${S.table.clubId}`));
+      balances.set(sponsor,account.exists && Number.isFinite(account.data().balance)?account.data().balance:-Infinity);
+    }
+    return round2(balances.get(sponsor)+S.effects.filter(e=>e.type==='credit'&&e.uid===sponsor).reduce((n,e)=>n+e.amount,0));
+  };
 }
 
 // Everything time-driven lives here: timeouts, bots, runouts, next hands,
@@ -1277,11 +1349,7 @@ async function tickTable(id, testNow) {
     const now = S.now;
     const extraTop = {};
     let dirty = S.namesChanged || S.settingsChanged;
-    const bankBalances=new Map();
-    const fundedBalance=async sponsor=>{
-      if(!bankBalances.has(sponsor)){const b=await tx.get(db().doc(`memberships/${sponsor}_${S.table.clubId}`));bankBalances.set(sponsor,b.exists?b.data().balance:-Infinity);}
-      return round2(bankBalances.get(sponsor)+S.effects.filter(e=>e.type==='credit'&&e.uid===sponsor).reduce((n,e)=>n+e.amount,0));
-    };
+    const fundedBalance=availableBotFunding(S,tx);
 
     // --- Spin arming: table full, wheel not spun yet (protocol §5) ---
     if (S.settings.spinMode && !S.raw.spin && Object.keys(pl).length >= (Number(S.settings.maxPlayers) || 3)) {
@@ -1315,6 +1383,7 @@ async function tickTable(id, testNow) {
 
     // Managed cash availability reconciles only after settlement. It uses the
     // same sponsor ledger and seat removal path as ordinary bot sessions.
+    if(await applyFixedLineup(S,fundedBalance,extraTop))dirty=true;
     if(S.raw.botLobby?.version===1){
       const managedPatch=await require('./botLobby').reconcileManagedSeats(S,removeSeat,fundedBalance);
       if(Object.keys(managedPatch).length){Object.assign(extraTop,managedPatch);dirty=true;}
@@ -1324,7 +1393,7 @@ async function tickTable(id, testNow) {
     // vacancy at the settled boundary, including on manually opened tables.
     // No human is automatically seated or charged by this maintenance path.
     const manualHumanWaiting=!S.raw.botLobby&&require('./pokerWaitlist').normalizeWaitlist({...S.raw,players:pl},now).some(p=>p.isBot!==true);
-    if(!S.raw.botLobby&&!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&
+    if(S.settings.botRotation!=='fixed'&&!S.raw.botLobby&&!S.raw.closeRequested&&!S.settings.spinMode&&!S.tor&&A.idle(S.raw)&&
        (g.phase!=='showdown'||now-(g.showdownAt||0)>=showdownDelay(g))){
       const yieldSeat=manualHumanWaiting&&Object.keys(pl).length>=A.capacity(S.settings);
       const candidates=Object.values(pl).filter(p=>p.isBot&&p.fundingUid&&!p.pendingTopUp).map(p=>({p,at:p.botLeavesAt||botSession(p.uid,p.botJoinedAt||S.raw.createdAt||now).botLeavesAt}));
@@ -1336,21 +1405,9 @@ async function tickTable(id, testNow) {
         // With a vacancy already reserved, an unfunded replacement must not
         // cause another healthy bot to leave solely because a human is waiting.
         if(yieldSeat||enough||!manualHumanWaiting){
-          const newUid='bot_'+crypto.createHash('sha256').update(S.id+':'+old.uid+':'+now).digest('hex').slice(0,24);
-          const others=Object.values(pl).filter(p=>p.uid!==old.uid).map(p=>p.name),past=[...(S.raw.botNameHistory||[]),old.name].slice(-20);
-          removeSeat(S,old.uid,false);delete S.priv[old.uid];S.privateDeletes=[...(S.privateDeletes||[]),old.uid];
-          if(enough){
-            const name=botName(newUid,[...others,...past],{tableNames:others});
-            pl[newUid]={uid:newUid,name,isBot:true,...botSession(newUid,now),fundingUid:sponsor,botStyle:['tight','balanced','aggressive'][crypto.createHash('sha256').update(newUid).digest()[0]%3],seatIndex:old.seatIndex,stack:buy,buyTotal:buy,bet:0,status:'active',cards:[],cardCount:0,hasActed:false,actionText:'',avatarSeed:newUid,lastSeen:now};
-            S.effects.push({type:'credit',uid:sponsor,amount:-buy});
-          }
-          if(g.dealerUid===old.uid){
-            const active=Object.values(pl).filter(p=>p.stack>0&&!p.sitOut).sort((a,b)=>a.seatIndex-b.seatIndex);
-            g.dealerUid=enough?newUid:active.filter(p=>p.seatIndex<old.seatIndex).at(-1)?.uid||active.at(-1)?.uid||null;
-          }
-          if(enough){if(g.dcUid===old.uid)g.dcUid=newUid;if(g.dcAnchor===old.uid)g.dcAnchor=newUid;}
-          extraTop.botRotateAfter=now+rotationGap(newUid);extraTop.botNameHistory=past;
-          S.botRotation={clubId:S.table.clubId,tableId:S.id,action:'bot-rotation',at:now,departed:old.uid,joined:enough?newUid:null,refund,buy:enough?buy:0,...(yieldSeat?{reason:'human-waitlist'}:{})};dirty=true;
+          const change=changeCashBotSeat(S,old,enough,buy,S.raw.botNameHistory||[]);
+          extraTop.botRotateAfter=now+rotationGap(change.rotationKey);extraTop.botNameHistory=change.history;
+          S.botRotation={clubId:S.table.clubId,tableId:S.id,action:'bot-rotation',at:now,departed:old.uid,joined:change.joined,refund,buy:enough?buy:0,...(yieldSeat?{reason:'human-waitlist'}:{})};dirty=true;
         }
       }
     }
@@ -1358,6 +1415,7 @@ async function tickTable(id, testNow) {
     // --- Seat reaping (cash only): leaveReq/sitOut/busted between hands ---
     if (!S.raw.closeRequested && !S.settings.spinMode && !S.tor && A.idle(S.raw) && ["waiting", "showdown"].includes(g.phase) && (g.phase!=="showdown" || now-(g.showdownAt||0)>=showdownDelay(g))) {
       for (const p of Object.values(pl)) {
+        if (p.isBot && S.settings.botRotation==='fixed' && !p.leaveReq) continue;
         const idle = p.leaveReq || (p.sitOut && p.sitOutAt && now - p.sitOutAt > 600000) ||
           (p.leavingAt && now >= p.leavingAt) ||
           (p.status === "busted" && !p.pendingTopUp && p.bustedAt && (p.isBot || now - p.bustedAt > 300000));
@@ -1366,7 +1424,7 @@ async function tickTable(id, testNow) {
         // human in it, a busted bot re-buys instead of standing up, so the
         // game is still running whenever somebody looks. buyTotal records it,
         // so the chip audit still balances (guardTables reads that receipt).
-        if (p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot) && !(manualHumanWaiting && Object.keys(pl).length >= A.capacity(S.settings))) {
+        if (S.settings.botRotation!=='fixed' && p.isBot && p.status === "busted" && Object.values(pl).every((q) => q.isBot) && !(manualHumanWaiting && Object.keys(pl).length >= A.capacity(S.settings))) {
           const bbNow=blindsOf(S).bb,buy=cashBotBuyIn(S.settings,bbNow),sponsor=A.payee(p);
           if((await fundedBalance(sponsor))<buy){removeSeat(S,p.uid,false);dirty=true;continue;}
           S.effects.push({type:'credit',uid:sponsor,amount:-buy});
@@ -1384,7 +1442,7 @@ async function tickTable(id, testNow) {
     }
 
     // --- Next hand from waiting / showdown ---
-    const eligible = Object.values(pl).filter((p) => (p.stack > 0 || (S.tor ? p.pendingTournamentChips : p.pendingTopUp) > 0) && (S.tor || S.settings.spinMode || !p.sitOut) && p.status!=="out" && (p.status!=="busted" || (S.tor ? p.pendingTournamentChips : p.pendingTopUp)>0));
+    const eligible = Object.values(pl).filter((p) => (p.stack > 0 || (S.tor ? p.pendingTournamentChips : p.pendingTopUp) > 0) && (S.tor || S.settings.spinMode || !p.sitOut || S.settings.botRotation==='fixed' && p.isBot && p.stack===0 && p.pendingTopUp>0) && p.status!=="out" && (p.status!=="busted" || (S.tor ? p.pendingTournamentChips : p.pendingTopUp)>0));
     const activeSpin=extraTop.spin||S.raw.spin;
     const spinGate = !S.raw.closeRequested && tournamentReady(S) && (S.settings.spinMode ? activeSpin && !activeSpin.fundingPending && now >= (extraTop.spinStartAt||S.raw.spinStartAt||Infinity) && !S.raw.spinDone && !extraTop.spinDone : true);
     if (g.phase === "waiting" && eligible.length >= 2 && spinGate) {
@@ -1443,8 +1501,8 @@ async function tickTable(id, testNow) {
             g.turnStartedAt = now;
           }
           dirty = true;
-        } else if (actor.isBot && now >= botBettingDeadline(g, actor)) {
-          const controlled = actor.manualControl?.turnStartedAt === g.turnStartedAt;
+        } else if (actor.isBot && now >= botActionDeadline(g, actor)) {
+          const controlled = claimedBotDeadline(g, actor) !== undefined;
           delete actor.manualControl;
           const move = controlled ? {action:g.highestBet > (actor.bet || 0) ? 'fold' : 'call'} : botAction(S, actor.uid);
           applyAction(S, actor.uid, move.action, move.amount, false);
@@ -1507,6 +1565,7 @@ function removeSeat(S, uid, inHand) {
 /* ============================ callables ============================ */
 
 const CALL_OPTS = {region: "us-central1"};
+const GOD_CALL_OPTS = {...CALL_OPTS, secrets:[accessSecret]};
 
 const authedUid = (request) => {
   const uid = request.auth && request.auth.uid;
@@ -1526,7 +1585,7 @@ exports.pkSecurityStatus = onCall(CALL_OPTS, async () => ({
 }));
 
 // pkDeal — protocol §3.1. Must finish well under the client's 7s race.
-exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
+exports.pkDeal = onCall({...GOD_CALL_OPTS, minInstances: 1}, async (request) => {
   const uid = authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
@@ -1547,8 +1606,10 @@ exports.pkDeal = onCall({...CALL_OPTS, minInstances: 1}, async (request) => {
       if (!armed) throw new HttpsError("failed-precondition", "The spin has not started yet");
     }
     if(phase==='showdown'&&S.now-(S.gameState.showdownAt||0)<showdownDelay(S.gameState)){S=null;return;}
+    const patch={};
+    await applyFixedLineup(S,availableBotFunding(S,tx),patch);
     startHand(S);
-    await commitState(tx, S);
+    await commitState(tx, S, patch);
   });
   if (S) await runEffects(S);
   return {ok: true};
@@ -1580,7 +1641,7 @@ exports.pkAct=onCall(CALL_OPTS,request=>{
 
 // A claim covers the current hand. Its private audit record also identifies
 // its operator; the seat carries only the record ID and hand number.
-exports.pkBotTurn = onCall(CALL_OPTS, async request => {
+exports.pkBotTurn = onCall(GOD_CALL_OPTS, async request => {
   authedUid(request);
   if (!isGodAuth(request.auth)) A.fail('permission-denied', 'GOD MODE access required');
   require('./pokerSecurity').requirePokerAvailable();
@@ -1603,8 +1664,9 @@ exports.pkBotTurn = onCall(CALL_OPTS, async request => {
     if (takeover && (g.activeTurnUid !== target || data.turnStartedAt !== g.turnStartedAt ||
         data.phase !== g.phase || data.highestBet !== g.highestBet)) A.fail('failed-precondition','This turn has changed');
     const quick = data.mode === 'quick' && ['fold','check','call','raise'].includes(op);
+    const interventionEnds = claimedBotDeadline(g,p) ?? (g.turnStartedAt + BOT_CONTROL_WINDOW_MS);
     if ((betting || op === 'claim') && g.activeTurnUid === target &&
-        (!Number.isFinite(g.turnStartedAt) || S.now >= botBettingDeadline(g,p))) {
+        (!Number.isFinite(g.turnStartedAt) || S.now >= interventionEnds)) {
       A.fail('failed-precondition', 'This turn has expired');
     }
     const audit = database.collection('_pkAudit');
@@ -1701,6 +1763,10 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
       S = null;
       return; // already gone — success
     }
+    if(p.isBot && S.settings.botRotation==='fixed' && target!==uid){
+      if(!request.data?.intent){ignored=true;S=null;return;}
+      throw new HttpsError('failed-precondition','Use Free seat after hand for a fixed lineup bot');
+    }
     const inHand=!A.idle(S.raw);
     const participates=inHand&&((p.cardCount||0)>0||(p.bet||0)>0||(S.priv[target]||[]).length>0||(S.gameState.pots||[]).some(pot=>(pot.eligible||[]).includes(target)));
     const noticeMs=(p.stack>0||participates)?(S.settings.leaveNoticeMins||0)*60000:0,otherHumans=Object.values(S.players).some(q=>q.uid!==uid&&!q.isBot),profitBB=((p.stack||0)+(p.bet||0)-(p.buyTotal||0))/(S.settings.blinds*2);
@@ -1789,14 +1855,14 @@ exports.pkDiscard = onCall(CALL_OPTS, async (request) => {
 });
 
 // Occupancy summaries use the same verified GOD allowlist, without reading cards.
-exports.godLobbyCounts = require("./godLobby").createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS});
+exports.godLobbyCounts = require("./godLobby").createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS:GOD_CALL_OPTS});
 
 // godPeek — protocol §3.9. GOD accounts only: all hands + the coming runout.
-exports.godPeek = require("./godPeek").createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS});
-exports.pkBotChat = require("./godBotChat").createCallable({onCall, HttpsError, isGodAuth, CALL_OPTS});
+exports.godPeek = require("./godPeek").createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS:GOD_CALL_OPTS});
+exports.pkBotChat = require("./godBotChat").createCallable({onCall, HttpsError, isGodAuth, CALL_OPTS:GOD_CALL_OPTS});
 
 // admFixGameLog — protocol §3.10: delete duplicate gameLog docs for a club.
-exports.admFixGameLog = onCall(CALL_OPTS, async (request) => {
+exports.admFixGameLog = onCall(GOD_CALL_OPTS, async (request) => {
   const uid = authedUid(request);
   const email = request.auth.token && request.auth.token.email;
   const clubId = (request.data || {}).clubId;

@@ -11,3 +11,14 @@ test('bot sessions target half an hour with varied expiry and staggered table re
  }
  assert.ok(ends.size>5,'bots should not all leave at the same time');
 });
+
+test('manual-only buy-in cutoff is inclusive and respects legacy blind units and game type',()=>{
+ const {fixedCashLineup}=require('../functions/botSessions');
+ assert.equal(fixedCashLineup({minBuyIn:299.99}),false);
+ assert.equal(fixedCashLineup({minBuyIn:300}),true);
+ assert.equal(fixedCashLineup({minBuyIn:1500,botRotation:'automatic'}),true);
+ assert.equal(fixedCashLineup({minBuyIn:20,botRotation:'fixed'}),true);
+ assert.equal(fixedCashLineup({minBuyInBB:30,blinds:5}),true);
+ assert.equal(fixedCashLineup({minBuyIn:300,spinMode:true}),false);
+ assert.equal(fixedCashLineup({minBuyIn:300},true),false);
+});

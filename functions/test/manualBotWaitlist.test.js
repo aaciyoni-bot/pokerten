@@ -414,3 +414,31 @@ test('manager removal immediately refunds a waiting bot to its sponsor; a non-ma
  assert.equal((await f.leave(id,'owner',req)).queued,false);assert.equal(f.table(id).players[bot.uid],undefined);
  assert.equal(f.balance(payer),bank+bot.stack);await f.leave(id,'owner',req);assert.equal(f.balance(payer),bank+bot.stack);
 });
+
+test('raising the live minimum immediately prices new seats and locks bots without touching the running hand',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:4,minBuyIn:100,maxBuyIn:1000},2);
+ await f.tick(id);const row=f.table(id),seats=copy(row.players),turn=row.gameState.activeTurnUid,bank=f.balance('human');
+ await assert.rejects(f.lineup(id,'human',{op:'settings',patch:{minBuyIn:300}}),{code:'permission-denied'});
+ const saved=await f.lineup(id,'owner',{op:'settings',patch:{minBuyIn:300}});
+ assert.equal(saved.queued,false);assert.equal(f.table(id).settings.minBuyIn,300);
+ assert.deepEqual(f.table(id).players,seats);assert.equal(f.table(id).gameState.activeTurnUid,turn);
+ await assert.rejects(f.seatOp(id,'join',{amount:299.99}),{code:'invalid-argument'});assert.equal(f.balance('human'),bank);
+ await assert.rejects(f.lineup(id,'owner',{op:'bot-rotation',mode:'automatic'}),/300/);
+ await f.seatOp(id,'join',{amount:300});assert.equal(f.balance('human'),bank-300);
+ const bot=Object.keys(seats)[0];await f.lineup(id,'owner',{op:'bot-seat',targetUid:bot,action:'replace'});
+ assert.equal(f.table(id).players[bot].lineupRequest.action,'replace');
+});
+for(const managed of [false,true])test('previously automatic '+(managed?'managed':'manual')+' cash table at 300 keeps expired seats with a human waiting',async()=>{
+ const f=fixture(),{id}=await settled(f),row=f.table(id);row.settings.minBuyIn=300;row.settings.maxBuyIn=1000;row.settings.botRotation='automatic';
+ if(managed){delete row.botLobbyExcluded;row.botLobby={version:1,profile:2,fundingUid:'owner'};}
+ for(const p of Object.values(row.players))p.botLeavesAt=1;row.botRotateAfter=0;
+ const ids=Object.keys(row.players).sort();await f.seatOp(id,'wait',{amount:300});await f.tick(id);
+ assert.deepEqual(Object.keys(f.table(id).players).sort(),ids);assert.equal(f.table(id).waitlist[0].uid,'human');
+});
+test('a queued player keeps their position but must choose a valid new buy-in',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:3,minBuyIn:100,maxBuyIn:600});
+ await f.wait(id);const then=f.table(id).waitlist[0].at;
+ await f.lineup(id,'owner',{op:'settings',patch:{minBuyIn:300}});
+ await f.seatOp(id,'wait',{amount:100,heartbeat:true});assert.equal(f.table(id).waitlist[0].buyAmt,100);
+ await f.seatOp(id,'wait',{amount:300});assert.equal(f.table(id).waitlist[0].buyAmt,300);assert.equal(f.table(id).waitlist[0].at,then);
+});

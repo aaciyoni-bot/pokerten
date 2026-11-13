@@ -5,7 +5,7 @@ const A=require('./pokerAuthority'),C=require('./pokerCore'),{prepareLedger}=req
 const {key,fail,cash,number,root,member,command,capacity}=A;
 const opts={region:'us-central1'};
 const {botName}=require('./botNames');
-const {session:botSession,cashBotBuyIn}=require('./botSessions');
+const {session:botSession,cashBotBuyIn,cashMinimum,fixedCashLineup}=require('./botSessions');
 const {normalizeWaitlist}=require('./pokerWaitlist');
 const {appearance}=require('./pokerIdentity');
 const available=()=>require('./pokerSecurity').requirePokerAvailable();
@@ -14,7 +14,15 @@ function botEntryCost(s,amount){
  if(amount===undefined)return cashBotBuyIn(s);
  if(typeof amount!=='number')fail('invalid-argument','Enter a numeric buy-in per bot');
  const bb=(s.blinds??0.5)*2;
- return cash(number(amount,NaN,s.minBuyIn??40*bb,s.maxBuyIn??200*bb));
+ return cash(number(amount,NaN,cashMinimum(s,bb),s.maxBuyIn??200*bb));
+}
+function resumeBustedBots(patch,players,now){
+ for(const p of Object.values(players||{})){
+  if(!p.isBot||p.stack!==0||!p.sitOut||p.status!=='sitout')continue;
+  patch['players.'+p.uid+'.sitOut']=false;
+  patch['players.'+p.uid+'.status']='busted';
+  patch['players.'+p.uid+'.bustedAt']=now;
+ }
 }
 function tableSettings(raw={}){
  const s={};for(const [k,min,max,def]of [['blinds',.01,100000,.5],['minBuyIn',.01,10000000,40],['maxBuyIn',.01,10000000,200],['minBuyInBB',0,100000,0],['maxBuyInBB',0,100000,0],['maxPlayers',2,9,6],['autoStart',2,9,2],['actionTime',10,120,30],['rakePercent',0,20,0],['rakeCap',0,100000,0],['ante',0,100000,0],['bombEvery',0,1000,0],['bombAnte',0,100,2],['leaveNoticeMins',0,120,0],['leaveNoticeBB',0,100000,0],['spinBuyIn',.01,100000,50],['spinStack',10,10000000,1000],['spinLevelSec',30,3600,180]])s[k]=number(raw[k],def,min,max);
@@ -70,14 +78,15 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   }else if(humanWaiters.length)fail('failed-precondition','Waiting players have priority over bots');
   const cap=capacity(s),taken=new Set(Object.values(pl).map(p=>p.seatIndex));if(Object.keys(pl).length>=cap||s.spinMode&&t.spin)fail('failed-precondition','Table is full or Spin started');
   let seat=Number.isInteger(r.data.seatIndex)&&r.data.seatIndex>=0&&r.data.seatIndex<cap&&!taken.has(r.data.seatIndex)?r.data.seatIndex:0;while(taken.has(seat)&&seat<cap)seat++;if(seat>=cap)fail('failed-precondition','No seat available');
-  const min=s.minBuyIn??40*s.blinds*2,max=s.maxBuyIn??200*s.blinds*2,buy=s.spinMode?s.spinBuyIn:op==='addbot'?botEntryCost(s,r.data.amount):number(r.data.amount,NaN,min,max);
+  const min=cashMinimum(s),max=s.maxBuyIn??200*s.blinds*2,buy=s.spinMode?s.spinBuyIn:op==='addbot'?botEntryCost(s,r.data.amount):number(r.data.amount,NaN,min,max);
   const last=t.leftStacks?.[who];if(last&&now-last.at<43200000&&buy<last.amount)fail('failed-precondition','Return with at least your previous stack');effects.push({type:'credit',uid:funding,amount:-buy});
   patch[`players.${who}`]={uid:who,name,...appearance(op==='addbot'?{}:profile,who),seatIndex:seat,stack:s.spinMode?s.spinStack:buy,buyTotal:s.spinMode?0:buy,spinPaid:s.spinMode?buy:0,bet:0,status:idle?'active':'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',isBot:op==='addbot',...(op==='addbot'?{...botSession(who,now),fundingUid:funding,botStyle:['tight','balanced','aggressive'][Object.keys(pl).length%3]}:{}),lastSeen:now};patch[`leftStacks.${who}`]=null;patch.waitlist=waiting.filter(w=>w.uid!==who);
  }else if(op==='wait'||op==='unwait'){
   let humans=humanWaiters.filter(entry=>entry.uid!==uid);const bots=waiting.filter(entry=>entry.isBot===true&&entry.uid!==uid);
   if(op==='wait'&&!p){
    const previous=humanWaiters.find(entry=>entry.uid===uid);if(!previous&&humans.length>=30)fail('resource-exhausted','Waiting list full');
-   const entry={uid,name:profile.username||'Player',at:previous?.at??now,seenAt:now,buyAmt:number(r.data.amount,s.minBuyIn,s.minBuyIn,s.maxBuyIn)};
+   const keep=Number.isFinite(previous?.buyAmt) && r.data.heartbeat===true;
+   const entry={uid,name:profile.username||'Player',at:previous?.at??now,seenAt:now,buyAmt:keep?previous.buyAmt:number(r.data.amount,cashMinimum(s),cashMinimum(s),s.maxBuyIn)};
    humans=previous?humanWaiters.map(item=>item.uid===uid?entry:item):[...humans,entry];
   }
   patch.waitlist=[...humans,...bots.slice(0,Math.max(0,30-humans.length))];
@@ -99,7 +108,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   if(s.spinMode)fail('failed-precondition','Spin does not allow top-ups');
   if(op==='rebuy'&&seat.stack>0)fail('failed-precondition','Use Add chips while you still have chips');
   if(op==='rebuy'&&seat.pendingTopUp>0)fail('failed-precondition','Your rebuy is already queued for the next hand');
-  const add=number(r.data.amount,NaN,op==='rebuy'?(s.minBuyIn??40*s.blinds*2):.01,10000000);
+  const add=number(r.data.amount,NaN,op==='rebuy'?cashMinimum(s):.01,10000000);
   const max=s.maxBuyIn??(s.maxBuyInBB||200)*(Number(s.blinds)||0.5)*2;
   if(cash(seat.stack+(seat.bet||0)+(seat.pendingTopUp||0)+add)>max)fail('invalid-argument','Buy-in limit exceeded');
   effects.push({type:'credit',uid:payer,amount:-add});
@@ -214,20 +223,14 @@ exports.pkTableManage=onCall(opts,async r=>command(r,'table-manage',async(tx,db,
   if(op==='bot-rotation'){
    const mode=r.data.mode;
    if(!['automatic','fixed'].includes(mode))fail('invalid-argument','Unknown bot rotation mode');
+   if(mode==='automatic' && cashMinimum(t.settings)>=300)fail('failed-precondition','Bot changes are manual for a minimum buy-in of 300 or more');
    if(mode==='automatic' && Object.values(t.players||{}).some(p=>p.lineupRequest))fail('failed-precondition','A bot seat change is pending');
-   if(mode==='automatic' && t.settings.botRotation==='fixed'){
-    for(const p of Object.values(t.players||{})){
-     if(!p.isBot || p.stack!==0 || !p.sitOut || p.status!=='sitout')continue;
-     patch['players.'+p.uid+'.sitOut']=false;
-     patch['players.'+p.uid+'.status']='busted';
-     patch['players.'+p.uid+'.bustedAt']=now;
-    }
-   }
+   if(mode==='automatic' && fixedCashLineup(t.settings))resumeBustedBots(patch,t.players,now);
    patch['settings.botRotation']=mode;
    Object.assign(audit,{action:'bot-rotation-mode',mode});
   }else{
    const target=key(r.data.targetUid,'bot'),seat=t.players?.[target],action=r.data.action;
-   if(t.settings.botRotation!=='fixed')fail('failed-precondition','Enable Fixed lineup first');
+   if(!fixedCashLineup(t.settings))fail('failed-precondition','Enable Fixed lineup first');
    if(!['replace','free'].includes(action))fail('invalid-argument','Unknown seat change');
    if(!seat||seat.uid!==target||seat.isBot!==true||!seat.fundingUid||seat.leaveReq||seat.leavingAt||seat.status==='out')fail('failed-precondition','Bot no longer available');
    if(seat.lineupRequest)fail('failed-precondition','A seat change is already pending');
@@ -253,8 +256,19 @@ exports.pkTableManage=onCall(opts,async r=>command(r,'table-manage',async(tx,db,
   for(const k of Object.keys(incoming))if(!allowed.includes(k))fail('invalid-argument','Unsupported table setting');
   const combined={...t.settings,...t.pendingSettings?.settings,...incoming},validated=tableSettings(combined),patch={...t.pendingSettings?.settings};
   for(const k of Object.keys(incoming)){if(incoming[k]==null||incoming[k]==='')fail('invalid-argument','A numeric value is required');patch[k]=validated[k];}
-  const queued=!A.idle(t),stamp={'gameState.__seq':(t.gameState?.__seq||0)+1};
-  tx.update(ref,queued?{...stamp,pendingSettings:{settings:patch,by:uid,at:now}}:{...stamp,settings:{...t.settings,...patch},pendingSettings:null,settingsUpdatedAt:now});
+  const live={...t.settings},nextHand={},idle=A.idle(t);
+  for(const [key,value] of Object.entries(patch)){
+   if(key==='minBuyIn'||key==='maxBuyIn'||idle)live[key]=value;
+   else if(value!==live[key])nextHand[key]=value;
+  }
+  const seatUpdates={};
+  if(fixedCashLineup(t.settings) && !fixedCashLineup(live)){
+   if(Object.values(t.players||{}).some(p=>p.lineupRequest))fail('failed-precondition','A bot seat change is pending');
+   resumeBustedBots(seatUpdates,t.players,now);
+  }
+  const queued=Object.keys(nextHand).length>0;
+  tx.update(ref,{...seatUpdates,'gameState.__seq':(t.gameState?.__seq||0)+1,settings:live,settingsUpdatedAt:now,
+   pendingSettings:queued?{settings:nextHand,by:uid,at:now}:null});
   tx.set(db.collection('_pkAudit').doc(),{clubId:t.clubId,tableId:ref.id,uid,at:now,action:'table-settings',patch,queued});return{ok:true,queued};
  }else if(op==='spin'){
   if(!t.settings.spinMode||t.spin||Object.keys(t.players||{}).length)fail('failed-precondition','Spin settings can only change before anyone joins');

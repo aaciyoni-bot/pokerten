@@ -119,6 +119,12 @@ const toggle=async()=>{await menu();const button=byTitle('GOD view');assert.ok(b
  assert.equal(purchases[0].amount,72.5);assert.equal(purchases[1].requestId,purchases[0].requestId);
  assert.equal(doc.querySelector('[role=dialog][aria-label="Add chips · Alpha"]'),null);
  await menu();
+ current.settings.minBuyIn=300;current.settings.maxBuyIn=600;
+ await React.act(async()=>tableNext(snapshot()));
+ assert.equal(byTitle('Bot rotation').getAttribute('aria-checked'),'true');
+ assert.equal(byTitle('Bot rotation').disabled,true,'existing high-entry cash table cannot enable automatic rotation');
+ current.settings.minBuyIn=40;current.settings.maxBuyIn=200;
+ await React.act(async()=>tableNext(snapshot()));
  const rotation=byTitle('Bot rotation');
  assert.ok(rotation);assert.equal(rotation.getAttribute('aria-checked'),'false');
  await React.act(async()=>rotation.click());assert.equal(byTitle('Bot rotation').getAttribute('aria-checked'),'true');

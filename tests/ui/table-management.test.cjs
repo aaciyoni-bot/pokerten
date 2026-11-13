@@ -22,7 +22,15 @@ const del=()=>w.document.querySelector('button[aria-label="Delete table"]');
  await render(table('live'));await React.act(async()=>del().click());await React.act(async()=>settle.resolve({ok:true,queued:true,deleted:false}));assert.match(messages.at(-1).m,/after this hand/);assert.ok(del().disabled);assert.match(del().title,/Closing/);
  await render(table('other-client-close',{closeRequested:{at:1,by:'owner'}}));assert.ok(del().disabled);assert.match(w.document.body.textContent,/Closing after this hand/);
  await render(table('limits'));await React.act(()=>w.document.querySelector('button[title="Edit table settings"]').click());
- const save=[...w.document.querySelectorAll('button')].find(b=>b.textContent==='Save');await React.act(async()=>save.click());assert.equal(calls.at(-1).name,'pkTableManage');assert.equal(calls.at(-1).args.op,'settings');assert.equal(calls.at(-1).args.tableId,'limits');assert.equal(calls.at(-1).args.patch.minBuyIn,40);assert.equal(calls.at(-1).args.patch.maxBuyIn,200);assert.equal(calls.at(-1).args.patch.blinds,1);assert.equal(calls.at(-1).args.patch.rakePercent,0);await React.act(async()=>settle.resolve({ok:true}));
+ const save=[...w.document.querySelectorAll('button')].find(b=>b.textContent==='Save');
+ const change=async(label,value)=>React.act(()=>{const input=w.document.querySelector('input[aria-label="'+label+'"]');Object.getOwnPropertyDescriptor(w.HTMLInputElement.prototype,'value').set.call(input,value);input.dispatchEvent(new w.Event('input',{bubbles:true}));});
+ const requestsBefore=calls.length;
+ await change('Min buy-in','300');await React.act(async()=>save.click());
+ assert.match(w.document.querySelector('[role=alert]').textContent,/Max buy-in/);assert.equal(calls.length,requestsBefore);
+ await change('Max buy-in','600');await React.act(async()=>save.click());
+ assert.equal(calls.at(-1).name,'pkTableManage');assert.equal(calls.at(-1).args.op,'settings');assert.equal(calls.at(-1).args.tableId,'limits');
+ assert.deepEqual({...calls.at(-1).args.patch},{minBuyIn:300,maxBuyIn:600});await React.act(async()=>settle.resolve({ok:true}));
+
  await render(table('seated',{players:{owner:{uid:'owner',name:'Owner',stack:100,status:'active',seatIndex:0}}}));
  const giveUp=w.document.querySelector('[title="Give up this seat"]');assert.ok(giveUp);await React.act(async()=>{giveUp.click();giveUp.click();});assert.equal(calls.at(-1).name,'pkLeave');assert.equal(calls.at(-1).args.tableId,'seated');const count=calls.length;await React.act(async()=>settle.resolve({ok:true,queued:true}));assert.equal(calls.length,count);assert.match(messages.at(-1).m,/when this hand ends/);
  await render(table('spin',{settings:{spinMode:true,spinBuyIn:10,maxPlayers:3,serverEngine:true},spin:{prize:30}}));assert.equal(w.document.querySelector('button[title="Edit table settings"]'),null);await React.act(async()=>del().click());assert.match(messages.at(-1).m,/Spin must finish/);assert.equal(calls.length,count);

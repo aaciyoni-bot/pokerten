@@ -22,7 +22,7 @@ module.exports = function checkAwardInBrowser(index, award) {
       const animations=flight.getAnimations();
       if(animations.length!==2)throw Error('Expected travel and fade');
       animations.forEach(a=>a.pause());
-      const samples=[0,400,1650,2900,4150,5400,7800,8250].map(t=>{
+      const samples=[0,400,900,1400,1900,2400,4800,5250].map(t=>{
         animations.forEach(a=>a.currentTime=t);
         const rect=label.getBoundingClientRect(),style=getComputedStyle(flight);
         return [Math.round(rect.left+rect.width/2),Math.round(rect.top+rect.height/2),Number(style.opacity),style.visibility];

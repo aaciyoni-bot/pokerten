@@ -1227,12 +1227,7 @@ async function runEffects(S) {
 
 /* ============================ tick orchestration ============================ */
 
-function botBettingDelay(settings, player, game) {
-  if (player.manualControl && player.manualControl.handN === game.handN) {
-    return (Number(settings.actionTime) || 30) * 1000;
-  }
-  return 2200;
-}
+const BOT_BETTING_WINDOW_MS = 3000;
 
 // Avoid locking the table and loading private cards while a player is still
 // thinking. Recheck inside the transaction so racing viewers cannot act early.
@@ -1241,7 +1236,7 @@ function tickMayAdvance(t,now){
   if(BETTING.includes(g.phase)){
     if(g.allInReveal)return !!g.ritOffer||elapsed>=1300;
     const actor=pl[g.activeTurnUid];if(!actor||actor.status!=='active')return true;
-    if(actor.isBot)return elapsed>botBettingDelay(t.settings,actor,g);
+    if(actor.isBot)return elapsed>=BOT_BETTING_WINDOW_MS;
     const gone=actor.lastSeen&&now-actor.lastSeen>20000;
     return elapsed>(actor.sitOut?1500:gone?9000:(Number(t.settings?.actionTime)||30)*1000+1000);
   }
@@ -1443,7 +1438,7 @@ async function tickTable(id, testNow) {
             g.turnStartedAt = now;
           }
           dirty = true;
-        } else if (actor.isBot && stuck > botBettingDelay(S.settings, actor, g)) {
+        } else if (actor.isBot && stuck >= BOT_BETTING_WINDOW_MS) {
           delete actor.manualControl;
           const move = botAction(S, actor.uid);
           applyAction(S, actor.uid, move.action, move.amount, false);
@@ -1598,17 +1593,19 @@ exports.pkBotTurn = onCall(CALL_OPTS, async request => {
       A.fail('failed-precondition', 'This bot has no betting decision in that hand');
     }
     const control = p.manualControl?.handN === g.handN ? p.manualControl : null;
+    const quick = data.mode === 'quick' && ['fold','check','call','raise'].includes(op);
+    if ((betting || op === 'claim') && g.activeTurnUid === target &&
+        (!Number.isFinite(g.turnStartedAt) || S.now >= g.turnStartedAt + BOT_BETTING_WINDOW_MS)) {
+      A.fail('failed-precondition', 'This turn has expired');
+    }
     const audit = database.collection('_pkAudit');
     if (control) {
       const claim = (await tx.get(audit.doc(control.id))).data();
       if (!claim || claim.uid !== uid || claim.tableId !== id || claim.targetUid !== target) {
         A.fail('permission-denied', 'Another operator controls this bot');
       }
-      if (op !== 'claim' && data.controlId !== control.id) A.fail('failed-precondition', 'Bot control has changed');
-      if (g.activeTurnUid === target && S.now - g.turnStartedAt > botBettingDelay(S.settings, p, g)) {
-        A.fail('failed-precondition', 'This turn has expired');
-      }
-    } else if (op !== 'claim') {
+      if (!quick && op !== 'claim' && data.controlId !== control.id) A.fail('failed-precondition', 'Bot control has changed');
+    } else if (op !== 'claim' && !quick) {
       A.fail('failed-precondition', 'Take control of this hand first');
     }
     if (op === 'claim' && control) return {controlId: control.id};

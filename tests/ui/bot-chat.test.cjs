@@ -7,7 +7,7 @@ const React=require('react'),{createRoot}=require('react-dom/client'),{Simulate}
 w.eval('const {useState,useEffect,useRef,useMemo}=React;const round2=n=>Math.round(n*100)/100;const isGodUser=u=>u.god===true;const MISSIONS=[];const botMissions=()=>({});const canManageGame=()=>false;'+
  html.slice(html.indexOf('function canChatAsBot('),html.indexOf('const SPIN_SEGS ='))+
  html.slice(html.indexOf('function useTableChat('),html.indexOf('function ChatPanel('))+
- '\nwindow.testApi={canChatAsBot,BotChatComposer,BotTurnPanel,PlayerPeek,useTableChat};');
+ '\nwindow.testApi={canChatAsBot,BotChatComposer,QuickBotTurn,quickBotPlayer,PlayerPeek,useTableChat};');
 const api=w.testApi,root=createRoot(w.document.getElementById('root')),doc=w.document;
 const table={type:'poker',authorityVersion:2,settings:{serverEngine:true},players:{b:{uid:'b',name:'Alex',isBot:true,status:'active'},h:{uid:'h',isBot:false}}};
 let calls=[],complete;
@@ -19,7 +19,11 @@ const mountProfile=async(user,target='b',muted=false)=>React.act(()=>root.render
  assert.equal(api.canChatAsBot({god:true},table,'missing'),false);
  assert.equal(api.canChatAsBot({god:true},{...table,tournament:{finished:true}},'b'),false);
  await mountProfile({god:false});assert.doesNotMatch(doc.body.textContent,/Write as|Sending as/);assert.equal(doc.querySelector('textarea'),null);
- await mountProfile({god:true});await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Write as Alex').click());
+ await mountProfile({god:true});
+ const chatButton=[...doc.querySelectorAll('button')].find(b=>b.textContent==='Write as Alex');
+ const rings=[...doc.querySelectorAll('div')].find(el=>el.childNodes.length && el.firstChild.nodeType===3 && el.firstChild.textContent.includes('💍'));
+ assert.ok(chatButton.compareDocumentPosition(rings) & w.Node.DOCUMENT_POSITION_FOLLOWING,'chat is above the rings');
+ await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Write as Alex').click());
  let input=doc.querySelector('textarea');assert.ok(input);assert.equal(input.maxLength,240);assert.match(doc.querySelector('form').textContent,/Sending as Alex/);
  await React.act(()=>Simulate.change(input,{target:{value:'Good hand!'}}));
  await React.act(()=>{Simulate.submit(doc.querySelector('form'));Simulate.submit(doc.querySelector('form'));});
@@ -31,23 +35,32 @@ const mountProfile=async(user,target='b',muted=false)=>React.act(()=>root.render
  await mountProfile({god:true},'h');assert.equal(doc.querySelector('textarea'),null,'human profile has no delegated composer');
  await mountProfile({god:true},'b',true);await React.act(()=>[...doc.querySelectorAll('button')].find(b=>b.textContent==='Write as Alex').click());
  input=doc.querySelector('textarea');assert.equal(input.value,'','changing profile clears its previous draft');assert.equal(input.disabled,true);assert.match(doc.body.textContent,/Table chat is muted/);
- const turnTable={...table,gameState:{handN:7,phase:'preflop',activeTurnUid:'h',turnStartedAt:123,highestBet:2,minRaise:2,currentGameType:'Omaha 7'}};
- const bot={...table.players.b,bet:0,stack:100};
- const moves=[];const send=async payload=>{moves.push(payload);return {controlId:'record-a'};};
- const panel=async()=>React.act(()=>root.render(React.createElement(api.PlayerPeek,{key:'betting',peek:bot,clubId:'c',onClose(){},
-   botTurnPanel:React.createElement(api.BotTurnPanel,{table:turnTable,tableId:'table-a',player:bot,pot:2,send})})));
+ const turnTable={...table,gameState:{handN:7,phase:'preflop',activeTurnUid:'b',turnStartedAt:10000,highestBet:2,minRaise:2,currentGameType:'Omaha 7'}};
+ const bot={...table.players.b,bet:0,stack:100};turnTable.players={...table.players,b:bot};
+ const moves=[], errors=[];let ticks=0, now=10000;
+ const oldNow=w.Date.now;w.Date.now=()=>now;
+ function panel(){
+   const player=api.quickBotPlayer(turnTable,{god:true},true);
+   return React.act(()=>root.render(player && React.createElement(api.QuickBotTurn,{
+     key:turnTable.gameState.turnStartedAt,table:turnTable,tableId:'table-a',player,pot:2,cards:[{val:'A',suit:'♠'}],
+     send:async p=>{moves.push(p);},tick:async()=>{ticks++;},onError:m=>errors.push(m)
+   })));
+ }
  const btn=label=>[...doc.querySelectorAll('button')].find(b=>b.textContent===label);
- await panel();await React.act(()=>btn('Play this hand').click());assert.equal(moves[0].op,'claim');
- bot.manualControl={handN:7,id:'record-a'};await panel();assert.match(doc.body.textContent,/Waiting for Alex/);assert.equal(btn('Fold'),undefined);
- turnTable.gameState.activeTurnUid='b';await panel();
- assert.ok(btn('Call 2'));assert.ok(btn('Fold'));assert.equal(btn('Check'),undefined);
- let raiseInput=doc.querySelector('input[type=number]');assert.equal(raiseInput.min,'4');assert.equal(raiseInput.max,'6');
- await React.act(()=>Simulate.change(raiseInput,{target:{value:'7'}}));assert.equal(btn('Raise to 7').disabled,true);
- await React.act(()=>Simulate.change(raiseInput,{target:{value:'6'}}));await React.act(()=>btn('Raise to 6').click());
- assert.equal(moves[1].op,'raise');assert.equal(moves[1].amount,6);assert.equal(moves[1].targetUid,'b');assert.equal(moves[1].turnStartedAt,123);
- bot.bet=2;turnTable.gameState.turnStartedAt=456;await panel();
- assert.ok(btn('Check'));await React.act(()=>btn('Let bot decide this turn').click());assert.equal(moves.at(-1).op,'autoTurn');
- await React.act(()=>btn('Return to automatic play').click());assert.equal(moves.at(-1).op,'release');
+ assert.equal(api.quickBotPlayer(turnTable,{god:false},true),null);
+ assert.equal(api.quickBotPlayer(turnTable,{god:true},false),null);
+ await panel();assert.equal(doc.querySelector('[role=timer]').textContent,'3s');assert.ok(btn('Fold'));assert.ok(btn('Call 2'));assert.equal(btn('Check'),undefined);
+ assert.match(doc.querySelector('aside').textContent,/A♠/);
+ const inputAmount=doc.querySelector('input[type=number]');assert.equal(inputAmount.min,'4');assert.equal(inputAmount.max,'6');
+ await React.act(()=>Simulate.change(inputAmount,{target:{value:'7'}}));assert.ok(btn('Raise').disabled);
+ await React.act(()=>Simulate.change(inputAmount,{target:{value:'6'}}));await React.act(()=>btn('Raise').click());
+ assert.equal(moves.length,1);assert.equal(moves[0].op,'raise');assert.equal(moves[0].mode,'quick');assert.equal(moves[0].amount,6);
+ assert.equal(moves[0].targetUid,'b');assert.equal(doc.querySelector('aside'),null);
+ bot.bet=2;now=11000;turnTable.gameState.turnStartedAt=11000;await panel();assert.ok(btn('Check'));
+ now=14000;await React.act(()=>btn('Check').click());assert.equal(moves.length,1);
+ await React.act(async()=>{await new Promise(r=>setTimeout(r,160));});assert.equal(ticks,1);
+ assert.equal(doc.querySelector('aside'),null);w.Date.now=oldNow;assert.deepEqual(errors,[]);
+ turnTable.gameState.activeTurnUid='h';assert.equal(api.quickBotPlayer(turnTable,{god:true},true),null);
  let hook;
  function ChatProbe({state}){hook=api.useTableChat(state,'t',{uid:'me'},'poker',()=>{});return null;}
  const old=Array.from({length:60},(_,i)=>({uid:'h',text:'Old '+i,at:0}));

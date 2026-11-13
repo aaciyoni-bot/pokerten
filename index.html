@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="366">
+    <meta name="app-version" content="369">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -1198,10 +1198,10 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-auth.js?v=312"></script>
     <script src="assets/js/club-ui.js?v=312"></script>
     <link rel="stylesheet" href="assets/css/settlement.css?v=359">
-    <link rel="stylesheet" href="assets/css/bot-chat.css?v=366">
+    <link rel="stylesheet" href="assets/css/bot-chat.css?v=369">
     <script src="assets/js/poker-settlement-ui.js?v=359"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
-    <script src="assets/js/poker-tournament.js?v=365"></script>
+    <script src="assets/js/poker-tournament.js?v=368"></script>
     <script src="assets/js/poker-runtime.js?v=361"></script>
     <script src="assets/js/poker-range-model.js?v=356"></script>
 <script>
@@ -3624,58 +3624,60 @@ function botTurnLimits(game, settings, player, pot) {
     max: potLimit ? Math.min(stackTotal, round2(high + pot + owed)) : stackTotal
   };
 }
-function BotTurnPanel({tableId, table, player, pot, send}) {
-  const game = table.gameState || {};
-  const [owned, setOwned] = React.useState(null), [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState(''), [raise, setRaise] = React.useState('');
-  const lock = React.useRef(false), pending = React.useRef(null);
-  const control = player.manualControl, mine = !!(owned && control?.id === owned && control.handN === game.handN);
-  const playable = ['preflop','flop','turn','river'].includes(game.phase) && !game.allInReveal &&
-    player.status === 'active' && player.stack > 0;
-  const turn = playable && game.activeTurnUid === player.uid;
+function quickBotPlayer(table,user,godView) {
+  const game = table?.gameState, uid = game?.activeTurnUid;
+  if (!uid || !godView || table.spinDone || !Number.isFinite(game.turnStartedAt) || game.allInReveal ||
+      !['preflop','flop','turn','river'].includes(game.phase) || !canChatAsBot(user,table,uid)) return null;
+  const player = table.players[uid];
+  return player.status === 'active' && player.stack > 0 ? player : null;
+}
+function QuickBotTurn({tableId, table, player, pot, cards, send, tick, onError}) {
+  const game = table.gameState, end = game.turnStartedAt + 3000;
+  const [left, setLeft] = React.useState(() => Math.max(0, end - Date.now()));
+  const [busy, setBusy] = React.useState(false), [sent, setSent] = React.useState(false);
+  const [raise, setRaise] = React.useState('');
+  const sending = React.useRef(false), pending = React.useRef(null);
+  const tickRef = React.useRef(tick); tickRef.current = tick;
+  React.useEffect(() => {
+    let timer;
+    function refresh() {
+      const remaining = Math.max(0, end - Date.now());
+      setLeft(remaining);
+      if (remaining === 0) { tickRef.current().catch(() => {}); return; }
+      timer = setTimeout(refresh, Math.min(remaining, 120));
+    }
+    refresh();
+    return () => clearTimeout(timer);
+  }, [end]);
   const {call, min, max} = botTurnLimits(game, table.settings, player, pot);
   const amount = raise === '' ? min : Number(raise);
-  React.useEffect(() => {setRaise(''); setError('');}, [game.handN, game.turnStartedAt, game.phase]);
+  const legalRaise = Number.isFinite(amount) && round2(amount) === amount && amount >= min && amount <= max && amount > game.highestBet;
   async function submit(op) {
-    if (lock.current) return;
-    const payload = {tableId, targetUid: player.uid, handN: game.handN, op};
-    if (op !== 'claim') payload.controlId = owned;
-    if (op !== 'claim' && op !== 'release') Object.assign(payload, {
-      phase: game.phase, turnStartedAt: game.turnStartedAt, highestBet: game.highestBet
-    });
-    if (op === 'raise') payload.amount = amount;
-    const key = JSON.stringify(payload);
-    if (pending.current?.key !== key) pending.current = {key, requestId: crypto.randomUUID()};
-    lock.current = true; setBusy(true); setError('');
+    if (sending.current || sent || Date.now() >= end || (op === 'raise' && !legalRaise)) return;
+    const data = {op, mode:'quick', tableId, targetUid:player.uid, handN:game.handN,
+      phase:game.phase, turnStartedAt:game.turnStartedAt, highestBet:game.highestBet};
+    if (op === 'raise') data.amount = amount;
+    const key = JSON.stringify(data);
+    if (pending.current?.key !== key) pending.current = {key, requestId:crypto.randomUUID()};
+    sending.current = true; setBusy(true);
     try {
-      const result = await send({...payload, requestId: pending.current.requestId});
-      if (op === 'claim') setOwned(result.controlId);
-      if (op === 'release') setOwned(null);
-      pending.current = null;
-    } catch (e) {
-      setError(e?.message || 'Could not confirm the action. Try again.');
-    } finally {
-      lock.current = false; setBusy(false);
-    }
+      await send({...data, requestId:pending.current.requestId});
+      setSent(true);
+    } catch (error) {
+      onError(error?.message || 'Could not confirm the bot action.');
+    } finally { sending.current = false; setBusy(false); }
   }
-  const button = (op, label, disabled = false) => React.createElement('button', {
-    type:'button', disabled: busy || disabled, onClick: () => submit(op)
-  }, label);
-  if (!playable) return React.createElement('p', {className:'bot-turn-note'}, 'Manual play is available during betting.');
-  return React.createElement('section', {className:'bot-turn-panel', 'aria-label':'Play as ' + player.name},
-    !mine && button('claim', control?.handN === game.handN ? 'Open manual controls' : 'Play this hand'),
-    mine && React.createElement('strong', null, 'Playing as ' + player.name),
-    mine && !turn && React.createElement('p', {role:'status'}, 'Waiting for ' + player.name + '’s turn.'),
-    mine && turn && React.createElement('div', {className:'bot-turn-actions'},
-      button('fold','Fold'), button(call > 0 ? 'call' : 'check', call > 0 ? 'Call ' + call : 'Check'),
-      max > game.highestBet && min <= max && React.createElement(React.Fragment, null,
-        React.createElement('label', null, 'Raise to (' + min + '–' + max + ')',
-          React.createElement('input', {type:'number', inputMode:'decimal', min, max, step:0.01,
-            value:raise, placeholder:String(min), disabled:busy, onChange:e=>setRaise(e.target.value)})),
-        button('raise', 'Raise to ' + amount, !Number.isFinite(amount) || amount < min || amount > max || round2(amount) !== amount))),
-    mine && turn && button('autoTurn', 'Let bot decide this turn'),
-    mine && button('release', 'Return to automatic play'),
-    error && React.createElement('p', {role:'alert'}, error));
+  if (!left || sent) return null;
+  const h = React.createElement;
+  const button = (op,label,disabled=false) => h('button',{type:'button',disabled:busy||disabled,onClick:()=>submit(op)},label);
+  return h('aside',{className:'poker-quick-bot','aria-label':'Play as ' + player.name,dir:'ltr'},
+    h('header',null,h('strong',null,player.name),h('span',{role:'timer'},Math.min(3, Math.ceil(left/1000)) + 's')),
+    cards?.length > 0 && h('div',{className:'quick-bot-cards'},cards.map(c=>h('span',{key:c.id||c.val+c.suit,'data-suit':c.suit},c.val,c.suit))),
+    h('div',{className:'quick-bot-actions'},button('fold','Fold'),button(call ? 'call' : 'check',call ? 'Call '+call : 'Check')),
+    max > game.highestBet && min <= max && h('div',{className:'quick-bot-raise'},
+      h('input',{type:'number',inputMode:'decimal',min,max,step:0.01,value:raise,placeholder:String(min),disabled:busy,
+        'aria-label':'Raise total, '+min+' to '+max,onChange:e=>setRaise(e.target.value)}),
+      button('raise','Raise',!legalRaise)));
 }
 function BotChatComposer({name,onSend,muted=false}) {
   const [text,setText]=React.useState(''),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[sent,setSent]=React.useState(false);
@@ -3699,7 +3701,6 @@ const PlayerPeek = ({
   clubId,
   onKick,
   onChatAs,
-  botTurnPanel,
   chatMuted = false
 }) => {
   const [mi, setMi] = React.useState(null);
@@ -3734,7 +3735,9 @@ const PlayerPeek = ({
   }, peek.name), React.createElement("button", {
     onClick: onClose,
     className: "w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white text-xs font-black shrink-0"
-  }, "✕")), botTurnPanel, React.createElement("div", {
+  }, "✕")),
+    onChatAs && React.createElement("button",{type:"button",className:"w-full mt-2.5 bg-teal-950 border border-teal-400/40 text-teal-200 py-2 rounded-xl font-black text-xs",onClick:()=>setCompose(v=>!v),"aria-expanded":compose},"Write as "+peek.name),onChatAs&&compose&&React.createElement(BotChatComposer,{name:peek.name,onSend:onChatAs,muted:chatMuted}),
+    React.createElement("div", {
     className: "text-[10px] font-black text-amber-300 mb-2"
   }, "💍 ", doneCount, "/", MISSIONS.length, " rings"), React.createElement("div", {
     className: "grid grid-cols-5 gap-1.5"
@@ -3751,7 +3754,7 @@ const PlayerPeek = ({
     // manager action lives HERE, not as a permanent ✕ on every seat
     onClick: onKick,
     className: "w-full mt-2.5 bg-rose-950/60 hover:bg-rose-800 border border-rose-500/40 text-rose-300 hover:text-white py-2 rounded-xl font-black text-[11px]"
-  }, "🚪 Remove from table"), onChatAs && React.createElement("button",{type:"button",className:"w-full mt-2.5 bg-teal-950 border border-teal-400/40 text-teal-200 py-2 rounded-xl font-black text-xs",onClick:()=>setCompose(v=>!v),"aria-expanded":compose},"Write as "+peek.name),onChatAs&&compose&&React.createElement(BotChatComposer,{name:peek.name,onSend:onChatAs,muted:chatMuted}));
+  }, "🚪 Remove from table"));
 };
 const SPIN_SEGS = [2, 3, 5, 2, 10, 3, 2, 5, 3, 25, 2, 3];
 const SEG_COL = {
@@ -4320,10 +4323,26 @@ function PokerMusicButton({tile=false}={}) {
 }
 function AppReleaseControls() {
   const release=window.PokerAppUpdate?.version||document.querySelector('meta[name="app-version"]')?.content||'';
+  const [busy,setBusy]=React.useState(false), [status,setStatus]=React.useState('');
+  async function check() {
+    if (busy) return;
+    setBusy(true); setStatus('');
+    try {
+      if (!window.PokerAppUpdate?.check) {
+        setStatus('The updater is not ready. Reopen the app and try again.');
+        return;
+      }
+      const message = await window.PokerAppUpdate.check(true);
+      if (typeof message === 'string') setStatus(message);
+    } catch (_) {
+      setStatus('Could not check for updates. Check your connection and try again.');
+    } finally { setBusy(false); }
+  }
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
-    React.createElement('button',{type:'button',onClick:()=>window.PokerAppUpdate?.check(true),'aria-label':`Version ${release}. Check for updates`},`v${release} · Check update`),
+    React.createElement('button',{type:'button',onClick:check,disabled:busy,'aria-label':`Version ${release}. Check for updates`},busy?'Checking…':`v${release} · Check update`),
     React.createElement(PokerMusicButton),
-    React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'));
+    React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'),
+    status && React.createElement('div',{role:'status',style:{flexBasis:'100%',textAlign:'center',color:'inherit'}},status));
 }
 function App() {
   const [fbReady, setFbReady] = useState(false);
@@ -12611,6 +12630,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const tableStakes = 'Blinds ' + formatShort(tableLevel ? tableLevel.sb : setts.blinds) + '/' + formatShort(tableLevel ? tableLevel.bb : BB)
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
   const tableClubName = String(clubSettings?.name || window.__club?.name || '').trim();
+  const quickPlayer = !headless && !offline && !tournamentEnded && tableState.id === tableDocId
+    ? quickBotPlayer(tableState,user,godView) : null;
   return React.createElement("div", {
     className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (isSeated ? " is-seated" : " is-spectating") + (godView ? " is-god-view" : ""),
     dir: "ltr",
@@ -13026,7 +13047,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const folded = p.status === 'folded';
     // Derive the visible clock from this turn's timestamp, including the first
     // render after a turn change or reconnect. The interval only refreshes it.
-    const turnDuration = setts.actionTime || 30;
+    const turnDuration = srvEngine && p.isBot && BETTING.includes(gs.phase) ? 3 : (setts.actionTime || 30);
     const turnSeconds = isTurn && gs.turnStartedAt ? Math.min(turnDuration, Math.max(0, Math.ceil((Number(gs.turnStartedAt) + turnDuration * 1000 - Date.now()) / 1000))) : turnDuration;
     const timerPct = isTurn ? turnSeconds / turnDuration : 0;
     const seatAward = gs.phase === 'showdown' && gs.lastAwards?.find(a => a.uid === p.uid);
@@ -13361,7 +13382,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       }));
     }
     if (!awards.length) return null;
-    const dur = 5;
+    const dur = 2;
     return awards.map((a, k) => React.createElement(PotAward, {
       unit: chipUnit,
       key: 'pa' + (displayList[a.ix]?.uid || a.ix) + '_' + (gs.showdownAt || 0),
@@ -13624,16 +13645,17 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     near: !!tableState.spin.near,
     prize: tableState.spin.prize,
     buyIn: Number(setts.spinBuyIn) || 50
-  }), peek && React.createElement(PlayerPeek, {
+  }), quickPlayer && React.createElement(QuickBotTurn,{
+      key:[tableDocId,gs.handN,gs.phase,gs.activeTurnUid,gs.turnStartedAt].join(':'),
+      tableId:tableDocId, table:tableState, player:quickPlayer, pot:totalPot,
+      cards:godHands[gs.activeTurnUid], send:payload=>pokerCommand('pkBotTurn',payload),
+      tick:()=>window.fb.fx('pkTick',{tableId:tableDocId}), onError:message=>showToast(message,'error')
+    }), peek && React.createElement(PlayerPeek, {
     key:tableDocId+':'+peek.uid,
     onChatAs:canChatAsBot(user,tableState,peek.uid)?async(text,requestId)=>{
       await pokerCommand('pkBotChat',{tableId:tableDocId,targetUid:peek.uid,text,requestId});
       playSnd('msg');
     }:null,
-    botTurnPanel:canChatAsBot(user,tableState,peek.uid) && React.createElement(BotTurnPanel,{
-      key:tableDocId+':'+peek.uid+':'+gs.handN, tableId:tableDocId, table:tableState,
-      player:tableState.players[peek.uid], pot:totalPot, send:payload=>pokerCommand('pkBotTurn',payload)
-    }),
     chatMuted:ch.chatMuted,
     peek: peek,
     onClose: () => setPeek(null),

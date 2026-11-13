@@ -384,3 +384,33 @@ test('two lineup decisions settle to the original sponsor and preserve a held se
  await f.lineup(id,'owner',{op:'bot-rotation',mode:'automatic'});
  assert.equal(f.table(id).players[busted.uid].status,'busted');assert.equal(f.table(id).players[busted.uid].sitOut,false);
 });
+
+for(const viaDeal of [true,false])test('manager removal waits for settlement, refunds once and survives replay through '+(viaDeal?'deal':'tick'),async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:4},2);
+ await f.seat(id);await f.tick(id);
+ const target=viaDeal?'human':Object.keys(f.table(id).players).find(u=>f.table(id).players[u].isBot);
+ const payer=viaDeal?'human':'owner',bank=f.balance(payer),chips=total(f,id);
+ const request={targetUid:target,intent:'kick',requestId:'explicit-manager-remove-001'};
+ const queued=await f.leave(id,'owner',request);assert.equal(queued.queued,true);
+ assert.ok(f.table(id).players[target].managerRemoval);
+ if(viaDeal)await assert.rejects(f.seatOp(id,'cancel-leave'),/manager scheduled/);
+ while(f.table(id).gameState.activeTurnUid)await f.act(id,'fold');
+ const table=f.table(id),award=table.gameState.showdownAt+require('../pokerTournamentCore').showdownDelay(table.gameState);
+ const due=table.players[target].stack+(table.players[target].pendingTopUp||0);
+ f.advance(award-1-f.now());await f.tick(id);assert.ok(f.table(id).players[target]);assert.equal(f.balance(payer),bank);
+ f.advance(1);
+ if(viaDeal)await f.deal(id,'human');else await f.tick(id);
+ assert.equal(f.table(id).players[target],undefined);assert.equal(f.balance(payer),bank+due);
+ assert.ok(!f.docs.has('tables/'+id+'/priv/'+target));assert.equal(total(f,id),chips);
+ if(viaDeal)await f.seatOp(id,'join',{amount:Math.max(100,due)});
+ const before=copy(f.table(id));await f.leave(id,'owner',request);
+ assert.deepEqual(f.table(id),before,'replaying the original receipt cannot evict a new sitting');
+});
+test('manager removal immediately refunds a waiting bot to its sponsor; a non-manager cannot remove it',async()=>{
+ const f=fixture(),{tableId:id}=await f.create({maxPlayers:4},2);
+ const bot=Object.values(f.table(id).players)[0],payer=bot.fundingUid,bank=f.balance(payer);
+ const req={targetUid:bot.uid,intent:'kick',requestId:'manager-refund-idle-bot'};
+ await assert.rejects(f.leave(id,'human',req),{code:'permission-denied'});
+ assert.equal((await f.leave(id,'owner',req)).queued,false);assert.equal(f.table(id).players[bot.uid],undefined);
+ assert.equal(f.balance(payer),bank+bot.stack);await f.leave(id,'owner',req);assert.equal(f.balance(payer),bank+bot.stack);
+});

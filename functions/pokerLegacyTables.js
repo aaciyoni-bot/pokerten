@@ -49,7 +49,8 @@ async function archiveTable(tx,db,ref,table,by,now){
  const A=require('./pokerAuthority');
  if(!reason)A.fail('failed-precondition','This unfinished legacy table needs an accounting review: '+ref.id);
  const archive=db.doc('_pkClosedTables/'+ref.id);
- const [prior,privateDocs]=await Promise.all([tx.get(archive),tx.get(ref.collection('priv').limit(201))]);
+ const prior=await tx.get(archive);
+ const privateDocs=await tx.get(ref.collection('priv').limit(201));
  if(prior.exists)A.fail('failed-precondition','A legacy table archive already exists; review before replacing it.');
  if(privateDocs.size>200)A.fail('failed-precondition','Review the oversized legacy table archive.');
  tx.create(archive,{...table,closedAt:now,closedBy:by,legacyArchive:{version:1,reason,moneyEffects:0}});

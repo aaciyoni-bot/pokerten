@@ -1311,6 +1311,21 @@ async function applyFixedLineup(S, fundedBalance, extraTop) {
   return changed;
 }
 
+function removeQueuedManagerSeats(S) {
+  const g=S.gameState;
+  if (S.tor || S.settings.spinMode || !A.idle(S.raw) ||
+      (g.phase==='showdown' && S.now-(g.showdownAt||0)<showdownDelay(g))) return false;
+  let removed=false;
+  for (const seat of Object.values(S.players)) {
+    if (!seat.managerRemoval) continue;
+    removeSeat(S,seat.uid,false);
+    delete S.priv[seat.uid];
+    (S.privateDeletes ||= []).push(seat.uid);
+    removed=true;
+  }
+  return removed;
+}
+
 function availableBotFunding(S,tx) {
   const balances=new Map();
   return async sponsor=>{
@@ -1383,6 +1398,7 @@ async function tickTable(id, testNow) {
 
     // Managed cash availability reconciles only after settlement. It uses the
     // same sponsor ledger and seat removal path as ordinary bot sessions.
+    if(removeQueuedManagerSeats(S))dirty=true;
     if(await applyFixedLineup(S,fundedBalance,extraTop))dirty=true;
     if(S.raw.botLobby?.version===1){
       const managedPatch=await require('./botLobby').reconcileManagedSeats(S,removeSeat,fundedBalance);
@@ -1607,6 +1623,7 @@ exports.pkDeal = onCall({...GOD_CALL_OPTS, minInstances: 1}, async (request) => 
     }
     if(phase==='showdown'&&S.now-(S.gameState.showdownAt||0)<showdownDelay(S.gameState)){S=null;return;}
     const patch={};
+    removeQueuedManagerSeats(S);
     await applyFixedLineup(S,availableBotFunding(S,tx),patch);
     startHand(S);
     await commitState(tx, S, patch);
@@ -1739,7 +1756,8 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
   const id = reqTableId(request);
   const target = (request.data || {}).targetUid || uid;
   let S = null,notice=false,queued=false,ignored=false;
-  await db().runTransaction(async (tx) => {
+  const kick=target!==uid && request.data?.intent==='kick';
+  const leave=async tx => {
     notice=false;queued=false;ignored=false;S = await loadState(tx, id, {withCards: true});
     if (target !== uid) {
       try {
@@ -1767,19 +1785,28 @@ exports.pkLeave = onCall(CALL_OPTS, async (request) => {
       if(!request.data?.intent){ignored=true;S=null;return;}
       throw new HttpsError('failed-precondition','Use Free seat after hand for a fixed lineup bot');
     }
+    if(kick && (S.tor || S.settings.spinMode && S.raw.spin && !S.raw.spinDone))
+      throw new HttpsError('failed-precondition','Seats are held until this event ends');
     const inHand=!A.idle(S.raw);
+    const showingAward=kick && !S.settings.spinMode && S.gameState.phase==='showdown' &&
+      S.now-(S.gameState.showdownAt||0)<showdownDelay(S.gameState);
     const participates=inHand&&((p.cardCount||0)>0||(p.bet||0)>0||(S.priv[target]||[]).length>0||(S.gameState.pots||[]).some(pot=>(pot.eligible||[]).includes(target)));
     const noticeMs=(p.stack>0||participates)?(S.settings.leaveNoticeMins||0)*60000:0,otherHumans=Object.values(S.players).some(q=>q.uid!==uid&&!q.isBot),profitBB=((p.stack||0)+(p.bet||0)-(p.buyTotal||0))/(S.settings.blinds*2);
     if(target===uid&&!S.tor&&!S.settings.spinMode&&noticeMs&&otherHumans&&(!(S.settings.leaveNoticeBB>0)||profitBB>=S.settings.leaveNoticeBB)){if(!p.leavingAt)p.leavingAt=S.now+noticeMs;if(S.now<p.leavingAt){notice=true;await commitState(tx,S);return;}}
     if(S.tor||S.settings.spinMode&&S.raw.spin&&!S.raw.spinDone){p.sitOut=true;p.sitOutAt=S.now;p.lastSeen=S.now;}
-    else if(participates){p.leaveReq=S.now;p.sitOutNext=true;queued=true;}
+    else if(participates||showingAward){p.leaveReq=S.now;p.sitOutNext=true;if(kick)p.managerRemoval=true;queued=true;}
     else removeSeat(S,target,false);
     await commitState(tx, S);
     if(!S.players[target])tx.set(privRef(id, target), {cards: []});
-  });
+  };
+  const transact=async tx=>{
+    await leave(tx);
+    if(ignored)return {ok:false,ignored:true,reason:'server-maintenance',clientUpdateRequired:true};
+    return {ok:true,notice,queued};
+  };
+  const result=kick && request.data.requestId ? await A.command(request,'remove-seat',transact) : await db().runTransaction(transact);
   if (S) await runEffects(S);
-  if(ignored)return {ok:false,ignored:true,reason:'server-maintenance',clientUpdateRequired:true};
-  return {ok: true,notice,queued};
+  return result;
 });
 
 // pkRit — protocol §3.5.

@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="371">
+    <meta name="app-version" content="373">
     <script src="assets/js/app-update.js?v=353" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -3617,7 +3617,7 @@ function canTopUpBot(user,table,uid) {
   const seat=table?.players?.[uid];
   return !!(uid && canManageGame(user,'poker') && table?.type==='poker' && table.authorityVersion===2 &&
     table.settings?.serverEngine && !table.tournamentId && !table.settings.spinMode && !table.closeRequested && !table.archived &&
-    seat?.uid===uid && seat.isBot===true && seat.fundingUid && !seat.leaveReq && !seat.leavingAt && seat.status!=='out');
+    seat?.uid===uid && seat.isBot===true && seat.fundingUid && !seat.lineupRequest && !seat.leaveReq && !seat.leavingAt && seat.status!=='out');
 }
 function quickBotPlayer(table,user,godView) {
   const game = table?.gameState, uid = game?.activeTurnUid;
@@ -3731,6 +3731,7 @@ const PlayerPeek = ({
   onKick,
   onChatAs,
   onBotTopUp,
+  lineupActions,
   chatMuted = false
 }) => {
   const [mi, setMi] = React.useState(null);
@@ -3768,6 +3769,7 @@ const PlayerPeek = ({
   }, "✕")),
     onChatAs && React.createElement("button",{type:"button",className:"w-full mt-2.5 bg-teal-950 border border-teal-400/40 text-teal-200 py-2 rounded-xl font-black text-xs",onClick:()=>setCompose(v=>!v),"aria-expanded":compose},"Write as "+peek.name),onChatAs&&compose&&React.createElement(BotChatComposer,{name:peek.name,onSend:onChatAs,muted:chatMuted}),
     onBotTopUp && React.createElement('button',{type:'button',onClick:onBotTopUp,className:'w-full mt-2 bg-emerald-950 border border-emerald-400/40 text-emerald-200 py-2 rounded-xl font-black text-xs'},'Add chips'),
+    lineupActions,
     React.createElement("div", {
     className: "text-[10px] font-black text-amber-300 mb-2"
   }, "💍 ", doneCount, "/", MISSIONS.length, " rings"), React.createElement("div", {
@@ -10542,7 +10544,9 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
     value: n
   }, n, " bots, playing non-stop"))), React.createElement("div", {
     className: "text-[11px] text-slate-400 mt-1 leading-snug"
-  }, "Seats the bots now and lets the server run the game, so the lobby shows a live table even when nobody is watching. Real players can sit down at any time — the bots stop seeing cards the moment one does.")), !!s.showcaseBots&&!s.spinMode&&React.createElement(BotBuyInField,{settings:s,value:s.botBuyIn??defaultBotEntry(s),onChange:v=>upd('botBuyIn',v)}), React.createElement(Field, {
+  }, "Bots take their seats when the table opens and can play while nobody is watching.")), !s.spinMode&&React.createElement(Field,{label:'Bot rotation'},React.createElement('select',{
+    'aria-label':'Bot rotation',value:s.botRotation||'automatic',className:sel,onChange:e=>upd('botRotation',e.target.value)
+  },React.createElement('option',{value:'automatic'},'Automatic'),React.createElement('option',{value:'fixed'},'Fixed lineup'))), !!s.showcaseBots&&!s.spinMode&&React.createElement(BotBuyInField,{settings:s,value:s.botBuyIn??defaultBotEntry(s),onChange:v=>upd('botBuyIn',v)}), React.createElement(Field, {
     label: "Min buy-in (₪) — type any amount"
   }, React.createElement("input", {
     type: "number",
@@ -10912,6 +10916,8 @@ function PokerTable({
   const botAddLock = useRef(false);
   const [botEntry,setBotEntry]=useState(null);
   const [addingBots, setAddingBots] = useState(false);
+  const [lineupBusy,setLineupBusy]=useState(false);
+  const lineupLock=useRef(false);
   const [tableInfoOpen, setTableInfoOpen] = useState(false);
   const tableMenuTrigger = useRef(null);
   const closeTableInfo = () => { setTableInfoOpen(false); tableMenuTrigger.current?.focus(); };
@@ -12116,6 +12122,17 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'sitout'});}catch(e){show
       if(queued){leaveArmedRef.current=true;showToast('Leaving after this hand.','info');}else onLeave();
     }catch(e){showToast(e.message||String(e),'error');}
 };
+  const manageLineup = async data => {
+    if(lineupLock.current || !canManageGame(user,'poker'))return;
+    lineupLock.current=true;setLineupBusy(true);
+    try {
+      await pokerCommand('pkTableManage',{tableId:tableDocId,...data});
+      const message=data.op==='bot-rotation' ? (data.mode==='fixed'?'Fixed lineup enabled.':'Automatic rotation enabled.') :
+        (data.action==='free'?'Seat will be freed between hands.':'Bot will be replaced between hands.');
+      showToast(message,'success');
+    } catch(e) {showToast(e?.message||'Could not update bot lineup.','error');}
+    finally {lineupLock.current=false;setLineupBusy(false);}
+  };
   const chooseBotEntry = fill => {
     setToolsOpen(false);
     if(tableState.tournamentId||setts.spinMode)handleAddBot(fill);
@@ -12705,6 +12722,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const tableStakes = 'Blinds ' + formatShort(tableLevel ? tableLevel.sb : setts.blinds) + '/' + formatShort(tableLevel ? tableLevel.bb : BB)
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
   const tableClubName = String(clubSettings?.name || window.__club?.name || '').trim();
+  const canSetLineup=canManageGame(user,'poker') && srvEngine && !tableState.tournamentId && !setts.spinMode && !tableState.closeRequested && !tableState.archived;
+  const fixedLineup=setts.botRotation==='fixed' && !tableState.tournamentId && !setts.spinMode;
+  const lineupSeat=canSetLineup && fixedLineup && peek && players[peek.uid]?.isBot===true ? players[peek.uid] : null;
   const seatControl = eligibleBot?.manualControl;
   const offerTakeover = eligibleBot && seatControl?.turnStartedAt !== gs.turnStartedAt;
   const heldTakeover = eligibleBot && seatControl?.turnStartedAt === gs.turnStartedAt && seatControl.until > Date.now();
@@ -13122,7 +13142,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     // Derive the visible clock from this turn's timestamp, including the first
     // render after a turn change or reconnect. The interval only refreshes it.
     const manualUntil = isTurn && p.manualControl?.turnStartedAt === gs.turnStartedAt ? p.manualControl.until : 0;
-    const turnDuration = srvEngine && p.isBot && inBetting && !manualUntil ? 5 : (setts.actionTime || 30);
+    const turnDuration = Number(setts.actionTime) || 30;
     const turnSeconds = isTurn && gs.turnStartedAt ? Math.min(turnDuration, Math.max(0, Math.ceil(((manualUntil || Number(gs.turnStartedAt) + turnDuration * 1000) - Date.now()) / 1000))) : turnDuration;
     const timerPct = isTurn ? turnSeconds / turnDuration : 0;
     const seatAward = gs.phase === 'showdown' && gs.lastAwards?.find(a => a.uid === p.uid);
@@ -13189,7 +13209,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       return React.createElement("div", {
         className: "absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5",
         dir: "ltr"
-      }, "☕ ", tableState.tournamentId ? 'Sit out' : `${mm}:${String(ss).padStart(2, '0')}`, p.sitAuto ? ' 📵' : '');
+      }, "☕ ", (tableState.tournamentId || fixedLineup && p.isBot) ? 'Sit out' : `${mm}:${String(ss).padStart(2, '0')}`, p.sitAuto ? ' 📵' : '');
     })(), !p.sitOut && p.sitOutNext && React.createElement("div", {
       className: "absolute -top-2 right-0 z-30 text-[9px] font-black bg-slate-950/90 border border-amber-500/50 text-amber-300 rounded-full px-2 py-0.5",
       dir: "ltr"
@@ -13732,12 +13752,21 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       await pokerCommand('pkBotChat',{tableId:tableDocId,targetUid:peek.uid,text,requestId});
       playSnd('msg');
     }:null,
+    lineupActions:lineupSeat && React.createElement('div',{className:'mt-2 grid gap-1',dir:'ltr'},
+      lineupSeat.lineupRequest ? React.createElement('p',{role:'status',className:'text-xs text-amber-200'},lineupSeat.lineupRequest.action==='replace'?'Replacement queued':'Seat release queued') :
+      React.createElement(React.Fragment,null,
+        lineupSeat.lineupError && React.createElement('p',{role:'alert',className:'text-xs text-rose-200'},lineupSeat.lineupError),
+        [['replace','Replace after hand'],['free','Free seat after hand']].map(([action,label])=>React.createElement('button',{
+          key:action,type:'button',disabled:lineupBusy||!lineupSeat.fundingUid||!!lineupSeat.leaveReq||!!lineupSeat.leavingAt,
+          className:'w-full bg-slate-800 border border-white/15 text-white rounded-xl py-2 text-xs font-bold',
+          onClick:()=>manageLineup({op:'bot-seat',targetUid:lineupSeat.uid,action})
+        },label)))),
     onBotTopUp:canTopUpBot(user,tableState,peek.uid)?()=>topUpChips(peek.uid):null,
     chatMuted:ch.chatMuted,
     peek: peek,
     onClose: () => setPeek(null),
     clubId: CLUB_ID,
-    onKick: peek.uid !== user.uid && canManageGame(user, 'poker') ? async () => {
+    onKick: !lineupSeat && peek.uid !== user.uid && canManageGame(user, 'poker') ? async () => {
       if (await askConfirm(`Remove ${peek.name} from the table? Their stack returns to their wallet.`)) {
         kickSeat(peek.uid, true);
         setPeek(null);
@@ -14105,7 +14134,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     title: "Add bot",
     disabled: addingBots || (tableState.tournamentId ? Object.values(tourEntryState?.players||{}).filter(p=>!p.out).length >= tourEntryState.maxPlayers : Object.keys(players).length >= (setts.maxPlayers||6)),
     className:'poker-menu-tile','data-menu-tone':'cyan'
-  }, ...menuTile("bot", "Add bot")), canManageGame(user,'poker') && tourEntryState && ['reg','running'].includes(tourEntryState.status) && React.createElement("button",{onClick:()=>{setToolsOpen(false);setTourRegistrationOpen(true);},title:"Late registration",className:"poker-menu-tile",'data-menu-tone':"cyan"},...menuTile("fa-clock","Late registration")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
+  }, ...menuTile("bot", "Add bot")), canSetLineup && React.createElement('button',{
+    type:'button',title:'Bot rotation',role:'switch','aria-checked':fixedLineup,disabled:lineupBusy,
+    className:'poker-menu-tile','data-menu-tone':fixedLineup?'green':'cyan',
+    onClick:()=>manageLineup({op:'bot-rotation',mode:fixedLineup?'automatic':'fixed'})
+  },...menuTile('fa-users',fixedLineup?'Fixed lineup':'Automatic rotation')), canManageGame(user,'poker') && tourEntryState && ['reg','running'].includes(tourEntryState.status) && React.createElement("button",{onClick:()=>{setToolsOpen(false);setTourRegistrationOpen(true);},title:"Late registration",className:"poker-menu-tile",'data-menu-tone':"cyan"},...menuTile("fa-clock","Late registration")), canManageGame(user,'poker') && !tableState.tournamentId && !tableState.closeRequested && !(setts.spinMode&&tableState.spin) && React.createElement("button", {
     onClick:()=>chooseBotEntry(true),title:"Fill empty seats with bots",disabled:addingBots||Object.keys(players).length>=(setts.maxPlayers||6),
     className:'poker-menu-tile','data-menu-tone':'cyan'
   },...menuTile("bot-group","Fill bots")), !isSeated && onCreateTable && canManageGame(user,'poker') && React.createElement("button", {

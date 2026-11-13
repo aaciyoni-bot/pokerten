@@ -24,6 +24,8 @@ function tableSettings(raw={}){
   if(s.spinMode)fail('invalid-argument','PLO7 is not available in Spin & Cash');
   s.maxPlayers=Math.min(5,s.maxPlayers);s.omahaPotLimit=true;s.runTwice=false;
  }
+ if(raw.botRotation!=null && !['automatic','fixed'].includes(raw.botRotation))fail('invalid-argument','Unknown bot rotation mode');
+ if(!s.spinMode && raw.botRotation==='fixed')s.botRotation='fixed';
  if(s.maxBuyIn<s.minBuyIn)fail('invalid-argument','Maximum is below minimum');s.maxPlayers=capacity(s);s.autoStart=Math.min(Math.floor(s.autoStart),s.maxPlayers);s.serverEngine=true;
  s.aofEvery=raw.aofEvery==='orbit'?'orbit':number(raw.aofEvery,0,0,1000,true);s.name=String(raw.name||'').slice(0,60);
  if(s.spinMode)Object.assign(s,{maxPlayers:3,autoStart:3,rakePercent:0});return s;
@@ -90,7 +92,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   if(forBot){
    await A.tableManager(tx,db,cid,r);
    seatUid=key(r.data.botUid,'bot');seat=pl[seatUid];
-   if(t.type!=='poker'||t.archived||!seat||seat.uid!==seatUid||seat.isBot!==true||seat.leaveReq||seat.leavingAt||seat.status==='out')fail('failed-precondition','This bot is no longer available for a top-up');
+   if(t.type!=='poker'||t.archived||!seat||seat.uid!==seatUid||seat.isBot!==true||seat.lineupRequest||seat.leaveReq||seat.leavingAt||seat.status==='out')fail('failed-precondition','This bot is no longer available for a top-up');
    payer=A.payee(seat);
   }
   if(!seat)fail('failed-precondition','You are not seated');
@@ -205,6 +207,42 @@ exports.pkTableManage=onCall(opts,async r=>command(r,'table-manage',async(tx,db,
   return require('./pokerTableLifecycle').closeTable(tx,db,ref,t,uid,now);
  }
  if(t.closeRequested)fail('failed-precondition','This table is closing after the current hand');
+ if(op==='bot-rotation'||op==='bot-seat'){
+  if(t.type!=='poker'||t.tournamentId||t.settings.spinMode||t.archived)fail('failed-precondition','Lineup controls are for open cash tables');
+  await A.activeClub(tx,db,t.clubId||'main');
+  const patch={'gameState.__seq':(t.gameState?.__seq||0)+1},audit={clubId:t.clubId,tableId:ref.id,uid,at:now,requestId:r.data.requestId};
+  if(op==='bot-rotation'){
+   const mode=r.data.mode;
+   if(!['automatic','fixed'].includes(mode))fail('invalid-argument','Unknown bot rotation mode');
+   if(mode==='automatic' && Object.values(t.players||{}).some(p=>p.lineupRequest))fail('failed-precondition','A bot seat change is pending');
+   if(mode==='automatic' && t.settings.botRotation==='fixed'){
+    for(const p of Object.values(t.players||{})){
+     if(!p.isBot || p.stack!==0 || !p.sitOut || p.status!=='sitout')continue;
+     patch['players.'+p.uid+'.sitOut']=false;
+     patch['players.'+p.uid+'.status']='busted';
+     patch['players.'+p.uid+'.bustedAt']=now;
+    }
+   }
+   patch['settings.botRotation']=mode;
+   Object.assign(audit,{action:'bot-rotation-mode',mode});
+  }else{
+   const target=key(r.data.targetUid,'bot'),seat=t.players?.[target],action=r.data.action;
+   if(t.settings.botRotation!=='fixed')fail('failed-precondition','Enable Fixed lineup first');
+   if(!['replace','free'].includes(action))fail('invalid-argument','Unknown seat change');
+   if(!seat||seat.uid!==target||seat.isBot!==true||!seat.fundingUid||seat.leaveReq||seat.leavingAt||seat.status==='out')fail('failed-precondition','Bot no longer available');
+   if(seat.lineupRequest)fail('failed-precondition','A seat change is already pending');
+   if(action==='replace'){
+    const sponsor=key(seat.fundingUid,'bot sponsor'),bank=await tx.get(db.doc(`memberships/${sponsor}_${t.clubId}`));
+    if(!bank.exists || !Number.isFinite(bank.data().balance))fail('failed-precondition','Funding account missing');
+    if(A.idle(t) && cash(bank.data().balance+seat.stack+(seat.pendingTopUp||0))<cashBotBuyIn(t.settings))fail('failed-precondition','Insufficient funds for replacement');
+   }
+   patch['players.'+target+'.lineupRequest']={action,id:r.data.requestId};
+   patch['players.'+target+'.lineupError']=null;
+   Object.assign(audit,{action:'request-bot-seat',targetUid:target,seatAction:action});
+  }
+  tx.update(ref,patch);tx.set(db.collection('_pkAudit').doc(),audit);
+  return{ok:true,queued:op==='bot-seat'};
+ }
  if(op==='mute')tx.update(ref,{chatMuted:r.data.muted===true});
  else if(op==='clear-floor')tx.update(ref,{floorCall:null});
  else if(op==='limits'||op==='settings'){

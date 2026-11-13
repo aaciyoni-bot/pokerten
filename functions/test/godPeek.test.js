@@ -1,12 +1,13 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
+const fs = require('node:fs'), path = require('node:path');
 const {createCallable, godCardContext} = require('../godPeek');
 const client = require('../../assets/js/poker-runtime');
 const source = fs.readFileSync(path.join(__dirname, '../pokerEngine.js'), 'utf8');
-const guard = vm.runInNewContext(source.match(/const GOD_EMAILS = [^;]+;/)[0] + '\n' + source.match(/const isGodAuth = [^\n]+/)[0] + '\nisGodAuth;');
-const auth = (email = 'haim29071994@gmail.com', verified = true) => ({uid: 'viewer', token: {email, email_verified: verified}});
+const {identities}=require('../../tests/god-session-fixture.cjs');
+const {isGodAuth:guard}=require('../godIdentity');
+const auth = (email = identities.supervisors[0], verified = true) => ({uid: 'viewer', token: {email, email_verified: verified}});
 class HttpsError extends Error { constructor(code, message) { super(message); this.code = code; } }
 const card = (val, suit = '♠') => ({val, suit});
 const table = () => ({gameState: {handN: 7, phase: 'turn', currentGameType: 'NLH', board: ['2','3','4','5'].map(v => card(v, '♥'))}, players: {a: {cardCount: 2}, b: {cardCount: 2}}});
@@ -28,9 +29,9 @@ function fixture() {
   return {call, reads, writes, get docs() { return docs; }, set docs(value) { docs = value; }, set afterTableRead(fn) { afterTableRead = fn; }};
 }
 test('peek denies forged role/profile/GOD flag, unverified and removed accounts before reads', async () => {
-  for (const identity of [null, auth('player@example.invalid'), {...auth('owner@example.invalid'), role: 'super_admin'}, auth(undefined, false), auth('easymarcelos@gmail.com')]) {
+  for (const identity of [null, auth('player@example.invalid'), {...auth('owner@example.invalid'), role: 'super_admin'}, auth(undefined, false), auth('unlisted-0@example.invalid')]) {
     const f = fixture();
-    await assert.rejects(f.call({auth: identity, data: {tableId: 't', godMode: true, email: 'haim29071994@gmail.com'}}),
+    await assert.rejects(f.call({auth: identity, data: {tableId: 't', godMode: true, email: identities.supervisors[0]}}),
       e => e.code === (identity ? 'permission-denied' : 'unauthenticated'));
     assert.deepEqual(f.reads, []);
   }
@@ -65,5 +66,5 @@ test('peek path validation and engine wiring retain trusted GOD predicate', asyn
   const f = fixture();
   await assert.rejects(f.call({auth: auth(), data: {tableId: 't/priv/a'}}), e => e.code === 'invalid-argument');
   assert.deepEqual(f.reads, []);
-  assert.match(source, /exports\.godPeek = require\("\.\/godPeek"\)\.createCallable\(\{onCall, HttpsError, db, isGodAuth, CALL_OPTS\}\)/);
+  assert.match(source, /exports\.godPeek = require\("\.\/godPeek"\)\.createCallable\(\{onCall, HttpsError, db, isGodAuth, CALL_OPTS:GOD_CALL_OPTS\}\)/);
 });

@@ -463,9 +463,7 @@ function manualHandFixture(game = 'NLH') {
     gameState:{handN:42,phase:'preflop',currentGameType:game,handBB:2,board:[],pots:[],activeTurnUid:targetUid,
       highestBet:2,minRaise:2,turnStartedAt:f.now(),dealerUid:'third'}});
   // Use two distinct identities accepted by the engine's verified GOD check.
-  const godEmails = require('node:fs').readFileSync(path.join(__dirname,'../pokerEngine.js'),'utf8')
-    .match(/const GOD_EMAILS = (\[[^;]+\]);/)[1];
-  const [email,secondEmail] = JSON.parse(godEmails);
+  const [email,secondEmail]=require('../../tests/god-session-fixture.cjs').emails;
   f.member('op'); f.member('op2');
   const auth = {uid:'op', token:{email,email_verified:true}};
   const other = {uid:'op2',token:{email:secondEmail,email_verified:true}};
@@ -523,7 +521,7 @@ test('off-turn claims, check, call, fold, delegation and automatic recovery use 
   const {controlId}=await command('claim');
   f.advance(5000);
   await assert.rejects(command('fold',{controlId}),{code:'failed-precondition'});
-  await f.engine.tickTable('tableA',f.now());
+  f.advance(2000);await f.engine.tickTable('tableA',f.now());
   assert.notEqual(table().gameState.activeTurnUid,'botA');
   assert.equal(table().players.botA.manualControl,undefined);
   const fresh=manualHandFixture();
@@ -533,7 +531,7 @@ test('off-turn claims, check, call, fold, delegation and automatic recovery use 
   await assert.rejects(fresh.command('fold',{controlId:claim.controlId,handN:42}),{code:'failed-precondition'});
 });
 
-test('quick intervention is GOD-only, applies once before five seconds and yields to the bot at the deadline',async()=>{
+test('quick intervention is GOD-only, applies once before five seconds and yields to the automatic bot action',async()=>{
   for(const op of ['check','fold','call','raise']){
     const {f,table,command}=manualHandFixture();
     if(op==='check')table().players.botA.bet=2;
@@ -555,11 +553,39 @@ test('quick intervention is GOD-only, applies once before five seconds and yield
   const {f,table,command}=manualHandFixture(), g=table().gameState;
   f.advance(5000);
   await assert.rejects(command('fold',{mode:'quick'}),/expired/);
-  await f.engine.tickTable('tableA',f.now());assert.notEqual(table().gameState.activeTurnUid,'botA');
+  f.advance(2000);await f.engine.tickTable('tableA',f.now());assert.notEqual(table().gameState.activeTurnUid,'botA');
   const seq=table().gameState.__seq;
   await f.engine.tickTable('tableA',f.now());assert.equal(table().gameState.__seq,seq);
   assert.equal(table().players.botA.manuallyPlayedHand,undefined);
   await assert.rejects(command('fold',{mode:'quick',turnStartedAt:g.turnStartedAt}),{code:'failed-precondition'});
+});
+
+test('each unclaimed bot turn keeps a single 5, 6 or 7 second deadline across polls and reconnects',async()=>{
+ const {f,table}=manualHandFixture(),row=table(),start=f.now(),delays=new Set();
+ for(let hand=1;hand<=40;hand++){
+  row.gameState.handN=hand;
+  const due=[5000,6000,7000].find(ms=>f.engine.tickMayAdvance(row,start+ms));
+  assert.ok(due);
+  for(const snapshot of [row,structuredClone(row)]){
+   assert.equal(f.engine.tickMayAdvance(snapshot,start+due-1),false);
+   assert.equal(f.engine.tickMayAdvance(snapshot,start+due),true);
+  }
+  delays.add(due);
+ }
+ assert.deepEqual([...delays].sort(),[5000,6000,7000]);
+});
+test('during extra thinking time the seat stays active and Take control stays closed',async()=>{
+ const {f,table,command}=manualHandFixture(),row=table(),start=f.now();
+ while(row.gameState.handN<100 && f.engine.tickMayAdvance(row,start+6000))row.gameState.handN++;
+ assert.equal(f.engine.tickMayAdvance(row,start+6999),false);
+ for(const offset of [5000,6000,6999]){
+  f.advance(start+offset-f.now());await f.engine.tickTable('tableA',f.now());
+  assert.equal(table().gameState.activeTurnUid,'botA');
+  await assert.rejects(command('claim',{mode:'turn'}),/expired/);
+  await assert.rejects(command('fold',{mode:'quick'}),/expired/);
+ }
+ f.advance(1);await f.engine.tickTable('tableA',f.now());
+ assert.notEqual(table().gameState.activeTurnUid,'botA');
 });
 
 test('Take control at 4.999s grants a fresh player clock for this turn only', async()=>{

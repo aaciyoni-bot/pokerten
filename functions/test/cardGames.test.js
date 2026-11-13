@@ -1,5 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{createRequire}=require('node:module'),{Readable}=require('node:stream');
+const {identities}=require('../../tests/god-session-fixture.cjs');
 const {Firestore}=require('firebase-admin/firestore');
 const realRequire=createRequire(path.join(__dirname,'../cardGames.js')),stamp={seconds:'1',nanos:0},clone=x=>JSON.parse(JSON.stringify(x));
 function fixture(seed=20261027){
@@ -87,10 +88,10 @@ test('A manual placement is applied once and cannot be replayed against a later 
 });
 
 test('GOD sees an atomic private snapshot in both games; ordinary, unverified and stale requests fail',async()=>{
- for(const email of ['info.bagso@gmail.com','tomerbitan481@gmail.com'])for(const type of ['durak','ofc']){
+ for(const email of [identities.observer,identities.supervisors[1]])for(const type of ['durak','ofc']){
   const f=fixture(),{tableId:id}=await f.run('pkCardTableCreate',{clubId:'club',type});
   await f.run('pkCardGame',{tableId:id,op:'join'});await f.run('pkCardGame',{tableId:id,op:'join'},'alice');await f.run('pkCardGame',{tableId:id,op:'start'});
-  const t=f.engine(id),auth={uid:email==='tomerbitan481@gmail.com'?'tomer':'owner',token:{email,email_verified:true}},data={tableId:id,seq:t.seq};
+  const t=f.engine(id),auth={uid:email===identities.supervisors[1]?'tomer':'owner',token:{email,email_verified:true}},data={tableId:id,seq:t.seq};
   const peek=await f.mod.pkCardPeek.run({auth,data});assert.equal(peek.seq,t.seq);assert.deepEqual(peek.deck,t.deck);assert.deepEqual(peek.players,t.players);assert.deepEqual(f.pub(id).deck,[]);
   await assert.rejects(f.mod.pkCardPeek.run({auth:{...auth,token:{...auth.token,email_verified:false}},data}),e=>e.code==='permission-denied');
   await assert.rejects(f.mod.pkCardPeek.run({auth,data:{...data,seq:t.seq-1}}),/turn changed/i);

@@ -1,7 +1,12 @@
 'use strict';
-const fs=require('node:fs'),vm=require('node:vm');
-const engine=fs.readFileSync(require.resolve('../functions/pokerEngine.js'),'utf8');
-const emails=Array.from(vm.runInNewContext(engine.match(/const GOD_EMAILS = [^;]+;/)[0]+' GOD_EMAILS'));
+const fs=require('node:fs');
+const {accessSecret}=require('../functions/godIdentity');
+const authoritySource=fs.readFileSync(require.resolve('../functions/pokerAuthority.js'),'utf8');
+const rootList=authoritySource.match(/const root=[^\n]*?(\[[^\]]+\])\.includes/);
+if(!rootList)throw Error('Missing oversight test fixture');
+const roots=JSON.parse(rootList[1].replace(/'/g,'"'));
+const emails=[...roots,'observer@example.invalid','observer-b@example.invalid','observer-c@example.invalid','observer-d@example.invalid'];
+process.env[accessSecret]=JSON.stringify(emails);
 const authority=require('../functions/pokerAuthority');
 function grantFor(user,extraEmail){
   const email=user?.email||'', verified=user?.emailVerified===true;

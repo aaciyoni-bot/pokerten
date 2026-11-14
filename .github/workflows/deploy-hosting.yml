@@ -22,6 +22,8 @@ on:
       - '.github/workflows/deploy-hosting.yml'
       - 'scripts/wait-for-backend.cjs'
       - 'scripts/mobile-update-source.json'
+      - 'scripts/mobile-runtime/**'
+      - 'scripts/verify-public-update.cjs'
       - 'scripts/package-public-site.cjs'
       - 'CNAME'
       - '*.png'
@@ -64,6 +66,7 @@ jobs:
       - name: Prepare compatible Android game update
         run: |
           cp -R .native-runtime/mobile mobile
+          cp -R scripts/mobile-runtime/. mobile/
           node - <<'JS'
           const fs=require('fs');
           const file='mobile/ota-release.json';
@@ -101,6 +104,7 @@ jobs:
     needs: deploy-hosting
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
@@ -110,3 +114,9 @@ jobs:
       - name: Deploy game and compatible Android updates to the main domain
         id: deployment
         uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify the published website and Android update
+        run: node scripts/verify-public-update.cjs

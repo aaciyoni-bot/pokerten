@@ -4,6 +4,7 @@
   const current=Number(document.querySelector('meta[name="app-version"]')?.content)||345;
   let view='auth',latest=current,checking,registration,banner,message,button,applying=false,verified=false;
   const atTable=()=>String(root.__pkAppView||view).endsWith('-table');
+  const offline='Could not check for updates. Check your connection and try again.';
   async function read(url,format){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),10000);
     try{
@@ -27,22 +28,29 @@
     const output=document.getElementById('repair-status');if(output)output.textContent=message.textContent;
   }
   async function check(manual=false){
-    if(checking){await checking;if(manual)render(verified?(latest>current?undefined:'You’re up to date · v'+current):'Could not check for updates. Try again when online.');return;}
     if(document.hidden&&!manual)return;
-    checking=(async()=>{
+    if(!checking)checking=(async()=>{
       try{
         registration?.update().catch(()=>{});
         // A fresh URL also avoids an old CDN response at the installed app's origin.
         const release=await read('assets/release.json?check='+Date.now(),'json'),version=Number(release.version);
         if(!Number.isSafeInteger(version)||version<1)throw Error('Invalid release');
         verified=true;latest=version;
-        if(latest>current)render();else if(manual)render('You’re up to date · v'+current);
-      }catch(_){verified=false;if(manual)render('Could not check for updates. Try again when online.');}
+      }catch(_){verified=false;}
     })().finally(()=>checking=null);
-    return checking;
+    await checking;
+    if(!verified){if(manual)render(offline);return offline;}
+    // A deliberate tap installs a newer release. Background checks only notify.
+    if(manual&&latest>current)return apply();
+    const result=latest>current?(atTable()?'Update ready. Return to the lobby to update.':'A new version is ready.'):'You’re up to date · v'+current;
+    if(manual||latest>current)render(result);
+    return result;
   }
   async function apply(force=false){
-    if(atTable()||applying||!verified||(!force&&latest<=current))return;
+    if(atTable()){const result='Return to the lobby before updating.';render(result);return result;}
+    if(applying)return 'Loading the latest app…';
+    if(!verified)return offline;
+    if(!force&&latest<=current)return 'You’re up to date · v'+current;
     applying=true;render('Loading the latest app…');
     try{
       const url=new URL(root.location.href);
@@ -53,12 +61,13 @@
       const match=html.match(/<meta\s+name=["']app-version["']\s+content=["'](\d+)["']/i);
       if(!match||Number(match[1])<latest)throw Error('The latest app is not available yet');
       // A player can enter a table while the network request is pending.
-      if(atTable()){render('Return to the lobby before updating.');return;}
+      if(atTable()){const result='Return to the lobby before updating.';render(result);return result;}
       root.location.replace(url.href);
-    }catch(_){render('The update could not load. Check your connection and try again.');}
+      return 'Starting the updated game…';
+    }catch(_){const result='The update could not load. Check your connection and try again.';render(result);return result;}
     finally{applying=false;if(button){button.disabled=atTable();button.textContent=latest>current?'Update now':'Reload app';}}
   }
-  const reload=async()=>{await check(true);return apply(true);};
+  const reload=async()=>{await check();if(!verified){render(offline);return offline;}return apply(true);};
   root.PokerAppUpdate={version:current,check,reload,setView(next){view=next;if(banner&&!banner.hidden&&latest>current)render();}};
   function start(){
     // A stuck registration must never prevent the version check from starting.

@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="375">
-    <script src="assets/js/app-update.js?v=353" defer></script>
+    <meta name="app-version" content="376">
+    <script src="assets/js/app-update.js?v=376" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1055,7 +1055,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
         import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCustomToken, setPersistence, indexedDBLocalPersistence, browserLocalPersistence, GoogleAuthProvider, onAuthStateChanged, onIdTokenChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocFromServer, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 
         const firebaseConfig = {
@@ -1069,7 +1069,7 @@
         };
         const app = initializeApp(firebaseConfig);
         const _auth = getAuth(app);
-        window.fb = { auth: _auth, db: getFirestore(app), googleProvider: new GoogleAuthProvider(), signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, onIdTokenChanged, signOut, collection, doc, setDoc, getDoc, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction };
+        window.fb = { auth: _auth, db: getFirestore(app), googleProvider: new GoogleAuthProvider(), signInWithPopup, signInWithRedirect, getRedirectResult, onAuthStateChanged, onIdTokenChanged, signOut, collection, doc, setDoc, getDoc, getDocFromServer, getDocs, onSnapshot, query, where, updateDoc, addDoc, deleteDoc, runTransaction };
         // A guest has no password to sign back in with: if the session is lost,
         // the account — and the chips in it — are gone with it. So persistence
         // is set BEFORE any sign-in, and every sign-in waits for it.
@@ -1130,8 +1130,8 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <script src="assets/js/club-cashier.js?v=330"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=348"></script>
-<link rel="stylesheet" href="assets/css/reference-experience.css?v=340">
-<link rel="stylesheet" href="assets/css/login-reference.css?v=336">
+<link rel="stylesheet" href="assets/css/reference-experience.css?v=376">
+<link rel="stylesheet" href="assets/css/login-reference.css?v=376">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -4358,19 +4358,20 @@ function PokerMusicButton({tile=false}={}) {
 function AppReleaseControls() {
   const release=window.PokerAppUpdate?.version||document.querySelector('meta[name="app-version"]')?.content||'';
   const [busy,setBusy]=React.useState(false), [status,setStatus]=React.useState('');
+  const pending=React.useRef(false);
   async function check() {
-    if (busy) return;
-    setBusy(true); setStatus('');
+    if (pending.current) return;
+    pending.current=true;setBusy(true);setStatus('Checking for updates…');
     try {
       if (!window.PokerAppUpdate?.check) {
         setStatus('The updater is not ready. Reopen the app and try again.');
         return;
       }
       const message = await window.PokerAppUpdate.check(true);
-      if (typeof message === 'string') setStatus(message);
+      setStatus(typeof message === 'string' && message ? message : 'The updater did not respond. Close and reopen the app, then try again.');
     } catch (_) {
       setStatus('Could not check for updates. Check your connection and try again.');
-    } finally { setBusy(false); }
+    } finally { pending.current=false;setBusy(false); }
   }
   return React.createElement('div',{className:'app-release-controls','aria-label':'App version and sound check'},
     React.createElement('button',{type:'button',onClick:check,disabled:busy,'aria-label':`Version ${release}. Check for updates`},busy?'Checking…':`v${release} · Check update`),

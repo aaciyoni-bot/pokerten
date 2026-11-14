@@ -36,7 +36,7 @@ test('a hung version request times out and releases the checking lock for retry'
   const f=setup();f.setFetchHook((url,{signal})=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('timeout')))));
   const pending=f.w.PokerAppUpdate.check(true);assert.equal(f.timers.size,1);[...f.timers.values()][0]();await pending;
   assert.equal(f.timers.size,0);assert.match(f.dom.window.document.body.textContent,/Could not check/);
-  f.setFetchHook(null);f.setVersion(338);await f.w.PokerAppUpdate.check(true);assert.match(f.dom.window.document.body.textContent,/new version is ready/);f.close();
+  f.setFetchHook(null);f.setVersion(338);await f.w.PokerAppUpdate.check(true);assert.equal(f.navigations.length,1);f.close();
 });
 test('entering a table while the HTML is loading cancels navigation',async()=>{
   const f=setup();let release;const waiting=new Promise(r=>release=r);f.setFetchHook(url=>url.startsWith('https:')?waiting:Promise.resolve());
@@ -46,4 +46,26 @@ test('entering a table while the HTML is loading cancels navigation',async()=>{
 test('the recovery page can reload the current release at the same origin without touching auth storage',async()=>{
   const f=setup({url:'https://pokerten.com/update.html?club=demo'});await f.w.PokerAppUpdate.reload();
   const url=new URL(f.navigations[0]);assert.equal(url.origin,'https://pokerten.com');assert.equal(url.pathname,'/');assert.equal(url.searchParams.get('appVersion'),'337');assert.equal(url.searchParams.get('club'),'demo');f.close();
+});
+test('one manual tap installs a newer version and returns feedback; current versions do not reload',async()=>{
+  const f=setup();
+  assert.match(await f.w.PokerAppUpdate.check(true),/up to date/);
+  assert.equal(f.navigations.length,0);
+  f.setVersion(338);
+  assert.match(await f.w.PokerAppUpdate.check(true),/Starting the updated game/);
+  assert.equal(f.navigations.length,1);f.close();
+});
+test('a manual tap joins a background check but still installs, and double taps navigate only once',async()=>{
+  const f=setup();f.setVersion(338);
+  let release;const wait=new Promise(r=>release=r);f.setFetchHook(()=>wait);
+  const background=f.w.PokerAppUpdate.check();
+  const first=f.w.PokerAppUpdate.check(true),second=f.w.PokerAppUpdate.check(true);
+  assert.equal(f.requests.length,1);release();
+  await Promise.all([background,first,second]);
+  assert.equal(f.navigations.length,1);f.close();
+});
+test('manual checks at a table return instructions instead of interrupting play',async()=>{
+  const f=setup();f.setVersion(338);f.w.PokerAppUpdate.setView('poker-table');
+  assert.match(await f.w.PokerAppUpdate.check(true),/Return to the lobby/);
+  assert.equal(f.navigations.length,0);f.close();
 });

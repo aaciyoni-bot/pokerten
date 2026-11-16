@@ -22,7 +22,7 @@
    return '<scr'+'ipt src="'+src+'"></scr'+'ipt>';
  }).join('');
  if(query.has('bare'))document.querySelector('nav').remove();
- let code=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.PreviewTable=PokerTable;window.PreviewTournaments=TournamentsTab;window.PreviewClubs=ClubsView;window.PreviewLobby=LobbyView;window.PreviewAuth=AuthView;window.PreviewAdmin=BackofficeView;window.PreviewPlayerFile=PlayerFileModal;window.PreviewSettlement=SettlementSection;window.PreviewProfile=ProfileView;window.PreviewRanks=LeadersView;window.PreviewCreate=PokerCreateView;');
+ let code=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function PokerTable('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.PreviewDurak=DurakTable;window.PreviewTable=PokerTable;window.PreviewTournaments=TournamentsTab;window.PreviewClubs=ClubsView;window.PreviewLobby=LobbyView;window.PreviewAuth=AuthView;window.PreviewAdmin=BackofficeView;window.PreviewPlayerFile=PlayerFileModal;window.PreviewSettlement=SettlementSection;window.PreviewProfile=ProfileView;window.PreviewRanks=LeadersView;window.PreviewCreate=PokerCreateView;');
  if(query.has('god'))code=code.replace('const [godViewRequested, setGodView] = useState(false);','const [godViewRequested, setGodView] = useState(true);').replace('useEffect(() => setGodView(false), [user.uid]);','useEffect(() => setGodView(true), [user.uid]);');
  code=code.replaceAll('assets/design/table-blue-v333.webp',localAsset('assets/design/table-blue-v333.webp'));
  if(query.has('motion'))code+='\nwindow.PreviewMotion={DiscardFly,BetCollect,PotAward,pokerVisualPoint,useReducedPokerMotion};';
@@ -99,6 +99,17 @@
  }
  const scenario={mode,uid,holeCount,capacity,menuRole,phase:state.gameState.phase,god:query.has('god'),geometryOnly,heroExpected:players[uid]?.cardCount||0,cardsNeeded,availableHoleCards:pool.length};
  if(geometryOnly){const note=document.createElement('p');note.textContent='Geometry stress only: this combination of seats and hole cards exceeds a 52-card deck.';note.style.cssText='text-align:center;color:#ffd88a';document.body.insertBefore(note,frame);}
+ if(mode==='durak'){
+  const dcard=(val,suit)=>({id:val+suit,val,suit,v:Number(val)||({J:11,Q:12,K:13,A:14})[val]});
+  const hand=[dcard('6','♣'),dcard('8','♦'),dcard('10','♥'),dcard('J','♠'),dcard('Q','♠'),dcard('A','♠')];
+  if(query.has('longhand'))hand.push(...['7','8','9','10','K'].flatMap(v=>['♣','♥','♦'].map(su=>dcard(v,su))).filter(c=>!hand.some(h=>h.id===c.id)&&!['9♥','9♦'].includes(c.id)));
+  const hidden=n=>Array.from({length:n},(_,i)=>({id:'hidden-'+i,hidden:true}));
+  const dp={me:{uid:'me',name:'You',seatIndex:0,cards:hidden(hand.length),cardCount:hand.length},p1:{uid:'p1',name:'Maya',seatIndex:1,cards:hidden(6),cardCount:6},p2:{uid:'p2',name:'David',seatIndex:2,cards:hidden(5),cardCount:5,isBot:true},p3:{uid:'p3',name:'Robin',seatIndex:3,cards:hidden(6),cardCount:6}};
+  for(const p of Object.values(dp)){p.avatarSeed=p.uid;p.left=false;p.out=false;}
+  const setup=query.get('phase')==='setup';if(setup)for(const p of Object.values(dp)){p.cards=[];p.cardCount=0;}if(query.has('empty'))for(const id of Object.keys(dp))delete dp[id];
+  Object.assign(state,{type:'durak',cardGameVersion:1,seq:1,hostUid:'owner',settings:{maxPlayers:6,buyIn:100,deckSize:36,variant:'classic'},players:dp,status:setup?'setup':'playing',deckCount:13,deck:[],discard:2,pot:setup?0:400,turnUid:'me',attackerUid:'me',defenderUid:'p1',turnStartedAt:Date.now(),trumpSuit:'♠',trumpCard:dcard('K','♠'),pairs:setup?[]:[{a:dcard('7','♥'),d:dcard('9','♥'),by:'p1'},{a:dcard('9','♦'),d:dcard('J','♦'),by:'p2'}],waitlist:[],chat:[]});
+  previewHands[uid]=hand;
+ }
  const stub=`window.__pkMuted=true;window.__previewMode=true;
  if(window.Worker){const PreviewWorker=window.Worker;window.Worker=class extends PreviewWorker{constructor(url,options){super(new URL(String(url),${JSON.stringify(projectRoot.href)}),options);}};}
 
@@ -113,7 +124,7 @@
  query:(r,...filters)=>({...r,filters}),where:(field,op,value)=>({field,op,value}),
  fx:async(name,args={})=>{if(name==='pkGameHistory')return{records:previewDirectory.gameLog.filter(e=>!args.targetUid||e.uid===args.targetUid),nextCursor:null};if(name==='pkClubDirectory'){if(args.accountingOnly)return{accounting:previewDirectory.accounting};if(args.reportSection){if(${query.has('reporterror')})throw Object.assign(new Error('Simulated report failure'),{code:'functions/unavailable'});const rows=previewDirectory[args.reportSection]||[],start=Number(args.cursor)||0,end=start+2;return{records:structuredClone(rows.slice(start,end)),hasMore:end<rows.length,nextCursor:end<rows.length?String(end):null};}return structuredClone(previewDirectory);}if(name==='pkTick')return{};if(name==='godPeek')return{tableId:args.tableId,contextKey:args.contextKey,hands:previewHands,finalBoard:${JSON.stringify(finalBoard)}};return denyWrite();},
  getDoc:async()=>({exists:()=>false}),getDocs:async(r)=>{let rows=r.path==='memberships'?previewDirectory.members:r.path==='gameLog'?previewDirectory.gameLog:[];for(const f of r.filters||[])if(f.op==='=='&&f.field!=='clubId')rows=rows.filter(row=>row[f.field]===f.value);return previewDocs(rows);},
- onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;let done=false;queueMicrotask(()=>{if(done)return;if(r.path==='tables/preview')cb(previewSnap());else if(r.path.includes('/priv/'))cb({exists:()=>true,data:()=>({cards:privateCards})});else cb({exists:()=>false,...previewDocs([])});});return()=>{done=true;};},
+ onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;let done=false;queueMicrotask(()=>{if(done)return;if(r.path==='tables/preview')cb(previewSnap());else if(r.path.includes('/priv/'))cb({exists:()=>true,data:()=>({seq:previewState.seq,cards:privateCards})});else cb({exists:()=>false,...previewDocs([])});});return()=>{done=true;};},
  updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite,signIn:denyWrite,signInCode:denyWrite,signOut:denyWrite};`;
 
  const definitions=html.match(/<svg[^>]*>[\s\S]*?pcGBlk[\s\S]*?<\/svg>/)?.[0]||'';
@@ -136,9 +147,10 @@
   props.tournaments=[{...common,id:'preview-free',name:'Saturday Freeroll',status:'reg',buyIn:0,prizePool:2000,startAt:Date.now()+3600000},{...common,id:'preview-paid',name:'Sunday 100',status:'reg',buyIn:100,fee:5,prizePool:1900,startAt:Date.now()+90000000},{...common,id:'preview-live',name:'Omaha Championship',pokerType:'Omaha 6',status:'running',buyIn:55,prizePool:1045,startedAt:Date.now()-3600000,players:{...entrants,entry1:{...entrants.entry1,out:true}}}];
  }
  if(query.has('colors')&&['durak','ofc'].includes(query.get('game')))props.tab=query.get('game');
- let component=mode==='player-file'?'PreviewPlayerFile':mode==='tournaments'?'PreviewTournaments':mode==='auth'?'PreviewAuth':mode==='lobby'?'PreviewLobby':['admin','cashier'].includes(mode)?'PreviewAdmin':mode==='settlement'?'PreviewSettlement':mode==='profile'?'PreviewProfile':mode==='ranks'?'PreviewRanks':mode==='create'?'PreviewCreate':mode==='clubs'?'PreviewClubs':'PreviewTable';
+ let component=mode==='durak'?'PreviewDurak':mode==='player-file'?'PreviewPlayerFile':mode==='tournaments'?'PreviewTournaments':mode==='auth'?'PreviewAuth':mode==='lobby'?'PreviewLobby':['admin','cashier'].includes(mode)?'PreviewAdmin':mode==='settlement'?'PreviewSettlement':mode==='profile'?'PreviewProfile':mode==='ranks'?'PreviewRanks':mode==='create'?'PreviewCreate':mode==='clubs'?'PreviewClubs':'PreviewTable';
  let propsCode=mode==='player-file'?JSON.stringify({mem:demoMembers[1],viewer:managementViewer,accounting:directory.accounting,canEdit:false,canManagePeriod:!['agent','player'].includes(managementRole),showRake:query.has('god')}):mode==='clubs'?JSON.stringify(clubProps):JSON.stringify(props);
  let renderPreview=`window.__club={id:'main',name:'Netabel',ownerUid:'owner',closedWeeks:{}}; const noop=()=>{}; const demo=React.createElement(window.${component},{...${propsCode},tableDocId:'preview',agentName:()=>"Demo Agent",onClubs:noop,onRanks:noop,onManage:noop,onProfile:noop,onSettlement:noop,onClose:noop,onEnter:noop,onBack:noop,onJoinPoker:noop,onJoinOfc:noop,onJoinDurak:noop,onCreatePoker:noop,onCreated:noop,onLeave:noop,setTab:noop,showToast:noop}); ReactDOM.createRoot(document.getElementById('root')).render(React.createElement('div',{className:'pt-theme h-full w-full flex flex-col'},${mode==='settlement'?"React.createElement('div',{className:'club-admin scrollable-content p-4'},demo)":"demo"}));`;
+ if(component==='PreviewDurak')renderPreview=`ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(window.PreviewDurak,{tableDocId:'preview',user:{uid:'${uid}',role:'${menuRole==='god'?'player':menuRole}',status:'approved',balance:500},clubSettings:{name:'Netabel'},onLeave:()=>{},showToast:()=>{}}));`;
  if(component==='PreviewTable')renderPreview=`ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'${menuRole==='god'?'player':menuRole}',status:'approved',balance:500},clubSettings:{name:'Netabel'},onManage:()=>{},onCreateTable:()=>{},onLeave:()=>{},showToast:()=>{}}));`;
  if(component==='PreviewTable'&&query.has('motion'))renderPreview=`
  const M=window.PreviewMotion;

@@ -17,15 +17,33 @@ async function emit(t){state=C.publish(t);privateState=C.personal(t,'owner');awa
   let t=fixture(type,'setup');delete t.players.owner;state=C.publish(t);privateState=C.personal(t,'owner');
   await React.act(async()=>root.render(React.createElement(w.CardsTest[type==='durak'?'DurakTable':'OFCTable'],{key:type,tableDocId:'table',user,clubSettings:{},showToast:toast,onLeave(){}})));
   assert.equal(w.document.querySelector('[aria-label="GOD MODE"]'),null,'Ordinary accounts do not get GOD controls');
-  assert.ok(w.document.querySelector('.'+type+'-room'));const join=buttons(type==='durak'?'Join (':'Sit with stack')[0];assert.ok(join);
+  assert.ok(w.document.querySelector('.'+type+'-room'));const join=buttons(type==='durak'?'Take a seat':'Sit with stack')[0];assert.ok(join);
   await React.act(async()=>{join.click();join.click();});assert.equal(calls.at(-1).name,'pkCardGame');assert.equal(calls.at(-1).args.op,'join');assert.equal(calls.filter(c=>c.args.op==='join').length,type==='durak'?1:2,'double clicks deduplicate');
   t=fixture(type,'playing');if(type==='durak'){while(t.turnUid!=='owner')C.autoMove(t,Date.now());}await emit(t);
-  if(type==='durak'){const card=w.document.querySelector('.card-game-dock .card-face');assert.ok(card,'Own cards are delivered from private snapshot');await React.act(async()=>card.parentElement.click());assert.equal(calls.at(-1).args.op,'play');assert.equal(calls.at(-1).args.seq,12);}
+  if(type==='durak'){const card=w.document.querySelector('.card-game-dock button:not(:disabled) .card-face');assert.ok(card,'Own cards are delivered from private snapshot');await React.act(async()=>card.parentElement.click());assert.equal(calls.at(-1).args.op,'play');assert.equal(calls.at(-1).args.seq,12);}
   else{assert.equal(w.document.querySelectorAll('[data-ofc-row]').length,3,'All three placement rows render');assert.ok(w.document.querySelector('.ofc-hero-board'),'personal arrangement board renders');}
   assert.equal(writes.length,0,'No browser writes during play');
-  t=fixture(type,'showdown');await emit(t);assert.ok(buttons(type==='durak'?'New game':'New match').length,'Result contains next-hand action');
+  t=fixture(type,'showdown');t.showdownAt=Date.now()-6000;await emit(t);assert.ok(buttons(type==='durak'?'New game':'New match').length,'Result contains next-hand action');
   const keep=buttons('Keep watching')[0];await React.act(async()=>keep.click());assert.ok(buttons('Results / next hand').length);await React.act(async()=>buttons('Results / next hand')[0].click());
   await React.act(async()=>buttons(type==='durak'?'New game':'New match')[0].click());assert.equal(calls.at(-1).args.op,'start');
+ }
+ // Watching an idle table must not acquire a seat, block chat, or spend chips.
+ {
+  const t=fixture('durak','setup');delete t.players.owner;state=C.publish(t);privateState=C.personal(t,'owner');
+  const before=calls.length;let left=0;
+  await React.act(async()=>root.render(React.createElement(w.CardsTest.DurakTable,{key:'spectator-durak',tableDocId:'table',user,clubSettings:{},showToast:toast,onLeave(){left++;}})));
+  assert.equal(calls.length,before,'opening a spectator table issues no commands');
+  assert.ok(w.document.querySelector('[data-durak-spectator]'));assert.equal(w.document.querySelector('.card-game-dialog'),null,'setup does not cover the table');
+  await React.act(async()=>w.document.querySelector('[aria-label="Table chat"]').click());
+  assert.ok(w.document.querySelector('[aria-label="Table chat"]').getAttribute('aria-expanded')==='true','spectators can open chat while waiting');
+  await React.act(async()=>w.document.querySelector('[aria-label="Manage Durak bots"]').click());
+  assert.ok(w.document.querySelector('[aria-label="Durak bot management"]'));
+  await React.act(async()=>buttons('Fill empty seats')[0].click());assert.equal(calls.at(-1).args.op,'fillbots');
+  await React.act(async()=>buttons('Lobby')[0].click());assert.equal(left,1);assert.equal(calls.at(-1).args.op,'fillbots','returning to lobby does not issue a leave/buy-in');
+  t.players.owner={uid:'owner',name:'Owner',seatIndex:0,cards:[],left:false};await emit(t);
+  await React.act(async()=>w.document.querySelector('[aria-label="Stand up and watch"]').click());assert.equal(calls.at(-1).args.op,'leave');assert.equal(left,1,'standing keeps the viewer at the table');
+  t.status='playing';t.turnUid='guest';t.players.guest.isBot=true;await emit(t);
+  assert.equal(buttons('Fill empty seats')[0].disabled,true,'cannot fill during a hand');
  }
  for(const type of ['durak','ofc']){
   const t=fixture(type,'playing');state=C.publish(t);privateState=C.personal(t,'owner');peekState={seq:t.seq,players:t.players,deck:t.deck,pairs:t.pairs};

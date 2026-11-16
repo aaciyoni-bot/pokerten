@@ -114,3 +114,29 @@ test('Durak/OFC heartbeat updates chosen appearance in public and private seats 
   assert.equal(f.balance('alice'),balance);
  }
 });
+
+test('Durak bot management is manager-only, idempotent and cannot change a running game',async()=>{
+ const f=fixture(),{tableId:id}=await f.run('pkCardTableCreate',{clubId:'club',type:'durak',settings:{maxPlayers:4,buyIn:100}});
+ const command=(op,data={},uid='owner')=>f.run('pkCardGame',{tableId:id,op,...data},uid);
+ const unchanged=f.all();await assert.rejects(command('fillbots',{},'alice'),e=>e.code==='permission-denied');assert.deepEqual(f.all(),unchanged);
+ await command('join',{},'alice');await command('fillbots',{requestId:'fill_bot_seats_0001'});const filled=f.all();await command('fillbots',{requestId:'fill_bot_seats_0001'});assert.deepEqual(f.all(),filled);
+ const bots=Object.values(f.engine(id).players).filter(p=>p.isBot);assert.equal(bots.length,3);assert.equal(f.balance('owner'),1000,'seat creation alone never charges buy-ins');assert.equal(new Set(bots.map(b=>b.name)).size,3);
+ await assert.rejects(command('removebot',{botUid:'alice'}),/Select a bot/);await assert.rejects(command('removebot',{botUid:bots[0].uid},'alice'),e=>e.code==='permission-denied');
+ await command('removebot',{botUid:bots[0].uid});assert.equal(Object.keys(f.engine(id).players).length,3);
+ await command('start');assert.equal(f.balance('owner'),800,'exactly two remaining bots are funded at game start');
+ const playing=f.all();await assert.rejects(command('fillbots'),/between games/);await assert.rejects(command('removebot',{botUid:bots[1].uid}),/between games/);assert.deepEqual(f.all(),playing);
+});
+test('Durak waiting-list seats cannot be taken by bots or later arrivals; cancellation releases them',async()=>{
+ const f=fixture(),{tableId:id}=await f.run('pkCardTableCreate',{clubId:'club',type:'durak',settings:{maxPlayers:2}});
+ const command=(op,data={},uid='owner')=>f.run('pkCardGame',{tableId:id,op,...data},uid);
+ await command('wait',{},'alice');await command('wait',{},'bob');await command('wait',{},'alice');assert.deepEqual(f.engine(id).waitlist.map(p=>p.uid),['alice','bob']);
+ await command('fillbots');assert.equal(Object.keys(f.engine(id).players).length,0);await assert.rejects(command('addbot'),/reserved/);await assert.rejects(command('join'),/reserved/);
+ await command('join',{},'alice');assert.equal(f.engine(id).waitlist.length,1);await command('unwait',{},'bob');await command('addbot');assert.equal(Object.keys(f.engine(id).players).length,2);
+});
+test('Approved spectators can chat without joining; outsiders and unauthorized moderation are blocked',async()=>{
+ const f=fixture(),{tableId:id}=await f.run('pkCardTableCreate',{clubId:'club',type:'durak'});
+ const command=(op,data={},uid='alice')=>f.run('pkCardGame',{tableId:id,op,...data},uid);
+ await command('chat',{text:'Good morning'});assert.equal(f.pub(id).chat.at(-1).text,'Good morning');assert.equal(Object.keys(f.engine(id).players).length,0);assert.equal(f.balance('alice'),1000);
+ await assert.rejects(command('chat',{text:'hello'},'outsider'),e=>e.code==='permission-denied');await assert.rejects(command('mute',{muted:true}),e=>e.code==='permission-denied');
+ await command('mute',{muted:true},'owner');await assert.rejects(command('chat',{text:'muted'}),e=>e.code==='permission-denied');
+});

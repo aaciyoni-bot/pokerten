@@ -62,10 +62,13 @@ exports.pkCardGame=onCall(opts,async r=>{
   const pub=snap.data();await A.member(tx,db,pub.clubId,r);const op=r.data.op;
   if(op==='delete'){await A.tableManager(tx,db,pub.clubId,r);return closeTable(tx,db,ref,pub,uid,now);}
   const t=await load(tx,db,ref,pub),effects=[],oldPlayers=Object.keys(t.players),p=t.players[uid];
-  if(['join','addbot','start','topup','refillbots'].includes(op)){await A.activeClub(tx,db,t.clubId);if(t.closeRequested)A.fail('failed-precondition','The table is closing');}
+  if(['join','addbot','fillbots','wait','start','topup','refillbots'].includes(op)){await A.activeClub(tx,db,t.clubId);if(t.closeRequested)A.fail('failed-precondition','The table is closing');}
   if(op==='join'||op==='addbot'){
    if(t.status==='playing')A.fail('failed-precondition','Wait for the current hand to finish');
    if(op==='join'&&p)return{ok:true};if(Object.keys(t.players).length>=t.settings.maxPlayers)A.fail('failed-precondition','The table is full');
+   const queue=(t.waitlist||[]).filter(w=>!t.players[w.uid]),free=t.settings.maxPlayers-Object.keys(t.players).length;
+   const position=queue.findIndex(w=>w.uid===uid);
+   if(queue.length&&(op==='addbot'?free<=queue.length:position<0?free<=queue.length:position>=free))A.fail('failed-precondition','Available seats are reserved for the waiting list');
    let who=uid,profile,funder=uid;
    if(op==='addbot'){const club=await A.tableManager(tx,db,t.clubId,r);funder=club.ownerUid;who='bot_'+crypto.createHash('sha256').update(uid+r.data.requestId).digest('hex').slice(0,24);profile={username:require('./botNames').botName(who,Object.values(t.players).map(p=>p.name))};}
    else{const u=await tx.get(db.doc('users/'+uid));profile=u.exists?u.data():{};}
@@ -73,6 +76,22 @@ exports.pkCardGame=onCall(opts,async r=>{
    t.players[who]=memberSeat(who,profile,ix,t.type,t.settings.buyIn,op==='addbot',funder);
    if(t.type==='ofc')effects.push({type:'credit',uid:funder,amount:-t.settings.buyIn});
    t.waitlist=t.waitlist.filter(w=>w.uid!==who);
+  }else if(op==='fillbots'||op==='removebot'){
+   const club=await A.tableManager(tx,db,t.clubId,r);
+   if(t.type!=='durak'||t.status==='playing')A.fail('failed-precondition','Manage Durak bots between games');
+   if(op==='removebot'){
+    const target=A.key(r.data.botUid),bot=t.players[target];
+    if(!bot?.isBot)A.fail('invalid-argument','Select a bot at this table');
+    delete t.players[target];
+   }else{
+    const reserved=(t.waitlist||[]).filter(w=>!t.players[w.uid]).length;
+    const count=Math.max(0,t.settings.maxPlayers-Object.keys(t.players).length-reserved);
+    for(let i=0;i<count;i++){
+     const who='bot_'+crypto.createHash('sha256').update(uid+r.data.requestId+':'+i).digest('hex').slice(0,24);
+     let ix=0;const taken=new Set(Object.values(t.players).map(p=>p.seatIndex));while(taken.has(ix))ix++;
+     t.players[who]=memberSeat(who,{username:require('./botNames').botName(who,Object.values(t.players).map(p=>p.name))},ix,t.type,t.settings.buyIn,true,club.ownerUid);
+    }
+   }
   }else if(op==='start'){
    if(t.hostUid!==uid&&!p)await A.tableManager(tx,db,t.clubId,r);
    if(t.status==='showdown'&&now-t.showdownAt<5000)A.fail('failed-precondition','Review the result before the next hand');
@@ -100,6 +119,7 @@ exports.pkCardGame=onCall(opts,async r=>{
    if(t.type!=='ofc'||!p||t.status==='playing')A.fail('failed-precondition','Add chips between hands');
    const amount=A.number(r.data.amount,t.settings.buyIn,.01,1000000);effects.push({type:'credit',uid,amount:-amount});p.stack=A.cash(p.stack+amount);p.buyTotal=A.cash(p.buyTotal+amount);
   }else if(op==='wait'||op==='unwait'){
+   if(op==='wait'&&t.waitlist.some(w=>w.uid===uid))return{ok:true};
    t.waitlist=t.waitlist.filter(w=>w.uid!==uid);if(op==='wait'&&!p){if(t.waitlist.length>=30)A.fail('resource-exhausted','Queue full');const u=await tx.get(db.doc('users/'+uid));t.waitlist.push({uid,name:u.data()?.username||'Player',at:now});}
   }else if(op==='heartbeat'||op==='stay'){if(!p)return{ok:true};p.lastSeen=now;p.stayAt=now;if(!p.isBot){const profile=await tx.get(db.doc('users/'+uid));if(profile.exists)Object.assign(p,require('./pokerIdentity').appearance(profile.data(),uid));}
   }else if(op==='chat'||op==='floor'){

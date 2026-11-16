@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="376">
-    <script src="assets/js/app-update.js?v=376" defer></script>
+    <meta name="app-version" content="377">
+    <script src="assets/js/app-update.js?v=377" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1124,7 +1124,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/player-wallet-blue.css?v=314">
 <link rel="stylesheet" href="assets/css/club-orbital.css?v=315">
 <link rel="stylesheet" href="assets/css/reference-shell.css?v=324">
-<link rel="stylesheet" href="assets/css/card-games-reference.css?v=324">
+<link rel="stylesheet" href="assets/css/card-games-reference.css?v=377">
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=344">
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=347">
 <script src="assets/js/club-cashier.js?v=330"></script>
@@ -7023,12 +7023,14 @@ function LobbyView({
     if(t.tournamentId)return showToast('Tournament seat — sit out from the table instead','info');
     lobbyLeaveLocks.current.add(id);
     try {
-      const result=await pokerCommand('pkLeave',{tableId:id});
+      if(t.type==='durak'&&t.status==='playing'&&!window.confirm('Leaving during the game forfeits this buy-in. Leave?'))return;
+      const result=await pokerCommand(['durak','ofc'].includes(t.type)?'pkCardGame':'pkLeave',{tableId:id,...(['durak','ofc'].includes(t.type)?{op:'leave'}:{})});
       showToast(result.notice?'Your leave notice is running.':result.queued?'You will leave when this hand ends.':t.settings?.spinMode&&t.spin&&!t.spinDone?'You are sitting out until the Spin ends.':'Seat closed; any cash balance has been returned.',result.queued||result.notice?'info':'success');
     }catch(e){showToast(e.message||'Could not leave that table right now','error');}
     finally{lobbyLeaveLocks.current.delete(id);}
   };
   const [showCreateDurak, setShowCreateDurak] = useState(false);
+  const [durakFilter,setDurakFilter]=useState('all');
   const [durakOpts, setDurakOpts] = useState({
     deckSize: 36,
     variant: 'podkidnoy',
@@ -7136,6 +7138,10 @@ function LobbyView({
     .filter(t=>(!runningOnly||liveRingTables.includes(t))&&(!hideFull||Object.values(t.players||{}).filter(p=>p&&p.status!=='left'&&p.left!==true).length<(Number(t.settings?.maxPlayers)||6)))
     .sort((a,b)=>tableSort==='buyin'?buyInMin(a.settings||{})-buyInMin(b.settings||{}):tableSort==='players'?Object.keys(b.players||{}).length-Object.keys(a.players||{}).length:0);
   const durakTables = tables.filter(t => t.type === 'durak' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const durakSeats=t=>Object.values(t.players||{}).filter(p=>p&&!p.left).length;
+  const durakLive=t=>t.status==='playing'&&durakSeats(t)>=2;
+  const shownDurak=durakTables.filter(t=>(durakFilter==='all'||durakFilter==='live'&&durakLive(t)||durakFilter==='transfer'&&t.settings?.variant==='perevodnoy'||durakFilter==='classic'&&t.settings?.variant!=='perevodnoy')&&(!runningOnly||durakLive(t))&&(!hideFull||durakSeats(t)<(t.settings?.maxPlayers||6)))
+    .sort((a,b)=>tableSort==='buyin'?(a.settings?.buyIn||0)-(b.settings?.buyIn||0):tableSort==='players'?durakSeats(b)-durakSeats(a):0);
   const ofcTables = tables.filter(t => t.type === 'ofc' && !t.tournamentId && (t.clubId || 'main') === CLUB_ID).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   const [showCreateOfc, setShowCreateOfc] = useState(false);
   const [ofcOpts, setOfcOpts] = useState({
@@ -7669,7 +7675,7 @@ function LobbyView({
         const entry = tor.players?.[user.uid];
         if (!entry || entry.out || entry.removed) return false;
       }
-      if (!t.tournamentId && !((me.stack || 0) > 0 || (me.bet || 0) > 0)) return false;
+      if (!t.tournamentId && t.type!=='durak' && !((me.stack || 0) > 0 || (me.bet || 0) > 0)) return false;
       return true;
     });
     if (!mine.length) return null;
@@ -7695,7 +7701,7 @@ function LobbyView({
       }, "You're still seated at ", label), React.createElement("span", {
         className: "block text-slate-400 font-bold text-[11px]",
         dir: "ltr"
-      }, t.tournamentId ? 'Tournament table' : `Stack ${formatShort(me.stack || 0)}`, me.sitOut ? ' \u00b7 \u2615 sitting out' : '')), React.createElement("span", {
+      }, t.tournamentId ? 'Tournament table' : t.type==='durak' ? `Durak · ${t.status==='playing'?'Game in progress':'Waiting for players'}` : `Stack ${formatShort(me.stack || 0)}`, me.sitOut ? ' \u00b7 \u2615 sitting out' : '')), React.createElement("span", {
         className: "shrink-0 bg-emerald-500 text-slate-900 font-black text-xs rounded-xl px-3 py-2 whitespace-nowrap"
       }, "Back \u21a9"), !t.tournamentId && React.createElement("span", {
         onClick: e => {
@@ -8241,89 +8247,34 @@ function LobbyView({
     disabled: !!openingCardGame,
     "aria-busy": openingCardGame==='durak',
     className: "bg-blue-600 hover:bg-blue-500 text-white px-8 py-2 rounded-xl font-bold shadow-lg"
-  }, "Confirm & open")))), React.createElement("div", {
+  }, "Confirm & open")))), React.createElement('div',{className:'blue-variant-tabs',role:'group','aria-label':'Durak table filters',dir:'ltr'},
+    [['live','LIVE'],['all','All'],['classic','Classic'],['transfer','Transfer']].map(([id,label])=>React.createElement('button',{key:id,onClick:()=>setDurakFilter(id),'aria-pressed':durakFilter===id,className:'vtab '+(id==='live'?'vtab-live ':'')+(durakFilter===id?'vtab-active':'')},id==='live'&&React.createElement('span',{className:'vtab-live-dot','aria-hidden':true}),label))),
+  React.createElement('div',{className:'reference-lobby-filters'},
+    React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:runningOnly,onChange:e=>setRunningOnly(e.target.checked)}),'Running Tables'),
+    React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:hideFull,onChange:e=>setHideFull(e.target.checked)}),'Hide Full Tables'),
+    React.createElement('select',{'aria-label':'Sort Durak tables',value:tableSort,onChange:e=>setTableSort(e.target.value)},React.createElement('option',{value:'default'},'Sort'),React.createElement('option',{value:'buyin'},'Buy-in'),React.createElement('option',{value:'players'},'Players'))),
+  React.createElement('p',{className:'durak-lobby-hint'},'Tap a table to watch. Take a seat when you are ready.'), React.createElement("div", {
     className: "flex flex-col gap-2.5"
-  }, durakTables.map(t => {
-    const s = t.settings || {};
-    const variant = s.variant === 'perevodnoy' ? 'transfer' : 'classic';
-    const deck = Number(s.deckSize) === 52 ? 52 : 36;
-    const seated = Object.keys(t.players || {}).length;
-    const cap = s.maxPlayers || 6;
-    return React.createElement("div", {
-      key: t.docId,
-      className: "tbl-row",
-      "data-lobby-game": "durak",
-      "data-durak-variant": variant,
-      "data-durak-deck": deck,
-      onClick: () => onJoinDurak(t)
-    }, React.createElement("div", {
-      className: "tbl-spine spine-durak"
-    }, "DRK"), React.createElement("div", {
-      className: "tbl-seats"
-    }, React.createElement("svg", {
-      viewBox: "0 0 44 44",
-      className: "tbl-ring"
-    }, React.createElement("circle", {
-      cx: "22",
-      cy: "22",
-      r: "19",
-      fill: "none",
-      stroke: "rgba(148,163,184,0.18)",
-      strokeWidth: "3.5"
-    }), React.createElement("circle", {
-      cx: "22",
-      cy: "22",
-      r: "19",
-      fill: "none",
-      stroke: seated > 0 ? '#60a5fa' : 'rgba(148,163,184,0.28)',
-      strokeWidth: "3.5",
-      strokeDasharray: `${119 * seated / cap} 119`,
-      strokeLinecap: "round",
-      transform: "rotate(-90 22 22)"
-    })), React.createElement("span", {
-      dir: "ltr"
-    }, seated, React.createElement("span", {
-      className: "seat-cap"
-    }, "/", cap))), React.createElement("div", {
-      className: "tbl-main"
-    }, React.createElement("div", {
-      className: "tbl-name durak-variant-name"
-    }, React.createElement("span", {
-      className: "lobby-game-badge"
-    }, variant === 'transfer' ? 'Transfer' : 'Classic', " · ", deck, " cards"), (s.bluffEnabled || s.bluff) && React.createElement("span", {
-      className: "durak-rule-badge"
-    }, "Bluff"), t.players && t.players[user.uid] && React.createElement("span", {
-      className: "tbl-me"
-    }, "You're seated")), React.createElement("div", {
-      className: "tbl-stakes",
-      dir: "ltr"
-    }, formatMoney(s.buyIn)), React.createElement("div", {
-      className: "tbl-sub"
-    }, t.status === 'playing' ? React.createElement("span", {
-      className: "tbl-live"
-    }, React.createElement("span", {
-      className: "tbl-live-dot"
-    }), "Running") : 'Waiting'), window.PokerGodLobby && React.createElement(window.PokerGodLobby.Badge, {user, table: t, counts: godLobbyCounts, isGodUser})), React.createElement("div", {
-      className: "tbl-buyin",
-      dir: "ltr"
-    }, React.createElement("span", {
-      className: "tbl-buyin-label"
-    }, "Buy-in"), React.createElement("span", {
-      className: "tbl-buyin-val",
-      "data-long": formatMoney(s.buyIn).length > 9 ? "true" : undefined
-    }, formatMoney(s.buyIn))), canManageGame(user, 'durak') && React.createElement("button", {
-      onClick: e => handleDelete(e, t),
-      disabled:!!(deletingTables[t.docId||t.id]||t.closeRequested),
-      'aria-label':'Delete table',
-      title:t.closeRequested||deletingTables[t.docId||t.id]==='queued'?'Closing after this hand':'Delete table',
-      className: "tbl-del disabled:opacity-40"
-    }, React.createElement("i", {
-      className: "fa-solid fa-trash"
-    })));
-  }), durakTables.length === 0 && !tablesLoaded && React.createElement("div", { className: "space-y-2" }, [0, 1].map(i2 => React.createElement("div", { key: i2, className: "h-[72px] rounded-2xl bg-slate-900/60 border border-white/5 animate-pulse" }))), durakTables.length === 0 && tablesLoaded && React.createElement(EmptyState, {
+  }, shownDurak.map(t => {
+    const st=t.settings||{},variant=st.variant==='perevodnoy'?'transfer':'classic',deck=Number(st.deckSize)===52?52:36;
+    const seated=durakSeats(t),cap=st.maxPlayers||6,queue=t.waitlist||[],mine=queue.findIndex(w=>w.uid===user.uid);
+    const label=(variant==='transfer'?'Transfer':'Classic')+' · '+deck+' cards';
+    return React.createElement('div',{key:t.docId||t.id,className:'tbl-row reference-table-row',role:'group',tabIndex:0,
+      'data-lobby-game':'durak','data-durak-variant':variant,'data-durak-deck':deck,'aria-label':'Watch Durak '+label,
+      style:{'--reference-game-color':variant==='transfer'?'#bd94ff':'#48baff'},
+      onKeyDown:e=>{if(e.target===e.currentTarget&&(e.key==='Enter'||e.key===' ')){e.preventDefault();onJoinDurak(t);}},onClick:()=>onJoinDurak(t)},
+      React.createElement('div',{className:'tbl-seats'},React.createElement('small',null,'Players'),React.createElement('span',null,seated,React.createElement('span',{className:'seat-cap'},'/',cap))),
+      React.createElement('div',{className:'tbl-main'},React.createElement('div',{className:'tbl-stakes'},'Durak · ',label),
+        React.createElement('div',{className:'tbl-name durak-variant-name'},(st.bluffEnabled||st.bluff)&&React.createElement('span',{className:'durak-rule-badge'},'Bluff'),t.players?.[user.uid]&&!t.players[user.uid].left&&React.createElement('span',{className:'tbl-me'},"You're seated")),
+        React.createElement('div',{className:'tbl-sub'},t.closeRequested?'Closing after this game':durakLive(t)?React.createElement('span',{className:'tbl-live'},React.createElement('span',{className:'tbl-live-dot'}),'Running'):t.status==='showdown'?'Results · next game':'Waiting',queue.length?' · Waiting '+queue.length:'',mine>=0?' · Your place '+(mine+1):''),
+        window.PokerGodLobby&&React.createElement(window.PokerGodLobby.Badge,{user,table:t,counts:godLobbyCounts,isGodUser})),
+      React.createElement('div',{className:'tbl-buyin',dir:'ltr'},React.createElement('span',{className:'tbl-buyin-label'},'Buy-in'),React.createElement('span',{className:'tbl-buyin-val'},formatMoney(st.buyIn))),
+      React.createElement('span',{className:'blue-table-enter',title:'Watch table','aria-hidden':true},React.createElement('i',{className:'fa-solid fa-eye'})),
+      React.createElement(BlueTableActions,null,canManageGame(user,'durak')&&React.createElement('button',{onClick:e=>handleDelete(e,t),disabled:!!(deletingTables[t.docId||t.id]||t.closeRequested),'aria-label':'Delete table',title:t.closeRequested?'Closing after this game':'Delete table',className:'tbl-del disabled:opacity-40'},React.createElement('i',{className:'fa-solid fa-trash'}))));
+  }), shownDurak.length === 0 && !tablesLoaded && React.createElement("div", { className: "space-y-2" }, [0, 1].map(i2 => React.createElement("div", { key: i2, className: "h-[72px] rounded-2xl bg-slate-900/60 border border-white/5 animate-pulse" }))), shownDurak.length === 0 && tablesLoaded && React.createElement(EmptyState, {
     suit: "♦",
-    title: "No open Durak tables right now",
-    sub: "New tables appear here live the moment they open — no refresh needed."
+    title: durakTables.length ? "No tables match these filters" : "No open Durak tables right now",
+    sub: durakTables.length ? "Choose All or clear the filters to see more tables." : "New tables appear here live the moment they open — no refresh needed."
   })), React.createElement("div", {
     className: "border-t border-white/5 my-8"
   }), React.createElement(TournamentsTab, {
@@ -14472,21 +14423,25 @@ function useCardGame(tableDocId,user,showToast,onLeave,wantPeek=false){
   return{table,godView,error,busy,run,timeLeft:Math.max(0,(publicState?.type==='durak'?30:45)-Math.floor((clock-(publicState?.turnStartedAt||clock))/1000))};
 }
 function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
-  const [godViewRequested,setGodView]=useState(false),[resHide,setResHide]=useState(false),[bluffMode,setBluffMode]=useState(false);
+  const [godViewRequested,setGodView]=useState(false),[resHide,setResHide]=useState(false),[bluffMode,setBluffMode]=useState(false),[botsOpen,setBotsOpen]=useState(false);
   const game=useCardGame(tableDocId,user,showToast,onLeave,godViewRequested);
   const tableState=game.table,loading=!tableState,T=tableState||{},setts=T.settings||{},players=T.players||{},me=players[user.uid];
   const isSeated=!!me&&!me.left,isHost=T.hostUid===user.uid,isGod=isGodUser(user),isSuperAdmin=canManageGame(user,'durak'),godView=game.godView,timeLeft=game.timeLeft;
   const pairs=T.pairs||[],undefPairs=pairs.filter(x=>!x.d),iAmDefender=T.defenderUid===user.uid,iAmAttackerMain=T.attackerUid===user.uid,myTurn=T.turnUid===user.uid&&T.status==='playing'&&!game.busy;
   const ch=useTableChat(tableState,tableDocId,user,'durak',showToast);
-  const onWaitNext=(T.waitlist||[]).some(w=>w.uid===user.uid);
+  const queue=(T.waitlist||[]).filter(w=>!players[w.uid]),queueIndex=queue.findIndex(w=>w.uid===user.uid),onWaitNext=queueIndex>=0;
+  const seats=Object.values(players).filter(p=>!p.left),freeSeats=Math.max(0,(setts.maxPlayers||6)-seats.length);
+  const canJoin=!T.closeRequested&&T.status!=='playing'&&freeSeats>0&&(onWaitNext?queueIndex<freeSeats:freeSeats>queue.length);
+  const canStart=!game.busy&&!T.closeRequested&&seats.length>=2&&(T.status!=='showdown'||Date.now()-(T.showdownAt||0)>=5000);
   const startGame=()=>game.run('start'),handleJoin=()=>game.run('join'),handleAddBot=()=>game.run('addbot');
   const playCard=(uid,cardId,blind)=>game.run('play',{cardId,blind}),takeCards=()=>game.run('take'),passAttack=()=>game.run('pass'),acceptBlind=()=>game.run('accept'),challengeBlind=()=>game.run('challenge');
   const joinNextGame=()=>game.run('wait'),leaveNextGame=()=>game.run('unwait');
-  const handleLeave=async()=>{if(isSeated&&T.status==='playing'&&!me.out&&!window.confirm('Leaving during the game forfeits this buy-in. Leave?'))return;if(!isSeated||await game.run('leave'))onLeave();};
+  const handleStandUp=async()=>{if(isSeated&&T.status==='playing'&&!me.out&&!window.confirm('Leaving during the game forfeits this buy-in. Leave?'))return;await game.run('leave');};
+  const handleLeave=async()=>{if(onWaitNext&&!await game.run('unwait'))return;onLeave();};
   const [dOffline,setOffline]=useState(navigator.onLine===false);
   useEffect(()=>{const on=()=>setOffline(false),off=()=>setOffline(true);window.addEventListener('online',on);window.addEventListener('offline',off);return()=>{window.removeEventListener('online',on);window.removeEventListener('offline',off);};},[]);
   useEffect(()=>setResHide(false),[T.status]);
-  useEffect(()=>{if(onWaitNext&&!isSeated&&['setup','showdown'].includes(T.status))game.run('join');},[onWaitNext,isSeated,T.status]);
+  useEffect(()=>{if(onWaitNext&&!isSeated&&canJoin)game.run('join');},[onWaitNext,isSeated,canJoin]);
   if(game.error)return React.createElement('div',{className:'card-game-error'},game.error,React.createElement('button',{onClick:onLeave},'Back to lobby'));
   if (loading || !tableState) return React.createElement("div", {
     className: "h-full flex items-center justify-center text-blue-400"
@@ -14503,8 +14458,8 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
   const seatPos = i => {
     const ang = Math.PI / 2 + i * 2 * Math.PI / N;
     return {
-      left: `${50 + 40 * Math.cos(ang)}%`,
-      top: `${50 + 40 * Math.sin(ang)}%`
+      left: `${50 + 35 * Math.cos(ang)}%`,
+      top: `${50 + 33 * Math.sin(ang)}%`
     };
   };
   const trumpCol = SUIT_COLORS[T.trumpSuit] || '#f8fafc';
@@ -14532,17 +14487,19 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
     className: "px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-rose-700 hover:text-white text-xs font-bold border border-white/10"
   }, React.createElement("i", {
     className: "fa-solid fa-door-open ml-1"
-  }), isSeated ? 'Stand up' : 'Leave'), isGod && React.createElement("button", {
+  }), 'Lobby'), isSeated && React.createElement('button',{onClick:handleStandUp,disabled:game.busy,'aria-label':'Stand up and watch'},'Stand up'), isGod && React.createElement("button", {
     onClick: () => setGodView(!godViewRequested),
     'aria-label': 'GOD MODE',
     'aria-pressed': godView,
     className: `px-3 py-1.5 rounded-lg text-[10px] font-black border transition-all ${godView ? 'bg-purple-600 text-white border-purple-400 shadow-[0_0_12px_purple]' : 'bg-slate-800 text-purple-400 border-white/10'}`
   }, React.createElement("i", {
     className: "fa-solid fa-eye ml-1"
-  }), "GOD"), isSuperAdmin && ['setup', 'showdown'].includes(T.status) && React.createElement("button", {
-    onClick: handleAddBot,
+  }), "GOD"), isSuperAdmin && React.createElement("button", {
+    onClick: () => setBotsOpen(!botsOpen),
+    'aria-label':'Manage Durak bots',
+    'aria-expanded':botsOpen,
     className: "px-2.5 py-1.5 rounded-lg bg-slate-800 text-purple-300 text-[10px] font-black border border-white/10",
-    title: "Add bot"
+    title: "Manage bots"
   }, React.createElement("i", {
     className: "fa-solid fa-robot"
   }))), React.createElement("div", {
@@ -14692,12 +14649,13 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
     }, "🛡 Defender"), p.out && React.createElement("div", {
       className: "action-badge badge-call"
     }, "✓ Done"), oppFan && !topSeat && React.createElement("div", {
-      className: "flex mb-[-8px] z-0",
+      className: "durak-opponent-fan flex mb-[-8px] z-0",
+      style:{transform:`translateX(${inX*24}px)`},
       dir: "ltr"
     }, (showAll ? p.cards : p.cards.slice(0, 6)).map((c, ci) => React.createElement("div", {
       key: ci,
       style: {
-        marginLeft: ci > 0 ? '-14px' : 0
+        marginLeft: ci > 0 ? '-20px' : 0
       }
     }, React.createElement(PCard, {
       card: c,
@@ -14728,51 +14686,19 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
       className: "stack-capsule text-slate-200 font-black text-[10px]",
       dir: "ltr"
     }, "🂠 ", (p.cards || []).length), oppFan && topSeat && React.createElement("div", {
-      className: "flex mt-1 z-20",
+      className: "durak-opponent-fan flex mt-1 z-20",
       dir: "ltr"
     }, (showAll ? p.cards : p.cards.slice(0, 6)).map((c, ci) => React.createElement("div", {
       key: ci,
       style: {
-        marginLeft: ci > 0 ? '-14px' : 0
+        marginLeft: ci > 0 ? '-20px' : 0
       }
     }, React.createElement(PCard, {
       card: c,
       hidden: !showAll,
       size: "sm"
     }))))));
-  })), T.status === 'setup' && React.createElement("div", {
-    className: "absolute inset-0 z-[100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-  }, React.createElement("div", {
-    className: "card-game-dialog glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-blue-500/40"
-  }, React.createElement("i", {
-    className: "fa-solid fa-chess-king text-4xl text-blue-400 mb-2"
-  }), React.createElement("h3", {
-    className: "text-xl font-black text-white mb-1"
-  }, "Waiting for players..."), React.createElement("p", {
-    className: "text-slate-400 text-xs font-bold mb-4",
-    dir: "ltr"
-  }, "Buy-in: ", formatMoney(setts.buyIn), " · ", Object.keys(players).length, "/", setts.maxPlayers || 6), React.createElement("div", {
-    className: "flex justify-center gap-3 mb-5 flex-wrap"
-  }, list.map(p => React.createElement("div", {
-    key: p.uid,
-    className: "flex flex-col items-center"
-  }, React.createElement("img", {
-    src: avatarUrl(p),
-    className: `w-12 h-12 rounded-xl bg-slate-800 border-2 ${p.isBot ? 'border-purple-500' : 'border-blue-500'}`
-  }), React.createElement("span", {
-    className: "text-[10px] text-white font-bold mt-1 max-w-[60px] truncate"
-  }, p.name)))), !isSeated && React.createElement("button", {
-    onClick: handleJoin,
-    className: "w-full bg-gradient-to-b from-blue-500 to-blue-700 hover:from-blue-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
-  }, "Join (", formatMoney(setts.buyIn), ")"), (isHost || isSuperAdmin || isSeated) && Object.keys(players).length >= 2 && React.createElement("button", {
-    onClick: startGame,
-    className: "w-full bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-3.5 rounded-2xl font-black shadow-lg mb-2"
-  }, React.createElement("i", {
-    className: "fa-solid fa-play ml-2"
-  }), "Start game"), isSuperAdmin && list.length<setts.maxPlayers && React.createElement("button",{onClick:handleAddBot,className:"w-full bg-slate-800 text-sky-200 py-3 rounded-xl mb-2"},"Add bot"), React.createElement("button", {
-    onClick: handleLeave,
-    className: "text-slate-400 hover:text-white text-xs font-bold underline"
-  }, "Back to lobby"))), T.status === 'showdown' && resHide && React.createElement('button',{onClick:()=>setResHide(false),className:'absolute bottom-16 left-1/2 -translate-x-1/2 z-[80] card-game-primary px-5 py-2'},'Results / next hand'), T.status === 'showdown' && res && !resHide && React.createElement("div", {
+  })), T.status==='setup' && React.createElement('div',{className:'durak-empty-table'},React.createElement('strong',null,'POKERTEN'),React.createElement('span',null,seats.length<2?'Waiting for players':'Ready to play'),React.createElement('small',null,(setts.variant==='perevodnoy'?'Transfer':'Classic')+' · '+(setts.deckSize||36)+' cards')), T.status === 'showdown' && resHide && React.createElement('button',{onClick:()=>setResHide(false),className:'absolute bottom-16 left-1/2 -translate-x-1/2 z-[80] card-game-primary px-5 py-2'},'Results / next hand'), T.status === 'showdown' && res && !resHide && React.createElement("div", {
     className: "absolute inset-0 z-[100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
   }, React.createElement("div", {
     className: "card-game-dialog glass-panel rounded-3xl p-6 w-full max-w-sm text-center animate-pop-in border border-amber-500/40"
@@ -14798,15 +14724,16 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
     className: "flex gap-3"
   }, (isHost || isSuperAdmin || isSeated) && !tableState.tournamentId && Object.keys(players).length >= 2 && React.createElement("button", {
     onClick: startGame,
+    disabled:!canStart,
     className: "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-black"
-  }, "New game"), !isSeated && list.length<setts.maxPlayers && React.createElement('button',{onClick:handleJoin,className:'card-game-primary px-4 py-2'},'Join next game'), isSeated && React.createElement("button", {
+  }, "New game"), !isSeated && canJoin && React.createElement('button',{onClick:handleJoin,disabled:game.busy,className:'card-game-primary px-4 py-2'},'Join next game'), isSeated && React.createElement("button", {
     onClick: () => {
       game.run('stay');
       setResHide(true);
     },
     className: "flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl font-black border border-slate-500"
   }, "Keep watching"), isSeated && React.createElement("button", {
-    onClick: handleLeave,
+    onClick: handleStandUp,
     className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-3 rounded-xl font-black border border-white/10"
   }, "Stand up 🚪"), !isSeated && React.createElement("button", {
     onClick: () => setResHide(true),
@@ -14822,23 +14749,24 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
     className: "card-game-dock shrink-0 bg-slate-900/95 backdrop-blur-md border-t border-white/5 px-3 pt-2 pb-3 z-40 min-h-[135px] flex flex-col justify-end gap-2"
   }, godView && T.status === 'playing' && T.deck.length > 0 && React.createElement('details',{className:'card-game-god-stock'},
     React.createElement('summary',null,'GOD · next draws (',T.deck.length,')'),
-    React.createElement('div',{className:'card-game-god-cards',dir:'ltr'},[...T.deck].reverse().map((card,i)=>React.createElement('div',{key:card.id,title:'Draw '+(i+1)},React.createElement(PCard,{card,size:'sm'}))))), !isSeated && T.status === 'playing' && React.createElement("div", {
-    className: "flex items-center justify-center gap-3 py-3"
-  }, React.createElement("span", {
-    className: "text-gold-400 text-xs font-black"
-  }, "👁 Spectating · game in progress"), onWaitNext ? React.createElement("button", {
-    onClick: leaveNextGame,
-    className: "bg-slate-800 hover:bg-slate-700 border border-sky-500/40 text-sky-200 px-4 py-2.5 rounded-xl font-black text-xs"
-  }, "🪑 In queue for the next game ✓ · tap to cancel") : React.createElement("button", {
-    onClick: joinNextGame,
-    className: "bg-gradient-to-b from-sky-500 to-sky-700 hover:from-sky-400 text-white px-5 py-2.5 rounded-xl font-black text-xs shadow-lg"
-  }, "🪑 Join the next game (", formatMoney(setts.buyIn), ")")), isSeated && T.status === 'playing' && !me.out && React.createElement("div", {
-    className: "flex justify-center",
+    React.createElement('div',{className:'card-game-god-cards',dir:'ltr'},[...T.deck].reverse().map((card,i)=>React.createElement('div',{key:card.id,title:'Draw '+(i+1)},React.createElement(PCard,{card,size:'sm'}))))), T.closeRequested && React.createElement('div',{className:'durak-status-note',role:'status'},'This table is closing after the game.'),
+  !isSeated && React.createElement('div',{className:'durak-spectator-controls','data-durak-spectator':true},
+    React.createElement('span',null,React.createElement('i',{className:'fa-solid fa-eye','aria-hidden':true}),' Spectating · ',T.status==='playing'?'game in progress':'choose when to join'),
+    onWaitNext?React.createElement(React.Fragment,null,React.createElement('button',{onClick:leaveNextGame,disabled:game.busy,className:'durak-secondary'},'Waiting #'+(queueIndex+1)+' · Cancel'),canJoin&&React.createElement('button',{onClick:handleJoin,disabled:game.busy,className:'card-game-primary'},'Take reserved seat')):
+    canJoin?React.createElement('button',{onClick:handleJoin,disabled:game.busy,className:'card-game-primary'},'Take a seat · '+formatMoney(setts.buyIn)):
+    !T.closeRequested&&React.createElement('button',{onClick:joinNextGame,disabled:game.busy,className:'card-game-primary'},'Join waiting list · '+formatMoney(setts.buyIn))),
+  T.status!=='playing' && (isHost||isSuperAdmin||isSeated) && React.createElement('div',{className:'durak-ready-controls'},
+    React.createElement('span',null,seats.length+'/'+(setts.maxPlayers||6)+' players · Buy-in '+formatMoney(setts.buyIn)),
+    React.createElement('button',{onClick:startGame,disabled:!canStart,className:'card-game-primary'},T.status==='showdown'?'Next game':'Start game')),
+  isSeated && T.status === 'playing' && !me.out && React.createElement("div", {
+    className: "durak-hand",
     dir: "ltr"
   }, [...(me.cards || [])].sort((a, b) => (a.suit === T.trumpSuit ? 100 : 0) + a.v - ((b.suit === T.trumpSuit ? 100 : 0) + b.v)).map((c, ci) => {
-    const clickable = canIDefend || canIAdd || canTransfer;
-    return React.createElement("div", {
+    const clickable = !game.busy && (canIDefend&&!blindPending&&(undefPairs.some(x=>beatsCard(c,x.a,T.trumpSuit))||canTransfer&&pairs.every(x=>x.a.v===c.v)) || canIAdd&&(pairs.length===0||pairs.length<(T.roundCap||6)&&(bluffMode&&canBluff||pairs.some(x=>x.a.v===c.v||x.d?.v===c.v))));
+    return React.createElement("button", {
       key: c.id,
+      disabled: !clickable,
+      'aria-label':c.val+' '+c.suit,
       onClick: () => {
         if (!clickable) return;
         playCard(user.uid, c.id, bluffMode && canBluff);
@@ -14846,7 +14774,7 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
       },
       className: `transition-transform ${clickable ? 'cursor-pointer hover:-translate-y-3' : 'opacity-80'} ${c.suit === T.trumpSuit ? 'ring-1 ring-amber-400/50 rounded-lg' : ''} ${bluffMode && canBluff ? 'ring-2 ring-rose-500 rounded-lg' : ''}`,
       style: {
-        marginLeft: ci > 0 ? me.cards.length > 9 ? '-26px' : '-14px' : 0,
+        marginLeft: ci > 0 ? '-18px' : 0,
         zIndex: ci
       }
     }, React.createElement(PCard, {
@@ -14877,6 +14805,8 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
     className: "text-[11px] font-bold text-slate-500"
   }, T.status === 'playing' && me?.out ? '✓ You finished your cards - waiting for the game to end' : T.status === 'setup' ? '' : ''))), React.createElement("button", {
     onClick: () => ch.setChatOpen(!ch.chatOpen),
+    'aria-label':'Table chat',
+    'aria-expanded':ch.chatOpen,
     className: "absolute bottom-[150px] left-3 z-[60] w-11 h-11 rounded-2xl glass-panel text-slate-300 hover:text-white shadow-xl"
   }, React.createElement("i", {
     className: "fa-solid fa-comment-dots"
@@ -14895,7 +14825,11 @@ function DurakTable({tableDocId,user,clubSettings,onLeave,showToast}) {
     canModerate: ch.canModerate,
     chatMuted: ch.chatMuted,
     onToggleTableMute: ch.toggleTableMute
-  }), React.createElement(HelpButton, {
+  }), botsOpen && isSuperAdmin && React.createElement('section',{className:'durak-bot-panel','aria-label':'Durak bot management'},
+    React.createElement('header',null,React.createElement('strong',null,'Table bots'),React.createElement('button',{onClick:()=>setBotsOpen(false),'aria-label':'Close bot management'},'×')),
+    React.createElement('p',null,T.status==='playing'?'Manage bots when this game ends.':'Bots use the table buy-in when the game starts.'),
+    React.createElement('div',{className:'durak-bot-actions'},React.createElement('button',{onClick:handleAddBot,disabled:game.busy||T.status==='playing'||!!T.closeRequested||freeSeats<=queue.length,className:'card-game-primary'},'Add bot'),React.createElement('button',{onClick:()=>game.run('fillbots'),disabled:game.busy||T.status==='playing'||!!T.closeRequested||freeSeats<=queue.length,className:'durak-secondary'},'Fill empty seats')),
+    seats.filter(p=>p.isBot).map(p=>React.createElement('div',{key:p.uid,className:'durak-bot-row'},React.createElement('span',null,p.name),React.createElement('button',{onClick:()=>game.run('removebot',{botUid:p.uid}),disabled:game.busy||T.status==='playing','aria-label':'Remove bot '+p.name},'Remove')))), React.createElement(HelpButton, {
     game: "durak",
     cls: "bottom-[150px] right-3"
   }));

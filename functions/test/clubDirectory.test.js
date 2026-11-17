@@ -62,7 +62,7 @@ function fixture({failCollection,records=3}={}){
  db.runTransaction=(callback,opts)=>{options.push(opts);return runTransaction(callback,opts);};
  const sandbox={exports:{},require:name=>name==='firebase-functions/v2/https'?https:name==='./pokerAuthority'?A:name==='./pokerAccounting'?require('../pokerAccounting'):name==='firebase-admin/firestore'?{getFirestore:()=>db,FieldPath}:(()=>{throw Error('Unexpected import '+name);})(),Date,console:{error:(...args)=>logs.push(args)},Buffer};
  new Function('require','exports','console',source)(sandbox.require,sandbox.exports,sandbox.console);
- return{history:(data={},identity=auth())=>sandbox.exports.pkGameHistory.run({auth:identity,data}),run:(data={},identity=auth())=>sandbox.exports.pkClubDirectory.run({auth:identity,data:{clubId:'clubA',...data}}),requests,options,logs,documents,endpoint:sandbox.exports.pkClubDirectory.__endpoint};
+ return{tableResult:(data={},identity=auth())=>sandbox.exports.pkTableResult.run({auth:identity,data}),history:(data={},identity=auth())=>sandbox.exports.pkGameHistory.run({auth:identity,data}),run:(data={},identity=auth())=>sandbox.exports.pkClubDirectory.run({auth:identity,data:{clubId:'clubA',...data}}),requests,options,logs,documents,endpoint:sandbox.exports.pkClubDirectory.__endpoint};
 }
 const collections=f=>f.requests.filter(r=>r.method==='runQuery').map(r=>r.request.structuredQuery.from[0].collectionId);
 
@@ -313,4 +313,76 @@ test('cashier history pages audit records without exposing private audit fields 
  assert.equal(next.hasMore,false);
  await assert.rejects(f.run({reportSection:'cashierHistory'},auth('agentA','agent@example.test')),e=>e.code==='permission-denied');
  await assert.rejects(f.run({reportSection:'cashierHistory'},auth('bob','player@example.test')),e=>e.code==='permission-denied');
+});
+
+function resultFixture(){
+ const f=fixture({records:0});
+ f.documents.set('memberships/manager_clubA',{uid:'manager',status:'approved',role:'manager'});
+ f.documents.get('memberships/alice_clubA').status='approved';
+ f.documents.set('tables/resultTable',{type:'poker',authorityVersion:2,clubId:'clubA',settings:{blinds:1},gameState:{phase:'waiting'},players:{alice:{uid:'alice',stack:120,buyTotal:100,bet:0,status:'active',cardCount:0}}});
+ for(const [id,patch] of [['earlier',{profit:-35}],['rake',{profit:0,rake:7}],['elsewhere',{tableId:'otherTable',profit:900}],['otherPlayer',{uid:'bob',profit:800}],['otherClub',{clubId:'elsewhere',profit:700}]])f.documents.set('gameLog/'+id,{uid:'alice',clubId:'clubA',tableId:'resultTable',at:1,...patch});
+ return f;
+}
+const ordinary=uid=>auth(uid,uid+'@example.test');
+const readResult=(f,uid='alice')=>f.tableResult({tableId:'resultTable',targetUid:'alice'},ordinary(uid));
+test('table profile totals all sittings at exactly one table and expose only the signed result',async()=>{
+ for(const viewer of ['alice','owner','manager']){
+  const f=resultFixture(),result=await readResult(f,viewer);
+  assert.equal(result.result,-15);
+  assert.deepEqual(Object.keys(result).sort(),['asOf','result','tableId','targetUid']);
+  assert.equal(result.tableId,'resultTable');assert.equal(result.targetUid,'alice');
+  assert.deepEqual(collections(f),['gameLog']);assert.equal(f.options[0].readOnly,true);
+  const query=f.requests.find(r=>r.method==='runQuery').request.structuredQuery;
+  assert.equal(query.where.compositeFilter.filters.length,3,'history reads are restricted by club, table and player');
+  assert.equal(JSON.parse(JSON.stringify(encode(result))).result,-15);
+ }
+});
+test('agents, other players, banned managers and forged client roles cannot read another result',async()=>{
+ for(const viewer of ['agentA','bob','other','revoked']){
+  const f=resultFixture();f.documents.set('memberships/revoked_clubA',{role:'manager',status:'banned'});
+  await assert.rejects(f.tableResult({tableId:'resultTable',targetUid:'alice',role:'manager',clubId:'otherClub',godMode:true},ordinary(viewer)),e=>e.code==='permission-denied');
+  assert.deepEqual(collections(f),[]);
+ }
+ const f=resultFixture();await assert.rejects(f.tableResult({tableId:'resultTable'},null),e=>e.code==='unauthenticated');
+ f.documents.get('memberships/alice_clubA').status='banned';await assert.rejects(readResult(f),e=>e.code==='permission-denied');
+});
+test('table profit stays neutral on top-ups, completed cash-out and returning to the same table',async()=>{
+ const f=resultFixture(),table=f.documents.get('tables/resultTable'),seat=table.players.alice;
+ assert.equal((await readResult(f)).result,-15);
+ seat.stack+=100;seat.buyTotal+=100;assert.equal((await readResult(f)).result,-15);
+ seat.pendingTopUp=40;seat.buyTotal+=40;assert.equal((await readResult(f)).result,-15);
+ f.documents.set('gameLog/cashout',{uid:'alice',clubId:'clubA',tableId:'resultTable',profit:20,at:2});delete table.players.alice;
+ assert.equal((await readResult(f)).result,-15);
+ table.players.alice={uid:'alice',stack:300,buyTotal:300,status:'waiting'};
+ assert.equal((await readResult(f)).result,-15,'returning includes previous sittings without double counting');
+ table.players.alice.stack=0;assert.equal((await readResult(f)).result,-315,'a zero stack records the full sitting loss');
+});
+test('unfinished bets and pots do not look like losses; showdown updates the result',async()=>{
+ const f=resultFixture(),table=f.documents.get('tables/resultTable'),seat=table.players.alice;
+ Object.assign(seat,{stack:0,bet:30,cardCount:2,status:'folded'});
+ table.gameState={phase:'flop',handStartWealth:{alice:120},pots:[{amount:90}]};
+ assert.equal((await readResult(f)).result,-15);
+ seat.pendingTopUp=100;seat.buyTotal=200;assert.equal((await readResult(f)).result,-15);
+ table.gameState.phase='showdown';table.gameState.pots=[];seat.stack=160;seat.bet=0;
+ assert.equal((await readResult(f)).result,25);
+ table.gameState={phase:'preflop',handStartStacks:{alice:158}};table.settings.ante=2;
+ assert.equal((await readResult(f)).result,25,'legacy hand baseline restores the paid ante');
+ seat.status='waiting';seat.cardCount=0;seat.stack=250;seat.buyTotal=350;
+ assert.equal((await readResult(f)).result,-35,'a new waiting sitting never inherits an earlier hand baseline');
+});
+test('a missing table, malformed ID, or tournament cannot leak club/tournament-wide totals',async()=>{
+ const f=resultFixture();
+ await assert.rejects(f.tableResult({tableId:'missing'},ordinary('alice')),e=>e.code==='not-found');
+ await assert.rejects(f.tableResult({tableId:'a/b'},ordinary('alice')),e=>e.code==='invalid-argument');
+ const table=f.documents.get('tables/resultTable');table.tournamentId='event';
+ await assert.rejects(readResult(f),e=>e.code==='failed-precondition');delete table.tournamentId;table.settings.spinMode=true;
+ await assert.rejects(readResult(f),e=>e.code==='failed-precondition');
+ assert.deepEqual(collections(f),[]);
+});
+test('every table-result refresh rechecks the manager and actual table club',async()=>{
+ const f=resultFixture();await readResult(f,'manager');
+ f.documents.get('memberships/manager_clubA').role='player';
+ await assert.rejects(readResult(f,'manager'),e=>e.code==='permission-denied');
+ f.documents.get('tables/resultTable').clubId='elsewhere';f.documents.set('clubs/elsewhere',{ownerUid:'someoneElse'});
+ await assert.rejects(readResult(f,'owner'),e=>e.code==='permission-denied');
 });

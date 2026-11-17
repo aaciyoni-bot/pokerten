@@ -5,6 +5,29 @@ const Accounting=require('./pokerAccounting');
 const opts={region:'us-central1'};
 const text=(value,max,label)=>{if(typeof value!=='string'||value.length>max)A.fail('invalid-argument','Invalid '+label);return value.trim();};
 
+// A profile read is scoped to the server's table/club, never a client-supplied
+// club or role. It returns one result only: no rake, balances or private cards.
+exports.pkTableResult=onCall({...opts,memory:'512MiB',concurrency:8},async r=>{
+ const uid=A.uid(r),tableId=A.key(r.data?.tableId),target=r.data?.targetUid?A.key(r.data.targetUid):uid;
+ const db=require('firebase-admin/firestore').getFirestore();
+ return db.runTransaction(async tx=>{
+  const snap=await tx.get(db.doc('tables/'+tableId));if(!snap.exists)A.fail('not-found','The table closed');
+  const table=snap.data(),cid=A.key(table.clubId);
+  const club=await tx.get(db.doc('clubs/'+cid)),me=await tx.get(db.doc(`memberships/${uid}_${cid}`));
+  if(!club.exists)A.fail('not-found','Club missing');
+  const manager=A.root(r)||club.data().ownerUid===uid||(me.data()?.status==='approved'&&me.data()?.role==='manager');
+  if(!manager&&(target!==uid||me.data()?.status!=='approved'))A.fail('permission-denied','Own table result or club manager access required');
+  if(table.type!=='poker'||table.tournamentId||table.settings?.spinMode)A.fail('failed-precondition','Table profit is available for cash poker tables');
+  const rows=await tx.get(db.collection('gameLog').where('clubId','==',cid).where('tableId','==',tableId).where('uid','==',target));
+  // Reuse the accounting calculation: previous cash-outs + the open sitting.
+  // Deposits/rebuys are neutral, and an unfinished pot is held at hand start.
+  const summary=Accounting.buildAccounting([{uid:target,status:'approved'}],rows.docs.map(d=>d.data()),[table]);
+  const result=summary.players[target]?.totalResult;
+  if(!Number.isFinite(result))A.fail('failed-precondition','Table result is unavailable for this player');
+  return{tableId,targetUid:target,result,asOf:Date.now()};
+ },{readOnly:true});
+});
+
 // Keep the public profile and club copies together without accepting wallet,
 // role, player-code or approval fields from the browser.
 exports.pkProfile=onCall(opts,async r=>A.command(r,'profile',async(tx,db,uid)=>{

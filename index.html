@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="376">
+    <meta name="app-version" content="378">
     <script src="assets/js/app-update.js?v=376" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
@@ -3725,6 +3725,32 @@ function BotChatComposer({name,onSend,muted=false}) {
     React.createElement('div',{className:'bot-chat-compose-footer'},React.createElement('span',null,text.length+'/240'),React.createElement('button',{type:'submit',disabled:busy||muted||!text.trim()},busy?'Sending…':'Send')),
     muted&&React.createElement('p',{role:'status'},'Table chat is muted.'),error&&React.createElement('p',{role:'alert'},error),sent&&React.createElement('p',{role:'status'},'Message sent'));
 }
+function TablePlayerResult({tableId,targetUid,viewerUid,refreshKey}) {
+  const [state,setState]=React.useState(null),[attempt,setAttempt]=React.useState(0);
+  const scope=JSON.stringify([tableId,targetUid,viewerUid,refreshKey,attempt]);
+  React.useEffect(()=>{
+    let stopped=false,timer;
+    setState(null);
+    const refresh=async()=>{
+      try{
+        if(window.fb.auth?.currentUser?.uid!==viewerUid)throw Error('Sign in again to view this result.');
+        const result=await window.fb.fx('pkTableResult',{tableId,targetUid});
+        if(stopped)return;
+        if(window.fb.auth?.currentUser?.uid!==viewerUid||result.tableId!==tableId||result.targetUid!==targetUid||!Number.isFinite(result.result))throw Error('Result unavailable. Please try again.');
+        setState({scope,result:result.result});
+      }catch(error){if(!stopped)setState({scope,error:'Could not load the table result.'});}
+      if(!stopped)timer=setTimeout(refresh,15000);
+    };
+    refresh();return()=>{stopped=true;clearTimeout(timer);};
+  },[scope]);
+  const current=state?.scope===scope&&window.fb.auth?.currentUser?.uid===viewerUid?state:null;
+  const result=current?.result;
+  return React.createElement('section',{className:'table-player-result bg-slate-950/70 border border-white/10 rounded-xl p-3 mb-3','aria-label':'Result at this table'},
+    React.createElement('div',{className:'text-[10px] font-black uppercase tracking-wider text-slate-300'},'Result at this table'),
+    current?.error?React.createElement('div',{role:'alert',className:'text-xs text-slate-300 mt-2'},current.error,React.createElement('button',{type:'button',onClick:()=>setAttempt(n=>n+1),className:'block mt-2 text-amber-300 font-bold'},'Retry')):
+    React.createElement('div',{role:'status','aria-live':'polite',dir:'ltr',className:'mt-1 text-2xl font-black tabular-nums '+(result>0?'text-emerald-400':result<0?'text-rose-400':'text-slate-100')},current?(result>0?'+':result<0?'−':'')+formatMoney(Math.abs(result)):'Loading…'),
+    React.createElement('div',{className:'text-[10px] text-slate-400 mt-1'},'This table only · completed hands'));
+}
 const PlayerPeek = ({
   peek,
   onClose,
@@ -3732,6 +3758,7 @@ const PlayerPeek = ({
   onKick,
   onChatAs,
   onBotTopUp,
+  tableResult,
   lineupActions,
   chatMuted = false
 }) => {
@@ -3768,6 +3795,7 @@ const PlayerPeek = ({
     onClick: onClose,
     className: "w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white text-xs font-black shrink-0"
   }, "✕")),
+    tableResult && React.createElement(TablePlayerResult,tableResult),
     onChatAs && React.createElement("button",{type:"button",className:"w-full mt-2.5 bg-teal-950 border border-teal-400/40 text-teal-200 py-2 rounded-xl font-black text-xs",onClick:()=>setCompose(v=>!v),"aria-expanded":compose},"Write as "+peek.name),onChatAs&&compose&&React.createElement(BotChatComposer,{name:peek.name,onSend:onChatAs,muted:chatMuted}),
     onBotTopUp && React.createElement('button',{type:'button',onClick:onBotTopUp,className:'w-full mt-2 bg-emerald-950 border border-emerald-400/40 text-emerald-200 py-2 rounded-xl font-black text-xs'},'Add chips'),
     lineupActions,
@@ -13775,7 +13803,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     prize: tableState.spin.prize,
     buyIn: Number(setts.spinBuyIn) || 50
   }), peek && React.createElement(PlayerPeek, {
-    key:tableDocId+':'+peek.uid,
+    key:tableDocId+':'+peek.uid+':'+user.uid,
+    tableResult:srvEngine&&!tableState.tournamentId&&!setts.spinMode&&!peek.isBot&&(peek.uid===user.uid||canManageGame(user,'poker'))?{
+      tableId:tableDocId,targetUid:peek.uid,viewerUid:user.uid,
+      refreshKey:JSON.stringify([gs.handN,gs.phase==='showdown',!!players[peek.uid],players[peek.uid]?.buyTotal,players[peek.uid]?.status==='waiting'])
+    }:null,
     onChatAs:canChatAsBot(user,tableState,peek.uid)?async(text,requestId)=>{
       await pokerCommand('pkBotChat',{tableId:tableDocId,targetUid:peek.uid,text,requestId});
       playSnd('msg');

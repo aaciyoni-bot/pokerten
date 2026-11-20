@@ -1,4 +1,12 @@
-# Silver club shell — release 379
+# Classic restoration — release 382
+
+The user rejected Silver and requested the complete earlier appearance while keeping the implemented fixes. The visual source is the archived release 378 (`35ad6b7add33443b272b95ad94f847ad0af3665c`). All 21 original stylesheet references and file contents match that archive. Silver overrides, the redesigned game cards, banner and bottom bar are removed; new functional controls use the existing Classic styles.
+
+Archived/current browser comparisons: club carousel at 390 × 844 and sign-in at 320 × 568. The original artwork, sphere shapes, buttons, colors and spacing match. The retained Wallet route was opened from the original balance control; it remains available in the original shell navigation. Lobby checks at 390 × 844 and 320 × 568 verified scrolling and the persistent seat-return control; the narrow lobby has scrollWidth = clientWidth. Desktop management was checked at 1100 px. Large buy-in amounts retain readable wrapping without splitting digits.
+
+The App data/session lifecycle, GOD authorization function, PokerTable and card-game implementations are byte-identical to release 381. Existing UI, core, native-update and predeploy checks passed. Physical-device and live-game acceptance remain open. The following Silver notes are historical, not the current design.
+
+# Historical Silver club shell — release 379
 
 Status: browser and automated checks passed; live multiplayer/native-device acceptance remains open.
 

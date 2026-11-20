@@ -45,7 +45,7 @@ const clock=id=>row(id)?.querySelector('[data-tournament-clock]');
  assert.match(clock('cancelled').textContent,/Cancelled29\/10, 19:45/,'cancelled events are not labelled ended');
  await React.act(()=>row('done').click());assert.ok(w.document.querySelector('[role="dialog"]'),'row still opens tournament details');
  await React.act(()=>root.render(React.createElement(w.HeaderTest,{club:{id:'main',name:'Demo'},tables:[],user:{uid:'viewer',role:'player'},balance:'0'})));
- const logo=w.document.querySelector('.reference-lobby-masthead .silver-brand>img');assert.equal(logo.getAttribute('src'),'assets/brand/orbital-icon192.png');assert.ok(fs.existsSync(path.resolve(__dirname,'../..',logo.getAttribute('src'))),'header asset exists under the native assets allowlist');
+ const logo=w.document.querySelector('.reference-lobby-masthead>img');assert.equal(logo.getAttribute('src'),'assets/brand/orbital-icon192.png');assert.ok(fs.existsSync(path.resolve(__dirname,'../..',logo.getAttribute('src'))),'header asset exists under the native assets allowlist');
  assert.equal(writes.length,0,'display clocks issue no game or balance commands');
  await React.act(()=>root.unmount());w.close();console.log('PASS: participant totals, removed/eliminated handling, entry costs, role-only breakdown, ticking collapsed rows, actual start, Israel time, overdue/missing schedule, completed/cancelled history, details and bundled logo');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

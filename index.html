@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="381">
-    <script src="assets/js/app-update.js?v=381" defer></script>
+    <meta name="app-version" content="382">
+    <script src="assets/js/app-update.js?v=382" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1142,7 +1142,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=348"></script>
 <link rel="stylesheet" href="assets/css/reference-experience.css?v=376">
-<link rel="stylesheet" href="assets/css/club-silver.css?v=379">
+<link rel="stylesheet" href="assets/css/club-classic-features.css?v=382">
 <link rel="stylesheet" href="assets/css/login-reference.css?v=376">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
@@ -4329,25 +4329,20 @@ function PlayerWallet({user,onResults,onCashier}) {
   },[scope,retry,user.balance]);
   const value=state.scope===scope?state.value:null,h=React.createElement;
   const amount=n=>Number.isFinite(n)?formatMoney(n):'—';
-  return h('section',{className:'club-wallet club-surface scrollable-content silver-page'},
-    h('div',{className:'silver-page-content'},h('h1',null,'Wallet'),h('p',{className:'silver-muted'},'Your chips in this club'),
+  return h('section',{className:'club-wallet club-surface scrollable-content p-4 sm:p-6'},
+    h('div',{className:'max-w-6xl mx-auto'},h('h1',{className:'text-2xl font-black text-white mb-2'},'Wallet'),h('p',{className:'text-slate-400'},'Your chips in this club'),
       state.loading&&h('p',{role:'status'},'Loading your balance…'),state.error&&h('div',{role:'alert'},state.error,h('button',{type:'button',onClick:()=>setRetry(n=>n+1)},'Retry')),
-      h('div',{className:'silver-wallet-total'},h('span',null,'Total chips'),h('strong',{dir:'ltr'},amount(value?.chips))),
-      h('dl',{className:'silver-wallet-breakdown'},h('div',null,h('dt',null,'Available in wallet'),h('dd',{dir:'ltr'},amount(value?.balance))),h('div',null,h('dt',null,'Chips at tables'),h('dd',{dir:'ltr'},amount(value?.onTables)))),
-      h('div',{className:'silver-service-card'},h('h2',null,'Add or withdraw chips'),h('p',null,'Contact your club manager or agent to arrange a transfer. Your player ID:'),h('strong',{dir:'ltr'},user.playerId||'—'),
-        canOpenBackoffice(user)&&onCashier&&h('button',{type:'button',className:'silver-primary',onClick:onCashier},'Open club cashier')),
-      h('button',{type:'button',className:'silver-secondary',onClick:onResults},'Account history & game results')));
+      h('div',{className:'classic-wallet-total glass-panel p-5 rounded-2xl my-5'},h('span',null,'Total chips'),h('strong',{dir:'ltr'},amount(value?.chips))),
+      h('dl',{className:'classic-wallet-breakdown glass-panel p-5 rounded-2xl mb-5'},h('div',null,h('dt',null,'Available in wallet'),h('dd',{dir:'ltr'},amount(value?.balance))),h('div',null,h('dt',null,'Chips at tables'),h('dd',{dir:'ltr'},amount(value?.onTables)))),
+      h('div',{className:'classic-wallet-service glass-panel p-5 rounded-2xl mb-5'},h('h2',null,'Add or withdraw chips'),h('p',null,'Contact your club manager or agent to arrange a transfer. Your player ID:'),h('strong',{dir:'ltr'},user.playerId||'—'),
+        canOpenBackoffice(user)&&onCashier&&h('button',{type:'button',className:'btn-gold rounded-xl px-4 py-3',onClick:onCashier},'Open club cashier')),
+      h('button',{type:'button',className:'btn-outline rounded-xl px-4 py-3',onClick:onResults},'Account history & game results')));
 }
-function ClubBottomNav({currentView,tab,onLobby,onEvents,onWallet,onProfile}) {
-  const selected=currentView==='lobby'?(tab==='tours'?'events':'lobby'):currentView;
-  return React.createElement('nav',{className:'silver-bottom-nav','aria-label':'Player navigation'},[
-    ['lobby','fa-house','Lobby',onLobby],['events','fa-calendar','Events',onEvents],['wallet','fa-wallet','Wallet',onWallet],['profile','fa-user','Profile',onProfile]
-  ].map(([key,icon,label,action])=>React.createElement('button',{key,type:'button',onClick:action,'aria-current':key===selected?'page':undefined},React.createElement('i',{className:'fa-solid '+icon,'aria-hidden':true}),React.createElement('span',null,label))));
-}
-function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onCashier, onSettlement, onRanks, onProfile, onInstall, showInstall}) {
+function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onCashier, onWallet, onSettlement, onRanks, onProfile, onInstall, showInstall}) {
   const buttons = [
     {key:'clubs', icon:'fa-building-columns', label:'Clubs', action:onClubs, show:true},
     {key:'backoffice', icon:'fa-chart-line', label:'Manage', action:onManage, show:canOpenBackoffice(user)},
+    {key:'wallet', icon:'fa-wallet', label:'Wallet', action:onWallet, show:!!onWallet},
     {key:'cashier', icon:'fa-wallet', label:'Cashier', action:onCashier, show:canOpenBackoffice(user)},
     {key:'settlement', icon:'fa-file-invoice-dollar', label:'Settlement', action:onSettlement, show:true},
     {key:'leaders', icon:'fa-ranking-star', label:'Ranks', action:onRanks, show:true},
@@ -5003,6 +4998,7 @@ function App() {
     onClubs:leaveToClubs, onLobby:()=>changeView('lobby'),
     onManage:()=>changeView(currentView==='backoffice'?'lobby':'backoffice'),
     onCashier:()=>changeView('cashier'),
+    onWallet:()=>changeView('wallet'),
     onSettlement:()=>changeView('settlement'),
     onRanks:()=>changeView(currentView==='leaders'?'lobby':'leaders'),
     onProfile:()=>changeView(currentView==='profile'?'lobby':'profile'),
@@ -5115,7 +5111,7 @@ function App() {
       changeView('lobby');
     },
     showToast: showToast
-  })), effUser && activeClub && effUser.status==='approved' && !inTable && currentView!=='clubs' && React.createElement(ClubBottomNav,{currentView,tab:lobbyTab,onLobby:()=>{setLobbyTab('poker');changeView('lobby');},onEvents:()=>{setLobbyTab('tours');changeView('lobby');},onWallet:()=>changeView('wallet'),onProfile:()=>changeView('profile')}), showInstall && !isStandaloneApp && ReactDOM.createPortal(React.createElement("div", {
+  })), showInstall && !isStandaloneApp && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4",
     onClick: () => setShowInstall(false)
@@ -7104,14 +7100,14 @@ function ReferenceLobbyHeader({club, tables, user, balance, onCashier, onSettlem
   const icon=name=>h('i',{className:'fa-solid '+name,'aria-hidden':true});
   const action=(name,label,click)=>click&&h('button',{type:'button',onClick:click,'aria-label':label},icon(name),h('span',null,label),icon('fa-chevron-right'));
   return h('header',{className:'reference-lobby-header',dir:'ltr'},
-    h('div',{className:'reference-lobby-masthead'},action('fa-user','Profile',onProfile),h('div',{className:'silver-brand'},h('img',{src:'assets/brand/orbital-icon192.png',alt:'',width:38,height:38}),h('strong',null,'POKER',h('span',null,'TEN'))),
+    h('div',{className:'reference-lobby-masthead'},action('fa-chevron-left','Clubs',onClubs),h('img',{src:'assets/brand/orbital-icon192.png',alt:'POKERTEN',width:38,height:38}),
       h('details',{className:'reference-lobby-menu'},h('summary',{'aria-label':'Club menu'},icon('fa-bars')),h('div',null,
-        action('fa-building-columns','Clubs',onClubs),action('fa-users-gear','Manage',canOpenBackoffice(user)&&onManage),action('fa-wallet','Wallet',onCashier),action('fa-chart-simple',canOpenBackoffice(user)?'Club settlement':'My results',onSettlement),action('fa-user','Profile',onProfile),showInstall&&action('fa-download','Install app',onInstall),h(AppReleaseControls)))),
+        action('fa-users-gear','Manage',canOpenBackoffice(user)&&onManage),action('fa-wallet','Wallet',onCashier),action('fa-chart-simple',canOpenBackoffice(user)?'Club settlement':'My results',onSettlement),action('fa-user','Profile',onProfile),showInstall&&action('fa-download','Install app',onInstall),h(AppReleaseControls)))),
     h('section',{className:'reference-club-card','aria-label':'Club overview'},
       h('div',{className:'reference-club-identity'},club.logo?h('img',{src:club.logo,alt:'',className:'reference-club-logo'}):h('div',{className:'reference-club-logo'},String(club.name||'P').slice(0,1)),
-        h('div',{className:'reference-club-name'},h('h1',null,club.name||'POKERTEN'),h('span',null,'Club '+clubCode(club.id||CLUB_ID)),h('small',null,icon('fa-user-group'),' '+players+' seated',icon('fa-table-cells-large'),' '+tables.length+' Tables')),
+        h('div',{className:'reference-club-name'},h('h1',null,club.name||'POKERTEN'),h('span',null,'ID: '+clubCode(club.id||CLUB_ID)),h('small',null,icon('fa-user-group'),' '+players+' Players',icon('fa-table-cells-large'),' '+tables.length+' Tables')),
         h('div',{className:'reference-club-shortcuts'},action('fa-trophy','Rank',onRanks),action('fa-chart-simple','Results',onSettlement))),
-      h('button',{type:'button',className:'reference-club-balance',onClick:onCashier,'aria-label':'Your balance and cashier'},h('span',{className:'silver-muted'},'Club chips'),balance,h('span',{className:'silver-wallet-link'},'Wallet ',icon('fa-arrow-right'))),
+      h('button',{type:'button',className:'reference-club-balance',onClick:onCashier,'aria-label':'Your balance and cashier'},h('span',{className:'reference-blue-chip','aria-hidden':true},'C'),balance),
       h('button',{type:'button',className:'reference-club-notice','aria-expanded':noticeOpen,onClick:()=>setNoticeOpen(v=>!v)},icon('fa-clipboard-list'),h('strong',null,'Notice'),h('span',null,notice||'Club information'),icon('fa-chevron-right')),
       noticeOpen&&h('p',{className:'reference-notice-body'},notice||'No club notice has been posted. Open the club menu for your account and club services.')));
 }
@@ -7560,11 +7556,7 @@ function LobbyView({
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Close"))), document.body), React.createElement("div", {
     className: "max-w-6xl mx-auto animate-fade-in relative z-10"
-  }, React.createElement(ReferenceLobbyHeader,{club:{...window.__club,...clubSettings,id:CLUB_ID},tables:[...pokerTables,...durakTables,...ofcTables],user,balance:React.createElement(OwnBalanceNumbers,{user,compact:true}),onCashier:()=>onCashier?onCashier():setCashierOpen(true),onSettlement,onClubs,onRanks,onManage,onProfile,onInstall,showInstall}), (()=>{const event=(tournaments||[]).filter(t=>(t.clubId||'main')===CLUB_ID&&!t.archived&&t.status==='reg').sort((a,b)=>(Number(a.startAt)||Infinity)-(Number(b.startAt)||Infinity))[0];
-    if(!event)return null;
-    return React.createElement('button',{type:'button',className:'silver-event-banner',onClick:()=>setTab('tours'),'aria-label':'View event '+event.name},
-      Number.isFinite(event.prizePool)&&event.prizePool>0&&React.createElement('strong',null,formatShort(event.prizePool)),React.createElement('span',null,React.createElement('b',null,event.name),React.createElement('small',null,Number(event.startAt)>0?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'}).format(new Date(Number(event.startAt))):'Registration open')),React.createElement('span',{className:'silver-event-action'},'View event'));
-  })(), window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"POKERTEN",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
+  }, React.createElement(ReferenceLobbyHeader,{club:{...window.__club,...clubSettings,id:CLUB_ID},tables:[...pokerTables,...durakTables,...ofcTables],user,balance:React.createElement(OwnBalanceNumbers,{user,compact:true}),onCashier:()=>onCashier?onCashier():setCashierOpen(true),onSettlement,onClubs,onRanks,onManage,onProfile,onInstall,showInstall}), window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"POKERTEN",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
     className: "reference-legacy-wallet flex items-center justify-end gap-3 mb-5"
   }, React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
@@ -8020,17 +8012,26 @@ function LobbyView({
       borderBottomColor: '#D5B36B'
     } : {}
   }, "All"), ALL_POKER_VARIANTS.map(v => {
-    const vs = variantStyle(v),active=pokFilter===v;
-    const rows=ringTables.filter(t=>(t.settings?.baseGameType||'NLH')===v);
-    const free=rows.reduce((n,t)=>n+Math.max(0,(Number(t.settings?.maxPlayers)||6)-Object.values(t.players||{}).filter(p=>p&&!p.left&&p.status!=='left').length),0);
-    return React.createElement('button',{key:v,type:'button',onClick:()=>setPokFilter(v),'aria-pressed':active,'aria-label':lobbyVariantLabel(v)+' tables',className:'vtab silver-game-card '+(active?'vtab-active':''),'data-lobby-game':v,style:{'--variant-color':vs.hue}},
-      React.createElement('strong',null,lobbyVariantLabel(v)),React.createElement('span',{className:'silver-game-description'},v==='NLH'?'Texas Hold’em':v.startsWith('Omaha')?v.slice(-1)+'-card Omaha':'Three-card Hold’em'),
-      React.createElement('span',{className:'silver-game-count'},tablesLoaded?rows.length+' tables · '+free+' seats free':'Loading tables…'));
+    const vs = variantStyle(v);
+    const active = pokFilter === v;
+    const n = variantCount(v);
+    return React.createElement("button", {
+      key: v,
+      type: 'button',
+      'aria-label': lobbyVariantLabel(v)+' tables',
+      onClick: () => setPokFilter(v),
+      "aria-pressed": active,
+      className: `vtab ${active ? 'vtab-active' : ''}`,
+      "data-lobby-game": v,
+      style: {"--variant-color":vs.hue}
+    }, lobbyVariantLabel(v), n > 0 && React.createElement("span", {
+      className: "vtab-count"
+    }, n));
   })), React.createElement('div',{className:'reference-lobby-filters'},
     React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:runningOnly,onChange:e=>setRunningOnly(e.target.checked)}),'LIVE hands only'),
     React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:hideFull,onChange:e=>setHideFull(e.target.checked)}),'Hide Full Tables'),
     React.createElement('select',{'aria-label':'Sort tables',value:tableSort,onChange:e=>setTableSort(e.target.value)},React.createElement('option',{value:'default'},'Sort'),React.createElement('option',{value:'buyin'},'Buy-in'),React.createElement('option',{value:'players'},'Players'))),
-    React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker,onCreateTable:onCreatePoker}), React.createElement('div',{className:'silver-section-heading'},React.createElement('h2',null,pokFilter==='all'?'Cash tables':pokFilter==='live'?'Live tables':lobbyVariantLabel(pokFilter)+' tables')), pokFilter !== 'tours' && React.createElement("div", {
+    React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker,onCreateTable:onCreatePoker}), pokFilter !== 'tours' && React.createElement("div", {
     className: "flex flex-col gap-2.5"
   }, shownPoker.map(t => {
     const s = t.settings || {};
@@ -8116,11 +8117,11 @@ function LobbyView({
       className: "tbl-buyin-label"
     }, spinRunning ? "Live" : "Buy-in"), React.createElement("span", {
       className: "tbl-buyin-val",
-      "data-long": formatMoney(minBuy).length > 9 ? "true" : undefined
+      "data-long": (formatMoney(minBuy)+(Number(s.maxBuyIn)>minBuy?'–'+formatMoney(Number(s.maxBuyIn)):'' )).length > 9 ? "true" : undefined
     }, spinRunning ? 'In progress' : formatMoney(minBuy)+(Number(s.maxBuyIn)>minBuy?'–'+formatMoney(Number(s.maxBuyIn)):'')), s.spinMode && !spinRunning && React.createElement("span", {
       style: { fontSize: '9px', fontWeight: 900, color: '#fcd34d', lineHeight: 1, marginTop: '2px', whiteSpace: 'nowrap' },
       dir: "ltr"
-    }, "WIN ", formatShort((Number(s.spinBuyIn) || 50) * 100))), React.createElement('button',{type:'button',className:'blue-table-enter','aria-label':'View '+(s.tableName||variantLabel(gt,s)),onClick:e=>{e.stopPropagation();onJoinPoker(t);}},'View'), React.createElement(BlueTableActions, null, canManageGame(user,'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && seated<cap && React.createElement('button',{
+    }, "WIN ", formatShort((Number(s.spinBuyIn) || 50) * 100))), React.createElement('button',{type:'button',className:'blue-table-enter','aria-label':'View '+(s.tableName||variantLabel(gt,s)),onClick:e=>{e.stopPropagation();onJoinPoker(t);}},React.createElement('i',{className:'fa-solid fa-chevron-right','aria-hidden':true})), React.createElement(BlueTableActions, null, canManageGame(user,'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && seated<cap && React.createElement('button',{
       onClick:e=>{e.stopPropagation();setFillTableId(t.docId||t.id);},disabled:!!fillingTables[t.docId||t.id],title:'Fill table with bots','aria-label':'Fill table with bots',className:'tbl-del disabled:opacity-40',style:{color:'#a7f3d0'}
     },React.createElement('i',{className:fillingTables[t.docId||t.id]?'fa-solid fa-spinner fa-spin':'fa-solid fa-robot'})), canManageGame(user, 'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && React.createElement("button", {
       onClick: e => {

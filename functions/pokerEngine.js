@@ -17,6 +17,7 @@
 "use strict";
 
 const crypto = require("crypto");
+const {performance} = require("node:perf_hooks");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {getFirestore} = require("firebase-admin/firestore");
 const C = require("./pokerCore");
@@ -1634,19 +1635,21 @@ exports.pkDeal = onCall({...GOD_CALL_OPTS, minInstances: 1}, async (request) => 
 
 // pkAct — protocol §3.2. amount is the TARGET TOTAL bet for the street.
 async function playerAction(request) {
+  const started = performance.now();
   const uid = authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
   const {action, amount, auto} = request.data || {};
   if (!["fold", "call", "raise"].includes(action)) throw new HttpsError("invalid-argument", "Unknown action");
   if(action==='raise'&&(!Number.isFinite(amount)||amount<0))throw new HttpsError('invalid-argument','Invalid raise amount');
-  return A.command(request,'action',async(tx,database,actor)=>{
+  const result = await A.command(request,'action',async(tx,database,actor)=>{
     const S=await loadState(tx,id,{withCards:true}),g=S.gameState,e=request.data.expectedTurn;
     if(!e || e.handN!==g.handN || e.phase!==g.phase || e.turnStartedAt!==g.turnStartedAt || e.highestBet!==g.highestBet)throw new HttpsError('failed-precondition','This turn already changed');
     applyAction(S,actor,action,amount,false);
     const tableUpdate = await commitState(tx,S);
     return {ok:true,tableId:id,tableUpdate};
   });
+  return {...result,timing:{serverMs:Math.round(performance.now()-started)}};
 }
 const routePlayerAction=require('./pokerActionRegion').createActionRouter();
 exports.pkActEurope=onCall({region:'europe-west1',minInstances:0},playerAction);

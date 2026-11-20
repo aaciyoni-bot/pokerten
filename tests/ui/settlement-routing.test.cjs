@@ -79,7 +79,7 @@ async function mountAndEnter(fixture){
 }
 const button=text=>[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()===text);
 const reportLink=label=>doc.querySelector('button[aria-label="'+label+'"]');
-const back=async()=>{assert.ok(button('Back to lobby'));await React.act(async()=>button('Back to lobby').click());assert.ok(button('Cashier'));};
+const back=async()=>{assert.ok(button('Back to lobby'));await React.act(async()=>button('Back to lobby').click());assert.ok(button('Wallet'));};
 async function assertStaffLinks(fixture){
  for(const source of ['navigation','lobby','cashier']){
   if(source==='cashier')await React.act(async()=>button('Cashier').click());
@@ -101,10 +101,10 @@ async function assertStaffLinks(fixture){
 async function assertPlayerLinks(fixture){
  assert.equal(manage(),null,'card viewing or a profile claim must not grant club management');
  for(const source of ['navigation','lobby','cashier']){
-  if(source==='cashier')await React.act(async()=>button('Cashier').click());
+  if(source==='cashier'){await React.act(async()=>button('Wallet').click());assert.ok(doc.querySelector('.club-wallet'));assert.equal(doc.querySelector('[aria-label="Club cashier"]'),null);}
   const links=[...doc.querySelectorAll('button[aria-label="My results"]')];
-  assert.equal(links.length,source==='cashier'?2:1);
-  await React.act(async()=>(source==='navigation'?settlementNav():links.at(source==='cashier'?-1:0)).click());
+  assert.equal(links.length,source==='cashier'?0:1);
+  await React.act(async()=>(source==='navigation'?settlementNav():source==='cashier'?button('Account history & game results'):links[0]).click());
   assert.equal(new URL(w.location.href).searchParams.get('v'),'settlement');
   assert.equal(settlementNav().getAttribute('aria-current'),'page');
   assert.match(doc.body.textContent,/My games/);assertEnglishUi(doc.body,'Player settlement report');

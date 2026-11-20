@@ -126,15 +126,66 @@
   // a queue of overlapping ticks; stopping also cancels an in-flight follow-up.
   function startTickLoop(request, options = {}) {
     const schedule=options.setTimeout||setTimeout, cancel=options.clearTimeout||clearTimeout;
+    const now=options.now||Date.now;
     let stopped=false,timer=null;
     const tick=async()=>{
       if(stopped)return;
+      const started=now();
       try{await request();if(!stopped&&options.onSuccess)options.onSuccess();}
       catch(error){if(!stopped&&options.onError)options.onError(error);}
-      finally{if(!stopped)timer=schedule(tick,1000);}
+      finally{if(!stopped)timer=schedule(tick,Math.max(100,1000-(now()-started)));}
     };
     tick();
     return()=>{stopped=true;if(timer!==null)cancel(timer);};
+  }
+  // The direct regional endpoint avoids the US -> Europe proxy hop. Only
+  // receipt-backed actions may fall back, using the exact same request ID.
+  function actionTransport(primary, fallback, now = Date.now) {
+    let retryPrimaryAt = 0;
+    return async data => {
+      if (!data?.requestId || now() < retryPrimaryAt) return fallback(data);
+      try { return await primary(data); }
+      catch (error) {
+        if (!['functions/unavailable','functions/deadline-exceeded','functions/internal'].includes(error?.code)) throw error;
+        retryPrimaryAt = now() + 30000;
+        return fallback(data);
+      }
+    };
+  }
+  // Diagnostic samples contain durations only, never identities, cards,
+  // amounts, tokens or command payloads. Keep a bounded buffer in memory.
+  function createTimings(now = () => root.performance?.now?.() ?? Date.now()) {
+    const samples = [];
+    const add = (stage, ms) => {
+      if (!Number.isFinite(ms) || ms < 0) return;
+      samples.push({stage, ms:Math.round(ms)});
+      if (samples.length > 300) samples.shift();
+    };
+    return {
+      now, add,
+      async measure(name, run) {
+        const start = now();
+        try {
+          const value = await run();
+          const elapsed = now() - start;
+          add(name + ':round-trip', elapsed);
+          if (Number.isFinite(value?.timing?.serverMs)) {
+            add(name + ':server', value.timing.serverMs);
+            add(name + ':transport-and-platform', Math.max(0, elapsed - value.timing.serverMs));
+          }
+          return value;
+        } catch (error) { add(name + ':failed', now() - start); throw error; }
+      },
+      summary() {
+        const groups = {};
+        samples.forEach(({stage,ms}) => (groups[stage] ||= []).push(ms));
+        return Object.entries(groups).map(([stage, values]) => {
+          values.sort((a,b) => a-b);
+          return {stage,count:values.length,medianMs:values[Math.floor((values.length-1)*.5)],p95Ms:values[Math.ceil(values.length*.95)-1]};
+        });
+      },
+      reset() { samples.length = 0; }
+    };
   }
   // Firestore error callbacks terminate that listener. Re-open transient
   // failures, and renew read subscriptions after a sleeping tab comes back.
@@ -209,7 +260,7 @@
     refresh();
     return ()=>{stopped=true;clearTimeout(timer);root.document?.removeEventListener('visibilitychange',wake);};
   }
-  const api = { watchGodTables, godCardContext, handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
+  const api = { actionTransport, createTimings, timings:createTimings(), watchGodTables, godCardContext, handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PokerRuntime = api;
 })(typeof window !== 'undefined' ? window : globalThis);

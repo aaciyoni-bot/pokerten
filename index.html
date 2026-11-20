@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="378">
-    <script src="assets/js/app-update.js?v=376" defer></script>
+    <meta name="app-version" content="379">
+    <script src="assets/js/app-update.js?v=379" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1078,7 +1078,10 @@
             .catch(() => {});
         window.fb.signInCode = async token => { await _persist; return signInWithCustomToken(_auth, token); };
         const _fx = getFunctions(app);
-        window.fb.fx = (name, data) => httpsCallable(_fx, name,{timeout:20000})(data).then(r => r.data);
+        const _eu = getFunctions(app, 'europe-west1');
+        const _call = (client, name, data) => httpsCallable(client, name,{timeout:20000})(data).then(r => r.data);
+        const _action = window.PokerRuntime.actionTransport(data => _call(_eu,'pkActEurope',data), data => _call(_fx,'pkAct',data));
+        window.fb.fx = (name, data) => window.PokerRuntime.timings.measure(name, () => name === 'pkAct' ? _action(data) : _call(_fx,name,data));
         // Keep popup errors visible. Cross-origin redirect fallback can silently
         // lose the Google result on browsers with partitioned storage.
         window.fb.signIn = async () => {
@@ -1131,6 +1134,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=348"></script>
 <link rel="stylesheet" href="assets/css/reference-experience.css?v=376">
+<link rel="stylesheet" href="assets/css/club-silver.css?v=379">
 <link rel="stylesheet" href="assets/css/login-reference.css?v=376">
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
@@ -1167,10 +1171,11 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
       document.addEventListener('keydown',key);
       sound.addEventListener('click',function(){video.muted=!video.muted;sound.textContent=video.muted?'Sound on':'Sound off';sound.setAttribute('aria-pressed',String(!video.muted));});
       video.addEventListener('ended',out);video.addEventListener('error',out);
-      var seen=false;try{seen=sessionStorage.getItem('pkIntroSeen')==='1';}catch(_){}
+      var seen=false;try{seen=sessionStorage.getItem('pkIntroSeen')==='1'||localStorage.getItem('pkIntroSeen')==='1';}catch(_){}
       if(seen){out();return;}
       if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){sound.hidden=true;timer=setTimeout(out,700);return;}
-      timer=setTimeout(out,6500);
+      try{localStorage.setItem('pkIntroSeen','1');}catch(_){}
+      timer=setTimeout(out,1200);
       video.src='assets/video/pokerten-orizis-intro.mp4';video.muted=true;
       var play=video.play();if(play&&play.catch)play.catch(out);
     })();
@@ -1195,14 +1200,14 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
         });
     </script>
 
-    <script src="assets/js/poker-auth.js?v=312"></script>
+    <script src="assets/js/poker-auth.js?v=379"></script>
     <script src="assets/js/club-ui.js?v=312"></script>
     <link rel="stylesheet" href="assets/css/settlement.css?v=359">
     <link rel="stylesheet" href="assets/css/bot-chat.css?v=371">
     <script src="assets/js/poker-settlement-ui.js?v=359"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=368"></script>
-    <script src="assets/js/poker-runtime.js?v=361"></script>
+    <script src="assets/js/poker-runtime.js?v=379"></script>
     <script src="assets/js/poker-range-model.js?v=356"></script>
 <script>
 
@@ -2253,7 +2258,7 @@ function OwnBalanceNumbers({user,compact=false}) {
     load();const timer=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
     return()=>{stopped=true;clearInterval(timer);window.removeEventListener('pk-club-changed',load);};
   },[scope,user.balance]);
-  return React.createElement(AccountNumbers,{value:loaded?.scope===scope?loaded.value:null,balance:user.balance||0,viewer:user,showLifetime:true,compact,loading,needsPeriodStart:loaded?.scope===scope&&loaded.needsPeriodStart===true});
+  return React.createElement(AccountNumbers,{value:loaded?.scope===scope?loaded.value:null,balance:Number.isFinite(user.balance)?user.balance:null,viewer:user,showLifetime:true,compact,loading,needsPeriodStart:loaded?.scope===scope&&loaded.needsPeriodStart===true});
 }
 const QUICK_EMOJIS = ['😀', '😂', '😡', '😭', '👍', '🔥', '🎉', '🤡', '😱', '🙏'];
 const GIFT_ITEMS = [{
@@ -4259,6 +4264,7 @@ const PotAward = ({
   unit
 }) => {
   const flight = React.useRef(null);
+  const mountedAt = React.useRef(window.PokerRuntime?.timings?.now());
   const points = usePokerFlightPoints(flight, {left:'50%',top:'63.5%'}, to, {fromPot:true,toUid});
   const reduced = useReducedPokerMotion();
   // Start the visible flight when this device first paints the result.
@@ -4272,6 +4278,7 @@ const PotAward = ({
   return (React.createElement("div", {
       ref: flight,
       className: "poker-pot-award absolute inset-0 z-[120] pointer-events-none",
+      onAnimationEnd:e=>{if(e.animationName==='pokerAwardTravel'&&mountedAt.current!=null)window.PokerRuntime?.timings?.add('pot-award:animation-and-delay',window.PokerRuntime.timings.now()-mountedAt.current);},
       style: {
         '--award-destination': destination,
         visibility: reduced ? 'visible' : 'hidden',
@@ -4299,6 +4306,34 @@ const PotAward = ({
     }))))
   );
 };
+function PlayerWallet({user,onResults,onCashier}) {
+  const [state,setState]=useState({loading:true}),[retry,setRetry]=useState(0);
+  const scope=user.uid+':'+CLUB_ID;
+  useEffect(()=>{let stopped=false,busy=false;
+    const load=async()=>{if(busy)return;busy=true;
+      try{const r=await window.PokerAuthUI.withTimeout(pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},scope));
+        if(!stopped)setState({scope,value:r.accounting?.players?.[user.uid],loading:false});
+      }catch(e){if(!stopped)setState({scope,error:'Your balance could not be refreshed. Please retry.',loading:false});}finally{busy=false;}};
+    setState({scope,loading:true});load();const timer=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
+    return()=>{stopped=true;clearInterval(timer);window.removeEventListener('pk-club-changed',load);};
+  },[scope,retry,user.balance]);
+  const value=state.scope===scope?state.value:null,h=React.createElement;
+  const amount=n=>Number.isFinite(n)?formatMoney(n):'—';
+  return h('section',{className:'club-wallet club-surface scrollable-content silver-page'},
+    h('div',{className:'silver-page-content'},h('h1',null,'Wallet'),h('p',{className:'silver-muted'},'Your chips in this club'),
+      state.loading&&h('p',{role:'status'},'Loading your balance…'),state.error&&h('div',{role:'alert'},state.error,h('button',{type:'button',onClick:()=>setRetry(n=>n+1)},'Retry')),
+      h('div',{className:'silver-wallet-total'},h('span',null,'Total chips'),h('strong',{dir:'ltr'},amount(value?.chips))),
+      h('dl',{className:'silver-wallet-breakdown'},h('div',null,h('dt',null,'Available in wallet'),h('dd',{dir:'ltr'},amount(value?.balance))),h('div',null,h('dt',null,'Chips at tables'),h('dd',{dir:'ltr'},amount(value?.onTables)))),
+      h('div',{className:'silver-service-card'},h('h2',null,'Add or withdraw chips'),h('p',null,'Contact your club manager or agent to arrange a transfer. Your player ID:'),h('strong',{dir:'ltr'},user.playerId||'—'),
+        canOpenBackoffice(user)&&onCashier&&h('button',{type:'button',className:'silver-primary',onClick:onCashier},'Open club cashier')),
+      h('button',{type:'button',className:'silver-secondary',onClick:onResults},'Account history & game results')));
+}
+function ClubBottomNav({currentView,tab,onLobby,onEvents,onWallet,onProfile}) {
+  const selected=currentView==='lobby'?(tab==='tours'?'events':'lobby'):currentView;
+  return React.createElement('nav',{className:'silver-bottom-nav','aria-label':'Player navigation'},[
+    ['lobby','fa-house','Lobby',onLobby],['events','fa-calendar','Events',onEvents],['wallet','fa-wallet','Wallet',onWallet],['profile','fa-user','Profile',onProfile]
+  ].map(([key,icon,label,action])=>React.createElement('button',{key,type:'button',onClick:action,'aria-current':key===selected?'page':undefined},React.createElement('i',{className:'fa-solid '+icon,'aria-hidden':true}),React.createElement('span',null,label))));
+}
 function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onCashier, onSettlement, onRanks, onProfile, onInstall, showInstall}) {
   const buttons = [
     {key:'clubs', icon:'fa-building-columns', label:'Clubs', action:onClubs, show:true},
@@ -4407,6 +4442,16 @@ function AppReleaseControls() {
     React.createElement('button',{type:'button',onClick:()=>window.PokerSoundPack?.openLibrary()},'Sound check'),
     status && React.createElement('div',{role:'status',style:{flexBasis:'100%',textAlign:'center',color:'inherit'}},status));
 }
+function ConnectionTimings() {
+  const [rows,setRows]=useState(()=>window.PokerRuntime.timings.summary());
+  return React.createElement('details',{className:'connection-timings'},
+    React.createElement('summary',null,'Connection timing'),
+    React.createElement('p',null,'This device only · milliseconds. Transport includes network, platform and cold-start time outside the measured handler.'),
+    rows.length ? React.createElement('table',null,
+      React.createElement('thead',null,React.createElement('tr',null,['Stage','Samples','Median','95%'].map(s=>React.createElement('th',{key:s},s)))),
+      React.createElement('tbody',null,rows.map(r=>React.createElement('tr',{key:r.stage},[r.stage,r.count,r.medianMs,r.p95Ms].map((s,i)=>React.createElement('td',{key:i},s)))))) : React.createElement('p',null,'No samples yet.'),
+    React.createElement('button',{type:'button',onClick:()=>setRows(window.PokerRuntime.timings.summary())},'Refresh measurements'));
+}
 function App() {
   const [fbReady, setFbReady] = useState(false);
   const [dbUser, setDbUser] = useState(null);
@@ -4445,6 +4490,9 @@ function App() {
   const [tablesDB, setTablesDB] = useState([]);
   const [observerClub, setObserverClub] = useState(null);
   const [tablesLoaded, setTablesLoaded] = useState(false); // lobby shows a skeleton until the first snapshot
+  const [tablesScope, setTablesScope] = useState('');
+  const [tablesError, setTablesError] = useState('');
+  const [tablesRetry, setTablesRetry] = useState(0);
   const [toursDB, setToursDB] = useState([]);
   const toursRef = useRef([]);
   const tablesRef2 = useRef([]);
@@ -4495,6 +4543,7 @@ function App() {
   const [membershipsReadyUid, setMembershipsReadyUid] = useState('');
   const [activeClub, setActiveClubState] = useState(null);
   const [activeMem, setActiveMem] = useState(null);
+  const profileAttempt = useRef(0);
   const viewRef = useRef(currentView);
   useEffect(() => {
     viewRef.current = currentView;
@@ -4614,25 +4663,25 @@ function App() {
     // Token refreshes may update the verified identity without signing out.
     // Reload the effective profile so management visibility follows it too.
     const unsub = (window.fb.onIdTokenChanged || window.fb.onAuthStateChanged)(window.fb.auth, async user => {
-      const current = ++attempt;
+      const current = ++attempt, profileRequest = ++profileAttempt.current;
       clearTimeout(retry);
       if (!user?.emailVerified || window.fb.viewerGrant?.uid !== user.uid || window.fb.viewerGrant?.email !== user.email) window.fb.viewerGrant=null;
       loadGrant(user,current);
       setAuthError('');
-      if (!user) { setAuthLoading(false); setDbUser(null); setCurrentView('auth'); return; }
+      if (!user) { setAuthLoading(false); setDbUser(null); setActiveClubState(null); setActiveMem(null); setActiveTable(null); setTablesDB([]); setToursDB([]); setTablesLoaded(false); setTablesScope(''); setCurrentView('auth'); return; }
       setAuthLoading(true);
       try {
         const profile = await fetchOrInitUser(user);
-        if (stopped || current !== attempt) return;
+        if (stopped || current !== attempt || profileRequest !== profileAttempt.current || window.fb.auth.currentUser?.uid !== user.uid) return;
         setDbUser(profile);
         setCurrentView(view => view === 'auth' ? 'clubs' : view);
       } catch (e) {
-        if (!stopped && current === attempt) setAuthError('Sign-in succeeded, but your account could not load. Please try again.');
+        if (!stopped && current === attempt && profileRequest === profileAttempt.current) setAuthError('Sign-in succeeded, but your account could not load. Please try again.');
       } finally {
-        if (!stopped && current === attempt) setAuthLoading(false);
+        if (!stopped && current === attempt && profileRequest === profileAttempt.current) setAuthLoading(false);
       }
     });
-    return () => { stopped = true; attempt++; clearTimeout(retry); unsub(); };
+    return () => { stopped = true; attempt++; profileAttempt.current++; clearTimeout(retry); unsub(); };
   }, [fbReady]);
   useEffect(() => {
     if (!fbReady) return;
@@ -4653,21 +4702,31 @@ function App() {
   const fetchOrInitUser = async user => {
     // Canonical identity creation belongs to the server; existing balances and
     // club memberships are preserved. It must not depend on a selected club.
-    await window.fb.fx('pkEnsurePlayer', {});
-    const snap = await window.fb.getDoc(window.fb.doc(window.fb.db, 'users', user.uid));
-    if (!snap.exists()) throw new Error('Player profile unavailable');
-    return {...snap.data(), uid: user.uid};
+    return window.PokerAuthUI.withTimeout((async () => {
+      const read = () => (window.fb.getDocFromServer || window.fb.getDoc)(window.fb.doc(window.fb.db, 'users', user.uid));
+      let snap = await read();
+      // Existing canonical profiles need no identity-creation transaction on
+      // every launch/token refresh. Always read from the authenticated server.
+      if (!snap.exists() || !/^P\d{9}$/.test(snap.data().playerId || '')) {
+        await window.fb.fx('pkEnsurePlayer', {});
+        if (window.fb.auth.currentUser?.uid !== user.uid) throw new Error('Account changed');
+        snap = await read();
+      }
+      if (!snap.exists()) throw new Error('Player profile unavailable');
+      return {...snap.data(), uid: user.uid};
+    })());
   };
   const retryPlayerLoad = async () => {
     const user = window.fb.auth.currentUser;
     if (!user || authLoading) return;
+    const current = ++profileAttempt.current;
     setAuthLoading(true); setAuthError('');
     try {
       const profile = await fetchOrInitUser(user);
-      if (window.fb.auth.currentUser?.uid !== user.uid) return;
+      if (current !== profileAttempt.current || window.fb.auth.currentUser?.uid !== user.uid) return;
       setDbUser(profile); setCurrentView(view => view === 'auth' ? 'clubs' : view);
-    } catch (e) { setAuthError('Your account could not load. Please try again.'); }
-    finally { setAuthLoading(false); }
+    } catch (e) { if(current === profileAttempt.current)setAuthError('Your account could not load. Please try again.'); }
+    finally { if(current === profileAttempt.current)setAuthLoading(false); }
   };
   useEffect(() => {
     if (!fbReady || !dbUser?.uid) return;
@@ -4794,32 +4853,59 @@ function App() {
   };
   useEffect(() => {
     if (!fbReady || !dbUser?.uid) return;
-    if(!activeClub){setTablesDB([]);setToursDB([]);setTablesLoaded(true);return;}
-    const unsubT = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tables"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {
+    let stopped = false;
+    setTablesDB([]); setToursDB([]); setTablesLoaded(false); setTablesError(''); setObserverClub(null);
+    setTablesScope(activeClub ? dbUser.uid + ':' + activeClub.id : '');
+    if(!activeClub)return;
+    const timeout = setTimeout(() => { if(!stopped)setTablesError('Tables are taking too long to load. Check your connection or retry.'); },12000);
+    const unsubT = window.PokerRuntime.watchSnapshot((next, fail) => window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tables"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub.id)), {includeMetadataChanges:true}, next, fail), s => {
+      if(stopped)return;
       setTablesDB(s.docs.map(d => ({
         docId: d.id,
         ...d.data()
       })));
-      setTablesLoaded(true);
+      if(!s.metadata?.fromCache){setTablesLoaded(true);setTablesError('');clearTimeout(timeout);}
       setObserverClub(null);
     }, error => {
-      if (/permission-denied/.test(error?.code||'')) {
-        setTablesDB([]);setTablesLoaded(true);setObserverClub({uid:dbUser.uid,clubId:activeClub.id});
+      if(stopped)return;
+      clearTimeout(timeout);
+      if (isGodUser(dbUser) && /permission-denied/.test(error?.code||'')) {
+        setTablesDB([]);setTablesLoaded(false);setObserverClub({uid:dbUser.uid,clubId:activeClub.id});
+      } else {
+        setTablesLoaded(false);
+        setTablesError(/permission-denied|unauthenticated/.test(error?.code||'')?'Table access could not be verified. Retry to reconnect.':'Table updates interrupted. Reconnecting…');
       }
-    });
-    const unsubTours = window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournaments"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub?.id||"__none__")), s => {
+    },{document,events:window});
+    const unsubTours = window.PokerRuntime.watchSnapshot((next,fail) => window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournaments"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub.id)), next, fail), s => {
+      if(stopped)return;
       setToursDB(s.docs.map(d => ({
         id: d.id,
         ...d.data()
       })));
-    });
-    return () => { unsubT(); unsubTours(); };
-  }, [fbReady, dbUser?.uid, activeClub?.id]);
+    },()=>{if(!stopped)setTablesError('Tournament updates interrupted. Retry to reconnect.');},{document,events:window});
+    return () => { stopped=true; clearTimeout(timeout); unsubT(); unsubTours(); };
+  }, [fbReady, dbUser?.uid, activeClub?.id, tablesRetry]);
   useEffect(() => {
     if (!signedInGod || !activeClub || observerClub?.uid !== dbUser?.uid || observerClub?.clubId !== activeClub.id) return;
     return window.PokerRuntime.watchGodTables({clubId:activeClub.id,allowed:()=>isGodUser(dbUser),call:window.fb.fx,
-      onTables:rows=>{setTablesDB(rows);setTablesLoaded(true);},onError:()=>setTablesDB([])});
+      onTables:rows=>{setTablesDB(rows);setTablesLoaded(true);setTablesError('');},onError:()=>{setTablesLoaded(false);setTablesError('Table updates interrupted. Retry to reconnect.');}});
   },[signedInGod,observerClub,dbUser?.uid,activeClub?.id]);
+  const backgroundSeats = tablesScope === dbUser?.uid + ':' + activeClub?.id ? tablesDB.filter(t =>
+    t.type === 'poker' && t.settings?.serverEngine && t.players?.[dbUser?.uid] &&
+    !['left','out'].includes(t.players[dbUser.uid].status) && !t.archived && !t.tournament?.finished &&
+    !(currentView === 'poker-table' && activeTable?.docId === t.docId)).map(t=>t.docId).sort().join('|') : '';
+  useEffect(() => {
+    if(!backgroundSeats)return;
+    let stopped=false;
+    const ids=backgroundSeats.split('|');
+    // Navigating to the lobby does not pause, fold or release a seat. Keep
+    // its presence and authoritative clock alive outside the table view.
+    const beat=()=>{if(!stopped)ids.forEach(tableId=>pokerCommand('pkSeat',{tableId,op:'heartbeat'}).catch(()=>{}));};
+    const stops=ids.map(tableId=>window.PokerRuntime.startTickLoop(()=>window.fb.fx('pkTick',{tableId})));
+    beat();const timer=setInterval(beat,12000);
+    window.addEventListener('online',beat);
+    return()=>{stopped=true;clearInterval(timer);stops.forEach(stop=>stop());window.removeEventListener('online',beat);};
+  },[backgroundSeats,dbUser?.uid]);
   useEffect(() => {
     if (!fbReady || !dbUser?.uid) return;
     // Keep the profile subscription independent of the selected club.
@@ -4936,9 +5022,11 @@ function App() {
     banned: activeMem?.status === 'banned'
   }), currentView === 'lobby' && activeClub && React.createElement(LobbyView, {
     user: effUser,
-    tables: tablesDB,
-    tablesLoaded: tablesLoaded,
-    tournaments: toursDB,
+    tables: tablesScope === dbUser?.uid + ':' + activeClub.id ? tablesDB : [],
+    tablesLoaded: tablesLoaded && tablesScope === dbUser?.uid + ':' + activeClub.id,
+    tablesError,
+    onRetryTables:()=>setTablesRetry(n=>n+1),
+    tournaments: tablesScope === dbUser?.uid + ':' + activeClub.id ? toursDB : [],
     clubSettings: clubSettings,
     tab: lobbyTab,
     setTab: setLobbyTab,
@@ -4946,7 +5034,7 @@ function App() {
     onJoinDurak: t => changeView('durak-table', t),
     onJoinOfc: t => changeView('ofc-table', t),
     onCreatePoker: () => changeView('poker-create'),
-    onCashier: () => changeView('cashier'),
+    onCashier: () => changeView('wallet'),
     onSettlement: () => changeView('settlement'),
     onClubs: leaveToClubs, onRanks:()=>changeView('leaders'), onManage:()=>changeView('backoffice'), onProfile:()=>changeView('profile'), onInstall:triggerInstall, showInstall:!isStandaloneApp,
     showToast: showToast
@@ -4955,7 +5043,7 @@ function App() {
       React.createElement('div', {className:'flex items-center justify-between gap-3 mb-5'},
         React.createElement('h2', {className:'text-xl font-black text-white'}, 'Account & settlement'),
         React.createElement('button', {type:'button', onClick:() => changeView('lobby'), className:'btn-outline rounded-xl px-4 py-2'}, 'Back to lobby')),
-      React.createElement(window.PokerSettlement.Settlement, {user:effUser,clubId:CLUB_ID,call:pokerCommand,showToast}))), currentView === 'profile' && activeClub && React.createElement(ProfileView, {
+      React.createElement(window.PokerSettlement.Settlement, {user:effUser,clubId:CLUB_ID,call:pokerCommand,showToast}))), currentView === 'wallet' && activeClub && React.createElement(PlayerWallet,{user:effUser,onResults:()=>changeView('settlement'),onCashier:()=>changeView('cashier')}), currentView === 'profile' && activeClub && React.createElement(ProfileView, {
     user: effUser,
     onBack: () => changeView('lobby'),
     showToast: showToast
@@ -4996,6 +5084,8 @@ function App() {
     tableDocId: activeTable?.docId,
     user: effUser,
     clubSettings: clubSettings,
+    onLobby: () => {setLobbyTab('poker');changeView('lobby');},
+    initialSpectate: true,
     onLeave: () => {
       try {
         localStorage.removeItem('pkResume');
@@ -5024,7 +5114,7 @@ function App() {
       changeView('lobby');
     },
     showToast: showToast
-  })), showInstall && !isStandaloneApp && ReactDOM.createPortal(React.createElement("div", {
+  })), effUser && activeClub && effUser.status==='approved' && !inTable && currentView!=='clubs' && React.createElement(ClubBottomNav,{currentView,tab:lobbyTab,onLobby:()=>{setLobbyTab('poker');changeView('lobby');},onEvents:()=>{setLobbyTab('tours');changeView('lobby');},onWallet:()=>changeView('wallet'),onProfile:()=>changeView('profile')}), showInstall && !isStandaloneApp && ReactDOM.createPortal(React.createElement("div", {
     dir: "ltr",
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-end sm:items-center justify-center p-4",
     onClick: () => setShowInstall(false)
@@ -5288,7 +5378,7 @@ function AuthView({error = '', loading = false, onRetry} = {}) {
   const googleLogin = async () => {
     if (googleLock.current || loading) return;
     googleLock.current = true; setGoogleBusy(true); setGErr('');
-    try { await window.fb.signIn(); }
+    try { await window.PokerAuthUI.withTimeout(window.fb.signIn(),60000); }
     catch (e) { setGErr(window.PokerAuthUI.errorText(e)); }
     finally { googleLock.current = false; setGoogleBusy(false); }
   };
@@ -7013,19 +7103,21 @@ function ReferenceLobbyHeader({club, tables, user, balance, onCashier, onSettlem
   const icon=name=>h('i',{className:'fa-solid '+name,'aria-hidden':true});
   const action=(name,label,click)=>click&&h('button',{type:'button',onClick:click,'aria-label':label},icon(name),h('span',null,label),icon('fa-chevron-right'));
   return h('header',{className:'reference-lobby-header',dir:'ltr'},
-    h('div',{className:'reference-lobby-masthead'},action('fa-chevron-left','Clubs',onClubs),h('img',{src:'assets/brand/orbital-icon192.png',alt:'POKERTEN',width:38,height:38}),
+    h('div',{className:'reference-lobby-masthead'},action('fa-user','Profile',onProfile),h('div',{className:'silver-brand'},h('img',{src:'assets/brand/orbital-icon192.png',alt:'',width:38,height:38}),h('strong',null,'POKER',h('span',null,'TEN'))),
       h('details',{className:'reference-lobby-menu'},h('summary',{'aria-label':'Club menu'},icon('fa-bars')),h('div',null,
-        action('fa-users-gear','Manage',canOpenBackoffice(user)&&onManage),action('fa-wallet','Cashier',onCashier),action('fa-chart-simple',canOpenBackoffice(user)?'Club settlement':'My results',onSettlement),action('fa-user','Profile',onProfile),showInstall&&action('fa-download','Install app',onInstall),h(AppReleaseControls)))),
+        action('fa-building-columns','Clubs',onClubs),action('fa-users-gear','Manage',canOpenBackoffice(user)&&onManage),action('fa-wallet','Wallet',onCashier),action('fa-chart-simple',canOpenBackoffice(user)?'Club settlement':'My results',onSettlement),action('fa-user','Profile',onProfile),showInstall&&action('fa-download','Install app',onInstall),h(AppReleaseControls)))),
     h('section',{className:'reference-club-card','aria-label':'Club overview'},
       h('div',{className:'reference-club-identity'},club.logo?h('img',{src:club.logo,alt:'',className:'reference-club-logo'}):h('div',{className:'reference-club-logo'},String(club.name||'P').slice(0,1)),
-        h('div',{className:'reference-club-name'},h('h1',null,club.name||'POKERTEN'),h('span',null,'ID: '+clubCode(club.id||CLUB_ID)),h('small',null,icon('fa-user-group'),' '+players+' Players',icon('fa-table-cells-large'),' '+tables.length+' Tables')),
+        h('div',{className:'reference-club-name'},h('h1',null,club.name||'POKERTEN'),h('span',null,'Club '+clubCode(club.id||CLUB_ID)),h('small',null,icon('fa-user-group'),' '+players+' seated',icon('fa-table-cells-large'),' '+tables.length+' Tables')),
         h('div',{className:'reference-club-shortcuts'},action('fa-trophy','Rank',onRanks),action('fa-chart-simple','Results',onSettlement))),
-      h('button',{type:'button',className:'reference-club-balance',onClick:onCashier,'aria-label':'Your balance and cashier'},h('span',{className:'reference-blue-chip','aria-hidden':true},'C'),balance),
+      h('button',{type:'button',className:'reference-club-balance',onClick:onCashier,'aria-label':'Your balance and cashier'},h('span',{className:'silver-muted'},'Club chips'),balance,h('span',{className:'silver-wallet-link'},'Wallet ',icon('fa-arrow-right'))),
       h('button',{type:'button',className:'reference-club-notice','aria-expanded':noticeOpen,onClick:()=>setNoticeOpen(v=>!v)},icon('fa-clipboard-list'),h('strong',null,'Notice'),h('span',null,notice||'Club information'),icon('fa-chevron-right')),
       noticeOpen&&h('p',{className:'reference-notice-body'},notice||'No club notice has been posted. Open the club menu for your account and club services.')));
 }
 function LobbyView({
   tablesLoaded,
+  tablesError = '',
+  onRetryTables,
   user,
   tables,
   tournaments,
@@ -7423,7 +7515,9 @@ function LobbyView({
       overflowX: "hidden"
     },
     className: "club-lobby scrollable-content aurora-bg p-4 sm:p-6"
-  }, fillTable&&canManageGame(user,'poker')&&React.createElement(BotBuyInDialog,{key:fillTableId,settings:fillTable.settings||{},fill:true,
+  }, tablesError && React.createElement('div',{role:'alert',className:'lobby-connection-error'},tablesError,
+    onRetryTables&&React.createElement('button',{type:'button',onClick:onRetryTables},'Retry connection')),
+    fillTable&&canManageGame(user,'poker')&&React.createElement(BotBuyInDialog,{key:fillTableId,settings:fillTable.settings||{},fill:true,
     count:(fillTable.settings?.maxPlayers||6)-Object.keys(fillTable.players||{}).length,onClose:()=>setFillTableId(null),
     onConfirm:amount=>fillFromLobby(fillTable,amount,(fillTable.settings?.maxPlayers||6)-Object.keys(fillTable.players||{}).length)}), buyinEdit && React.createElement(TableSettingsEditor,{table:buyinEdit,onClose:()=>setBuyinEdit(null),showToast}), cashierOpen && ReactDOM.createPortal(React.createElement("div", {
     className: "fixed inset-0 z-[400] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4",
@@ -7465,7 +7559,11 @@ function LobbyView({
     className: "w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-2xl font-black border border-white/10"
   }, "Close"))), document.body), React.createElement("div", {
     className: "max-w-6xl mx-auto animate-fade-in relative z-10"
-  }, React.createElement(ReferenceLobbyHeader,{club:{...window.__club,...clubSettings,id:CLUB_ID},tables:[...pokerTables,...durakTables,...ofcTables],user,balance:React.createElement(OwnBalanceNumbers,{user,compact:true}),onCashier:()=>canOpenBackoffice(user)&&onCashier?onCashier():setCashierOpen(true),onSettlement,onClubs,onRanks,onManage,onProfile,onInstall,showInstall}), window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"POKERTEN",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
+  }, React.createElement(ReferenceLobbyHeader,{club:{...window.__club,...clubSettings,id:CLUB_ID},tables:[...pokerTables,...durakTables,...ofcTables],user,balance:React.createElement(OwnBalanceNumbers,{user,compact:true}),onCashier:()=>onCashier?onCashier():setCashierOpen(true),onSettlement,onClubs,onRanks,onManage,onProfile,onInstall,showInstall}), (()=>{const event=(tournaments||[]).filter(t=>(t.clubId||'main')===CLUB_ID&&!t.archived&&t.status==='reg').sort((a,b)=>(Number(a.startAt)||Infinity)-(Number(b.startAt)||Infinity))[0];
+    if(!event)return null;
+    return React.createElement('button',{type:'button',className:'silver-event-banner',onClick:()=>setTab('tours'),'aria-label':'View event '+event.name},
+      Number.isFinite(event.prizePool)&&event.prizePool>0&&React.createElement('strong',null,formatShort(event.prizePool)),React.createElement('span',null,React.createElement('b',null,event.name),React.createElement('small',null,Number(event.startAt)>0?new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'}).format(new Date(Number(event.startAt))):'Registration open')),React.createElement('span',{className:'silver-event-action'},'View event'));
+  })(), window.ClubUI && React.createElement(window.ClubUI.LobbyOverview,{user,brand:"POKERTEN",locale:"en",tables:[...pokerTables,...durakTables,...ofcTables],onResume:t=>t.type==="poker"?onJoinPoker(t):t.type==="durak"?onJoinDurak(t):onJoinOfc(t)}), React.createElement("div", {
     className: "reference-legacy-wallet flex items-center justify-end gap-3 mb-5"
   }, React.createElement("div", {
     className: "flex items-center gap-1.5 lobby-bonus-mini"
@@ -7481,9 +7579,11 @@ function LobbyView({
     className: "blue-game-picker flex items-center gap-1.5 mb-7"
   }, [{
     id: 'poker',
-    label: 'Poker',
+    label: 'Cash games',
     suit: '♠',
     n: pokerTables.length
+  }, {
+    id: 'tours', label: 'Tournaments', icon:'fa-calendar', n:tournaments.filter(t=>!['done','cancelled'].includes(t.status)).length
   }, {
     id: 'durak',
     label: 'Durak',
@@ -7689,7 +7789,7 @@ function LobbyView({
     const mine = (tables || []).filter(t => {
       if ((t.clubId || 'main') !== CLUB_ID) return false;
       const me = (t.players || {})[user.uid];
-      if (!me || me.left || ['left', 'out', 'busted'].includes(me.status)) return false;
+      if (!me || me.left || ['left', 'out'].includes(me.status)) return false;
       if (t.archived || t.tournament?.finished || t.tournament?.cancelled) return false;
       if (t.tournamentId) {
         const tor = (tournaments || []).find(tor => tor.id === t.tournamentId && (tor.clubId || 'main') === CLUB_ID);
@@ -7697,12 +7797,13 @@ function LobbyView({
         const entry = tor.players?.[user.uid];
         if (!entry || entry.out || entry.removed) return false;
       }
-      if (!t.tournamentId && !((me.stack || 0) > 0 || (me.bet || 0) > 0)) return false;
+      // Zero stack is still a seat (all-in, busted/rebuy, or pending top-up).
       return true;
     });
     if (!mine.length) return null;
     return React.createElement("div", {
-      className: "mb-4 flex flex-col gap-2"
+      className: "lobby-return-tables mb-4 flex flex-col gap-2",
+      'aria-label':'Your tables'
     }, mine.map(t => {
       const s = t.settings || {};
       const label = t.type === 'durak' ? 'Durak' : t.type === 'ofc' ? 'Chinese Poker' : s.tableName || variantLabel(s.baseGameType || 'NLH', s);
@@ -7710,6 +7811,7 @@ function LobbyView({
       return React.createElement("div", {
         key: 'bk' + (t.docId || t.id),
         'data-resume-table': t.docId || t.id,
+        role:'group',
         onClick: () => {
           if (t.type === 'durak') onJoinDurak(t);else if (t.type === 'ofc') onJoinOfc(t);else onJoinPoker(t);
         },
@@ -7725,12 +7827,14 @@ function LobbyView({
         dir: "ltr"
       }, t.tournamentId ? 'Tournament table' : `Stack ${formatShort(me.stack || 0)}`, me.sitOut ? ' \u00b7 \u2615 sitting out' : '')), React.createElement("span", {
         className: "shrink-0 bg-emerald-500 text-slate-900 font-black text-xs rounded-xl px-3 py-2 whitespace-nowrap"
-      }, "Back \u21a9"), !t.tournamentId && React.createElement("span", {
+      }, React.createElement('button',{type:'button','aria-label':'Return to table '+label},'Return to table')), !t.tournamentId && React.createElement("button", {
+        type:'button',
         onClick: e => {
           e.stopPropagation();
           leaveFromLobby(t);
         },
-        title: "Give up this seat",
+        title: "Leave table",
+        'aria-label': 'Leave table '+label,
         className: "shrink-0 w-8 h-8 rounded-xl bg-white/5 border border-white/10 text-slate-400 hover:text-rose-300 hover:border-rose-500/40 flex items-center justify-center text-sm"
       }, "\u2715"));
     }));
@@ -7797,7 +7901,7 @@ function LobbyView({
   }, "Like poker: buy a stack on entry and play hands on it · point = a tenth of the stake value (5 ₪ stake = half a ₪ per point) · stand up whenever you like and the stack returns to your wallet · Fantasyland QQ=14 KK=15 AA=16 · Jokers")), React.createElement("div", {
     className: "flex flex-col gap-2.5"
   }, ofcTables.map(t => {
-    const seated = Object.keys(t.players || {}).length;
+    const seated = Object.values(t.players || {}).filter(p=>p&&!p.left&&p.status!=='left').length;
     const cap = (t.settings || {}).maxPlayers || 2;
     return React.createElement("div", {
       key: t.docId,
@@ -7915,24 +8019,17 @@ function LobbyView({
       borderBottomColor: '#D5B36B'
     } : {}
   }, "All"), ALL_POKER_VARIANTS.map(v => {
-    const vs = variantStyle(v);
-    const active = pokFilter === v;
-    const n = variantCount(v);
-    return React.createElement("button", {
-      key: v,
-      onClick: () => setPokFilter(v),
-      "aria-pressed": active,
-      className: `vtab ${active ? 'vtab-active' : ''}`,
-      "data-lobby-game": v,
-      style: {"--variant-color":vs.hue}
-    }, lobbyVariantLabel(v), n > 0 && React.createElement("span", {
-      className: "vtab-count"
-    }, n));
+    const vs = variantStyle(v),active=pokFilter===v;
+    const rows=ringTables.filter(t=>(t.settings?.baseGameType||'NLH')===v);
+    const free=rows.reduce((n,t)=>n+Math.max(0,(Number(t.settings?.maxPlayers)||6)-Object.values(t.players||{}).filter(p=>p&&!p.left&&p.status!=='left').length),0);
+    return React.createElement('button',{key:v,type:'button',onClick:()=>setPokFilter(v),'aria-pressed':active,'aria-label':lobbyVariantLabel(v)+' tables',className:'vtab silver-game-card '+(active?'vtab-active':''),'data-lobby-game':v,style:{'--variant-color':vs.hue}},
+      React.createElement('strong',null,lobbyVariantLabel(v)),React.createElement('span',{className:'silver-game-description'},v==='NLH'?'Texas Hold’em':v.startsWith('Omaha')?v.slice(-1)+'-card Omaha':'Three-card Hold’em'),
+      React.createElement('span',{className:'silver-game-count'},tablesLoaded?rows.length+' tables · '+free+' seats free':'Loading tables…'));
   })), React.createElement('div',{className:'reference-lobby-filters'},
-    React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:runningOnly,onChange:e=>setRunningOnly(e.target.checked)}),'Running Tables'),
+    React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:runningOnly,onChange:e=>setRunningOnly(e.target.checked)}),'LIVE hands only'),
     React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:hideFull,onChange:e=>setHideFull(e.target.checked)}),'Hide Full Tables'),
     React.createElement('select',{'aria-label':'Sort tables',value:tableSort,onChange:e=>setTableSort(e.target.value)},React.createElement('option',{value:'default'},'Sort'),React.createElement('option',{value:'buyin'},'Buy-in'),React.createElement('option',{value:'players'},'Players'))),
-    React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker,onCreateTable:onCreatePoker}), pokFilter !== 'tours' && React.createElement("div", {
+    React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker,onCreateTable:onCreatePoker}), React.createElement('div',{className:'silver-section-heading'},React.createElement('h2',null,pokFilter==='all'?'Cash tables':pokFilter==='live'?'Live tables':lobbyVariantLabel(pokFilter)+' tables')), pokFilter !== 'tours' && React.createElement("div", {
     className: "flex flex-col gap-2.5"
   }, shownPoker.map(t => {
     const s = t.settings || {};
@@ -8019,10 +8116,10 @@ function LobbyView({
     }, spinRunning ? "Live" : "Buy-in"), React.createElement("span", {
       className: "tbl-buyin-val",
       "data-long": formatMoney(minBuy).length > 9 ? "true" : undefined
-    }, spinRunning ? "👁" : formatMoney(minBuy)), s.spinMode && !spinRunning && React.createElement("span", {
+    }, spinRunning ? 'In progress' : formatMoney(minBuy)+(Number(s.maxBuyIn)>minBuy?'–'+formatMoney(Number(s.maxBuyIn)):'')), s.spinMode && !spinRunning && React.createElement("span", {
       style: { fontSize: '9px', fontWeight: 900, color: '#fcd34d', lineHeight: 1, marginTop: '2px', whiteSpace: 'nowrap' },
       dir: "ltr"
-    }, "WIN ", formatShort((Number(s.spinBuyIn) || 50) * 100))), React.createElement('div',{className:'tbl-vpip',title:'VPIP statistics are not available for this table'},React.createElement('small',null,'VPIP'),React.createElement('strong',null,'—')), React.createElement('span',{className:'blue-table-enter','aria-hidden':true},React.createElement('i',{className:'fa-solid fa-chevron-right'})), React.createElement(BlueTableActions, null, canManageGame(user,'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && seated<cap && React.createElement('button',{
+    }, "WIN ", formatShort((Number(s.spinBuyIn) || 50) * 100))), React.createElement('button',{type:'button',className:'blue-table-enter','aria-label':'View '+(s.tableName||variantLabel(gt,s)),onClick:e=>{e.stopPropagation();onJoinPoker(t);}},'View'), React.createElement(BlueTableActions, null, canManageGame(user,'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && seated<cap && React.createElement('button',{
       onClick:e=>{e.stopPropagation();setFillTableId(t.docId||t.id);},disabled:!!fillingTables[t.docId||t.id],title:'Fill table with bots','aria-label':'Fill table with bots',className:'tbl-del disabled:opacity-40',style:{color:'#a7f3d0'}
     },React.createElement('i',{className:fillingTables[t.docId||t.id]?'fa-solid fa-spinner fa-spin':'fa-solid fa-robot'})), canManageGame(user, 'poker') && !t.tournamentId && !s.spinMode && !t.closeRequested && React.createElement("button", {
       onClick: e => {
@@ -8054,9 +8151,9 @@ function LobbyView({
     suit: "♠",
     title: pokFilter === 'live' ? 'No live tables right now' : `No open ${pokFilter === 'all' ? 'Poker' : variantLabel(pokFilter)} tables right now`,
     sub: pokFilter === 'live' ? 'Tables appear here when a hand starts. Check All for waiting tables.' : "New tables appear here live the moment they open — no refresh needed."
-  })), !['tours','live'].includes(pokFilter) && React.createElement("div", {
+  })), !['tours','live'].includes(pokFilter) && (spinTables.length>0||canManageGame(user,'poker')) && React.createElement("div", {
     className: "border-t border-white/5 my-8"
-  }), !['tours','live'].includes(pokFilter) && React.createElement("div", {
+  }), !['tours','live'].includes(pokFilter) && (spinTables.length>0||canManageGame(user,'poker')) && React.createElement("div", {
     className: "mb-2"
   }, React.createElement("div", {
     className: "flex justify-between items-center mb-4"
@@ -9810,7 +9907,7 @@ try{await pokerCommand('pkClubMember',{clubId:CLUB_ID,targetUid:roleEditUser.uid
   }, "×", a.count, " today, +", formatMoney(a.total || 0), " total")))))), managementTab === 'overview' && React.createElement('div',{className:'management-home-actions'},
     React.createElement('button',{onClick:()=>setManagementTab('members')},React.createElement('small',null,'MEMBERS'),React.createElement('strong',null,realPlayers.length),React.createElement('span',null,'Player accounts'),React.createElement('small',null,'Find a player and open their details →')),
     React.createElement('button',{onClick:()=>setManagementTab('requests')},React.createElement('small',null,'JOIN REQUESTS'),React.createElement('strong',null,pendingUsers.length),React.createElement('span',null,'Awaiting review'),React.createElement('small',null,'Review membership requests →')),
-    onSettlement&&React.createElement('button',{onClick:onSettlement},React.createElement('small',null,'SETTLEMENT'),React.createElement('strong',null,'↗'),React.createElement('span',null,'Accounts & reports'),React.createElement('small',null,'Results, payments and saved cycles →'))),managementTab === 'overview' && (React.createElement("div", {
+    onSettlement&&React.createElement('button',{onClick:onSettlement},React.createElement('small',null,'SETTLEMENT'),React.createElement('strong',null,React.createElement('i',{className:'fa-solid fa-chart-line','aria-hidden':true})),React.createElement('span',null,'Accounts & reports'),React.createElement('small',null,'Results, payments and saved cycles →'))),managementTab === 'overview' && (React.createElement("div", {
     className: "club-admin-metrics grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
   }, statTiles.map((t, i) => React.createElement("div", {
     key: i,
@@ -10917,6 +11014,8 @@ function PokerTable({
   user,
   clubSettings,
   onLeave,
+  onLobby,
+  initialSpectate = false,
   onManage,
   onCreateTable,
   onTransfer,
@@ -11246,7 +11345,7 @@ function PokerTable({
     refresh();
     return () => { cancelled = true; clearTimeout(retry); };
   }, [srvEngine, godView, godContextKey, tableDocId, tableState?.id, godIdentityKey]);
-  const [spectate, setSpectate] = useState(false);
+  const [spectate, setSpectate] = useState(initialSpectate);
   const [buyAmt, setBuyAmt] = useState(0);
   const [raiseAmt, setRaiseAmt] = useState(0);
   const [, setTurnClock] = useState(0);
@@ -11392,6 +11491,10 @@ throw new Error('Game state is managed by the server');
         // Preserve the server snapshot exactly for optimistic concurrency checks.
         tableRef.current = t;
         setTableState(t);
+        const receivedAt=window.PokerRuntime.timings?.now();
+        if(receivedAt!=null && window.requestAnimationFrame)window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>{
+          if(tableSessionRef.current===session)window.PokerRuntime.timings.add('table:render',window.PokerRuntime.timings.now()-receivedAt);
+        }));
         setTableError(d.metadata?.fromCache ? 'Reconnecting — showing the last saved table.' : '');
         setLoading(false);
       } else if (!d.metadata?.fromCache) {
@@ -12810,7 +12913,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         React.createElement('dt',null,'Seats'),React.createElement('dd',null,playersCount+' / '+tblCap),
         !tableState.tournamentId && !setts.spinMode && React.createElement(React.Fragment,null,React.createElement('dt',null,'Waitlist'),React.createElement('dd',null,waitlist.length+' waiting'+(waiting.bots?' · '+waiting.bots+' bots':''))),
         React.createElement('dt',null,'Action time'),React.createElement('dd',null,(setts.actionTime || 30)+'s'),
-        React.createElement('dt',null,'Table ID'),React.createElement('dd',null,tableDocId)))),document.body),
+        React.createElement('dt',null,'Table ID'),React.createElement('dd',null,tableDocId)),
+      canManageClub(user)&&React.createElement(ConnectionTimings))),document.body),
   (tableError || (privateError && (!tableState.tournamentId || isSeated))) && React.createElement('div', { className: 'poker-connection-status', role: 'status' }, tableError || privateError,
     React.createElement('button', { onClick: () => setConnectionRetry(n => n + 1) }, 'Retry')),
   skinOpen && ReactDOM.createPortal(React.createElement("div", {
@@ -14238,15 +14342,18 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     },
     title: "Sit out and open Club Management",
     className:'poker-menu-tile','data-menu-tone':'pink'
-  }, ...menuTile("manage", "Manage")), React.createElement("button", {
+  }, ...menuTile("manage", "Manage")), onLobby && React.createElement('button',{
+    type:'button',onClick:()=>{setToolsOpen(false);onLobby();},title:'Back to lobby — keep your seat',
+    'aria-label':'Back to lobby',className:'poker-menu-tile','data-menu-tone':'cyan'
+  },...menuTile('fa-house','Back to lobby')), React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       if (!isSeated) onLeave();else handleStandUp();
     },
-    title: tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave',
-    'aria-label': isSeated ? 'Stand up' : 'Leave table',
+    title: isSeated ? 'Leave table — release your seat' : 'Leave table',
+    'aria-label': 'Leave table',
     className:'poker-menu-tile','data-menu-tone':'pink'
-  }, ...menuTile("leave", tableState?.tournament ? 'To lobby' : isSeated ? 'Stand up' : 'Leave')), React.createElement(PokerFullscreenButton,{showToast,onToggle:closeTableMenu})))), document.body), isSeated && gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
+  }, ...menuTile("leave", "Leave table")), React.createElement(PokerFullscreenButton,{showToast,onToggle:closeTableMenu})))), document.body), isSeated && gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
     onClick: async () => {
       try {
         if (srvEngine) {

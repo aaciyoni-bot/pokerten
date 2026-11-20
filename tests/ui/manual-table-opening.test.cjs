@@ -7,6 +7,7 @@ global.window=w;global.document=w.document;Object.defineProperty(global,'navigat
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};
 w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');
 w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
 const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManualOnlyAppTest=App;window.retiredTwin=spawnTwinTable;');
 w.eval(script);w.__pkMuted=true;

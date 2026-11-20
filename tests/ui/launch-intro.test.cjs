@@ -10,10 +10,11 @@ async function run(mode){
  w.setTimeout=(fn,delay)=>{timers.set(++id,{fn,delay});return id;};w.clearTimeout=id=>timers.delete(id);
  w.HTMLMediaElement.prototype.play=function(){plays++;return mode==='blocked'?Promise.reject(new Error('autoplay denied')):Promise.resolve();};
  w.HTMLMediaElement.prototype.pause=function(){paused++;};
+ if(mode==='persisted')w.localStorage.setItem('pkIntroSeen','1');
  if(mode==='seen')w.sessionStorage.setItem('pkIntroSeen','1');
  w.eval(script);await Promise.resolve();
  const el=w.document.getElementById('orizis-intro'),video=el.querySelector('video');
- if(['reduced','seen'].includes(mode))assert.equal(plays,0);else assert.equal(plays,1);
+ if(['reduced','seen','persisted'].includes(mode))assert.equal(plays,0);else assert.equal(plays,1);
  if(mode==='reduced'){assert.equal(video.getAttribute('src'),null);[...timers.values()].find(t=>t.delay===700).fn();}
  if(mode==='normal'){
   assert.equal(video.muted,true,'autoplay starts muted');
@@ -23,10 +24,10 @@ async function run(mode){
  if(mode==='skip')el.querySelector('[data-intro-skip]').click();
  if(mode==='escape')w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));
  if(mode==='error')video.dispatchEvent(new w.Event('error'));
- if(mode==='timeout')[...timers.values()].find(t=>t.delay===6500).fn();
+ if(mode==='timeout')[...timers.values()].find(t=>t.delay===1200).fn();
  assert.ok(el.classList.contains('oi-out'),mode+' must release the login screen');
  assert.equal(paused,1);assert.equal(w.sessionStorage.getItem('pkIntroSeen'),'1');
  [...timers.values()].find(t=>t.delay===260).fn();assert.equal(w.document.getElementById('orizis-intro'),null);
  w.close();
 }
-(async()=>{for(const mode of ['normal','skip','escape','error','timeout','blocked','reduced','seen'])await run(mode);console.log('PASS: launch intro ends, skips, handles autoplay/load errors, bounds waiting and honors reduced motion/session replay');})().catch(e=>{console.error(e);process.exitCode=1;});
+(async()=>{for(const mode of ['normal','skip','escape','error','timeout','blocked','reduced','seen','persisted'])await run(mode);console.log('PASS: launch intro ends, skips, handles autoplay/load errors, bounds waiting and honors reduced motion/session replay');})().catch(e=>{console.error(e);process.exitCode=1;});

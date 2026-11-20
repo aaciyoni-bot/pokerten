@@ -1,3 +1,29 @@
+# Silver club shell — release 379
+
+Status: browser and automated checks passed; live multiplayer/native-device acceptance remains open.
+
+Reference: user-provided `01-1795158934667.jpeg`, 20 November 2026. The direction is a dark navy/black shell, silver controls and borders, blue highlights, variant colors, compact table rows and bottom navigation. This is a functional adaptation, not a pixel-identical reproduction. Production events, balances and counts come from existing data; the image's sample values are not copied.
+
+## Browser evidence
+
+`docs/qa/pokerten-379-lobby.jpg`: actual production LobbyView in an isolated preview, 390 × 844, simulated data with all network writes denied. Cloud-browser checks covered lobby, variant filtering, vertical scrolling, wallet navigation and accounting display, profile, club carousel, manager overview and the new sign-in appearance. The 320 × 568 lobby had clientWidth = scrollWidth = 320.
+
+Corrections made after visual review: forced readable active navigation/tab colors over old styles, included the production body stylesheets in the preview, replaced the missing management arrow glyph with an existing icon, and fixed a legacy 14 px View-button width that clipped its label. The final browser capture of the table rows showed the full View label.
+
+No game-table felt, card geometry or game animation CSS was changed. The new shell is scoped to non-table views. Card/table menu and navigation behavior remain covered by existing UI tests.
+
+## Validation and limits
+
+21 predeploy checks; 394 engine/server/runtime tests; complete UI suite; engine smoke; 28 updater/native-update tests passed. New regression coverage exercises sign-in timeouts, stale lobby callbacks, cache-versus-server emptiness, preserving an all-in seat on a temporary lobby visit, and receipt-preserving regional fallback. No application errors were observed in the preview console.
+
+The reference has custom geometric artwork and an event-heavy first screen; the implementation reuses existing brand assets and displays an event banner only for real registration data. Profile information density, full Hebrew coverage, active-game timing and device/soak testing remain backlog items. Financial request approval is not implemented by the new manual-transfer guidance card.
+
+Classic source/design is preserved at `archive/pokerten-classic-2026-11-20`, commit `35ad6b7add33443b272b95ad94f847ad0af3665c`.
+
+---
+
+## Historical QA (release 336, not current proof)
+
 # Login reference — release 336
 
 final result: passed

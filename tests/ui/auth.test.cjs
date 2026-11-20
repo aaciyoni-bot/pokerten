@@ -37,18 +37,19 @@ const click=async text=>{await React.act(async()=>{const el=button(text);assert.
      onAuthStateChanged:(_,fn)=>{callback=fn;return()=>{};},
      fx:async(name)=>{assert.equal(name,'pkEnsurePlayer');ensures++;if(failed)throw Error('offline');if(!profile)profile={username:'New',status:'pending',role:'player',balance:0,playerId:'P987654321'};return {playerId:profile.playerId};},
      doc:(_,collection,id)=>({path:collection+'/'+id}),collection:(_,name)=>({path:name}),where:(...args)=>args,query:ref=>ref,
-     getDoc:async ref=>{reads.push(ref.path);return snap();},
+     getDoc:async ref=>{reads.push(ref.path);if(failed)throw Error('offline');return snap();},
      onSnapshot:(ref,fn)=>{subscriptions.push(ref.path);if(ref.path.startsWith('users/'))fn(snap());else fn({docs:[],forEach(){}});return()=>{};},
      getDocs:async()=>({docs:[],forEach(){}}), updateDoc:()=>{throw Error('No client identity writes');}
    };
    await React.act(()=>root.render(React.createElement(w.AppTest)));
    await React.act(async()=>callback(user));
-   if(mode==='retry'){assert.ok(w.document.querySelector('[role=alert]'));assert.equal(w.document.querySelector('[data-testid=clubs]'),null);failed=false;await click('Try again');assert.equal(ensures,2);}
+   if(mode==='retry'){assert.ok(w.document.querySelector('[role=alert]'));assert.equal(w.document.querySelector('[data-testid=clubs]'),null);failed=false;await click('Try again');}
    assert.ok(w.document.querySelector('[data-testid=clubs]'),mode+' reaches clubs without selecting a club');
    assert.match(w.document.querySelector('[data-testid=clubs]').textContent,mode==='new'?/New\|0\|P987654321/:/Existing\|425\|P123456789/);
    assert.ok(subscriptions.includes('users/'+user.uid),'profile listens before club selection');
    assert.ok(!subscriptions.includes('tables')&&!subscriptions.includes('tournaments'),'no out-of-club game reads');
-   assert.deepEqual(reads,['users/'+user.uid]);
+   assert.deepEqual(reads,Array(mode==='existing'?1:2).fill('users/'+user.uid));
+   assert.equal(ensures,mode==='new'?1:0,'existing canonical profiles skip unnecessary identity writes');
    await React.act(()=>root.render(null));
  }
  assert.ok(!html.includes('signInWithPhoneNumber')&&!html.includes('RecaptchaVerifier'),'no SMS SDK path');

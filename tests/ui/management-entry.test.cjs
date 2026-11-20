@@ -11,6 +11,7 @@ w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
 const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManagementAppTest=App;');
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js'),'utf8'));
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
 w.eval(script);w.__pkMuted=true;
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const SUPERVISOR_A=identities.supervisors[0];
@@ -101,7 +102,7 @@ async function assertFullManagement(fixture){
  ordinary.identity.email=SUPERVISOR_A;
  await React.act(async()=>ordinary.refresh());
  await assertFullManagement(ordinary);
- assert.equal(ordinary.calls.filter(call=>call.name==='pkEnsurePlayer').length,2,'both initial login and token refresh load the effective account');
+ assert.equal(ordinary.calls.filter(call=>call.name==='pkEnsurePlayer').length,0,'canonical profiles refresh without redundant identity creation');
  await React.act(()=>root.unmount());w.close();
  console.log('PASS: real App club entry grants verified SUPERVISOR_A full management with stale membership, denies forged profile identity, and follows token refresh/revocation');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

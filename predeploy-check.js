@@ -71,6 +71,13 @@ check('service-worker cache version present', !!swVer,
   'sw.js must define a pokerten-shell-vNN cache name');
 if (swVer) console.log('    (sw cache = pokerten-shell-v' + swVer + ' — confirm it is higher than the live deploy)');
 
+// The pinned Android builder swaps app-update for native-update while keeping
+// this query string. A stale key fails verification of the published OTA bundle.
+const releaseVersion = require('./assets/release.json').version;
+check('web/native updater cache key matches the published release',
+  html.includes('assets/js/app-update.js?v=' + releaseVersion + '"'),
+  'bump the app-update.js query version with assets/release.json before packaging Android');
+
 // 8) PURE HAND-NAME FUNCTION SANITY (evaluate the real function from the bundle).
 try {
   const hn = bundle.match(/const handName = \(?s\)? => [^;]+;/);

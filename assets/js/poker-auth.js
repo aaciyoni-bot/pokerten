@@ -3,8 +3,17 @@
   const {createElement: h, useState, useRef} = root.React;
   const inputClass = 'w-full bg-slate-950 border border-white/20 rounded-xl px-4 py-3 text-white outline-none';
   const buttonClass = 'w-full btn-gold py-3 rounded-xl disabled:opacity-50';
+  // Bound waiting in the UI. A late provider response cannot continue a timed
+  // out login flow; Firebase remains the authority for any eventual sign-in.
+  function withTimeout(promise, ms = 20000) {
+    return new Promise((resolve, reject) => {
+      const timer = root.setTimeout(() => reject(Object.assign(new Error('The connection took too long. Please try again.'), {code:'auth/timeout'})), ms);
+      Promise.resolve(promise).then(resolve, reject).finally(() => root.clearTimeout(timer));
+    });
+  }
   function errorText(error) {
     const code = error && error.code || '';
+    if (code === 'auth/timeout') return 'The connection took too long. Check your connection and try again.';
     if (code === 'auth/popup-blocked') return 'The Google sign-in window was blocked. Allow pop-ups for this site and try again.';
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return 'The Google sign-in window closed before sign-in was complete. Please try again.';
     if (code === 'functions/unauthenticated') return 'The player ID or personal code is incorrect.';
@@ -28,8 +37,8 @@
       if (!register && !/^P\d{9}$/.test(loginId.trim().toUpperCase())) return setError('Enter a player ID starting with P followed by 9 digits.');
       lock.current = true; setBusy(true); setError('');
       try {
-        const result = await root.fb.fx(register ? 'pkPinRegister' : 'pkPinLogin', register ? {name: name.trim(), pin} : {loginId: loginId.trim().toUpperCase(), pin});
-        await root.fb.signInCode(result.token);
+        const result = await withTimeout(root.fb.fx(register ? 'pkPinRegister' : 'pkPinLogin', register ? {name: name.trim(), pin} : {loginId: loginId.trim().toUpperCase(), pin}));
+        await withTimeout(root.fb.signInCode(result.token));
         setPin(''); setConfirm('');
       } catch (e) { setError(errorText(e)); }
       finally { lock.current = false; setBusy(false); }
@@ -62,5 +71,5 @@
         field('Confirm new code', confirm, setConfirm, {type: 'password', inputMode: 'numeric', minLength: 8, maxLength: 12, autoComplete: 'new-password'}),
         message && h('p', {role: 'status'}, message), h('button', {type: 'submit', disabled: busy, className: buttonClass}, busy ? 'Saving…' : 'Save personal code')));
   }
-  root.PokerAuthUI = {CodeLogin, CodeSettings, errorText};
+  root.PokerAuthUI = {CodeLogin, CodeSettings, errorText, withTimeout};
 })(window);

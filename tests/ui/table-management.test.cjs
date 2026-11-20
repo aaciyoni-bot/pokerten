@@ -32,7 +32,7 @@ const del=()=>w.document.querySelector('button[aria-label="Delete table"]');
  assert.deepEqual({...calls.at(-1).args.patch},{minBuyIn:300,maxBuyIn:600});await React.act(async()=>settle.resolve({ok:true}));
 
  await render(table('seated',{players:{owner:{uid:'owner',name:'Owner',stack:100,status:'active',seatIndex:0}}}));
- const giveUp=w.document.querySelector('[title="Give up this seat"]');assert.ok(giveUp);await React.act(async()=>{giveUp.click();giveUp.click();});assert.equal(calls.at(-1).name,'pkLeave');assert.equal(calls.at(-1).args.tableId,'seated');const count=calls.length;await React.act(async()=>settle.resolve({ok:true,queued:true}));assert.equal(calls.length,count);assert.match(messages.at(-1).m,/when this hand ends/);
+ const giveUp=w.document.querySelector('[title="Leave table"]');assert.ok(giveUp);await React.act(async()=>{giveUp.click();giveUp.click();});assert.equal(calls.at(-1).name,'pkLeave');assert.equal(calls.at(-1).args.tableId,'seated');const count=calls.length;await React.act(async()=>settle.resolve({ok:true,queued:true}));assert.equal(calls.length,count);assert.match(messages.at(-1).m,/when this hand ends/);
  await render(table('spin',{settings:{spinMode:true,spinBuyIn:10,maxPlayers:3,serverEngine:true},spin:{prize:30}}));assert.equal(w.document.querySelector('button[title="Edit table settings"]'),null);await React.act(async()=>del().click());assert.match(messages.at(-1).m,/Spin must finish/);assert.equal(calls.length,count);
  // A retained result seat is not active membership. Check both subscriptions:
  // table flags can lag the terminal/missing/archived parent tournament snapshot.

@@ -6,7 +6,7 @@ const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'o
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;
 w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');
-const calls=[];let tableNext,tokenNext,managed=0,created=0;
+const calls=[];let tableNext,tokenNext,managed=0,created=0,lobbies=0;
 let current={authorityVersion:2,clubId:'main',settings:{serverEngine:true,maxPlayers:6,baseGameType:'NLH',blinds:1,minBuyIn:40,maxBuyIn:200,straddle:true,actionTime:30},gameState:{__seq:1,phase:'waiting',board:[],pots:[],handN:1},players:{a:{uid:'a',name:'Alpha',stack:100,bet:0,status:'active',seatIndex:1,cards:[],cardCount:0},b:{uid:'b',name:'Beta',stack:100,bet:0,status:'active',seatIndex:2,cards:[],cardCount:0}}};
 const ref=(...a)=>({id:a.at(-1),path:a.slice(1).join('/')});
 const snapshot=()=>({id:'menu-test',exists:()=>true,data:()=>structuredClone(current),metadata:{fromCache:false}});
@@ -24,7 +24,7 @@ let user={uid:'viewer',role:'player',status:'approved',balance:1000};
 async function render(patch={}){
  user={uid:'viewer',role:'player',status:'approved',balance:1000,...patch};
  // Always supply callbacks: visibility must be enforced inside this component.
- await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'menu-test',user,clubSettings:{name:'Club'},onManage(){managed++;},onCreateTable(){created++;},onLeave(){},showToast(){}})));
+ await React.act(async()=>root.render(React.createElement(w.TableTest,{tableDocId:'menu-test',user,clubSettings:{name:'Club'},onManage(){managed++;},onCreateTable(){created++;},onLobby(){lobbies++;},onLeave(){},showToast(){}})));
  const watch=[...doc.querySelectorAll('button')].find(b=>b.textContent.trim()==='Spectate the table');if(watch)await React.act(()=>watch.click());
  if(!doc.querySelector('.poker-menu-panel'))await React.act(()=>title('Table menu').click());
  assertEnglishUi(doc.querySelector('.poker-menu-panel'),'Table menu '+user.role+' '+user.status);
@@ -62,10 +62,11 @@ function present(titles,label){for(const t of titles)assert.ok(title(t),label+':
  current.settings.spinMode=false;delete current.spin;
  current.players.viewer={uid:'viewer',name:'Viewer',stack:100,bet:0,status:'active',seatIndex:0,cards:[],cardCount:0};await update();await render();
  absent(privileged,'seated ordinary player');present(['Add chips','Sit out','Straddle when eligible (2×BB blind — you act last preflop)'],'seated player');
- assert.ok(doc.querySelector('[aria-label="Stand up"]'));
+ assert.ok(doc.querySelector('[aria-label="Leave table"]'));
  current.tournamentId='event1';await update();absent(['Add chips','Straddle when eligible (2×BB blind — you act last preflop)'],'seated tournament player');
  delete current.tournamentId;current.settings.spinMode=true;current.spin={};await update();absent(['Add chips','Straddle when eligible (2×BB blind — you act last preflop)'],'seated Spin player');
- present(['Sit out'],'seated Spin player');assert.ok(doc.querySelector('[aria-label="Stand up"]'),'Spin retains seat exit control');
+ present(['Sit out'],'seated Spin player');assert.ok(doc.querySelector('[aria-label="Leave table"]'),'Spin retains seat exit control');
+ const before=calls.length;await React.act(()=>doc.querySelector('[aria-label=\"Back to lobby\"]').click());assert.equal(lobbies,1);assert.ok(calls.slice(before).every(c=>c.name==='pkSeat'&&c.args.op==='heartbeat'),'temporary navigation never leaves, sits out or changes chips');
  assert.equal(managed,0);assert.equal(created,0);assert.equal(calls.filter(c=>['pkTableManage','pkTableCreate','pkDeal','godPeek'].includes(c.name)||c.name==='pkSeat'&&c.args.op!=='heartbeat').length,0,'opening menus causes no financial or privileged command');
  console.log('PASS: table-menu role matrix, callback defense, pending/banned denial, demotion, GOD identity/revocation and cash/tournament/Spin limits');
  }finally{await React.act(()=>root.unmount());w.close();}

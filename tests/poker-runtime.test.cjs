@@ -33,7 +33,7 @@ test('tick loop starts immediately, never overlaps slow requests and stops witho
  const schedule=(fn,ms)=>{assert.equal(ms,1000);timers.set(++seq,fn);return seq;};
  const request=()=>{calls++;return new Promise((yes,no)=>{resolve=yes;reject=no;});};
  const flush=async()=>{await Promise.resolve();await Promise.resolve();};
- const stop=startTickLoop(request,{setTimeout:schedule,clearTimeout:id=>timers.delete(id),onError:()=>errors++});
+ const stop=startTickLoop(request,{now:()=>1000,setTimeout:schedule,clearTimeout:id=>timers.delete(id),onError:()=>errors++});
  assert.equal(calls,1);assert.equal(timers.size,0,'no timer queues another request while the first is pending');
  resolve();await flush();assert.equal(timers.size,1);const run=timers.values().next().value;timers.clear();run();assert.equal(calls,2);assert.equal(timers.size,0);
  reject(Error('temporary network error'));await flush();assert.equal(errors,1);assert.equal(timers.size,1);

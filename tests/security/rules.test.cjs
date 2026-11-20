@@ -84,7 +84,24 @@ test('Tomer has verified oversight access, while unverified or forged identities
  }
 });
 test("hidden legacy decks and opponent private cards are inaccessible to players",async()=>{
- const db=player();await assertFails(getDoc(doc(db,"tables/table")));await assertFails(getDoc(doc(db,"tables/table/priv/other")));await assertFails(getDoc(doc(db,"tables/table/priv/_engine")));await assertSucceeds(getDoc(doc(db,"tables/table/priv/player")));
+ const db=player();await assertFails(getDoc(doc(db,"tables/table")));await assertFails(getDoc(doc(db,"tables/table/priv/other")));await assertFails(getDoc(doc(db,"tables/table/priv/_engine")));await assertFails(getDoc(doc(db,"tables/table/priv/player")));
+});
+test('own private cards require a current approved club membership, including after suspension',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const db=ctx.firestore();
+  await setDoc(doc(db,'tables/protected/priv/player'),{cards:['own']});
+  await setDoc(doc(db,'tables/protected/priv/suspended'),{cards:['private']});
+  await setDoc(doc(db,'memberships/suspended_club'),{uid:'suspended',clubId:'club',status:'approved'});
+ });
+ await assertSucceeds(getDoc(doc(player(),'tables/protected/priv/player')));
+ const db=env.authenticatedContext('suspended').firestore();
+ await assertSucceeds(getDoc(doc(db,'tables/protected/priv/suspended')));
+ for(const status of ['pending','banned']){
+  await env.withSecurityRulesDisabled(ctx=>updateDoc(doc(ctx.firestore(),'memberships/suspended_club'),{status}));
+  await assertFails(getDoc(doc(db,'tables/protected/priv/suspended')));
+ }
+ await env.withSecurityRulesDisabled(ctx=>deleteDoc(doc(ctx.firestore(),'memberships/suspended_club')));
+ await assertFails(getDoc(doc(db,'tables/protected/priv/suspended')));
 });
 test("trusted backend remains capable of atomic ledger writes",async()=>{
  await env.withSecurityRulesDisabled(async ctx=>{const db=ctx.firestore(),batch=writeBatch(db);batch.update(doc(db,"memberships/player_club"),{balance:100});batch.set(doc(db,"gameLog/server-receipt"),{uid:"player",clubId:"club",profit:0});await batch.commit();});

@@ -52,7 +52,8 @@ async function fixture({mode='browser', ios=false, legacy=false}={}) {
     onSnapshot:(target,options,next)=>{(typeof options==='function'?options:next)(snapshot(target));return()=>{};},
     fx:async name=>{if(name==='pkEnsurePlayer')return{playerId:profile.playerId};throw Error('Unexpected install callable: '+name);},
     updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite};
-  w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
+  w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-viewer-access.js'),'utf8'));
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
   w.eval(script); w.__pkMuted=true;
   w.__installEvt={prompt:()=>{prompts++;},userChoice:Promise.resolve({outcome:'dismissed'})};
   const root=ReactDOM.createRoot(w.document.getElementById('root'));

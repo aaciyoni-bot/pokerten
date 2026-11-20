@@ -4,6 +4,7 @@ const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScript
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;
 w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.PokerRuntime=require('../../assets/js/poker-runtime');
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-viewer-access.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');w.eval([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.AppTest=App;'));
 // Probe the real App lifecycle; table-menu navigation itself is tested separately.

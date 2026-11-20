@@ -67,6 +67,56 @@
   function visibleStack(value) {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
   }
+  // Presentation only: the server has already settled these amounts atomically.
+  // Every viewer uses physical seat order, rather than their rotated hero layout.
+  function resultTimeline(g, players) {
+    const reveals = g.earlyWin || g.allInReveal ? [] : Object.entries(players || {})
+      .filter(([, p]) => p.cards?.length && ['active', 'busted'].includes(p.status))
+      .sort(([a, p], [b, q]) => (p.seatIndex || 0) - (q.seatIndex || 0) || a.localeCompare(b));
+    const revealDelays = Object.fromEntries(reveals.map(([uid], i) => [uid, Math.min(i, 8) * 180]));
+    const winnerAt = Math.max(400, reveals.length ? Math.min(reveals.length - 1, 8) * 180 + 320 + 200 : 0);
+    const amounts = new Map();
+    for (const a of g.lastAwards || []) {
+      if (a.uid && Number.isFinite(Number(a.amount)) && Number(a.amount) > 0)
+        amounts.set(a.uid, Math.round(((amounts.get(a.uid) || 0) + Number(a.amount)) * 100) / 100);
+    }
+    const flightAt = winnerAt + 300, flightMs = 2000;
+    const awards = [...amounts].map(([uid, amount], i) => ({uid, amount, delay: flightAt + Math.min(i, 3) * 80}));
+    return {revealDelays, winnerAt, flightAt, flightMs, awards};
+  }
+  function createResultPresentation(now = () => root.performance?.now?.() ?? Date.now()) {
+    let scope, previous, result;
+    return {
+      read(tableId, g = {}, players = {}, passive = false) {
+        if (scope !== tableId) { scope = tableId; previous = null; result = null; }
+        if (g.phase !== 'showdown') {
+          if (g.phase) previous = {phase: g.phase, hand: g.handN, passive};
+          result = null;
+          return {key: null, animated: false, winnerReady: true, nextIn: null, stack: visibleStack};
+        }
+        const key = `${tableId}:${g.handN || 0}:${g.showdownAt || 0}`;
+        if (result?.key !== key) {
+          const timeline = resultTimeline(g, players);
+          result = {...timeline, key, started: now(), animated: !!(g.showdownAt > 0 && timeline.awards.length &&
+            previous && previous.phase !== 'showdown' && previous.hand === g.handN && !previous.passive && !passive)};
+          previous = {phase: g.phase, hand: g.handN, passive};
+        }
+        // Do not replay a result after returning from the lobby/background.
+        if (passive) result.animated = false;
+        const elapsed = Math.max(0, now() - result.started);
+        const arrivals = result.awards.map(a => a.delay + result.flightMs);
+        const next = result.animated ? [result.winnerAt, ...arrivals].filter(t => t > elapsed).sort((a, b) => a - b)[0] : undefined;
+        const snapshot = result;
+        return {...result, elapsed, nextIn: next === undefined ? null : next - elapsed,
+          winnerReady: !result.animated || elapsed >= result.winnerAt,
+          stack(value, uid) {
+            const actual = visibleStack(value), award = snapshot.awards.find(a => a.uid === uid);
+            if (actual === null || !snapshot.animated || !award || elapsed >= award.delay + snapshot.flightMs) return actual;
+            return Math.max(0, Math.round((actual - award.amount) * 100) / 100);
+          }};
+      }
+    };
+  }
   // Callable confirmations and realtime snapshots may arrive in either order.
   // Apply chips and turn as one server-owned update; never replay an old one.
   function acceptTableUpdate(current, incoming, partial = false) {
@@ -260,7 +310,7 @@
     refresh();
     return ()=>{stopped=true;clearTimeout(timer);root.document?.removeEventListener('visibilitychange',wake);};
   }
-  const api = { actionTransport, createTimings, timings:createTimings(), watchGodTables, godCardContext, handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
+  const api = { resultTimeline, createResultPresentation, actionTransport, createTimings, timings:createTimings(), watchGodTables, godCardContext, handDisplayOrder, createPlayerCopies, deckFour, visibleStack, acceptTableUpdate, createWorkerClient, spinTickTimes, startTickLoop, watchSnapshot };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PokerRuntime = api;
 })(typeof window !== 'undefined' ? window : globalThis);

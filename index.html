@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="379">
-    <script src="assets/js/app-update.js?v=379" defer></script>
+    <meta name="app-version" content="380">
+    <script src="assets/js/app-update.js?v=380" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1210,7 +1210,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-settlement-ui.js?v=359"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-tournament.js?v=368"></script>
-    <script src="assets/js/poker-runtime.js?v=379"></script>
+    <script src="assets/js/poker-runtime.js?v=380"></script>
     <script src="assets/js/poker-range-model.js?v=356"></script>
 <script>
 
@@ -11012,6 +11012,24 @@ const pokerFullRunout = (board, deck) => {
   return full.length === 5 && full.every(Boolean) ? full : [];
 };
 
+const usePokerResultPresentation = (tableId, game, players, headless) => {
+  const clock = useRef(null);
+  if (!clock.current) clock.current = window.PokerRuntime.createResultPresentation(() => performance.now());
+  const [, refresh] = useState(0);
+  const result = clock.current.read(tableId, game, players, headless || document.visibilityState === 'hidden');
+  useEffect(() => {
+    if (result.nextIn === null) return;
+    const timer = setTimeout(() => refresh(n => n + 1), Math.max(1, result.nextIn));
+    return () => clearTimeout(timer);
+  }, [result.key, result.nextIn]);
+  useEffect(() => {
+    const wake = () => refresh(n => n + 1);
+    document.addEventListener('visibilitychange', wake);
+    return () => document.removeEventListener('visibilitychange', wake);
+  }, []);
+  return result;
+};
+
 function PokerTable({
   tableDocId,
   user,
@@ -11430,6 +11448,8 @@ function PokerTable({
   }, [headless, tournamentEnded, tableState?.id, tableDocId, onLeave]);
   const gs = tournamentEnded ? {...tableState.gameState,phase:'waiting',board:[],board2:null,pots:[],activeTurnUid:null,lastWinners:null,highestBet:0,allInReveal:false} : tableState?.gameState || {};
   const players = tournamentEnded ? Object.fromEntries(Object.entries(tableState?.players || {}).filter(([uid])=>uid===user.uid)) : tableState?.players || {};
+  const resultPresentation = usePokerResultPresentation(tableDocId, gs, players, headless);
+  const reducedResultMotion = useReducedPokerMotion();
   // DRIVER ELECTION. Bots, discards and the next deal used to be driven by the
   // super admin's browser alone: with him away, every bot turn waited for the
   // 52-second watchdog and the table crawled — "stuck", to anyone playing.
@@ -12693,7 +12713,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     // Opening/reconnecting to a table is a baseline, not a replay of its hand.
     if (headless || ps.silent || ps.tableId !== tableDocId) {
       prevSnd.current = {tableId:tableDocId,silent:headless,board:bl,phase:gs.phase,turnMine:gs.activeTurnUid===user.uid,
-        chatKey,acts:Object.fromEntries(Object.entries(players).map(([uid,p])=>[uid,p.actionText]))};
+        resultKey:resultPresentation.key,chatKey,acts:Object.fromEntries(Object.entries(players).map(([uid,p])=>[uid,p.actionText]))};
       return;
     }
     if (bl > ps.board) playSnd('flip', bl - ps.board, 0.055);
@@ -12701,7 +12721,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       legacyDealAt.current = Date.now();
       playSnd('deal');
     }
-    if (gs.phase === 'showdown' && ps.phase !== 'showdown') playSnd(pokerResultCue(gs, user.uid, setts.blinds));
+    if (resultPresentation.animated && resultPresentation.winnerReady && ps.resultKey !== resultPresentation.key) {
+      ps.resultKey = resultPresentation.key;
+      playSnd(pokerResultCue(gs, user.uid, setts.blinds));
+    }
     const mine = gs.activeTurnUid === user.uid && BETTING.includes(gs.phase);
     if (mine && !ps.turnMine) {
       try {
@@ -12724,7 +12747,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     ps.phase = gs.phase;
     ps.turnMine = mine;
     ps.chatLen = cl;
-  }, [tableState, tableDocId, headless]);
+  }, [tableState, tableDocId, headless, resultPresentation.key, resultPresentation.winnerReady]);
   if (loading || !tableState) return React.createElement('div', {
     className: 'h-full flex flex-col gap-4 items-center justify-center p-6 text-amber-300', role: 'status'
   }, tableError || 'Connecting to your table…', tableError && React.createElement('button', {
@@ -12745,7 +12768,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const cid = c => c ? c.id || String(c.val) + String(c.suit) : '';
   const winHL = (() => {
     try {
-      if (gs.phase !== 'showdown' || !gs.lastWinners || (gs.board || []).length < 3) return null;
+      if (gs.phase !== 'showdown' || !resultPresentation.winnerReady || !gs.lastWinners || (gs.board || []).length < 3) return null;
       const names = new Set(String(gs.lastWinners).split(', '));
       const isOmaha = (gs.currentGameType || '').startsWith('Omaha');
       const set = new Set();
@@ -13301,17 +13324,18 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const showCards = (dispCards || []).length > 0 && !['waiting'].includes(gs.phase) && p.status !== 'sitout' && !(p.status === 'folded' && hidden && !isMe);
     // Showdown: the hands turn over one seat at a time, not all at once. A
     // fresh key remounts the card so the reveal replays, delayed by seat.
-    const sdReveal = !isMe && !hidden && gs.phase === 'showdown' && !gs.earlyWin && (p.status === 'active' || p.status === 'busted');
-    const sdDelay = `${Math.min(i, 8) * 180}ms`;
+    const sdReveal = resultPresentation.animated && !isMe && !hidden && gs.phase === 'showdown' && !gs.earlyWin && !gs.allInReveal && (p.status === 'active' || p.status === 'busted');
+    const sdDelay = `${resultPresentation.revealDelays?.[p.uid] || 0}ms`;
     const folded = p.status === 'folded';
     // Derive the visible clock from this turn's timestamp, including the first
     // render after a turn change or reconnect. The interval only refreshes it.
-    const manualUntil = isTurn && p.manualControl?.turnStartedAt === gs.turnStartedAt ? p.manualControl.until : 0;
+    const manualUntil = isTurn && p.manualControl && p.manualControl.turnStartedAt === gs.turnStartedAt ? p.manualControl.until : 0;
     const turnDuration = Number(setts.actionTime) || 30;
     const turnSeconds = isTurn && gs.turnStartedAt ? Math.min(turnDuration, Math.max(0, Math.ceil(((manualUntil || Number(gs.turnStartedAt) + turnDuration * 1000) - Date.now()) / 1000))) : turnDuration;
     const timerPct = isTurn ? turnSeconds / turnDuration : 0;
-    const seatAward = gs.phase === 'showdown' && gs.lastAwards?.find(a => a.uid === p.uid);
-    const isWinner = gs.phase === 'showdown' && (gs.lastAwards?.length ? gs.lastAwards.some(a=>a.uid===p.uid) : gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name));
+    const seatAward = gs.phase === 'showdown' && resultPresentation.winnerReady && gs.lastAwards?.find(a => a.uid === p.uid);
+    const isWinner = gs.phase === 'showdown' && resultPresentation.winnerReady && (gs.lastAwards?.length ? gs.lastAwards.some(a=>a.uid===p.uid) : gs.lastWinners && String(gs.lastWinners).split(', ').includes(p.name));
+    const displayedStack = reducedResultMotion ? window.PokerRuntime.visibleStack(p.stack) : resultPresentation.stack(p.stack, p.uid);
     const godLeading = godView && isGodUser(user) && godFinalLeaders.uids.includes(p.uid);
     const godTied = godFinalLeaders.uids.length > 1;
     const godLeaderLabel = (godFinalLeaders.pendingDiscard ? (godTied ? 'Tied best potential hand on full board' : 'Best potential hand on full board') : (godTied ? 'Tied best hand on full board' : 'Best hand on full board')) + ((gs.board2 || []).length ? ' 1' : '') + ': ' + handName(godFinalLeaders.score) + (godFinalLeaders.pendingDiscard ? ' · Assuming each player keeps their best two cards; the actual discard can change the winner' : '');
@@ -13492,7 +13516,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         React.createElement('span', {className:'bot-manual-marker', title:'An operator is playing or has acted for this bot this hand'}, 'Manual'), gs.dealerUid === p.uid && React.createElement('span', {className:'poker-dealer-marker', 'aria-label':'Dealer'}, 'D')), React.createElement("div", {
       className: "poker-stack-amount text-gold-400 font-black text-[12px] leading-tight",
       dir: "ltr"
-    }, window.PokerRuntime.visibleStack(p.stack) === null ? '—' : formatShort(p.stack)), !isMe && p.leavingAt && !tableState.tournamentId && (() => {
+    }, displayedStack === null ? '—' : formatShort(displayedStack)), !isMe && p.leavingAt && !tableState.tournamentId && (() => {
       const lms = Math.max(0, p.leavingAt - Date.now());
       return React.createElement("div", {
         className: "poker-leave-status",
@@ -13509,7 +13533,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         React.createElement('span',{style:{transform:'scaleX(' + timerPct + ')'}}))) : seatAward?.amount > 0 ? React.createElement('div', {
       className:'poker-seat-action action-badge badge-win', dir:'ltr',
       'aria-label':'Won ' + formatShort(seatAward.amount)
-    }, '+' + formatShort(seatAward.amount)) : p.actionText && React.createElement("div", {
+    }, '+' + formatShort(seatAward.amount)) : p.actionText && (p.actionText !== 'WINNER' || resultPresentation.winnerReady) && React.createElement("div", {
       className: `poker-seat-action action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
       style: isMe ? {} : farPod ? {
         top: 'auto',
@@ -13625,34 +13649,16 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     },
     amount: fx.amount,
     snd: !headless && fxi === 0
-  })), gs.phase === 'showdown' && (gs.lastWinAmount || 0) > 0 && gs.lastWinners && (() => {
-    // Exact per-winner amounts when available (lastAwards); legacy even split
-    // only as a fallback for hands settled by an older client.
-    let awards;
-    if (Array.isArray(gs.lastAwards) && gs.lastAwards.length) {
-      awards = gs.lastAwards.map(a => ({
-        ix: displayList.findIndex(p => p.uid === a.uid),
-        amount: a.amount
-      })).filter(a => a.ix >= 0 && a.amount > 0);
-    } else {
-      const names = String(gs.lastWinners).split(', ');
-      const wIdx = displayList.map((p, i) => names.includes(p.name) ? i : -1).filter(ix => ix >= 0);
-      const share = wIdx.length ? round2((gs.lastWinAmount || 0) / wIdx.length) : 0;
-      awards = wIdx.map(ix => ({
-        ix,
-        amount: share
-      }));
-    }
-    if (!awards.length) return null;
-    const dur = 2;
+  })), resultPresentation.animated && !reducedResultMotion && (() => {
+    const awards = resultPresentation.awards.map(a => ({...a, ix:displayList.findIndex(p => p.uid === a.uid)})).filter(a => a.ix >= 0);
     return awards.map((a, k) => React.createElement(PotAward, {
       unit: chipUnit,
-      key: 'pa' + (displayList[a.ix]?.uid || a.ix) + '_' + (gs.showdownAt || 0),
+      key: 'pa' + a.uid + '_' + resultPresentation.key,
       to: seatPos(a.ix),
-      toUid: displayList[a.ix]?.uid,
+      toUid: a.uid,
       amount: a.amount,
-      dur: dur,
-      delay: (gs.earlyWin ? 400 : 800) + Math.min(k, 3) * 80,
+      dur: resultPresentation.flightMs / 1000,
+      delay: a.delay,
       snd: !headless && k === 0
     }));
   })(), (() => {
@@ -13842,7 +13848,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   })), React.createElement("div", {
     role:'status',
     className: "flex-1 text-center text-slate-400 font-bold text-xs truncate" + (gs.phase === 'showdown' ? " poker-showdown-summary" : "")
-  }, tournamentEnded ? 'Tournament complete' : tourCoordinatorIssue ? 'Tournament synchronization: '+tourCoordinatorIssue : tableOnBreak ? 'Tournament break' : ['waiting','showdown'].includes(gs.phase) && tour?.balanceHoldUntil > Date.now() ? 'Balancing tables — waiting for the other hand to finish' : acting ? 'Sending move…' : controlledBot ? 'Playing as '+controlledBot.name : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? React.createElement('span',null,React.createElement('strong',null,'🏆 ',Array.isArray(gs.lastAwards) && gs.lastAwards.length ? gs.lastAwards.map(a=>(players[a.uid]?.name || a.name || 'Winner')+' +'+formatMoney(a.amount)).join(' · ') : (gs.lastWinners || 'Hand complete')+' · '+formatMoney(gs.lastWinAmount || 0)),React.createElement('small',null,gs.earlyWin ? 'Won by fold' : 'Showdown')) : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !controlledBot && !isMyTurn && !acting ? React.createElement("button", {
+  }, tournamentEnded ? 'Tournament complete' : tourCoordinatorIssue ? 'Tournament synchronization: '+tourCoordinatorIssue : tableOnBreak ? 'Tournament break' : ['waiting','showdown'].includes(gs.phase) && tour?.balanceHoldUntil > Date.now() ? 'Balancing tables — waiting for the other hand to finish' : acting ? 'Sending move…' : controlledBot ? 'Playing as '+controlledBot.name : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? !resultPresentation.winnerReady ? 'Revealing hands…' : React.createElement('span',null,React.createElement('strong',null,'🏆 ',Array.isArray(gs.lastAwards) && gs.lastAwards.length ? gs.lastAwards.map(a=>(players[a.uid]?.name || a.name || 'Winner')+' +'+formatMoney(a.amount)).join(' · ') : (gs.lastWinners || 'Hand complete')+' · '+formatMoney(gs.lastWinAmount || 0)),React.createElement('small',null,gs.earlyWin ? 'Won by fold' : 'Showdown')) : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !controlledBot && !isMyTurn && !acting ? React.createElement("button", {
     onClick: () => setPreCF(v => !v),
     // reads as a real pressable button: raised gradient, visible border
     className: `shrink-0 px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`

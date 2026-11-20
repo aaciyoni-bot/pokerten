@@ -33,3 +33,19 @@ test('slow ticks do not add another second after the response and never overlap'
  now=1700;assert.equal(calls,1);assert.equal(scheduled,undefined);resolve();await Promise.resolve();await Promise.resolve();
  assert.equal(scheduled.ms,100);scheduled.fn();assert.equal(calls,2);stop();resolve();await Promise.resolve();await Promise.resolve();assert.equal(scheduled,null);
 });
+
+test('Firebase callables initialize even before optional runtime diagnostics are available',async()=>{
+ const fs=require('node:fs'),vm=require('node:vm');
+ const html=fs.readFileSync(require('node:path').join(__dirname,'../index.html'),'utf8');
+ const start=html.indexOf('const _fx = getFunctions(app);');
+ const source=html.slice(start,html.indexOf('// Keep popup errors visible.',start));
+ for(const runtime of [undefined,{},require('../assets/js/poker-runtime')]){
+  const calls=[],window={fb:{},PokerRuntime:runtime};
+  vm.runInNewContext(source,{window,app:{},getFunctions:(_,region)=>region||'us-central1',httpsCallable:(region,name)=>async data=>{calls.push({region,name,data});return {data:{ok:true}};}});
+  assert.equal((await window.fb.fx('pkSecurityStatus',{})).ok,true);
+  const request={requestId:'existing-receipt'};await window.fb.fx('pkAct',request);
+  assert.equal(calls[0].name,'pkSecurityStatus');assert.equal(calls[0].region,'us-central1');
+  assert.equal(calls[1].name,runtime?.actionTransport?'pkActEurope':'pkAct');
+  assert.equal(calls[1].data,request);
+ }
+});

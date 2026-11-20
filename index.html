@@ -1080,8 +1080,11 @@
         const _fx = getFunctions(app);
         const _eu = getFunctions(app, 'europe-west1');
         const _call = (client, name, data) => httpsCallable(client, name,{timeout:20000})(data).then(r => r.data);
-        const _action = window.PokerRuntime.actionTransport(data => _call(_eu,'pkActEurope',data), data => _call(_fx,'pkAct',data));
-        window.fb.fx = (name, data) => window.PokerRuntime.timings.measure(name, () => name === 'pkAct' ? _action(data) : _call(_fx,name,data));
+        const _action = (window.PokerRuntime?.actionTransport || ((primary, fallback) => fallback))(data => _call(_eu,'pkActEurope',data), data => _call(_fx,'pkAct',data));
+        window.fb.fx = (name, data) => {
+            const run = () => name === 'pkAct' ? _action(data) : _call(_fx,name,data);
+            return window.PokerRuntime?.timings?.measure ? window.PokerRuntime.timings.measure(name, run) : run();
+        };
         // Keep popup errors visible. Cross-origin redirect fallback can silently
         // lose the Google result on browsers with partitioned storage.
         window.fb.signIn = async () => {

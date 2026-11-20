@@ -22,6 +22,7 @@ Classic design: `archive/pokerten-classic-2026-11-20`, commit `35ad6b7add33443b2
 - `node --test tests/*.test.cjs functions/test/*.test.js`: 394 tests passed.
 - `npm test --prefix tests/ui`: complete UI suite passed, including new lobby session/auth timeout regression tests and existing GOD, accounting, chip conservation, PLO7, showdown, cashier and tournament tests.
 - Engine smoke and mobile-update/updater tests passed.
+- Follow-up native verification: all 35 pinned-runtime tests passed after adapting the builder to retryable roster listeners and removing the hard Firebase-startup dependency on optional timing helpers. Five focused connection tests also passed. Android packaging is bounded to 10 minutes; a superseded client build yields to its corrected replacement.
 - Browser preview uses isolated simulated data and rejects writes. Live multi-player timing, mobile native-device behavior, and load/soak testing remain separate acceptance checks.
 
 ## Scope still open from the 42-item backlog

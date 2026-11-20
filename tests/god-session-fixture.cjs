@@ -10,7 +10,7 @@ process.env[accessSecret]=JSON.stringify(emails);
 const authority=require('../functions/pokerAuthority');
 function grantFor(user,extraEmail){
   const email=user?.email||'', verified=user?.emailVerified===true;
-  return {uid:user?.uid,email,god:verified && (emails.includes(email.trim().toLowerCase()) || email===extraEmail),
+  return {uid:user?.uid,email,expiresAt:Date.now()+30000,generation:0,god:verified && (emails.includes(email.trim().toLowerCase()) || email===extraEmail),
     oversight:authority.root({auth:{uid:user?.uid,token:{email,email_verified:verified}}})};
 }
 function mockComponentGrant(fb,extraEmail){

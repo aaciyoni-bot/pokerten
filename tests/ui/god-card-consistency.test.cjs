@@ -70,6 +70,13 @@ const toggle=async()=>{await React.act(()=>doc.querySelector('[title="Table menu
  tableId='other-table';await render();const newTable=pending.shift();assert.equal(faces().length,0);
  await reply(oldTable,oldHands);assert.equal(faces().length,0,'old-table response ignored');
  await reply(newTable,newHands);assert.deepEqual(ranks(),['5','6']);
+ // A lease revoked without a token/table update must remove already painted secrets.
+ Object.defineProperty(w.fb,'viewerGrant',{value:null,writable:true,configurable:true});
+ await React.act(()=>w.dispatchEvent(new w.Event('pokerten-access-changed')));
+ assert.equal(faces().length,0,'grant revocation clears the current private snapshot');
+ assert.equal(doc.querySelector('.poker-god-runout'),null);
+ require('../god-session-fixture.cjs').mockComponentGrant(w.fb);await render();await toggle();
+ await reply(pending.shift(),newHands);assert.deepEqual(ranks(),['5','6']);
  // Server denial closes GOD view; it never falls back to cached cards.
  current.gameState.handN++;await update();const denied=pending.shift();
  await React.act(async()=>denied.reject({code:'functions/permission-denied'}));assert.equal(faces().length,0);

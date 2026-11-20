@@ -79,7 +79,12 @@ service cloud.firestore {
     // The deck/engine doc (_engine) and everyone else's cards are server-only.
     // No client ever writes here — only Cloud Functions (admin SDK bypasses rules).
     match /tables/{id}/priv/{uid} {
-      allow read: if signedIn() && uid != "_engine" && request.auth.uid == uid;
+      function currentMember() {
+        let table = get(/databases/$(database)/documents/tables/$(id)).data;
+        return table.authorityVersion == 2 && (superAdmin() ||
+          get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + table.clubId)).data.status == 'approved');
+      }
+      allow read: if signedIn() && uid != "_engine" && request.auth.uid == uid && currentMember();
       allow write: if false;
     }
 

@@ -10,6 +10,7 @@ w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-
 w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
 const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManagementAppTest=App;');
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-viewer-access.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-settlement-ui.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
 w.eval(script);w.__pkMuted=true;
@@ -86,6 +87,12 @@ async function assertFullManagement(fixture){
  await mountAndEnter(supervisorA);
  await assertFullManagement(supervisorA);
  assert.equal(supervisorA.membership.role,'player');assert.equal(supervisorA.membership.status,'pending');
+ // Leaving the foreground removes privileged content without losing the route.
+ let hidden=false;Object.defineProperty(doc,'hidden',{get:()=>hidden,configurable:true});
+ await React.act(()=>{hidden=true;doc.dispatchEvent(new w.Event('visibilitychange'));});
+ assert.equal(doc.querySelector('.club-admin'),null,'backgrounding unmounts the privileged screen');
+ await React.act(async()=>{hidden=false;doc.dispatchEvent(new w.Event('visibilitychange'));});
+ assert.ok(doc.querySelector('.club-admin'),'fresh server permission restores the same management route');
  // Revocation changes the trusted identity on the same mounted App and UID.
  supervisorA.identity.emailVerified=false;
  await React.act(async()=>supervisorA.refresh());
@@ -103,6 +110,14 @@ async function assertFullManagement(fixture){
  await React.act(async()=>ordinary.refresh());
  await assertFullManagement(ordinary);
  assert.equal(ordinary.calls.filter(call=>call.name==='pkEnsurePlayer').length,0,'canonical profiles refresh without redundant identity creation');
+ // A new UID cannot inherit the old account's club or management screen while loading.
+ const getDoc=w.fb.getDoc;let finishProfile;
+ w.fb.getDoc=ref=>ref.path.startsWith('users/')?new Promise(resolve=>{finishProfile=()=>getDoc(ref).then(resolve);}):getDoc(ref);
+ ordinary.identity.uid='second-account';ordinary.identity.email='second@example.invalid';
+ await React.act(()=>{ordinary.refresh();});
+ assert.equal(doc.querySelector('.club-admin'),null);assert.equal(manage(),null);
+ await React.act(async()=>finishProfile());
+ assert.equal(doc.querySelector('.club-admin'),null,'loading another profile cannot restore the old club route');
  await React.act(()=>root.unmount());w.close();
  console.log('PASS: real App club entry grants verified SUPERVISOR_A full management with stale membership, denies forged profile identity, and follows token refresh/revocation');
 })().catch(async error=>{console.error(error);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

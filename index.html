@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="380">
-    <script src="assets/js/app-update.js?v=380" defer></script>
+    <meta name="app-version" content="381">
+    <script src="assets/js/app-update.js?v=381" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1083,7 +1083,12 @@
         const _action = (window.PokerRuntime?.actionTransport || ((primary, fallback) => fallback))(data => _call(_eu,'pkActEurope',data), data => _call(_fx,'pkAct',data));
         window.fb.fx = (name, data) => {
             const run = () => name === 'pkAct' ? _action(data) : _call(_fx,name,data);
-            return window.PokerRuntime?.timings?.measure ? window.PokerRuntime.timings.measure(name, run) : run();
+            const result = window.PokerRuntime?.timings?.measure ? window.PokerRuntime.timings.measure(name, run) : run();
+            return result.catch(error => {
+                if (['godPeek','godLobbyCounts','pkCardPeek','pkBotChat','pkBotTurn'].includes(name) && /permission-denied|unauthenticated/.test(error?.code || ''))
+                    window.dispatchEvent(new Event('pokerten-access-denied'));
+                throw error;
+            });
         };
         // Keep popup errors visible. Cross-origin redirect fallback can silently
         // lose the Google result on browsers with partitioned storage.
@@ -1209,6 +1214,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <link rel="stylesheet" href="assets/css/bot-chat.css?v=371">
     <script src="assets/js/poker-settlement-ui.js?v=359"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
+    <script src="assets/js/poker-viewer-access.js?v=381"></script>
     <script src="assets/js/poker-tournament.js?v=368"></script>
     <script src="assets/js/poker-runtime.js?v=380"></script>
     <script src="assets/js/poker-range-model.js?v=356"></script>
@@ -1472,7 +1478,8 @@ const BOT_NAMES = BOT_NAMES_PK;
 const isGodUser = u => {
   const identity = window.fb?.auth?.currentUser, grant = window.fb?.viewerGrant;
   return !!(u && identity && identity.uid === u.uid && identity.emailVerified === true &&
-    grant?.uid === identity.uid && grant.email === identity.email && grant.god === true);
+    grant?.uid === identity.uid && grant.email === identity.email && grant.god === true &&
+    Number.isFinite(grant.expiresAt) && grant.expiresAt > Date.now());
 };
 const isClubOversightUser = u => isGodUser(u) && window.fb.viewerGrant.oversight === true;
 // A verified oversight account already has server access, even when its club
@@ -4647,29 +4654,21 @@ function App() {
   }, []);
   useEffect(() => {
     if (!fbReady) return;
-    let stopped = false, attempt = 0, retry;
-    const loadGrant = async (identity, current) => {
-      if (!identity?.emailVerified) return;
-      const email=identity.email,uid=identity.uid;
-      try {
-        const grant = await window.fb.fx('godLobbyCounts',{mode:'access'});
-        if (stopped || current !== attempt || window.fb.auth.currentUser?.uid !== uid || window.fb.auth.currentUser?.email !== email || !window.fb.auth.currentUser?.emailVerified) return;
-        window.fb.viewerGrant = grant?.uid === uid ? {...grant,email} : null;
-        setDbUser(profile=>profile?.uid===identity.uid ? {...profile} : profile);
-      } catch (error) {
-        if (stopped || current !== attempt) return;
-        window.fb.viewerGrant=null;
-        setDbUser(profile=>profile?.uid===identity.uid ? {...profile} : profile);
-        if (!/unauthenticated|permission-denied/.test(error?.code || '')) retry=setTimeout(()=>loadGrant(identity,current),5000);
-      }
-    };
+    let stopped = false, attempt = 0, identityUid = null;
+    const access = window.PokerViewerAccess?.create({fb:window.fb,document,events:window,
+      onChange:()=>{if(!stopped)setDbUser(profile=>profile ? {...profile} : profile);}});
     // Token refreshes may update the verified identity without signing out.
     // Reload the effective profile so management visibility follows it too.
     const unsub = (window.fb.onIdTokenChanged || window.fb.onAuthStateChanged)(window.fb.auth, async user => {
       const current = ++attempt, profileRequest = ++profileAttempt.current;
-      clearTimeout(retry);
-      if (!user?.emailVerified || window.fb.viewerGrant?.uid !== user.uid || window.fb.viewerGrant?.email !== user.email) window.fb.viewerGrant=null;
-      loadGrant(user,current);
+      access?.refresh();
+      if (!access) window.fb.viewerGrant=null;
+      if (identityUid !== (user?.uid || null)) {
+        identityUid=user?.uid || null;
+        setDbUser(null);setActiveClubState(null);setActiveMem(null);setActiveTable(null);
+        setTablesDB([]);setToursDB([]);setTablesLoaded(false);setTablesScope('');
+        setCurrentView('auth');
+      }
       setAuthError('');
       if (!user) { setAuthLoading(false); setDbUser(null); setActiveClubState(null); setActiveMem(null); setActiveTable(null); setTablesDB([]); setToursDB([]); setTablesLoaded(false); setTablesScope(''); setCurrentView('auth'); return; }
       setAuthLoading(true);
@@ -4684,7 +4683,7 @@ function App() {
         if (!stopped && current === attempt && profileRequest === profileAttempt.current) setAuthLoading(false);
       }
     });
-    return () => { stopped = true; attempt++; profileAttempt.current++; clearTimeout(retry); unsub(); };
+    return () => { stopped = true; attempt++; profileAttempt.current++; access?.stop(); unsub(); };
   }, [fbReady]);
   useEffect(() => {
     if (!fbReady) return;
@@ -4811,13 +4810,12 @@ function App() {
       setActiveMem(null);
       return;
     }
+    let watching=true;
     const unsub = window.fb.onSnapshot(window.fb.doc(window.fb.db, "memberships", `${dbUser.uid}_${activeClub.id}`), d => {
-      setActiveMem(d.exists() ? {
-        id: d.id,
-        ...d.data()
-      } : null);
-    });
-    return () => unsub();
+      if(!watching || window.fb.auth.currentUser?.uid!==dbUser.uid)return;
+      setActiveMem(d.exists() ? {id:d.id,...d.data()} : null);
+    },()=>{if(watching)setActiveMem(null);});
+    return () => {watching=false;unsub();};
   }, [fbReady, dbUser?.uid, activeClub?.id]);
   const enterClub = async club => {
     try {
@@ -4913,7 +4911,7 @@ function App() {
     if (!fbReady || !dbUser?.uid) return;
     // Keep the profile subscription independent of the selected club.
     return window.fb.onSnapshot(window.fb.doc(window.fb.db, 'users', dbUser.uid), d => {
-      if (d.exists()) setDbUser({...d.data(), uid: d.id});
+      if (d.exists() && window.fb.auth.currentUser?.uid===dbUser.uid) setDbUser({...d.data(), uid: d.id});
     }, () => showToast('Your account details could not be updated. Please try again.', 'error'));
   }, [fbReady, dbUser?.uid]);
   useEffect(() => {
@@ -4989,7 +4987,7 @@ function App() {
       if (activeClub && currentView === 'pending') changeView('lobby');
       return;
     }
-    if (activeMem === null) return;
+    if (activeMem === null || document.hidden || window.fb.viewerAccessPending) return;
     if (activeMem.status !== 'approved' && !['auth', 'clubs', 'pending'].includes(currentView)) changeView('pending');else if (activeMem.status === 'approved' && currentView === 'pending') changeView('lobby');
   }, [dbUser, activeClub, activeMem, currentView]);
   if (!fbReady) return React.createElement("div", {
@@ -11268,7 +11266,7 @@ function PokerTable({
   const godContextKey = window.PokerRuntime.godCardContext(tableState);
   const authIdentity = window.fb?.auth?.currentUser;
   const godIdentityKey = JSON.stringify([user.uid, authIdentity?.uid || '',
-    authIdentity?.email || '', authIdentity?.emailVerified === true, godAuthVersion]);
+    authIdentity?.email || '', authIdentity?.emailVerified === true, window.fb?.viewerGrant?.generation, godAuthVersion]);
   // Render-time validation matters: an effect runs AFTER the first paint of a
   // new hand. Never paint last hand's private cards while a fresh peek loads.
   const godSnapshotReady = !!(srvEngine && godView && tableState?.id === tableDocId &&
@@ -11283,12 +11281,16 @@ function PokerTable({
   useEffect(() => {
     const listen = window.fb.onIdTokenChanged || window.fb.onAuthStateChanged;
     if (!listen || !window.fb.auth) return;
-    return listen(window.fb.auth, () => {
+    const invalidate = () => {
       godRequestGeneration.current++;
       setGodSnapshot(null);
       setGodAuthVersion(version => version + 1);
-      if (!isGodUser(user)) setGodView(false);
-    });
+      if (!isGodUser(user)) { setGodView(false); setPeek(null); setBotClaim(null); }
+    };
+    const unsub=listen(window.fb.auth, invalidate);
+    const accessChanged=()=>{if(!isGodUser(user))invalidate();};
+    window.addEventListener('pokerten-access-changed',accessChanged);
+    return()=>{unsub();window.removeEventListener('pokerten-access-changed',accessChanged);};
   }, [user.uid]);
   useEffect(() => {
     let lock = null,
@@ -14564,6 +14566,13 @@ function useCardGame(tableDocId,user,showToast,onLeave,wantPeek=false){
   const [publicState,setPublic]=useState(null),[privateState,setPrivate]=useState(null),[peek,setPeek]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[clock,setClock]=useState(Date.now());
   const current=useRef(null),lock=useRef(false);
   const peekEmail=wantPeek && isGodUser(user) ? window.fb.auth.currentUser.email : null;
+  const peekGeneration=window.fb?.viewerGrant?.generation;
+  useEffect(()=>{
+    const invalidate=()=>{if(!isGodUser(user))setPeek(null);setClock(Date.now());};
+    window.addEventListener('pokerten-access-changed',invalidate);
+    const unsub=(window.fb.onIdTokenChanged||window.fb.onAuthStateChanged)?.(window.fb.auth,invalidate);
+    return()=>{unsub?.();window.removeEventListener('pokerten-access-changed',invalidate);};
+  },[user.uid]);
   useEffect(()=>{
     let watching=true;
     current.current=null;setPublic(null);setPrivate(null);setPeek(null);setError('');
@@ -14587,13 +14596,13 @@ function useCardGame(tableDocId,user,showToast,onLeave,wantPeek=false){
     let stopped=false;
     const seq=publicState.seq;
     window.fb.fx('pkCardPeek',{tableId:tableDocId,seq}).then(data=>{
-      if(!stopped && data?.seq===seq && isGodUser(user) && window.fb.auth.currentUser.email===peekEmail)
-        setPeek({tableId:tableDocId,uid:user.uid,email:peekEmail,data});
+      if(!stopped && data?.seq===seq && isGodUser(user) && window.fb.auth.currentUser.email===peekEmail && window.fb.viewerGrant.generation===peekGeneration)
+        setPeek({tableId:tableDocId,uid:user.uid,email:peekEmail,generation:peekGeneration,data});
     }).catch(()=>{if(!stopped)setPeek(null);});
     return()=>{stopped=true;};
-  },[peekEmail,publicState?.id,publicState?.seq,tableDocId,user.uid]);
+  },[peekEmail,peekGeneration,publicState?.id,publicState?.seq,tableDocId,user.uid]);
   const godView=!!(peekEmail && publicState?.id===tableDocId && peek?.tableId===tableDocId &&
-    peek.uid===user.uid && peek.email===peekEmail && peek.data.seq===publicState.seq);
+    peek.uid===user.uid && peek.email===peekEmail && peek.generation===peekGeneration && peek.data.seq===publicState.seq);
   const table=useMemo(()=>{
     if(!publicState || publicState.id!==tableDocId)return null;
     const t={...publicState,players:{...publicState.players},deck:Array.from({length:publicState.deckCount||0},(_,i)=>({id:'stock-'+i,hidden:true}))};

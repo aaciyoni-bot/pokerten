@@ -6,6 +6,7 @@ const source=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[
 const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-viewer-access.js'),'utf8'));
 w.eval(fs.readFileSync(path.join(__dirname,'../../assets/js/poker-auth.js'),'utf8'));
 w.eval(babel.transformSync(source,{plugins:[[require('@babel/plugin-transform-react-jsx'),{runtime:'classic'}]]}).code);
 const root=ReactDOM.createRoot(w.document.getElementById('root'));

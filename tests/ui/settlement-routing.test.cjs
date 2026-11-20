@@ -11,6 +11,7 @@ w.React=React;w.ReactDOM=ReactDOM;w.PokerRuntime=require('../../assets/js/poker-
 w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 const html=fs.readFileSync(require.resolve('../../index.html'),'utf8');
 const script=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function App()'))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.ManagementAppTest=App;');
+w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-viewer-access.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-auth.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/club-ui.js'),'utf8'));
 w.eval(fs.readFileSync(require.resolve('../../assets/js/club-cashier.js'),'utf8'));

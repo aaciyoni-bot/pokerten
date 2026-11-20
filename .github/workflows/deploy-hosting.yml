@@ -34,7 +34,9 @@ on:
 
 concurrency:
   group: public-site-deployment
-  cancel-in-progress: false
+  # A superseded client build must not block its corrected replacement.
+  # Backend deployment has a separate workflow and concurrency policy.
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -64,6 +66,7 @@ jobs:
           path: .native-runtime
 
       - name: Prepare compatible Android game update
+        timeout-minutes: 10
         run: |
           cp -R .native-runtime/mobile mobile
           cp -R scripts/mobile-runtime/. mobile/

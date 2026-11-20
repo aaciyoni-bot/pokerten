@@ -106,6 +106,7 @@
  ${query.has('install')?"window.__installEvt={prompt:()=>{},userChoice:Promise.resolve({outcome:'dismissed'})};":''}
  const previewState=${JSON.stringify(state)},privateCards=${JSON.stringify(previewHands[uid]||cards.slice(0,holeCount))},previewHands=${JSON.stringify(previewHands)},previewDirectory=${JSON.stringify(directory)},previewScenario=${JSON.stringify(scenario)};
  const previewRef=(...a)=>({id:a.at(-1),path:a.slice(1).join('/')});
+ const previewListeners=new Set();
  const previewSnap=()=>({id:'preview',exists:()=>true,data:()=>structuredClone(previewState),metadata:{fromCache:false}});
  const previewDocs=(rows)=>{const docs=rows.map((row,i)=>({id:row.uid||String(i),data:()=>structuredClone(row)}));return{docs,empty:!docs.length,size:docs.length,forEach:cb=>docs.forEach(cb)};};
  const denyWrite=async()=>{throw Error('Design preview only: data changes are disabled');};
@@ -114,7 +115,7 @@
  query:(r,...filters)=>({...r,filters}),where:(field,op,value)=>({field,op,value}),
  fx:async(name,args={})=>{if(name==='pkGameHistory')return{records:previewDirectory.gameLog.filter(e=>!args.targetUid||e.uid===args.targetUid),nextCursor:null};if(name==='pkClubDirectory'){if(args.accountingOnly)return{accounting:previewDirectory.accounting};if(args.reportSection){if(${query.has('reporterror')})throw Object.assign(new Error('Simulated report failure'),{code:'functions/unavailable'});const rows=previewDirectory[args.reportSection]||[],start=Number(args.cursor)||0,end=start+2;return{records:structuredClone(rows.slice(start,end)),hasMore:end<rows.length,nextCursor:end<rows.length?String(end):null};}return structuredClone(previewDirectory);}if(name==='pkTick')return{};if(name==='godPeek')return{tableId:args.tableId,contextKey:args.contextKey,hands:previewHands,finalBoard:${JSON.stringify(finalBoard)}};return denyWrite();},
  getDoc:async()=>({exists:()=>false}),getDocs:async(r)=>{let rows=r.path==='memberships'?previewDirectory.members:r.path==='gameLog'?previewDirectory.gameLog:[];for(const f of r.filters||[])if(f.op==='=='&&f.field!=='clubId')rows=rows.filter(row=>row[f.field]===f.value);return previewDocs(rows);},
- onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;let done=false;queueMicrotask(()=>{if(done)return;if(r.path==='tables/preview')cb(previewSnap());else if(r.path.includes('/priv/'))cb({exists:()=>true,data:()=>({cards:privateCards})});else cb({exists:()=>false,...previewDocs([])});});return()=>{done=true;};},
+ onSnapshot:(r,opts,next,error)=>{const cb=typeof opts==='function'?opts:next;let done=false;queueMicrotask(()=>{if(done)return;if(r.path==='tables/preview'){previewListeners.add(cb);cb(previewSnap());}else if(r.path.includes('/priv/'))cb({exists:()=>true,data:()=>({cards:privateCards})});else cb({exists:()=>false,...previewDocs([])});});return()=>{done=true;previewListeners.delete(cb);};},
  updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite,signIn:denyWrite,signInCode:denyWrite,signOut:denyWrite};`;
 
  const definitions=html.match(/<svg[^>]*>[\s\S]*?pcGBlk[\s\S]*?<\/svg>/)?.[0]||'';
@@ -163,6 +164,23 @@
    return React.createElement(React.Fragment,null,React.createElement(window.PreviewTable,{tableDocId:'preview',user:{uid:'${uid}',role:'${menuRole==='god'?'player':menuRole}',status:'approved',balance:500},clubSettings:{name:'Netabel'},onManage:()=>{},onCreateTable:()=>{},onLeave:()=>{},showToast:()=>{}}),controls,host&&moving&&ReactDOM.createPortal(moving,host));
  }
  ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(MotionPreview));`;
+ if(component==='PreviewTable'&&query.has('result'))renderPreview+=`
+ const resultButton=document.createElement('button');resultButton.textContent='Replay split result · simulated chips';
+ resultButton.style.cssText='position:fixed;top:8px;left:8px;z-index:9999;background:#123040;color:white;border:1px solid #78bdd3;border-radius:8px;padding:8px';document.body.append(resultButton);
+ const beforeStacks=Object.fromEntries(Object.entries(previewState.players).map(([id,p])=>[id,p.stack]));
+ resultButton.onclick=()=>{
+   if(resultButton.disabled)return;resultButton.disabled=true;
+   const g=previewState.gameState;g.phase='river';g.handN=(g.handN||0)+1;g.__seq=(g.__seq||0)+1;g.board=${JSON.stringify(finalBoard)};g.allInReveal=false;g.activeTurnUid=null;g.lastAwards=[];g.lastWinners=null;g.pots=[{amount:50}];
+   for(const [id,p] of Object.entries(previewState.players)){p.stack=beforeStacks[id];p.cards=[];p.bet=0;p.actionText='';p.status='active';}
+   previewListeners.forEach(cb=>cb(previewSnap()));
+   setTimeout(()=>{
+     const winners=['${uid}',...Object.keys(previewState.players).filter(id=>id!=='${uid}')].slice(0,2);
+     g.__seq++;g.phase='showdown';g.showdownAt=Date.now();g.earlyWin=false;g.pots=[];g.lastWinAmount=50;g.lastAwards=winners.map((uid,i)=>({uid,amount:i?20:30}));g.lastWinners=winners.map(id=>previewState.players[id].name).join(', ');
+     for(const [id,p] of Object.entries(previewState.players))p.cards=previewHands[id];
+     for(const award of g.lastAwards){previewState.players[award.uid].stack+=award.amount;previewState.players[award.uid].actionText='WINNER';}
+     previewListeners.forEach(cb=>cb(previewSnap()));setTimeout(()=>{resultButton.disabled=false;},8000);
+   },1000);
+ };`;
  const diagnostics=`
  window.__previewLayoutReport=()=>{
   const table=document.querySelector('.poker-table'),community=table?.querySelector('.poker-community');

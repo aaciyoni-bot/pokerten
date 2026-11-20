@@ -74,6 +74,9 @@ if (swVer) console.log('    (sw cache = pokerten-shell-v' + swVer + ' — confir
 // The pinned Android builder swaps app-update for native-update while keeping
 // this query string. A stale key fails verification of the published OTA bundle.
 const releaseVersion = require('./assets/release.json').version;
+check('service-worker cache and activation notification match the release',
+  Number(swVer) === releaseVersion && Number((sw.match(/type:'POKERTEN_RELEASE',version:(\d+)/) || [])[1]) === releaseVersion,
+  'bump both the cache and POKERTEN_RELEASE activation message');
 check('web/native updater cache key matches the published release',
   html.includes('assets/js/app-update.js?v=' + releaseVersion + '"'),
   'bump the app-update.js query version with assets/release.json before packaging Android');

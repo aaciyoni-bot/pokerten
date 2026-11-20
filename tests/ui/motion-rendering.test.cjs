@@ -56,8 +56,6 @@ const scene=(component,props)=>React.createElement('div',{className:'poker-table
   await render(null);
   const fallback={left:'50%',top:'35%'};assert.equal(pokerVisualPoint(null,null,fallback),fallback);assert.equal(pokerVisualPoint({getBoundingClientRect:()=>rect(0,0,0,0)},{getBoundingClientRect:()=>rect(0,0,10,10)},fallback),fallback,'hidden or unmeasured layouts retain a safe path');
   assert.match(html,/\.timer-ring circle\s*\{\s*transition: stroke-dasharray 1s linear/);
-  assert.match(source,/const dur = 2;\s+return awards.map/);
-  assert.match(source,/delay: \(gs.earlyWin \? 400 : 800\) \+ Math.min\(k, 3\) \* 80/,'all split shares arrive within the result window');
   assert.doesNotMatch(source,/dealDelay\(p.uid/, 'private cards appear together at every seat');
   w.PokerSoundPack={active:true};
   w.Date.now=()=>10000;

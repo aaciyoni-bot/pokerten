@@ -43,10 +43,12 @@ const emit=async()=>React.act(()=>next({id:'test',exists:()=>true,data:()=>struc
  await emit();assert.deepEqual(sounds,['flip','raise'],'A genuinely new board card and bet still sound');
  sounds.length=0;await emit();assert.deepEqual(sounds,[],'Repeated snapshots stay silent');
  current.gameState.phase='showdown';current.gameState.lastAwards=[{uid:'viewer',amount:30},{uid:'other',amount:30}];current.gameState.showdownAt=Date.now();current.gameState.__seq++;
- await emit();assert.ok(sounds.includes('win'),'The current player hears applause when one of two split winners');
+ await emit();assert.ok(!sounds.includes('win'),'The result cue waits for the reveal');
+ await React.act(async()=>new Promise(resolve=>setTimeout(resolve,450)));assert.ok(sounds.includes('win'),'The current player hears applause when one of two split winners');
  sounds.length=0;await render('showdown-baseline');assert.deepEqual(sounds,[],'Opening an already completed hand does not replay its win');
- current.gameState.phase='river';current.gameState.__seq++;await emit();sounds.length=0;
- current.gameState.phase='showdown';current.gameState.lastAwards=[{uid:'other',amount:60}];current.gameState.__seq++;await emit();
+ current.gameState.phase='river';current.gameState.handN++;current.gameState.__seq++;await emit();sounds.length=0;
+ current.gameState.phase='showdown';current.gameState.lastAwards=[{uid:'other',amount:60}];current.gameState.showdownAt=Date.now();current.gameState.__seq++;await emit();
+ await React.act(async()=>new Promise(resolve=>setTimeout(resolve,450)));
  assert.deepEqual(sounds,['handend'],'Someone else winning plays only the short result cue');
  await React.act(()=>root.unmount());w.close();console.log('PASS: seat 1, duplicate taps, pending/error/success, session safety and real snapshot sound transitions');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

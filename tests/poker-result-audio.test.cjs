@@ -4,10 +4,10 @@ const helper=html.slice(html.indexOf('const pokerResultCue ='),html.indexOf('con
 const start=html.indexOf('  const prevSnd = useRef('),end=html.indexOf('  if (loading || !tableState) return',start);
 const effect=html.slice(start,end);
 function table(uid){
-  const played=[],ref={current:null},c={user:{uid},tableDocId:'table-1',headless:false,tableState:{chat:[]},players:{a:{uid:'a',name:'Same name'},b:{uid:'b',name:'Same name'},c:{uid:'c'}},setts:{blinds:1},gs:{phase:'river',board:[]},BETTING:['preflop','flop','turn','river'],navigator:{},playSnd:(...args)=>played.push(args),useRef:value=>{ref.current??=value;return ref;},useEffect:fn=>fn()};
+  let resultNumber=0;const played=[],ref={current:null},c={user:{uid},tableDocId:'table-1',headless:false,tableState:{chat:[]},players:{a:{uid:'a',name:'Same name'},b:{uid:'b',name:'Same name'},c:{uid:'c'}},setts:{blinds:1},resultPresentation:{key:null,animated:false,winnerReady:true},gs:{phase:'river',board:[]},BETTING:['preflop','flop','turn','river'],navigator:{},playSnd:(...args)=>played.push(args),useRef:value=>{ref.current??=value;return ref;},useEffect:fn=>fn()};
   vm.createContext(c);vm.runInContext(helper,c);
   const run=()=>vm.runInContext('{'+effect+'}',c);run();
-  return{c,played,run,result:awards=>{c.gs={phase:'showdown',board:[],lastAwards:awards};run();return played.at(-1)?.[0];}};
+  return{c,played,run,result:(awards,ready=true)=>{c.resultPresentation={key:'result-'+(++resultNumber),animated:true,winnerReady:ready};c.gs={phase:'showdown',board:[],lastAwards:awards};run();return played.at(-1)?.[0];}};
 }
 test('both split-pot winners hear applause and every other viewer hears the short result cue',()=>{
   const awards=[{uid:'a',amount:30},{uid:'b',amount:30}];
@@ -30,4 +30,11 @@ test('opening a completed table and returning from a headless table never replay
   f.c.gs.phase='river';f.run();f.c.headless=true;f.result([{uid:'a',amount:30}]);assert.equal(f.played.length,0);
   f.c.headless=false;f.run();assert.equal(f.played.length,0);
   f.c.gs.phase='river';f.run();assert.equal(f.result([{uid:'a',amount:30}]),'win');assert.equal(f.played.length,1);
+});
+
+test('applause waits for the completed reveal and plays once despite stack-arrival renders',()=>{
+  const f=table('a');assert.equal(f.result([{uid:'a',amount:30}],false),undefined);
+  f.run();assert.equal(f.played.length,0);
+  f.c.resultPresentation.winnerReady=true;f.run();assert.equal(f.played[0][0],'win');
+  f.run();assert.equal(f.played.length,1);
 });

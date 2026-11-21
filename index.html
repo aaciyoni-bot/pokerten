@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="382">
-    <script src="assets/js/app-update.js?v=382" defer></script>
+    <meta name="app-version" content="383">
+    <script src="assets/js/app-update.js?v=383" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -17729,10 +17729,43 @@ function tournamentDefaultOptions() {
   };
 }
 
+function TournamentEntryDetails({tournament:tor}) {
+  const h=React.createElement,structure=tourStructOf(tor),bounty=Number(tor.bounty)||0;
+  const breakEvery=Math.max(0,Number(tor.breakEvery)||0),breakMins=Math.max(0,Number(tor.breakMins)||0);
+  const rows=[
+    ['Buy-in',formatMoney(Number(tor.buyIn)||0)],
+    ['Entry fee',formatMoney(Number(tor.fee)||0)],
+    ['Bounty contribution',tor.bountyFree?'Club funded':formatMoney(bounty)],
+    ['Total entry',formatMoney(tourEntryOf(tor))],
+    ['Starting stack',formatMoney(Number(tor.startStack)||1000)],
+    ['Players',String(tor.minPlayers||2)+' minimum · '+String(tor.maxPlayers||36)+' maximum'],
+    ['Seats per table',String(tor.tableSize||9)],
+    ['Action time',String(tor.actionTime||25)+' seconds'],
+    ['Late registration',tourRegistrationLabel(tor)],
+    ['Re-entry',tor.reentry?formatMoney(tourEntryOf(tor,true))+' total · up to '+String(tor.maxReentries??1)+' per player, after elimination while registration is open':'Off'],
+    ['Rebuy',tor.rebuys?formatMoney(tourEntryOf(tor))+' total · up to '+String(tor.maxRebuys||0)+' through level '+String(tor.rebuyUntilLevel||0):'Off'],
+    ['Add-on',tor.addon?formatMoney(Number(tor.buyIn)||0)+' for '+formatMoney(Number(tor.startStack)||0)+' chips · once at level '+String(tor.addonLevel||3)+', between hands':'Off'],
+    ['Prize pool',tor.prizePoolMode==='fixed'?'Fixed · entry payments do not increase prizes':'Entry funded · can increase with entries'],
+    ['Prize payment',tor.prizeAsBonus?'Bonus chips':'Club chips'],
+    ['Bounty',!bounty?'Off':tor.bountyMode==='progressive'?'Progressive · '+String(tor.progressiveCashPct??50)+'% paid immediately, remainder added to the winner’s bounty':tor.bountyMode==='mystery'?'Mystery · starts at level '+String(tor.mysteryStartLevel||1):'Fixed · '+formatMoney(bounty)+' per knockout'],
+    ['Ante',tor.anteType==='none'?'None':tor.anteType==='each'?'Each player · amounts by level':'Big blind · amounts by level'],
+    ['Breaks',breakEvery&&breakMins?breakMins+' minutes after every '+breakEvery+' levels; current hands finish first':'No scheduled breaks']
+  ];
+  return h('details',{className:'glass-panel rounded-xl p-3 my-3 text-left',dir:'ltr','data-tournament-entry-details':true},
+    h('summary',{className:'cursor-pointer font-bold text-sm'},'Entry, rules & blind levels'),
+    h('dl',{className:'text-sm mt-3 space-y-2'},rows.map(([label,value])=>h('div',{key:label},h('dt',{className:'text-slate-400'},label),h('dd',{className:'text-slate-100'},value)))),
+    h('div',{className:'overflow-x-auto mt-4',tabIndex:0,role:'region','aria-label':'Blind levels'},
+      h('table',{className:'w-full text-xs text-left whitespace-nowrap'},
+        h('caption',{className:'text-left font-bold mb-2'},'Blind levels'),
+        h('thead',null,h('tr',null,['Level','Small blind','Big blind','Ante','Minutes','Break after'].map(label=>h('th',{key:label,scope:'col',className:'p-2'},label)))),
+        h('tbody',null,structure.map((level,i)=>h('tr',{key:i,'data-blind-level':i+1},
+          [i+1,formatMoney(level.sb),formatMoney(level.bb),formatMoney(tor.anteType==='none'?0:level.ante||0),level.mins||tor.levelMins||5,breakEvery&&breakMins&&(i+1)%breakEvery===0&&i+1<structure.length?breakMins+' min':'—'].map((value,j)=>h(j===0?'th':'td',{key:j,scope:j===0?'row':undefined,className:'p-2'},value))))))));
+}
+
 function TournamentRowClock({tournament:tor,now=Date.now()}) {
   const h=React.createElement;
   const validTime=value=>Number.isFinite(Number(value))&&Number(value)>0?Number(value):0;
-  const duration=ms=>{const seconds=Math.max(0,Math.floor(ms/1000));return [Math.floor(seconds/3600),Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');};
+  const duration=ms=>{const seconds=Math.max(0,Math.floor(ms/1000)),days=Math.floor(seconds/86400);return (days?days+'d ':'')+[Math.floor(seconds/3600)%24,Math.floor(seconds/60)%60,seconds%60].map(n=>String(n).padStart(2,'0')).join(':');};
   let at=0,label='';
   if(tor.status==='reg') {
     at=validTime(tor.startAt);
@@ -18748,7 +18781,8 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     const h=React.createElement;
     const pool=tor.status==='done'?(tor.finalPrizePool??tor.prizePool??0):(tor.prizePool||0);
     const countdown=Math.max(0,Math.floor(((tor.startAt||0)-Date.now())/1000));
-    const timeParts=[Math.floor(countdown/3600),Math.floor(countdown/60)%60,countdown%60].map(n=>String(n).padStart(2,'0'));
+    const countdownDays=Math.floor(countdown/86400);
+    const timeParts=[Math.floor(countdown/3600)%24,Math.floor(countdown/60)%60,countdown%60].map(n=>String(n).padStart(2,'0'));
     const card = h("article",{key:tor.id,className:"pt-tournament-card", 'data-tournament-card':tor.id},
       h("div",{className:"pt-tournament-inner"},
         h("header",{className:"pt-tournament-hero"},
@@ -18780,13 +18814,14 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
         tor.status==='running'&&!tourLateRegOpen(tor)&&h('p',{className:'pt-tournament-more-prizes',role:'status'},'Registration closed · '+tourRegistrationLabel(tor)),
         tor.status==='reg'&&h("section",{className:"pt-tournament-countdown"},
           h("span",{className:"pt-tournament-label"},"STARTS IN"),
+          countdownDays>0&&h('div',{'data-countdown-days':true,className:'text-sm font-bold text-slate-200'},countdownDays+' '+(countdownDays===1?'day':'days')),
           h("div",{className:"pt-tournament-clock",dir:"ltr"},timeParts.map((part,i)=>h("div",{key:i},h("strong",null,part),h("small",null,['HRS','MIN','SEC'][i])))),
           h("p",null,new Date(tor.startAt).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Jerusalem'}))),
         tor.status==='done'&&(tor.results||[]).length>0&&h("div",{className:"pt-tour-card-results"},tournamentResultRows(tor).filter(r=>r.rank===1||Number(r.prize)>0).map(r=>h("div",{key:r.uid,className:"pt-tournament-result"},h("span",null,r.rank+'. '+r.name),h("strong",null,formatMoney(r.prize))))),
-        ['reg','running'].includes(tor.status)&&pool>0&&h("section",{className:"pt-tournament-prizes",dir:"ltr"},tourPrizeList(tor).slice(0,6).map((amount,i)=>h("div",{key:i,className:"pt-tournament-prize"},
+        ['reg','running'].includes(tor.status)&&pool>0&&h("section",{className:"pt-tournament-prizes",dir:"ltr",'aria-label':'All tournament prizes',style:{gridTemplateColumns:'repeat(auto-fit,minmax(110px,1fr))'}},tourPrizeList(tor).map((amount,i)=>h("div",{key:i,className:"pt-tournament-prize"},
           i<3?h("img",{src:'assets/tournaments/medal-'+(i+1)+'.webp',alt:"",width:30,height:40}):h("span",{className:"pt-tournament-place"},i+1),
-          h("div",null,h("small",null,['1st','2nd','3rd'][i]||String(i+1)+'th'),h("strong",null,formatMoney(amount)))))),
-['reg','running'].includes(tor.status)&&tourPrizeList(tor).length>6&&h('p',{className:'pt-tournament-more-prizes'},tourPrizeList(tor).length+' paid places · first 6 shown'),
+          h("div",null,h("small",null,'Place '+(i+1)),h("strong",null,formatMoney(amount)))))),
+        h(TournamentEntryDetails,{tournament:tor}),
     tor.status === 'running' && canManageGame(user, tor.game) && (() => {
       // Manager's pace watchdog: any table that hasn't moved for 60s shows a
       // red alert — tap to open it (the guards usually fix it first).

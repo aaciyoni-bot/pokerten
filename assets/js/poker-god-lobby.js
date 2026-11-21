@@ -1,51 +1,55 @@
 (function (global) {
   'use strict';
-  const seatKey = table => JSON.stringify(Object.entries(table.players || {})
-    .filter(([, p]) => p && typeof p === 'object' && p.status !== 'left' && p.left !== true).map(([uid]) => uid).sort());
+  const seatKey = (table, tournamentMode = false) => JSON.stringify(Object.entries(table.players || {})
+    .filter(([, p]) => p && typeof p === 'object' && (tournamentMode ? !p.removed : p.status !== 'left' && p.left !== true)).map(([uid]) => uid).sort());
   const tableId = table => table.docId || table.id;
   const validCounts = row => row && typeof row.tableId === 'string' && typeof row.occupancyKey === 'string' &&
     ['humans', 'bots', 'unknown', 'seated'].every(key => Number.isInteger(row[key]) && row[key] >= 0) &&
     row.humans + row.bots + row.unknown === row.seated;
 
-  function useCounts({user, tables, clubId, isGodUser}) {
+  function useCounts({user, tables, clubId, isGodUser, tournamentMode = false}) {
     const React = global.React;
     const allowed = isGodUser(user);
-    const rows = allowed ? tables.filter(t => ['poker', 'durak', 'ofc'].includes(t.type) && (t.clubId || 'main') === clubId) : [];
+    const rows = allowed ? tables.filter(t => (tournamentMode ? t.game === 'poker' : ['poker', 'durak', 'ofc'].includes(t.type)) && (t.clubId || 'main') === clubId) : [];
     // Bet, pot and animation updates do not refetch these counts. Only the
     // seated roster changes this key; a slow poll catches metadata updates.
-    const rosterKey = JSON.stringify(rows.map(t => [tableId(t), seatKey(t)]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
-    const scope = JSON.stringify([allowed ? user.uid : '', clubId, rosterKey]);
+    const rosterKey = JSON.stringify(rows.map(t => [tableId(t), seatKey(t, tournamentMode)]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+    const scope = JSON.stringify([allowed ? user.uid : '', clubId, tournamentMode, rosterKey]);
     const [state, setState] = React.useState({scope: '', status: 'loading', byTable: {}});
     React.useEffect(() => {
       if (!allowed || !isGodUser(user)) return;
       const ids = JSON.parse(rosterKey).map(row => row[0]).filter(Boolean);
       if (!ids.length) { setState({scope, status: 'ready', byTable: {}}); return; }
-      let disposed = false, busy = false, timer;
+      let disposed = false, busy = false, timer, epoch = 0;
       const refresh = async () => {
         if (disposed || busy || global.document.hidden || !isGodUser(user)) return;
         clearTimeout(timer);
         busy = true;
+        const requestEpoch = epoch;
         try {
           const byTable = {};
           for (let i = 0; i < ids.length; i += 60) {
             if (disposed || !isGodUser(user)) return;
-            const result = await global.fb.fx('godLobbyCounts', {clubId, tableIds: ids.slice(i, i + 60)});
+            const result = await global.fb.fx('godLobbyCounts', {clubId, tableIds: ids.slice(i, i + 60), ...(tournamentMode ? {mode:'tournaments'} : {})});
             for (const row of result?.tables || []) if (validCounts(row)) byTable[row.tableId] = row;
           }
-          if (!disposed && isGodUser(user)) setState({scope, status: 'ready', byTable});
+          if (!disposed && requestEpoch === epoch && !global.document.hidden && isGodUser(user)) setState({scope, status: 'ready', byTable});
         } catch (error) {
-          if (!disposed && isGodUser(user)) setState({scope, status: 'error', byTable: {}});
+          if (!disposed && requestEpoch === epoch && !global.document.hidden && isGodUser(user)) setState({scope, status: 'error', byTable: {}});
         } finally {
           busy = false;
           if (!disposed) timer = setTimeout(refresh, 30000);
         }
       };
-      const visibility = () => { if (!global.document.hidden) refresh(); };
+      const visibility = () => {
+        if(global.document.hidden){epoch++;setState({scope, status:'loading', byTable:{}});}
+        else refresh();
+      };
       timer = setTimeout(refresh, 250);
       global.document.addEventListener('visibilitychange', visibility);
       return () => { disposed = true; clearTimeout(timer); global.document.removeEventListener('visibilitychange', visibility); };
     }, [allowed, user.uid, clubId, scope]);
-    if (!allowed) return {status: 'hidden', byTable: {}};
+    if (!allowed || global.document.hidden) return {status: 'hidden', byTable: {}};
     return state.scope === scope ? state : {status: 'loading', byTable: {}};
   }
 
@@ -64,5 +68,5 @@
         row.unknown > 0 && h('span', {className: 'tbl-god-unknown'}, '? ', row.unknown)) :
         h('span', null, counts.status === 'error' ? 'Unavailable' : '…'));
   }
-  global.PokerGodLobby = {useCounts, Badge};
+  global.PokerGodLobby = {useCounts, Badge, participantKey: table => seatKey(table, true)};
 })(window);

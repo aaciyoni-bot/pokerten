@@ -248,7 +248,7 @@ test('chosen profile avatar reaches cash/Spin seats and repairs a seated player 
   f.table(id).players.human.avatarSeed='human';
   f.table(id).players.human.cards=[{val:'A',suit:'♠'}];f.table(id).players.human.bet=7;
   f.table(id).gameState.phase='flop';f.table(id).gameState.activeTurnUid='human';
-  f.table(id).tournamentId='avatarEvent';f.docs.set('tournaments/avatarEvent',{players:{human:{uid:'human',avatarSeed:'human',paid:100,tableId:id}},prizePool:400,status:'running'});
+  f.table(id).tournamentId='avatarEvent';f.docs.set('tournaments/avatarEvent',{authorityVersion:2,game:'poker',clubId:'clubA',players:{human:{uid:'human',avatarSeed:'human',paid:100,tableId:id}},prizePool:400,status:'running'});
   const money=[f.balance('owner'),f.balance('human')];
   for(const patch of [{avatarSeed:'av3d::astronaut',photo:''},{avatarSeed:'',photo:'data:image/png;base64,AAAA'},{avatarSeed:'',photo:''}]){
    await f.profile(patch);const before=copy(f.table(id)),event=copy(f.docs.get('tournaments/avatarEvent'));

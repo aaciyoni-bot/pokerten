@@ -136,6 +136,13 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + resource.data.clubId)).data.status == 'approved');
       allow write: if false;
     }
+    // Only the server's allowlisted projection belongs in the player client.
+    // Raw tournament access closes after the compatible client is published.
+    match /tournamentViews/{id} {
+      allow read: if superAdmin() || (signedIn() && resource.data.authorityVersion == 2
+        && get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + resource.data.clubId)).data.status == 'approved');
+      allow write: if false;
+    }
     match /broadcasts/{id} { allow read: if signedIn(); allow write: if superAdmin(); }
 
     // ═══ Gadud 1895 — "ירוק בעיניים" daily ammo counter (greeneyes app) ═══

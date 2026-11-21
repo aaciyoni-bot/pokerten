@@ -29,8 +29,8 @@ const clock=id=>row(id)?.querySelector('[data-tournament-clock]');
  await React.act(()=>w.document.querySelector('.pt-tournament-roster-toggle').click());
  assert.doesNotMatch(w.document.querySelector('.pt-tournament-roster').textContent,/Bot ·|Human ·/,'ordinary roster has no participant type markers');
  for(const role of ['manager','club_owner','super_admin']){
-  await renderAs(role);assert.match(row('reg').textContent,/Manager view · 1 human · 2 bots/);
-  assert.match(w.document.querySelector('.pt-tournament-roster').textContent,/Bot · Jordan/,'managers can distinguish roster participants');
+  await renderAs(role);assert.equal(w.document.querySelector('.pt-tournament-participant-kinds'),null,'a local manager role grants no private counts');
+  assert.doesNotMatch(w.document.querySelector('.pt-tournament-roster').textContent,/Bot ·|Human ·/,'shared roster never classifies players');
  }
  await renderAs('agent');assert.equal(w.document.querySelector('.pt-tournament-participant-kinds'),null,'agents do not receive the manager breakdown');
  await renderAs('player');

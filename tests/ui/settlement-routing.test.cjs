@@ -38,7 +38,7 @@ function firebaseFixture(email,membershipStatus,role='player'){
   if(target.path==='clubs/main')return record('main',club);
   if(target.path==='clubs')return records([club]);
   if(target.path==='memberships')return records((target.filters?.some(f=>f[0]==='uid')?[membership]:[owner,membership,other]));
-  if(target.path==='tables'||target.path==='tournaments')return records([]);
+  if(target.path==='tables'||target.path==='tournamentViews')return records([]);
   if(target.path==='gameLog')return records([{id:'own-result',uid:identity.uid,game:'NLH',clubId:'main',profit:25,at:Date.now()},{id:'other-result',uid:'other',game:'NLH',clubId:'main',profit:999,at:Date.now()}].filter(row=>(target.filters||[]).every(([key,op,value])=>op==='=='&&row[key]===value)));
   return record(target.path.split('/').at(-1),null);
  };

@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="383">
-    <script src="assets/js/app-update.js?v=383" defer></script>
+    <meta name="app-version" content="384">
+    <script src="assets/js/app-update.js?v=384" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -4872,7 +4872,7 @@ function App() {
         setTablesError(/permission-denied|unauthenticated/.test(error?.code||'')?'Table access could not be verified. Retry to reconnect.':'Table updates interrupted. Reconnecting…');
       }
     },{document,events:window});
-    const unsubTours = window.PokerRuntime.watchSnapshot((next,fail) => window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournaments"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub.id)), next, fail), s => {
+    const unsubTours = window.PokerRuntime.watchSnapshot((next,fail) => window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tournamentViews"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub.id)), next, fail), s => {
       if(stopped)return;
       setToursDB(s.docs.map(d => ({
         id: d.id,
@@ -11050,7 +11050,7 @@ function PokerTable({
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournaments',id),d=>{if(!d.exists())return;setTourEntryState({id,...d.data()});const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
+  useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournamentViews',id),d=>{if(!d.exists())return;setTourEntryState({id,...d.data()});const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
   const [tableError, setTableError] = useState('');
   const [privateError, setPrivateError] = useState('');
   const [connectionRetry, setConnectionRetry] = useState(0);
@@ -11193,7 +11193,7 @@ function PokerTable({
     const torId = tableRef.current?.tournamentId;
     if (!torId) return;
     try {
-      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournaments", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",CLUB_ID)))]);
+      const [tSnap, tbls] = await Promise.all([window.fb.getDoc(window.fb.doc(window.fb.db, "tournamentViews", torId)), window.fb.getDocs(window.fb.query(window.fb.collection(window.fb.db, "tables"), window.fb.where("tournamentId", "==", torId),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",CLUB_ID)))]);
       setTourEntryState(tSnap.exists()?{id:torId,...tSnap.data()}:null);
       const torPl = tSnap.exists() ? tSnap.data().players || {} : {};
       // Read the stack by the players-map KEY, not by a uid field inside the
@@ -16363,7 +16363,7 @@ const tourClock = tour => {
 return window.PokerTournament.clock(tour,tourStructOf(tour),Date.now());
 };
 const tourLevelOf = tour => tourClock(tour).lvl;
-const tRef = id => window.fb.doc(window.fb.db, "tournaments", id);
+const tRef = id => window.fb.doc(window.fb.db, "tournamentViews", id);
 const creditBalance = async (uid, amt, statsPatch, asBonus) => {
   if (!uid || !amt) return;
   try {
@@ -17795,6 +17795,7 @@ function TournamentsTab({
   compactRows = false,
   compact = false
 }) {
+  const participantCounts = window.PokerGodLobby ? window.PokerGodLobby.useCounts({user,tables:tournaments,clubId:CLUB_ID,isGodUser,tournamentMode:true}) : {byTable:{}};
   const compactMode = compactRows || compact;
   const [expandedTournament, setExpandedTournament] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -18774,9 +18775,9 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     const entrants = Object.values(tor.players || {}).filter(p => p && !p.removed);
     const count = entrants.length;
     const alive = entrants.filter(p => !p.out).length;
-    const botCount = entrants.filter(p => p.isBot === true).length;
-    const showParticipantKinds = canManageGame(user, tor.game);
-    const participantKinds = showParticipantKinds ? (count-botCount)+' human · '+botCount+' bots' : null;
+    const kinds=participantCounts.byTable[tor.id];
+    const showParticipantKinds=isGodUser(user)&&kinds&&kinds.occupancyKey===window.PokerGodLobby?.participantKey(tor);
+    const participantKinds=showParticipantKinds?kinds.humans+' human · '+kinds.bots+' bots'+(kinds.unknown?' · '+kinds.unknown+' unclassified':''):null;
     const myTable = tor.status === 'running' && me && !me.out ? (tables || []).find(tb => tb.tournamentId === tor.id && tb.players && tb.players[user.uid]) : null;
     const h=React.createElement;
     const pool=tor.status==='done'?(tor.finalPrizePool??tor.prizePool??0):(tor.prizePool||0);
@@ -18801,7 +18802,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
         h("div",{className:"pt-tournament-stats"},
           ...[['fa-coins','Entry',formatMoney(tourEntryOf(tor))],['fa-circle-notch','Stack',formatShort(Number(tor.startStack)||1000)],['fa-users','Players',(tor.status==='running'?alive:count)+'/'+(tor.maxPlayers||36)],['fa-trophy','Format',tor.mttMode?'MTT':'Knockout']].map(([icon,label,value])=>h("div",{key:label,className:"pt-tournament-stat"},
             h("i",{className:'fa-solid '+icon,'aria-hidden':true}),h("div",null,h("span",null,label),h("b",null,value))))),
-        participantKinds&&h("p",{className:"pt-tournament-participant-kinds"},"Manager view · ",participantKinds),
+        participantKinds&&h("p",{className:"pt-tournament-participant-kinds"},"GOD MODE · ",participantKinds),
         h("div",{className:"pt-tournament-rules"},
           tor.addon&&h("span",null,'Add-on at level '+(tor.addonLevel||3)),
           h("span",null,tourRegistrationLabel(tor)),
@@ -18809,7 +18810,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
           tor.players?.[user.uid]?.earlyRegistrationBonusChips>0&&h('span',{role:'status'},'Your entry: '+formatMoney(tor.players[user.uid].entryStartStack)+' chips including '+formatMoney(tor.players[user.uid].earlyRegistrationBonusChips)+' early bonus'),
           tor.reentry&&h("span",null,'Re-entry '+formatMoney(tourEntryOf(tor,true))+' · '+(tor.prizePoolMode==='fixed'||tor.reentryToPrizePool===false?'Club income':'Added to prize pool'))),
         tor.prizePoolMode==='fixed'&&h('p',{className:'text-sm text-sky-100',style:{padding:12}},'Fixed prize pool · entries and re-entries do not increase the prizes'),
-        tor.game==='poker'&&tor.status==='reg'&&canManageGame(user,tor.game)&&h('details',{className:'pt-registration-settings'},h('summary',{style:{cursor:'pointer',padding:12}},'Edit prize pool and early bonus'),h(TournamentPrizeEditor,{key:tor.id+':'+(tor.prizeConfigChanges?.length||0),tor,showToast})),
+        tor.game==='poker'&&tor.status==='reg'&&canManageGame(user,tor.game)&&h('details',{className:'pt-registration-settings'},h('summary',{style:{cursor:'pointer',padding:12}},'Edit prize pool and early bonus'),h(TournamentPrizeEditor,{key:tor.id+':'+(tor.prizeConfigRevision||0),tor,showToast})),
         tor.game==='poker'&&['reg','running'].includes(tor.status)&&canManageGame(user,tor.game)&&h('details',{className:'pt-registration-settings'},h('summary',{style:{cursor:'pointer',padding:12}},'Edit late registration'),h(TournamentRegistrationEditor,{key:tor.id+':'+(tor.lateRegClosesAt||0)+':'+(tor.lateRegUntilLevel||0),tor,showToast})),
         tor.status==='running'&&!tourLateRegOpen(tor)&&h('p',{className:'pt-tournament-more-prizes',role:'status'},'Registration closed · '+tourRegistrationLabel(tor)),
         tor.status==='reg'&&h("section",{className:"pt-tournament-countdown"},
@@ -18850,7 +18851,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
           React.createElement("i",{className:"fa-solid fa-users",'aria-hidden':true}),
           React.createElement("div",null,React.createElement("span",null,React.createElement("b",null,regs.length)," of ",tor.maxPlayers||36," players registered"),React.createElement("progress",{value:regs.length,max:tor.maxPlayers||36,'aria-label':'Registered players'})),
           React.createElement("i",{className:'fa-solid fa-chevron-'+(open?'up':'right'),'aria-hidden':true})),
-        open&&React.createElement("div",{className:"pt-tournament-roster"},regs.length?regs.map(p=>React.createElement("div",{key:p.uid,className:"pt-tournament-roster-person"},React.createElement("span",null,showParticipantKinds?(p.isBot?'Bot · ':'Human · '):'',p.name,p.removalRequested?' · Removal pending':p.out?' · Eliminated':''),canManageGame(user,tor.game)&&tor.game==='poker'&&React.createElement("button",{type:"button",disabled:p.removalRequested,onClick:()=>removeTourPlayer(tor,p),"aria-label":"Remove "+p.name,className:"pt-tournament-remove-player"},p.removalRequested?'Pending':'Remove'))):React.createElement("span",null,"No players registered yet")),
+        open&&React.createElement("div",{className:"pt-tournament-roster"},regs.length?regs.map(p=>React.createElement("div",{key:p.uid,className:"pt-tournament-roster-person"},React.createElement("span",null,p.name,p.removalRequested?' · Removal pending':p.out?' · Eliminated':''),canManageGame(user,tor.game)&&tor.game==='poker'&&React.createElement("button",{type:"button",disabled:p.removalRequested,onClick:()=>removeTourPlayer(tor,p),"aria-label":"Remove "+p.name,className:"pt-tournament-remove-player"},p.removalRequested?'Pending':'Remove'))):React.createElement("span",null,"No players registered yet")),
         tor.status==='reg'&&me&&!me.out&&React.createElement("div",{className:"pt-tournament-registered"},React.createElement("i",{className:"fa-solid fa-circle-check",'aria-hidden':true}),"You are registered"));
     })(), isGod && envPeek === tor.id && Array.isArray(tor.mysteryEnvelopes) && React.createElement("div", {
       className: "bg-amber-950/40 border border-amber-500/40 rounded-xl p-2.5 mb-2",

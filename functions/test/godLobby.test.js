@@ -79,3 +79,16 @@ test('observer fallback serves only shared, authoritative poker state for the re
  table.authorityVersion=1;
  assert.deepEqual((await call({auth:auth(SUPERVISOR_A),data})).rows,[]);
 });
+
+test('tournament counts require verified GOD authority and return no funding, strategy or entrant records',async()=>{
+ let reads=0;
+ const docs={event:{authorityVersion:2,game:'poker',clubId:'main',players:{a:{isBot:false},b:{isBot:true,fundingUid:'private',botStyle:'private'},gone:{isBot:true,removed:true}}},
+  other:{authorityVersion:2,game:'poker',clubId:'other',players:{}},legacy:{authorityVersion:1,game:'poker',clubId:'main',players:{}}};
+ const db={collection:name=>{assert.equal(name,'tournaments');return{doc:id=>({id})};},getAll:async(...refs)=>{reads++;return refs.map(r=>({exists:!!docs[r.id],data:()=>docs[r.id]}));}};
+ const call=createCallable({onCall:(_,fn)=>fn,HttpsError,db:()=>db,isGodAuth:guard,CALL_OPTS:{}});
+ const data={mode:'tournaments',clubId:'main',tableIds:['event','other','legacy','missing']};
+ for(const identity of [null,ordinary,{...ordinary,role:'super_admin'},auth(SUPERVISOR_A,false),auth(identities.revoked)])
+  await assert.rejects(call({auth:identity,data}),e=>e.code===(identity?'permission-denied':'unauthenticated'));
+ assert.equal(reads,0);
+ assert.deepEqual(await call({auth:auth(SUPERVISOR_A),data}),{tables:[{tableId:'event',humans:1,bots:1,unknown:0,seated:2,occupancyKey:'["a","b"]'}]});
+});

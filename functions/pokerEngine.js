@@ -1194,7 +1194,7 @@ async function commitState(tx, S, extraTop) {
   if(S.botRotation)tx.set(db().collection("_pkAudit").doc(),S.botRotation);
   for(const audit of S.lineupAudits||[])tx.set(db().collection("_pkAudit").doc(),audit);
   for(const uid of S.privateDeletes||[])tx.delete(privRef(S.id,uid));
-  if(S.torDirty){const {id,...doc}=S.tor;tx.set(db().doc('tournaments/'+id),doc);}
+  if(S.torDirty)require('./tournamentPublicView').write(tx,db(),S.tor.id,S.tor);
   const top = {
     players: S.players,
     gameState: S.gameState,

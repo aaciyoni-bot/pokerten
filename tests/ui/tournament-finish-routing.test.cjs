@@ -31,9 +31,9 @@ function fixture(){
   if(path==='clubs')return records([club]);
   if(path==='memberships')return records([membership]);
   if(path==='tables')return records([table]);
-  if(path==='tournaments')return records([tor]);
+  if(path==='tournamentViews')return records([tor]);
   if(path==='tables/final')return record('final',table);
-  if(path==='tournaments/event')return record('event',tor);
+  if(path==='tournamentViews/event')return record('event',tor);
   return record(path.split('/').at(-1),null);
  };
  const denyWrite=()=>assert.fail('Finishing navigation must not write game data');
@@ -61,21 +61,21 @@ function finishEvent(f){Object.assign(f.tor,{status:'done',finishedAt:Date.now()
   const f=fixture();await start(f);
   await React.act(()=>f.emit('tables/final'));assert.equal(view(),'poker-table','running tournament never redirects');
   if(order==='already-dismissed')w.localStorage.setItem('tourCele_event','1');
-  if(order==='result-first'){finishEvent(f);await React.act(()=>f.emit('tournaments'));assert.ok(dialog());assert.equal(view(),'poker-table');}
+  if(order==='result-first'){finishEvent(f);await React.act(()=>f.emit('tournamentViews'));assert.ok(dialog());assert.equal(view(),'poker-table');}
   finishTable(f);await React.act(()=>f.emit('tables/final'));
   assert.equal(view(),'lobby','a completed table returns to the real lobby');assert.equal(doc.querySelector('.poker-room'),null);assert.equal(w.localStorage.getItem('pkResume'),null);
-  if(order!=='result-first'){finishEvent(f);await React.act(()=>f.emit('tournaments'));}
+  if(order!=='result-first'){finishEvent(f);await React.act(()=>f.emit('tournamentViews'));}
   await React.act(()=>f.emit('tables'));
   assert.equal(doc.querySelector('[data-resume-table="final"]'),null,'completed winner seat is not advertised as an active game');
   if(order==='already-dismissed')assert.equal(dialog(),null,'previously seen prize is not replayed');
   else{assert.ok(dialog(),'champion dialog survives navigation and snapshot ordering');assert.match(dialog().textContent,/4,000.00/);await React.act(()=>[...dialog().querySelectorAll('button')].find(b=>b.textContent==='Continue').click());assert.equal(dialog(),null);assert.equal(view(),'lobby');}
-  await React.act(()=>f.emit('tournaments'));assert.equal(dialog(),null,'repeated snapshots do not replay the result');
+  await React.act(()=>f.emit('tournamentViews'));assert.equal(dialog(),null,'repeated snapshots do not replay the result');
   assert.equal(f.calls.some(c=>c.name==='pkLeave'||c.name==='pkSeat'&&c.args.op!=='heartbeat'||c.name==='pkTournament'&&c.args.op!=='tick'),false,'navigation never cashes out tournament chips or repeats payout');
   await React.act(()=>root.render(null));
  }
  // A result notification for a different event must not eject an active game.
  const f=fixture();delete f.table.tournamentId;delete f.table.tournament;await start(f);
- finishEvent(f);await React.act(()=>f.emit('tournaments'));assert.ok(dialog());
+ finishEvent(f);await React.act(()=>f.emit('tournamentViews'));assert.ok(dialog());
  await React.act(()=>[...dialog().querySelectorAll('button')].find(b=>b.textContent==='Continue').click());assert.equal(view(),'poker-table');assert.ok(doc.querySelector('.poker-room'));
  console.log('PASS: real tournament finish returns to lobby, preserves trophy in either listener order, recovers previously dismissed finish, clears resume and leaves unrelated games intact');
  }finally{await React.act(()=>root.unmount());w.close();}

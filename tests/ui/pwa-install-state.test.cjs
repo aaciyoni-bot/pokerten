@@ -42,7 +42,7 @@ async function fixture({mode='browser', ios=false, legacy=false}={}) {
     if(target.path==='clubs/main')return record('main',club);
     if(target.path==='clubs')return records([club]);
     if(target.path==='memberships')return records([membership]);
-    if(target.path==='tables'||target.path==='tournaments')return records([]);
+    if(target.path==='tables'||target.path==='tournamentViews')return records([]);
     return record(target.path.split('/').at(-1),null);
   };
   const denyWrite=async()=>{throw Error('Install visibility must not write application data');};

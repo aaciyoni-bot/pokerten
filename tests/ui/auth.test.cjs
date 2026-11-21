@@ -48,7 +48,7 @@ const click=async text=>{await React.act(async()=>{const el=button(text);assert.
    assert.ok(w.document.querySelector('[data-testid=clubs]'),mode+' reaches clubs without selecting a club');
    assert.match(w.document.querySelector('[data-testid=clubs]').textContent,mode==='new'?/New\|0\|P987654321/:/Existing\|425\|P123456789/);
    assert.ok(subscriptions.includes('users/'+user.uid),'profile listens before club selection');
-   assert.ok(!subscriptions.includes('tables')&&!subscriptions.includes('tournaments'),'no out-of-club game reads');
+   assert.ok(!subscriptions.includes('tables')&&!subscriptions.includes('tournamentViews'),'no out-of-club game reads');
    assert.deepEqual(reads,Array(mode==='existing'?1:2).fill('users/'+user.uid));
    assert.equal(ensures,mode==='new'?1:0,'existing canonical profiles skip unnecessary identity writes');
    await React.act(()=>root.render(null));

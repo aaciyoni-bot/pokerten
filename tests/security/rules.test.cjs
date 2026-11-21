@@ -74,6 +74,34 @@ test('tournaments require current club membership and server authority for direc
  await assertSucceeds(getDocs(collection(admin,'tournaments')));
  await assertFails(updateDoc(doc(admin,'tournaments/current'),{prizePool:10000}));
 });
+test('player-safe tournament views require current club membership and server authority for direct and query reads',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const db=ctx.firestore();
+  await setDoc(doc(db,'tournamentViews/legacy'),{authorityVersion:1,clubId:'club'});
+  await setDoc(doc(db,'tournamentViews/current'),{authorityVersion:2,clubId:'club',status:'reg',players:{}});
+  await setDoc(doc(db,'tournamentViews/elsewhere'),{authorityVersion:2,clubId:'private-club',status:'reg',players:{}});
+  await setDoc(doc(db,'memberships/tour-reader_club'),{uid:'tour-reader',clubId:'club',status:'approved'});
+ });
+ const db=player(),list=d=>getDocs(query(collection(d,'tournamentViews'),where('clubId','==','club'),where('authorityVersion','==',2)));
+ await assertSucceeds(getDoc(doc(db,'tournamentViews/current')));await assertSucceeds(list(db));
+ await assertFails(getDoc(doc(db,'tournamentViews/legacy')));await assertFails(getDoc(doc(db,'tournamentViews/elsewhere')));
+ await assertFails(getDocs(collection(db,'tournamentViews')));
+ await assertFails(getDocs(query(collection(db,'tournamentViews'),where('clubId','==','club'))));
+ for(const ctx of [env.unauthenticatedContext(),env.authenticatedContext('outsider'),env.authenticatedContext('forged',{role:'manager',god:true}),env.authenticatedContext('unverified',{email:'aaci.yoni@gmail.com',email_verified:false})]){
+  await assertFails(getDoc(doc(ctx.firestore(),'tournamentViews/current')));await assertFails(list(ctx.firestore()));
+ }
+ const reader=env.authenticatedContext('tour-reader').firestore();
+ await assertSucceeds(list(reader));
+ for(const status of ['pending','banned']){
+  await env.withSecurityRulesDisabled(ctx=>updateDoc(doc(ctx.firestore(),'memberships/tour-reader_club'),{status}));
+  await assertFails(getDoc(doc(reader,'tournamentViews/current')));await assertFails(list(reader));
+ }
+ await env.withSecurityRulesDisabled(ctx=>deleteDoc(doc(ctx.firestore(),'memberships/tour-reader_club')));
+ await assertFails(list(reader));
+ const admin=env.authenticatedContext('admin',{email:'aaci.yoni@gmail.com',email_verified:true}).firestore();
+ await assertSucceeds(getDocs(collection(admin,'tournamentViews')));
+ await assertFails(updateDoc(doc(admin,'tournamentViews/current'),{prizePool:10000}));
+});
 test('delegated chat attribution stays server-only and public chat cannot be forged directly',async()=>{
  await env.withSecurityRulesDisabled(async ctx=>setDoc(doc(ctx.firestore(),'_pkAudit/chat-attribution'),{action:'god-bot-chat',uid:'operator',targetUid:'character',text:'Good hand'}));
  for(const ctx of [env.authenticatedContext('player',{email:'player@example.com',email_verified:true}),env.authenticatedContext('owner'),env.authenticatedContext('god',{email:'aaci.yoni@gmail.com',email_verified:true})]){

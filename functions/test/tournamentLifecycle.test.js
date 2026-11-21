@@ -16,11 +16,11 @@ function fixture(seed=1){
  const ref=p=>({path:p,id:p.split('/').at(-1),collection:n=>collection(p+'/'+n),get:async()=>snap(p)});
  const collection=(p,filters=[])=>({path:p,filters,query:true,doc:id=>ref(p+'/'+(id||'auto'+(++auto))),where:(...f)=>collection(p,[...filters,f])});
  const db={doc:ref,collection,async runTransaction(body){
-  let writing=false;const writes=[];
+  let writing=false;const writes=[],touchedTours=new Set();
   const tx={async get(target){assert.equal(writing,false,'Firestore reads precede writes');if(!target.query)return snap(target.path);
    return{docs:[...docs.keys()].filter(p=>p.startsWith(target.path+'/')&&p.split('/').length===target.path.split('/').length+1).filter(p=>target.filters.every(([field,op,value])=>op==='=='&&field.split('.').reduce((x,k)=>x?.[k],docs.get(p))===value)).map(snap)};
-  },getAll:(...refs)=>Promise.all(refs.map(r=>tx.get(r))),set(r,data){writing=true;writes.push(()=>docs.set(r.path,copy(data)));},update(r,patch){writing=true;writes.push(()=>{assert.ok(docs.has(r.path));const d=copy(docs.get(r.path));for(const [field,value]of Object.entries(patch)){const keys=field.split('.');let at=d;for(const k of keys.slice(0,-1))at=at[k]??={};at[keys.at(-1)]=copy(value);}docs.set(r.path,d);});},delete(r){writing=true;writes.push(()=>docs.delete(r.path));}};
-  const result=await body(tx);writes.forEach(write=>write());return result;
+  },getAll:(...refs)=>Promise.all(refs.map(r=>tx.get(r))),set(r,data){if(r.path.startsWith("tournaments/"))touchedTours.add(r.path);writing=true;writes.push(()=>docs.set(r.path,copy(data)));},update(r,patch){if(r.path.startsWith("tournaments/"))touchedTours.add(r.path);writing=true;writes.push(()=>{assert.ok(docs.has(r.path));const d=copy(docs.get(r.path));for(const [field,value]of Object.entries(patch)){const keys=field.split('.');let at=d;for(const k of keys.slice(0,-1))at=at[k]??={};at[keys.at(-1)]=copy(value);}docs.set(r.path,d);});},delete(r){writing=true;writes.push(()=>docs.delete(r.path));}};
+  const result=await body(tx);writes.forEach(write=>write());for(const p of touchedTours){const record=docs.get(p);if(record?.authorityVersion===2&&record.game==='poker')assert.deepEqual(JSON.parse(JSON.stringify(docs.get(p.replace('tournaments/','tournamentViews/')))),JSON.parse(JSON.stringify(require('../tournamentPublicView').project(record))),'Every committed tournament change has a matching player-safe view');}return result;
  }};
  const cached={};
  function load(file){

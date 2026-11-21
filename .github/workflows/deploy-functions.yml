@@ -95,6 +95,11 @@ jobs:
           console.log('Poker security state verified: ' + (POKER_SECURITY_PAUSED ? 'paused' : 'available'));
           JS
 
+      - name: Populate player-safe tournament views before releasing the client
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: node scripts/backfill-tournament-views.cjs
+
       - name: Verify personal-code signing before publishing its login UI
         run: |
           node --input-type=module <<'JS'

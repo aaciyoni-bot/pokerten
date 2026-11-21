@@ -32,7 +32,7 @@ function firebaseFixture(email,membershipStatus){
   if(target.path==='clubs/main')return record('main',club);
   if(target.path==='clubs')return records([club]);
   if(target.path==='memberships')return records((target.filters?.some(f=>f[0]==='uid')?[membership]:[owner,membership,other]));
-  if(target.path==='tables')return records(tableRows);if(target.path==='tournaments')return records([]);
+  if(target.path==='tables')return records(tableRows);if(target.path==='tournamentViews')return records([]);
   return record(target.path.split('/').at(-1),null);
  };
  const denyWrite=async()=>{writes.push(1);throw Error('This access regression must never write application data');};

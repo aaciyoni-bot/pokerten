@@ -127,7 +127,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
     // Repair existing tournament entries too, so moving tables/results retain it.
     if(t.tournamentId&&Object.keys(patch).length>1){
      const event=await tx.get(db.doc('tournaments/'+key(t.tournamentId)));
-     if(event.exists&&event.data().players?.[uid])avatarEvent={ref:event.ref,patch:Object.fromEntries(Object.entries(next).map(([field,value])=>[`players.${uid}.${field}`,value]))};
+     if(event.exists&&event.data().players?.[uid]){const record=event.data();Object.assign(record.players[uid],next);avatarEvent={ref:event.ref,record,patch:Object.fromEntries(Object.entries(next).map(([field,value])=>[`players.${uid}.${field}`,value]))};}
     }
    }
   }
@@ -139,7 +139,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   else if(op==='sitout'){patch[`players.${uid}.${idle?'sitOut':'sitOutNext'}`]=true;patch[`players.${uid}.sitOutAt`]=now;}
   else fail('invalid-argument','Unknown seat operation');
  }
- const write=await prepareLedger(db,tx,cid,effects,tid,now);write();if(topUpAudit)tx.set(db.collection('_pkAudit').doc(),topUpAudit);if(avatarEvent)tx.update(avatarEvent.ref,avatarEvent.patch);patch['gameState.__seq']=(t.gameState?.__seq||0)+1;tx.update(ref,patch);return result;
+ const write=await prepareLedger(db,tx,cid,effects,tid,now);write();if(topUpAudit)tx.set(db.collection('_pkAudit').doc(),topUpAudit);if(avatarEvent){tx.update(avatarEvent.ref,avatarEvent.patch);tx.set(db.doc('tournamentViews/'+avatarEvent.ref.id),require('./tournamentPublicView').project(avatarEvent.record));}patch['gameState.__seq']=(t.gameState?.__seq||0)+1;tx.update(ref,patch);return result;
 });});
 exports.pkJoinClub=onCall(opts,async r=>{const uid=A.uid(r),cid=key(r.data?.clubId),db=require('firebase-admin/firestore').getFirestore();return db.runTransaction(async tx=>{
  const [c,m,u]=await tx.getAll(db.doc('clubs/'+cid),db.doc(`memberships/${uid}_${cid}`),db.doc('users/'+uid));if(!c.exists||!u.exists)fail('not-found','Club or profile missing');A.assertClubOpen(c.data());if(m.exists)return{status:m.data().status};const p=u.data(),admin=root(r)||c.data().ownerUid===uid;let referral={};if(r.data.agentUid){const a=await tx.get(db.doc(`memberships/${key(r.data.agentUid)}_${cid}`));if(!a.exists||!['agent','manager'].includes(a.data().role)||a.data().status!=='approved')fail('failed-precondition','Agent is not approved');referral={agentUid:a.data().uid,agentPct:number(a.data().agentSharePct,50,0,100)};}

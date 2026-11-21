@@ -57,13 +57,21 @@ function createCallable({onCall, HttpsError, db, isGodAuth, CALL_OPTS}) {
     }
     const ids = [...new Set(tableIds)];
     if (!ids.length) return {tables: []};
-    const snaps = await db().getAll(...ids.map(id => db().collection("tables").doc(id)));
+    const tournamentMode=request.data?.mode==='tournaments';
+    const snaps = await db().getAll(...ids.map(id => db().collection(tournamentMode?'tournaments':'tables').doc(id)));
     const tables = [];
     snaps.forEach((snap, index) => {
       if (!snap.exists) return;
       const table = snap.data();
-      if ((table.clubId || "main") !== clubId || !["poker", "durak", "ofc"].includes(table.type)) return;
-      tables.push(summarize(ids[index], table));
+      if ((table.clubId || "main") !== clubId) return;
+      if(tournamentMode){
+        if(table.authorityVersion!==2||table.game!=='poker')return;
+        const players=Object.fromEntries(Object.entries(table.players||{}).filter(([,p])=>p&&!p.removed));
+        tables.push(summarize(ids[index],{players}));
+      }else{
+        if(!["poker", "durak", "ofc"].includes(table.type))return;
+        tables.push(summarize(ids[index], table));
+      }
     });
     return {tables};
   });

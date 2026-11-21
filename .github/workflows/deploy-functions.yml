@@ -69,6 +69,13 @@ jobs:
           console.log('European action endpoint ready; unauthenticated actions rejected. No game state was changed.');
           JS
 
+      - name: Deploy the retryable lobby projection
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        # Firebase requires explicit acknowledgement when first enabling retries.
+        # Limit that acknowledgement to this idempotent projection.
+        run: firebase deploy --only functions:pkSyncTableLobby --project pokerten --non-interactive --force
+
       - name: Select poker functions only
         id: targets
         run: |

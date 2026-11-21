@@ -506,3 +506,75 @@ test('fixed prize edit is authorized, atomic with registration, and cancellation
  await call('pkTournament',a,{op:'unregister',tournamentId:id});assert.equal((await get('tournaments/'+id)).prizePool,4000);assert.equal(await bank(a),1000);
  await call('pkTournament',owner,{op:'cancel',tournamentId:id});await call('pkTournament',owner,{op:'cancel',tournamentId:id});assert.equal(await bank(owner),treasury);assert.equal(await bank(b),1000);
 });
+
+test('wallet requests protect approvals, bonus chips, pending collisions and one transfer per decision',async()=>{
+ const wallet=require('../../functions/walletRequests');
+ const submit=(u,data)=>wallet.pkWalletRequest.run(req(u,{clubId:club,...data}));
+ const list=(u,queue=false)=>wallet.pkWalletRequests.run(req(u,{clubId:club,queue}));
+ const target='wallet-applicant';await fresh(target,100);
+ await db.doc('memberships/'+target+'_'+club).update({bonusOpen:40});
+ const treasury=await bank(owner);
+ await assert.rejects(submit(target,{op:'submit',direction:'withdraw',amount:61}),e=>e.code==='failed-precondition');
+ const deposit={op:'submit',direction:'deposit',amount:25,requestId:crypto.randomUUID()};
+ const first=await submit(target,deposit);
+ assert.deepEqual(await submit(target,deposit),first);
+ await assert.rejects(submit(target,{...deposit,requestId:crypto.randomUUID()}),e=>e.code==='already-exists');
+ assert.equal(await bank(target),100);
+ assert.deepEqual((await list(uid)).rows,[]);
+ await assert.rejects(list(uid,true),e=>e.code==='permission-denied');
+ await assert.rejects(submit(uid,{op:'approve',id:first.id}),e=>e.code==='permission-denied');
+ assert.ok((await list(owner,true)).rows.some(r=>r.id===first.id));
+ await Promise.all([submit(owner,{op:'approve',id:first.id}),submit(owner,{op:'approve',id:first.id})]);
+ assert.equal(await bank(target),125);assert.equal(await bank(owner),treasury-25);
+ assert.equal((await list(target)).rows[0].status,'approved');
+ await assert.rejects(submit(owner,{op:'reject',id:first.id}),e=>e.code==='failed-precondition');
+ const second=await submit(target,{op:'submit',direction:'withdraw',amount:80});
+ await db.doc('memberships/'+target+'_'+club).update({balance:110});
+ await assert.rejects(submit(owner,{op:'approve',id:second.id}),e=>e.code==='failed-precondition');
+ await submit(owner,{op:'reject',id:second.id});assert.equal(await bank(target),110);
+ assert.equal((await list(target)).rows.find(r=>r.id===second.id).status,'rejected');
+ assert.equal((await db.collection('gameLog').where('uid','==',target).get()).size,0);
+});
+
+test('time bank is bound to the acting seat, hand and turn and extends the authoritative deadline once',async()=>{
+ const user='bank-player',other='bank-other';await fresh(user);await fresh(other);
+ const tid='bank-clock-test',now=Date.now(),gs={phase:'flop',handN:4,turnStartedAt:now,activeTurnUid:user,highestBet:0};
+ const table={type:'poker',authorityVersion:2,clubId:club,settings:{serverEngine:true,actionTime:30},gameState:gs,players:{[user]:{uid:user,stack:40,status:'active'},[other]:{uid:other,stack:40,status:'active'}}};
+ await db.doc('tables/'+tid).set(table);
+ const payload={tableId:tid,op:'time-bank',handN:4,phase:'flop',turnStartedAt:now};
+ await assert.rejects(call('pkSeat',other,payload),e=>e.code==='failed-precondition');
+ await assert.rejects(call('pkSeat',user,{...payload,handN:3}),e=>e.code==='failed-precondition');
+ await call('pkSeat',user,payload);await assert.rejects(call('pkSeat',user,payload),e=>e.code==='failed-precondition');
+ const updated=await get('tables/'+tid),due=Engine.__engineInternals.tickMayAdvance;
+ assert.equal(due(updated,now+44000),false);assert.equal(due(updated,now+46001),true);
+ updated.gameState.turnStartedAt=now+10;updated.players[user].lastSeen=now+20000;
+ assert.equal(due(updated,now+32000),true);
+});
+test('seat HUD returns only observed aggregate counts and ranks exclude private financial detail',async()=>{
+ const u='hud-player',t='hud-table';await fresh(u);await db.doc('tables/'+t).set({clubId:club,type:'poker',authorityVersion:2,players:{[u]:{uid:u}}});
+ const hash=crypto.createHash('sha256').update(JSON.stringify([club,u])).digest('hex');
+ await db.doc('_pkOpponentModels/'+hash).set({hands:20,vpip:5,pfr:3,neverDisclose:'internal'});
+ assert.deepEqual(await call('pkSeatStats',uid,{tableId:t,targetUid:u}),{hands:20,vpip:25,pfr:15});
+ await assert.rejects(call('pkSeatStats','outsider',{tableId:t,targetUid:u}),e=>e.code==='permission-denied');
+ await db.collection('gameLog').add({clubId:club,uid:u,profit:12345,game:'ofc',at:Date.now()});
+ await db.collection('gameLog').add({clubId:club,uid:u,profit:54321,game:'adjust',at:Date.now()});
+ const ranks=await call('pkClubRanks',uid,{clubId:club,game:'ofc',period:'week'});
+ assert.equal(ranks.rows.find(r=>r.uid===u)?.metric,1);assert.ok(!JSON.stringify(ranks).includes('12345'));
+ await assert.rejects(call('pkClubRanks','outsider',{clubId:club,game:'all',period:'week'}),e=>e.code==='permission-denied');
+});
+
+test('personal history keeps wallet movements and archived hands private after a table closes',async()=>{
+ const u='archived-player',other='archived-other';await fresh(u,100);await fresh(other,100);
+ const wallets=require('../../functions/walletRequests'),archive=require('../../functions/handArchive');
+ await call('pkClubMember',owner,{clubId:club,targetUid:u,op:'cashier-transfer',amount:4});
+ const changes=await wallets.pkWalletHistory.run(req(u,{clubId:club}));
+ assert.ok(changes.records.some(r=>r.type==='Club transfer'&&r.amount===4));
+ const t='archive-closed-table',state={id:t,table:{clubId:club,history:[{at:123456,game:'NLH',board:[{val:'A',suit:'s'}],winners:'Viewer',amount:6,rake:1}]},
+  settings:{name:'Cash table'},gameState:{handN:4,handStartWealth:{[u]:10},publicActions:[{uid:u,street:'river',action:'raise',amount:3}]},
+  settledWinners:new Set([u]),players:{[u]:{uid:u,name:'Viewer',cardCount:2,stack:13,cards:['PRIVATE']}}};
+ await db.runTransaction(async tx=>archive.write(tx,db,state));
+ const mine=await archive.pkMyHands.run(req(u,{clubId:club}));
+ assert.equal(mine.rows[0].result,3);assert.equal(mine.rows[0].actions[0].name,'Viewer');
+ assert.ok(!JSON.stringify(mine).includes('PRIVATE'));assert.equal(mine.rows[0].rake,undefined);
+ assert.deepEqual((await archive.pkMyHands.run(req(other,{clubId:club,targetUid:u}))).rows,[]);
+});

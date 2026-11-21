@@ -429,3 +429,6 @@ exports.pkBotLobbyConfigure=require("./botLobby").pkBotLobbyConfigure;
 exports.pkClubArchive=require("./clubArchive").pkClubArchive;
 
 Object.assign(exports,require("./cardGames"));
+
+Object.assign(exports, require('./walletRequests'));
+exports.pkMyHands=require('./handArchive').pkMyHands;

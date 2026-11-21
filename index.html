@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="384">
-    <script src="assets/js/app-update.js?v=384" defer></script>
+    <meta name="app-version" content="385">
+    <script src="assets/js/app-update.js?v=385" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1138,7 +1138,9 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/card-games-reference.css?v=324">
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=344">
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=347">
-<script src="assets/js/club-cashier.js?v=330"></script>
+<script src="assets/js/hand-archive.js?v=385"></script>
+<script src="assets/js/wallet-requests.js?v=385"></script>
+<script src="assets/js/club-cashier.js?v=385"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=348"></script>
 <link rel="stylesheet" href="assets/css/reference-experience.css?v=376">
@@ -1172,20 +1174,22 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
       function out(){
         if(done)return;done=true;clearTimeout(timer);video.pause();
         document.removeEventListener('keydown',key);el.classList.add('oi-out');
-        try{sessionStorage.setItem('pkIntroSeen','1');}catch(_){}
         setTimeout(function(){el.remove();},260);
       }
       el.querySelector('[data-intro-skip]').addEventListener('click',out);
       document.addEventListener('keydown',key);
       sound.addEventListener('click',function(){video.muted=!video.muted;sound.textContent=video.muted?'Sound on':'Sound off';sound.setAttribute('aria-pressed',String(!video.muted));});
-      video.addEventListener('ended',out);video.addEventListener('error',out);
-      var seen=false;try{seen=sessionStorage.getItem('pkIntroSeen')==='1'||localStorage.getItem('pkIntroSeen')==='1';}catch(_){}
-      if(seen){out();return;}
-      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){sound.hidden=true;timer=setTimeout(out,700);return;}
-      try{localStorage.setItem('pkIntroSeen','1');}catch(_){}
-      timer=setTimeout(out,1200);
-      video.src='assets/video/pokerten-orizis-intro.mp4';video.muted=true;
-      var play=video.play();if(play&&play.catch)play.catch(out);
+      video.addEventListener('ended',out);
+      // Auth and initial data load in parallel with the launch artwork.
+      // A stalled or blocked video must still release the entrance.
+      var reduced=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if(reduced){sound.hidden=true;timer=setTimeout(out,700);return;}
+      timer=setTimeout(out,6500);
+      video.src='assets/video/pokerten-orizis-intro.mp4';
+      video.muted=true;
+      function posterOnly(){if(done)return;sound.hidden=true;clearTimeout(timer);timer=setTimeout(out,700);}
+      video.addEventListener('error',posterOnly);
+      var play=video.play();if(play && play.catch)play.catch(posterOnly);
     })();
   </script>
 </div>
@@ -1212,7 +1216,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/club-ui.js?v=312"></script>
     <link rel="stylesheet" href="assets/css/settlement.css?v=359">
     <link rel="stylesheet" href="assets/css/bot-chat.css?v=371">
-    <script src="assets/js/poker-settlement-ui.js?v=359"></script>
+    <script src="assets/js/poker-settlement-ui.js?v=385"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-viewer-access.js?v=381"></script>
     <script src="assets/js/poker-tournament.js?v=368"></script>
@@ -1792,9 +1796,9 @@ try {
 }
 try {
   // classic two-color deck by default (owner preference); 4-color stays opt-in
-  window.__pkDeck4 = localStorage.getItem('pkDeck4') === '1';
+  window.__pkDeck4 = localStorage.getItem('pkDeck4') !== '0';
 } catch (e) {
-  window.__pkDeck4 = false;
+  window.__pkDeck4 = true;
 }
 const playSnd = (type, times = 1, gapSec = 0) => {
   // A brief haptic cue accompanies the optional turn sound.
@@ -3766,6 +3770,35 @@ function TablePlayerResult({tableId,targetUid,viewerUid,refreshKey}) {
     React.createElement('div',{role:'status','aria-live':'polite',dir:'ltr',className:'mt-1 text-2xl font-black tabular-nums '+(result>0?'text-emerald-400':result<0?'text-rose-400':'text-slate-100')},current?(result>0?'+':result<0?'−':'')+formatMoney(Math.abs(result)):'Loading…'),
     React.createElement('div',{className:'text-[10px] text-slate-400 mt-1'},'This table only · completed hands'));
 }
+function SeatStats({tableId,targetUid}) {
+  const h=React.createElement,[state,setState]=useState(null);
+  useEffect(()=>{
+    let active=true;
+    window.fb.fx('pkSeatStats',{tableId,targetUid}).then(v=>{if(active)setState(v);}).catch(()=>{if(active)setState({error:true});});
+    return ()=>{active=false;};
+  },[tableId,targetUid]);
+  return h('section',{className:'p-2 my-2 bg-slate-900 rounded-lg','aria-label':'Player stats'},
+    h('h4',{className:'font-bold'},'Club poker stats'),!state?'Loading…':state.error?'Stats unavailable.':!state.hands?'No recorded hands yet.':
+    h('p',{className:'text-xs'},state.hands+' hands · VPIP '+state.vpip+'% · PFR '+state.pfr+'%'));
+}
+const noteColors={blue:'#60a5fa',green:'#4ade80',orange:'#fb923c',purple:'#c084fc',red:'#f87171'};
+function SeatNote({initial,clubId,uid,target}) {
+  const h=React.createElement;
+  const [text,setText]=useState(initial.text||''),[color,setColor]=useState(initial.color||'');
+  const [pending,setPending]=useState(false),[message,setMessage]=useState('');
+  const save=async()=>{
+    setPending(true);setMessage('');
+    try{
+      const fb=window.fb,ref=fb.doc(fb.db,'playerNotes',uid,'clubs',clubId,'players',target);
+      if(text.trim()||color)await fb.setDoc(ref,{text:text.trim(),color});else await fb.deleteDoc(ref);
+      setMessage('Saved.');
+    }catch(_){setMessage('Could not save your note. Please retry.');}finally{setPending(false);}
+  };
+  return h('details',{className:'p-2 mb-2 rounded-lg border border-white/15'},
+    h('summary',null,'Private note'),h('textarea',{value:text,maxLength:500,'aria-label':'Private player note',rows:3,className:'w-full bg-slate-900 p-1',onChange:e=>setText(e.target.value)}),
+    h('select',{value:color,'aria-label':'Player marker color',className:'bg-slate-900 p-1',onChange:e=>setColor(e.target.value)},['',...Object.keys(noteColors)].map(c=>h('option',{key:c,value:c},c||'No marker'))),
+    h('button',{type:'button',disabled:pending,onClick:save,className:'btn-outline ml-1 px-2'},'Save'),message&&h('p',{role:'status'},message));
+}
 const PlayerPeek = ({
   peek,
   onClose,
@@ -3774,6 +3807,8 @@ const PlayerPeek = ({
   onChatAs,
   onBotTopUp,
   tableResult,
+  privateNote,
+  seatStats,
   lineupActions,
   chatMuted = false
 }) => {
@@ -3811,6 +3846,8 @@ const PlayerPeek = ({
     className: "w-6 h-6 rounded-full bg-slate-800 text-slate-400 hover:text-white text-xs font-black shrink-0"
   }, "✕")),
     tableResult && React.createElement(TablePlayerResult,tableResult),
+    seatStats && React.createElement(SeatStats,seatStats),
+    privateNote && React.createElement(SeatNote,privateNote),
     onChatAs && React.createElement("button",{type:"button",className:"w-full mt-2.5 bg-teal-950 border border-teal-400/40 text-teal-200 py-2 rounded-xl font-black text-xs",onClick:()=>setCompose(v=>!v),"aria-expanded":compose},"Write as "+peek.name),onChatAs&&compose&&React.createElement(BotChatComposer,{name:peek.name,onSend:onChatAs,muted:chatMuted}),
     onBotTopUp && React.createElement('button',{type:'button',onClick:onBotTopUp,className:'w-full mt-2 bg-emerald-950 border border-emerald-400/40 text-emerald-200 py-2 rounded-xl font-black text-xs'},'Add chips'),
     lineupActions,
@@ -4321,8 +4358,8 @@ function PlayerWallet({user,onResults,onCashier}) {
   const scope=user.uid+':'+CLUB_ID;
   useEffect(()=>{let stopped=false,busy=false;
     const load=async()=>{if(busy)return;busy=true;
-      try{const r=await window.PokerAuthUI.withTimeout(pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true},scope));
-        if(!stopped)setState({scope,value:r.accounting?.players?.[user.uid],loading:false});
+      try{const r=await window.PokerAuthUI.withTimeout(pokerCommand('pkClubDirectory',{clubId:CLUB_ID,accountingOnly:true,wallet:true},scope));
+        if(!stopped)setState({scope,value:r.accounting?.players?.[user.uid],bonus:r.wallet?.bonus,loading:false});
       }catch(e){if(!stopped)setState({scope,error:'Your balance could not be refreshed. Please retry.',loading:false});}finally{busy=false;}};
     setState({scope,loading:true});load();const timer=setInterval(load,30000);window.addEventListener('pk-club-changed',load);
     return()=>{stopped=true;clearInterval(timer);window.removeEventListener('pk-club-changed',load);};
@@ -4333,10 +4370,18 @@ function PlayerWallet({user,onResults,onCashier}) {
     h('div',{className:'max-w-6xl mx-auto'},h('h1',{className:'text-2xl font-black text-white mb-2'},'Wallet'),h('p',{className:'text-slate-400'},'Your chips in this club'),
       state.loading&&h('p',{role:'status'},'Loading your balance…'),state.error&&h('div',{role:'alert'},state.error,h('button',{type:'button',onClick:()=>setRetry(n=>n+1)},'Retry')),
       h('div',{className:'classic-wallet-total glass-panel p-5 rounded-2xl my-5'},h('span',null,'Total chips'),h('strong',{dir:'ltr'},amount(value?.chips))),
-      h('dl',{className:'classic-wallet-breakdown glass-panel p-5 rounded-2xl mb-5'},h('div',null,h('dt',null,'Available in wallet'),h('dd',{dir:'ltr'},amount(value?.balance))),h('div',null,h('dt',null,'Chips at tables'),h('dd',{dir:'ltr'},amount(value?.onTables)))),
-      h('div',{className:'classic-wallet-service glass-panel p-5 rounded-2xl mb-5'},h('h2',null,'Add or withdraw chips'),h('p',null,'Contact your club manager or agent to arrange a transfer. Your player ID:'),h('strong',{dir:'ltr'},user.playerId||'—'),
+      h('dl',{className:'classic-wallet-breakdown glass-panel p-5 rounded-2xl mb-5'},h('div',null,h('dt',null,'Wallet balance'),h('dd',{dir:'ltr'},amount(value?.balance))),h('div',null,h('dt',null,'Chips at tables'),h('dd',{dir:'ltr'},amount(value?.onTables))),
+        h('div',null,h('dt',null,'Play-only bonus in wallet'),h('dd',{dir:'ltr'},amount(value?state.bonus:null))),
+        h('div',null,h('dt',null,'Available to withdraw'),h('dd',{dir:'ltr'},amount(value&&Number.isFinite(state.bonus)?Math.max(0,round2(value.balance-state.bonus)):null)))),
+      h('div',{className:'classic-wallet-service glass-panel p-5 rounded-2xl mb-5'},h('h2',null,'Add or withdraw chips'),window.WalletRequests&&h(window.WalletRequests,{key:scope,clubId:CLUB_ID,uid:user.uid,call:pokerCommand,refreshBalance:()=>setRetry(n=>n+1)}),
         canOpenBackoffice(user)&&onCashier&&h('button',{type:'button',className:'btn-gold rounded-xl px-4 py-3',onClick:onCashier},'Open club cashier')),
-      h('button',{type:'button',className:'btn-outline rounded-xl px-4 py-3',onClick:onResults},'Account history & game results')));
+      h('details',{className:'glass-panel p-4 rounded-xl my-3'},h('summary',null,'Club information & support'),
+        h('p',null,(window.__club?.name||'Club')+' · '+clubCode(CLUB_ID)),
+        h('p',null,'Player ID '+(user.playerId||'—')),
+        h('a',{href:'mailto:office@orizisgroup.com'},'Email POKERTEN support')),
+      window.HandArchive&&h(window.HandArchive,{key:'hands:'+scope,clubId:CLUB_ID,call:pokerCommand}),
+      window.AccountMovements&&h(window.AccountMovements,{key:'movements:'+scope,clubId:CLUB_ID,call:pokerCommand}),
+      h('button',{type:'button',className:'btn-outline rounded-xl px-4 py-3',onClick:onResults},'Game results & settlement history')));
 }
 function ClubShellNav({user, club, currentView, onClubs, onLobby, onManage, onCashier, onWallet, onSettlement, onRanks, onProfile, onInstall, showInstall}) {
   const buttons = [
@@ -5041,6 +5086,7 @@ function App() {
         React.createElement('h2', {className:'text-xl font-black text-white'}, 'Account & settlement'),
         React.createElement('button', {type:'button', onClick:() => changeView('lobby'), className:'btn-outline rounded-xl px-4 py-2'}, 'Back to lobby')),
       React.createElement(window.PokerSettlement.Settlement, {user:effUser,clubId:CLUB_ID,call:pokerCommand,showToast}))), currentView === 'wallet' && activeClub && React.createElement(PlayerWallet,{user:effUser,onResults:()=>changeView('settlement'),onCashier:()=>changeView('cashier')}), currentView === 'profile' && activeClub && React.createElement(ProfileView, {
+    onWallet:()=>changeView('wallet'),
     user: effUser,
     onBack: () => changeView('lobby'),
     showToast: showToast
@@ -5077,6 +5123,8 @@ function App() {
     excludeDocId: ['poker-table', 'durak-table', 'ofc-table'].includes(currentView) ? activeTable?.docId : null
   }), currentView === 'poker-table' && React.createElement(PokerTable, {
     key:activeTable?.docId,
+    otherSeats:myClubTables(tablesDB,toursDB,effUser).filter(t=>t.docId!==activeTable?.docId),
+    onSwitchSeat:t=>changeView(t.type==='durak'?'durak-table':t.type==='ofc'?'ofc-table':'poker-table',t),
     onTransfer:table=>{setActiveTable(table);},
     tableDocId: activeTable?.docId,
     user: effUser,
@@ -5413,69 +5461,17 @@ function LeadersView({
   user,
   showToast
 }) {
-  const [mems, setMems] = useState(null);
-  const [logAll, setLogAll] = useState(null);
-  const [ltab, setLtab] = useState('wins');
-  const [gtab, setGtab] = useState('all');
-  useEffect(() => {
-    (async () => {
-      try {
-        const q = window.fb.query(window.fb.collection(window.fb.db, "memberships"), window.fb.where("clubId", "==", CLUB_ID));
-        const snap = await window.fb.getDocs(q);
-        setMems(snap.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        })).filter(m => m.status === 'approved' && !m.isBot));
-      } catch (e) {
-        setMems([]);
-      }
-    })();
-  }, []);
-  const needLog = ltab === 'week' || gtab !== 'all';
-  useEffect(() => {
-    if (!needLog || logAll !== null) return;
-    (async () => {
-      try {
-        setLogAll(await loadGameHistory({clubId:CLUB_ID,leaderboard:true}));
-      } catch (e) {
-        setLogAll([]);
-      }
-    })();
-  }, [needLog]);
-  const rows = (() => {
-    if (needLog) {
-      const cutoff = ltab === 'week' ? Date.now() - 7 * 24 * 3600 * 1000 : 0;
-      const agg = {};
-      (logAll || []).forEach(e => {
-        if (!e.uid || (e.at || 0) < cutoff) return;
-        if (gtab !== 'all' && e.game !== gtab) return;
-        if (!agg[e.uid]) agg[e.uid] = {
-          uid: e.uid,
-          username: e.username || '',
-          profit: 0,
-          games: 0,
-          wins: 0
-        };
-        agg[e.uid].profit = round2(agg[e.uid].profit + (Number(e.profit) || 0));
-        agg[e.uid].games++;
-        if ((e.profit || 0) > 0) agg[e.uid].wins++;
-      });
-      return Object.values(agg).map(w => ({
-        ...w,
-        metric: w.wins,
-        sub: `${w.games} games`
-      })).sort((a, b) => b.metric - a.metric);
-    }
-    const list = (mems || []).map(m => ({
-      uid: m.uid,
-      username: m.username,
-      photo: m.photo,
-      avatarSeed: m.avatarSeed,
-      metric: ltab === 'trophies' ? Object.values((m.stats || {}).trophies || {}).reduce((a, b) => a + (Number(b) || 0), 0) : (m.stats || {}).gamesWon || 0,
-      sub: `${(m.stats || {}).gamesPlayed || 0} games`
-    }));
-    return list.sort((a, b) => b.metric - a.metric);
-  })();
+  const [ltab,setLtab]=useState('wins'),[gtab,setGtab]=useState('all'),[version,retry]=useState(0);
+  const [data,setData]=useState(null);
+  const cid=CLUB_ID,game=ltab==='trophies'?'all':gtab,scope=JSON.stringify([user.uid,cid,ltab,game,version]);
+  useEffect(()=>{
+    let active=true;
+    window.PokerAuthUI.withTimeout(pokerCommand('pkClubRanks',{clubId:cid,period:ltab,game})).then(result=>{
+      if(active)setData({scope,rows:result.rows});
+    }).catch(()=>{if(active)setData({scope,error:true});});
+    return ()=>{active=false;};
+  },[scope]);
+  const current=data?.scope===scope?data:null,rows=current?.rows||[];
   const top3 = rows.slice(0, 3);
   const rest = rows.slice(3, 25);
   const medal = ['🥇', '🥈', '🥉'];
@@ -5497,19 +5493,20 @@ function LeadersView({
     className: "text-slate-400 text-xs font-bold mt-1"
   }, (window.__club || {}).name || '')), React.createElement("div", {
     className: "flex justify-center gap-2 mb-3"
-  }, [['wins', 'Wins'], ['week', 'This week 🔥'], ['trophies', 'Trophies']].map(([k, l]) => React.createElement("button", {
+  }, [['wins', 'Wins'], ['week', 'Last 7 days'], ['trophies', 'Trophies']].map(([k, l]) => React.createElement("button", {
     key: k,
     onClick: () => setLtab(k),
     "aria-pressed": ltab === k,
     className: `pill-tab px-5 py-2 rounded-xl font-black text-sm text-slate-400 ${ltab === k ? 'active' : 'hover:text-white'}`
-  }, l))), React.createElement("div", {
+  }, l))), ltab!=='trophies' && React.createElement("div", {
     className: "flex justify-center gap-1.5 mb-7 flex-wrap"
   }, [['all', 'All 🏆'], ['poker', 'Poker'], ['durak', 'Durak'], ['ofc', 'Chinese']].map(([k, l]) => React.createElement("button", {
     key: k,
     onClick: () => setGtab(k),
     "aria-pressed": gtab === k,
     className: `px-3 py-1.5 rounded-full font-bold text-xs border transition-colors ${gtab === k ? 'bg-amber-500/20 border-amber-400/60 text-amber-300' : 'bg-slate-900/60 border-white/10 text-slate-400 hover:text-white'}`
-  }, l))), mems === null || needLog && logAll === null ? React.createElement("div", {
+  }, l))),React.createElement('p',{className:'text-xs text-slate-400 text-center mb-3'},(ltab==='trophies'?'Lifetime trophies.':(ltab==='week'?'Rolling seven days.':'All time.')+' One point per profitable settled game record.')+' Ties are ordered by player name, then player ID.'),
+  current?.error?React.createElement('button',{type:'button',className:'btn-outline',onClick:()=>retry(n=>n+1)},'Could not load ranks. Retry'):!current ? React.createElement("div", {
     className: "text-center py-16 text-amber-500"
   }, React.createElement("i", {
     className: "fa-solid fa-spinner fa-spin text-3xl"
@@ -6438,6 +6435,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
   }, "POKER WITH FRIENDS")));
 }
 function ProfileView({
+  onWallet,
   user,
   onBack,
   showToast
@@ -6677,8 +6675,8 @@ function ProfileView({
     // ONE Wallet card: the withdrawable number is the hero, everything else
     // (bonus / agent / club) is a labeled row beneath it — no more four
     // identical tiles hiding the number that matters.
-    className: "profile-wallet glass-panel p-6 rounded-3xl mb-4 border border-emerald-500/25"
-  }, React.createElement("div", {
+    className: "profile-wallet glass-panel p-4 rounded-3xl mb-4 border border-emerald-500/25"
+  }, React.createElement("summary", {
     className: "text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1"
   }, "💰 Chip balance & game result"), React.createElement("div", {
     className: "text-4xl font-black text-emerald-400",
@@ -7091,6 +7089,22 @@ function QuickBotTableCreate({user, clubSettings, showToast}) {
       React.createElement('button', {type:'button', 'aria-label':'Create bot table', disabled:busy || !valid, 'aria-busy':busy, onClick:create,
         className:'btn-gold mt-3 w-full rounded-xl px-4 py-3 text-sm font-black disabled:opacity-40'},
         busy ? 'Opening…' : 'Open ' + gameLabel + ' · ' + blinds + '/' + Number(blinds)*2)));
+}
+function myClubTables(tables,tournaments,user) {
+  return (tables || []).filter(t => {
+      if ((t.clubId || 'main') !== CLUB_ID) return false;
+      const me = (t.players || {})[user.uid];
+      if (!me || me.left || ['left', 'out'].includes(me.status)) return false;
+      if (t.archived || t.tournament?.finished || t.tournament?.cancelled) return false;
+      if (t.tournamentId) {
+        const tor = (tournaments || []).find(tor => tor.id === t.tournamentId && (tor.clubId || 'main') === CLUB_ID);
+        if (!tor || tor.archived || tor.status !== 'running') return false;
+        const entry = tor.players?.[user.uid];
+        if (!entry || entry.out || entry.removed) return false;
+      }
+      // Zero stack is still a seat (all-in, busted/rebuy, or pending top-up).
+      return true;
+    });
 }
 function ReferenceLobbyHeader({club, tables, user, balance, onCashier, onSettlement, onClubs, onRanks, onManage, onProfile, onInstall, showInstall}) {
   const h=React.createElement;
@@ -7779,20 +7793,7 @@ function LobbyView({
     // lobby/console must not have to hunt for his own table.
     // Result tables can retain the champion's seat. Offer a return only when
     // both the table and its parent tournament still represent active play.
-    const mine = (tables || []).filter(t => {
-      if ((t.clubId || 'main') !== CLUB_ID) return false;
-      const me = (t.players || {})[user.uid];
-      if (!me || me.left || ['left', 'out'].includes(me.status)) return false;
-      if (t.archived || t.tournament?.finished || t.tournament?.cancelled) return false;
-      if (t.tournamentId) {
-        const tor = (tournaments || []).find(tor => tor.id === t.tournamentId && (tor.clubId || 'main') === CLUB_ID);
-        if (!tor || tor.archived || tor.status !== 'running') return false;
-        const entry = tor.players?.[user.uid];
-        if (!entry || entry.out || entry.removed) return false;
-      }
-      // Zero stack is still a seat (all-in, busted/rebuy, or pending top-up).
-      return true;
-    });
+    const mine = myClubTables(tables,tournaments,user);
     if (!mine.length) return null;
     return React.createElement("div", {
       className: "lobby-return-tables mb-4 flex flex-col gap-2",
@@ -11035,6 +11036,7 @@ function PokerTable({
   clubSettings,
   onLeave,
   onLobby,
+  otherSeats=[], onSwitchSeat,
   initialSpectate = false,
   onManage,
   onCreateTable,
@@ -11078,6 +11080,17 @@ function PokerTable({
   const tableMenuTrigger = useRef(null);
   const closeTableInfo = () => { setTableInfoOpen(false); tableMenuTrigger.current?.focus(); };
   const closeTableMenu = () => { setToolsOpen(false); tableMenuTrigger.current?.focus(); };
+  const notesClub=tableState?.clubId,notesScope=JSON.stringify([user.uid,notesClub]);
+  const [notesState,setNotesState]=useState(null);
+  useEffect(()=>{
+    if(headless||!notesClub||!window.fb?.collection)return;
+    let active=true;
+    const fb=window.fb,ref=fb.collection(fb.db,'playerNotes',user.uid,'clubs',notesClub,'players');
+    const stop=fb.onSnapshot(ref,snap=>{if(active)setNotesState({scope:notesScope,rows:Object.fromEntries((snap.docs||[]).map(d=>[d.id,d.data()]))});},
+      ()=>{if(active)setNotesState(null);});
+    return ()=>{active=false;stop?.();};
+  },[notesScope,headless]);
+  const seatNotes=notesState?.scope===notesScope?notesState.rows:null;
   const [peek, setPeek] = useState(null);
   const [podium, setPodium] = useState(null);
   const podiumShownRef = useRef(false);
@@ -11375,6 +11388,7 @@ function PokerTable({
   const [, setTurnClock] = useState(0);
   const [acting, setActing] = useState(false);
   const [raiseOpen, setRaiseOpen] = useState(false);
+  const [bankBusy,setBankBusy]=useState(false);
   const claimStorageKey='pkTurnControl:'+user.uid+':'+tableDocId;
   const [botClaim,setBotClaim] = useState(null);
   useEffect(()=>{
@@ -12445,6 +12459,9 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'sitout'});}catch(e){show
       if (replyTm) clearTimeout(replyTm);
     };
   }, [gs.phase, iDrive]);
+  const activeBank=players[gs.activeTurnUid];
+  const bankExtended=activeBank?.timeBankTurn!=null && activeBank.timeBankTurn===gs.turnStartedAt && activeBank.timeBankHand===gs.handN;
+  const turnLimit=(Number(setts.actionTime)||30)+(bankExtended?15:0);
   const playersCount = Object.keys(players).length;
   useEffect(() => {
     if (!tableState || gs.phase !== 'waiting') return;
@@ -12463,7 +12480,7 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'sitout'});}catch(e){show
     if (inBetting && gs.turnStartedAt) {
       interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - gs.turnStartedAt) / 1000);
-        const remaining = Math.max(0, (setts.actionTime || 30) - elapsed);
+        const remaining = Math.max(0, turnLimit - elapsed);
         setTurnClock(Date.now());
         if (remaining <= 5 && remaining > 0 && gs.activeTurnUid === user.uid) {
           try {
@@ -12479,7 +12496,7 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'sitout'});}catch(e){show
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [gs.turnStartedAt, gs.activeTurnUid, gs.phase]);
+  }, [gs.turnStartedAt, gs.activeTurnUid, gs.phase,turnLimit]);
   useEffect(() => {
     if (!tableState?.tournamentId || !inBetting) return;
     if (gs.activeTurnUid !== user.uid) return;
@@ -12499,6 +12516,19 @@ try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'sitout'});}catch(e){show
       return {};
     }
   });
+  const presetKey='pk-bet-presets:'+user.uid;
+  const presetDefaults=[{unit:'pot',value:100},{unit:'pot',value:2/3*100},{unit:'pot',value:50},{unit:'pot',value:1/3*100}];
+  const [presets,setPresets]=useState(()=>{try{
+    const saved=JSON.parse(localStorage.getItem(presetKey));
+    return Array.isArray(saved)&&saved.length===4&&saved.every(p=>p&&['pot','chips'].includes(p.unit)&&Number.isFinite(p.value)&&p.value>0)?saved:presetDefaults;
+  }catch(_){return presetDefaults;}});
+  const [presetDraft,setPresetDraft]=useState(null);
+  const [squeeze,setSqueeze]=useState({hand:null,count:0});
+  const savePresets=()=>{
+    const next=presetDraft.map(p=>({...p,value:Number(p.value)}));
+    if(next.some(p=>!Number.isFinite(p.value)||p.value<=0||p.value>(p.unit==='pot'?1000:10000000)))return showToast('Enter a positive amount. Maximum 1,000% or 10,000,000 chips.','error');
+    try{localStorage.setItem(presetKey,JSON.stringify(next));setPresets(next);setPresetDraft(null);}catch(_){showToast('These shortcuts could not be saved.','error');}
+  };
   const [skinOpen, setSkinOpen] = useState(false);
   const saveSkin = s2 => {
     setSkin(s2);
@@ -12760,6 +12790,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const handKey = gs.handN || legacyDealAt.current;
   // Losing hands may fade; the winning hand must remain readable.
   // the table menu: every tile carries a word, not just a glyph
+  const tableMenuGroup = (label,...items) => items.some(Boolean) && React.createElement('section',{
+    'aria-label':label, className:'col-span-full'
+  },React.createElement('h3',{className:'text-xs font-bold text-slate-300 mb-2'},label),
+    React.createElement('div',{className:'poker-menu-grid'},...items));
   const menuTile = (icon, label) => [
     React.createElement('span', {key:'i',className:'poker-menu-icon','data-menu-icon':icon,'aria-hidden':true}),
     React.createElement('span', {key:'l',className:'poker-menu-label'}, label)
@@ -12952,12 +12986,20 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     onClick: () => setSkinOpen(false)
   }, React.createElement("div", {
     onClick: e => e.stopPropagation(),
+    style:{maxHeight:"calc(100dvh - 32px)",overflowY:"auto"},
     className: "glass-panel rounded-3xl p-5 w-full max-w-sm animate-pop-in border border-white/10"
   }, React.createElement("h3", {
     className: "text-lg font-black text-white mb-1"
   }, "Table, cards & preferences"), React.createElement("p", {
     className: "text-[11px] text-slate-400 font-bold mb-3"
   }, "Only YOU see this — every player picks their own look."),
+  React.createElement('button',{type:'button',className:'btn-outline rounded-lg px-3 py-2 mb-2',onClick:()=>setPresetDraft(presetDraft?null:presets.map(p=>({...p,value:String(Number(p.value.toFixed(2)))})))},'Bet shortcuts'),
+  presetDraft&&React.createElement('fieldset',{className:'mb-3 space-y-2'},React.createElement('legend',null,'Raise shortcuts'),
+    presetDraft.map((p,i)=>React.createElement('div',{key:i,className:'flex gap-2'},
+      React.createElement('select',{'aria-label':'Shortcut '+(i+1)+' unit',value:p.unit,onChange:e=>setPresetDraft(presetDraft.map((v,j)=>j===i?{...v,unit:e.target.value}:v)),className:'bg-slate-900'},React.createElement('option',{value:'pot'},'% of pot'),React.createElement('option',{value:'chips'},'Raise to chips')),
+      React.createElement('input',{'aria-label':'Shortcut '+(i+1)+' amount',type:'number',min:.01,step:'any',value:p.value,onChange:e=>setPresetDraft(presetDraft.map((v,j)=>j===i?{...v,value:e.target.value}:v)),className:'bg-slate-900 w-24'}))),
+    React.createElement('button',{type:'button',className:'btn-outline rounded px-2 py-1',onClick:savePresets},'Save shortcuts')),
+  React.createElement('label',{className:'flex gap-2 my-2'},React.createElement('input',{type:'checkbox',checked:skin.squeeze===true,onChange:e=>saveSkin({...skin,squeeze:e.target.checked})}),'Reveal my cards one at a time'),
   React.createElement('fieldset',{className:'poker-felt-choices'},
     React.createElement('legend',null,'Table color · matching LED'),
     React.createElement('div',null,[['auto','Auto','#777'],['green','Green','#24681b'],['blue','Blue','#235882'],['red','Red','#862626'],['purple','Purple','#673d8b'],['gold','Gold','#997b23'],['slate','Slate','#485260'],['turquoise','Turquoise','#2bd9cf']].map(([key,label,color])=>React.createElement('button',{
@@ -13333,7 +13375,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     // Derive the visible clock from this turn's timestamp, including the first
     // render after a turn change or reconnect. The interval only refreshes it.
     const manualUntil = isTurn && p.manualControl && p.manualControl.turnStartedAt === gs.turnStartedAt ? p.manualControl.until : 0;
-    const turnDuration = Number(setts.actionTime) || 30;
+    const turnDuration = turnLimit;
     const turnSeconds = isTurn && gs.turnStartedAt ? Math.min(turnDuration, Math.max(0, Math.ceil(((manualUntil || Number(gs.turnStartedAt) + turnDuration * 1000) - Date.now()) / 1000))) : turnDuration;
     const timerPct = isTurn ? turnSeconds / turnDuration : 0;
     const seatAward = gs.phase === 'showdown' && resultPresentation.winnerReady && gs.lastAwards?.find(a => a.uid === p.uid);
@@ -13419,6 +13461,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       key: 'g' + gi,
       className: "gift-fx"
     }, g.giftE)), showCards && (isMe || !fanBelow) && (() => {
+      const canSqueeze=isMe && skin.squeeze && !hidden && gs.phase==='preflop' && !gs.allInReveal;
+      const shown=canSqueeze ? squeeze.hand===handKey?squeeze.count:0 : dispCards.length;
       const nC = dispCards.length;
       const doFan = nC >= 2 && !(isMe && gs.phase === 'discard');
       const midC = (nC - 1) / 2;
@@ -13473,7 +13517,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         }
       }, React.createElement(PCard, {
         card: c,
-        hidden: hidden,
+        hidden: hidden || (canSqueeze && displayIndex>=shown),
         size: isMe ? nC > 4 ? 'md' : 'lg' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
       }))) : React.createElement("span", {
@@ -13484,10 +13528,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         }
       }, React.createElement(PCard, {
         card: c,
-        hidden: hidden,
+        hidden: hidden || (canSqueeze && displayIndex>=shown),
         size: isMe ? nC > 4 ? 'md' : 'lg' : hidden ? 'sm' : gs.phase === 'showdown' ? 'md' : 'sm',
         hl: !hidden && !!(winHL && winHL.has(cid(c)))
-      })); }));
+      })); }),canSqueeze && shown<nC && React.createElement('div',{className:'absolute bottom-full left-0 z-50 flex gap-1',dir:'ltr'},
+        React.createElement('button',{type:'button',className:'rounded bg-slate-900 text-white px-2 py-1 text-xs',onClick:()=>setSqueeze({hand:handKey,count:shown+1})},'Peek'),
+        React.createElement('button',{type:'button',className:'rounded bg-slate-900 text-white px-2 py-1 text-xs',onClick:()=>setSqueeze({hand:handKey,count:nC})},'Show all')));
     })(), React.createElement("div", {
       onClick:openSeatDetails,
       role:'button',tabIndex:0,'aria-label':'View '+(isMe?'your seat':p.name),
@@ -13496,7 +13542,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       style: {
         backgroundImage: `url(${avatarUrl(p)})`
       }
-    }, godLeading && React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true})), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
+    }, !isMe && noteColors[seatNotes?.[p.uid]?.color] && React.createElement('span',{'aria-label':'My '+seatNotes[p.uid].color+' player marker',style:{position:'absolute',right:0,bottom:0,width:12,height:12,borderRadius:'50%',border:'2px solid #091321',background:noteColors[seatNotes[p.uid].color]}}),godLeading && React.createElement('span',{className:'poker-god-best-ring','aria-hidden':true})), setts.isDealerChoice && gs.dcUid === p.uid && React.createElement("div", {
       className: "absolute -right-3 top-0 w-5 h-5 rounded-full bg-rose-500 text-white text-[8px] font-black flex items-center justify-center shadow-lg border border-rose-300 z-30"
     }, "DC"), React.createElement("div", {
       onClick:openSeatDetails,
@@ -13713,7 +13759,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "poker-action-buttons",
     'data-acting-for':controlledBot?.uid,
     'aria-label':controlledBot ? 'Playing as '+controlledBot.name : undefined
-  }, (() => {
+  }, srvEngine && isMyTurn && !controlledBot && !myPlayer?.isBot && myPlayer?.timeBankHand!==gs.handN &&
+    React.createElement('button',{type:'button',className:'btn-outline rounded-lg px-2 text-xs',disabled:bankBusy||acting,onClick:async()=>{
+      setBankBusy(true);
+      try{await pokerCommand('pkSeat',{tableId:tableDocId,op:'time-bank',handN:gs.handN,phase:gs.phase,turnStartedAt:gs.turnStartedAt});}
+      catch(e){showToast(e.message||'Time bank unavailable.','error');}finally{setBankBusy(false);}
+    }},'Time bank +15s'), (() => {
     const minRaiseTo = Math.min(round2((gs.highestBet || 0) + (gs.minRaise || BB)), myMaxBet);
     const allInTo = round2((actionPlayer?.bet || 0) + (actionPlayer?.stack || 0));
     const topIsAllIn = myMaxBet >= allInTo - 0.001;
@@ -13722,7 +13773,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       className: "max-w-md mx-auto w-full relative"
     }, raiseOpen && (() => {
       const potAfterCall = round2(totalPot + toCallMe);
-      const potTo = f => Math.max(minRaiseTo, Math.min(round2((gs.highestBet || 0) + toCallMe + potAfterCall * f), myMaxBet));
+      const potTo = f => Math.max(minRaiseTo, Math.min(round2((gs.highestBet || 0) + potAfterCall * f), myMaxBet));
       const pct = myMaxBet > minRaiseTo ? Math.max(0, Math.min(100, (raiseAmt - minRaiseTo) / (myMaxBet - minRaiseTo) * 100)) : 100;
       const fillCol = atTop && topIsAllIn ? '#f43f5e' : '#f59e0b';
       return React.createElement("div", {
@@ -13737,19 +13788,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       }, React.createElement("button", {
         onClick: () => setRaiseAmt(myMaxBet),
         className: "text-[10px] bg-slate-800 border border-rose-500/40 px-2.5 py-1 rounded-lg font-black text-rose-300"
-      }, topIsAllIn ? 'ALL IN' : 'MAX'), React.createElement("button", {
-        onClick: () => setRaiseAmt(potTo(1)),
-        className: "text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300"
-      }, "POT"), React.createElement("button", {
-        onClick: () => setRaiseAmt(potTo(2 / 3)),
-        className: "text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300"
-      }, "2/3"), React.createElement("button", {
-        onClick: () => setRaiseAmt(potTo(1 / 2)),
-        className: "text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300"
-      }, "1/2"), React.createElement("button", {
-        onClick: () => setRaiseAmt(potTo(1 / 3)),
-        className: "text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300"
-      }, "1/3"), React.createElement("button", {
+      }, topIsAllIn ? 'ALL IN' : 'MAX'), presets.map((preset,i)=>React.createElement('button',{
+        key:i,type:'button',onClick:()=>setRaiseAmt(preset.unit==='pot'?potTo(preset.value/100):Math.max(minRaiseTo,Math.min(myMaxBet,round2(preset.value)))),
+        className:'text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300'
+      },preset.unit==='chips'?formatShort(preset.value):preset.value===100?'POT':preset.value===50?'1/2':preset.value===2/3*100?'2/3':preset.value===1/3*100?'1/3':Math.round(preset.value*100)/100+'%')), React.createElement("button", {
         onClick: () => setRaiseAmt(minRaiseTo),
         className: "text-[10px] bg-slate-800 border border-white/10 px-2.5 py-1 rounded-lg font-black text-slate-300"
       }, "MIN")), React.createElement("div", {
@@ -13920,6 +13962,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     buyIn: Number(setts.spinBuyIn) || 50
   }), peek && React.createElement(PlayerPeek, {
     key:tableDocId+':'+peek.uid+':'+user.uid,
+    seatStats:srvEngine?{key:tableDocId+peek.uid,tableId:tableDocId,targetUid:peek.uid}:null,
+    privateNote:seatNotes&&peek.uid!==user.uid?{key:JSON.stringify([notesScope,peek.uid,seatNotes[peek.uid]]),uid:user.uid,clubId:notesClub,target:peek.uid,initial:seatNotes[peek.uid]||{}}:null,
     tableResult:srvEngine&&!tableState.tournamentId&&!setts.spinMode&&!peek.isBot&&(peek.uid===user.uid||canManageGame(user,'poker'))?{
       tableId:tableDocId,targetUid:peek.uid,viewerUid:user.uid,
       refreshKey:JSON.stringify([gs.handN,gs.phase==='showdown',!!players[peek.uid],players[peek.uid]?.buyTotal,players[peek.uid]?.status==='waiting'])
@@ -14236,37 +14280,13 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     spectate && !isSeated && !onWaitlist && requiresWaitlist && !tableState.closeRequested && React.createElement('button', {type:'button', onClick:()=>{setToolsOpen(false);setSpectate(false);}}, 'Join waitlist')),
   React.createElement("div", {
     className: "poker-menu-status"
-  }, (tableState.tournamentId ? 'TOURNAMENT' : setts.spinMode ? 'SPIN & CASH' : 'CASH TABLE') + ' · ' + (setts.maxPlayers || 6) + ' SEATS'), React.createElement("div", {
+  }, (tableState.tournamentId ? 'TOURNAMENT' : setts.spinMode ? 'SPIN & CASH' : 'CASH TABLE') + ' · ' + (setts.maxPlayers || 6) + ' SEATS'), onSwitchSeat && otherSeats.length>0 && React.createElement('nav',{'aria-label':'Switch table',className:'flex flex-wrap gap-2 my-2'},otherSeats.map(t=>
+    React.createElement('button',{key:t.docId,type:'button',className:'btn-outline rounded-xl px-3 py-2',onClick:()=>onSwitchSeat(t)},
+      (t.settings?.name||t.settings?.tableName||t.settings?.baseGameType||t.type)+' · '+(t.gameState?.activeTurnUid===user.uid?'Your turn':'Return to seat')))), React.createElement("div", {
     className: "poker-menu-grid"
-  }, React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setTableInfoOpen(true);},'aria-label':'Table details',className:'poker-menu-tile','data-menu-tone':'cyan'},...menuTile('details','Details')),
-  React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setHistoryOpen(true);setHistExpand(null);},title:'Hand history',className:'poker-menu-tile','data-menu-tone':'purple'},...menuTile('history','Hand history')),
-  React.createElement("button", {
-    onClick: () => {
-      setToolsOpen(false); // picking an item folds the menu back to ☰
-      setSkinOpen(true);
-    },
-    title: "My table look — only you see it",
-    className:'poker-menu-tile','data-menu-tone':'gold'
-  }, ...menuTile("look", "My look")), React.createElement("button", {
-    onClick: () => {
-      const m = !window.__pkMuted;
-      window.__pkMuted = m;
-      setSfxLevel(window.__pkVolume);
-      try {
-        localStorage.setItem('pkMuted', m ? '1' : '');
-      } catch (e) {}
-      setMuteTick(x => x + 1);
-      setToolsOpen(false);
-    },
-    title: "Sound on/off",
-    'aria-pressed':!window.__pkMuted,
-    className:'poker-menu-tile','data-menu-tone':'green'
-  }, ...menuTile(window.__pkMuted ? 'muted' : 'sound', window.__pkMuted ? 'Sound off' : 'Sound on')),
-  React.createElement(PokerMusicButton,{tile:true}),
-  window.PokerSoundPack && React.createElement('button',{type:'button',className:'poker-menu-tile','data-menu-tone':'purple',onClick:()=>{setToolsOpen(false);window.PokerSoundPack.openLibrary();}},...menuTile('sound','Sound library')),
-  React.createElement('label', {className:'poker-menu-volume','data-menu-tone':'cyan'},
-    React.createElement('span',null,'Volume · ',React.createElement('strong',null,Math.round(window.__pkVolume * 100)+'%')),
-    React.createElement('input', {type:'range',min:0,max:100,value:Math.round(window.__pkVolume*100),'aria-label':'Sound volume',className:'poker-menu-volume-control',onChange:e=>{setSfxLevel(Number(e.target.value)/100);setMuteTick(x=>x+1);}})), isSeated && setts.straddle && !setts.spinMode && !tableState?.tournamentId && React.createElement("button", {
+  }, tableMenuGroup('Game',
+    React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setTableInfoOpen(true);},'aria-label':'Table details',className:'poker-menu-tile','data-menu-tone':'cyan'},...menuTile('details','Details')),
+    isSeated && setts.straddle && !setts.spinMode && !tableState?.tournamentId && React.createElement("button", {
     onClick: async () => {
       setToolsOpen(false);
       try {
@@ -14294,7 +14314,52 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "absolute -top-1 -right-1 bg-emerald-500 text-black text-[8px] font-black px-1 rounded-full shadow",
     dir: "ltr",
     title: "Queued — added at end of hand"
-  }, "+", formatShort(myPlayer.pendingTopUp))), isGod && React.createElement("button", {
+  }, "+", formatShort(myPlayer.pendingTopUp))),
+    onLobby && React.createElement('button',{
+    type:'button',onClick:()=>{setToolsOpen(false);onLobby();},title:'Back to lobby — keep your seat',
+    'aria-label':'Back to lobby',className:'poker-menu-tile','data-menu-tone':'cyan'
+  },...menuTile('fa-house','Back to lobby')), React.createElement("button", {
+    onClick: () => {
+      setToolsOpen(false);
+      if (!isSeated) onLeave();else handleStandUp();
+    },
+    title: isSeated ? 'Leave table — release your seat' : 'Leave table',
+    'aria-label': 'Leave table',
+    className:'poker-menu-tile','data-menu-tone':'pink'
+  }, ...menuTile("leave", "Leave table"))),
+  tableMenuGroup('History',
+    React.createElement('button',{type:'button',onClick:()=>{setToolsOpen(false);setHistoryOpen(true);setHistExpand(null);},title:'Hand history',className:'poker-menu-tile','data-menu-tone':'purple'},...menuTile('history','Hand history'))),
+  tableMenuGroup('Appearance & sound',
+    React.createElement("button", {
+    onClick: () => {
+      setToolsOpen(false); // picking an item folds the menu back to ☰
+      setSkinOpen(true);
+    },
+    title: "My table look — only you see it",
+    className:'poker-menu-tile','data-menu-tone':'gold'
+  }, ...menuTile("look", "My look")), React.createElement("button", {
+    onClick: () => {
+      const m = !window.__pkMuted;
+      window.__pkMuted = m;
+      setSfxLevel(window.__pkVolume);
+      try {
+        localStorage.setItem('pkMuted', m ? '1' : '');
+      } catch (e) {}
+      setMuteTick(x => x + 1);
+      setToolsOpen(false);
+    },
+    title: "Sound on/off",
+    'aria-pressed':!window.__pkMuted,
+    className:'poker-menu-tile','data-menu-tone':'green'
+  }, ...menuTile(window.__pkMuted ? 'muted' : 'sound', window.__pkMuted ? 'Sound off' : 'Sound on')),
+  React.createElement(PokerMusicButton,{tile:true}),
+  window.PokerSoundPack && React.createElement('button',{type:'button',className:'poker-menu-tile','data-menu-tone':'purple',onClick:()=>{setToolsOpen(false);window.PokerSoundPack.openLibrary();}},...menuTile('sound','Sound library')),
+  React.createElement('label', {className:'poker-menu-volume','data-menu-tone':'cyan'},
+    React.createElement('span',null,'Volume · ',React.createElement('strong',null,Math.round(window.__pkVolume * 100)+'%')),
+    React.createElement('input', {type:'range',min:0,max:100,value:Math.round(window.__pkVolume*100),'aria-label':'Sound volume',className:'poker-menu-volume-control',onChange:e=>{setSfxLevel(Number(e.target.value)/100);setMuteTick(x=>x+1);}})),
+    React.createElement(PokerFullscreenButton,{showToast,onToggle:closeTableMenu})),
+  tableMenuGroup('Management',
+    isGod && React.createElement("button", {
     onClick: () => {
       setToolsOpen(false);
       setGodView(!godView);
@@ -14354,18 +14419,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     },
     title: "Sit out and open Club Management",
     className:'poker-menu-tile','data-menu-tone':'pink'
-  }, ...menuTile("manage", "Manage")), onLobby && React.createElement('button',{
-    type:'button',onClick:()=>{setToolsOpen(false);onLobby();},title:'Back to lobby — keep your seat',
-    'aria-label':'Back to lobby',className:'poker-menu-tile','data-menu-tone':'cyan'
-  },...menuTile('fa-house','Back to lobby')), React.createElement("button", {
-    onClick: () => {
-      setToolsOpen(false);
-      if (!isSeated) onLeave();else handleStandUp();
-    },
-    title: isSeated ? 'Leave table — release your seat' : 'Leave table',
-    'aria-label': 'Leave table',
-    className:'poker-menu-tile','data-menu-tone':'pink'
-  }, ...menuTile("leave", "Leave table")), React.createElement(PokerFullscreenButton,{showToast,onToggle:closeTableMenu})))), document.body), isSeated && gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
+  }, ...menuTile("manage", "Manage")))))), document.body), isSeated && gs.phase === 'showdown' && (srvEngine ? myPrivCards : myPlayer?.cards || []).length > 0 && !myPlayer.reveal && (myPlayer.mucked || myPlayer.status === 'folded' || gs.earlyWin && myPlayer.status === 'active') && React.createElement("button", {
     onClick: async () => {
       try {
         if (srvEngine) {

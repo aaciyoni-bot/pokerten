@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="386">
-    <script src="assets/js/app-update.js?v=386" defer></script>
+    <meta name="app-version" content="387">
+    <script src="assets/js/app-update.js?v=387" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1123,7 +1123,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=312">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=386">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=387">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -1139,6 +1139,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=344">
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=347">
 <script src="assets/js/hand-archive.js?v=386"></script>
+<script src="assets/js/table-clips.js?v=387"></script>
 <script src="assets/js/wallet-requests.js?v=385"></script>
 <script src="assets/js/club-cashier.js?v=385"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
@@ -2464,6 +2465,8 @@ function useTableChat(tableState, tableDocId, user, gameId, showToast) {
   };
 }
 function ChatPanel({
+  clipTableId,
+  canWatchClips,
   chat,
   meUid,
   onSend,
@@ -2610,7 +2613,7 @@ function ChatPanel({
     onClick: () => onToggleMuteUid(m.uid)
   }, "Mute")), /*#__PURE__*/React.createElement("div", {
     dir: "auto"
-  }, m.floor ? 'Called the floor' : m.gift ? `Sent ${giftInfo(m)} ${m.to === meUid ? 'to you' : `to ${targets.find(t => t.uid === m.to)?.name || 'a player'}`}` : m.emoji || m.text)))), closing && /*#__PURE__*/React.createElement("div", {
+  }, m.clipId && clipTableId && window.PokerTableClips ? React.createElement(window.PokerTableClips.ClipPlayer, {key:clipTableId+m.clipId,tableId:clipTableId,entry:m,canRemove:canModerate||m.uid===meUid,canWatch:canWatchClips}) : m.floor ? 'Called the floor' : m.gift ? `Sent ${giftInfo(m)} ${m.to === meUid ? 'to you' : `to ${targets.find(t => t.uid === m.to)?.name || 'a player'}`}` : m.emoji || m.text)))), closing && /*#__PURE__*/React.createElement("div", {
     className: "table-chat__sent",
     role: "status"
   }, "Message sent · chat will close shortly"), unread && /*#__PURE__*/React.createElement("button", {
@@ -2623,7 +2626,7 @@ function ChatPanel({
     type: "button",
     onClick: () => setExtras(x => !x),
     "aria-expanded": extras
-  }, extras ? 'Hide reactions' : 'Reactions & gifts'), /*#__PURE__*/React.createElement("span", null, "Enter to send")), extras && /*#__PURE__*/React.createElement("div", {
+  }, extras ? 'Hide reactions' : 'Reactions & gifts'), /*#__PURE__*/React.createElement("span", null, "Enter to send")), canWatchClips && clipTableId && !chatMuted && window.PokerTableClips && React.createElement(window.PokerTableClips.Composer, {key:clipTableId,tableId:clipTableId}), extras && /*#__PURE__*/React.createElement("div", {
     className: "table-chat__extras"
   }, /*#__PURE__*/React.createElement("div", null, QUICK_EMOJIS.map(emoji => /*#__PURE__*/React.createElement("button", {
     type: "button",
@@ -14213,6 +14216,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }))))), (tableState.history || []).length === 0 && React.createElement("div", {
     className: "text-center text-slate-500 font-bold text-xs py-10"
   }, "No hands have been played at this table yet.")))), ch.chatOpen && React.createElement(ChatPanel, {
+    clipTableId: (isSeated || ch.canModerate) && srvEngine ? tableDocId : null,
+    canWatchClips:isSeated,
     chat: ch.chatArr,
     meUid: user.uid,
     onSend: ch.sendChat,

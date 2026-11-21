@@ -69,3 +69,14 @@ test('only current club members can read lobby projections and clients cannot wr
  await assertFails(setDoc(doc(member,name),{clubId:'club',authorityVersion:2}));
  await assertFails(getDoc(doc(env.authenticatedContext('outsider').firestore(),name)));
 });
+
+test('camera media is inaccessible directly to club members and signed-out visitors',async()=>{
+  const path='_pkTableClips/sample';
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),path),{expires:Date.now()+60000}));
+  for(const ctx of [env.authenticatedContext('one'),env.unauthenticatedContext()]){
+    const db=ctx.firestore();
+    await assertFails(getDoc(doc(db,path)));
+    await assertFails(getDocs(collection(db,'_pkTableClips')));
+    await assertFails(setDoc(doc(db,path),{video:'fixture'}));
+  }
+});

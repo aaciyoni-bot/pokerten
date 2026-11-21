@@ -455,3 +455,7 @@ exports.pkCanInstallUpdate = require('firebase-functions/v2/https').onCall({regi
       !tournaments.docs.some(d=>d.get(seat)&&!['done','cancelled'].includes(d.get('status')))};
   },{readOnly:true});
 });
+
+const tableClips = require('./tableClips');
+exports.pkTableClip = tableClips.pkTableClip;
+exports.pkExpireTableClips = tableClips.pkExpireTableClips;

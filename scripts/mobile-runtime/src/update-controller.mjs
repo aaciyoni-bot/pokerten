@@ -25,7 +25,7 @@ function releaseState(r, current) {
 }
 export function validRelease(r, current) { return releaseState(r, current) === 'available'; }
 // One automatic attempt per cold start. A slow/failed download never interrupts a later hand.
-export function createAutoUpdater({ ota, store, fetchRelease, current, render, hasResume = () => false,
+export function createAutoUpdater({ ota, store, fetchRelease, current, render, hasResume = () => false, verifySeat = async () => true,
   delay = (fn, ms) => setTimeout(fn, ms), cancel = clearTimeout }) {
   let context, view = 'auth', attempted = false, cancelled = false, running, generation = 0, manualRun=false;
   const blocked = (manual=manualRun) => updateBlocker(context, view, hasResume(), manual);
@@ -49,6 +49,12 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
   async function install(manual, id) {
     let timer;
     const live = () => id === generation && !cancelled && safe();
+    const confirmed = async () => {
+      const uid=context?.uid,clubId=context?.clubId;
+      if(!uid||!clubId)return live();
+      try { return await verifySeat(uid,clubId) && uid===context?.uid && clubId===context?.clubId && live(); }
+      catch { return false; }
+    };
     const deferred = () => blocked() || 'Update paused. Check again in the club lobby.';
     try {
       render({text:'Checking for updates…'});
@@ -60,6 +66,7 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
         if (!live()) return deferred();
         if (info?.status === 'available') {
           render(null);
+          if(!await confirmed())return deferred();
           await store.setSafeContext({safe:true});
           if (!live()) return deferred();
           const result = await store.startUpdate();
@@ -84,6 +91,7 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
             return live() ? checkStore('The game update could not download. Tap Check update to retry.') : deferred();
           }
           if (!live()) return deferred();
+          if(!await confirmed())return deferred();
           render({text:'Starting POKERTEN…'});
           await ota.set({id:bundle.id});
           return 'Starting the updated game…';

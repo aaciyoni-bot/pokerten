@@ -19,9 +19,9 @@ const snapshot=r=>r.path==='users/me'?record('me',profile):r.path==='memberships
 const ref=(_, ...parts)=>({path:parts.join('/')});
 w.fb={db:{},auth:{currentUser:user},onAuthStateChanged:(_,cb)=>{auth=cb;return()=>{};},doc:ref,collection:ref,query:r=>r,where(){},getDoc:async r=>snapshot(r),getDocs:async()=>empty,
  onSnapshot:(r,opts,next,fail)=>{const cb=typeof opts==='function'?opts:next;const error=typeof opts==='function'?next:fail;
-  const sub={path:r.path,cb,error,stopped:false};subs.push(sub);if(r.path!=='tables'&&r.path!=='tournamentViews')cb(snapshot(r));return()=>{sub.stopped=true;};},
+  const sub={path:r.path,cb,error,stopped:false};subs.push(sub);if(r.path!=='tableLobbyViews'&&r.path!=='tournamentViews')cb(snapshot(r));return()=>{sub.stopped=true;};},
  fx:async(name,args)=>{calls.push({name,args});return{};}};
-const button=text=>[...w.document.querySelectorAll('button')].find(b=>b.textContent===text),state=()=>JSON.parse(w.document.querySelector('[data-lobby]').textContent),latest=()=>subs.filter(s=>s.path==='tables').at(-1);
+const button=text=>[...w.document.querySelectorAll('button')].find(b=>b.textContent===text),state=()=>JSON.parse(w.document.querySelector('[data-lobby]').textContent),latest=()=>subs.filter(s=>s.path==='tableLobbyViews').at(-1);
 const table={type:'poker',authorityVersion:2,clubId:'main',settings:{serverEngine:true},players:{me:{uid:'me',status:'active',stack:0,bet:50}},gameState:{phase:'flop'}};
 (async()=>{try{
  // A timed-out provider response cannot resume the abandoned code-login chain.

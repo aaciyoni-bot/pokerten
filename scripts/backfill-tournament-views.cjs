@@ -38,7 +38,10 @@ async function main(){
  if(!token.access_token)throw Error('Deployment authentication failed');
  const authClient=new OAuth2Client();authClient.setCredentials({access_token:token.access_token});
  const db=new Firestore({projectId:'pokerten',databaseId:'(default)',authClient});
- try{console.log('TOURNAMENT_VIEW_BACKFILL '+JSON.stringify(await backfill(db)));}finally{await db.terminate();}
+ try{
+  console.log('TOURNAMENT_VIEW_BACKFILL '+JSON.stringify(await backfill(db)));
+  console.log('TABLE_LOBBY_BACKFILL '+JSON.stringify(await require('../functions/tableLobbyView').backfill(db)));
+ }finally{await db.terminate();}
 }
 module.exports={backfill};
 if(require.main===module)main().catch(error=>{console.error(error.message);process.exitCode=1;});

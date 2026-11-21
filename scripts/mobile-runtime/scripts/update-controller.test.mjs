@@ -107,3 +107,9 @@ test('the native install lock deduplicates repeated manual taps',async()=>{
   resolve({id:'new'});await Promise.all([first,second]);
   assert.equal(downloads,1);assert.equal(f.events.filter(([type])=>type==='apply').length,1);
 });
+test('a newly occupied source table, or an unavailable server, blocks an install from a stale empty lobby',async()=>{
+ for(const verifySeat of [async()=>false,async()=>{throw Error('offline');}]){
+  const f=fixture({verifySeat});f.start();await flush();await flush();
+  assert.ok(!f.events.some(e=>e[0]==='apply'||e[0]==='store'));
+ }
+});

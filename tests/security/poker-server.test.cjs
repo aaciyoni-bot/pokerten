@@ -133,8 +133,13 @@ test('cash entry rejects forged identity, grants, negative money and unaffordabl
  const t=await get('tables/'+tableId),g=t.gameState,actor=g.activeTurnUid;assert.ok(actor);assert.equal(t.players[actor].cards.length,0);assert.equal(t.gameState.deck,undefined);
  const turn={handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet};
  const action=req(actor,{tableId,action:'call',expectedTurn:turn});const stack=t.players[actor].stack,toCall=Math.min(stack,g.highestBet-t.players[actor].bet);
+ const memberRef=db.doc('memberships/'+actor+'_'+club);
+ await memberRef.update({status:'suspended'});
+ await assert.rejects(Engine.pkAct.run(action),e=>e.code==='permission-denied');
+ assert.equal((await get('tables/'+tableId)).gameState.__seq,g.__seq);
+ await memberRef.update({status:'approved'});
  const confirmation=await Engine.pkAct.run(action);const called=await get('tables/'+tableId);assert.equal(toCall,0.5);assert.equal(called.players[actor].stack,stack-toCall);assert.notEqual(called.gameState.activeTurnUid,actor);
- assert.equal(confirmation.tableId,tableId);assert.deepEqual(confirmation.tableUpdate.players,called.players);assert.deepEqual(confirmation.tableUpdate.gameState,called.gameState);
+ assert.equal(confirmation.tableId,tableId);assert.deepEqual(confirmation.tableUpdate,require('../../functions/pokerPlayerView').actionUpdate(called));
  assert.equal(confirmation.tableUpdate.gameState.__seq,g.__seq+1);assert.equal(confirmation.tableUpdate.gameState.deck,undefined);assert.equal(confirmation.tableUpdate.priv,undefined);assert.ok(Object.values(confirmation.tableUpdate.players).every(p=>p.cards.length===0),'confirmation must not expose private hands');
  assert.equal(Core.chips([called]),200);
  // Elapsed handler time is per HTTP attempt; the persisted game confirmation
@@ -577,4 +582,26 @@ test('personal history keeps wallet movements and archived hands private after a
  assert.equal(mine.rows[0].result,3);assert.equal(mine.rows[0].actions[0].name,'Viewer');
  assert.ok(!JSON.stringify(mine).includes('PRIVATE'));assert.equal(mine.rows[0].rake,undefined);
  assert.deepEqual((await archive.pkMyHands.run(req(other,{clubId:club,targetUid:u}))).rows,[]);
+ const sessions=who=>archive.pkMyHands.run(req(who,{clubId:club,view:'sessions'}));
+ const first=(await sessions(u)).rows[0];
+ assert.equal(first.id,mine.rows[0].sessionId);assert.equal(first.netCents,300);assert.equal(first.partialStart,true);
+ state.table.history[0].at++;state.gameState.handN++;state.players[u].stack=8;state.settledWinners=new Set();
+ await db.runTransaction(async tx=>archive.write(tx,db,state));
+ const combined=(await sessions(u)).rows[0];
+ assert.equal(combined.hands,2);assert.equal(combined.measuredHands,2);assert.equal(combined.netCents,100);assert.equal(combined.winningHands,1);
+ state.players[u].seatStartedAt=123459;state.table.history[0].at=123460;state.gameState.handN++;
+ await db.runTransaction(async tx=>archive.write(tx,db,state));
+ const visits=(await sessions(u)).rows;assert.equal(visits.length,2);assert.equal(visits[0].partialStart,false);assert.equal(visits[0].hands,1);
+ assert.deepEqual((await sessions(other)).rows,[]);
+});
+
+test('lobby mirrors retain occupancy but never copy chat, hands, financial records or control data',async()=>{
+ const view=require('../../functions/tableLobbyView'),id='lobby-view-fixture',source=db.doc('tables/'+id),dest=db.doc('tableLobbyViews/'+id);
+ const data={authorityVersion:2,type:'poker',clubId:club,settings:{serverEngine:true,botBuyIn:9543},players:{one:{uid:'one',stack:100,status:'active',cards:[{val:'A'}],botStyle:'private-marker',fundingUid:'private-marker'}},gameState:{phase:'flop',deck:['private-marker']},chat:[{text:'private-marker'}],history:[{at:12,ps:['private-marker']}]};
+ await source.set(data);assert.equal(await view.refresh(db,id),true);
+ const row=(await dest.get()).data();assert.equal(row.players.one.stack,100);assert.equal(row.gameState.phase,'flop');assert.deepEqual(row.history,[{at:12}]);assert.doesNotMatch(JSON.stringify(row),/private-marker|fundingUid|cards|deck|botBuyIn/);
+ assert.equal(await view.refresh(db,id),false);
+ await source.delete();await view.refresh(db,id);assert.equal((await dest.get()).exists,false);
+ await source.set({...data,clubId:'replacement',players:{}});await view.refresh(db,id);assert.equal((await dest.get()).data().clubId,'replacement');
+ await source.delete();await view.refresh(db,id);
 });

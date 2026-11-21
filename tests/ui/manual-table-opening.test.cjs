@@ -32,7 +32,7 @@ function firebaseFixture(email,membershipStatus){
   if(target.path==='clubs/main')return record('main',club);
   if(target.path==='clubs')return records([club]);
   if(target.path==='memberships')return records((target.filters?.some(f=>f[0]==='uid')?[membership]:[owner,membership,other]));
-  if(target.path==='tables')return records(tableRows);if(target.path==='tournamentViews')return records([]);
+  if(target.path==='tableLobbyViews')return records(tableRows);if(target.path==='tournamentViews')return records([]);
   return record(target.path.split('/').at(-1),null);
  };
  const denyWrite=async()=>{writes.push(1);throw Error('This access regression must never write application data');};
@@ -41,7 +41,7 @@ function firebaseFixture(email,membershipStatus){
   onAuthStateChanged:()=>{throw Error('Management must observe identity-token refreshes, not just sign-in changes');},
   doc:ref,collection:ref,where:(...filter)=>filter,query:(target,...filters)=>({...target,filters}),
   getDoc:async target=>snapshot(target),getDocs:async target=>snapshot(target),
-  onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;if(target.path==='tables')tableSubscriptions.add(fn);fn(snapshot(target));return()=>tableSubscriptions.delete(fn);},
+  onSnapshot:(target,options,next)=>{const fn=typeof options==='function'?options:next;if(target.path==='tableLobbyViews')tableSubscriptions.add(fn);fn(snapshot(target));return()=>tableSubscriptions.delete(fn);},
   fx:async(name,args)=>{
    calls.push({name,args});
    if(name==='pkEnsurePlayer')return{playerId:profile.playerId};

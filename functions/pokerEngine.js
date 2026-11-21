@@ -143,7 +143,7 @@ function startHand(S, forcedGameType) {
   if (actives.length < 2) {
     S.priv = Object.fromEntries(Object.keys(pl).map(uid => [uid, []]));
     S.deck = [];
-    S.gameState = {...g0, lastAwards: [], lastWinners: null, lastWinAmount: 0, showdownAt: null, highestBet: 0, phase: "waiting", activeTurnUid: null, turnStartedAt: null, board: [], pots: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, rabbit: null};
+    S.gameState = {...g0, lastAwards: [], lastWinners: null, lastWinAmount: 0, showdownAt: null, highestBet: 0, phase: "waiting", activeTurnUid: null, turnStartedAt: null, board: [], pots: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, board3: null, rabbit: null};
     return "waiting";
   }
   const uids = actives.map((p) => p.uid);
@@ -162,7 +162,7 @@ function startHand(S, forcedGameType) {
     dcUid = null;
     dcAnchor = null;
   }
-  S.gameState = {...g0, dealerUid, dcUid, dcAnchor, board: [], pots: [], lastWinners: null, lastWinAmount: 0, lastAwards: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, rabbit: null};
+  S.gameState = {...g0, dealerUid, dcUid, dcAnchor, board: [], pots: [], lastWinners: null, lastWinAmount: 0, lastAwards: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, board3: null, rabbit: null};
   if (S.settings.isDealerChoice && dealerUid === dcUid) {
     S.gameState.phase = "dc_selection";
     S.gameState.activeTurnUid = null;
@@ -231,6 +231,7 @@ function executeDeal(S, gameType) {
   g.earlyWin = false;
   g.rabbit = null;
   g.board2 = null;
+  g.board3 = null;
   g.ritOffer = null;
   g.ritAgree = null;
   if (bombOn) {
@@ -395,19 +396,19 @@ function revealActiveHands(S) {
 
 // Each remaining board needs its own burn cards as well as community cards.
 // Seven PLO6 seats consume 42 cards; a preflop double runout needs 16 more.
-function canRunTwice(S) {
+function canRunBoards(S, count) {
   const remaining = {0:8, 3:4, 4:2}[(S.gameState.board || []).length];
-  return Number.isFinite(remaining) && (S.deck || []).length >= remaining * 2;
+  return Number.isFinite(remaining) && (S.deck || []).length >= remaining * count;
 }
 // Run-it-twice offer — protocol §3.5. Only when both boards can be dealt.
 function maybeOfferRit(S) {
   const g = S.gameState;
   if (!S.settings.runTwice || S.table.tournamentId || S.gameState.currentGameType === 'Omaha 7') return;
   if ((g.board || []).length >= 5) return;
-  if (!canRunTwice(S)) return;
+  if (!canRunBoards(S,2)) return;
   const acts = activesOf(S.players);
   if (acts.length < 2) return;
-  g.ritOffer = {until: S.now + 10000};
+  g.ritOffer = {until: S.now + 10000, runs:S.settings.maxRuns===3 && canRunBoards(S,3) ? 3 : 2};
   g.ritAgree = {};
 }
 function resolveRitIfDue(S) {
@@ -418,8 +419,12 @@ function resolveRitIfDue(S) {
   const allVoted = acts.every((p) => votes[p.uid] !== undefined);
   if (!allVoted && S.now < g.ritOffer.until) return false; // still open
   const agreed = acts.length >= 2 && acts.every((p) => votes[p.uid] === true);
+  const runs=g.ritOffer.runs===3?3:2;
   g.ritOffer = null;
-  if (agreed && canRunTwice(S)) g.board2 = [...(g.board || [])];
+  if (agreed && canRunBoards(S,runs)) {
+    g.board2 = [...(g.board || [])];
+    if(runs===3)g.board3 = [...(g.board || [])];
+  }
   return true;
 }
 
@@ -444,15 +449,17 @@ function advancePhase(S) {
     }
   });
   const deck = S.deck;
-  const dealTwin = (cnt) => { // second board runs out in lockstep (RIT)
-    if (!g.board2) return;
-    deck.pop();
-    for (let i = 0; i < cnt; i++) g.board2.push(deck.pop());
+  const dealExtraBoards = count => {
+    for(const board of [g.board2,g.board3]){
+      if(!board)continue;
+      deck.pop();
+      for(let i=0;i<count;i++)board.push(deck.pop());
+    }
   };
   if (g.phase === "preflop") {
     deck.pop();
     g.board = [deck.pop(), deck.pop(), deck.pop()];
-    dealTwin(3);
+    dealExtraBoards(3);
     if (g.currentGameType === "Pineapple") {
       g.phase = "discard";
       g.activeTurnUid = null;
@@ -464,12 +471,12 @@ function advancePhase(S) {
   } else if (g.phase === "flop") {
     deck.pop();
     g.board = [...g.board, deck.pop()];
-    dealTwin(1);
+    dealExtraBoards(1);
     g.phase = "turn";
   } else if (g.phase === "turn") {
     deck.pop();
     g.board = [...g.board, deck.pop()];
-    dealTwin(1);
+    dealExtraBoards(1);
     g.phase = "river";
   } else if (g.phase === "river") {
     runShowdown(S);
@@ -586,8 +593,7 @@ function runShowdown(S) {
     });
     return scores;
   };
-  const s1 = scoreOn(g.board);
-  const s2 = g.board2 && g.board2.length === 5 ? scoreOn(g.board2) : null;
+  const scoresByBoard=[g.board,...[g.board2,g.board3].filter(b=>b?.length===5)].map(scoreOn);
   let rakeTotal = 0;
   let winTotal = 0;
   const winnerUids = new Set();
@@ -639,13 +645,9 @@ function runShowdown(S) {
         winTotal = round2(winTotal + share);
       });
     };
-    if (s2) {
-      const half1 = round2(amount / 2);
-      award(s1, half1);
-      award(s2, round2(amount - half1));
-    } else {
-      award(s1, amount);
-    }
+    // Split integer cents once per side pot. Board one receives the first odd cent.
+    const potCents=Math.round(amount*100),perBoard=Math.floor(potCents/scoresByBoard.length);
+    scoresByBoard.forEach((scores,i)=>award(scores,(perBoard+(i<potCents%scoresByBoard.length?1:0))/100));
   });
   g.pots = [];
   g.phase = "showdown";
@@ -1212,8 +1214,8 @@ async function commitState(tx, S, extraTop) {
   Object.entries(S.priv).filter(([uid,cards])=>JSON.stringify(cards)!==JSON.stringify(JSON.parse(S._privBefore||'{}')[uid])).forEach(([uid, cards]) => {
     tx.set(privRef(S.id, uid), {cards});
   });
-  // Return only the public document fields actually written. Private cards
-  // and the remaining deck stay in their separate, protected documents.
+
+  // Internal engine result. Player callables filter this through pokerPlayerView.
   const publicUpdate = {...top};
   if (Object.keys(S.leftWrites || {}).length) {
     publicUpdate.leftStacks = {...(S.raw.leftStacks || {}), ...S.leftWrites};
@@ -1649,12 +1651,15 @@ async function playerAction(request) {
   if(action==='raise'&&(!Number.isFinite(amount)||amount<0))throw new HttpsError('invalid-argument','Invalid raise amount');
   const result = await A.command(request,'action',async(tx,database,actor)=>{
     const S=await loadState(tx,id,{withCards:true}),g=S.gameState,e=request.data.expectedTurn;
+    await A.member(tx,database,S.table.clubId,request);
     if(!e || e.handN!==g.handN || e.phase!==g.phase || e.turnStartedAt!==g.turnStartedAt || e.highestBet!==g.highestBet)throw new HttpsError('failed-precondition','This turn already changed');
     applyAction(S,actor,action,amount,false);
-    const tableUpdate = await commitState(tx,S);
-    return {ok:true,tableId:id,tableUpdate};
+    await commitState(tx,S);
+    return {ok:true,tableId:id,tableUpdate:require('./pokerPlayerView').actionUpdate(S)};
   });
-  return {...result,timing:{serverMs:Math.round(performance.now()-started)}};
+  // Old request receipts can hold the historical full engine update. Apply the
+  // current player protocol on replay as well as when recording a new action.
+  return {...require('./pokerPlayerView').confirmation(result),timing:{serverMs:Math.round(performance.now()-started)}};
 }
 const routePlayerAction=require('./pokerActionRegion').createActionRouter();
 exports.pkActEurope=onCall({region:'europe-west1',minInstances:0},playerAction);
@@ -1822,11 +1827,16 @@ exports.pkRit = onCall(CALL_OPTS, async (request) => {
   const uid = authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
   const id = reqTableId(request);
-  const agree = !!(request.data || {}).agree;
+  if(typeof request.data?.agree!=='boolean')throw new HttpsError('invalid-argument','Choose whether to accept this runout');
+  const agree = request.data.agree;
   await db().runTransaction(async (tx) => {
     const S = await loadState(tx, id);
     const g = S.gameState;
     if (!g.ritOffer || S.now >= g.ritOffer.until) return;
+    await A.member(tx,db(),S.table.clubId,request);
+    const runs=g.ritOffer.runs||2;
+    if ((request.data.runs??2)!==runs || (request.data.until!=null&&request.data.until!==g.ritOffer.until) ||
+        (runs===3&&request.data.until!==g.ritOffer.until)) throw new HttpsError('failed-precondition','The runout offer changed');
     const p = S.players[uid];
     if (!p || p.status !== "active") return;
     g.ritAgree = {...(g.ritAgree || {}), [uid]: agree};
@@ -1950,6 +1960,6 @@ exports.tableAutoDrive = onSchedule({schedule:'every 1 minutes',timeoutSeconds:1
 });
 
 // Test hook — a plain object, ignored by the Functions deploy loader.
-exports.__engineInternals = {loadState,commitState,tickTable,tickMayAdvance,startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, botCallPrice, botDiscardIndex, preflopTier, equityOf, rangeFacing, rangeHandStrength};
+exports.__engineInternals = {loadState,commitState,tickTable,tickMayAdvance,maybeOfferRit,resolveRitIfDue,startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, botCallPrice, botDiscardIndex, preflopTier, equityOf, rangeFacing, rangeHandStrength};
 
 

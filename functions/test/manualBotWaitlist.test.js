@@ -40,7 +40,13 @@ function fixture(seed=1){
   create:(settings,botCount='full')=>access.pkTableCreate({auth:auth('owner'),data:{clubId:'clubA',manual:true,requestId:'manual-create-request-'+(++request),settings:{baseGameType:'NLH',blinds:.5,minBuyIn:50,maxBuyIn:200,maxPlayers:4,...settings},botCount}}),
   lineup:(id,uid,data)=>access.pkTableManage({auth:auth(uid),data:{tableId:id,requestId:'lineup-test-request-'+(++request),...data}}),
   wait:id=>access.pkSeat({auth:auth('human'),data:{op:'wait',tableId:id,amount:100,requestId:'manual-wait-request-'+(++request)}}),
-  act:(id,action)=>{const g=docs.get('tables/'+id).gameState;return engineApi.pkAct({auth:auth(g.activeTurnUid),data:{tableId:id,action,requestId:"showdown-action-"+(++request),expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}}});},
+  act:(id,action)=>{const table=docs.get('tables/'+id),g=table.gameState;
+   if(table.players[g.activeTurnUid]?.isBot)return db.runTransaction(async tx=>{
+    const state=await engine.loadState(tx,id,{withCards:true});
+    engine.applyAction(state,g.activeTurnUid,action,0,false);
+    await engine.commitState(tx,state);
+   });
+   return engineApi.pkAct({auth:auth(g.activeTurnUid),data:{tableId:id,action,requestId:"showdown-action-"+(++request),expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}}});},
   profile:patch=>profileApi.pkProfile({auth:auth('human'),data:{patch,requestId:'profile-update-'+(++request)}}),
   topUp:(id,uid,botUid,amount,requestId='bot-topup-request-'+(++request))=>access.pkSeat({auth:auth(uid),data:{tableId:id,op:'topup',botUid,amount,requestId}}),
   seatOp:(id,op,extra={})=>access.pkSeat({auth:auth('human'),data:{tableId:id,op,...extra,requestId:'seat-operation-'+(++request)}}),

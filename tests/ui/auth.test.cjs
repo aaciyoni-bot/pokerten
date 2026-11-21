@@ -1,9 +1,14 @@
 'use strict';
+const { randomInt, randomUUID } = require('node:crypto');
+const testPlayerId = () => 'P' + String(randomInt(100000000, 1000000000));
+const existingPlayer = testPlayerId(), newPlayer = testPlayerId();
+const loginCode = String(randomInt(10000000, 100000000)), registrationCode = String(randomInt(10000000, 100000000));
+const mockToken = randomUUID();
 const assertEnglishUi=require('./english-ui.cjs');
 const fs=require('fs'),path=require('path'),assert=require('node:assert/strict'),{JSDOM}=require('jsdom'),babel=require('@babel/core');
 const html=fs.readFileSync(path.join(__dirname,'../../index.html'),'utf8');
 const source=[...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].find(m=>m[1].includes('function AuthView('))[1].replace(/const root = ReactDOM.createRoot[\s\S]*$/,'window.AuthTest=AuthView; window.AppTest=App;');
-const w=new JSDOM('<div id="root"></div>',{url:'https://pokerten.com/',runScripts:'outside-only',pretendToBeVisual:true}).window;
+const w=new JSDOM('<div id="root"></div>',{url:'https://poker-ui.example.invalid/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
 w.eval(fs.readFileSync(require.resolve('../../assets/js/poker-viewer-access.js'),'utf8'));
@@ -15,14 +20,14 @@ const fill=async(label,value)=>React.act(()=>{const el=w.document.querySelector(
 const click=async text=>{await React.act(async()=>{const el=button(text);assert.ok(el,text);el.click();});assertEnglishUi(w.document.body,'Auth '+text);};
 (async()=>{
  let googleCalls=0;const commands=[],tokens=[];
- w.fb={auth:{},signIn:async()=>{googleCalls++;throw {code:'auth/network-request-failed'};},fx:async(name,data)=>{commands.push({name,data});return {token:'test-token',loginId:'P123456789'};},signInCode:async token=>tokens.push(token)};
+ w.fb={auth:{},signIn:async()=>{googleCalls++;throw {code:'auth/network-request-failed'};},fx:async(name,data)=>{commands.push({name,data});return {token:mockToken,loginId:existingPlayer};},signInCode:async token=>tokens.push(token)};
  await React.act(()=>root.render(React.createElement(w.AuthTest)));assertEnglishUi(w.document.body,'Initial sign-in');
  await click('Google');assert.equal(googleCalls,1);assert.ok(w.document.querySelector('[role=alert]'));assert.equal(button('Google').disabled,false);
  assert.equal(button('Phone number'),undefined,'SMS entry is absent');assert.equal(w.document.querySelector('input[type=tel]'),null);
- await click('Sign in with player code');await fill('Player ID','p123456789');await fill('Personal code','83492716');
+ await click('Sign in with player code');await fill('Player ID',existingPlayer.toLowerCase());await fill('Personal code',loginCode);
  await React.act(async()=>w.document.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true})));
- assert.deepEqual(JSON.parse(JSON.stringify(commands[0])),{name:'pkPinLogin',data:{loginId:'P123456789',pin:'83492716'}});assert.deepEqual(tokens,['test-token']);
- await click('New player?');await fill('Your name','New Player');await fill('Personal code','39182647');await fill('Confirm personal code','39182647');
+ assert.deepEqual(JSON.parse(JSON.stringify(commands[0])),{name:'pkPinLogin',data:{loginId:existingPlayer,pin:loginCode}});assert.deepEqual(tokens,[mockToken]);
+ await click('New player?');await fill('Your name','New Player');await fill('Personal code',registrationCode);await fill('Confirm personal code',registrationCode);
  await React.act(async()=>w.document.querySelector('form').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true})));
  assert.equal(commands[1].name,'pkPinRegister');assert.equal(tokens.length,2);
  await React.act(()=>root.render(null));
@@ -31,12 +36,12 @@ const click=async text=>{await React.act(async()=>{const el=button(text);assert.
  w.eval("ClubsView = function({user}) { return React.createElement('main', {'data-testid':'clubs'}, user.username + '|' + user.balance + '|' + user.playerId); };");
  for(const mode of ['existing','new','retry']){
    let callback,ensures=0,failed=mode==='retry';const reads=[],subscriptions=[];
-   const user={uid:'google-'+mode,email:'player@example.test',emailVerified:true,displayName:'Player'};
-   let profile=mode==='new'?null:{username:'Existing',status:'approved',role:'player',balance:425,playerId:'P123456789'};
+   const user={uid:'google-'+mode,email:mode+'@example.invalid',emailVerified:true,displayName:'Player'};
+   let profile=mode==='new'?null:{username:'Existing',status:'approved',role:'player',balance:425,playerId:existingPlayer};
    const snap=()=>({id:user.uid,exists:()=>!!profile,data:()=>profile});
    w.fb={auth:{currentUser:user},
      onAuthStateChanged:(_,fn)=>{callback=fn;return()=>{};},
-     fx:async(name)=>{assert.equal(name,'pkEnsurePlayer');ensures++;if(failed)throw Error('offline');if(!profile)profile={username:'New',status:'pending',role:'player',balance:0,playerId:'P987654321'};return {playerId:profile.playerId};},
+     fx:async(name)=>{assert.equal(name,'pkEnsurePlayer');ensures++;if(failed)throw Error('offline');if(!profile)profile={username:'New',status:'pending',role:'player',balance:0,playerId:newPlayer};return {playerId:profile.playerId};},
      doc:(_,collection,id)=>({path:collection+'/'+id}),collection:(_,name)=>({path:name}),where:(...args)=>args,query:ref=>ref,
      getDoc:async ref=>{reads.push(ref.path);if(failed)throw Error('offline');return snap();},
      onSnapshot:(ref,fn)=>{subscriptions.push(ref.path);if(ref.path.startsWith('users/'))fn(snap());else fn({docs:[],forEach(){}});return()=>{};},
@@ -46,9 +51,9 @@ const click=async text=>{await React.act(async()=>{const el=button(text);assert.
    await React.act(async()=>callback(user));
    if(mode==='retry'){assert.ok(w.document.querySelector('[role=alert]'));assert.equal(w.document.querySelector('[data-testid=clubs]'),null);failed=false;await click('Try again');}
    assert.ok(w.document.querySelector('[data-testid=clubs]'),mode+' reaches clubs without selecting a club');
-   assert.match(w.document.querySelector('[data-testid=clubs]').textContent,mode==='new'?/New\|0\|P987654321/:/Existing\|425\|P123456789/);
+   assert.equal(w.document.querySelector('[data-testid=clubs]').textContent,mode==='new'?'New|0|'+newPlayer:'Existing|425|'+existingPlayer);
    assert.ok(subscriptions.includes('users/'+user.uid),'profile listens before club selection');
-   assert.ok(!subscriptions.includes('tables')&&!subscriptions.includes('tournamentViews'),'no out-of-club game reads');
+   assert.ok(!subscriptions.includes('tableLobbyViews')&&!subscriptions.includes('tables')&&!subscriptions.includes('tournamentViews'),'no out-of-club game reads');
    assert.deepEqual(reads,Array(mode==='existing'?1:2).fill('users/'+user.uid));
    assert.equal(ensures,mode==='new'?1:0,'existing canonical profiles skip unnecessary identity writes');
    await React.act(()=>root.render(null));

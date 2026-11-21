@@ -24,6 +24,12 @@ function render(state) {
 if (Capacitor.getPlatform() === 'android') {
   const store = registerPlugin('PokertenAppUpdate');
   controller = createAutoUpdater({ota:CapacitorUpdater,store,current:release,render,
+    verifySeat:async(uid,clubId)=>{
+      const fb=window.fb;
+      if(fb?.auth?.currentUser?.uid!==uid)return false;
+      const result=await fb.fx('pkCanInstallUpdate',{clubId});
+      return result?.allowed===true && result.uid===uid && result.clubId===clubId && fb.auth.currentUser?.uid===uid;
+    },
     hasResume:()=>{try{return !!localStorage.getItem('pkResume');}catch(_){return true;}},
     fetchRelease:async()=>{
       const abort = new AbortController();

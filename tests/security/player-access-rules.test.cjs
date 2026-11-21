@@ -60,3 +60,12 @@ test('wallet decisions and personal hand archives accept server writes only', as
     await assertFails(getDoc(doc(db, path)));
   }
 });
+
+test('only current club members can read lobby projections and clients cannot write them',async()=>{
+ const name='tableLobbyViews/lobby-view';
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),name),{authorityVersion:2,clubId:'club'}));
+ const member=env.authenticatedContext('one').firestore();
+ await assertSucceeds(getDoc(doc(member,name)));
+ await assertFails(setDoc(doc(member,name),{clubId:'club',authorityVersion:2}));
+ await assertFails(getDoc(doc(env.authenticatedContext('outsider').firestore(),name)));
+});

@@ -27,10 +27,12 @@ function resumeBustedBots(patch,players,now){
 function tableSettings(raw={}){
  const s={};for(const [k,min,max,def]of [['blinds',.01,100000,.5],['minBuyIn',.01,10000000,40],['maxBuyIn',.01,10000000,200],['minBuyInBB',0,100000,0],['maxBuyInBB',0,100000,0],['maxPlayers',2,9,6],['autoStart',2,9,2],['actionTime',10,120,30],['rakePercent',0,20,0],['rakeCap',0,100000,0],['ante',0,100000,0],['bombEvery',0,1000,0],['bombAnte',0,100,2],['leaveNoticeMins',0,120,0],['leaveNoticeBB',0,100000,0],['spinBuyIn',.01,100000,50],['spinStack',10,10000000,1000],['spinLevelSec',30,3600,180]])s[k]=number(raw[k],def,min,max);
  for(const k of ['isDealerChoice','straddle','spinMode','runTwice','autoMuck'])s[k]=raw[k]===true;
+ if(raw.maxRuns!==undefined&&![2,3].includes(raw.maxRuns))fail('invalid-argument','Choose two or three runouts');
+ if(s.runTwice&&raw.maxRuns===3&&!s.spinMode)s.maxRuns=3;
  s.omahaPotLimit=raw.omahaPotLimit!==false;s.baseGameType=String(raw.baseGameType||'NLH').replace(/^Omaha([4567])$/,'Omaha $1');if(!C.GAME_CARDS[s.baseGameType])fail('invalid-argument','Unknown poker game');
  if(s.baseGameType==='Omaha 7'){
   if(s.spinMode)fail('invalid-argument','PLO7 is not available in Spin & Cash');
-  s.maxPlayers=Math.min(5,s.maxPlayers);s.omahaPotLimit=true;s.runTwice=false;
+  s.maxPlayers=Math.min(5,s.maxPlayers);s.omahaPotLimit=true;s.runTwice=false;delete s.maxRuns;
  }
  if(raw.botRotation!=null && !['automatic','fixed'].includes(raw.botRotation))fail('invalid-argument','Unknown bot rotation mode');
  if(!s.spinMode && raw.botRotation==='fixed')s.botRotation='fixed';
@@ -80,7 +82,7 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   let seat=Number.isInteger(r.data.seatIndex)&&r.data.seatIndex>=0&&r.data.seatIndex<cap&&!taken.has(r.data.seatIndex)?r.data.seatIndex:0;while(taken.has(seat)&&seat<cap)seat++;if(seat>=cap)fail('failed-precondition','No seat available');
   const min=cashMinimum(s),max=s.maxBuyIn??200*s.blinds*2,buy=s.spinMode?s.spinBuyIn:op==='addbot'?botEntryCost(s,r.data.amount):number(r.data.amount,NaN,min,max);
   const last=t.leftStacks?.[who];if(last&&now-last.at<43200000&&buy<last.amount)fail('failed-precondition','Return with at least your previous stack');effects.push({type:'credit',uid:funding,amount:-buy});
-  patch[`players.${who}`]={uid:who,name,...appearance(op==='addbot'?{}:profile,who),seatIndex:seat,stack:s.spinMode?s.spinStack:buy,buyTotal:s.spinMode?0:buy,spinPaid:s.spinMode?buy:0,bet:0,status:idle?'active':'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',isBot:op==='addbot',...(op==='addbot'?{...botSession(who,now),fundingUid:funding,botStyle:['tight','balanced','aggressive'][Object.keys(pl).length%3]}:{}),lastSeen:now};patch[`leftStacks.${who}`]=null;patch.waitlist=waiting.filter(w=>w.uid!==who);
+  patch[`players.${who}`]={uid:who,name,...(op==='join'&&!s.spinMode?{seatStartedAt:now}:{}),...appearance(op==='addbot'?{}:profile,who),seatIndex:seat,stack:s.spinMode?s.spinStack:buy,buyTotal:s.spinMode?0:buy,spinPaid:s.spinMode?buy:0,bet:0,status:idle?'active':'waiting',cards:[],cardCount:0,hasActed:false,actionText:'',isBot:op==='addbot',...(op==='addbot'?{...botSession(who,now),fundingUid:funding,botStyle:['tight','balanced','aggressive'][Object.keys(pl).length%3]}:{}),lastSeen:now};patch[`leftStacks.${who}`]=null;patch.waitlist=waiting.filter(w=>w.uid!==who);
  }else if(op==='wait'||op==='unwait'){
   let humans=humanWaiters.filter(entry=>entry.uid!==uid);const bots=waiting.filter(entry=>entry.isBot===true&&entry.uid!==uid);
   if(op==='wait'&&!p){

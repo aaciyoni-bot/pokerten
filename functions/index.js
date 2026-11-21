@@ -432,3 +432,26 @@ Object.assign(exports,require("./cardGames"));
 
 Object.assign(exports, require('./walletRequests'));
 exports.pkMyHands=require('./handArchive').pkMyHands;
+
+// The lobby needs occupancy and settings, never the full game or its history.
+const lobbyView=require('./tableLobbyView');
+exports.pkSyncTableLobby=require('firebase-functions/v2/firestore').onDocumentWritten(
+  {document:'tables/{tableId}',retry:true},async event=>{
+    const before=lobbyView.project(event.data.before.data());
+    const after=lobbyView.project(event.data.after.data());
+    if(!lobbyView.isDeepStrictEqual(before,after))await lobbyView.refresh(db,event.params.tableId);
+  });
+
+exports.pkCanInstallUpdate = require('firebase-functions/v2/https').onCall({region:'us-central1'}, async request=>{
+  const A=require('./pokerAuthority'),uid=A.uid(request),clubId=A.key(request.data?.clubId);
+  const seat=new (require('firebase-admin/firestore').FieldPath)('players',uid);
+  return db.runTransaction(async tx=>{
+    await A.member(tx,db,clubId,request);
+    const [tables,tournaments]=await Promise.all([
+      tx.get(db.collection('tables').where('clubId','==',clubId).where('authorityVersion','==',2).select(seat)),
+      tx.get(db.collection('tournaments').where('clubId','==',clubId).where('authorityVersion','==',2).select(seat,'status'))
+    ]);
+    return {uid,clubId,allowed:!tables.docs.some(d=>d.get(seat))&&
+      !tournaments.docs.some(d=>d.get(seat)&&!['done','cancelled'].includes(d.get('status')))};
+  },{readOnly:true});
+});

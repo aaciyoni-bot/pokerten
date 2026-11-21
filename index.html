@@ -2,8 +2,8 @@
 <html lang="en" dir="ltr" translate="no" class="notranslate">
 <head>
     <meta charset="UTF-8">
-    <meta name="app-version" content="385">
-    <script src="assets/js/app-update.js?v=385" defer></script>
+    <meta name="app-version" content="386">
+    <script src="assets/js/app-update.js?v=386" defer></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="google" content="notranslate">
     <title>POKERTEN</title>
@@ -1123,7 +1123,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 
 </style>
 <link rel="stylesheet" href="assets/css/club-ui.css?v=312">
-<link rel="stylesheet" href="assets/css/approved-game-design.css?v=365">
+<link rel="stylesheet" href="assets/css/approved-game-design.css?v=386">
 <link rel="stylesheet" href="assets/css/club-turquoise.css?v=293">
 <link rel="stylesheet" href="assets/css/club-blue.css?v=296">
 <link rel="stylesheet" href="assets/css/club-secondary-blue.css?v=294">
@@ -1138,7 +1138,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/card-games-reference.css?v=324">
 <link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=344">
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=347">
-<script src="assets/js/hand-archive.js?v=385"></script>
+<script src="assets/js/hand-archive.js?v=386"></script>
 <script src="assets/js/wallet-requests.js?v=385"></script>
 <script src="assets/js/club-cashier.js?v=385"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
@@ -4899,7 +4899,7 @@ function App() {
     setTablesScope(activeClub ? dbUser.uid + ':' + activeClub.id : '');
     if(!activeClub)return;
     const timeout = setTimeout(() => { if(!stopped)setTablesError('Tables are taking too long to load. Check your connection or retry.'); },12000);
-    const unsubT = window.PokerRuntime.watchSnapshot((next, fail) => window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tables"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub.id)), {includeMetadataChanges:true}, next, fail), s => {
+    const unsubT = window.PokerRuntime.watchSnapshot((next, fail) => window.fb.onSnapshot(window.fb.query(window.fb.collection(window.fb.db, "tableLobbyViews"),window.fb.where("authorityVersion","==",2),window.fb.where("clubId","==",activeClub.id)), {includeMetadataChanges:true}, next, fail), s => {
       if(stopped)return;
       setTablesDB(s.docs.map(d => ({
         docId: d.id,
@@ -10757,7 +10757,9 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
     className: "accent-cyan-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-white text-sm font-bold"
-  }, "🔁 Run It Twice — on all-in, players may run the board twice (each half of the pot per board)")), React.createElement("label", {
+  }, "Offer multiple boards when all players are all-in")), s.runTwice && s.baseGameType!=='Omaha 7' && !s.spinMode && React.createElement('label',{className:'block mt-2'},'Maximum boards ',
+    React.createElement('select',{value:s.maxRuns||2,onChange:e=>upd('maxRuns',Number(e.target.value)),className:'bg-slate-900 p-2 rounded'},
+      React.createElement('option',{value:2},'2 boards'),React.createElement('option',{value:3},'3 boards'))), React.createElement("label", {
     className: "flex items-center gap-3 bg-slate-900/60 border border-white/10 rounded-xl p-3 cursor-pointer mt-2"
   }, React.createElement("input", {
     type: "checkbox",
@@ -11123,7 +11125,7 @@ function PokerTable({
   });
   useEffect(() => {
     const g0 = tableState?.gameState || {};
-    if (!g0.ritOffer || !ritAlways) return;
+    if (!g0.ritOffer || g0.ritOffer.runs===3 || !ritAlways) return;
     const me0 = tableState?.players?.[user.uid];
     if (!me0 || me0.status !== 'active') return;
     if ((g0.ritAgree || {})[user.uid] !== undefined) return;
@@ -11131,7 +11133,7 @@ function PokerTable({
       tableId: tableDocId,
       agree: true
     }).catch(() => {});
-  }, [!!tableState?.gameState?.ritOffer]);
+  }, [tableState?.gameState?.ritOffer?.until,ritAlways]);
   const [spinShow, setSpinShow] = useState(false);
   useEffect(() => {
     const t2 = tableState;
@@ -11463,7 +11465,7 @@ function PokerTable({
     // pkLeave/cash-out command; App keeps the prize dialog above the lobby.
     onLeave();
   }, [headless, tournamentEnded, tableState?.id, tableDocId, onLeave]);
-  const gs = tournamentEnded ? {...tableState.gameState,phase:'waiting',board:[],board2:null,pots:[],activeTurnUid:null,lastWinners:null,highestBet:0,allInReveal:false} : tableState?.gameState || {};
+  const gs = tournamentEnded ? {...tableState.gameState,phase:'waiting',board:[],board2:null,board3:null,pots:[],activeTurnUid:null,lastWinners:null,highestBet:0,allInReveal:false} : tableState?.gameState || {};
   const players = tournamentEnded ? Object.fromEntries(Object.entries(tableState?.players || {}).filter(([uid])=>uid===user.uid)) : tableState?.players || {};
   const resultPresentation = usePokerResultPresentation(tableDocId, gs, players, headless);
   const reducedResultMotion = useReducedPokerMotion();
@@ -13229,7 +13231,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "absolute left-1/2 top-[23%] -translate-x-1/2 z-40 bg-slate-950/85 border border-amber-500/50 rounded-xl px-4 py-1 text-[11px] font-black text-amber-300 animate-pop-in pointer-events-none",
     dir: "ltr"
   }, gs.bombPot ? '💣 BOMB POT' : '♠ ALL-IN or FOLD'), React.createElement("div", {
-    className: "poker-community" + ((gs.board2 || []).length ? " has-second-board" : ""),
+    className: "poker-community" + ((gs.board2 || []).length ? " has-second-board" : "") + ((gs.board3 || []).length ? " has-third-board" : ""),
     "aria-label": "Community cards"
   }, tournamentEnded && React.createElement('div',{className:'poker-break-center',dir:'ltr'},React.createElement('strong',null,'Tournament complete'),React.createElement('div',{className:'poker-final-ranks'},(tourRanks?.list || []).map(p=>React.createElement('div',{key:p.uid},'#',p.rank,' · ',p.name,p.prize>0?' · '+formatMoney(p.prize):''))),tourStandBtn), tableOnBreak && React.createElement('div', {className:'poker-break-center',role:'status',dir:'ltr'},React.createElement('strong',null,'☕ BREAK'),React.createElement('div',{className:'poker-break-clock'},Math.floor(breakSeconds/60),':',String(breakSeconds%60).padStart(2,'0')),React.createElement('span',null,'Resuming at ',formatShort(breakClock.row.sb),' / ',formatShort(breakClock.row.bb)),tourStandBtn), (totalPot > 0 || resultPot > 0) && gs.phase !== 'waiting' && React.createElement("div", {
     className: "poker-total-pot absolute left-1/2 z-40 rounded-2xl px-4 py-0.5 text-center pointer-events-none",
@@ -13254,12 +13256,13 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       return formatShort(tc0.row.sb) + '/' + formatShort(tc0.row.bb);
     }
     return formatShort(setts.blinds) + '/' + formatShort(BB);
-  })())), (gs.board2 || []).length > 0 && React.createElement("div", {
+  })())), [gs.board2,gs.board3].map((board,boardIndex)=>board?.length>0 && React.createElement("div", {
+    key:boardIndex,
     className: "poker-board poker-board-secondary z-30",
     dir: "ltr"
   }, React.createElement("span", {
     className: "text-[8px] font-black text-gold-400 bg-slate-950/85 rounded px-1 py-0.5"
-  }, "2nd"), gs.board2.map((c, i) => React.createElement("span", {
+  }, boardIndex===0?"2nd":"3rd"), board.map((c, i) => React.createElement("span", {
     key: i,
     className: "card-reveal",
     style: {
@@ -13268,7 +13271,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }, React.createElement(PCard, {
     card: c,
     size: "sm"
-  })))), React.createElement("div", {
+  }))))), React.createElement("div", {
     className: "poker-board poker-board-primary z-30",
     dir: "ltr"
   }, gs.phase !== 'waiting' && playersCount > 0 && (gs.board || []).map((c, i) => React.createElement("span", {
@@ -14003,24 +14006,24 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       setPodium(null);
       handleStandUp(true);
     }
-  }), gs.ritOffer && Date.now() < gs.ritOffer.until && gs.allInReveal && myPlayer?.status === 'active' && (gs.ritAgree || {})[user.uid] === undefined && !ritAlways && React.createElement("div", {
+  }), gs.ritOffer && Date.now() < gs.ritOffer.until && gs.allInReveal && myPlayer?.status === 'active' && (gs.ritAgree || {})[user.uid] === undefined && (!ritAlways || gs.ritOffer.runs===3) && React.createElement("div", {
     className: "absolute bottom-16 left-1/2 -translate-x-1/2 z-[75] bg-slate-950/95 border border-gold-400/50 rounded-2xl px-3.5 py-2 flex items-center gap-2 animate-pop-in shadow-xl",
     dir: "ltr"
   }, React.createElement("span", {
     className: "text-gold-400 font-black text-xs whitespace-nowrap"
-  }, "🔁 Run it twice?"), React.createElement("button", {
+  }, gs.ritOffer.runs===3?"Run three boards?":"Run it twice?"), React.createElement("button", {
     onClick: () => window.fb.fx('pkRit', {
-      tableId: tableDocId,
+      tableId: tableDocId, runs:gs.ritOffer.runs||2, until:gs.ritOffer.until,
       agree: true
     }).catch(() => {}),
     className: "bg-gradient-to-b from-cyan-500 to-cyan-700 text-white px-3 py-1.5 rounded-lg text-xs font-black"
-  }, "TWICE ✔"), React.createElement("button", {
+  }, gs.ritOffer.runs===3?"THREE ✔":"TWICE ✔"), React.createElement("button", {
     onClick: () => window.fb.fx('pkRit', {
-      tableId: tableDocId,
+      tableId: tableDocId, runs:gs.ritOffer.runs||2, until:gs.ritOffer.until,
       agree: false
     }).catch(() => {}),
     className: "bg-slate-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-[10px] font-black border border-white/10 whitespace-nowrap"
-  }, "Not this time"), React.createElement("label", {
+  }, "Not this time"), gs.ritOffer.runs!==3 && React.createElement("label", {
     className: "flex items-center gap-1 text-[9px] text-slate-400 font-bold cursor-pointer"
   }, React.createElement("input", {
     type: "checkbox",
@@ -14030,7 +14033,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         localStorage.setItem('pkRitAlways', e.target.checked ? '1' : '');
       } catch (err) {}
       if (e.target.checked) window.fb.fx('pkRit', {
-        tableId: tableDocId,
+        tableId: tableDocId, runs:gs.ritOffer.runs||2, until:gs.ritOffer.until,
         agree: true
       }).catch(() => {});
     },

@@ -136,6 +136,7 @@
   entrants[managementViewer.uid]={uid:managementViewer.uid,name:'You'};
   const common={clubId:'main',game:'poker',pokerType:'NLH',maxPlayers:60,startStack:30000,mttMode:true,payouts:[50,30,20],players:entrants};
   props.tournaments=[{...common,id:'preview-free',name:'Saturday Freeroll',status:'reg',buyIn:0,prizePool:2000,startAt:Date.now()+3600000},{...common,id:'preview-paid',name:'Sunday 100',status:'reg',buyIn:100,fee:5,prizePool:1900,startAt:Date.now()+90000000},{...common,id:'preview-live',name:'Omaha Championship',pokerType:'Omaha 6',status:'running',buyIn:55,prizePool:1045,startedAt:Date.now()-3600000,players:{...entrants,entry1:{...entrants.entry1,out:true}}}];
+  if(query.has('details'))Object.assign(props.tournaments[1],{name:'Ten paid places',payouts:Array(10).fill(10),startAt:Date.now()+3*86400000+3600000,bounty:25,reentry:true,reentryBuyIn:50,maxReentries:4,tableSize:8,actionTime:15,anteType:'each',breakEvery:1,breakMins:4,structure:[{sb:100,bb:200,ante:20,mins:10},{sb:150,bb:300,ante:30,mins:12}]});
  }
  if(query.has('colors')&&['durak','ofc'].includes(query.get('game')))props.tab=query.get('game');
  let component=mode==='wallet'?'PreviewWallet':mode==='player-file'?'PreviewPlayerFile':mode==='tournaments'?'PreviewTournaments':mode==='auth'?'PreviewAuth':mode==='lobby'?'PreviewLobby':['admin','cashier'].includes(mode)?'PreviewAdmin':mode==='settlement'?'PreviewSettlement':mode==='profile'?'PreviewProfile':mode==='ranks'?'PreviewRanks':mode==='create'?'PreviewCreate':mode==='clubs'?'PreviewClubs':'PreviewTable';

@@ -25,6 +25,55 @@ before(async()=>{
 });
 after(async()=>{if(env)await env.cleanup();});
 const player=()=>env.authenticatedContext("player",{email:"player@example.com",email_verified:true}).firestore();
+test('raw profiles are owner-only; directory scans, guessed IDs and forged staff claims are denied',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const db=ctx.firestore();
+  await setDoc(doc(db,'users/private-person'),{email:'private@example.test',phone:'private-phone',balance:987,role:'manager'});
+  await setDoc(doc(db,'users/private-bot'),{isBot:true,email:'internal@example.test',balance:345});
+ });
+ const db=player();
+ await assertSucceeds(getDoc(doc(db,'users/player')));
+ const newcomer=env.authenticatedContext('newcomer').firestore();
+ assert.equal((await assertSucceeds(getDoc(doc(newcomer,'users/newcomer')))).exists(),false,'signup may check its own missing profile');
+ for(const ctx of [env.unauthenticatedContext(),env.authenticatedContext('stranger'),env.authenticatedContext('owner'),env.authenticatedContext('player',{god:true,role:'super_admin'}),env.authenticatedContext('unverified',{email:'aaci.yoni@gmail.com',email_verified:false})]){
+  const db=ctx.firestore();
+  for(const id of ['private-person','private-bot','unknown-profile'])await assertFails(getDoc(doc(db,'users/'+id)));
+  await assertFails(getDocs(collection(db,'users')));
+  await assertFails(getDocs(query(collection(db,'users'),where('isBot','==',true))));
+  await assertFails(getDocs(query(collection(db,'users'),where('email','==','private@example.test'))));
+ }
+ const admin=env.authenticatedContext('admin',{email:'aaci.yoni@gmail.com',email_verified:true}).firestore();
+ await assertSucceeds(getDoc(doc(admin,'users/private-person')));
+ await assertSucceeds(getDocs(collection(admin,'users')));
+ await assertFails(updateDoc(doc(db,'users/private-person'),{username:'Hijacked'}));
+});
+test('tournaments require current club membership and server authority for direct and query reads',async()=>{
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const db=ctx.firestore();
+  await setDoc(doc(db,'tournaments/current'),{authorityVersion:2,clubId:'club',status:'reg',players:{}});
+  await setDoc(doc(db,'tournaments/elsewhere'),{authorityVersion:2,clubId:'private-club',status:'reg',players:{}});
+  await setDoc(doc(db,'memberships/tour-reader_club'),{uid:'tour-reader',clubId:'club',status:'approved'});
+ });
+ const db=player(),list=d=>getDocs(query(collection(d,'tournaments'),where('clubId','==','club'),where('authorityVersion','==',2)));
+ await assertSucceeds(getDoc(doc(db,'tournaments/current')));await assertSucceeds(list(db));
+ await assertFails(getDoc(doc(db,'tournaments/tour')));await assertFails(getDoc(doc(db,'tournaments/elsewhere')));
+ await assertFails(getDocs(collection(db,'tournaments')));
+ await assertFails(getDocs(query(collection(db,'tournaments'),where('clubId','==','club'))));
+ for(const ctx of [env.unauthenticatedContext(),env.authenticatedContext('outsider'),env.authenticatedContext('forged',{role:'manager',god:true}),env.authenticatedContext('unverified',{email:'aaci.yoni@gmail.com',email_verified:false})]){
+  await assertFails(getDoc(doc(ctx.firestore(),'tournaments/current')));await assertFails(list(ctx.firestore()));
+ }
+ const reader=env.authenticatedContext('tour-reader').firestore();
+ await assertSucceeds(list(reader));
+ for(const status of ['pending','banned']){
+  await env.withSecurityRulesDisabled(ctx=>updateDoc(doc(ctx.firestore(),'memberships/tour-reader_club'),{status}));
+  await assertFails(getDoc(doc(reader,'tournaments/current')));await assertFails(list(reader));
+ }
+ await env.withSecurityRulesDisabled(ctx=>deleteDoc(doc(ctx.firestore(),'memberships/tour-reader_club')));
+ await assertFails(list(reader));
+ const admin=env.authenticatedContext('admin',{email:'aaci.yoni@gmail.com',email_verified:true}).firestore();
+ await assertSucceeds(getDocs(collection(admin,'tournaments')));
+ await assertFails(updateDoc(doc(admin,'tournaments/current'),{prizePool:10000}));
+});
 test('delegated chat attribution stays server-only and public chat cannot be forged directly',async()=>{
  await env.withSecurityRulesDisabled(async ctx=>setDoc(doc(ctx.firestore(),'_pkAudit/chat-attribution'),{action:'god-bot-chat',uid:'operator',targetUid:'character',text:'Good hand'}));
  for(const ctx of [env.authenticatedContext('player',{email:'player@example.com',email_verified:true}),env.authenticatedContext('owner'),env.authenticatedContext('god',{email:'aaci.yoni@gmail.com',email_verified:true})]){

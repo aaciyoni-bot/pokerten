@@ -29,7 +29,11 @@ service cloud.firestore {
       return !registeredPlayer(uid) || data.playerId == get(/databases/$(database)/documents/_pkPlayerAccounts/$(uid)).data.playerId;
     }
     match /users/{id} {
-      allow read: if signedIn();
+      // Profiles contain contact details, balances and administrative fields.
+      // Players only need their own document (including a missing-profile
+      // lookup during signup). Staff directories use role-scoped callables.
+      allow get: if signedIn() && (request.auth.uid == id || superAdmin());
+      allow list: if superAdmin();
       allow create: if signedIn() && canonicalPlayer(id, request.resource.data) && (
         superAdmin() || (request.auth.uid == id
           && request.resource.data.keys().hasOnly(['username','email','googleName','role','status','playerId','balance','clubProfits','isBot','isGuest','phone','phoneVerified','managedGames','stats','photo','avatarSeed'])
@@ -125,7 +129,13 @@ service cloud.firestore {
       allow update, delete: if false;
     }
     match /clubs/{id} { allow read: if signedIn(); allow create, update: if superAdmin(); allow delete: if false; }
-    match /tournaments/{id} { allow read: if signedIn(); allow write: if false; }
+    // Match the lobby's authorityVersion + clubId query. Legacy events may
+    // contain private game data and must not be readable by ordinary clients.
+    match /tournaments/{id} {
+      allow read: if superAdmin() || (signedIn() && resource.data.authorityVersion == 2
+        && get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + resource.data.clubId)).data.status == 'approved');
+      allow write: if false;
+    }
     match /broadcasts/{id} { allow read: if signedIn(); allow write: if superAdmin(); }
 
     // ═══ Gadud 1895 — "ירוק בעיניים" daily ammo counter (greeneyes app) ═══

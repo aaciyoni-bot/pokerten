@@ -119,7 +119,18 @@ exports.pkSeat=onCall(opts,async r=>{available();return command(r,'seat',async(t
   if(forBot)topUpAudit={action:'bot-topup',uid,targetUid:seatUid,fundingUid:payer,amount:add,queued:!idle,clubId:cid,tableId:tid,at:now};
  }else{
   if(!p)fail('failed-precondition','You are not seated');
-  if(op==='heartbeat'){
+  if(op==='time-bank'){
+   const g=t.gameState||{};
+   const sameTurn=g.handN===r.data.handN && g.turnStartedAt===r.data.turnStartedAt && g.phase===r.data.phase;
+   const deadline=Number(g.turnStartedAt)+(Number(s.actionTime)||30)*1000;
+   if(!sameTurn || !['preflop','flop','turn','river'].includes(g.phase) || g.activeTurnUid!==uid ||
+      g.allInReveal || p.isBot || p.sitOut || p.status!=='active' || !(p.stack>0) || now>=deadline)
+    fail('failed-precondition','The decision clock is no longer available.');
+   if(p.timeBankHand===g.handN)fail('failed-precondition','Time bank already used this hand.');
+   patch['players.'+uid+'.timeBankHand']=g.handN;
+   patch['players.'+uid+'.timeBankTurn']=g.turnStartedAt;
+   patch['players.'+uid+'.lastSeen']=now;
+  }else if(op==='heartbeat'){
    patch[`players.${uid}.lastSeen`]=now;
    if(us.exists&&!p.isBot){
     const next=appearance(profile,uid);

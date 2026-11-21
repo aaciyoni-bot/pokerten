@@ -1517,12 +1517,14 @@ function _extends() { return _extends = Object.assign ? Object.assign.bind() : f
         }
         inFlight = true;
         setRefreshing(true);
-        return Promise.resolve().then(() => call('pkSettlementReport', {
+        const request = Promise.resolve().then(() => call('pkSettlementReport', {
           clubId,
           ...(range ? range : cycleId ? {
             cycleId
           } : {})
-        })).then(r => {
+        }));
+        const bounded = global.PokerAuthUI?.withTimeout ? global.PokerAuthUI.withTimeout(request, 30000) : request;
+        return bounded.then(r => {
           if (range && (!r.readOnly || r.dateRange?.fromAt !== range.fromAt || r.dateRange?.toAt !== range.toAt)) throw Error('The requested date range could not be verified. Please try again.');
           if (live) {
             setData(r);

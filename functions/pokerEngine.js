@@ -1189,6 +1189,7 @@ async function commitState(tx, S, extraTop) {
   const write=await prepareLedger(db(),tx,S.table.clubId,S.effects,S.id,S.now);
   S.gameState.__seq=(S.raw.gameState?.__seq||0)+1;
   write();S.effects=[];
+  require('./handArchive').write(tx,db(),S);
   for(const uid of S.modelsDirty||[])tx.set(db().doc('_pkOpponentModels/'+crypto.createHash('sha256').update(JSON.stringify([S.table.clubId,uid])).digest('hex')),{...S.publicModels[uid],updatedAt:S.now});
   if(S.botDecisionDebug)tx.set(db().doc('_pkBotDecisions/'+S.id+'_'+(S.gameState.__seq%256)),{...S.botDecisionDebug,tableId:S.id,clubId:S.table.clubId,handN:S.gameState.handN||0,at:S.now});
   if(S.botRotation)tx.set(db().collection("_pkAudit").doc(),S.botRotation);
@@ -1244,14 +1245,19 @@ function botActionDeadline(g, player) {
 
 // Avoid locking the table and loading private cards while a player is still
 // thinking. Recheck inside the transaction so racing viewers cannot act early.
+function humanDecisionLimit(actor, g, settings, now) {
+  if(actor.sitOut)return 1500;
+  const normal=(Number(settings?.actionTime)||30)*1000+1000;
+  if(actor.timeBankHand===g.handN && actor.timeBankTurn!=null && actor.timeBankTurn===g.turnStartedAt)return normal+15000;
+  return actor.lastSeen && now-actor.lastSeen>20000 ? 9000 : normal;
+}
 function tickMayAdvance(t,now){
   const g=t.gameState||{},pl=t.players||{},elapsed=now-(g.turnStartedAt||0);
   if(BETTING.includes(g.phase)){
     if(g.allInReveal)return !!g.ritOffer||elapsed>=1300;
     const actor=pl[g.activeTurnUid];if(!actor||actor.status!=='active')return true;
     if(actor.isBot)return now>=botActionDeadline(g,actor);
-    const gone=actor.lastSeen&&now-actor.lastSeen>20000;
-    return elapsed>(actor.sitOut?1500:gone?9000:(Number(t.settings?.actionTime)||30)*1000+1000);
+    return elapsed>humanDecisionLimit(actor,g,t.settings,now);
   }
   if(g.phase==='dc_selection')return elapsed>(pl[g.dcUid]?.isBot?2200:25000);
   if(g.phase==='discard')return elapsed>(Object.values(pl).some(p=>p.isBot&&p.status==='active'&&p.cardCount===3)?1600:25000);
@@ -1525,8 +1531,7 @@ async function tickTable(id, testNow) {
           applyAction(S, actor.uid, move.action, move.amount, false);
           dirty = true;
         } else if (!actor.isBot) {
-          const gone = actor.lastSeen && now - actor.lastSeen > 20000;
-          const limit = actor.sitOut ? 1500 : gone ? 9000 : (Number(S.settings.actionTime) || 30) * 1000 + 1000;
+          const limit = humanDecisionLimit(actor,g,S.settings,now);
           if (stuck > limit) {
             const toCall = round2(Math.max(0, g.highestBet - (actor.bet || 0)));
             applyAction(S, actor.uid, toCall > 0 ? "fold" : "call", undefined, true);

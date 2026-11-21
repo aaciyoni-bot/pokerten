@@ -10,8 +10,8 @@ async function main(){
  const diff=await get('/compare/'+encodeURIComponent(base)+'...'+sha),files=diff.files||[];
  if(files.length>=300)throw Error('Release diff is too large to verify backend dependencies');
  const required=[];
- if(files.some(f=>/^functions\//.test(f.filename)&&!/^functions\/(?:aviator|test\/aviator)/.test(f.filename)||['.github/workflows/deploy-functions.yml','.github/workflows/security-rules.yml','firestore.rules'].includes(f.filename)||['firebase.json','.firebaserc'].includes(f.filename)))required.push('Deploy Firebase Functions');
- if(files.some(f=>['firestore.rules','firebase.json'].includes(f.filename)))required.push('Deploy Firestore Rules');
+ if(files.some(f=>/^functions\//.test(f.filename)&&!/^functions\/(?:aviator|test\/aviator)/.test(f.filename)||['.github/workflows/deploy-functions.yml','.github/workflows/security-rules.yml','firestore.rules','scripts/poker-player-access.rules','scripts/compile-poker-rules.cjs'].includes(f.filename)||['firebase.json','.firebaserc'].includes(f.filename)))required.push('Deploy Firebase Functions');
+ if(files.some(f=>['firestore.rules','firebase.json','scripts/poker-player-access.rules','scripts/compile-poker-rules.cjs'].includes(f.filename)))required.push('Deploy Firestore Rules');
  const deadline=Date.now()+12*60000;
  while(required.length){
   const {workflow_runs:runs}=await get('/actions/runs?head_sha='+sha+'&event=push&per_page=100');

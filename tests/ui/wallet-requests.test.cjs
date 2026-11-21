@@ -1,0 +1,41 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),{JSDOM}=require('jsdom');
+const w=new JSDOM('<div id="root"></div>',{url:'https://example.test',runScripts:'outside-only'}).window;
+global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
+const React=require('react'),{createRoot}=require('react-dom/client'),{Simulate}=require('react-dom/test-utils');w.React=React;
+w.eval(fs.readFileSync(require.resolve('../../assets/js/wallet-requests.js'),'utf8'));
+w.eval(fs.readFileSync(require.resolve('../../assets/js/hand-archive.js'),'utf8'));
+const root=createRoot(w.document.querySelector('#root')),calls=[],rows=[];
+const fixture={id:'test-hand',at:123,table:'table',name:'Fixture',game:'NLH',hand:1,board:['As'],board2:[],amount:10,winners:'Alice',result:5,actions:[{name:'Alice',street:'river',action:'call',amount:4}]};
+async function call(name,data){
+ calls.push({name,data});
+ if(name==='pkWalletRequests')return {rows:rows.filter(r=>!data.queue||r.status==='pending').map(r=>({...r})),nextCursor:null};
+ if(name==='pkWalletHistory')return {records:[{id:'one',type:'Club transfer',amount:25,at:1},{id:'two',type:'Chip movement',amount:-8,at:2}],nextCursor:null};
+ if(name==='pkMyHands')return {rows:[fixture],nextCursor:null};
+ if(data.op==='submit')rows.push({id:'req',status:'pending',name:'Alice',direction:data.direction,amount:data.amount,fee:0,createdAt:1});
+ else rows[0].status='approved';
+ return {id:'req'};
+}
+const button=label=>[...w.document.querySelectorAll('button')].find(b=>b.textContent===label);
+const render=(component,props)=>React.act(async()=>root.render(React.createElement(component,{key:component.name+String(!!props.queue),clubId:'test',uid:'viewer',call,...props})));
+(async()=>{
+ await render(w.WalletRequests,{});
+ await React.act(()=>Simulate.change(w.document.querySelector('[aria-label="Chip amount"]'),{target:{value:'12.50'}}));
+ await React.act(async()=>Simulate.submit(w.document.querySelector('form')));
+ assert.equal(calls.find(c=>c.data.op==='submit').data.amount,12.5);
+ assert.ok(button('Send request').disabled);assert.match(w.document.body.textContent,/pending/);
+ await render(w.WalletRequests,{queue:true});
+ await React.act(async()=>button('Approve').click());
+ assert.ok(!button('Approve'));assert.match(w.document.body.textContent,/Transfer approved/);
+ await render(w.AccountMovements,{});
+ await React.act(async()=>button('Account movements').click());
+ await React.act(()=>Simulate.change(w.document.querySelector('[aria-label="Movement direction"]'),{target:{value:'out'}}));
+ assert.equal(w.document.querySelectorAll('details').length,1);assert.match(w.document.querySelector('summary').textContent,/-8/);
+ await render(w.HandArchive,{});
+ await React.act(async()=>button('My hand archive').click());
+ await React.act(()=>[...w.document.querySelectorAll('article button')][0].click());
+ await React.act(()=>button('Next action').click());
+ assert.match(w.document.body.textContent,/Alice · call 4/);assert.match(w.document.body.textContent,/Alice · 10/);
+ await React.act(()=>button('Replay').click());assert.ok(button('Next action'));
+ await React.act(()=>root.unmount());w.close();console.log('PASS player and manager chip requests, filtered account history and hand replay.');
+})().catch(e=>{console.error(e);process.exitCode=1;w.close();});

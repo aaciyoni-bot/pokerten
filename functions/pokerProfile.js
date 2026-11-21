@@ -76,6 +76,7 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
   const club=await tx.get(db.doc('clubs/'+cid)),me=await tx.get(db.doc(`memberships/${uid}_${cid}`));
   if(!club.exists)A.fail('not-found','Club missing');
   const owner=A.root(r)||club.data().ownerUid===uid,role=me.data()?.role;
+  const wallet=r.data?.accountingOnly===true && r.data.wallet===true && me.exists ? {bonus:Math.max(0,Math.min(Number(me.data().balance)||0,Number(me.data().bonusOpen??me.data().bonusTotal)||0))} : null;
   const ownAccounting=r.data?.accountingOnly===true&&!owner&&!['manager','agent'].includes(role);
   if(!owner&&(me.data()?.status!=='approved'||!['manager','agent'].includes(role)&&!ownAccounting))A.fail('permission-denied','Club staff only');
   const manager=owner||role==='manager';
@@ -87,7 +88,7 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
    const tables=await tx.get(db.collection('tables').where('clubId','==',cid));
    const cycle=await Accounting.currentCycle(tx,db,cid);
    const summary=Accounting.buildAccounting([{uid,...me.data()}],games.docs.map(d=>d.data()),tables.docs.map(d=>d.data()),{ownerUid:club.data().ownerUid,god:false,cycle});
-   return{accounting:Accounting.ownAccounting(summary,uid)};
+   return{accounting:Accounting.ownAccounting(summary,uid),...(wallet?{wallet}:{})};
   }
   if(reportSection!==undefined){
    // Each page rechecks staff authority. Paging by document ID preserves legacy
@@ -133,7 +134,7 @@ exports.pkClubDirectory=onCall({...opts,memory:'512MiB',concurrency:8},async r=>
     summary.agents=Object.fromEntries(Object.entries(summary.agents).map(([id,row])=>[id,withoutLifetime(row)]));
     summary.club=withoutLifetime(summary.club);
    }
-   return{accounting:summary};
+   return{accounting:summary,...(wallet?{wallet}:{})};
   }
   const treasury=manager?rows.find(m=>m.uid===club.data().ownerUid):null;
   let agentLog=[],gameLog=[],securityAlerts=[];
@@ -195,6 +196,53 @@ exports.pkGameHistory=onCall({...opts,memory:'512MiB'},async r=>{
   let query=db.collection('gameLog');if(!leaderboard)query=query.where('uid','==',target);if(cid)query=query.where('clubId','==',cid);
   query=query.orderBy(FieldPath.documentId());if(cursor)query=query.startAfter(cursor);
   const page=await tx.get(query.limit(201)),docs=page.docs.slice(0,200),more=page.docs.length>200;
-  return{records:docs.map(d=>leaderboard?{id:d.id,uid:d.data().uid,username:d.data().username||'',game:d.data().game||'',profit:Number(d.data().profit)||0,at:Number(d.data().at)||0}:Accounting.publicGameLog({id:d.id,...d.data()},A.root(r))),nextCursor:more?docs[docs.length-1].id:null};
+  return{records:docs.map(d=>leaderboard?{id:d.id,uid:d.data().uid,username:d.data().username||'',game:d.data().game||'',profit:Number(d.data().profit)>0?1:0,at:Number(d.data().at)||0}:Accounting.publicGameLog({id:d.id,...d.data()},A.root(r))),nextCursor:more?docs[docs.length-1].id:null};
+ },{readOnly:true});
+});
+
+exports.pkSeatStats=onCall(opts,async r=>{
+ const tableId=A.key(r.data?.tableId),target=A.key(r.data?.targetUid);
+ A.uid(r);
+ const db=require('firebase-admin/firestore').getFirestore();
+ return db.runTransaction(async tx=>{
+  const table=(await tx.get(db.doc('tables/'+tableId))).data();
+  if(!table || table.type!=='poker' || table.authorityVersion!==2 || !table.players?.[target] || table.archived)A.fail('not-found','Seat unavailable');
+  await A.member(tx,db,table.clubId,r);
+  const id=require('node:crypto').createHash('sha256').update(JSON.stringify([table.clubId,target])).digest('hex');
+  const m=(await tx.get(db.doc('_pkOpponentModels/'+id))).data()||{};
+  const hands=Math.max(0,Number(m.hands)||0);
+  const percent=count=>hands ? Math.min(100,Math.max(0,Math.round(100*(Number(count)||0)/hands))) : null;
+  return {hands,vpip:percent(m.vpip),pfr:percent(m.pfr)};
+ },{readOnly:true});
+});
+exports.pkClubRanks=onCall({...opts,memory:'512MiB'},async r=>{
+ const cid=A.key(r.data?.clubId),period=r.data.period,game=r.data.game;
+ A.uid(r);
+ if(!['wins','week','trophies'].includes(period)||!['all','poker','durak','ofc'].includes(game)||
+    (period==='trophies'&&game!=='all'))A.fail('invalid-argument','Unknown ranking');
+ const db=require('firebase-admin/firestore').getFirestore();
+ return db.runTransaction(async tx=>{
+  await A.member(tx,db,cid,r);
+  const members=await tx.get(db.collection('memberships').where('clubId','==',cid)
+    .select('uid','username','photo','avatarSeed','status','removedFromClub','isBot','stats'));
+  const rows=new Map();
+  for(const d of members.docs){
+   const m=d.data();
+   if(m.status!=='approved'||m.removedFromClub||m.isBot||!m.uid||m.uid.startsWith('bot_'))continue;
+   const trophies=Object.values(m.stats?.trophies||{}).reduce((n,v)=>n+Math.max(0,Number(v)||0),0);
+   rows.set(m.uid,{uid:m.uid,username:m.username||'Player',photo:m.photo||'',avatarSeed:m.avatarSeed||'',metric:period==='trophies'?trophies:0});
+  }
+  if(period!=='trophies'){
+   const start=period==='week'?Date.now()-7*86400000:0;
+   // Only a positive settled game result scores a win. Balance adjustments,
+   // fees and per-hand rake records never add a point.
+   const logs=await tx.get(db.collection('gameLog').where('clubId','==',cid).select('uid','game','profit','at'));
+   for(const d of logs.docs){
+    const e=d.data(),row=rows.get(e.uid);
+    if(row&&['poker','ofc','durak'].includes(e.game)&&(game==='all'||e.game===game)&&e.at>=start&&e.profit>0)row.metric++;
+   }
+  }
+  return {rows:[...rows.values()].filter(r=>r.metric>0).sort((a,b)=>b.metric-a.metric ||
+    a.username.localeCompare(b.username,'en') || a.uid.localeCompare(b.uid,'en')).slice(0,25)};
  },{readOnly:true});
 });

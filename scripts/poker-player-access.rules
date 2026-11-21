@@ -1,0 +1,15 @@
+    match /playerNotes/{viewer}/clubs/{club}/players/{player} {
+      function ownsNotes() {
+        return signedIn() && viewer == request.auth.uid
+          && get(/databases/$(database)/documents/memberships/$(viewer + '_' + club)).data.status == 'approved';
+      }
+      allow read, delete: if ownsNotes();
+      allow create, update: if ownsNotes() && request.resource.data.keys().hasOnly(['text', 'color'])
+        && request.resource.data.text is string && request.resource.data.text.size() <= 500
+        && request.resource.data.color in ['', 'blue', 'green', 'orange', 'purple', 'red'];
+    }
+
+    match /tournaments/{id} {
+      allow read: if superAdmin();
+      allow write: if false;
+    }

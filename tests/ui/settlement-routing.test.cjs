@@ -105,7 +105,7 @@ async function assertPlayerLinks(fixture){
   if(source==='cashier'){await React.act(async()=>button('Wallet').click());assert.ok(doc.querySelector('.club-wallet'));assert.equal(doc.querySelector('[aria-label="Club cashier"]'),null);}
   const links=[...doc.querySelectorAll('button[aria-label="My results"]')];
   assert.equal(links.length,source==='cashier'?0:1);
-  await React.act(async()=>(source==='navigation'?settlementNav():source==='cashier'?button('Account history & game results'):links[0]).click());
+  await React.act(async()=>(source==='navigation'?settlementNav():source==='cashier'?button('Game results & settlement history'):links[0]).click());
   assert.equal(new URL(w.location.href).searchParams.get('v'),'settlement');
   assert.equal(settlementNav().getAttribute('aria-current'),'page');
   assert.match(doc.body.textContent,/My games/);assertEnglishUi(doc.body,'Player settlement report');

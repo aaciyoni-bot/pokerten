@@ -9,12 +9,21 @@ async function read(url){
   if(!response.ok)throw Error('Public update request failed: '+response.status+' '+url);
   return Buffer.from(await response.arrayBuffer());
 }
+function checkHebrew(html,auth){
+  if(!html.includes('<html lang="he" dir="rtl"')||!html.includes('<meta name="app-version" content="'+version+'">')||
+     !html.includes('assets/js/hebrew-labels.js?v='+version)||!html.includes('assets/js/poker-auth.he.js?v='+version)||
+     !auth.includes('כניסה עם קוד אישי')||!html.includes('pokerten-orizis-intro.mp4'))throw Error('Incomplete Hebrew client');
+}
 async function verify(){
   for(const origin of ['https://pokerten.com','https://pokerten.web.app']){
     for(const file of ['assets/release.json','assets/js/app-update.js','index.html']){
-      if(sha(await read(origin+'/'+file))!==sha(fs.readFileSync(path.join(__dirname,'..',file))))throw Error('Public file does not match this release: '+origin+'/'+file);
+      const local=fs.readFileSync(path.join(__dirname,'..',file));
+      const expected=file==='index.html'?require('./locales/english.cjs').englishEntry(local.toString(),version):local;
+      if(sha(await read(origin+'/'+file))!==sha(expected))throw Error('Public file does not match this release: '+origin+'/'+file);
     }
-    console.log('Verified web v'+version+' at '+origin);
+    const [he,auth]=await Promise.all(['he.html','assets/js/poker-auth.he.js'].map(f=>read(origin+'/'+f)));
+    checkHebrew(he.toString(),auth.toString());
+    console.log('Verified web v'+version+' in English and Hebrew at '+origin);
   }
   const manifest=JSON.parse(await read('https://pokerten.com/mobile-updates/android-13/latest.json'));
   const url=new URL(manifest.url);
@@ -32,7 +41,10 @@ async function verify(){
     if(!html.includes('<meta name="app-version" content="'+version+'">')||
       !html.includes('assets/js/native-update.js?v='+version)||!updater.includes('getDocFromServer')||
       !updater.includes('Starting the updated game'))throw Error('Published Android client is missing the update-button fix');
-    console.log('Verified Android '+manifest.version+', checksum, native updater and game version');
+    const he=entry('he.html');
+    checkHebrew(he,entry('assets/js/poker-auth.he.js'));
+    if(!he.includes('assets/js/native-update.js?v='+version))throw Error('Missing Hebrew native updater');
+    console.log('Verified Android '+manifest.version+', checksum, native updater and both game languages');
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 }
 (async()=>{

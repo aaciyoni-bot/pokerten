@@ -21,6 +21,7 @@ jobs:
       - name: Install test and engine dependencies
         run: |
           npm ci --prefix tests/ui --ignore-scripts
+          npm ci --prefix scripts/locales --ignore-scripts
           npm ci --prefix functions --ignore-scripts
       - name: Check mandatory game invariants
         run: node predeploy-check.js
@@ -58,5 +59,7 @@ jobs:
         run: node --test tests/*.test.cjs
       - name: Check camera capture and sharing with synthetic media in Chrome
         run: node --test tests/ui/browser-camera.test.cjs
+      - name: Check both language entry points and Hebrew phone layouts
+        run: node --test tests/ui/hebrew-locale.test.cjs tests/ui/browser-hebrew.test.cjs
       - name: Check simulated login, chat, lobby and settlement flows
         run: npm test --prefix tests/ui

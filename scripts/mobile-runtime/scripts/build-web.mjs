@@ -113,6 +113,7 @@ export async function buildWeb() {
   await build({ stdin: { contents: firebaseSource, resolveDir: mobile, loader: 'js' }, bundle: true, format: 'esm', minify: true, target: ['es2020'], outfile: path.join(out, 'vendor/firebase.js') });
   html = html.replace(firebaseMatch[0], '<script type="module" src="vendor/firebase.js"></script>');
   await writeFile(path.join(out, 'index.html'), html);
+  require(path.join(repo,'scripts/locales/client.cjs')).build(out);
   console.log('Bundled local POKERTEN client. Firebase services, fonts and generated avatars still require internet.');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await buildWeb();

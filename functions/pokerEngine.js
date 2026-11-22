@@ -25,6 +25,7 @@ const RangeModel = require("./pokerRangeModel");
 const OpponentModel = require("./pokerOpponentModel");
 const round2 = C.round2;
 const A = require('./pokerAuthority');
+const playerView = require('./pokerPlayerView');
 const Tours = require('./pokerTournaments');
 const {showdownDelay} = require('./pokerTournamentCore');
 const {botName,renameGenericBots} = require('./botNames');
@@ -537,6 +538,16 @@ function autoDiscardAll(S) {
 }
 
 // finishEarlyWin port — index.html:9074-9133. Uncalled bet FIRST, then pot.
+function remainingRabbitCards(board, deck) {
+  const burnsAndCommunity = {0:8, 3:4, 4:2}[board.length];
+  if (!burnsAndCommunity || !Array.isArray(deck) || deck.length < burnsAndCommunity) return null;
+  const remaining = deck.slice(-burnsAndCommunity).reverse();
+  if (remaining.some(card => !card || card.val == null || card.suit == null)) return null;
+  // Cards are dealt from the top, burning once before each street.
+  if (board.length === 0) return [remaining[1],remaining[2],remaining[3],remaining[5],remaining[7]];
+  return board.length === 3 ? [remaining[1],remaining[3]] : [remaining[1]];
+}
+
 function finishEarlyWin(S, winnerUid) {
   const g = S.gameState;
   const pl = S.players;
@@ -553,20 +564,7 @@ function finishEarlyWin(S, winnerUid) {
   const rake = (g.board || []).length > 0 ? round2(pot * rakeFrac) : 0; // no rake preflop
   w.stack = round2(w.stack + pot - rake);
   w.actionText = "WINNER";
-  // rabbit hunt: the runout that WOULD have come, real burn order (§4.2)
-  if ((g.board || []).length < 5 && S.deck && S.deck.length) {
-    const d = [...S.deck];
-    const rab = [];
-    if (g.board.length === 0) {
-      d.pop();
-      rab.push(d.pop(), d.pop(), d.pop());
-    }
-    while (g.board.length + rab.length < 5 && d.length > 1) {
-      d.pop();
-      rab.push(d.pop());
-    }
-    g.rabbit = rab;
-  }
+  g.rabbit = remainingRabbitCards(g.board || [], S.deck);
   g.pots = [];
   g.phase = "showdown";
   g.activeTurnUid = null;
@@ -690,13 +688,11 @@ function settleAfterHand(S, rake, winnerUids) {
     rake,
     amount: g.lastWinAmount,
     winners: g.lastWinners || "",
-    ps: dealt.map((p) => ({
-      n: p.name,
-      c: p.cards && p.cards.length ? p.cards : (p.reveal && S.priv[p.uid] ? S.priv[p.uid] : null),
-      cc: p.cardCount || 0,
-      w: winnerUids.has(p.uid),
-      f: p.status === "folded",
-    })),
+    ps: dealt.map(p => {
+      const candidate=p.reveal && !p.cards?.length ? {...p,cards:S.priv[p.uid]} : p;
+      const shown=playerView.visibleCards(candidate,g);
+      return {n:p.name,c:shown.length?shown:null,cc:p.cardCount||0,w:winnerUids.has(p.uid),f:p.status==="folded"};
+    }),
   };
   S.table.history = [...(S.table.history || []), hist].slice(-100);
   if(!S.tor)S.effects.push({type:'settlementHands',entries:dealt.filter(p=>!p.isBot).map(p=>({uid:p.uid,hands:1,tableName:S.raw?.name||S.settings.name||S.id,gameType:g.currentGameType||S.settings.pokerType||'poker'}))});
@@ -1209,6 +1205,11 @@ async function commitState(tx, S, extraTop) {
   Object.entries(S.leftWrites || {}).forEach(([uid, v]) => {
     top[`leftStacks.${uid}`] = v;
   });
+  // This document is subscribed to by existing clients. Apply the same card
+  // visibility rules here as in action receipts before publishing a snapshot.
+  top.players=Object.fromEntries(Object.entries(top.players).map(([key,seat])=>
+    [key,{...seat,cards:playerView.visibleCards(seat,top.gameState)}]));
+  if ('rabbit' in top.gameState) top.gameState={...top.gameState,rabbit:playerView.rabbitCards(top.gameState)};
   tx.update(tRef(S.id), top);
   if (S.deck !== null && JSON.stringify(S.deck)!==S._deckBefore) tx.set(privRef(S.id, "_engine"), {deck: S.deck});
   Object.entries(S.priv).filter(([uid,cards])=>JSON.stringify(cards)!==JSON.stringify(JSON.parse(S._privBefore||'{}')[uid])).forEach(([uid, cards]) => {
@@ -1655,11 +1656,11 @@ async function playerAction(request) {
     if(!e || e.handN!==g.handN || e.phase!==g.phase || e.turnStartedAt!==g.turnStartedAt || e.highestBet!==g.highestBet)throw new HttpsError('failed-precondition','This turn already changed');
     applyAction(S,actor,action,amount,false);
     await commitState(tx,S);
-    return {ok:true,tableId:id,tableUpdate:require('./pokerPlayerView').actionUpdate(S)};
+    return {ok:true,tableId:id,tableUpdate:playerView.actionUpdate(S)};
   });
   // Old request receipts can hold the historical full engine update. Apply the
   // current player protocol on replay as well as when recording a new action.
-  return {...require('./pokerPlayerView').confirmation(result),timing:{serverMs:Math.round(performance.now()-started)}};
+  return {...playerView.confirmation(result),timing:{serverMs:Math.round(performance.now()-started)}};
 }
 const routePlayerAction=require('./pokerActionRegion').createActionRouter();
 exports.pkActEurope=onCall({region:'europe-west1',minInstances:0},playerAction);
@@ -1852,13 +1853,14 @@ exports.pkReveal = onCall(CALL_OPTS, async (request) => {
   const id = reqTableId(request);
   await db().runTransaction(async (tx) => {
     const S = await loadState(tx, id);
+    await A.member(tx,db(),S.table.clubId,request);
     const p = S.players[uid];
-    if (!p || S.gameState.phase !== "showdown") throw new HttpsError("failed-precondition", "Nothing to reveal now");
+    if (!p || p.cardCount === 0 || p.left === true || S.gameState.phase !== "showdown") throw new HttpsError("failed-precondition", "Nothing to reveal now");
     const okState = p.mucked === true || p.status === "folded" || (S.gameState.earlyWin && p.status === "active");
-    if (!okState || p.reveal) return;
+    if (!okState || p.reveal || !['active','folded','busted'].includes(p.status)) return;
     const cs = await tx.get(privRef(id, uid));
-    const cards = cs.exists ? (cs.data().cards || []) : [];
-    if (!cards.length) return;
+    const cards = cs.exists ? playerView.cards(cs.data().cards) : [];
+    if (!cards.length || (Number.isInteger(p.cardCount) && cards.length !== p.cardCount)) return;
     tx.update(tRef(id), {[`players.${uid}.reveal`]: true, [`players.${uid}.mucked`]: false, [`players.${uid}.cards`]: cards});
   });
   return {ok: true};
@@ -1960,6 +1962,6 @@ exports.tableAutoDrive = onSchedule({schedule:'every 1 minutes',timeoutSeconds:1
 });
 
 // Test hook — a plain object, ignored by the Functions deploy loader.
-exports.__engineInternals = {loadState,commitState,tickTable,tickMayAdvance,maybeOfferRit,resolveRitIfDue,startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, botCallPrice, botDiscardIndex, preflopTier, equityOf, rangeFacing, rangeHandStrength};
+exports.__engineInternals = {loadState,commitState,tickTable,tickMayAdvance,maybeOfferRit,resolveRitIfDue,remainingRabbitCards,startHand, executeDeal, applyAction, advancePhase, finishEarlyWin, runShowdown, applyDiscard, removeSeat, activesOf, botAction, botCallPrice, botDiscardIndex, preflopTier, equityOf, rangeFacing, rangeHandStrength};
 
 

@@ -23,14 +23,31 @@ function gameState(g) {
   state.lastAwards = records(g.lastAwards, row => fields(row, 'uid name amount'));
   state.ritOffer = g.ritOffer ? fields(g.ritOffer, 'until runs') : null;
   state.ritAgree = Object.fromEntries(Object.entries(g.ritAgree || {}).filter(([,v]) => typeof v === 'boolean'));
-  state.rabbit = g.phase === 'showdown' && g.earlyWin ? cards(g.rabbit) : null;
+  state.rabbit = rabbitCards(g);
   return state;
 }
 
+const liveRevealPhases = new Set(['preflop','flop','discard','turn','river']);
+
+function visibleCards(p, g) {
+  if (p.cardCount === 0 || p.left === true) return [];
+  const playing = p.status === 'active' || p.status === 'busted';
+  if (g.phase === 'showdown') {
+    const shown = p.reveal === true && (playing || p.status === 'folded');
+    return shown || (playing && !p.mucked && !g.earlyWin) ? cards(p.cards) : [];
+  }
+  return liveRevealPhases.has(g.phase) && g.allInReveal === true && p.status === 'active' && !p.mucked ? cards(p.cards) : [];
+}
+
+function rabbitCards(g) {
+  if (g.phase !== 'showdown' || g.earlyWin !== true) return null;
+  const count = g.board?.length ?? 0;
+  const pending = cards(g.rabbit);
+  return [0,3,4].includes(count) && pending.length === 5-count ? pending : null;
+}
+
 function seat(p, g) {
-  const visible = g.phase === 'showdown' ? (p.reveal === true || (!g.earlyWin && !p.mucked && p.status !== 'folded')) :
-    (g.allInReveal === true && p.status !== 'folded' && !p.mucked);
-  return {...fields(p, 'uid name photo avatarSeed seatIndex stack bet status cardCount actionText hasActed reveal mucked lastSeen sitOut sitAuto sitOutAt sitOutNext leavingAt bustedAt timeBankHand timeBankTurn'), cards:visible ? cards(p.cards) : []};
+  return {...fields(p, 'uid name photo avatarSeed seatIndex stack bet status cardCount actionText hasActed reveal mucked lastSeen sitOut sitAuto sitOutAt sitOutNext leavingAt bustedAt timeBankHand timeBankTurn'), cards:visibleCards(p,g)};
 }
 
 function actionUpdate(update) {
@@ -41,4 +58,4 @@ function actionUpdate(update) {
 function confirmation(receipt) {
   return {ok:true, tableId:receipt.tableId, tableUpdate:actionUpdate(receipt.tableUpdate)};
 }
-module.exports = {actionUpdate, confirmation, fields, cards, records, ids};
+module.exports = {actionUpdate, confirmation, fields, cards, records, ids, visibleCards, rabbitCards};

@@ -26,6 +26,7 @@ on:
       - 'scripts/mobile-runtime/**'
       - 'scripts/verify-public-update.cjs'
       - 'scripts/package-public-site.cjs'
+      - 'scripts/locales/**'
       - 'CNAME'
       - '*.png'
       - '*.js'
@@ -79,6 +80,7 @@ jobs:
           release.version='0.'+web.version+'.'+(Number(process.env.GITHUB_RUN_NUMBER)+1);
           fs.writeFileSync(file,JSON.stringify(release,null,2)+'\n');
           JS
+          npm ci --prefix scripts/locales --ignore-scripts --no-audit --no-fund
           npm ci --prefix mobile --no-audit --no-fund
           npm run verify --prefix mobile
           node mobile/scripts/package-update.mjs
@@ -90,6 +92,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/wait-for-backend.cjs
+
+      - name: Build both game languages for Firebase
+        run: node scripts/locales/client.cjs .
 
       - name: Deploy hosting
         env:

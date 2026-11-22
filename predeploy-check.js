@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const FILE = path.join(__dirname, 'index.html');
-const html = fs.readFileSync(FILE, 'utf8');
+const html = require('./scripts/locales/english.cjs').englishEntry(fs.readFileSync(FILE, 'utf8'),require('./assets/release.json').version);
 const sw = fs.readFileSync(path.join(__dirname, 'sw.js'), 'utf8');
 
 let fails = 0, passes = 0;

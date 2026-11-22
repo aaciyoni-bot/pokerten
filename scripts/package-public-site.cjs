@@ -42,8 +42,9 @@ for (const file of files) {
   count++;
 }
 fs.cpSync(path.join(root, 'mobile-updates'), path.join(out, 'mobile-updates'), { recursive: true });
+require('./locales/client.cjs').build(out);
 fs.writeFileSync(path.join(out, '.nojekyll'), '');
-for (const file of ['index.html', 'assets/release.json', 'manifest.json', 'sw.js', 'CNAME']) {
+for (const file of ['he.html','assets/js/hebrew-labels.js','assets/css/hebrew-ui.css','index.html', 'assets/release.json', 'manifest.json', 'sw.js', 'CNAME']) {
   if (!fs.existsSync(path.join(out, file))) throw new Error('Missing public asset: ' + file);
 }
 console.log(JSON.stringify({ files: count, runtime, version: manifest.version, checksum: manifest.checksum }));

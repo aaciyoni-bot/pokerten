@@ -101,15 +101,18 @@ jobs:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
         run: firebase deploy --only hosting --project pokerten --non-interactive
 
-      - name: Package the same game and Android update for pokerten.com
+      - name: Package the same game and Android update for GitHub Pages
+        if: github.event.repository.private == false
         run: node scripts/package-public-site.cjs
 
       - name: Upload public site
+        if: github.event.repository.private == false
         uses: actions/upload-pages-artifact@v4
         with:
           path: .public-site
 
   deploy-pages:
+    if: github.event.repository.private == false
     needs: deploy-hosting
     runs-on: ubuntu-latest
     permissions:
@@ -123,6 +126,18 @@ jobs:
       - name: Deploy game and compatible Android updates to the main domain
         id: deployment
         uses: actions/deploy-pages@v4
+
+  verify-release:
+    needs: [deploy-hosting, deploy-pages]
+    # A private repository serves the custom domain from Firebase after the DNS cutover.
+    if: >-
+      ${{ !cancelled() && needs.deploy-hosting.result == 'success' &&
+      (needs.deploy-pages.result == 'success' ||
+       (github.event.repository.private && needs.deploy-pages.result == 'skipped')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

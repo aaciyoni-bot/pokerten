@@ -1,0 +1,68 @@
+name: Publish Firebase domain verification file
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.well-known/acme-challenge/nSaR864OAimEMUatksL9Sl6L01iM8I3XqJGYcYkE-fVXf5LwfhcTiCmfPA0xrOut'
+
+concurrency:
+  group: public-site-deployment
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      deployments: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm the live Pages deployment matches the source artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          live=$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=github-pages&per_page=1" --jq '.[0].id')
+          test "$live" = 7984845098
+      - name: Reuse the published site including its original Android package
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 45068478792
+          artifact-ids: 14771599461
+          merge-multiple: true
+          path: ${{ runner.temp }}/previous-site
+      - name: Append only the Firebase proof and verify its archived bytes
+        env:
+          PROOF: '.well-known/acme-challenge/nSaR864OAimEMUatksL9Sl6L01iM8I3XqJGYcYkE-fVXf5LwfhcTiCmfPA0xrOut'
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/previous-site/artifact.tar"
+          test -s "$archive"
+          tar -tf "$archive" > "$RUNNER_TEMP/old-entries"
+          if grep -Fqx "./$PROOF" "$RUNNER_TEMP/old-entries"; then exit 1; fi
+          tar --append --file="$archive" "./$PROOF"
+          tar -xOf "$archive" "./$PROOF" | cmp - "$PROOF"
+          cp "$RUNNER_TEMP/old-entries" "$RUNNER_TEMP/expected-entries"
+          echo "./$PROOF" >> "$RUNNER_TEMP/expected-entries"
+          tar -tf "$archive" | cmp - "$RUNNER_TEMP/expected-entries"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/previous-site/artifact.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - id: publish
+        uses: actions/deploy-pages@v4

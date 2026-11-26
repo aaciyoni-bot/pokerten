@@ -25,10 +25,11 @@ function releaseState(r, current) {
 }
 export function validRelease(r, current) { return releaseState(r, current) === 'available'; }
 // One automatic attempt per cold start. A slow/failed download never interrupts a later hand.
-export function createAutoUpdater({ ota, store, fetchRelease, current, render, hasResume = () => false, verifySeat = async () => true,
+export function createAutoUpdater({ ota, store, fetchRelease, current, render, hasResume = () => false, verifySeat = async () => true, verifyEntrance = async () => false,
   delay = (fn, ms) => setTimeout(fn, ms), cancel = clearTimeout }) {
   let context, view = 'auth', attempted = false, cancelled = false, running, generation = 0, manualRun=false;
-  const blocked = (manual=manualRun) => updateBlocker(context, view, hasResume(), manual);
+  let startupReady = false;
+  const blocked = (manual=manualRun) => updateBlocker(context, view, hasResume(), manual || startupReady);
   const safe = (manual=manualRun) => !blocked(manual);
   const offline = 'Could not check for updates. Check your connection and try again.';
   const latest = 'Your game is up to date · v' + current.version.split('.')[1];
@@ -51,13 +52,16 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
     const live = () => id === generation && !cancelled && safe();
     const confirmed = async () => {
       const uid=context?.uid,clubId=context?.clubId;
-      if(!uid||!clubId)return live();
+      if (!uid || !clubId) {
+        try { return await verifyEntrance() && !context?.clubId && live(); }
+        catch { return false; }
+      }
       try { return await verifySeat(uid,clubId) && uid===context?.uid && clubId===context?.clubId && live(); }
       catch { return false; }
     };
     const deferred = () => blocked() || 'Update paused. Check again in the club lobby.';
     try {
-      render({text:'Checking for updates…'});
+      if (manual) render({text:'Checking for updates…'});
       const timeout = new Promise(resolve => { timer = delay(() => {
         cancelled = true; render(null); resolve('The update took too long. Tap Check update to retry.');
       }, manual ? 60000 : 15000); });
@@ -118,6 +122,7 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
     return running;
   }
   return {
+    start() { startupReady = true; sync(); },
     setView(next) { view = next; sync(); },
     setGameContext(next) { context = next; sync(); },
     check(manual = false) { return run(manual); },

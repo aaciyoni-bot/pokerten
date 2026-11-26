@@ -7,7 +7,7 @@ const release = {...current,version:'0.353.1',url:'https://pokerten.com/mobile-u
 const flush = () => new Promise(resolve=>setImmediate(resolve));
 function fixture(changes={}) {
  const events=[];let timeout;
- const options={current,render:s=>events.push(['render',s]),fetchRelease:async()=>release,
+ const options={current,verifyEntrance:async()=>true,render:s=>events.push(['render',s]),fetchRelease:async()=>release,
   ota:{list:async()=>({bundles:[]}),download:async()=>({id:'new'}),set:async x=>events.push(['apply',x])},
   store:{setSafeContext:async()=>{},check:async()=>({status:'current'}),startUpdate:async()=>events.push(['store'])},
   delay:fn=>{timeout=fn;return 1;},cancel:()=>{},...changes};
@@ -112,4 +112,12 @@ test('a newly occupied source table, or an unavailable server, blocks an install
   const f=fixture({verifySeat});f.start();await flush();await flush();
   assert.ok(!f.events.some(e=>e[0]==='apply'||e[0]==='store'));
  }
+});
+
+test('startup checks before entering a club with safe restart guards', async()=>{
+  for (const [options, expected] of [[{},true],[{verifyEntrance:async()=>false},false],[{hasResume:()=>true},false]]) {
+    const f=fixture(options);
+    f.updater.start();await flush();
+    assert.equal(f.events.some(([kind])=>kind==='apply'),expected);
+  }
 });

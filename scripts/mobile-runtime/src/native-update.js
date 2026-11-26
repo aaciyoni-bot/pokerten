@@ -24,6 +24,17 @@ function render(state) {
 if (Capacitor.getPlatform() === 'android') {
   const store = registerPlugin('PokertenAppUpdate');
   controller = createAutoUpdater({ota:CapacitorUpdater,store,current:release,render,
+    verifyEntrance:async()=>{
+      const fb = window.fb;
+      await fb.auth.authStateReady();
+      const uid = fb.auth.currentUser?.uid;
+      if (!uid) return true;
+      const memberships = await fb.getDocs(fb.query(fb.collection(fb.db,'memberships'),fb.where('uid','==',uid)));
+      if (memberships.metadata.fromCache || fb.auth.currentUser?.uid !== uid) return false;
+      const clubs = memberships.docs.map(doc=>doc.data()).filter(m=>m.status==='approved');
+      const checks = await Promise.all(clubs.map(m=>fb.fx('pkCanInstallUpdate',{clubId:m.clubId})));
+      return fb.auth.currentUser?.uid === uid && checks.every((r,i)=>r?.allowed===true && r.uid===uid && r.clubId===clubs[i].clubId);
+    },
     verifySeat:async(uid,clubId)=>{
       const fb=window.fb;
       if(fb?.auth?.currentUser?.uid!==uid)return false;
@@ -55,7 +66,7 @@ window.PokerAppUpdate = {
   reload(){return this.check(true);},
   ready(){
     // React has rendered successfully; acknowledge the bundle to enable rollback protection.
-    if(!ready && Capacitor.isNativePlatform()){ready=true;CapacitorUpdater.notifyAppReady().catch(()=>{});}
+    if(!ready && Capacitor.isNativePlatform()){ready=true;CapacitorUpdater.notifyAppReady().catch(()=>{});controller?.start();}
   },
   setView(view){controller?.setView(view);},
   setGameContext(context){controller?.setGameContext(context);}

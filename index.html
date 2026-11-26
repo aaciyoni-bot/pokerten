@@ -11277,7 +11277,7 @@ function PokerTable({
     return () => clearInterval(iv);
   }, [tableState?.tournamentId]);
   useEffect(()=>{if(tableState?.tournamentId&&(!tableState?.players?.[user.uid]||tableState.players[user.uid].status==='out'))loadTourRanks();},[tableState?.tournamentId,tableState?.players?.[user.uid]?.status]);
-  const reentryOf=tor=>{const p=tor?.players?.[user.uid];return !!(tor&&tor.status==='running'&&p?.out&&!p.removed&&!p.removalRequested&&tor.reentry&&(p.reentries||0)<tor.maxReentries&&tourLateRegOpen(tor));};
+  const reentryOf=tor=>{const p=tor?.players?.[user.uid];return !!(tor&&tor.status==='running'&&p?.out&&(!p.removed||p.reentryAllowed)&&!p.removalRequested&&tor.reentry&&(p.reentries||0)<tor.maxReentries&&tourLateRegOpen(tor));};
   const requestTourReentry=async()=>{if(tourReentryLock.current||!reentryOf(tourEntryState))return;const cost=tourEntryOf(tourEntryState,true);if(cost>0&&!window.confirm('Re-entry: '+formatMoney(cost)+' including configured fees and bounty. Starting stack: '+formatShort(tourEntryState.startStack)))return;tourReentryLock.current=true;setTourReentryBusy(true);try{const result=await pokerCommand('pkTournament',{op:'register',tournamentId:tourEntryState.id});setOutDismissed(true);if(result.tableId){const snap=await window.fb.getDoc(window.fb.doc(window.fb.db,'tables',result.tableId));if(snap.exists())onTransfer?.({docId:snap.id,...snap.data()});}await loadTourRanks();showToast('Re-entry complete. Your starting stack is ready; tables will balance between hands.','success');}catch(e){showToast(e.message||'Re-entry failed','error');}finally{tourReentryLock.current=false;setTourReentryBusy(false);}};
   const tourStandBtn = tableState?.tournamentId ? React.createElement("button", {
     key: "tstand",
@@ -18407,6 +18407,13 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     if(!window.confirm(msg))return;
     try{const r=await pokerCommand('pkTournament',{op:'removeplayer',tournamentId:tor.id,playerUid:player.uid});showToast(r?.queued?'Player will be removed after the current hand.':'Player removed.','success');}catch(e){showToast(e.message||String(e),'error');}
   };
+  const allowTourReentry=async(tor,p)=>{
+    if(!window.confirm('Allow '+p.name+' to re-enter? The player must confirm and pay the entry cost.'))return;
+    try{
+      await pokerCommand('pkTournament',{op:'allowreentry',tournamentId:tor.id,playerUid:p.uid});
+      showToast('Re-entry allowed. The player can now re-enter.','success');
+    }catch(e){showToast(e.message||String(e),'error');}
+  };
   const pastTours = myTours.filter(t => ['done','cancelled'].includes(t.status));
   const activeTours = myTours.filter(t => ['reg','running'].includes(t.status));
   const sorted = [...(showHistory ? pastTours : activeTours)].sort((a, b) => showHistory
@@ -19005,12 +19012,16 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       }, "⚠️ Table ", x.i + 1, " idle ", x.idleS, "s — tap to open")));
     })(), ['reg','running'].includes(tor.status) && (() => {
       const regs=Object.values(tor.players||{}).filter(p=>!p.removed),open=regPeek===tor.id;
+      const removed=tor.status==='running'&&tor.game==='poker'&&canManageGame(user,tor.game)?Object.values(tor.players||{}).filter(p=>p.removed):[];
       return React.createElement("div",{className:"pt-tournament-registration"},
         React.createElement("button",{type:"button",onClick:()=>setRegPeek(open?null:tor.id),className:"pt-tournament-roster-toggle",'aria-expanded':open},
           React.createElement("i",{className:"fa-solid fa-users",'aria-hidden':true}),
           React.createElement("div",null,React.createElement("span",null,React.createElement("b",null,regs.length)," of ",tor.maxPlayers||36," players registered"),React.createElement("progress",{value:regs.length,max:tor.maxPlayers||36,'aria-label':'Registered players'})),
           React.createElement("i",{className:'fa-solid fa-chevron-'+(open?'up':'right'),'aria-hidden':true})),
-        open&&React.createElement("div",{className:"pt-tournament-roster"},regs.length?regs.map(p=>React.createElement("div",{key:p.uid,className:"pt-tournament-roster-person"},React.createElement("span",null,p.name,p.removalRequested?' · Removal pending':p.out?' · Eliminated':''),canManageGame(user,tor.game)&&tor.game==='poker'&&React.createElement("button",{type:"button",disabled:p.removalRequested,onClick:()=>removeTourPlayer(tor,p),"aria-label":"Remove "+p.name,className:"pt-tournament-remove-player"},p.removalRequested?'Pending':'Remove'))):React.createElement("span",null,"No players registered yet")),
+        open&&React.createElement("div",{className:"pt-tournament-roster"},regs.length?regs.map(p=>React.createElement("div",{key:p.uid,className:"pt-tournament-roster-person"},React.createElement("span",null,p.name,p.removalRequested?' · Removal pending':p.out?' · Eliminated':''),p.uid!==user.uid&&canManageGame(user,tor.game)&&tor.game==='poker'&&React.createElement("button",{type:"button",disabled:p.removalRequested,onClick:()=>removeTourPlayer(tor,p),"aria-label":"Remove "+p.name,className:"pt-tournament-remove-player"},p.removalRequested?'Pending':'Remove'))):React.createElement("span",null,"No players registered yet")),
+        open&&removed.map(p=>React.createElement('div',{key:p.uid,className:'pt-tournament-roster-person'},
+          React.createElement('span',null,p.name,p.reentryAllowed?' · Re-entry allowed':' · Removed'),
+          !p.reentryAllowed&&tor.reentry&&tourLateRegOpen(tor)&&(p.reentries||0)<tor.maxReentries&&React.createElement('button',{type:'button',onClick:()=>allowTourReentry(tor,p),className:'pt-tournament-roster-toggle'},'Allow re-entry'))),
         tor.status==='reg'&&me&&!me.out&&React.createElement("div",{className:"pt-tournament-registered"},React.createElement("i",{className:"fa-solid fa-circle-check",'aria-hidden':true}),"You are registered"));
     })(), isGod && envPeek === tor.id && Array.isArray(tor.mysteryEnvelopes) && React.createElement("div", {
       className: "bg-amber-950/40 border border-amber-500/40 rounded-xl p-2.5 mb-2",
@@ -19084,7 +19095,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
     }, "Tournament full · ", alive, "/", tor.maxPlayers || 36)), tor.status === 'reg' && me && React.createElement("button", {
       onClick: () => tourUnregister(tor, user, showToast),
       className: "flex-1 bg-slate-800 hover:bg-rose-900 text-slate-300 py-2.5 rounded-xl font-bold text-sm border border-white/10"
-    }, "Unregister"), tor.status === 'running' && (!me || me.out && tor.reentry && (me.reentries||0)<tor.maxReentries) && tourLateRegOpen(tor) && (alive < (tor.maxPlayers || 36) ? React.createElement("button", {
+    }, "Unregister"), tor.status === 'running' && (!me || me.out && (!me.removed || me.reentryAllowed) && !me.removalRequested && tor.reentry && (me.reentries||0)<tor.maxReentries) && tourLateRegOpen(tor) && (alive < (tor.maxPlayers || 36) ? React.createElement("button", {
       onClick: () => tourRegister(tor, user, showToast),
       className: "flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 text-white py-2.5 rounded-xl font-black text-sm shadow-lg"
     }, me?.out?"Re-enter (":"Late register (", formatMoney(tourEntryOf(tor,!!me?.out)), ")") : React.createElement("span", {
@@ -19155,7 +19166,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       })))), document.body));
     })(), tor.status === 'running' && me && me.out && React.createElement("span", {
       className: "flex-1 text-center py-2.5 text-rose-300 font-bold text-sm"
-    }, "Busted — place ", me.rank), tor.status === 'done' && (tor.results || []).length > 0 && React.createElement("button", {
+    }, me.removed ? (me.reentryAllowed?'Re-entry allowed':'Removed by a tournament manager') : me.rank ? 'Busted — place '+me.rank : 'Eliminated'), tor.status === 'done' && (tor.results || []).length > 0 && React.createElement("button", {
       onClick: () => setChampTor(tor),
       className: "flex-1 ft-btn py-2.5 rounded-xl font-black text-sm"
     }, "🏆 Final results"))));

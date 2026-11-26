@@ -13,7 +13,7 @@ const fields = `authorityVersion clubId name game pokerType status createdAt
  reentry reentryToPrizePool maxReentries rebuys maxRebuys rebuyUntilLevel
  addon addonLevel anteType anteFromLevel breakEvery breakMins
  finishAtPaidPlaces initialChips tableRevision`.split(/\s+/);
-const playerFields = `uid name photo avatarSeed playerId out outAt rank removed
+const playerFields = `uid name photo avatarSeed playerId out outAt rank removed reentryAllowed
  removalRequested tableId bounties bountyWon bountyValue rebuys reentries addon
  registeredAt earlyRegistrationBonusChips entryStartStack`.split(/\s+/);
 const resultFields = ['uid','name','rank','prize','bounties','finalChips'];

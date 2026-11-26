@@ -28,6 +28,7 @@ function LanguageChoice(){
 // Derive both web and native release headers from the published manifest.
 function englishEntry(html,version){
   html=html.replace(/(<meta name="app-version" content=")\d+(")/,(_,open,close)=>open+version+close)
+    .replace(/(assets\/css\/reference-experience\.css\?v=)\d+/,(_,before)=>before+version)
     .replace(/(assets\/js\/(?:app|native)-update\.js\?v=)\d+/,(_,before)=>before+version);
   if(html.includes('data-language-choice'))return html;
   const component='function AppReleaseControls()';

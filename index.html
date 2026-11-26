@@ -4561,13 +4561,14 @@ function App() {
   const [toasts, setToasts] = useState([]);
   // Results belong to App so they survive the completed table returning to the
   // lobby, regardless of which Firestore listener receives the finish first.
+  const [tableHandTournament, setTableHandTournament] = useState(null);
   const [tourCele, setTourCele] = useState(null);
   useEffect(() => { if(tourCele)window.PokerSoundPack?.play('tournamentWin'); }, [tourCele]);
   useEffect(() => {
     if (!dbUser?.uid) return;
     for (const tor of toursDB || []) {
       try {
-        if (tor.status !== 'done' || !Array.isArray(tor.results)) continue;
+        if (tor.id === tableHandTournament || tor.status !== 'done' || !Array.isArray(tor.results)) continue;
         if (Date.now() - (tor.finishedAt || 0) > 10 * 60000) continue; // fresh finishes only
         const meP = (tor.players || {})[dbUser.uid];
         if (!meP || !meP.rank) continue;
@@ -4585,7 +4586,7 @@ function App() {
         break;
       } catch (e) {}
     }
-  }, [toursDB, dbUser?.uid]);
+  }, [toursDB, dbUser?.uid, tableHandTournament]);
   const [clubSettings, setClubSettings] = useState({
     rakePct: DEFAULT_RAKE_PCT
   });
@@ -5126,6 +5127,7 @@ function App() {
     excludeDocId: ['poker-table', 'durak-table', 'ofc-table'].includes(currentView) ? activeTable?.docId : null
   }), currentView === 'poker-table' && React.createElement(PokerTable, {
     key:activeTable?.docId,
+    onTournamentHand:setTableHandTournament,
     otherSeats:myClubTables(tablesDB,toursDB,effUser).filter(t=>t.docId!==activeTable?.docId),
     onSwitchSeat:t=>changeView(t.type==='durak'?'durak-table':t.type==='ofc'?'ofc-table':'poker-table',t),
     onTransfer:table=>{setActiveTable(table);},
@@ -11046,6 +11048,7 @@ function PokerTable({
   onManage,
   onCreateTable,
   onTransfer,
+  onTournamentHand,
   showToast,
   headless
 }) {
@@ -11057,7 +11060,13 @@ function PokerTable({
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{const id=tableState?.tournamentId;if(!id)return;return window.fb.onSnapshot(window.fb.doc(window.fb.db,'tournamentViews',id),d=>{if(!d.exists())return;setTourEntryState({id,...d.data()});const entry=d.data().players?.[user.uid];if(entry?.tableId&&entry.tableId!==tableDocId&&!entry.out){window.fb.getDoc(window.fb.doc(window.fb.db,'tables',entry.tableId)).then(s=>{if(s.exists()&&s.data().players?.[user.uid])onTransfer?.({docId:s.id,...s.data()});}).catch(()=>{});}});},[tableState?.tournamentId,tableDocId,user.uid]);
+  useEffect(() => {
+    const id = tableState?.tournamentId;
+    if (!id) return;
+    return window.fb.onSnapshot(window.fb.doc(window.fb.db, 'tournamentViews', id), snap => {
+      if (snap.exists()) setTourEntryState({id, ...snap.data()});
+    });
+  }, [tableState?.tournamentId]);
   const [tableError, setTableError] = useState('');
   const [privateError, setPrivateError] = useState('');
   const [connectionRetry, setConnectionRetry] = useState(0);
@@ -11459,7 +11468,42 @@ function PokerTable({
   const isSuperAdmin = user.role === ROLES.SUPER_ADMIN;
   const tblRef = () => window.fb.doc(window.fb.db, "tables", tableDocId);
   const setts = tableState?.settings || {};
-  const tournamentEnded = tableState?.tournament?.finished === true;
+  // A bust removes the seat in the same server transaction that pays the pot.
+  // Keep that hand's public result for the viewer while live data continues.
+  const [watchedPayout, setWatchedPayout] = useState(null);
+  // The action reply can arrive before the table snapshot and omit its public
+  // betting log. Keep the last confirmed entries for this table and hand.
+  const bettingLog = useRef(null);
+  const receiveTable = next => {
+    const previous = tableRef.current;
+    const before = previous?.gameState;
+    const game = next.gameState;
+    const seat = previous?.players?.[user.uid];
+    const sameHand = bettingLog.current?.tableId === next.id && bettingLog.current.handN === game?.handN;
+    if (!sameHand) bettingLog.current = {tableId:next.id, handN:game?.handN, actions:[]};
+    if (Array.isArray(game?.publicActions) && game.publicActions.length) {
+      const names = new Map(bettingLog.current.actions.map(a => [a.uid, a.name]));
+      bettingLog.current.actions = game.publicActions.map(a => ({...a,
+        name:next.players?.[a.uid]?.name || previous?.players?.[a.uid]?.name || names.get(a.uid)}));
+    }
+    if (!headless && document.visibilityState !== 'hidden' && next.tournamentId && seat &&
+        previous.id === next.id && before?.handN === game?.handN && before?.phase &&
+        !['waiting','showdown'].includes(before.phase) && game.phase === 'showdown' &&
+        game.lastAwards?.some(a => a.amount > 0)) {
+      setWatchedPayout({tableId:next.id, uid:user.uid, game, log:bettingLog.current, players:next.players || {},
+        // Keep the hero's place on the rail without creating a playable seat.
+        railSeat:next.players?.[user.uid] ? null : {uid:user.uid, name:seat.name, seatIndex:seat.seatIndex,
+          photo:seat.photo, avatarSeed:seat.avatarSeed, stack:0, bet:0, cards:[], cardCount:0, status:'out'}});
+    }
+    tableRef.current = next;
+    setTableState(next);
+  };
+  const liveGame = tableState?.gameState || {};
+  const liveSeat = tableState?.players?.[user.uid];
+  const playingHand = !!(liveSeat && liveGame.phase && !['waiting','showdown'].includes(liveGame.phase));
+  const payout = watchedPayout && watchedPayout.tableId === tableDocId && watchedPayout.uid === user.uid &&
+    !(playingHand && liveGame.handN !== watchedPayout.game.handN) ? watchedPayout : null;
+  const tournamentEnded = tableState?.tournament?.finished === true && !payout;
   const completedTableExit = useRef(null);
   useEffect(() => {
     if (headless || !tournamentEnded || tableState?.id !== tableDocId || completedTableExit.current === tableDocId) return;
@@ -11468,10 +11512,38 @@ function PokerTable({
     // pkLeave/cash-out command; App keeps the prize dialog above the lobby.
     onLeave();
   }, [headless, tournamentEnded, tableState?.id, tableDocId, onLeave]);
-  const gs = tournamentEnded ? {...tableState.gameState,phase:'waiting',board:[],board2:null,board3:null,pots:[],activeTurnUid:null,lastWinners:null,highestBet:0,allInReveal:false} : tableState?.gameState || {};
-  const players = tournamentEnded ? Object.fromEntries(Object.entries(tableState?.players || {}).filter(([uid])=>uid===user.uid)) : tableState?.players || {};
+  const gs = payout ? payout.game : tournamentEnded ? {...tableState.gameState,phase:'waiting',board:[],board2:null,board3:null,pots:[],activeTurnUid:null,lastWinners:null,highestBet:0,allInReveal:false} : tableState?.gameState || {};
+  const players = payout ? payout.players : tournamentEnded ? Object.fromEntries(Object.entries(tableState?.players || {}).filter(([uid])=>uid===user.uid)) : tableState?.players || {};
   const resultPresentation = usePokerResultPresentation(tableDocId, gs, players, headless);
   const reducedResultMotion = useReducedPokerMotion();
+  // The result clock advances after each split-pot arrival. Leave the credited
+  // stacks visible for a beat before showing the rank or changing tables.
+  const awardsArrived = resultPresentation.nextIn === null || (reducedResultMotion && resultPresentation.winnerReady);
+  useEffect(() => {
+    if (!watchedPayout) return;
+    if (!payout) { setWatchedPayout(null); return; }
+    if (!awardsArrived) return;
+    const timer = setTimeout(() => setWatchedPayout(old => old === payout ? null : old), 650);
+    return () => clearTimeout(timer);
+  }, [watchedPayout, payout, awardsArrived]);
+  const handBeforeExit = !headless && !!tableState?.tournamentId && !tournamentEnded && (playingHand || !!payout);
+  const handTournament = handBeforeExit ? tableState.tournamentId : null;
+  React.useLayoutEffect(() => {
+    onTournamentHand?.(handTournament);
+    return () => onTournamentHand?.(null);
+  }, [onTournamentHand, handTournament]);
+  const assignedSeat = tourEntryState?.id === tableState?.tournamentId && tourEntryState?.players?.[user.uid];
+  const transferTableId = !headless && !payout && assignedSeat && !assignedSeat.out && assignedSeat.tableId;
+  const transferRef = useRef(onTransfer);
+  transferRef.current = onTransfer;
+  useEffect(() => {
+    if (!transferTableId || transferTableId === tableDocId) return;
+    let active = true;
+    window.fb.getDoc(window.fb.doc(window.fb.db,'tables',transferTableId)).then(snap => {
+      if (active && snap.exists() && snap.data().players?.[user.uid]) transferRef.current?.({docId:snap.id,...snap.data()});
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [transferTableId, tableDocId, user.uid]);
   // DRIVER ELECTION. Bots, discards and the next deal used to be driven by the
   // super admin's browser alone: with him away, every bot turn waited for the
   // 52-second watchdog and the table crawled — "stuck", to anyone playing.
@@ -11534,8 +11606,7 @@ throw new Error('Game state is managed by the server');
         const t = window.PokerRuntime.acceptTableUpdate(tableRef.current, {...d.data(), id: d.id});
         // The document key is the seat identity, including older malformed seats.
         // Preserve the server snapshot exactly for optimistic concurrency checks.
-        tableRef.current = t;
-        setTableState(t);
+        receiveTable(t);
         const receivedAt=window.PokerRuntime.timings?.now();
         if(receivedAt!=null && window.requestAnimationFrame)window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>{
           if(tableSessionRef.current===session)window.PokerRuntime.timings.add('table:render',window.PokerRuntime.timings.now()-receivedAt);
@@ -11974,7 +12045,7 @@ throw new Error('Game state is managed by the server');
       const result=await pokerCommand('pkAct',{tableId:tableDocId,action:type,amount:targetBet,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
       if(tableSessionRef.current!==session||result?.tableId!==tableDocId||!result.tableUpdate)return;
       const next=window.PokerRuntime.acceptTableUpdate(tableRef.current,{...result.tableUpdate,id:result.tableId},true);
-      if(next!==tableRef.current){tableRef.current=next;setTableState(next);}
+      if(next!==tableRef.current)receiveTable(next);
     } catch(e) {
       if(tableSessionRef.current!==session)return;
       if(actedTurnRef.current===g.turnStartedAt)actedTurnRef.current=null;
@@ -12844,9 +12915,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       return null;
     }
   })();
-  const list = Object.values(players).sort((a, b) => a.seatIndex - b.seatIndex || String(a.uid).localeCompare(String(b.uid)));
+  const railSeated = isSeated || !!payout?.railSeat;
+  const list = Object.values(players).concat(payout?.railSeat || []).sort((a, b) => a.seatIndex - b.seatIndex || String(a.uid).localeCompare(String(b.uid)));
   let displayList = list;
-  if (isSeated) {
+  if (railSeated) {
     const myIdx = list.findIndex(p => p.uid === user.uid);
     if (myIdx >= 0) displayList = [...list.slice(myIdx), ...list.slice(0, myIdx)];
   }
@@ -12868,8 +12940,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   // every real seatIndex so two players can never share a slot.
   const maxSeatIx = list.reduce((m, p) => Math.max(m, Number(p.seatIndex) || 0), 0);
   const capN = Math.max(2, Math.min(10, Math.max(Number(setts.maxPlayers) || 0, maxSeatIx + 1, N)));
-  const compactVacancy = !isSeated && displayList.length < capN;
-  const layoutN = !isSeated ? capN : Math.max(2, displayList.length);
+  const compactVacancy = !railSeated && displayList.length < capN;
+  const layoutN = !railSeated ? capN : Math.max(2, displayList.length);
   const slotXY = s => {
     const ring = SEAT_LAYOUTS[Math.min(9, Math.max(2, layoutN))] || SEAT_LAYOUTS[6];
     if (ring[s]) return ring[s];
@@ -12881,9 +12953,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   // Compact the occupied ring in clockwise order. This is presentation only:
   // seatIndex, dealer, blinds and tournament balancing stay server-owned.
   // Spectators see each available physical seat; seated players retain the compact ring.
-  const slotMap = displayList.map((p,i)=>isSeated?i:Number(p.seatIndex)||0);
+  const slotMap = displayList.map((p,i)=>railSeated?i:Number(p.seatIndex)||0);
   const slotOf = i => slotMap[i] || 0;
-  const seatXY = i => isSeated && displayList[i]?.uid === user.uid ? [16.125,76.875] : slotXY(slotOf(i));
+  const seatXY = i => railSeated && displayList[i]?.uid === user.uid ? [16.125,76.875] : slotXY(slotOf(i));
   const seatPos = i => {
     const [x, y] = seatXY(i);
     return {
@@ -12895,7 +12967,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const betPos = i => {
     // Bets stay beside their owner's rail, outside all inward-facing hands.
     const [sx, sy] = seatXY(i);
-    const hero = isSeated && displayList[i]?.uid === user.uid;
+    const hero = railSeated && displayList[i]?.uid === user.uid;
     const x = sy <= 22 ? sx : sx < 50 ? 28 : 72;
     const resultGap = layoutN <= 7 && sy > 22 && sy < 40 && (gs.allInReveal || gs.phase === 'showdown') ? 12 : 0;
     const pod = podWidthFor(sy);
@@ -12907,7 +12979,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   };
 
   const breakClock = tour ? tourClock(tour) : null;
-  const tableOnBreak = !tournamentEnded && !!breakClock?.inBreak && ['waiting','showdown'].includes(gs.phase) && (gs.phase !== 'showdown' || Date.now() - (gs.showdownAt || 0) >= window.PokerTournament.showdownDelay(gs));
+  const tableOnBreak = !payout && !tournamentEnded && !!breakClock?.inBreak && ['waiting','showdown'].includes(gs.phase) && (gs.phase !== 'showdown' || Date.now() - (gs.showdownAt || 0) >= window.PokerTournament.showdownDelay(gs));
   const breakSeconds = tableOnBreak ? Math.max(0, Math.ceil((breakClock.phaseEndsAt-Date.now())/1000)) : 0;
   const resultPot = gs.phase === 'showdown' ? Number(gs.lastWinAmount) || 0 : 0;
   const totalPot = round2((gs.pots || []).reduce((s, p) => s + p.amount, 0) + Object.values(players).reduce((s, p) => s + (p.bet || 0), 0));
@@ -12953,6 +13025,21 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const tableVariant = variantLabel(gs.currentGameType || setts.baseGameType || 'NLH', setts);
   const tableTitle = setts.tableName || setts.name || tableVariant;
   const tableLevel = tour && tour.startedAt ? tourClock(tour).row : null;
+  const handLog = payout?.log || bettingLog.current;
+  const bettingActions = handLog?.tableId === tableDocId && handLog.handN === gs.handN &&
+    ['preflop','flop','discard','turn','river','showdown'].includes(gs.phase) ? handLog.actions : [];
+  const lastAction = bettingActions.at(-1);
+  const seatActions = new Map(bettingActions.map(a => [a.uid, a]));
+  const actionHebrew = document.documentElement.lang === 'he';
+  function bettingLabel(a) {
+    if (!a) return '';
+    const labels = actionHebrew ? {call:'שילם', fold:'זרק', check:'צ׳ק', bet:'הימר', raise:'העלה ל־'} :
+      {call:'CALL', fold:'FOLD', check:'CHECK', bet:'BET', raise:'RAISE TO'};
+    if (!labels[a.action]) return '';
+    const allIn = a.allIn && ['bet','raise','call'].includes(a.action) ? (actionHebrew ? ' · אול־אין' : ' · ALL-IN') : '';
+    const amount = a.action === 'raise' ? a.raiseTo : a.amount;
+    return labels[a.action] + (['bet','raise','call'].includes(a.action) && Number.isFinite(amount) ? ' ' + formatShort(amount) : '') + allIn;
+  }
   const tableStakes = 'Blinds ' + formatShort(tableLevel ? tableLevel.sb : setts.blinds) + '/' + formatShort(tableLevel ? tableLevel.bb : BB)
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
   const tableClubName = String(clubSettings?.name || window.__club?.name || '').trim();
@@ -13339,6 +13426,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     return out;
   })(), displayList.map((p, i) => {
     const isTurn = gs.activeTurnUid === p.uid && inBetting;
+    const decision = seatActions.get(p.uid);
+    const showDecision = decision && (decision.street === gs.phase || decision === lastAction ||
+      decision.allIn || decision.action === 'fold' || gs.phase === 'showdown');
+    const decisionText = showDecision ? bettingLabel(decision) : '';
     const isMe = p.uid === user.uid;
     const openSeatDetails = e => {
       e.stopPropagation();
@@ -13588,7 +13679,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         React.createElement('span',{style:{transform:'scaleX(' + timerPct + ')'}}))) : seatAward?.amount > 0 ? React.createElement('div', {
       className:'poker-seat-action action-badge badge-win', dir:'ltr',
       'aria-label':'Won ' + formatShort(seatAward.amount)
-    }, '+' + formatShort(seatAward.amount)) : p.actionText && (p.actionText !== 'WINNER' || resultPresentation.winnerReady) && React.createElement("div", {
+    }, '+' + formatShort(seatAward.amount)) : !decisionText && p.actionText && (p.actionText !== 'WINNER' || resultPresentation.winnerReady) && React.createElement("div", {
       className: `poker-seat-action action-badge ${p.actionText === 'Fold' ? 'badge-fold' : p.actionText === 'Check' ? 'badge-check' : p.actionText === 'Raise' || p.actionText === 'All-in' ? 'badge-raise' : p.actionText === 'WINNER' ? 'badge-win' : ['SB', 'BB'].includes(p.actionText) ? 'badge-blind' : 'badge-call'}`,
       style: isMe ? {} : farPod ? {
         top: 'auto',
@@ -13602,7 +13693,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         right: 'auto',
         transform: 'translateX(-50%)'
       }
-    }, p.actionText), godBadge), isMe && heroHandStatus, isMe && p.bet > 0 && React.createElement('div', {
+    }, p.actionText), decisionText && React.createElement('div', {
+      className:'poker-confirmed-action', 'data-decision':decision.action, dir:actionHebrew?'rtl':'ltr'
+    }, decisionText), godBadge), isMe && heroHandStatus, isMe && p.bet > 0 && React.createElement('div', {
       className:'poker-bet poker-bet-hero', 'data-player-uid':p.uid, 'data-bet-row':'hero'
     }, React.createElement(CasinoChipStack,{amount:p.bet,scale:0.55,unit:chipUnit})), isMe && p.sitOut && React.createElement("button", {
       type: "button",
@@ -13899,7 +13992,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   })), React.createElement("div", {
     role:'status',
     className: "flex-1 text-center text-slate-400 font-bold text-xs truncate" + (gs.phase === 'showdown' ? " poker-showdown-summary" : "")
-  }, tournamentEnded ? 'Tournament complete' : tourCoordinatorIssue ? 'Tournament synchronization: '+tourCoordinatorIssue : tableOnBreak ? 'Tournament break' : ['waiting','showdown'].includes(gs.phase) && tour?.balanceHoldUntil > Date.now() ? 'Balancing tables — waiting for the other hand to finish' : acting ? 'Sending move…' : controlledBot ? 'Playing as '+controlledBot.name : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? !resultPresentation.winnerReady ? 'Revealing hands…' : React.createElement('span',null,React.createElement('strong',null,'🏆 ',Array.isArray(gs.lastAwards) && gs.lastAwards.length ? gs.lastAwards.map(a=>(players[a.uid]?.name || a.name || 'Winner')+' +'+formatMoney(a.amount)).join(' · ') : (gs.lastWinners || 'Hand complete')+' · '+formatMoney(gs.lastWinAmount || 0)),React.createElement('small',null,gs.earlyWin ? 'Won by fold' : 'Showdown')) : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !controlledBot && !isMyTurn && !acting ? React.createElement("button", {
+  }, lastAction && bettingLabel(lastAction) && React.createElement('span', {
+    className:'poker-action-recap', dir:actionHebrew?'rtl':'ltr'
+  }, lastAction.name && React.createElement('bdi', {className:'poker-action-actor'}, lastAction.name),
+    lastAction.name ? ' · ' : '', bettingLabel(lastAction)), ' ',
+    tournamentEnded ? 'Tournament complete' : tourCoordinatorIssue ? 'Tournament synchronization: '+tourCoordinatorIssue : tableOnBreak ? 'Tournament break' : ['waiting','showdown'].includes(gs.phase) && tour?.balanceHoldUntil > Date.now() ? 'Balancing tables — waiting for the other hand to finish' : acting ? 'Sending move…' : controlledBot ? 'Playing as '+controlledBot.name : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? !resultPresentation.winnerReady ? 'Revealing hands…' : React.createElement('span',null,React.createElement('strong',null,'🏆 ',Array.isArray(gs.lastAwards) && gs.lastAwards.length ? gs.lastAwards.map(a=>(players[a.uid]?.name || a.name || 'Winner')+' +'+formatMoney(a.amount)).join(' · ') : (gs.lastWinners || 'Hand complete')+' · '+formatMoney(gs.lastWinAmount || 0)),React.createElement('small',null,gs.earlyWin ? 'Won by fold' : 'Showdown')) : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !controlledBot && !isMyTurn && !acting ? React.createElement("button", {
     onClick: () => setPreCF(v => !v),
     // reads as a real pressable button: raised gradient, visible border
     className: `shrink-0 px-4 py-2 rounded-xl font-black text-xs border transition-all active:scale-95 shadow-[0_4px_14px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.08)] ${preCF ? 'bg-gradient-to-b from-amber-400 to-amber-600 text-slate-900 border-amber-300 ring-2 ring-amber-300/60' : 'bg-gradient-to-b from-slate-700 to-slate-800 text-slate-100 border-white/20 hover:border-gold-400/50 hover:text-white'}`
@@ -13950,7 +14047,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     }, "🚀 Add-on"));
   })(), botEntry&&botEntry.tableId===tableDocId&&canManageGame(user,'poker')&&React.createElement(BotBuyInDialog,{settings:setts,fill:botEntry.fill,
     count:botEntry.fill?(setts.maxPlayers||6)-Object.keys(players).length:1,onClose:()=>setBotEntry(null),
-    onConfirm:amount=>handleAddBot(botEntry.fill,amount,botEntry.fill?(setts.maxPlayers||6)-Object.keys(players).length:undefined)}), tourRegistrationOpen && tourEntryState && React.createElement(TournamentDialog,{title:'Late registration',layer:330,onClose:()=>setTourRegistrationOpen(false)},React.createElement('h2',{className:'pt-tour-title'},'Late registration'),React.createElement(TournamentRegistrationEditor,{key:tourEntryState.id,tor:tourEntryState,showToast,onSaved:()=>setTourRegistrationOpen(false)})), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !outDismissed && (myPlayer?.status==='out'||tourEntryState?.players?.[user.uid]?.out||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
+    onConfirm:amount=>handleAddBot(botEntry.fill,amount,botEntry.fill?(setts.maxPlayers||6)-Object.keys(players).length:undefined)}), tourRegistrationOpen && tourEntryState && React.createElement(TournamentDialog,{title:'Late registration',layer:330,onClose:()=>setTourRegistrationOpen(false)},React.createElement('h2',{className:'pt-tour-title'},'Late registration'),React.createElement(TournamentRegistrationEditor,{key:tourEntryState.id,tor:tourEntryState,showToast,onSaved:()=>setTourRegistrationOpen(false)})), tourStandOpen && React.createElement(TournamentStandingsDialog, { data: tourRanks, user, layer: 230, onClose: () => setTourStandOpen(false) }), tour && !tour.finished && !handBeforeExit && !outDismissed && (myPlayer?.status==='out'||tourEntryState?.players?.[user.uid]?.out||tourRanks?.list?.some(p=>p.uid===user.uid&&p.out)) && React.createElement(TournamentEliminationDialog, { ranks: tourRanks, onWatch: () => setOutDismissed(true), onLeave, reentryAvailable:reentryOf(tourEntryState),reentryPrice:tourEntryState?tourEntryOf(tourEntryState,true):0,reentryBusy:tourReentryBusy,onReentry:requestTourReentry }), reentryOf(tourEntryState)&&outDismissed&&React.createElement('button',{className:'pt-table-reentry',disabled:tourReentryBusy,onClick:requestTourReentry},tourReentryBusy?'Entering…':'Re-entry · '+(tourEntryOf(tourEntryState,true)>0?formatMoney(tourEntryOf(tourEntryState,true)):'Free')), offline && React.createElement("div", {
     className: "absolute top-10 left-1/2 -translate-x-1/2 z-[70] bg-slate-950/95 border border-rose-500/50 rounded-xl px-4 py-1.5 flex items-center gap-2 animate-pulse",
     dir: "ltr"
   }, React.createElement("span", {

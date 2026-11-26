@@ -34,7 +34,7 @@ const flush=()=>React.act(()=>new Promise(resolve=>setTimeout(resolve,300)));
  hidden=false;w.fb.auth.currentUser={uid:'another',email:'ordinary@example.invalid',emailVerified:true};user={uid:'another',role:'manager'};
  await render();const count=calls.length;await flush();assert.equal(calls.length,count);assert.equal(w.document.body.textContent,'No private counts','account switch clears the authorized user view');
  assert.match(html,/collection\(window\.fb\.db, "tournamentViews"\)/);
- assert.match(html,/doc\(window\.fb\.db,'tournamentViews',id\)/);
+ assert.match(html,/doc\(window\.fb\.db,\s*'tournamentViews',\s*id\)/);
  console.log('PASS: tournament projection routing, server-only participant counts, role spoof denial, background and account-switch isolation');
  }finally{await React.act(()=>root.unmount());w.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

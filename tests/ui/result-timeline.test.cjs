@@ -24,22 +24,43 @@ const advance=async target=>{while(true){const due=[...timers].filter(([,t])=>t.
 const stack=uid=>w.document.querySelector('[data-player-uid="'+uid+'"] .poker-stack-amount').textContent;
 (async()=>{
  await React.act(async()=>root.render(React.createElement(w.TableTest,props)));
+ // Record the same confirmed action shape used by the server. A turn or
+ // street change may already have cleared the transient seat actionText.
+ const decision=uid=>w.document.querySelector('[data-player-uid="'+uid+'"] .poker-confirmed-action')?.textContent;
+ const recap=()=>w.document.querySelector('.poker-action-recap')?.textContent;
+ const raise={uid:'me',action:'raise',amount:45,raiseTo:50,allIn:false,street:'turn'};
+ const call={uid:'other',action:'call',amount:40,raiseTo:50,allIn:false,street:'turn'};
+ current.gameState.publicActions=[raise,call];
+ await React.act(async()=>next(snapshot()));
+ assert.equal(decision('other'),'CALL 40','call shows the additional chips paid, even after the street closes');
+ assert.match(recap(),/Other.*CALL 40/);
+ current.gameState.publicActions=[{...raise,allIn:true,street:'river'},{...call,allIn:true,street:'river'}];
+ await React.act(async()=>next(snapshot()));
+ assert.equal(decision('me'),'RAISE TO 50 · ALL-IN');assert.equal(decision('other'),'CALL 40 · ALL-IN');
+ delete current.gameState.publicActions;
+ await React.act(async()=>next(snapshot()));
+ assert.equal(decision('other'),'CALL 40 · ALL-IN','a partial confirmation cannot erase the known action');
  assert.equal(stack('me'),'100');sounds.length=0;
  current.gameState={...current.gameState,__seq:2,phase:'showdown',showdownAt:Date.now(),activeTurnUid:null,pots:[],lastAwards:[{uid:'me',amount:50},{uid:'other',amount:20}],lastWinners:'Me, Other',lastWinAmount:70};
  current.players.me.stack=150;current.players.other.stack=120;current.players.me.actionText='WINNER';current.players.other.actionText='WINNER';
  await React.act(async()=>next(snapshot()));
  assert.equal(stack('me'),'100');assert.equal(stack('other'),'100');
  assert.equal(w.document.querySelectorAll('.poker-seat-winner').length,0);
- assert.equal(w.document.querySelector('.poker-showdown-summary').textContent,'Revealing hands…');assert.ok(!sounds.includes('win'));
+ assert.match(w.document.querySelector('.poker-showdown-summary').textContent,/CALL 40 · ALL-IN.*Revealing hands…/);assert.ok(!sounds.includes('win'));
  const flights=[...w.document.querySelectorAll('.poker-pot-award')];assert.equal(flights.length,2);
  assert.match(flights[0].style.animation,/2s linear 1000ms/);assert.match(flights[1].style.animation,/2s linear 1080ms/);
- await advance(700);assert.equal(w.document.querySelectorAll('.poker-seat-winner').length,2);assert.equal(sounds.filter(s=>s==='win').length,1);assert.equal(stack('me'),'100');
+ await advance(700);assert.equal(decision('other'),'CALL 40 · ALL-IN','award does not hide the final call');assert.equal(w.document.querySelectorAll('.poker-seat-winner').length,2);assert.equal(sounds.filter(s=>s==='win').length,1);assert.equal(stack('me'),'100');
  await React.act(async()=>next(snapshot()));assert.equal(w.document.querySelector('.poker-pot-award'),flights[0],'presence does not remount a transfer');
  await advance(2999);assert.equal(stack('me'),'100');await advance(3000);assert.equal(stack('me'),'150');assert.equal(stack('other'),'100');
  await advance(3080);assert.equal(stack('other'),'120');assert.equal(sounds.filter(s=>s==='win').length,1);
  // A new authoritative hand must take over even while the old result is held.
  current.gameState={...current.gameState,__seq:3,phase:'preflop',handN:2,activeTurnUid:'me',turnStartedAt:Date.now(),pots:[],lastAwards:[]};current.players.me.stack=145;current.players.me.actionText='SB';
- await React.act(async()=>next(snapshot()));assert.equal(stack('me'),'145');assert.equal(w.document.querySelector('.poker-pot-award'),null);assert.ok(w.document.querySelector('[data-active-turn="true"]'));
+ await React.act(async()=>next(snapshot()));assert.equal(decision('other'),undefined);assert.equal(recap(),undefined);assert.equal(stack('me'),'145');assert.equal(w.document.querySelector('.poker-pot-award'),null);assert.ok(w.document.querySelector('[data-active-turn="true"]'));
+ current.gameState={...current.gameState,phase:'showdown',earlyWin:true,__seq:4,showdownAt:Date.now(),activeTurnUid:null,lastAwards:[{uid:'me',amount:15}],lastWinners:'Me',publicActions:[{uid:'other',action:'fold',amount:0,street:'preflop'}]};
+ current.players.other.status='folded';current.players.other.actionText='';
+ w.document.documentElement.lang='he';
+ await React.act(async()=>next(snapshot()));assert.equal(decision('other'),'זרק');assert.match(recap(),/Other.*זרק/);
+ w.document.documentElement.lang='en';
  // Reopening a completed hand shows its real balance without replaying a win.
  await React.act(()=>root.render(null));current.gameState={...current.gameState,phase:'showdown',activeTurnUid:null,lastAwards:[{uid:'me',amount:50}],lastWinAmount:50,lastWinners:'Me'};sounds.length=0;
  await React.act(async()=>root.render(React.createElement(w.TableTest,props)));assert.equal(stack('me'),'145');assert.equal(w.document.querySelector('.poker-pot-award'),null);assert.ok(!sounds.includes('win'));

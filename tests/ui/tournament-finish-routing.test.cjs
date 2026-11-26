@@ -73,6 +73,74 @@ function finishEvent(f){Object.assign(f.tor,{status:'done',finishedAt:Date.now()
   assert.equal(f.calls.some(c=>c.name==='pkLeave'||c.name==='pkSeat'&&c.args.op!=='heartbeat'||c.name==='pkTournament'&&c.args.op!=='tick'),false,'navigation never cashes out tournament chips or repeats payout');
   await React.act(()=>root.render(null));
  }
+ // Deliver the tournament and table snapshots independently, as Firestore does.
+ let now=0, timerId=0;
+ const timers=new Map();
+ Object.defineProperty(w.performance,'now',{value:()=>now});
+ w.setTimeout=(fn,ms=0)=>{const id=++timerId;timers.set(id,{fn,at:now+ms});return id;};
+ w.clearTimeout=id=>timers.delete(id);
+ async function advance(ms){
+  const until=now+ms;
+  while(true){
+   const due=[...timers].filter(([,t])=>t.at<=until).sort((a,b)=>a[1].at-b[1].at)[0];
+   if(!due)break;
+   now=due[1].at;timers.delete(due[0]);await React.act(async()=>due[1].fn());
+  }
+  now=until;
+ }
+ const outDialog=()=>doc.querySelector('[aria-label="Your tournament result"]');
+ for(const scenario of ['roster-first','table-first','final','reduced']){
+  const f=fixture();
+  w.matchMedia=()=>({matches:scenario==='reduced',addEventListener(){},removeEventListener(){}});
+  Object.assign(f.table.gameState,{phase:'river',currentGameType:'NLH',activeTurnUid:'other',pots:[{amount:900}]});
+  f.table.players.third={uid:'third',name:'Third',stack:2000,bet:0,status:'active',seatIndex:2,cardCount:2};
+  f.tor.players.third={uid:'third',name:'Third',tableId:'final'};
+  await start(f);
+  const markOut=async()=>{
+   Object.assign(f.tor.players.winner,{out:true,rank:scenario==='final'?2:3});
+   if(scenario==='final')Object.assign(f.tor,{status:'done',finishedAt:Date.now(),results:[{uid:'other',rank:1,prize:3000},{uid:'winner',rank:2,prize:1000}]});
+   await React.act(()=>{f.emit('tournamentViews/event');f.emit('tournamentViews');});
+  };
+  if(scenario!=='table-first')await markOut();
+  assert.equal(doc.querySelector('.pt-tour-finish'),null,'roster must not cover the live river');
+  Object.assign(f.table.gameState,{phase:'showdown',__seq:2,showdownAt:Date.now(),activeTurnUid:null,pots:[],lastWinners:'Other, Third',lastWinAmount:900,lastAwards:[{uid:'other',amount:600},{uid:'third',amount:300}]});
+  delete f.table.players.winner;
+  f.table.players.other.stack+=600;f.table.players.third.stack+=300;
+  await React.act(()=>f.emit('tables/final'));
+  if(scenario==='table-first')await markOut();
+  assert.ok(doc.querySelector('[data-player-uid="winner"]'),'eliminated seat stays on the rail');
+  assert.equal(outDialog(),null);
+  if(scenario==='final'){
+   f.table.tournament.finished=true;
+   Object.assign(f.table.gameState,{__seq:3,phase:'waiting',lastAwards:[],lastWinners:null});
+   delete f.table.players.third;
+   await React.act(()=>f.emit('tables/final'));
+  }
+  if(scenario==='reduced'){
+   assert.equal(doc.querySelector('.poker-pot-award'),null);
+   await advance(450);assert.ok(doc.querySelector('.poker-seat-winner'));
+   assert.equal(outDialog(),null);await advance(700);
+  }else{
+   assert.equal(doc.querySelectorAll('.poker-pot-award').length,2);
+   await advance(2710);
+   assert.equal(view(),'poker-table');
+   assert.ok(doc.querySelector('.poker-seat-winner'));
+   assert.equal(doc.querySelector('[data-player-uid="third"] .poker-stack-amount').textContent,'2,000');
+   assert.equal(doc.querySelector('.pt-tour-finish'),null,'second award still in flight');
+   await advance(100);
+   assert.equal(doc.querySelector('[data-player-uid="third"] .poker-stack-amount').textContent,'2,300');
+   assert.equal(doc.querySelector('.pt-tour-finish'),null,'credited stack is visible before the result');
+   await advance(700);
+  }
+  if(scenario==='final'){
+   assert.equal(view(),'lobby');assert.ok(doc.querySelector('.pt-tour-finish'),'paid finalist sees prize after exit');
+  }else{
+   assert.ok(outDialog(),'normal elimination options restored after payout');
+   await React.act(()=>[...outDialog().querySelectorAll('button')].find(b=>b.textContent==='Back to lobby').click());
+   assert.equal(view(),'lobby');
+  }
+  await React.act(()=>root.render(null));
+ }
  // A result notification for a different event must not eject an active game.
  const f=fixture();delete f.table.tournamentId;delete f.table.tournament;await start(f);
  finishEvent(f);await React.act(()=>f.emit('tournamentViews'));assert.ok(dialog());

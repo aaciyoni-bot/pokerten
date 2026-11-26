@@ -209,7 +209,7 @@ test('delete running stops tables, retains accounting, and prevents future deali
 });
 test('manager actions reject ordinary players',async()=>{
  const f=fixture(),id=await create(f);f.member('ordinary');f.member('human');await f.command('human','register',{tournamentId:id});
- for(const op of ['fillbots','archive','removeplayer'])await assert.rejects(f.command('ordinary',op,{tournamentId:id,playerUid:'human'}),e=>e.code==='permission-denied');
+ for(const op of ['fillbots','archive','removeplayer','allowreentry'])await assert.rejects(f.command('ordinary',op,{tournamentId:id,playerUid:'human'}),e=>e.code==='permission-denied');
  assert.equal(f.tour(id).archived,undefined);assert.equal(Object.keys(f.tour(id).players).length,1);
 });
 test('removing before start refunds one player and blocks re-entry',async()=>{
@@ -225,6 +225,36 @@ test('running removal waits for a settled hand and preserves chip accounting',as
  let n=0;while(f.tables(id)[0].gameState.phase!=='showdown'&&n++<80)await playOne(f,f.tables(id)[0]);
  await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).players.human0.removed,true);assert.equal(f.tour(id).players.human0.out,true);assert.equal(f.balance('human0'),balance);assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
  assert.equal(f.tables(id).some(t=>t.players.human0),false);await assert.rejects(f.command('human0','register',{tournamentId:id}),e=>e.code==='permission-denied');
+});
+
+test('a manager cannot remove their own entry, including requests from older clients',async()=>{
+ const f=fixture(),id=await create(f,{reentry:true,maxReentries:3,lateRegUntilLevel:1});
+ await f.command('owner','register',{tournamentId:id});
+ const args={tournamentId:id,playerUid:'owner'};
+ for(const phase of ['reg','running']){
+  if(phase==='running')await startHumans(f,id,3);
+  await assert.rejects(f.command('owner','removeplayer',args),e=>e.code==='failed-precondition');
+  assert.equal(f.tour(id).players.owner.out,false);
+  assert.equal(f.tour(id).removedPlayers?.owner,undefined);
+ }
+});
+
+test('manager releases only the named removed entrant for one ordinary paid re-entry',async()=>{
+ const f=fixture(37),id=await create(f,{reentry:true,reentryBuyIn:100,fee:0,startStack:30000,maxReentries:1,lateRegUntilLevel:4});
+ await startHumans(f,id,4);
+ const args={tournamentId:id,playerUid:'human0'};
+ await f.command('owner','removeplayer',args);
+ const balance=f.balance('human0'),chips=f.tour(id).initialChips;
+ await assert.rejects(f.command('human0','allowreentry',args),e=>e.code==='permission-denied');
+ await assert.rejects(f.command('human0','register',args),e=>e.code==='permission-denied');
+ await f.command('owner','allowreentry',args);await f.command('owner','allowreentry',args);
+ assert.equal(f.balance('human0'),balance);assert.equal(f.tour(id).initialChips,chips);
+ assert.equal(f.tour(id).players.human0.removed,true);
+ await f.command('human0','register',args);await f.command('human0','register',args);
+ assert.equal(f.balance('human0'),balance-100);assert.equal(f.tour(id).initialChips,chips+30000);
+ assert.equal(f.tour(id).players.human0.reentries,1);assert.equal(f.tables(id).filter(row=>row.players.human0).length,1);
+ await f.command('owner','removeplayer',args);
+ await assert.rejects(f.command('owner','allowreentry',args),e=>e.message.includes('limit'));
 });
 
 test('removed participant gets no final prize while all entry fees remain accounted',async()=>{

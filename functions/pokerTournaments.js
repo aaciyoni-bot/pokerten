@@ -124,14 +124,16 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
   const id=op==='create'?'event_'+crypto.createHash('sha256').update(uid+r.data.requestId).digest('hex').slice(0,24):key(r.data.tournamentId),ref=db.doc('tournaments/'+id),snap=await tx.get(ref),effects=[];
   if(op==='create'){const cid=key(r.data.clubId),club=await A.tableManager(tx,db,cid,r);A.assertClubOpen(club);if(snap.exists)return{ok:true,tournamentId:id};const t=config(r.data.settings||{},cid,uid,now);t.bountyFundingUid=club.ownerUid;const cost=cash(t.addedPrize+t.bountyBudgetRemaining),write=await prepareLedger(db,tx,cid,cost?[{type:'credit',uid:club.ownerUid,amount:-cost}]:[],id,now);write();PublicView.write(tx,db,id,t);return{ok:true,tournamentId:id};}
   if(!snap.exists)fail('not-found','Tournament missing');const t={...snap.data(),id};if(t.authorityVersion!==2)fail('failed-precondition','Protected tournaments only');
-  const managing=['start','fillbots','registration','prizeconfig','cancel','archive','removeplayer'].includes(op),club=managing?await A.tableManager(tx,db,t.clubId,r):null;if(!managing)await A.member(tx,db,t.clubId,r);
+  const managing=['start','fillbots','registration','prizeconfig','cancel','archive','removeplayer','allowreentry'].includes(op),club=managing?await A.tableManager(tx,db,t.clubId,r):null;if(!managing)await A.member(tx,db,t.clubId,r);
   if(t.archived){if(op==='archive')return{ok:true,tournamentId:id};fail('failed-precondition','This tournament was deleted');}
   if(['register','start','fillbots','registration','prizeconfig','rebuy','addon'].includes(op)){if(club)A.assertClubOpen(club);else await A.activeClub(tx,db,t.clubId);}
   const rows=t.status==='running'?await tables(tx,db,id):[],mine=t.players[uid],late=t.status==='running'&&T.lateRegistrationOpen(t,t.structure,now);let queued=false;
   if(op==='register'){
-   if(t.removedPlayers?.[uid]||mine?.removed||mine?.removalRequested)fail('permission-denied','You were removed from this tournament');
+   const restored=mine?.out && mine.removed && mine.reentryAllowed===true && t.status==='running';
+   if(mine?.removalRequested||(!restored&&(t.removedPlayers?.[uid]||mine?.removed)))fail('permission-denied','You were removed from this tournament');
    if(t.demoOnly)fail('failed-precondition','This demonstration is bots only');if(!['reg','running'].includes(t.status)||t.status==='running'&&!late)fail('failed-precondition','Registration closed');if(mine&&!mine.out)return{ok:true,tournamentId:id};if(mine&&(!t.reentry||(mine.reentries||0)>=t.maxReentries))fail('failed-precondition','Re-entry unavailable');if(all(t).filter(p=>!p.out).length>=t.maxPlayers)fail('failed-precondition','Tournament full');
    const us=await tx.get(db.doc('users/'+uid)),profile=us.exists?us.data():{};for(const row of rows){const old=row.players[uid];if(old){if(!T.idle(row)||!mine?.out||old.stack!==0||old.bet>0)fail('failed-precondition','Previous hand still settling');delete row.players[uid];row.changed=true;}}
+   if(restored&&t.removedPlayers)delete t.removedPlayers[uid];
    const p={uid,name:profile.username||'Player',...appearance(profile,uid),playerId:profile.playerId||'',isBot:false,out:false,rank:null,bounties:mine?.bounties||0,bountyWon:mine?.bountyWon||0,paid:mine?.paid||0,feesPaid:mine?.feesPaid||0,settlementHands:mine?.settlementHands||0,rebuys:0,reentries:mine?(mine.reentries||0)+1:0,addon:false};entryStack(t,p,now,!!mine);funding(t,effects,p,!!mine);t.players[uid]=p;t.entryCount++;
    if(t.status==='running'){
     let row=mine?null:rows.filter(T.idle).filter(row=>Object.values(row.players).filter(p=>p.status!=='out').length<t.tableSize).sort((a,b)=>Object.keys(a.players).length-Object.keys(b.players).length)[0];
@@ -173,9 +175,22 @@ exports.pkTournament=onCall({region:'us-central1',timeoutSeconds:120},async r=>{
    if(op==='rebuy'){if(!canRebuy(t,mine,now)||p.stack!==0||p.status!=='busted')fail('failed-precondition','Rebuy unavailable');funding(t,effects,mine);mine.rebuys++;if(queued)p.pendingTournamentChips=t.startStack;else Object.assign(p,{stack:t.startStack,status:'waiting',bustedAt:null,_reported:false});t.initialChips+=t.startStack;}
    else if(op==='addon'){if(queued)fail('failed-precondition','Add-ons are available between hands');if(!t.addon||mine.addon||clock(t,now).lvl+1!==t.addonLevel||p.stack<=0)fail('failed-precondition','Add-on unavailable');effects.push({type:'credit',uid,amount:-t.buyIn});mine.addon=true;mine.paid=cash(mine.paid+t.buyIn);if(t.prizePoolMode==='fixed'){t.feeTotal=cash(t.feeTotal+t.buyIn);mine.feesPaid=cash((mine.feesPaid||0)+t.buyIn);}else t.prizePool=cash(t.prizePool+t.buyIn);p.stack+=t.startStack;t.initialChips+=t.startStack;}
    else{if(queued)fail('failed-precondition','Wait until the hand ends');if(p.stack!==0||p.status!=='busted')fail('failed-precondition','No rebuy pending');mine.out=true;mine.outAt=now;mine.rank=all(t).filter(p=>!p.out).length+1;p.status='out';}row.changed=true;
+  }else if(op==='allowreentry'){
+   A.assertClubOpen(club);
+   if(!late||!t.reentry)fail('failed-precondition','Re-entry is closed');
+   const target=key(r.data.playerUid,'player'),entry=t.players[target];
+   if(!entry?.out||!entry.removed||entry.removalRequested||entry.isBot)fail('failed-precondition','Only a removed player can be cleared for re-entry');
+   if(target===uid&&t.removedPlayers?.[target]?.by!==uid)fail('permission-denied','Another tournament manager must allow your re-entry');
+   if((entry.reentries||0)>=t.maxReentries)fail('failed-precondition','Re-entry limit reached');
+   if(!entry.reentryAllowed){
+    entry.reentryAllowed=true;
+    t.reentryApprovals={...t.reentryApprovals,[target]:{by:uid,at:now,removal:t.removedPlayers?.[target]||null}};
+   }
   }else if(op==='removeplayer'){
    if(!['reg','running'].includes(t.status))fail('failed-precondition','Tournament is no longer active');
-   const target=key(r.data.playerUid,'player'),e=t.players[target];if(t.removedPlayers?.[target]||e?.removed)return{ok:true,tournamentId:id};if(!e)fail('not-found','Player is not registered');
+   const target=key(r.data.playerUid,'player'),e=t.players[target];
+   if(target===uid)fail('failed-precondition','You cannot use Remove on your own tournament entry');
+   if(t.removedPlayers?.[target]||e?.removed)return{ok:true,tournamentId:id};if(!e)fail('not-found','Player is not registered');
    t.removedPlayers={...t.removedPlayers,[target]:{uid:target,name:e.name,by:uid,at:now}};
    if(t.status==='reg'){
     effects.push({type:'credit',uid:payee(e),amount:e.paid||0});t.prizePool=cash(t.prizePool-T.entryFunding(t).pool);t.feeTotal=cash(t.feeTotal-T.entryFunding(t).fee);t.bountyPool=cash(t.bountyPool-t.bounty);if(t.bountyFree)t.bountyBudgetRemaining=cash(t.bountyBudgetRemaining+t.bounty);

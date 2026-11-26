@@ -29,6 +29,7 @@ const web=fs.readFileSync(require.resolve('../../assets/js/app-update.js'),'utf8
  const {createAutoUpdater}=await import('../../scripts/mobile-runtime/src/update-controller.mjs');
  const installs=[];let downloads=0;
  const controller=createAutoUpdater({current:{runtime:'android-13',version:'0.375.1'},
+  verifyEntrance:async()=>true,
   fetchRelease:async()=>({runtime:'android-13',version:'0.376.1',url:'https://pokerten.com/mobile-updates/android-13/376.zip',checksum:'a'.repeat(64),size:100}),
   ota:{list:async()=>({bundles:[]}),download:async()=>{downloads++;return{id:'376'};},set:async bundle=>installs.push(bundle)},
   store:{setSafeContext:async()=>{},check:async()=>({status:'current'})},render(){}});

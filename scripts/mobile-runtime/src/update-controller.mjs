@@ -1,8 +1,9 @@
+import {keepsSeat} from './update-resume.mjs';
 function updateBlocker(context, view, hasResume, manual=false) {
   const c = context || {};
   if (view.endsWith('-table')) return 'Return to the club lobby after leaving the table to install.';
-  if (hasResume || (c.tables || []).some(t => t.players?.[c.uid])) return 'Stand up from your table and return to the club lobby to install.';
-  if ((c.tournaments || []).some(t => t.players?.[c.uid] && !['done','cancelled'].includes(t.status))) return 'Installation will be available after your registered tournament finishes.';
+  if (hasResume || (c.tables || []).some(t => keepsSeat(t,c.uid))) return 'Stand up from your table and return to the club lobby to install.';
+  if ((c.tournaments || []).some(t => t.players?.[c.uid] && !t.archived && !t.players[c.uid].removed && !['done','cancelled'].includes(t.status))) return 'Installation will be available after your registered tournament finishes.';
   // An explicit update from the entrance screens can restart the app without
   // depending on club subscriptions. Automatic installs still require a ready lobby.
   if (manual && ['auth','clubs'].includes(view)) return '';
@@ -28,7 +29,7 @@ export function validRelease(r, current) { return releaseState(r, current) === '
 export function createAutoUpdater({ ota, store, fetchRelease, current, render, hasResume = () => false, verifySeat = async () => true, verifyEntrance = async () => false,
   delay = (fn, ms) => setTimeout(fn, ms), cancel = clearTimeout }) {
   let context, view = 'auth', attempted = false, cancelled = false, running, generation = 0, manualRun=false;
-  let startupReady = false;
+  let startupReady = false, extendDeadline, transfer;
   const blocked = (manual=manualRun) => updateBlocker(context, view, hasResume(), manual || startupReady);
   const safe = (manual=manualRun) => !blocked(manual);
   const offline = 'Could not check for updates. Check your connection and try again.';
@@ -62,9 +63,16 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
     const deferred = () => blocked() || 'Update paused. Check again in the club lobby.';
     try {
       if (manual) render({text:'Checking for updates…'});
-      const timeout = new Promise(resolve => { timer = delay(() => {
-        cancelled = true; render(null); resolve('The update took too long. Tap Check update to retry.');
-      }, manual ? 60000 : 15000); });
+      const timeout = new Promise(resolve => {
+        const arm = ms => {
+          cancel(timer);
+          timer = delay(() => {
+            cancelled = true; render(null); resolve('The update took too long. Tap Check update to retry.');
+          }, ms);
+        };
+        extendDeadline=()=>arm(60000);
+        arm(manual ? 60000 : 15000);
+      });
       const checkStore = async message => {
         const info = await store.check().catch(() => null);
         if (!live()) return deferred();
@@ -87,16 +95,24 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
           if (saved.bundles.some(b => b.version === release.version && b.status === 'error')) {
             return checkStore('This game update previously failed. Check Google Play for an app update.');
           }
-          render({text:'Updating POKERTEN…', size:release.size});
           let bundle = saved.bundles.find(b => b.version === release.version && b.checksum === release.checksum && ['pending','success'].includes(b.status));
           try {
-            if (!bundle) bundle = await ota.download({url:release.url, version:release.version, checksum:release.checksum});
+            if (!bundle) {
+              const currentTransfer={version:release.version,size:release.size,text:'Downloading v'+release.version.split('.')[1]};
+              transfer=currentTransfer;render(currentTransfer);
+              try {
+                bundle = await ota.download({url:release.url, version:release.version, checksum:release.checksum});
+              } finally {
+                if(transfer===currentTransfer)transfer=undefined;
+              }
+            }
           } catch (_) {
             return live() ? checkStore('The game update could not download. Tap Check update to retry.') : deferred();
           }
           if (!live()) return deferred();
+          render({text:'Checking that it is safe to restart…'});
           if(!await confirmed())return deferred();
-          render({text:'Starting POKERTEN…'});
+          render({text:'Starting POKERTEN v'+release.version.split('.')[1]+'…'});
           await ota.set({id:bundle.id});
           return 'Starting the updated game…';
         }
@@ -106,11 +122,16 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
     } catch (_) {
       return 'The update could not be installed. Tap Check update in the club lobby to retry.';
     } finally {
-      cancel(timer); cancelled = true; render(null);
+      extendDeadline=undefined;cancel(timer); cancelled = true; render(null);
     }
   }
   function run(manual = false) {
-    if (running) return running;
+    if (running) {
+      if (manual && !manualRun && !cancelled && safe(true)) {
+        manualRun=true;extendDeadline?.();
+      }
+      return running;
+    }
     if (!safe(manual)) {
       if (!manual) return;
       // Checking availability is read-only even at the club picker or during a hand.
@@ -126,6 +147,14 @@ export function createAutoUpdater({ ota, store, fetchRelease, current, render, h
     setView(next) { view = next; sync(); },
     setGameContext(next) { context = next; sync(); },
     check(manual = false) { return run(manual); },
-    progress(percent) { if (running && !cancelled && safe()) render({text:'Updating POKERTEN…', percent}); }
+    progress(percent, version) {
+      if (!running || cancelled || !safe() || !transfer || transfer.version!==version) return;
+      if (!Number.isFinite(percent) || percent<0 || percent>100 || percent<=(transfer.percent??-1)) return;
+      transfer.percent=percent;
+      // A foreground request may continue while bytes are actually arriving.
+      // Repeated or stale progress cannot extend the idle timeout.
+      if(manualRun)extendDeadline?.();
+      render({...transfer});
+    }
   };
 }

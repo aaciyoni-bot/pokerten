@@ -448,11 +448,19 @@ exports.pkCanInstallUpdate = require('firebase-functions/v2/https').onCall({regi
   return db.runTransaction(async tx=>{
     await A.member(tx,db,clubId,request);
     const [tables,tournaments]=await Promise.all([
-      tx.get(db.collection('tables').where('clubId','==',clubId).where('authorityVersion','==',2).select(seat)),
-      tx.get(db.collection('tournaments').where('clubId','==',clubId).where('authorityVersion','==',2).select(seat,'status'))
+      tx.get(db.collection('tables').where('clubId','==',clubId).where('authorityVersion','==',2).select(seat,'archived','spinDone','tournament.finished','tournament.cancelled')),
+      tx.get(db.collection('tournaments').where('clubId','==',clubId).where('authorityVersion','==',2).select(seat,'archived','status'))
     ]);
-    return {uid,clubId,allowed:!tables.docs.some(d=>d.get(seat))&&
-      !tournaments.docs.some(d=>d.get(seat)&&!['done','cancelled'].includes(d.get('status')))};
+    const occupied=tables.docs.some(d=>{
+      const p=d.get(seat);
+      return p && !d.get('archived') && !d.get('spinDone') && !d.get('tournament.finished') &&
+        !d.get('tournament.cancelled') && !p.left && !['left','out'].includes(p.status);
+    });
+    const registered=tournaments.docs.some(d=>{
+      const p=d.get(seat);
+      return p && !p.removed && !d.get('archived') && !['done','cancelled'].includes(d.get('status'));
+    });
+    return {uid,clubId,allowed:!occupied && !registered};
   },{readOnly:true});
 });
 

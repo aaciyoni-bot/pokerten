@@ -121,3 +121,31 @@ test('startup checks before entering a club with safe restart guards', async()=>
     assert.equal(f.events.some(([kind])=>kind==='apply'),expected);
   }
 });
+
+test('historical seats and removed entries allow restarting while a live seat still blocks',()=>{
+ const p={p1:{status:'active'}};
+ for(const table of [{archived:true,players:p},{tournament:{finished:true},players:p},{spinDone:true,players:p},{players:{p1:{left:true}}}]){
+   assert.equal(canUpdate({...context,tables:[table]},'lobby',false),true);
+ }
+ assert.equal(canUpdate({...context,tournaments:[{status:'running',players:{p1:{removed:true}}}]},'lobby',false),true);
+ assert.equal(canUpdate({...context,tables:[{players:p}]},'lobby',false),false);
+});
+test('a manual tap during startup gives the existing download the full retry window',async()=>{
+ let finish;const timers=[],f=fixture({delay:(fn,ms)=>{timers.push(ms);return timers.length}});
+ f.options.ota.download=()=>new Promise(resolve=>{finish=resolve;});
+ f.start();await flush();const done=f.updater.check(true);
+ assert.deepEqual(timers,[15000,60000]);finish({id:'new'});assert.match(await done,/Starting the updated game/);
+ assert.equal(f.events.filter(([key])=>key==='apply').length,1);
+});
+
+test('only advancing progress of the requested version extends a manual download',async()=>{
+ let finish,expire;const timers=[],f=fixture({delay:(fn,ms)=>{expire=fn;timers.push(ms);return timers.length}});
+ f.options.ota.download=()=>new Promise(resolve=>{finish=resolve;});
+ f.updater.setView('clubs');const done=f.updater.check(true);await flush();
+ f.updater.progress(18,'wrong');f.updater.progress(18,release.version);
+ f.updater.progress(18,release.version);f.updater.progress(12,release.version);
+ assert.deepEqual(timers,[60000,60000]);assert.equal(f.events.at(-1)[1].percent,18);
+ f.updater.progress(42,release.version);assert.deepEqual(timers,[60000,60000,60000]);
+ expire();assert.match(await done,/too long/);finish({id:'late'});await flush();
+ assert.equal(f.events.filter(([key])=>key==='apply').length,0);
+});

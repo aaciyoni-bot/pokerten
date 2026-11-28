@@ -29,6 +29,14 @@ export function nativeHtml(source) {
   html = replaceOnce(html, 'React.createElement(window.PokerAuthUI.CodeSettings, {user})',
     'React.createElement(window.PokerAuthUI.CodeSettings, {user}), React.createElement("a", {href:"account-deletion.html", style:{display:"block",padding:"14px 0",color:"#87d6ff",textDecoration:"underline"}}, "Request account deletion")');
   html = replaceOnce(html, "const [fbReady, setFbReady] = useState(false);", "const [fbReady, setFbReady] = useState(false); useEffect(() => { if(fbReady)window.PokerAppUpdate?.ready(); }, [fbReady]);");
+  // React has committed the launch screen and the bundled Firebase module has
+  // initialized. Slow network checks must not roll back an already working bundle.
+  html = replaceOnce(html, 'function PokerLaunch(){', `function PokerLaunch(){
+    useEffect(()=>{
+      const booted=()=>{if(window.fb?.fx)window.PokerAppUpdate?.shellReady();};
+      window.addEventListener('firebase-ready',booted);booted();
+      return ()=>window.removeEventListener('firebase-ready',booted);
+    },[]);`);
   // Native update safety follows server-confirmed rosters, not just the screen name.
   html = replaceOnce(html, "const [activeMem, setActiveMem] = useState(null);", `const [activeMem, setActiveMem] = useState(null);
   const [updateTablesKey, setUpdateTablesKey] = useState('');

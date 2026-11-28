@@ -43,7 +43,7 @@ function registrationDeadline(t,value,now){
  return deadline;
 }
 function removeSeat(t,row,uid,now){
- if(row&&!T.idle(row))return false;
+ if(row&&!T.readyForSeatChanges(row,now))return false;
  const e=t.players[uid],p=row?.players?.[uid];if(!e)return true;
  if(p){t.initialChips=cash(t.initialChips-p.stack-(p.pendingTournamentChips||0));delete row.players[uid];row.changed=true;}
  Object.assign(e,{out:true,removed:true,removalRequested:false,removedAt:now,rank:null});delete e.tableId;return true;
@@ -109,6 +109,10 @@ function settleHand(S){
  if(!S.tor||!S.settledWinners)return;const t=S.tor,id=S.id+'_'+S.gameState.handN;if(t.bountyEvents?.[id])return;
  if(t.settlementHandIds?.[S.id]!==S.gameState.handN){for(const p of Object.values(S.players)){if(p.cardCount>0&&t.players[p.uid])t.players[p.uid].settlementHands=(t.players[p.uid].settlementHands||0)+1;}t.settlementHandIds={...t.settlementHandIds,[S.id]:S.gameState.handN};S.torDirty=true;}
  const busts=Object.values(S.players).filter(p=>p.status==='busted'&&p.bustedAt===S.now&&t.players[p.uid]&&!t.players[p.uid].out);if(!busts.length)return;
+ // Only public display identities survive elimination for this hand's animation.
+ S.gameState.resultSeats=Object.values(S.players).map(({uid,name,seatIndex,photo,avatarSeed})=>({
+  uid,name:name||'Player',seatIndex:Number(seatIndex)||0,photo:photo||null,avatarSeed:avatarSeed||null
+ }));
  busts.sort((a,b)=>(S.gameState.handStartStacks?.[a.uid]||0)-(S.gameState.handStartStacks?.[b.uid]||0)||a.seatIndex-b.seatIndex);let remaining=all(t).filter(p=>!p.out).length;const grace=[];
  for(const p of busts){const e=t.players[p.uid];if(canRebuy(t,e,S.now))grace.push(p.uid);e.out=true;e.rank=remaining--;e.outAt=S.now;p.status='out';p._reported=true;}
  const event={id,level:clock(t,S.now).lvl+1,busts:busts.map(p=>({uid:p.uid,winners:(S.knockoutWinners?.[p.uid]||[...S.settledWinners]).filter(uid=>S.players[uid]?.stack>0)}))};const b=T.bountyPlan(t,event,()=>crypto.randomInt(1000000)/1000000);

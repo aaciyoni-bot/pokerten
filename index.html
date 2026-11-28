@@ -1144,7 +1144,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <script src="assets/js/club-cashier.js?v=385"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=348"></script>
-<link rel="stylesheet" href="assets/css/reference-experience.css?v=376">
+<link rel="stylesheet" href="assets/css/reference-experience.css?v=393">
 <link rel="stylesheet" href="assets/css/club-classic-features.css?v=382">
 <link rel="stylesheet" href="assets/css/login-reference.css?v=376">
 </head>
@@ -1220,7 +1220,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-settlement-ui.js?v=385"></script>
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-viewer-access.js?v=381"></script>
-    <script src="assets/js/poker-tournament.js?v=368"></script>
+    <script src="assets/js/poker-tournament.js?v=393"></script>
     <script src="assets/js/poker-runtime.js?v=380"></script>
     <script src="assets/js/poker-range-model.js?v=356"></script>
 <script>
@@ -3802,11 +3802,17 @@ function SeatNote({initial,clubId,uid,target}) {
     h('select',{value:color,'aria-label':'Player marker color',className:'bg-slate-900 p-1',onChange:e=>setColor(e.target.value)},['',...Object.keys(noteColors)].map(c=>h('option',{key:c,value:c},c||'No marker'))),
     h('button',{type:'button',disabled:pending,onClick:save,className:'btn-outline ml-1 px-2'},'Save'),message&&h('p',{role:'status'},message));
 }
+const removeTourPlayer=async(tor,player,showToast)=>{
+    const msg=tor.status==='reg'?'Remove '+player.name+'? Their entry will be refunded.':'Remove '+player.name+'? Removal takes effect after the current hand. No automatic refund after start; they cannot re-enter.';
+    if(!window.confirm(msg))return;
+    try{const r=await pokerCommand('pkTournament',{op:'removeplayer',tournamentId:tor.id,playerUid:player.uid});showToast(r?.queued?'Player will be removed after the current hand.':'Player removed.','success');}catch(e){showToast(e.message||String(e),'error');}
+  };
 const PlayerPeek = ({
   peek,
   onClose,
   clubId,
   onKick,
+  onTournamentRemove,
   onChatAs,
   onBotTopUp,
   tableResult,
@@ -3867,7 +3873,9 @@ const PlayerPeek = ({
     }, m.e);
   })), mi === null && React.createElement("div", {
     className: "text-center text-slate-500 text-[10px] font-bold mt-2"
-  }, "Loading…"), onKick && React.createElement("button", {
+  }, "Loading…"), onTournamentRemove && React.createElement("button",{
+    type:"button",onClick:onTournamentRemove,className:"w-full bg-rose-900 text-white rounded-xl py-2 font-bold"
+  },"Remove from tournament"), onKick && React.createElement("button", {
     // manager action lives HERE, not as a permanent ✕ on every seat
     onClick: onKick,
     className: "w-full mt-2.5 bg-rose-950/60 hover:bg-rose-800 border border-rose-500/40 text-rose-300 hover:text-white py-2 rounded-xl font-black text-[11px]"
@@ -11474,11 +11482,14 @@ function PokerTable({
   // The action reply can arrive before the table snapshot and omit its public
   // betting log. Keep the last confirmed entries for this table and hand.
   const bettingLog = useRef(null);
+  const handRail = useRef(null);
+  const presentedHand = useRef(null);
   const receiveTable = next => {
     const previous = tableRef.current;
-    const before = previous?.gameState;
     const game = next.gameState;
-    const seat = previous?.players?.[user.uid];
+    const handKey = JSON.stringify([next.id, game?.handN]);
+    if(next.tournamentId && game?.phase && !['waiting','showdown'].includes(game.phase))
+      handRail.current = {key:handKey, seats:Object.values(next.players || {})};
     const sameHand = bettingLog.current?.tableId === next.id && bettingLog.current.handN === game?.handN;
     if (!sameHand) bettingLog.current = {tableId:next.id, handN:game?.handN, actions:[]};
     if (Array.isArray(game?.publicActions) && game.publicActions.length) {
@@ -11486,14 +11497,18 @@ function PokerTable({
       bettingLog.current.actions = game.publicActions.map(a => ({...a,
         name:next.players?.[a.uid]?.name || previous?.players?.[a.uid]?.name || names.get(a.uid)}));
     }
-    if (!headless && document.visibilityState !== 'hidden' && next.tournamentId && seat &&
-        previous.id === next.id && before?.handN === game?.handN && before?.phase &&
-        !['waiting','showdown'].includes(before.phase) && game.phase === 'showdown' &&
-        game.lastAwards?.some(a => a.amount > 0)) {
-      setWatchedPayout({tableId:next.id, uid:user.uid, game, log:bettingLog.current, players:next.players || {},
-        // Keep the hero's place on the rail without creating a playable seat.
-        railSeat:next.players?.[user.uid] ? null : {uid:user.uid, name:seat.name, seatIndex:seat.seatIndex,
-          photo:seat.photo, avatarSeed:seat.avatarSeed, stack:0, bet:0, cards:[], cardCount:0, status:'out'}});
+    if (!headless && document.visibilityState !== 'hidden' && next.tournamentId && !next.tournament?.finished &&
+        game?.phase === 'showdown' && game.lastAwards?.some(a => a.amount > 0) && presentedHand.current !== handKey) {
+      const observed = handRail.current?.key === handKey;
+      const seats = observed ? handRail.current.seats : game.resultSeats;
+      if(seats?.length && (observed || Date.now() - game.showdownAt < window.PokerTournament.showdownDelay(game))){
+        presentedHand.current = handKey;
+        const rail = seats.map(seat => ({
+          ...(next.players?.[seat.uid] || {uid:seat.uid,name:seat.name,photo:seat.photo,avatarSeed:seat.avatarSeed,
+            stack:0,bet:0,cards:[],cardCount:0,status:'out'}),seatIndex:seat.seatIndex
+        }));
+        setWatchedPayout({tableId:next.id,uid:user.uid,game,log:bettingLog.current,players:next.players || {},rail});
+      }
     }
     tableRef.current = next;
     setTableState(next);
@@ -11501,8 +11516,7 @@ function PokerTable({
   const liveGame = tableState?.gameState || {};
   const liveSeat = tableState?.players?.[user.uid];
   const playingHand = !!(liveSeat && liveGame.phase && !['waiting','showdown'].includes(liveGame.phase));
-  const payout = watchedPayout && watchedPayout.tableId === tableDocId && watchedPayout.uid === user.uid &&
-    !(playingHand && liveGame.handN !== watchedPayout.game.handN) ? watchedPayout : null;
+  const payout = watchedPayout && watchedPayout.tableId === tableDocId && watchedPayout.uid === user.uid ? watchedPayout : null;
   const tournamentEnded = tableState?.tournament?.finished === true && !payout;
   const completedTableExit = useRef(null);
   useEffect(() => {
@@ -11523,7 +11537,7 @@ function PokerTable({
     if (!watchedPayout) return;
     if (!payout) { setWatchedPayout(null); return; }
     if (!awardsArrived) return;
-    const timer = setTimeout(() => setWatchedPayout(old => old === payout ? null : old), 650);
+    const timer = setTimeout(() => setWatchedPayout(old => old === payout ? null : old), 1300);
     return () => clearTimeout(timer);
   }, [watchedPayout, payout, awardsArrived]);
   const handBeforeExit = !headless && !!tableState?.tournamentId && !tournamentEnded && (playingHand || !!payout);
@@ -12045,6 +12059,7 @@ throw new Error('Game state is managed by the server');
       const result=await pokerCommand('pkAct',{tableId:tableDocId,action:type,amount:targetBet,expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}});
       if(tableSessionRef.current!==session||result?.tableId!==tableDocId||!result.tableUpdate)return;
       const next=window.PokerRuntime.acceptTableUpdate(tableRef.current,{...result.tableUpdate,id:result.tableId},true);
+      if(next?.tournamentId && next.gameState?.phase==='showdown' && !next.gameState.lastAwards?.length)return;
       if(next!==tableRef.current)receiveTable(next);
     } catch(e) {
       if(tableSessionRef.current!==session)return;
@@ -12915,8 +12930,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       return null;
     }
   })();
-  const railSeated = isSeated || !!payout?.railSeat;
-  const list = Object.values(players).concat(payout?.railSeat || []).sort((a, b) => a.seatIndex - b.seatIndex || String(a.uid).localeCompare(String(b.uid)));
+  const railSeated = payout ? payout.rail.some(p=>p.uid===user.uid) : isSeated;
+  const list = (payout ? [...payout.rail] : Object.values(players)).sort((a, b) => a.seatIndex - b.seatIndex || String(a.uid).localeCompare(String(b.uid)));
   let displayList = list;
   if (railSeated) {
     const myIdx = list.findIndex(p => p.uid === user.uid);
@@ -12928,12 +12943,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const SEAT_LAYOUTS = {
     2: [[16.125,76.875],[89.16,31.25]],
     3: [[16.125,76.875],[10.84,31.25],[89.16,31.25]],
-    4: [[16.125,76.875],[10.84,31.25],[89.16,31.25],[83.875,76.875]],
+    4: [[16.125,76.875],[10.84,31.25],[50,18],[89.16,31.25]],
     5: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[89.16,31.25],[89.16,59.375]],
     6: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[50,18],[89.16,31.25],[89.16,59.375]],
     7: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[25.339,18],[74.797,18],[89.16,31.25],[89.16,59.188]],
-    8: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[28,18],[72,18],[89.16,31.25],[89.16,59.375],[83.875,76.875]],
-    9: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[22,18],[50,18],[78,18],[89.16,31.25],[89.16,59.375],[83.875,76.875]]
+    8: [[16.125,76.875],[10.84,59.375],[10.84,31.25],[28,18],[72,18],[89.16,30],[89.16,45],[89.16,60]],
+    9: [[16.125,76.875],[10.84,60],[10.84,45],[10.84,30],[22,18],[50,18],[78,18],[89.16,31.25],[89.16,59.375]]
   };
   // Physical-slot mapping: each player keeps his real seat around the ring,
   // rotated so the hero's own seat lands on the bottom slot. Capacity covers
@@ -12945,6 +12960,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const slotXY = s => {
     const ring = SEAT_LAYOUTS[Math.min(9, Math.max(2, layoutN))] || SEAT_LAYOUTS[6];
     if (ring[s]) return ring[s];
+    if (s === 9) return [89.16,45];
     // Overflow slot (10+): place on the table ellipse instead of stacking
     // players in the middle / off-screen.
     const ang = Math.PI / 2 + s / Math.max(capN, 2) * Math.PI * 2;
@@ -13049,7 +13065,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const offerTakeover = eligibleBot && seatControl?.turnStartedAt !== gs.turnStartedAt;
   const heldTakeover = eligibleBot && seatControl?.turnStartedAt === gs.turnStartedAt && seatControl.until > Date.now();
   return React.createElement("div", {
-    className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (isSeated ? " is-seated" : " is-spectating") + (godView ? " is-god-view" : ""),
+    className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (railSeated ? " is-seated" : " is-spectating") + (godView ? " is-god-view" : ""),
+    'data-desktop-client': !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) &&
+      !(navigator.maxTouchPoints>1 && /Mac/i.test(navigator.platform || '')) ? 'true' : undefined,
     dir: "ltr",
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
@@ -13850,7 +13868,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     className: "fa-solid fa-crown ml-2 text-rose-300"
   }), players[gs.dcUid]?.name, " is picking the next game...")), !tournamentEnded && !tableOnBreak && gs.phase === 'waiting' && isSeated && React.createElement("div", {
     className: "absolute top-[27%] left-1/2 -translate-x-1/2 z-[90] bg-slate-900/90 border border-emerald-500/40 text-emerald-300 px-6 py-2.5 rounded-full font-black text-sm backdrop-blur animate-pulse"
-  }, tour?'Waiting for table balancing…':'Waiting for players... ('+eligibleCount+'/'+(setts.autoStart||2)+')')), React.createElement("div", {
+  }, tour?(tour.balanceHoldUntil>Date.now()?'Balancing two tables…':eligibleCount<2?'Waiting for another player…':'Next hand starting…'):'Waiting for players... ('+eligibleCount+'/'+(setts.autoStart||2)+')')), React.createElement("div", {
     className: "poker-action-dock"
   }, (isMyTurn || controlledBot) && React.createElement("div", {
     className: "poker-action-buttons",
@@ -14087,6 +14105,9 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     peek: peek,
     onClose: () => setPeek(null),
     clubId: CLUB_ID,
+    onTournamentRemove: srvEngine && tableState.tournamentId && !tournamentEnded && !payout && tableState.players?.[peek.uid] &&
+      peek.uid!==user.uid && canManageGame(user,'poker') && !tourEntryState?.players?.[peek.uid]?.removalRequested ?
+      () => {setPeek(null);return removeTourPlayer({id:tableState.tournamentId,status:'running'},peek,showToast);} : null,
     onKick: !lineupSeat && !tableState.tournamentId && !(setts.spinMode && tableState.spin && !tableState.spinDone) &&
       srvEngine && players[peek.uid] && !players[peek.uid].managerRemoval && peek.uid!==user.uid && canManageGame(user,'poker') ? () => {
         setRemovalError('');
@@ -18400,11 +18421,6 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
       showToast("Error deleting: " + (e.message || e), "error");
     }
   };
-  const removeTourPlayer=async(tor,player)=>{
-    const msg=tor.status==='reg'?'Remove '+player.name+'? Their entry will be refunded.':'Remove '+player.name+'? Removal takes effect after the current hand. No automatic refund after start; they cannot re-enter.';
-    if(!window.confirm(msg))return;
-    try{const r=await pokerCommand('pkTournament',{op:'removeplayer',tournamentId:tor.id,playerUid:player.uid});showToast(r?.queued?'Player will be removed after the current hand.':'Player removed.','success');}catch(e){showToast(e.message||String(e),'error');}
-  };
   const allowTourReentry=async(tor,p)=>{
     if(!window.confirm('Allow '+p.name+' to re-enter? The player must confirm and pay the entry cost.'))return;
     try{
@@ -19016,7 +19032,7 @@ if(tor.game==='poker'){const msg=tor.status==='running'?'Delete "'+tor.name+'" a
           React.createElement("i",{className:"fa-solid fa-users",'aria-hidden':true}),
           React.createElement("div",null,React.createElement("span",null,React.createElement("b",null,regs.length)," of ",tor.maxPlayers||36," players registered"),React.createElement("progress",{value:regs.length,max:tor.maxPlayers||36,'aria-label':'Registered players'})),
           React.createElement("i",{className:'fa-solid fa-chevron-'+(open?'up':'right'),'aria-hidden':true})),
-        open&&React.createElement("div",{className:"pt-tournament-roster"},regs.length?regs.map(p=>React.createElement("div",{key:p.uid,className:"pt-tournament-roster-person"},React.createElement("span",null,p.name,p.removalRequested?' · Removal pending':p.out?' · Eliminated':''),p.uid!==user.uid&&canManageGame(user,tor.game)&&tor.game==='poker'&&React.createElement("button",{type:"button",disabled:p.removalRequested,onClick:()=>removeTourPlayer(tor,p),"aria-label":"Remove "+p.name,className:"pt-tournament-remove-player"},p.removalRequested?'Pending':'Remove'))):React.createElement("span",null,"No players registered yet")),
+        open&&React.createElement("div",{className:"pt-tournament-roster"},regs.length?regs.map(p=>React.createElement("div",{key:p.uid,className:"pt-tournament-roster-person"},React.createElement("span",null,p.name,p.removalRequested?' · Removal pending':p.out?' · Eliminated':''),p.uid!==user.uid&&canManageGame(user,tor.game)&&tor.game==='poker'&&React.createElement("button",{type:"button",disabled:p.removalRequested,onClick:()=>removeTourPlayer(tor,p,showToast),"aria-label":"Remove "+p.name,className:"pt-tournament-remove-player"},p.removalRequested?'Pending':'Remove'))):React.createElement("span",null,"No players registered yet")),
         open&&removed.map(p=>React.createElement('div',{key:p.uid,className:'pt-tournament-roster-person'},
           React.createElement('span',null,p.name,p.reentryAllowed?' · Re-entry allowed':' · Removed'),
           !p.reentryAllowed&&tor.reentry&&tourLateRegOpen(tor)&&(p.reentries||0)<tor.maxReentries&&React.createElement('button',{type:'button',onClick:()=>allowTourReentry(tor,p),className:'pt-tournament-roster-toggle'},'Allow re-entry'))),

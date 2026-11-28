@@ -1,7 +1,7 @@
 /* PokerTen - Service Worker
    Network first: fetch the latest release from the server.
    The cache is only an offline fallback so deployments appear immediately. */
-const CACHE = 'pokerten-shell-v391';
+const CACHE = 'pokerten-shell-v392';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
@@ -10,7 +10,14 @@ self.addEventListener('activate', (e) => {
         await Promise.all(keys.filter(k => k.startsWith('pokerten-shell-') && k !== CACHE).map(k => caches.delete(k)));
         await self.clients.claim();
         const windows=await self.clients.matchAll({type:'window'});
-        for(const client of windows)client.postMessage({type:'POKERTEN_RELEASE',version:391});
+        for(const client of windows){
+            const url=new URL(client.url);
+            if(url.origin===self.location.origin && url.pathname==='/he.html'){
+                url.pathname='/index.html';
+                url.searchParams.set('uiLang','en');
+                try { await client.navigate(url.href); } catch (_) {}
+            }else client.postMessage({type:'POKERTEN_RELEASE',version:392});
+        }
     })());
 });
 

@@ -59,7 +59,7 @@ const stack=uid=>w.document.querySelector('[data-player-uid="'+uid+'"] .poker-st
  current.gameState={...current.gameState,phase:'showdown',earlyWin:true,__seq:4,showdownAt:Date.now(),activeTurnUid:null,lastAwards:[{uid:'me',amount:15}],lastWinners:'Me',publicActions:[{uid:'other',action:'fold',amount:0,street:'preflop'}]};
  current.players.other.status='folded';current.players.other.actionText='';
  w.document.documentElement.lang='he';
- await React.act(async()=>next(snapshot()));assert.equal(decision('other'),'זרק');assert.match(recap(),/Other.*זרק/);
+ await React.act(async()=>next(snapshot()));assert.equal(decision('other'),'FOLD');assert.match(recap(),/Other.*FOLD/);
  w.document.documentElement.lang='en';
  // Reopening a completed hand shows its real balance without replaying a win.
  await React.act(()=>root.render(null));current.gameState={...current.gameState,phase:'showdown',activeTurnUid:null,lastAwards:[{uid:'me',amount:50}],lastWinAmount:50,lastWinners:'Me'};sounds.length=0;

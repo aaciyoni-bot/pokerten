@@ -13030,13 +13030,11 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     ['preflop','flop','discard','turn','river','showdown'].includes(gs.phase) ? handLog.actions : [];
   const lastAction = bettingActions.at(-1);
   const seatActions = new Map(bettingActions.map(a => [a.uid, a]));
-  const actionHebrew = document.documentElement.lang === 'he';
   function bettingLabel(a) {
     if (!a) return '';
-    const labels = actionHebrew ? {call:'שילם', fold:'זרק', check:'צ׳ק', bet:'הימר', raise:'העלה ל־'} :
-      {call:'CALL', fold:'FOLD', check:'CHECK', bet:'BET', raise:'RAISE TO'};
+    const labels = {call:'CALL', fold:'FOLD', check:'CHECK', bet:'BET', raise:'RAISE TO'};
     if (!labels[a.action]) return '';
-    const allIn = a.allIn && ['bet','raise','call'].includes(a.action) ? (actionHebrew ? ' · אול־אין' : ' · ALL-IN') : '';
+    const allIn = a.allIn && ['bet','raise','call'].includes(a.action) ? ' · ALL-IN' : '';
     const amount = a.action === 'raise' ? a.raiseTo : a.amount;
     return labels[a.action] + (['bet','raise','call'].includes(a.action) && Number.isFinite(amount) ? ' ' + formatShort(amount) : '') + allIn;
   }
@@ -13694,7 +13692,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         transform: 'translateX(-50%)'
       }
     }, p.actionText), decisionText && React.createElement('div', {
-      className:'poker-confirmed-action', 'data-decision':decision.action, dir:actionHebrew?'rtl':'ltr'
+      className:'poker-confirmed-action', 'data-decision':decision.action, dir:'ltr'
     }, decisionText), godBadge), isMe && heroHandStatus, isMe && p.bet > 0 && React.createElement('div', {
       className:'poker-bet poker-bet-hero', 'data-player-uid':p.uid, 'data-bet-row':'hero'
     }, React.createElement(CasinoChipStack,{amount:p.bet,scale:0.55,unit:chipUnit})), isMe && p.sitOut && React.createElement("button", {
@@ -13993,7 +13991,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     role:'status',
     className: "flex-1 text-center text-slate-400 font-bold text-xs truncate" + (gs.phase === 'showdown' ? " poker-showdown-summary" : "")
   }, lastAction && bettingLabel(lastAction) && React.createElement('span', {
-    className:'poker-action-recap', dir:actionHebrew?'rtl':'ltr'
+    className:'poker-action-recap', dir:'ltr'
   }, lastAction.name && React.createElement('bdi', {className:'poker-action-actor'}, lastAction.name),
     lastAction.name ? ' · ' : '', bettingLabel(lastAction)), ' ',
     tournamentEnded ? 'Tournament complete' : tourCoordinatorIssue ? 'Tournament synchronization: '+tourCoordinatorIssue : tableOnBreak ? 'Tournament break' : ['waiting','showdown'].includes(gs.phase) && tour?.balanceHoldUntil > Date.now() ? 'Balancing tables — waiting for the other hand to finish' : acting ? 'Sending move…' : controlledBot ? 'Playing as '+controlledBot.name : tableState.closeRequested ? 'Closing after this hand; cash balances will be returned.' : tableState.pendingSettings ? 'Table settings will change after this hand.' : playersCount === 0 ? 'Waiting for players to sit down...' : isMyTurn ? 'Your turn ⚡' : inBetting ? `Waiting for ${players[gs.activeTurnUid]?.name || '...'}` : gs.phase === 'showdown' ? !resultPresentation.winnerReady ? 'Revealing hands…' : React.createElement('span',null,React.createElement('strong',null,'🏆 ',Array.isArray(gs.lastAwards) && gs.lastAwards.length ? gs.lastAwards.map(a=>(players[a.uid]?.name || a.name || 'Winner')+' +'+formatMoney(a.amount)).join(' · ') : (gs.lastWinners || 'Hand complete')+' · '+formatMoney(gs.lastWinAmount || 0)),React.createElement('small',null,gs.earlyWin ? 'Won by fold' : 'Showdown')) : spectate && !isSeated ? '' : 'A quiet moment at the table...'), inBetting && isSeated && myPlayer?.status === 'active' && !controlledBot && !isMyTurn && !acting ? React.createElement("button", {

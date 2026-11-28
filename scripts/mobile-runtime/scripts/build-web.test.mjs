@@ -30,11 +30,9 @@ test('packaged app has local executable dependencies and excludes server files',
   const updater = await readFile(new URL('../www/assets/js/native-update.js', import.meta.url), 'utf8');
   assert.doesNotMatch(updater, /serviceWorker|location\.replace/);
   assert.match(updater, /play\.google\.com\/store\/apps\/details\?id=com\.orizis\.pokerten/);
-  const hebrew = await readFile(new URL('../www/he.html', import.meta.url), 'utf8');
-  assert.match(hebrew, /<html lang="he" dir="rtl"/);
-  assert.match(hebrew, /assets\/js\/native-update\.js/);
-  assert.match(hebrew, /src="vendor\/firebase.js"/);
-  assert.doesNotMatch(hebrew, /<script[^>]+src="https?:/);
+  assert.doesNotMatch(html,/data-language-choice|hebrew-labels|poker-auth\.he\.js/);
+  const recovery=await readFile(new URL('../www/he.html',import.meta.url),'utf8');
+  assert.equal(recovery,await readFile(new URL('../../scripts/locales/recover.html',import.meta.url),'utf8'));
   const files = await readdir(new URL('../www/', import.meta.url));
   assert.deepEqual(files.sort(), ['account-deletion.html', 'assets', 'he.html', 'index.html', 'manifest.json', 'privacy.html', 'vendor']);
   assert.match(html, /href:"account-deletion.html"/);

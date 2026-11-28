@@ -1,37 +1,42 @@
 'use strict';
-const test=require('node:test');
-const assert=require('node:assert/strict');
-const fs=require('node:fs');
-const path=require('node:path');
-const os=require('node:os');
+const test=require('node:test'),assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {chromium}=require('playwright-core');
 const {build}=require('../../scripts/locales/client.cjs');
 
-test('Hebrew sign-in and registration fit 320, 390 and 412 pixel screens', {timeout:45000},async t=>{
-  const root=path.resolve(__dirname,'../..'),temp=fs.mkdtempSync(path.join(os.tmpdir(),'poker-phone-he-'));
-  t.after(()=>fs.rmSync(temp,{recursive:true,force:true}));
-  build(root,temp);
-  const hebrew=fs.readFileSync(path.join(temp,'he.html'),'utf8');
+test('a phone with Hebrew saved reaches the English sign-in screen after reopening or following an old link',{timeout:45000},async t=>{
+  const root=path.resolve(__dirname,'../..'),out=fs.mkdtempSync(path.join(os.tmpdir(),'poker-phone-'));
+  t.after(()=>fs.rmSync(out,{recursive:true,force:true}));build(root,out);
   const executablePath=process.env.CHROME_BIN||['/usr/bin/google-chrome','/usr/bin/chromium'].find(f=>fs.existsSync(f));
-  assert.ok(executablePath,'Chrome required');
   const browser=await chromium.launch({executablePath,args:['--no-sandbox']});t.after(()=>browser.close());
-  for(const width of [320,390,412]){
-    const page=await browser.newPage({viewport:{width,height:800}});
-    await page.setContent(hebrew.match(/<html\b[^>]*>/)[0]+'<body><div id="root"></div></body></html>');
-    await page.addStyleTag({path:path.join(root,'assets/css/hebrew-ui.css')});
-    for(const js of [
-      require.resolve('react').replace(/index\.js$/,'umd/react.production.min.js'),
-      require.resolve('react-dom').replace(/index\.js$/,'umd/react-dom.production.min.js'),
-      path.join(temp,'assets/js/hebrew-labels.js'),path.join(temp,'assets/js/poker-auth.he.js')
-    ])await page.addScriptTag({path:js});
-    await page.evaluate(()=>ReactDOM.createRoot(document.querySelector('#root')).render(React.createElement(PokerAuthUI.CodeLogin,{})));
-    const form=page.getByRole('form',{name:'כניסה עם קוד אישי'});
-    await form.getByRole('button',{name:'כניסה',exact:true}).waitFor();
-    assert.equal(await form.evaluate(el=>getComputedStyle(el).direction),'rtl');
-    assert.equal(await form.getByLabel('קוד אישי',{exact:true}).evaluate(el=>getComputedStyle(el).direction),'ltr');
-    await form.getByRole('button',{name:/שחקן חדש/}).click();
-    const name=form.getByLabel('השם שלך',{exact:true});await name.fill('Player');assert.equal(await name.inputValue(),'Player');
-    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    await page.close();
+  const page=await browser.newPage({viewport:{width:390,height:844},serviceWorkers:'block'});
+  const errors=[];page.on('pageerror',err=>errors.push(err.message));
+  // Exercise the full generated app with the real React and auth UI, offline.
+  await page.addInitScript(()=>{
+    if(!sessionStorage.getItem('seeded')){
+      localStorage.setItem('pkUiLanguage','he');sessionStorage.setItem('seeded','1');
+    }
+    window.fb={fx:async()=>({available:true}),auth:{currentUser:null},onAuthStateChanged:(_,fn)=>{fn(null);return ()=>{};}};
+  });
+  await page.route('**/*',async route=>{
+    const url=new URL(route.request().url()),file=url.pathname.slice(1);
+    if(url.hostname==='poker.test'){
+      if(['index.html','he.html'].includes(file))return route.fulfill({path:path.join(out,file),contentType:'text/html'});
+      if(file.startsWith('assets/')&&fs.existsSync(path.join(root,file)))return route.fulfill({path:path.join(root,file)});
+    }
+    if(url.host==='unpkg.com'){
+      const pkg=file.startsWith('react-dom@')?'react-dom':'react';
+      return route.fulfill({path:path.join(path.dirname(require.resolve(pkg)), 'umd',pkg+'.production.min.js'),contentType:'application/javascript',headers:{'access-control-allow-origin':'*'}});
+    }
+    if(url.host==='cdn.tailwindcss.com')return route.fulfill({body:'window.tailwind={};',contentType:'application/javascript'});
+    return route.abort();
+  });
+  for(const name of ['he.html?uiLang=he&club=demo#seat','index.html']){
+    await page.goto('https://poker.test/'+name,{waitUntil:'domcontentloaded'});
+    await page.getByRole('button',{name:'Sign in with Google',exact:true}).waitFor({timeout:7000});
+    assert.match(page.url(),/\/index\.html/);
+    assert.equal(await page.locator('[data-language-choice]').count(),0);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('pkUiLanguage')),'en');
   }
+  assert.deepEqual(errors,[]);
 });

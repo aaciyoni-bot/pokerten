@@ -5,7 +5,7 @@ import { clearStaleResume } from './update-resume.mjs';
 import release from '../ota-release.json';
 const version = Number(document.querySelector('meta[name="app-version"]')?.content);
 const storeUrl = 'https://play.google.com/store/apps/details?id=com.orizis.pokerten';
-let overlay, text, controller, ready = false, manualCheck;
+let overlay, text, controller, acknowledgement, started = false, manualCheck;
 function render(state) {
   if (!state) { overlay?.remove(); overlay = null; const app=document.getElementById('root'); if(app)app.inert=false; return; }
   if (!overlay) {
@@ -20,6 +20,11 @@ function render(state) {
     const app=document.getElementById('root'); if(app)app.inert=true; overlay.tabIndex=-1; overlay.focus();
   }
   text.textContent=state.text + (Number.isFinite(state.percent) ? ' ' + Math.round(state.percent) + '%' : state.size ? ' ('+(state.size/1048576).toFixed(1)+' MB)' : '');
+}
+// The native rollback deadline measures whether the local JS bundle boots.
+function acknowledgeShell() {
+  if (!Capacitor.isNativePlatform()) return;
+  if (!acknowledgement) acknowledgement=CapacitorUpdater.notifyAppReady().catch(()=>{acknowledgement=null;});
 }
 if (Capacitor.getPlatform() === 'android') {
   const store = registerPlugin('PokertenAppUpdate');
@@ -64,9 +69,10 @@ window.PokerAppUpdate = {
     return manualCheck;
   },
   reload(){return this.check(true);},
+  shellReady:acknowledgeShell,
   ready(){
-    // React has rendered successfully; acknowledge the bundle to enable rollback protection.
-    if(!ready && Capacitor.isNativePlatform()){ready=true;CapacitorUpdater.notifyAppReady().catch(()=>{});controller?.start();}
+    acknowledgeShell();
+    if(!started && controller){started=true;controller.start();}
   },
   setView(view){controller?.setView(view);},
   setGameContext(context){controller?.setGameContext(context);}

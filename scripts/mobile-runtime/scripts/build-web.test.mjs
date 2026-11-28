@@ -41,3 +41,21 @@ test('packaged app has local executable dependencies and excludes server files',
   assert.match(deletion, /Nothing is submitted until you send the email/);
   assert.equal(await readFile(new URL('../../index.html', import.meta.url), 'utf8'), source);
 });
+
+test('Android acknowledges a locally booted screen while the server connection is pending',async()=>{
+  const {runInNewContext}=await import('node:vm');
+  const source=await readFile(new URL('../../index.html',import.meta.url),'utf8');
+  const start=nativeHtml(source).split('function PokerLaunch(){')[1].split('root.render(')[0];
+  const events=new EventTarget(),cleanups=[];let acknowledgements=0;
+  const window={addEventListener:events.addEventListener.bind(events),removeEventListener:events.removeEventListener.bind(events),
+    PokerAppUpdate:{shellReady:()=>{acknowledgements++;}}};
+  runInNewContext('function PokerLaunch(){'+start+'\nPokerLaunch();',{
+    window,useEffect:f=>cleanups.push(f()),useState:x=>[x,()=>{}],setInterval:()=>1,clearInterval:()=>{},
+    React:{createElement:()=>({})}
+  });
+  assert.equal(acknowledgements,0);
+  window.fb={fx:()=>new Promise(()=>{})};
+  events.dispatchEvent(new Event('firebase-ready'));
+  assert.equal(acknowledgements,1);
+  cleanups.forEach(f=>f?.());
+});

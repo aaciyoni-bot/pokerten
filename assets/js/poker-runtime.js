@@ -183,7 +183,7 @@
       const started=now();
       try{await request();if(!stopped&&options.onSuccess)options.onSuccess();}
       catch(error){if(!stopped&&options.onError)options.onError(error);}
-      finally{if(!stopped)timer=schedule(tick,Math.max(100,1000-(now()-started)));}
+      finally{if(!stopped)timer=schedule(tick,Math.max(100,(options.interval?.()||1000)-(now()-started)));}
     };
     tick();
     return()=>{stopped=true;if(timer!==null)cancel(timer);};

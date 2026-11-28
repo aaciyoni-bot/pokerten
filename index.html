@@ -1144,9 +1144,18 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <script src="assets/js/club-cashier.js?v=385"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=348"></script>
-<link rel="stylesheet" href="assets/css/reference-experience.css?v=393">
+<link rel="stylesheet" href="assets/css/reference-experience.css?v=394">
 <link rel="stylesheet" href="assets/css/club-classic-features.css?v=382">
 <link rel="stylesheet" href="assets/css/login-reference.css?v=376">
+<script>
+(function(){
+  if(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||(navigator.maxTouchPoints>1&&/Mac/i.test(navigator.platform||'')))return;
+  var media=window.matchMedia&&window.matchMedia('(min-width:900px) and (min-aspect-ratio:6/5)');
+  if(!media)return;
+  function sync(){document.documentElement.classList.toggle('pt-desktop',media.matches);}
+  sync();media.addEventListener&&media.addEventListener('change',sync);
+})();
+</script>
 </head>
 <body class="bg-slate-950 h-full w-full poker-theme">
 <!-- Card suit gradients — defined ONCE (iOS Safari breaks on duplicate SVG gradient IDs) -->
@@ -1184,9 +1193,11 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
       // Auth and initial data load in parallel with the launch artwork.
       // A stalled or blocked video must still release the entrance.
       var reduced=window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var desktop=document.documentElement.classList.contains('pt-desktop');
+      if(desktop)video.poster='assets/video/pokerten-desktop-394.webp';
       if(reduced){sound.hidden=true;timer=setTimeout(out,700);return;}
       timer=setTimeout(out,6500);
-      video.src='assets/video/pokerten-orizis-intro.mp4';
+      if(desktop)video.src='assets/video/pokerten-desktop-394.mp4';else video.src='assets/video/pokerten-orizis-intro.mp4';
       video.muted=true;
       function posterOnly(){if(done)return;sound.hidden=true;clearTimeout(timer);timer=setTimeout(out,700);}
       video.addEventListener('error',posterOnly);
@@ -1221,7 +1232,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
     <script src="assets/js/poker-god-lobby.js?v=294"></script>
     <script src="assets/js/poker-viewer-access.js?v=381"></script>
     <script src="assets/js/poker-tournament.js?v=393"></script>
-    <script src="assets/js/poker-runtime.js?v=380"></script>
+    <script src="assets/js/poker-runtime.js?v=394"></script>
     <script src="assets/js/poker-range-model.js?v=356"></script>
 <script>
 
@@ -4354,7 +4365,7 @@ const PotAward = ({
     }, React.createElement("div", {
       className: "flex flex-col items-center gap-1"
     }, React.createElement("div", {
-      className: "win-amt text-[15px] font-black text-gold-400 tabular-nums bg-slate-950/90 px-2.5 py-0.5 rounded-md border border-gold-400/40 shadow-lg",
+      className: "win-amt poker-award-amount",
       dir: "ltr"
     }, "+", formatShort(amount)), React.createElement(CasinoChipStack, {
       amount: amount,
@@ -5890,6 +5901,7 @@ function ClubsView({
   onEnter,
   showToast
 }) {
+  const desktopClubs=useDesktopPokerTable();
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -6134,7 +6146,7 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     style: {
       overflowX: "hidden"
     },
-    className: "club-surface scrollable-content cl-page aurora-bg p-4 sm:p-8"
+    className: "club-surface scrollable-content cl-page aurora-bg p-4 sm:p-8" + (desktopClubs?" desktop-clubs":"")
   }, React.createElement("div", {
     className: "max-w-2xl mx-auto animate-fade-in relative z-10 flex flex-col"
   }, React.createElement("div", {
@@ -6321,6 +6333,21 @@ setCreating(true);try{const c=await pokerCommand('pkClubCreate',{name:newName.tr
     const selected = deck[Math.min(slide,deck.length-1)];
     const selectedMem = selected.c && memOf(selected.c.id);
     const moveTo = ix => deckRef.current?.select(ix);
+    if(desktopClubs)return React.createElement('section',{className:'desktop-directory','aria-label':'Choose a club'},
+      React.createElement('div',{className:'desktop-directory-title'},React.createElement('h2',null,'Your clubs'),
+        React.createElement('button',{type:'button',onClick:()=>setCreateOpen(true)},'+ Create club')),
+      React.createElement('div',{className:'desktop-club-grid'},deck.filter(d=>d.c).map(({c,kind})=>{
+        const m=memOf(c.id),pending=kind==='pending';
+        return React.createElement('article',{key:c.id,className:'desktop-club-card'},
+          React.createElement('button',{type:'button',className:'desktop-club-enter',disabled:pending,onClick:()=>onEnter(c),'aria-label':(pending?'Membership status for ':'Enter ')+c.name},
+            c.logo?React.createElement('img',{src:c.logo,alt:''}):React.createElement('span',{className:'desktop-club-monogram','aria-hidden':true},c.name?.charAt(0)||'P'),
+            React.createElement('strong',{dir:'auto'},c.name),React.createElement('small',null,'ID ',clubCode(c.id),' · ',clubMemberCount(c.id)||'—',' members'),
+            React.createElement('div',{className:'desktop-club-footer'},React.createElement('span',null,pending?(m?.status==='banned'?'Access suspended':'Pending approval'):'Your balance'),
+              React.createElement('b',null,pending?'':Number.isFinite(m?.balance)?formatMoney(m.balance):'—')),
+            !pending&&React.createElement('span',{className:'desktop-enter-link'},'Enter club →')),
+          canArchiveClub(c)&&React.createElement('button',{type:'button',className:'desktop-club-manage',disabled:!!archiveBusy,onClick:()=>deleteClub(c),'aria-label':'Remove club '+c.name,title:'Remove club'},React.createElement('i',{className:'fa-solid fa-trash','aria-hidden':true})));
+      })),!deck.some(d=>d.c)&&React.createElement('p',null,'Enter a club code to join your first club.'),
+      archivedClubs.length>0&&React.createElement('button',{type:'button',className:'blue-archived-clubs',onClick:()=>{setArchiveError('');setArchivedOpen(true);}},'Archived clubs (',archivedClubs.length,')'));
     return React.createElement('section',{className:'blue-club-selection','aria-label':'Choose a club'},
       React.createElement('div',{className:'blue-club-stage'},React.createElement(ClubRotaryCarousel,{ref:deckRef,items:deck,activeIndex:slide,onChange:setSlide,onMovingChange:setCarouselBusy,onActivate:d=>{if(d.kind==='mine')onEnter(d.c);else if(d.kind==='create')setCreateOpen(true);},renderCard:d=>React.createElement(React.Fragment,null,
         React.createElement('img',{className:'blue-orb-skin',src:'assets/brand/club-glass-v333.webp',alt:'',draggable:false,decoding:'async'}),
@@ -8046,7 +8073,7 @@ function LobbyView({
     React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:hideFull,onChange:e=>setHideFull(e.target.checked)}),'Hide Full Tables'),
     React.createElement('select',{'aria-label':'Sort tables',value:tableSort,onChange:e=>setTableSort(e.target.value)},React.createElement('option',{value:'default'},'Sort'),React.createElement('option',{value:'buyin'},'Buy-in'),React.createElement('option',{value:'players'},'Players'))),
     React.createElement(TournamentsTab,{compactRows:true,game:'poker',user,tournaments,tables,clubSettings,showToast,onJoinTable:onJoinPoker,onCreateTable:onCreatePoker}), pokFilter !== 'tours' && React.createElement("div", {
-    className: "flex flex-col gap-2.5"
+    className: "desktop-table-grid flex flex-col gap-2.5"
   }, shownPoker.map(t => {
     const s = t.settings || {};
     const gt = s.baseGameType || 'NLH';
@@ -10764,8 +10791,8 @@ try{await pokerCommand('pkTableCreate',{manual:true,clubId:CLUB_ID,settings:{...
     className: "flex items-center gap-2 cursor-pointer bg-slate-900 border border-gold-400/25 rounded-xl p-3 mt-2"
   }, React.createElement("input", {
     type: "checkbox",
-    checked: !!s.runTwice,
-    disabled: s.baseGameType === 'Omaha 7',
+    checked: !s.spinMode && !!s.runTwice,
+    disabled: s.baseGameType === 'Omaha 7' || !!s.spinMode,
     onChange: e => upd('runTwice', e.target.checked),
     className: "accent-cyan-500 w-4 h-4"
   }), React.createElement("span", {
@@ -11045,6 +11072,101 @@ const usePokerResultPresentation = (tableId, game, players, headless) => {
   return result;
 };
 
+function RunoutChoice({offer,vote,always,onAlways,submit}) {
+  const runs=offer.runs||2;
+  const [now,setNow]=useState(Date.now),[pending,setPending]=useState(false),[sent,setSent]=useState(false),[error,setError]=useState('');
+  const inFlight=useRef(false),autoTried=useRef(false);
+  const seconds=Math.max(0,Math.ceil((offer.until-now)/1000));
+  useEffect(()=>{
+    const id=setInterval(()=>setNow(Date.now()),250);
+    return ()=>clearInterval(id);
+  },[]);
+  async function choose(agree){
+    if(inFlight.current||vote!==undefined||Date.now()>=offer.until)return;
+    inFlight.current=true;setPending(true);setError('');
+    try{await submit(agree);setSent(true);}
+    catch(_){inFlight.current=false;setError('Vote could not be sent. Try again.');}
+    finally{setPending(false);}
+  }
+  useEffect(()=>{
+    if(always&&runs===2&&!autoTried.current&&vote===undefined){
+      autoTried.current=true;choose(true);
+    }
+  },[always,runs,vote]);
+  if(!seconds)return null;
+  const waiting=sent||vote!==undefined;
+  return React.createElement('section',{className:'poker-runout-choice',role:'group','aria-label':'All-in runout',dir:'ltr'},
+    React.createElement('header',null,React.createElement('strong',null,runs===3?'Run three boards?':'Run it twice?'),
+      React.createElement('time',{'aria-label':'Time remaining'},seconds+'s')),
+    waiting?React.createElement('p',{role:'status'},'Vote received · waiting for the table'):
+    React.createElement(React.Fragment,null,React.createElement('p',null,'Every player still in the hand must agree.'),
+      React.createElement('div',{className:'poker-runout-actions'},
+        React.createElement('button',{type:'button',disabled:pending,onClick:()=>choose(false)},'One board'),
+        React.createElement('button',{type:'button',disabled:pending,onClick:()=>choose(true)},runs===3?'Three boards':'Two boards')),
+      runs===2&&React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:always,onChange:e=>onAlways(e.target.checked)}),'Always accept two boards')),
+    error&&React.createElement('small',{role:'alert'},error));
+}
+
+function PokerSeatSpeech({messages,onOpen}){
+  const layerRef=useRef(null);
+  const signature=JSON.stringify(messages);
+  React.useLayoutEffect(()=>{
+    const layer=layerRef.current,field=layer?.closest('.poker-table');
+    if(!field)return;
+    const pods=new Map([...field.querySelectorAll('.poker-seat[data-player-uid]')].map(s=>[s.dataset.playerUid,s.querySelector('.player-pod')]).filter(([,p])=>p));
+    function place(){
+      const box=layer.getBoundingClientRect(),vp=window.visualViewport;
+      const limits={l:Math.max(box.left,vp?.offsetLeft||0)+6,t:Math.max(box.top,vp?.offsetTop||0)+6,
+        r:Math.min(box.right,(vp?.offsetLeft||0)+(vp?.width||innerWidth))-6,b:Math.min(box.bottom,(vp?.offsetTop||0)+(vp?.height||innerHeight))-6};
+      const seats=[...pods.values()].map(p=>p.getBoundingClientRect()),placed=[];
+      const clamp=(v,min,max)=>Math.max(min,Math.min(v,max));
+      for(const bubble of layer.children){
+        const anchor=pods.get(bubble.dataset.speaker)?.getBoundingClientRect();if(!anchor)continue;
+        const w=bubble.offsetWidth,h=bubble.offsetHeight,x=(anchor.left+anchor.right)/2,y=(anchor.top+anchor.bottom)/2;
+        const nearLeft=x<box.left+box.width/2;
+        const candidates=[
+          [nearLeft?anchor.right+9:anchor.left-w-9,y-h/2,nearLeft?'left':'right'],
+          [x-w/2,anchor.top-h-9,'bottom'],[x-w/2,anchor.bottom+9,'top'],
+          [nearLeft?anchor.left-w-9:anchor.right+9,y-h/2,nearLeft?'right':'left']
+        ].map(([dx,dy,side],i)=>{
+          const left=clamp(dx,limits.l,limits.r-w),top=clamp(dy,limits.t,limits.b-h);
+          const hit=r=>Math.max(0,Math.min(left+w,r.right)-Math.max(left,r.left))*Math.max(0,Math.min(top+h,r.bottom)-Math.max(top,r.top));
+          const cost=placed.reduce((n,r)=>n+hit(r)*3,0)+seats.reduce((n,r)=>n+hit(r),0)+Math.abs(left-dx)+Math.abs(top-dy)+i;
+          return {left,top,right:left+w,bottom:top+h,side,cost};
+        });
+        const best=candidates.sort((a,b)=>a.cost-b.cost)[0];placed.push(best);
+        bubble.style.left=(best.left-box.left)+'px';bubble.style.top=(best.top-box.top)+'px';
+        bubble.dataset.tail=best.side;bubble.style.setProperty('--tail-x',clamp(x-best.left,10,w-10)+'px');
+        bubble.style.setProperty('--tail-y',clamp(y-best.top,9,h-9)+'px');bubble.style.visibility='visible';
+      }
+    }
+    place();const observer=window.ResizeObserver&&new window.ResizeObserver(place);
+    for(const el of [field,...pods.values(),...layer.children])observer?.observe(el);
+    window.addEventListener('resize',place);window.visualViewport?.addEventListener('resize',place);
+    return ()=>{observer?.disconnect();window.removeEventListener('resize',place);window.visualViewport?.removeEventListener('resize',place);};
+  },[signature]);
+  return React.createElement('div',{ref:layerRef,className:'poker-seat-speech'},messages.map(({uid,name,text})=>
+    React.createElement('button',{key:uid,type:'button','data-speaker':uid,onClick:onOpen,'aria-label':name+' · '+text},
+      React.createElement('strong',{dir:'auto'},name),React.createElement('span',{dir:'auto'},text))));
+}
+
+const desktopPokerMedia='(min-width:900px) and (min-aspect-ratio:6/5)';
+function useDesktopPokerTable(){
+  const allowed=!/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)&&!(navigator.maxTouchPoints>1&&/Mac/i.test(navigator.platform||''));
+  const [wide,setWide]=useState(()=>allowed&&!!window.matchMedia?.(desktopPokerMedia)?.matches);
+  useEffect(()=>{
+    if(!allowed)return;
+    const mq=window.matchMedia?.(desktopPokerMedia);if(!mq)return;
+    const update=()=>setWide(mq.matches);update();mq.addEventListener?.('change',update);
+    return ()=>mq.removeEventListener?.('change',update);
+  },[allowed]);
+  return wide;
+}
+// Positions follow the photographed rail from the nearer left seat clockwise.
+const desktopPokerRail=[[20,69],[7,56],[8,42],[16,29],[30,21],[50,20],[70,21],[84,29],[92,42],[93,56],[84,65]];
+const desktopPokerSlots={2:[0,7],3:[0,3,7],4:[0,2,5,8],5:[0,2,4,6,8],6:[0,1,3,5,7,9],
+  7:[0,1,3,4,6,7,9],8:[0,1,2,4,6,7,8,9],9:[0,1,2,3,5,6,7,8,9],10:[0,1,2,3,4,5,6,7,8,9]};
+
 function PokerTable({
   tableDocId,
   user,
@@ -11065,6 +11187,7 @@ function PokerTable({
   if (!oddsWorkerRef.current) oddsWorkerRef.current = window.PokerRuntime.createWorkerClient(window.Worker);
   if (!botWorkerRef.current) botWorkerRef.current = window.PokerRuntime.createWorkerClient(window.Worker);
   useEffect(() => () => { oddsWorkerRef.current.close(); botWorkerRef.current.close(); }, []);
+  const desktopTable=useDesktopPokerTable();
   const [tableState, setTableState] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -11143,17 +11266,10 @@ function PokerTable({
       return false;
     }
   });
-  useEffect(() => {
-    const g0 = tableState?.gameState || {};
-    if (!g0.ritOffer || g0.ritOffer.runs===3 || !ritAlways) return;
-    const me0 = tableState?.players?.[user.uid];
-    if (!me0 || me0.status !== 'active') return;
-    if ((g0.ritAgree || {})[user.uid] !== undefined) return;
-    window.fb.fx('pkRit', {
-      tableId: tableDocId,
-      agree: true
-    }).catch(() => {});
-  }, [tableState?.gameState?.ritOffer?.until,ritAlways]);
+  const saveRitPreference = value => {
+    setRitAlways(value);
+    try { localStorage.setItem('pkRitAlways',value?'1':'0'); } catch (_) {}
+  };
   const [spinShow, setSpinShow] = useState(false);
   useEffect(() => {
     const t2 = tableState;
@@ -11369,6 +11485,10 @@ function PokerTable({
     if (!srvEngine || tableState?.tournament?.finished) return;
     let warned=false;
     return window.PokerRuntime.startTickLoop(()=>window.fb.fx('pkTick',{tableId:tableDocId}),{
+      interval:()=>{
+        const g=tableRef.current?.gameState;
+        return g?.allInReveal && g.phase==='preflop' && !g.ritOffer ? 350 : 1000;
+      },
       onSuccess:()=>{warned=false;},
       onError:e=>{
         if(warned||!tableRef.current?.settings?.spinMode||(tableRef.current?.gameState?.phase||'waiting')!=='waiting')return;
@@ -12958,6 +13078,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const compactVacancy = !railSeated && displayList.length < capN;
   const layoutN = !railSeated ? capN : Math.max(2, displayList.length);
   const slotXY = s => {
+    if(desktopTable)return desktopPokerRail[desktopPokerSlots[Math.max(2,Math.min(10,layoutN))][s]??0];
     const ring = SEAT_LAYOUTS[Math.min(9, Math.max(2, layoutN))] || SEAT_LAYOUTS[6];
     if (ring[s]) return ring[s];
     if (s === 9) return [89.16,45];
@@ -12971,7 +13092,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   // Spectators see each available physical seat; seated players retain the compact ring.
   const slotMap = displayList.map((p,i)=>railSeated?i:Number(p.seatIndex)||0);
   const slotOf = i => slotMap[i] || 0;
-  const seatXY = i => railSeated && displayList[i]?.uid === user.uid ? [16.125,76.875] : slotXY(slotOf(i));
+  const seatXY = i => !desktopTable && railSeated && displayList[i]?.uid === user.uid ? [16.125,76.875] : slotXY(slotOf(i));
   const seatPos = i => {
     const [x, y] = seatXY(i);
     return {
@@ -13056,6 +13177,8 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   }
   const tableStakes = 'Blinds ' + formatShort(tableLevel ? tableLevel.sb : setts.blinds) + '/' + formatShort(tableLevel ? tableLevel.bb : BB)
     + (Number(tableLevel ? tableLevel.ante : setts.ante) > 0 ? ' · Ante ' + formatShort(tableLevel ? tableLevel.ante : setts.ante) : '');
+  const cashRunoutTable=!tableState.tournamentId && !tableState.tournament && !setts.spinMode && !!setts.runTwice &&
+    (gs.currentGameType||setts.baseGameType)!=='Omaha 7';
   const tableClubName = String(clubSettings?.name || window.__club?.name || '').trim();
   const canSetLineup=canManageGame(user,'poker') && srvEngine && !tableState.tournamentId && !setts.spinMode && !tableState.closeRequested && !tableState.archived;
   const entryLocksLineup=!tableState.tournamentId && !setts.spinMode && buyInMin(setts)>=manualBuyInThreshold;
@@ -13066,13 +13189,14 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
   const heldTakeover = eligibleBot && seatControl?.turnStartedAt === gs.turnStartedAt && seatControl.until > Date.now();
   return React.createElement("div", {
     className: "poker-room h-full w-full flex flex-col bg-slate-950 font-sans overflow-hidden select-none relative" + (railSeated ? " is-seated" : " is-spectating") + (godView ? " is-god-view" : ""),
-    'data-desktop-client': !/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) &&
-      !(navigator.maxTouchPoints>1 && /Mac/i.test(navigator.platform || '')) ? 'true' : undefined,
+    'data-desktop-client': desktopTable?'true':undefined,
     dir: "ltr",
     style: {
       background: 'radial-gradient(ellipse at 50% 0%, #1a2436 0%, #05070f 60%)'
     }
   },
+  desktopTable && React.createElement('div',{className:'poker-desktop-heading',dir:'ltr'},
+    React.createElement('strong',null,'POKERTEN'),React.createElement('span',null,tableState.tournament?.name||tableVariant,' · ',tableStakes)),
   tableInfoOpen && ReactDOM.createPortal(React.createElement('div', {className:'poker-info-overlay', onClick:closeTableInfo},
     React.createElement('section', {role:'dialog', 'aria-modal':true, 'aria-label':'Table details', className:'poker-info-dialog', onClick:e=>e.stopPropagation(), onKeyDown:e=>{if(e.key==='Escape'){e.stopPropagation();closeTableInfo();}else if(e.key==='Tab'){e.preventDefault();e.currentTarget.querySelector('button').focus();}}},
       React.createElement('button', {type:'button', autoFocus:true, onClick:closeTableInfo, 'aria-label':'Close table details'}, '✕'),
@@ -13115,17 +13239,12 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       onClick:()=>saveSkin({...skin,felt:key==='auto'?null:key}),style:{'--swatch':color}
     },React.createElement('span',{'aria-hidden':true}),label))),
     React.createElement('small',null,'The felt and LED change together. Saved on this device.')),
-  React.createElement("label", {
+  cashRunoutTable && React.createElement("label", {
     className: "flex items-center gap-2 cursor-pointer bg-slate-900/70 border border-gold-400/25 rounded-xl p-3 mb-4"
   }, React.createElement("input", {
     type: "checkbox",
     checked: !!ritAlways,
-    onChange: e => {
-      setRitAlways(e.target.checked);
-      try {
-        localStorage.setItem('pkRitAlways', e.target.checked ? '1' : '');
-      } catch (err) {}
-    },
+    onChange:e=>saveRitPreference(e.target.checked),
     className: "accent-cyan-500 w-4 h-4"
   }), React.createElement("span", {
     className: "text-white text-xs font-bold"
@@ -13440,7 +13559,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       }, React.createElement("i",{className:"fa-solid fa-chevron-down",'aria-hidden':true}),React.createElement("span",null,"Take Seat"))));
     }
     return out;
-  })(), displayList.map((p, i) => {
+  })(), Object.keys(ch.bubbles).length>0 && React.createElement(PokerSeatSpeech,{
+    messages:displayList.filter(p=>ch.bubbles[p.uid]).map(p=>({uid:p.uid,name:p.name||'Player',text:ch.bubbles[p.uid],position:seatXY(displayList.indexOf(p))})),
+    onOpen:()=>ch.setChatOpen(true)
+  }), displayList.map((p, i) => {
     const isTurn = gs.activeTurnUid === p.uid && inBetting;
     const decision = seatActions.get(p.uid);
     const showDecision = decision && (decision.street === gs.phase || decision === lastAction ||
@@ -13504,9 +13626,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
     const muckCls = gs.phase === 'showdown' && hidden && (p.mucked || folded) ? ' card-mucked' : '';
     return React.createElement("div", {
       key: p.uid,
-      // a talking player's whole seat lifts above the bet stacks (z-35) —
-      // the bubble's own z is trapped inside the seat's stacking context
-      className: "poker-seat " + (isWinner ? "poker-seat-winner " : "") + (isMe ? "poker-seat-hero " : "") + (ch.bubbles[p.uid] ? "z-[60]" : "z-20"),
+      className: "poker-seat " + (isWinner ? "poker-seat-winner " : "") + (isMe ? "poker-seat-hero " : "") + "z-20",
       'data-player-uid': p.uid,
       'data-active-turn': isTurn ? 'true' : undefined,
       'data-turn-urgent': isTurn && turnSeconds <= 5 ? 'true' : undefined,
@@ -13527,6 +13647,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
         transform: 'translateX(-50%)'
       } : {
         ...seatPos(i),
+        '--desktop-seat-y':seatYv+'%',
         '--poker-seat-x': `${seatXv}cqw`,
         '--poker-card-count': Math.max(1, dispCards.length),
         '--poker-seat-y': `${seatYv}%`,
@@ -13545,11 +13666,7 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       className: "player-spotlight"
     }), React.createElement("div", {
       className: `relative flex flex-col items-center ${folded ? 'poker-player-folded' : ''} ${p.sitOut ? 'poker-player-away' : ''}`
-    }, ch.bubbles[p.uid] && React.createElement("div", {
-      className: "chat-bubble" + (fanBelow ? ' chat-bubble-below' : '')
-    }, React.createElement("span", {
-      className: "cb-text"
-    }, ch.bubbles[p.uid])), p.sitOut && (() => {
+    }, p.sitOut && (() => {
       const leftMs = tableState.tournamentId ? 0 : Math.max(0, 600000 - (Date.now() - (p.sitOutAt || Date.now())));
       const mm = Math.floor(leftMs / 60000),
         ss = Math.floor(leftMs % 60000 / 1000);
@@ -14125,39 +14242,10 @@ try{const r=await pokerCommand('pkTournament',{op:'addon',tournamentId:tableRef.
       setPodium(null);
       handleStandUp(true);
     }
-  }), gs.ritOffer && Date.now() < gs.ritOffer.until && gs.allInReveal && myPlayer?.status === 'active' && (gs.ritAgree || {})[user.uid] === undefined && (!ritAlways || gs.ritOffer.runs===3) && React.createElement("div", {
-    className: "absolute bottom-16 left-1/2 -translate-x-1/2 z-[75] bg-slate-950/95 border border-gold-400/50 rounded-2xl px-3.5 py-2 flex items-center gap-2 animate-pop-in shadow-xl",
-    dir: "ltr"
-  }, React.createElement("span", {
-    className: "text-gold-400 font-black text-xs whitespace-nowrap"
-  }, gs.ritOffer.runs===3?"Run three boards?":"Run it twice?"), React.createElement("button", {
-    onClick: () => window.fb.fx('pkRit', {
-      tableId: tableDocId, runs:gs.ritOffer.runs||2, until:gs.ritOffer.until,
-      agree: true
-    }).catch(() => {}),
-    className: "bg-gradient-to-b from-cyan-500 to-cyan-700 text-white px-3 py-1.5 rounded-lg text-xs font-black"
-  }, gs.ritOffer.runs===3?"THREE ✔":"TWICE ✔"), React.createElement("button", {
-    onClick: () => window.fb.fx('pkRit', {
-      tableId: tableDocId, runs:gs.ritOffer.runs||2, until:gs.ritOffer.until,
-      agree: false
-    }).catch(() => {}),
-    className: "bg-slate-800 text-slate-300 px-2.5 py-1.5 rounded-lg text-[10px] font-black border border-white/10 whitespace-nowrap"
-  }, "Not this time"), gs.ritOffer.runs!==3 && React.createElement("label", {
-    className: "flex items-center gap-1 text-[9px] text-slate-400 font-bold cursor-pointer"
-  }, React.createElement("input", {
-    type: "checkbox",
-    onChange: e => {
-      setRitAlways(e.target.checked);
-      try {
-        localStorage.setItem('pkRitAlways', e.target.checked ? '1' : '');
-      } catch (err) {}
-      if (e.target.checked) window.fb.fx('pkRit', {
-        tableId: tableDocId, runs:gs.ritOffer.runs||2, until:gs.ritOffer.until,
-        agree: true
-      }).catch(() => {});
-    },
-    className: "accent-cyan-500 w-3 h-3"
-  }), "always")), setts.spinMode && tableState.spinDone && !podium && React.createElement("div", {
+  }), cashRunoutTable && gs.ritOffer && gs.allInReveal && gs.phase!=='showdown' && myPlayer?.status==='active' &&
+    React.createElement(RunoutChoice,{key:tableDocId+':'+gs.handN+':'+gs.ritOffer.until,offer:gs.ritOffer,
+      vote:gs.ritAgree?.[user.uid],always:ritAlways,onAlways:saveRitPreference,
+      submit:agree=>window.fb.fx('pkRit',{tableId:tableDocId,agree,runs:gs.ritOffer.runs||2,until:gs.ritOffer.until})}), setts.spinMode && tableState.spinDone && !podium && React.createElement("div", {
     className: "absolute inset-x-0 top-[38%] z-[80] flex justify-center pointer-events-none"
   }, React.createElement("div", {
     className: "bg-slate-950/95 border-2 border-amber-400/70 rounded-2xl px-6 py-3 text-center animate-pop-in"

@@ -1,7 +1,7 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {maybeOfferRit,resolveRitIfDue,advancePhase,runShowdown}=require('../pokerEngine').__engineInternals;
+const {maybeOfferRit,resolveRitIfDue,advancePhase,runShowdown,tickMayAdvance,applyAction}=require('../pokerEngine').__engineInternals;
 const card=(val,suit)=>({id:val+suit,val,suit});
 const ranks=['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const deck=['♠','♥','♦','♣'].flatMap(s=>ranks.map(v=>card(v,s)));
@@ -32,4 +32,50 @@ test('each runout divides each side pot independently down to the last cent',()=
  runShowdown(s);
  assert.deepEqual(Object.values(s.players).map(p=>p.stack),[1.01,1.69,1.33]);
  assert.equal(s.gameState.lastWinAmount,4.03);
+});
+
+test('tournament and spin tables discard a stale multiple-board offer',()=>{
+ for(const configure of [s=>s.table.tournamentId='event',s=>s.tor={id:'event'},s=>s.settings.spinMode=true]){
+  const s=state(30);
+  configure(s);
+  maybeOfferRit(s);
+  assert.ok(!s.gameState.ritOffer);
+  s.gameState.ritOffer={runs:2,until:s.now+8000};
+  s.gameState.ritAgree={a:true,b:true,c:true};
+  assert.equal(resolveRitIfDue(s),true);
+  assert.ok(!s.gameState.board2);
+ }
+});
+test('one decline ends voting immediately and missing votes expire to a single board',()=>{
+ for(const vote of [false,true]){
+  const s=state(24);
+  maybeOfferRit(s);
+  s.gameState.ritAgree.a=vote;
+  assert.equal(resolveRitIfDue(s),!vote);
+  if(vote){s.now+=8000;assert.equal(resolveRitIfDue(s),true);}
+  assert.ok(!s.gameState.ritOffer);
+  assert.ok(!s.gameState.board2);
+ }
+});
+test('matched all-ins open the preflop board promptly and a live call is preserved',()=>{
+ for(const coveringBet of [5,10]){
+  const s=state(20);
+  Object.assign(s.players.a,{stack:10});
+  Object.assign(s.players.b,{stack:50,bet:coveringBet});
+  Object.assign(s.players.c,{bet:10});
+  Object.assign(s.gameState,{allInReveal:false,activeTurnUid:'a',highestBet:10});
+  s.settings.runTwice=false;
+  applyAction(s,'a','call',0,false);
+  if(coveringBet<10){
+   assert.equal(s.gameState.activeTurnUid,'b');
+   applyAction(s,'b','call',0,false);
+  }
+  assert.equal(s.gameState.activeTurnUid,null);
+  assert.ok(s.gameState.allInReveal);
+  assert.equal(tickMayAdvance(s,s.now+649),false);
+  assert.equal(tickMayAdvance(s,s.now+650),true);
+  s.gameState.phase='flop';
+  assert.equal(tickMayAdvance(s,s.now+1299),false);
+  assert.equal(tickMayAdvance(s,s.now+1300),true);
+ }
 });

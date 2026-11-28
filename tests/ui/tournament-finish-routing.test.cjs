@@ -91,7 +91,7 @@ function finishEvent(f){Object.assign(f.tor,{status:'done',finishedAt:Date.now()
  const outDialog=()=>doc.querySelector('[aria-label="Your tournament result"]');
  for(const scenario of ['roster-first','table-first','final','reduced']){
   const f=fixture();
-  w.matchMedia=()=>({matches:scenario==='reduced',addEventListener(){},removeEventListener(){}});
+  w.matchMedia=query=>({matches:scenario==='reduced'&&query.includes('prefers-reduced-motion'),addEventListener(){},removeEventListener(){}});
   Object.assign(f.table.gameState,{phase:'river',currentGameType:'NLH',activeTurnUid:'other',pots:[{amount:900}]});
   f.table.players.third={uid:'third',name:'Third',stack:2000,bet:0,status:'active',seatIndex:2,cardCount:2};
   f.table.players.fourth={uid:'fourth',name:'Fourth',stack:100,bet:0,status:'active',seatIndex:3,cardCount:2};

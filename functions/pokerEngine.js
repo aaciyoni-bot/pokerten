@@ -289,7 +289,7 @@ function executeDeal(S, gameType) {
   g.turnStartedAt = S.now;
   S.deck = deck;
   OpponentModel.start(S);
-  if(!pl[firstUid] || pl[firstUid].stack<=0)afterAction(S,firstUid);
+  if(!pl[firstUid] || pl[firstUid].stack<=0 || bettingClosed(actives))afterAction(S,firstUid);
 }
 
 function firstAfterDealerIn(pl, g) {
@@ -357,6 +357,13 @@ function applyAction(S, actorUid, action, amount, auto) {
   afterAction(S, actorUid);
 }
 
+// A covering player still owes a decision if another active seat has bet more.
+function bettingClosed(actives) {
+  const funded=actives.filter(p=>p.stack>0);
+  return funded.length===0 || funded.length===1 && actives.every(p=>(p.bet||0)<=(funded[0].bet||0));
+}
+const runoutDelay=g=>g.phase==='preflop'?650:1300;
+const cashRunoutsAllowed=S=>!S.tor&&!S.table.tournamentId&&!S.settings.spinMode&&S.gameState.currentGameType!=='Omaha 7';
 // index.html:9352-9378 — fold-out check, then turn advance / round close.
 function afterAction(S, actorUid) {
   const g = S.gameState;
@@ -370,7 +377,7 @@ function afterAction(S, actorUid) {
   const order = actives;
   const after = order.filter((q) => q.seatIndex > actorSeat).concat(order.filter((q) => q.seatIndex <= actorSeat && q.uid !== actorUid));
   const next = after.find((q) => q.stack > 0 && (!q.hasActed || (q.bet || 0) < g.highestBet));
-  if (next) {
+  if (next && !bettingClosed(actives)) {
     g.activeTurnUid = next.uid;
     g.turnStartedAt = S.now;
     return;
@@ -405,12 +412,12 @@ function canRunBoards(S, count) {
 // Run-it-twice offer — protocol §3.5. Only when both boards can be dealt.
 function maybeOfferRit(S) {
   const g = S.gameState;
-  if (!S.settings.runTwice || S.table.tournamentId || S.gameState.currentGameType === 'Omaha 7') return;
+  if (!S.settings.runTwice || !cashRunoutsAllowed(S)) return;
   if ((g.board || []).length >= 5) return;
   if (!canRunBoards(S,2)) return;
   const acts = activesOf(S.players);
   if (acts.length < 2) return;
-  g.ritOffer = {until: S.now + 10000, runs:S.settings.maxRuns===3 && canRunBoards(S,3) ? 3 : 2};
+  g.ritOffer = {until: S.now + 8000, runs:S.settings.maxRuns===3 && canRunBoards(S,3) ? 3 : 2};
   g.ritAgree = {};
 }
 function resolveRitIfDue(S) {
@@ -419,11 +426,12 @@ function resolveRitIfDue(S) {
   const acts = activesOf(S.players);
   const votes = g.ritAgree || {};
   const allVoted = acts.every((p) => votes[p.uid] !== undefined);
-  if (!allVoted && S.now < g.ritOffer.until) return false; // still open
+  const declined = acts.some(p=>votes[p.uid]===false);
+  if (cashRunoutsAllowed(S) && !declined && !allVoted && S.now < g.ritOffer.until) return false;
   const agreed = acts.length >= 2 && acts.every((p) => votes[p.uid] === true);
   const runs=g.ritOffer.runs===3?3:2;
   g.ritOffer = null;
-  if (agreed && canRunBoards(S,runs)) {
+  if (cashRunoutsAllowed(S) && agreed && canRunBoards(S,runs)) {
     g.board2 = [...(g.board || [])];
     if(runs===3)g.board3 = [...(g.board || [])];
   }
@@ -1258,7 +1266,8 @@ function humanDecisionLimit(actor, g, settings, now) {
 function tickMayAdvance(t,now){
   const g=t.gameState||{},pl=t.players||{},elapsed=now-(g.turnStartedAt||0);
   if(BETTING.includes(g.phase)){
-    if(g.allInReveal)return !!g.ritOffer||elapsed>=1300;
+    if(g.allInReveal)return g.ritOffer ? !!t.tournamentId || !!t.settings?.spinMode || now>=g.ritOffer.until ||
+      activesOf(pl).some(p=>g.ritAgree?.[p.uid]===false) || activesOf(pl).every(p=>g.ritAgree?.[p.uid]===true) : elapsed>=runoutDelay(g);
     const actor=pl[g.activeTurnUid];if(!actor||actor.status!=='active')return true;
     if(actor.isBot)return now>=botActionDeadline(g,actor);
     return elapsed>humanDecisionLimit(actor,g,t.settings,now);
@@ -1509,7 +1518,7 @@ async function tickTable(id, testNow) {
     } else if (BETTING.includes(g.phase)) {
       if (g.allInReveal) {
         if (g.ritOffer && resolveRitIfDue(S)) dirty = true; // offer settled (agreed or expired)
-        if (!g.ritOffer && now - (g.turnStartedAt || 0) >= 1300) { // runout pacing (index.html:9277)
+        if (!g.ritOffer && now - (g.turnStartedAt || 0) >= runoutDelay(g)) {
           g.turnStartedAt = now;
           advancePhase(S);
           dirty = true;
@@ -1841,8 +1850,17 @@ exports.pkRit = onCall(CALL_OPTS, async (request) => {
         (runs===3&&request.data.until!==g.ritOffer.until)) throw new HttpsError('failed-precondition','The runout offer changed');
     const p = S.players[uid];
     if (!p || p.status !== "active") return;
+    if (!cashRunoutsAllowed(S) || !g.allInReveal || g.ritAgree?.[uid]!==undefined) return;
     g.ritAgree = {...(g.ritAgree || {}), [uid]: agree};
-    tx.update(tRef(id), {"gameState.ritAgree": g.ritAgree});
+    if(agree && activesOf(S.players).every(seat=>g.ritAgree[seat.uid]===true)){
+      const deckSnapshot=await tx.get(privRef(id,'_engine'));
+      S.deck=deckSnapshot.exists?deckSnapshot.data().deck||[]:[];
+    }
+    const resolved=resolveRitIfDue(S);
+    tx.update(tRef(id), {
+      "gameState.ritAgree":g.ritAgree,"gameState.__seq":(g.__seq||0)+1,
+      ...(resolved?{"gameState.ritOffer":null,"gameState.board2":g.board2||null,"gameState.board3":g.board3||null}:{})
+    });
   });
   return {ok: true};
 });

@@ -19,12 +19,14 @@ async function check(mode) {
   video.pause = () => { pauses++; };
   w.localStorage.setItem('pkIntroSeen', '1');
   w.sessionStorage.setItem('pkIntroSeen', '1');
+  if (mode === 'desktop') w.document.documentElement.classList.add('pt-desktop');
   w.eval(script);
+  if (mode !== 'reduced') assert.equal(video.getAttribute('src'), mode === 'desktop' ? 'assets/video/pokerten-desktop-394.mp4' : 'assets/video/pokerten-orizis-intro.mp4');
   await Promise.resolve();
   assert.equal(el.classList.contains('oi-out'), false);
   assert.equal(plays, mode === 'reduced' ? 0 : 1);
   const fire = ms => [...timers.values()].find(entry => entry.ms === ms).fn();
-  if (mode === 'normal') {
+  if (mode === 'normal' || mode === 'desktop') {
     assert.equal(video.muted, true);
     el.querySelector('[data-intro-sound]').click();
     assert.equal(video.muted, false);
@@ -43,6 +45,6 @@ async function check(mode) {
   w.close();
 }
 (async () => {
-  for (const mode of ['normal','skip','escape','error','timeout','blocked','reduced']) await check(mode);
+  for (const mode of ['normal','desktop','skip','escape','error','timeout','blocked','reduced']) await check(mode);
   console.log('PASS Classic launch for returning users, sound, skip, motion preference and video failure.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

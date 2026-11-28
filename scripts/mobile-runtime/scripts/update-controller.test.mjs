@@ -137,3 +137,15 @@ test('a manual tap during startup gives the existing download the full retry win
  assert.deepEqual(timers,[15000,60000]);finish({id:'new'});assert.match(await done,/Starting the updated game/);
  assert.equal(f.events.filter(([key])=>key==='apply').length,1);
 });
+
+test('only advancing progress of the requested version extends a manual download',async()=>{
+ let finish,expire;const timers=[],f=fixture({delay:(fn,ms)=>{expire=fn;timers.push(ms);return timers.length}});
+ f.options.ota.download=()=>new Promise(resolve=>{finish=resolve;});
+ f.updater.setView('clubs');const done=f.updater.check(true);await flush();
+ f.updater.progress(18,'wrong');f.updater.progress(18,release.version);
+ f.updater.progress(18,release.version);f.updater.progress(12,release.version);
+ assert.deepEqual(timers,[60000,60000]);assert.equal(f.events.at(-1)[1].percent,18);
+ f.updater.progress(42,release.version);assert.deepEqual(timers,[60000,60000,60000]);
+ expire();assert.match(await done,/too long/);finish({id:'late'});await flush();
+ assert.equal(f.events.filter(([key])=>key==='apply').length,0);
+});

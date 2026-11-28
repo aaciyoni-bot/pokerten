@@ -5,7 +5,7 @@ import { clearStaleResume } from './update-resume.mjs';
 import release from '../ota-release.json';
 const version = Number(document.querySelector('meta[name="app-version"]')?.content);
 const storeUrl = 'https://play.google.com/store/apps/details?id=com.orizis.pokerten';
-let overlay, text, controller, acknowledgement, started = false, manualCheck;
+let overlay, text, progress, controller, acknowledgement, started = false, manualCheck;
 function render(state) {
   if (!state) { overlay?.remove(); overlay = null; const app=document.getElementById('root'); if(app)app.inert=false; return; }
   if (!overlay) {
@@ -13,13 +13,16 @@ function render(state) {
     overlay.setAttribute('aria-live','polite'); overlay.setAttribute('aria-label','Updating POKERTEN');
     overlay.style.cssText='position:fixed;inset:0;z-index:2147483647;background:#06111c;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#9be7ef;font:600 18px system-ui;gap:18px;touch-action:none';
     const logo = document.createElement('strong'); logo.textContent='POKERTEN'; logo.style.cssText='font-size:30px;color:#fff;letter-spacing:3px';
-    const progress=document.createElement('progress'); progress.style.cssText='width:180px;height:6px;accent-color:#6df4d0';
+    progress=document.createElement('progress');progress.max=100;progress.setAttribute('aria-label','Download progress'); progress.style.cssText='width:180px;height:6px;accent-color:#6df4d0';
     text = document.createElement('span'); overlay.append(logo,progress,text); document.body.append(overlay);
     // Prevent keyboard activation of controls under the startup screen as well.
     overlay.addEventListener('keydown',event=>{ event.preventDefault(); event.stopPropagation(); });
     const app=document.getElementById('root'); if(app)app.inert=true; overlay.tabIndex=-1; overlay.focus();
   }
-  text.textContent=state.text + (Number.isFinite(state.percent) ? ' ' + Math.round(state.percent) + '%' : state.size ? ' ('+(state.size/1048576).toFixed(1)+' MB)' : '');
+  if(Number.isFinite(state.percent))progress.value=state.percent;
+  else progress.removeAttribute('value');
+  const amount=Number.isFinite(state.percent) ? ' · '+Math.round(state.percent)+'%' : '';
+  text.textContent=state.text+amount+(state.size?' · Download size '+(state.size/1048576).toFixed(1)+' MB':'');
 }
 // The native rollback deadline measures whether the local JS bundle boots.
 function acknowledgeShell() {
@@ -57,7 +60,7 @@ if (Capacitor.getPlatform() === 'android') {
         return await response.json();
       } finally { clearTimeout(deadline); }
     }});
-  CapacitorUpdater.addListener('download',event=>controller.progress(event.percent)).catch(()=>{});
+  CapacitorUpdater.addListener('download',event=>controller.progress(event.percent,event.bundle?.version)).catch(()=>{});
 }
 window.PokerAppUpdate = {
   version, storeUrl,

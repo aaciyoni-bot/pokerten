@@ -42,5 +42,14 @@ const pointer=async(type,x,y,time)=>{const event=new w.Event(type,{bubbles:true,
  await key('Home');assert.equal(frameQueue.size,0);assert.equal(front().querySelector('.cl-name').textContent,'Alpha','reduced-motion selection is immediate');
  await render({clubs:[clubs[0]],myMems:[mems[0]]});assert.equal(w.document.querySelectorAll('.cl-dots button').length,2);await key('ArrowLeft');assert.ok(front().classList.contains('cl-card-create'),'one club plus Create loops correctly');await key('ArrowRight');assert.equal(front().querySelector('.cl-name').textContent,'Alpha');
  await render({clubs:[],myMems:[]});assert.equal(w.document.querySelectorAll('.cl-card').length,1);assert.equal(w.document.querySelectorAll('.cl-dots button').length,1);assert.ok(front().classList.contains('cl-card-create'),'empty membership list has a single static Create option');
+ await React.act(()=>root.render(null));
+ w.matchMedia=q=>({matches:q.includes('min-width:900px'),addEventListener(){},removeEventListener(){}});
+ await render({myMems:[...mems.slice(0,2),{...mems[2],status:'pending'}]});
+ const entries=[...w.document.querySelectorAll('.desktop-club-enter')];
+ assert.equal(entries.length,3);
+ assert.equal(deck(),null);
+ assert.equal(entries[2].disabled,true);
+ await React.act(()=>entries[1].click());
+ assert.equal(entered.at(-1),'beta');
  assert.equal(writes.length,0,'rotating never changes membership, chips or games');await React.act(()=>root.unmount());assert.equal(frameQueue.size,0);assert.equal(mediaListeners.size,0);w.close();console.log('PASS: real Y-axis carousel, both-side looping, billboard faces, settled balance/entry, drag intent, cyclic keys/dots, small lists and live reduced-motion cleanup');
 })().catch(async e=>{console.error(e);await React.act(()=>root.unmount());w.close();process.exitCode=1;});

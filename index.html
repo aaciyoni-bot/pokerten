@@ -1136,7 +1136,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <link rel="stylesheet" href="assets/css/club-orbital.css?v=315">
 <link rel="stylesheet" href="assets/css/reference-shell.css?v=324">
 <link rel="stylesheet" href="assets/css/card-games-reference.css?v=324">
-<link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=344">
+<link rel="stylesheet" href="assets/css/lobby-game-colors.css?v=397">
 <link rel="stylesheet" href="assets/css/club-cashier.css?v=347">
 <script src="assets/js/hand-archive.js?v=386"></script>
 <script src="assets/js/table-clips.js?v=387"></script>
@@ -1144,7 +1144,7 @@ body{font-feature-settings:'tnum';-webkit-font-smoothing:antialiased}.aurora-bg{
 <script src="assets/js/club-cashier.js?v=385"></script>
 <link rel="stylesheet" href="assets/sounds/sound-library.css?v=333">
 <script src="assets/js/poker-sound-pack.js?v=348"></script>
-<link rel="stylesheet" href="assets/css/reference-experience.css?v=396">
+<link rel="stylesheet" href="assets/css/reference-experience.css?v=397">
 <link rel="stylesheet" href="assets/css/club-classic-features.css?v=382">
 <link rel="stylesheet" href="assets/css/login-reference.css?v=376">
 <script>
@@ -7204,18 +7204,25 @@ function AdditionalTableLobby({origin,tables,tournaments,user,ready,error,onRetr
     finally{busy.current=false;}
   }
   return h('section',{className:'additional-table-lobby',dir:'ltr','aria-label':'Table lobby'},
-    h('header',null,h('button',{type:'button',onClick:onBack},'‹ Back to table'),h('h1',null,'Add a table')),
+    h('header',null,
+      h('img',{className:'table-picker-brand',src:'assets/brand/orbital-icon192.png',width:44,height:44,alt:'POKERTEN'}),
+      h('button',{type:'button',onClick:onBack},'‹ Back to table'),h('h1',null,'Add a table')),
     seats.length>0 && h('div',{className:'multi-picker-seats',role:'navigation','aria-label':'Your tables'},
       seats.map(t=>h(AdditionalSeat,{key:t.docId,table:t,preview:miniPreviews[t.docId],focus:onOpen}))),
-    h('nav',{'aria-label':'Game type'},['cash','tournaments'].map(v=>h('button',{key:v,type:'button','aria-pressed':tab===v,onClick:()=>setTab(v)},v==='cash'?'Cash games':'Tournaments'))),
+    h('nav',{'aria-label':'Game type'},['cash','tournaments'].map(v=>h('button',{key:v,type:'button','aria-pressed':tab===v,onClick:()=>setTab(v)},
+      h('span',{className:'table-picker-tab-icon','aria-hidden':true},v==='cash'?
+        h(SuitGlyph,{s:'♠',color:'currentColor',size:19}):h('i',{className:'fa-regular fa-calendar'})),
+      v==='cash'?'Cash games':'Tournaments'))),
     notice&&h('p',{role:'status'},notice),
     error?h('button',{type:'button',onClick:onRetry},'Retry table list'):!ready?h('p',{role:'status'},'Loading tables…'):null,
     h('div',{className:'additional-table-grid'},(tab==='cash'?cash:events).map(t=>{
       const event=tab!=='cash',id=event?t.id:t.docId;
       const detail=event?(t.status==='running'?'Late registration':'Registration open')+' · '+formatMoney(tourEntryOf(t,!!t.players?.[user.uid]?.out))+' entry':
         Object.keys(t.players||{}).length+'/'+(t.settings?.maxPlayers||6)+' seats · '+formatMoney(t.settings?.spinMode?t.settings.spinBuyIn:buyInMin(t.settings||{}))+' min buy-in';
-      return h('button',{type:'button',key:id,disabled:event&&registering===id,onClick:()=>event?enter(t):onOpen(t)},
-        h('strong',null,additionalTableName(t)),h('span',null,detail),h('b',null,event?'Register ›':'View table ›'));
+      const game=t.settings?.spinMode?'spin':t.settings?.isDealerChoice?'Dealer Choice':t.settings?.baseGameType||t.pokerType||'NLH';
+      return h('button',{type:'button',key:id,'data-lobby-game':game,disabled:event&&registering===id,onClick:()=>event?enter(t):onOpen(t)},
+        h('span',{className:'table-picker-info'},h('strong',null,additionalTableName(t)),h('span',null,detail)),
+        h('span',{className:'table-picker-action'},event?'Register ›':'View table ›'));
     })),ready && !error && !(tab==='cash'?cash:events).length && h('p',null,'No additional '+(tab==='cash'?'cash tables':'tournaments')+' available.'));
 }
 

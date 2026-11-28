@@ -79,3 +79,40 @@ test('a fold completes settlement once and keeps unshown cards out of the writte
   assert.ok(state.table.history[0].ps.every(player=>player.c===null));
   assert.deepEqual(state.gameState.rabbit,[{val:'K',suit:'c'}]);
 });
+
+test('additional seats show only the signed-in hand and the active decision deadline',async()=>{
+  const {readSeatPreview}=require('../pokerSeatPreview');
+  const hand=['♠','♥','♦','♣','♠','♥','♦'].map((suit,i)=>({suit,val:String(i+2),id:'private marker'}));
+  const me={uid:'player',status:'active',cardCount:7,stack:99,bet:5};
+  const game={handN:4,phase:'flop',activeTurnUid:'player',turnStartedAt:18000,currentGameType:'Omaha 7',
+    highestBet:10,minRaise:10,board:hand.slice(0,3),pots:[{amount:12}]};
+  const table={authorityVersion:2,type:'poker',settings:{serverEngine:true,actionTime:30},clubId:'club',
+    gameState:game,players:{player:me,other:{bet:10}}};
+  const member={status:'approved'},reads=[];
+  const docs={'memberships/player_club':member,'tables/table':table,'tables/table/priv/player':{cards:hand}};
+  const ref=path=>({path,collection:name=>({doc:id=>ref(path+'/'+name+'/'+id)})});
+  const read=r=>{reads.push(r.path);return {exists:!!docs[r.path],data:()=>docs[r.path]};};
+  const db={doc:ref,runTransaction:(fn,options)=>{assert.deepEqual(options,{readOnly:true});return fn({get:read,getAll:(...refs)=>refs.map(read)});}};
+  const req={auth:{uid:'player'},data:{previewClubId:'club',uid:'other',targetUid:'other'}};
+  const preview=()=>readSeatPreview(db,req,'table');
+  for(const event of [null,'event']){
+    table.tournamentId=event;
+    const p=await preview();
+    assert.deepEqual(p.cards,hand.map(({suit,val})=>({suit,val})));
+    assert.equal(p.deadline,48000);assert.equal(p.bettingTurn,true);assert.equal(p.maxTo,42);
+    assert.doesNotMatch(JSON.stringify(p),/private marker|other|player|_engine/);
+    Object.assign(me,{timeBankTurn:18000,timeBankHand:4});
+    assert.equal((await preview()).deadline,63000);
+    me.timeBankTurn=null;
+  }
+  game.activeTurnUid='other';assert.equal((await preview()).deadline,null);
+  game.phase='discard';me.cardCount=3;
+  let p=await preview();assert.equal(p.deadline,43000);assert.equal(p.bettingTurn,false);
+  reads.length=0;game.phase='waiting';assert.deepEqual((await preview()).cards,[]);
+  assert.equal(reads.some(r=>r.includes('/priv/')),false);
+  for(const change of [()=>{member.status='banned';},()=>{member.status='approved';me.left=true;},
+    ()=>{me.left=false;me.status='out';},()=>{me.status='active';table.clubId='different';},
+    ()=>{table.clubId='club';delete table.players.player;}]){change();assert.equal(await preview(),null);}
+  assert.equal(reads.some(r=>r.includes('/priv/')),false);
+  await assert.rejects(()=>readSeatPreview(db,{data:req.data},'table'),{code:'unauthenticated'});
+});

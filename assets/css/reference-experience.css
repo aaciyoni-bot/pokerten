@@ -311,3 +311,60 @@ html.pt-desktop .login-screen .login-button--google{background:#c8e4e7;color:#11
 html.pt-desktop .login-screen .login-google-icon{width:23px;height:23px}
 html.pt-desktop .login-screen .login-button--code{background:#102630;color:#d1ecf0}
 html.pt-desktop .login-screen .login-footer{margin:30px 0 0}
+
+/* Keep the session switcher in the utility row. The cards share a single
+   bounded grid, including seven-card hands on compact phones. */
+.multi-strip{display:flex;align-items:center;gap:4px;max-width:min(58vw,480px);overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;pointer-events:auto}
+.multi-strip::-webkit-scrollbar{display:none}
+.multi-strip button,.multi-side button,.additional-table-lobby button{cursor:pointer}
+.multi-strip button:focus-visible,.multi-side button:focus-visible,.additional-table-lobby button:focus-visible{outline:2px solid #a8ede0;outline-offset:-2px}
+.multi-add,.multi-switch{display:grid;place-items:center;flex:none;min-height:44px;border:0;background:transparent;color:#e8f6f4;padding:1px 2px;gap:1px}
+.multi-add .multi-oval,.multi-switch .multi-oval{display:grid;place-items:center;box-sizing:border-box;width:78px;height:37px;border:2px solid #63888a;border-radius:22px;background:#133639;box-shadow:inset 0 0 0 2px #091e24}
+.multi-add .multi-oval{width:42px;height:27px;font:600 20px/1 system-ui}
+.multi-thumb{flex:none}.multi-caption{max-width:78px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 9px/1.1 system-ui;color:#d6e7e5}
+.multi-turn-clock{font:700 10px/1.15 system-ui;color:#ffe1a3;white-space:nowrap;font-variant-numeric:tabular-nums}
+.multi-turn-clock[data-urgent="true"]{color:#ffae9d}
+.multi-cards{display:inline-grid;grid-template-columns:repeat(4,max-content);place-content:center;align-items:center;gap:1px}
+.multi-cards[data-count="1"],.multi-cards[data-count="2"],.multi-cards[data-count="3"]{grid-template-columns:repeat(var(--columns,2),max-content)}
+.multi-cards[data-count="1"]{--columns:1}.multi-cards[data-count="3"]{--columns:3}
+.multi-card{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-width:14px;height:12px;border-radius:2px;background:#fff;white-space:nowrap;letter-spacing:-.6px;padding:0 1px;font:800 10px/1 Arial,sans-serif}
+.multi-card i{font:normal 9px/1 Arial,sans-serif}.multi-card.spades{color:#1d2431}.multi-card.hearts{color:#bb1939}.multi-card.diamonds{color:#1353aa}.multi-card.clubs{color:#116544}
+.multi-oval:has(.multi-cards[data-count="2"]) .multi-card{min-width:22px;height:22px;font-size:15px}
+.multi-oval:has(.multi-cards[data-count="2"]) i{font-size:12px}
+[data-turn="true"]>.multi-switch .multi-oval{border-color:#ffd483;background:#484331}
+.multi-wait{color:#9abcd0;font-size:13px;letter-spacing:2px}
+.poker-room:has(.multi-strip) .poker-desktop-heading{left:auto;right:22px;top:18px}
+.poker-room:has(.multi-strip)>.poker-god-runout{top:64px}
+.additional-table-lobby{height:100%;overflow:auto;box-sizing:border-box;background:#081820;color:#eff8f7;padding:clamp(14px,4vw,56px);font:500 15px/1.4 system-ui,sans-serif}
+.additional-table-lobby header,.additional-table-lobby nav,.additional-table-grid{max-width:1200px;margin:0 auto 20px}
+.additional-table-lobby h1{font-size:clamp(25px,3vw,36px);font-weight:750;margin:16px 0}
+.additional-table-lobby nav{display:flex;gap:8px}.additional-table-lobby button,.multi-side button{border:1px solid #45656b;border-radius:9px;background:#142c34;color:#def0ed;padding:9px 14px}
+.additional-table-lobby [aria-pressed="true"]{background:#b2e0d7;color:#102825}
+.additional-table-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(245px,100%),1fr));gap:12px}
+.additional-table-grid button{padding:16px;display:grid;gap:6px;text-align:left}.additional-table-grid button span{font-size:13px;color:#bfced1}.additional-table-grid button b{color:#aedfd3}
+.additional-table-lobby>p{max-width:1200px;margin:12px auto}
+.poker-room[data-multitable="true"]{--multi-side:clamp(266px,28vw,450px)}
+.poker-room[data-multitable="true"] .pt-stage{right:var(--multi-side)}
+.poker-room[data-multitable="true"] .poker-action-dock{right:calc(var(--multi-side) + 12px)!important;width:clamp(320px,32vw,540px)!important}
+.poker-room[data-multitable="true"] .poker-desktop-heading{display:none}
+.poker-room[data-multitable="true"] .poker-runout-choice{right:calc(var(--multi-side) + 12px)}
+.multi-side{position:absolute;right:0;top:0;bottom:0;width:var(--multi-side);z-index:70;background:#0c1c25;border-left:1px solid #3b5358;overflow:auto;padding:12px;box-sizing:border-box}
+.multi-side-table{border:1px solid #425b63;border-radius:13px;background:#132831;color:#e1ecee;margin-bottom:12px;padding:12px;font:550 14px/1.3 system-ui}
+.multi-side-table[data-turn="true"]{border-color:#d7b771}.multi-side-table header,.multi-side-table footer{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.multi-side-table header strong{overflow-wrap:anywhere}.multi-side-table header button,.multi-actions button{font-size:12px;padding:6px}
+.multi-felt{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;background:#124047;border:4px solid #486069;border-radius:60px;margin:12px 0;padding:12px 8px}
+.multi-felt>.multi-cards{display:flex}.multi-felt>.multi-cards .multi-card{height:24px;min-width:23px;font-size:14px}
+.multi-felt .multi-switch{padding:0;border:0;background:transparent}
+.multi-actions{display:flex;gap:4px}
+.multi-raise{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:8px}
+.multi-raise input{width:78px;padding:6px;background:#071521;border:1px solid #587d82;border-radius:6px;color:white}
+.multi-raise button{padding:5px 8px}
+
+.multi-picker-seats{display:flex;flex-wrap:wrap;gap:6px;max-width:1200px;overflow-x:auto;margin:0 auto 20px;align-items:center}
+.multi-picker-seats .multi-switch{padding:4px;background:transparent;border-color:transparent}
+.multi-picker-seats .multi-switch:focus-visible{outline:2px solid #a8ede0}
+
+.multi-meta{display:flex;align-items:center;justify-content:center;gap:4px;width:78px;height:13px;overflow:hidden}
+.multi-meta .multi-caption{min-width:0}.multi-meta .multi-turn-clock{flex:none}
+.multi-add{position:sticky;left:0;z-index:1;background:#0a1a24;border-radius:12px}
+.multi-turn-count{position:absolute;right:0;top:0;padding:0 4px;border-radius:8px;background:#ffd483;color:#18232c;font:700 10px/14px system-ui}

@@ -1770,7 +1770,14 @@ exports.pkBotTurn = onCall(GOD_CALL_OPTS, async request => {
 exports.pkTick = onCall(CALL_OPTS, async (request) => {
   authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
-  return await tickTable(reqTableId(request));
+  return tickTable(reqTableId(request));
+});
+
+// A second table can be watched without advancing its hand or waiting on a clock tick.
+exports.pkSeatPreview = onCall(CALL_OPTS, async request => {
+  authedUid(request);
+  require('./pokerSecurity').requirePokerAvailable();
+  return {preview:await require('./pokerSeatPreview').readSeatPreview(db(),request,reqTableId(request))};
 });
 
 // pkLeave — protocol §3.4. Self stand-up, or admin kick with targetUid.

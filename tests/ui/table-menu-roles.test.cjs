@@ -5,7 +5,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const w=new JSDOM('<div id="root"></div>',{url:'http://localhost/',runScripts:'outside-only',pretendToBeVisual:true}).window;
 global.window=w;global.document=w.document;Object.defineProperty(global,'navigator',{value:w.navigator,configurable:true});global.IS_REACT_ACT_ENVIRONMENT=true;
 const React=require('react'),ReactDOM={...require('react-dom'),...require('react-dom/client')};w.React=React;w.ReactDOM=ReactDOM;
-w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');
+let wide=false;w.matchMedia=query=>({matches:wide&&query.includes('min-width:900px'),addEventListener(){},removeEventListener(){}});w.PokerRuntime=require('../../assets/js/poker-runtime');w.PokerTournament=require('../../assets/js/poker-tournament');
 const calls=[];let tableNext,tokenNext,managed=0,created=0,lobbies=0;
 let current={authorityVersion:2,clubId:'main',settings:{serverEngine:true,maxPlayers:6,baseGameType:'NLH',blinds:1,minBuyIn:40,maxBuyIn:200,straddle:true,actionTime:30},gameState:{__seq:1,phase:'waiting',board:[],pots:[],handN:1},players:{a:{uid:'a',name:'Alpha',stack:100,bet:0,status:'active',seatIndex:1,cards:[],cardCount:0},b:{uid:'b',name:'Beta',stack:100,bet:0,status:'active',seatIndex:2,cards:[],cardCount:0}}};
 const ref=(...a)=>({id:a.at(-1),path:a.slice(1).join('/')});
@@ -68,6 +68,16 @@ function present(titles,label){for(const t of titles)assert.ok(title(t),label+':
  present(['Sit out'],'seated Spin player');assert.ok(doc.querySelector('[aria-label="Leave table"]'),'Spin retains seat exit control');
  const before=calls.length;await React.act(()=>doc.querySelector('[aria-label=\"Back to lobby\"]').click());assert.equal(lobbies,1);assert.ok(calls.slice(before).every(c=>c.name==='pkSeat'&&c.args.op==='heartbeat'),'temporary navigation never leaves, sits out or changes chips');
  assert.equal(managed,0);assert.equal(created,0);assert.equal(calls.filter(c=>['pkTableManage','pkTableCreate','pkDeal','godPeek'].includes(c.name)||c.name==='pkSeat'&&c.args.op!=='heartbeat').length,0,'opening menus causes no financial or privileged command');
+ assert.equal(doc.querySelector('[aria-label="Open table controls"]'),null,'phone keeps its existing menu');
+ wide=true;await React.act(()=>root.render(null));delete current.tournamentId;current.settings.spinMode=false;delete current.spin;
+ await render();assert.equal(doc.querySelector('[aria-label="Open table controls"]'),null,'desktop player sees only ordinary tools');
+ await render({role:'manager'});await React.act(()=>doc.querySelector('[aria-label="Close table menu"]').click());
+ await React.act(()=>doc.querySelector('[aria-label="Open table controls"]').click());
+ assert.ok(doc.querySelector('[role="dialog"][aria-label="Table controls"]'));
+ present(['Add bot','Fill empty seats with bots'],'desktop manager');absent(['GOD view','Deal now'],'ordinary manager');
+ await React.act(()=>title('Add bot').click());assert.ok(doc.querySelector('input[aria-label="Buy-in per bot"]'));
+ const confirm=doc.querySelector('[aria-label="Confirm bot buy-in"]');await React.act(async()=>confirm.click());
+ const additions=calls.filter(c=>c.name==='pkSeat'&&c.args.op==='addbot');assert.equal(additions.length,1);assert.equal(additions[0].args.tableId,'menu-test');
  console.log('PASS: table-menu role matrix, callback defense, pending/banned denial, demotion, GOD identity/revocation and cash/tournament/Spin limits');
  }finally{await React.act(()=>root.unmount());w.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

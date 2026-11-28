@@ -1770,7 +1770,10 @@ exports.pkBotTurn = onCall(GOD_CALL_OPTS, async request => {
 exports.pkTick = onCall(CALL_OPTS, async (request) => {
   authedUid(request);
   require("./pokerSecurity").requirePokerAvailable();
-  return await tickTable(reqTableId(request));
+  const id=reqTableId(request);
+  const result=await tickTable(id);
+  if(request.data?.previewClubId)return {preview:await require('./pokerSeatPreview').readSeatPreview(db(),request,id)};
+  return result;
 });
 
 // pkLeave — protocol §3.4. Self stand-up, or admin kick with targetUid.

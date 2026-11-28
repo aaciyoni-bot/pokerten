@@ -94,8 +94,11 @@ function finishEvent(f){Object.assign(f.tor,{status:'done',finishedAt:Date.now()
   w.matchMedia=()=>({matches:scenario==='reduced',addEventListener(){},removeEventListener(){}});
   Object.assign(f.table.gameState,{phase:'river',currentGameType:'NLH',activeTurnUid:'other',pots:[{amount:900}]});
   f.table.players.third={uid:'third',name:'Third',stack:2000,bet:0,status:'active',seatIndex:2,cardCount:2};
+  f.table.players.fourth={uid:'fourth',name:'Fourth',stack:100,bet:0,status:'active',seatIndex:3,cardCount:2};
   f.tor.players.third={uid:'third',name:'Third',tableId:'final'};
   await start(f);
+  const rail=()=>[...doc.querySelectorAll('.poker-seat')].map(x=>[x.dataset.playerUid,x.style.left,x.style.top]);
+  const beforeRail=rail();
   const markOut=async()=>{
    Object.assign(f.tor.players.winner,{out:true,rank:scenario==='final'?2:3});
    if(scenario==='final')Object.assign(f.tor,{status:'done',finishedAt:Date.now(),results:[{uid:'other',rank:1,prize:3000},{uid:'winner',rank:2,prize:1000}]});
@@ -104,10 +107,12 @@ function finishEvent(f){Object.assign(f.tor,{status:'done',finishedAt:Date.now()
   if(scenario!=='table-first')await markOut();
   assert.equal(doc.querySelector('.pt-tour-finish'),null,'roster must not cover the live river');
   Object.assign(f.table.gameState,{phase:'showdown',__seq:2,showdownAt:Date.now(),activeTurnUid:null,pots:[],lastWinners:'Other, Third',lastWinAmount:900,lastAwards:[{uid:'other',amount:600},{uid:'third',amount:300}]});
+  delete f.table.players.fourth;
   delete f.table.players.winner;
   f.table.players.other.stack+=600;f.table.players.third.stack+=300;
   await React.act(()=>f.emit('tables/final'));
   if(scenario==='table-first')await markOut();
+  assert.deepEqual(rail(),beforeRail,'every seat stays in position through a double knockout');
   assert.ok(doc.querySelector('[data-player-uid="winner"]'),'eliminated seat stays on the rail');
   assert.equal(outDialog(),null);
   if(scenario==='final'){
@@ -119,7 +124,7 @@ function finishEvent(f){Object.assign(f.tor,{status:'done',finishedAt:Date.now()
   if(scenario==='reduced'){
    assert.equal(doc.querySelector('.poker-pot-award'),null);
    await advance(450);assert.ok(doc.querySelector('.poker-seat-winner'));
-   assert.equal(outDialog(),null);await advance(700);
+   assert.equal(outDialog(),null);await advance(1350);
   }else{
    assert.equal(doc.querySelectorAll('.poker-pot-award').length,2);
    await advance(2710);
@@ -130,7 +135,7 @@ function finishEvent(f){Object.assign(f.tor,{status:'done',finishedAt:Date.now()
    await advance(100);
    assert.equal(doc.querySelector('[data-player-uid="third"] .poker-stack-amount').textContent,'2,300');
    assert.equal(doc.querySelector('.pt-tour-finish'),null,'credited stack is visible before the result');
-   await advance(700);
+   await advance(1350);
   }
   if(scenario==='final'){
    assert.equal(view(),'lobby');assert.ok(doc.querySelector('.pt-tour-finish'),'paid finalist sees prize after exit');

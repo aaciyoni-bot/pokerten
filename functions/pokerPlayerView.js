@@ -21,6 +21,8 @@ function gameState(g) {
   state.board3 = Array.isArray(g.board3) ? cards(g.board3) : null;
   state.pots = records(g.pots, pot => ({...fields(pot, 'amount'), eligible:ids(pot.eligible)}));
   state.lastAwards = records(g.lastAwards, row => fields(row, 'uid name amount'));
+  if(g.phase==='showdown'&&Array.isArray(g.resultSeats))
+    state.resultSeats=records(g.resultSeats, row=>fields(row,'uid name seatIndex photo avatarSeed'));
   state.ritOffer = g.ritOffer ? fields(g.ritOffer, 'until runs') : null;
   state.ritAgree = Object.fromEntries(Object.entries(g.ritAgree || {}).filter(([,v]) => typeof v === 'boolean'));
   state.rabbit = rabbitCards(g);

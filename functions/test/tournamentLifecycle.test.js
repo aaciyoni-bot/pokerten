@@ -223,6 +223,7 @@ test('running removal waits for a settled hand and preserves chip accounting',as
  const tid=f.tables(id)[0].docId;await f.action(tid,s=>f.engine.startHand(s));const rowBefore=copy(f.tables(id)[0]),balance=f.balance('human0');
  const result=await f.command('owner','removeplayer',{tournamentId:id,playerUid:'human0'});assert.equal(result.queued,true);assert.deepEqual(f.tables(id)[0].players,rowBefore.players);assert.equal(f.tour(id).players.human0.removalRequested,true);
  let n=0;while(f.tables(id)[0].gameState.phase!=='showdown'&&n++<80)await playOne(f,f.tables(id)[0]);
+ f.advance(T.showdownDelay(f.tables(id)[0].gameState));
  await f.tours.tickTournament(id,f.now());assert.equal(f.tour(id).players.human0.removed,true);assert.equal(f.tour(id).players.human0.out,true);assert.equal(f.balance('human0'),balance);assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
  assert.equal(f.tables(id).some(t=>t.players.human0),false);await assert.rejects(f.command('human0','register',{tournamentId:id}),e=>e.code==='permission-denied');
 });
@@ -275,13 +276,30 @@ test('new deal reaps eliminated seats but retains paid pending rebuy',async()=>{
  const d=f.docs.get('tables/'+row.docId);d.players.human2.stack=0;d.players.human2.status='out';f.tour(id).players.human2.out=true;
  await f.action(row.docId,s=>f.engine.startHand(s));assert.equal(f.tables(id)[0].players.human2,undefined);
 });
-test('consolidation holds busy tables before their next deal, preventing missed showdown windows',()=>{
+test('pairwise consolidation leaves the third table playing and waits only for the selected pair',()=>{
  const now=NOW,roster={},rows=[2,2,1].map((count,i)=>{const players={};for(let j=0;j<count;j++){const uid='p'+i+j;roster[uid]={};players[uid]={uid,stack:100,bet:0,status:'active',seatIndex:j};}return{docId:'t'+i,tournamentId:'tor',players,tournament:{},gameState:{phase:i===1?'river':'showdown',showdownAt:now-T.showdownDelay({}),pots:[]}};});
- const t={id:'tor',status:'running',tableSize:3,players:roster};const hold=T.plan(t,rows,now);
- assert.equal(hold.deletes.length,0);assert.equal(hold.updates.length,3);assert.equal(hold.updates.find(u=>u.id==='t1').patch.gameState.phase,'river');
- for(const u of hold.updates)Object.assign(rows.find(r=>r.docId===u.id),u.patch);
- rows[1].gameState={...rows[1].gameState,phase:'showdown',showdownAt:now+1000};
- const moved=T.plan(t,rows,now+1000+T.showdownDelay({}));assert.equal(moved.issue,null);assert.equal(moved.deletes.length,1);assert.equal(moved.updates.reduce((sum,u)=>sum+Object.keys(u.patch.players).length,0),5);
+ const t={id:'tor',status:'running',tableSize:3,players:roster};
+ const moved=T.plan(t,rows,now);
+ assert.deepEqual(moved.deletes,['t2']);assert.deepEqual(moved.updates.map(u=>u.id),['t0']);
+ assert.equal(Object.keys(moved.updates[0].patch.players).length,3);
+ rows[0].gameState.phase='turn';
+ const held=T.plan(t,rows,now);
+ assert.deepEqual(held.deletes,[]);assert.deepEqual(held.updates.map(u=>u.id).sort(),['t0','t2']);
+ assert.ok(held.updates.every(u=>u.patch.tournament.balanceHoldUntil>now));
+});
+test('five tables with a two-seat difference continue without holds or moves',()=>{
+ const players={};
+ const rows=[8,7,7,7,6].map((n,i)=>{
+  const seats={};for(let j=0;j<n;j++){const uid=i+'-'+j;players[uid]={};seats[uid]={uid,stack:100,bet:0,status:'active',seatIndex:j};}
+  return {docId:'t'+i,tournamentId:'tor',players:seats,tournament:{},gameState:{phase:'river',pots:[]}};
+ });
+ const t={id:'tor',status:'running',tableSize:8,players};
+ assert.deepEqual(T.plan(t,rows,NOW).updates,[]);
+ delete rows[4].players['4-5'];delete players['4-5'];
+ const held=T.plan(t,rows,NOW);assert.deepEqual(held.updates.map(u=>u.id).sort(),['t0','t4']);
+ rows[0].gameState.phase=rows[4].gameState.phase='waiting';
+ const balanced=T.plan(t,rows,NOW);
+ assert.deepEqual(balanced.updates.map(u=>Object.keys(u.patch.players).length).sort(),[6,7]);
 });
 test('legacy rebuy grace exits immediately without charge; re-entry waits alone with a funded stack',async()=>{
  const f=fixture(),id=await create(f,{reentry:true,maxReentries:2,lateRegUntilLevel:4,reentryBuyIn:50,bounty:5,fee:2});await startHumans(f,id,3);

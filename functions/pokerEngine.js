@@ -100,7 +100,8 @@ function firstAfterDealer(S) {
 
 // startHand port — index.html:9494-9563. Returns 'dealt'|'dc'|'waiting'.
 function tournamentReady(S) {
-  return !S.tor || S.tor.status==='running' && !S.raw.tournament?.finished && !(S.raw.tournament?.balanceHoldUntil>S.now) && !Tours.clock(S.tor,S.now).inBreak;
+  return !S.tor || S.tor.status==='running' && !S.raw.tournament?.finished && !(S.raw.tournament?.balanceHoldUntil>S.now) && !Tours.clock(S.tor,S.now).inBreak &&
+    (!['waiting','showdown'].includes(S.gameState?.phase)||!Object.keys(S.players||{}).some(uid=>S.tor.players?.[uid]?.removalRequested));
 }
 function startHand(S, forcedGameType) {
   OpponentModel.showdown(S);
@@ -144,7 +145,7 @@ function startHand(S, forcedGameType) {
   if (actives.length < 2) {
     S.priv = Object.fromEntries(Object.keys(pl).map(uid => [uid, []]));
     S.deck = [];
-    S.gameState = {...g0, lastAwards: [], lastWinners: null, lastWinAmount: 0, showdownAt: null, highestBet: 0, phase: "waiting", activeTurnUid: null, turnStartedAt: null, board: [], pots: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, board3: null, rabbit: null};
+    S.gameState = {...g0, resultSeats:null, lastAwards: [], lastWinners: null, lastWinAmount: 0, showdownAt: null, highestBet: 0, phase: "waiting", activeTurnUid: null, turnStartedAt: null, board: [], pots: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, board3: null, rabbit: null};
     return "waiting";
   }
   const uids = actives.map((p) => p.uid);
@@ -163,7 +164,7 @@ function startHand(S, forcedGameType) {
     dcUid = null;
     dcAnchor = null;
   }
-  S.gameState = {...g0, dealerUid, dcUid, dcAnchor, board: [], pots: [], lastWinners: null, lastWinAmount: 0, lastAwards: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, board3: null, rabbit: null};
+  S.gameState = {...g0, resultSeats:null, dealerUid, dcUid, dcAnchor, board: [], pots: [], lastWinners: null, lastWinAmount: 0, lastAwards: [], allInReveal: false, earlyWin: false, ritOffer: null, ritAgree: null, board2: null, board3: null, rabbit: null};
   if (S.settings.isDealerChoice && dealerUid === dcUid) {
     S.gameState.phase = "dc_selection";
     S.gameState.activeTurnUid = null;

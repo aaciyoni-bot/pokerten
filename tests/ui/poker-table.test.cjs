@@ -289,6 +289,7 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
    await React.act(async()=>tableNext(snapshot()));
    const seats=[...doc.querySelectorAll('.poker-seat')];
    assert.equal(Number(doc.querySelector('.poker-table').dataset.seatCount),seats.length);
+   assert.ok(!seats.some(s=>s.dataset.seatSide==='right'&&s.dataset.seatRow==='bottom'),'the action corner stays empty at every occupancy');
    const left=seats.filter(s=>s.dataset.seatSide==='left').length;
    assert.ok(Math.abs(left-(seats.length-left))<=1,'occupied ring remains balanced after stand-up');
    const ordered=Object.values(current.players).sort((a,b)=>a.seatIndex-b.seatIndex),my=ordered.findIndex(p=>p.uid==='me');
@@ -312,6 +313,14 @@ w.document.exitFullscreen=async()=>{w.document.fullscreenElement=null;w.document
  const joinsBefore=returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='register').length;await React.act(async()=>{reentryButton.click();reentryButton.click();});assert.equal(returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='register').length,joinsBefore+1,'re-entry double click makes one authoritative purchase');
  // A tournament manager can add a single entrant from the table menu and correct the deadline.
  await React.act(()=>root.render(React.createElement(w.TableTest,{tableDocId:'test-table',user:{uid:'me',role:'club_owner',balance:500},clubSettings:{name:'My Club'},onLeave(){left++;},showToast:m=>messages.push(m)})));
+ current.players.visitor={uid:'visitor',name:'Visitor',seatIndex:3,stack:200,bet:0,status:'active',cards:[]};
+ await React.act(async()=>tableNext(snapshot()));
+ await React.act(()=>doc.querySelector('[data-player-uid="visitor"] .player-pod').click());
+ w.confirm=()=>true;
+ const removeVisitor=[...doc.querySelectorAll('button')].find(b=>b.textContent==='Remove from tournament');
+ assert.ok(removeVisitor,'a manager can remove an opponent directly from a running tournament table');
+ await React.act(async()=>removeVisitor.click());
+ assert.ok(returnCalls.some(c=>c.name==='pkTournament'&&c.args.op==='removeplayer'&&c.args.tournamentId==='break-test'&&c.args.playerUid==='visitor'));
  await React.act(()=>doc.querySelector('[title="Table menu"]').click());
  const addTournamentBot=doc.querySelector('[title="Add bot"]');assert.ok(addTournamentBot,'tournament menus expose single-bot entry');assert.equal(doc.querySelector('[title="Fill empty seats with bots"]'),null);
  const botsBefore=returnCalls.filter(c=>c.name==='pkTournament'&&c.args.op==='fillbots').length;

@@ -6,6 +6,7 @@ const capacity=t=>Math.max(2,Math.min(/^Omaha\s*7$/i.test(t.pokerType||'')?5:9,M
 const showdownDelay=g=>g?.earlyWin?6500:8000;
 const idle=t=>['waiting','showdown'].includes(t.gameState?.phase||'waiting')&&!(t.gameState?.pots||[]).some(p=>p.amount>0)&&!Object.values(t.players||{}).some(p=>p.bet>0);
 const chips=rows=>cash(rows.reduce((sum,t)=>sum+Object.values(t.players||{}).reduce((n,p)=>n+Number(p.stack||0)+Number(p.bet||0)+Number(p.pendingTournamentChips||0),0)+(t.gameState?.pots||[]).reduce((n,p)=>n+Number(p.amount||0),0),0));
+const readyForSeatChanges=(row,now)=>idle(row)&&(row.gameState?.phase!=='showdown'||now-(row.gameState.showdownAt||0)>=showdownDelay(row.gameState));
 function clock(t,rows,now=Date.now()){
  const started=Number(t.startedAt)||now,elapsed=Math.max(0,now-started),every=Math.max(0,Math.floor(Number(t.breakEvery)||0)),pause=Math.max(0,Number(t.breakMins)||0)*60000;let acc=0;
  for(let i=0;i<rows.length;i++){
@@ -65,10 +66,9 @@ function plan(t,input,now=Date.now()){
  }}
  if(alive.some(uid=>!seen.has(uid)))return none('missing-seat');if(!alive.length)return none('no-live-player');
  const occupied=row=>Object.values(row.players||{}).filter(p=>!(p.status==='out'&&p.stack===0)),updates=new Map(),deleted=new Set();
- const ready=row=>idle(row)&&(row.gameState?.phase!=='showdown'||now-(row.gameState.showdownAt||0)>=showdownDelay(row.gameState));
+ const ready=row=>readyForSeatChanges(row,now);
  const save=row=>updates.set(row.docId,{id:row.docId,patch:{players:row.players,tournament:row.tournament,gameState:{...row.gameState,__seq:(input.find(x=>x.docId===row.docId).gameState?.__seq||0)+1}}});
  const finish=champion=>chips(rows.filter(r=>!deleted.has(r.docId)))===chips(input)?{updates:[...updates.values()].filter(u=>!deleted.has(u.id)),deletes:[...deleted],champion:champion||null,issue:null}:none('chip-conservation');
- const hold=(targets,force=false)=>{if(!force&&targets.every(ready))return true;for(const row of targets){if((row.tournament?.balanceHoldUntil||0)<now+10000){row.tournament={...row.tournament,balanceHoldUntil:now+30000};save(row);}}return false;};
  const clean=row=>{let changed=false;for(const [uid,p]of Object.entries(row.players))if(p.status==='out'&&p.stack===0&&!(p.pendingTournamentChips>0)&&roster[uid]?.out){delete row.players[uid];changed=true;}return changed;};
  for(const row of rows)if(ready(row)&&clean(row))save(row);
  const move=(src,dst,p)=>{clean(dst);const used=new Set(Object.values(dst.players).map(p=>p.seatIndex));let seat=0;while(used.has(seat)&&seat<cap)seat++;if(seat>=cap||dst.players[p.uid])throw Error('unsafe-seat');dst.players[p.uid]={...p,seatIndex:seat,bet:0,cards:[],cardCount:0,status:'waiting',hasActed:false,actionText:'',reveal:false,mucked:false,_reported:false};delete src.players[p.uid];save(src);save(dst);};
@@ -76,15 +76,60 @@ function plan(t,input,now=Date.now()){
  const live=rows.filter(r=>occupied(r).length).sort((a,b)=>occupied(a).length-occupied(b).length||a.docId.localeCompare(b.docId));
  if(alive.length===1&&rows.every(ready)&&live.length===1&&occupied(live[0]).every(p=>p.stack>0)){const row=live[0];row.tournament={...row.tournament,finished:true,final:true,tableWinner:alive[0],balanceHoldUntil:0};save(row);return finish(alive[0]);}
  if(!live.length)return none('missing-seat');const seats=live.reduce((n,r)=>n+occupied(r).length,0),movable=r=>occupied(r).every(p=>p.stack>0);
- if(live.length>Math.ceil(seats/cap)){
-  if(!hold(live)||!live.every(movable))return finish();const src=live[0],targets=live.slice(1).sort((a,b)=>occupied(b).length-occupied(a).length);
-  for(const p of occupied(src)){const dst=targets.find(r=>occupied(r).length<cap);if(!dst)return none('capacity');move(src,dst,p);}deleted.add(src.docId);
-  for(const row of targets){clean(row);row.tournament={...row.tournament,finished:false,final:targets.length===1,balanceHoldUntil:0};if(targets.length===1)row.gameState={...row.gameState,phase:'waiting',board:[],board2:null,pots:[],highestBet:0,activeTurnUid:null,turnStartedAt:null,lastWinners:null,allInReveal:false};save(row);}return finish();
+ if(live.length===1){
+  const row=live[0];
+  if(ready(row)&&(!row.tournament?.final||row.tournament?.balanceHoldUntil)){
+   row.tournament={...row.tournament,final:true,finished:false,balanceHoldUntil:0,balancePartner:null};save(row);
+  }
+  return finish();
  }
- if(live.length===1){const row=live[0];if(ready(row)&&!row.tournament?.final){row.tournament={...row.tournament,final:true,finished:false,balanceHoldUntil:0};save(row);}return finish();}
- const src=live.at(-1),dst=live[0];if(occupied(src).length-occupied(dst).length>=2&&movable(src)&&occupied(dst).length<cap){if(!hold([src,dst]))return finish();const ordered=occupied(src).sort((a,b)=>a.seatIndex-b.seatIndex),dealer=ordered.findIndex(p=>p.uid===src.gameState?.dealerUid);move(src,dst,ordered[(Math.max(-1,dealer)+3)%ordered.length]);for(const row of[src,dst]){row.tournament={...row.tournament,balanceHoldUntil:0};save(row);}}
+ const count=row=>occupied(row).length;
+ const small=live[0],big=live.at(-1);
+ // Leave room for late arrivals before breaking a table. Make the final table
+ // as soon as the remaining players fit, and never strand a lone player.
+ const spare=(live.length-1)*cap-seats;
+ const consolidate=spare>=0&&(live.length===2||count(small)===1||spare>=Math.min(2,cap-2)||small.tournament?.draining);
+ let src,dst;
+ if(consolidate){
+  src=small;
+  const receivers=live.filter(r=>r!==src&&count(r)<cap&&movable(r));
+  receivers.sort((a,b)=>Number(b.docId===src.tournament?.balancePartner)-Number(a.docId===src.tournament?.balancePartner)
+   ||Number(ready(b))-Number(ready(a))||Number(cap-count(b)>=count(src))-Number(cap-count(a)>=count(src))||count(a)-count(b)||a.docId.localeCompare(b.docId));
+  dst=receivers[0];
+ }else if(count(big)-count(small)>=3||count(small)===1&&count(big)>2){
+  src=big;dst=small;
+ }
+ const pair=src&&dst&&movable(src)&&movable(dst)?[src,dst]:[];
+ for(const row of live){
+  if(!pair.includes(row)&&row.tournament?.balanceHoldUntil){
+   row.tournament={...row.tournament,balanceHoldUntil:0,balancePartner:null};save(row);
+  }
+ }
+ if(!pair.length)return finish();
+ if(!pair.every(ready)){
+  for(const row of pair){
+   const partner=row===src?dst:src;
+   if(row.tournament?.balancePartner!==partner.docId||(row.tournament?.balanceHoldUntil||0)<now+10000){
+    row.tournament={...row.tournament,balancePartner:partner.docId,balanceHoldUntil:now+30000};save(row);
+   }
+  }
+  return finish();
+ }
+ if(consolidate){
+  for(const player of occupied(src).slice(0,cap-count(dst)))move(src,dst,player);
+  if(!count(src))deleted.add(src.docId);
+ }else{
+  const ordered=occupied(src).sort((a,b)=>a.seatIndex-b.seatIndex),dealer=ordered.findIndex(p=>p.uid===src.gameState?.dealerUid);
+  move(src,dst,ordered[(Math.max(-1,dealer)+3)%ordered.length]);
+ }
+ for(const row of pair){
+  const final=deleted.has(src.docId)&&live.length===2&&row===dst;
+  row.tournament={...row.tournament,finished:false,final,draining:row===src&&consolidate&&count(src)>0,balanceHoldUntil:0,balancePartner:null};
+  if(final)row.gameState={...row.gameState,phase:'waiting',board:[],board2:null,board3:null,pots:[],highestBet:0,activeTurnUid:null,turnStartedAt:null,lastWinners:null,allInReveal:false};
+  save(row);
+ }
  return finish();
 }
-const api={showdownDelay,capacity,idle,chips,clock,lateRegistrationDeadline,lateRegistrationOpen,earlyRegistrationBonus,entryFunding,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
+const api={showdownDelay,capacity,idle,readyForSeatChanges,chips,clock,lateRegistrationDeadline,lateRegistrationOpen,earlyRegistrationBonus,entryFunding,split,bountyPlan,plan};if(typeof module!=='undefined'&&module.exports)module.exports=api;root.PokerTournament=api;
 })(typeof window!=='undefined'?window:globalThis);
 

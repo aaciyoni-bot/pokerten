@@ -14,7 +14,7 @@ w.__pkMuted=true;
 const root=ReactDOM.createRoot(w.document.getElementById('root')),doc=w.document;
 const record=(id,data)=>({id,exists:()=>!!data,data:()=>structuredClone(data),metadata:{fromCache:false}});
 const records=rows=>({docs:rows.map(row=>record(row.id,row)),metadata:{fromCache:false}});
-function fixture(multiple=false){
+function fixture(multiple=false,delayPreviews=false){
  const identity={uid:'winner',email:'winner@example.test',emailVerified:true};
  const club={id:'main',name:'Finish test',ownerUid:'owner'};
  const profile={uid:'winner',username:'Winner',email:identity.email,status:'approved',role:'player',playerId:'P123456789'};
@@ -49,11 +49,12 @@ function fixture(multiple=false){
   onIdTokenChanged:(_,fn)=>{tokenChanged=fn;return()=>{};},
   getDoc:async r=>snapshot(r),getDocs:async r=>snapshot(r),
   onSnapshot:(r,options,next)=>{const fn=typeof options==='function'?options:next;const rows=listeners.get(r.path)||new Set();rows.add(fn);listeners.set(r.path,rows);fn(snapshot(r));return()=>rows.delete(fn);},
-  fx:async(name,args)=>{calls.push({name,args});if(name==='pkEnsurePlayer')return{playerId:profile.playerId};if(name==='pkTick'&&args.previewClubId&&multiple)return {preview:{
+  fx:async(name,args)=>{calls.push({name,args});if(name==='pkEnsurePlayer')return{playerId:profile.playerId};if(name==='pkSeatPreview'&&delayPreviews)return new Promise(()=>{});
+   if(name==='pkSeatPreview'&&multiple)return {preview:{
     cards:cards(args.tableId).map(c=>({val:c[0],suit:c[1]})),turn:true,bettingTurn:true,deadline:Date.now()+19000}};
    if(name==='pkTick'||name==='pkTournament'&&args.op==='tick'||name==='pkSeat'&&args.op==='heartbeat')return{};throw Error('Unexpected mutation: '+name);},
   updateDoc:denyWrite,setDoc:denyWrite,addDoc:denyWrite,deleteDoc:denyWrite,runTransaction:denyWrite};
- return{table,tor,calls,signIn:()=>tokenChanged(identity),emit:path=>{for(const fn of [...(listeners.get(path)||[])])fn(snapshot({path}));}};
+ return{table,tor,calls,extra,signIn:()=>tokenChanged(identity),emit:path=>{for(const fn of [...(listeners.get(path)||[])])fn(snapshot({path}));}};
 }
 const view=()=>new URL(w.location.href).searchParams.get('v');
 const dialog=()=>doc.querySelector('[role="dialog"][aria-label="Champion"]');
@@ -80,8 +81,19 @@ function finishEvent(f){Object.assign(f.tor,{status:'done',finishedAt:Date.now()
  await React.act(()=>doc.querySelector('.additional-table-lobby header button').click());
  await React.act(()=>mini().querySelector('.multi-card').click());assert.equal(w.localStorage.getItem('pkResume'),'cash-b');
  assert.equal(mini().querySelectorAll('.multi-card').length,2);assert.match(mini().getAttribute('aria-label'),/A♥ K♣/);assertPublic();
- await React.act(()=>mini().click());assert.equal(w.localStorage.getItem('pkResume'),'final');
+ const moved=structuredClone(regular.table);Object.assign(moved,{id:'moved',docId:'moved'});regular.extra.push(moved);
+ regular.tor.players.winner.tableId='moved';
+ await React.act(()=>{regular.emit('tableLobbyViews');regular.emit('tournamentViews');});
+ assert.equal(doc.querySelectorAll('.multi-thumb').length,1,'stale roster never creates a second entry for one tournament');
+ await React.act(()=>mini().click());assert.equal(w.localStorage.getItem('pkResume'),'moved','switch follows table balancing');
  assert.equal(regular.calls.some(c=>c.name==='pkLeave'||c.name==='pkAct'||c.name==='pkTournament'&&c.args.op!=='tick'),false);
+ await React.act(()=>root.render(null));
+ const slow=fixture(true,true);await start(slow);
+ const cashTicks=()=>slow.calls.filter(c=>c.name==='pkTick'&&c.args.tableId==='cash-b').length;
+ const ticksBefore=cashTicks();assert.ok(ticksBefore>0);assert.equal(mini().querySelector('[role=timer]'),null);
+ await React.act(async()=>{await new Promise(done=>setTimeout(done,1150));});
+ assert.ok(cashTicks()>ticksBefore,'a pending private hand read cannot delay the regular game timer');
+ assert.equal(slow.calls.some(c=>c.name==='pkAct'||c.name==='pkLeave'),false);
  await React.act(()=>root.render(null));
  for(const order of ['table-first','result-first','already-dismissed']){
   const f=fixture();await start(f);

@@ -4971,23 +4971,28 @@ function App() {
     // Navigating to the lobby does not pause, fold or release a seat. Keep
     // its presence and authoritative clock alive outside the table view.
     const beat=()=>{if(!stopped)ids.forEach(tableId=>pokerCommand('pkSeat',{tableId,op:'heartbeat'}).catch(()=>{}));};
-    const clubId=activeClub.id,uid=dbUser.uid;
-    const previews=currentView==='poker-table' || pickerActive,scope=JSON.stringify([uid,clubId,activeTable?.docId,backgroundSeats]);
-    const update=(id,data)=>{
-      if(stopped || document.hidden || navigator.onLine===false || !previews || window.fb.auth?.currentUser?.uid!==uid)return;
-      setMiniState(prev=>({scope,tables:{...(prev.scope===scope?prev.tables:{}),[id]:data}}));
-    };
-    const stops=ids.map(tableId=>window.PokerRuntime.startTickLoop(async()=>{
-      const read=previews && document.visibilityState!=='hidden';
-      const result=await window.fb.fx('pkTick',read?{tableId,previewClubId:clubId}:{tableId});
-      if(read)update(tableId,result?.preview||null);
-    },{onError:()=>update(tableId,null),interval:()=>previews?1400:1000}));
-    const dropHidden=()=>{if(document.hidden && previews)setMiniState({scope:'',tables:{}});};
-    const dropOffline=()=>{if(previews)setMiniState({scope:'',tables:{}});};
-    window.addEventListener('offline',dropOffline);document.addEventListener('visibilitychange',dropHidden);
+    const stops=ids.map(tableId=>window.PokerRuntime.startTickLoop(()=>window.fb.fx('pkTick',{tableId})));
     beat();const timer=setInterval(beat,12000);
     window.addEventListener('online',beat);
-    return()=>{stopped=true;clearInterval(timer);stops.forEach(stop=>stop());window.removeEventListener('offline',dropOffline);document.removeEventListener('visibilitychange',dropHidden);window.removeEventListener('online',beat);};
+    return()=>{stopped=true;clearInterval(timer);stops.forEach(stop=>stop());window.removeEventListener('online',beat);};
+  },[backgroundSeats,dbUser?.uid,activeClub?.id]);
+  useEffect(()=>{
+    if(!backgroundSeats || (currentView!=='poker-table' && !pickerActive))return;
+    let stopped=false;
+    const uid=dbUser.uid,clubId=activeClub.id,scope=JSON.stringify([uid,clubId,activeTable?.docId,backgroundSeats]);
+    function update(id,data){
+      if(stopped || document.hidden || navigator.onLine===false || window.fb.auth?.currentUser?.uid!==uid)return;
+      setMiniState(prev=>({scope,tables:{...(prev.scope===scope?prev.tables:{}),[id]:data}}));
+    }
+    const stops=backgroundSeats.split('|').map(tableId=>window.PokerRuntime.startTickLoop(async()=>{
+      if(document.hidden || navigator.onLine===false)return;
+      const result=await window.fb.fx('pkSeatPreview',{tableId,previewClubId:clubId});
+      update(tableId,result?.preview||null);
+    },{onError:()=>update(tableId,null),interval:()=>1400}));
+    const clear=()=>setMiniState({scope:'',tables:{}});
+    const dropHidden=()=>{if(document.hidden)clear();};
+    window.addEventListener('offline',clear);document.addEventListener('visibilitychange',dropHidden);
+    return()=>{stopped=true;stops.forEach(stop=>stop());window.removeEventListener('offline',clear);document.removeEventListener('visibilitychange',dropHidden);};
   },[backgroundSeats,dbUser?.uid,activeClub?.id,currentView,activeTable?.docId,pickerActive]);
   useEffect(() => {
     if (!fbReady || !dbUser?.uid) return;

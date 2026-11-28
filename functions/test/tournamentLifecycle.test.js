@@ -112,11 +112,21 @@ for(const scenario of [
  t.diagnostic(JSON.stringify({configuration:scenario.name,ticks,aliveCounts,survivors,paidWinners:awarded.length,awards:awarded.map(p=>p.prize)}));
 });
 
+async function watchActiveSeats(f,rows){
+ const {readSeatPreview}=require('../pokerSeatPreview');
+ const before=rows.map(row=>copy(f.docs.get('tables/'+row.docId)));
+ await Promise.all(rows.map(async row=>{
+  const uid=row.gameState.activeTurnUid||Object.keys(row.players)[0];if(!uid || !row.players[uid])return;
+  const p=await readSeatPreview(f.db,{auth:{uid},data:{previewClubId:'clubA'}},row.docId);
+  if(p?.bettingTurn)assert.equal(p.deadline,row.gameState.turnStartedAt+(row.settings.actionTime||30)*1000);
+ }));
+ assert.deepEqual(rows.map(row=>f.docs.get('tables/'+row.docId)),before,'watching seats cannot move a player or change a hand, pot or clock');
+}
 for(const pokerType of ['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple'])test(pokerType+': 18 entrants consolidate from three tables to one, finish and pay exactly once',async t=>{
  const f=fixture(100+['NLH','Omaha 4','Omaha 5','Omaha 6','Pineapple'].indexOf(pokerType)),id=await create(f,{pokerType});await startHumans(f,id,18);
  const sizes=[f.tables(id).length];let ticks=0,actions=0,moves=0;const seen=new Set();
  for(;ticks<1500&&f.tour(id).status==='running';ticks++){
-  f.advance(2000);const before=f.tables(id);await f.tours.tickTournament(id,f.now());const after=f.tables(id);
+  f.advance(2000);const before=f.tables(id);await watchActiveSeats(f,before);await f.tours.tickTournament(id,f.now());const after=f.tables(id);
   assert.equal(f.tour(id).integrityIssue||null,null);
   assert.equal(T.chips(after),f.tour(id).initialChips,'No tournament chips disappear during rebalance');
   if(after.length!==sizes.at(-1))sizes.push(after.length);
@@ -467,6 +477,7 @@ test('PLO7 tournaments keep five-seat tables through late entry, balancing and t
   f.advance(2000);await f.tours.tickTournament(id,f.now());
   if(f.tour(id).status!=='running')break;
   assert.equal(f.tour(id).integrityIssue||null,null);assert.equal(T.chips(f.tables(id)),f.tour(id).initialChips);
+  await watchActiveSeats(f,f.tables(id));
   for(const row of f.tables(id)){
    assert.equal(row.settings.maxPlayers,5);assert.equal(row.settings.omahaPotLimit,true);assert.equal(row.settings.rakePercent,0);
    assert.ok(Object.keys(row.players).length<=5,'No sixth seat during balancing or consolidation');

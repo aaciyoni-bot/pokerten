@@ -605,3 +605,36 @@ test('lobby mirrors retain occupancy but never copy chat, hands, financial recor
  await source.set({...data,clubId:'replacement',players:{}});await view.refresh(db,id);assert.equal((await dest.get()).data().clubId,'replacement');
  await source.delete();await view.refresh(db,id);
 });
+
+test('simultaneous private previews preserve live cash and tournament hands, clocks and buy-ins',async()=>{
+ const a='two-seat-a',b='two-seat-b';
+ for(const u of [a,b])await fresh(u,1500);
+ const {tableId:cash}=await call('pkTableCreate',owner,{manual:true,clubId:club,settings:{minBuyIn:100,maxBuyIn:100,blinds:1,maxPlayers:2,actionTime:30}});
+ const {tournamentId:event}=await call('pkTournament',owner,{op:'create',clubId:club,settings:{
+   name:'Parallel hands',pokerType:'Omaha 7',buyIn:10,fee:0,startStack:1000,tableSize:5,maxPlayers:10,minPlayers:2,actionTime:30,startAt:Date.now()+600000}});
+ for(const u of [a,b]){
+   await call('pkSeat',u,{op:'join',tableId:cash,amount:100});
+   await call('pkTournament',u,{op:'register',tournamentId:event});
+ }
+ const funds=await bank(a);
+ await call('pkSeat',a,{op:'join',tableId:cash,amount:100});
+ await call('pkTournament',a,{op:'register',tournamentId:event});
+ assert.equal(await bank(a),funds,'reopening the same tournament does not charge again');
+ await call('pkTournament',owner,{op:'start',tournamentId:event});
+ const [assigned]=await rows(event),tour=assigned.docId;
+ for(const id of [cash,tour])await Engine.__engineInternals.tickTable(id);
+ const ids=[cash,tour],snapshot=()=>Promise.all(ids.map(id=>get('tables/'+id))),before=await snapshot();
+ const watch=(u,tableId)=>call('pkSeatPreview',u,{tableId,previewClubId:club});
+ const previews=await Promise.all([watch(a,cash),watch(a,tour),watch(b,cash),watch(b,tour),watch(owner,cash)]);
+ assert.deepEqual(previews.map(r=>r.preview?.cards.length??null),[2,7,2,7,null]);
+ assert.deepEqual(await snapshot(),before);
+ for(const [i,id] of ids.entries()){
+   const actor=before[i].gameState.activeTurnUid,p=(await watch(actor,id)).preview;
+   assert.equal(p.deadline,before[i].gameState.turnStartedAt+30000);
+ }
+ const g=before[0].gameState,act={tableId:cash,action:'call',expectedTurn:{handN:g.handN,phase:g.phase,turnStartedAt:g.turnStartedAt,highestBet:g.highestBet}};
+ await Promise.all([call('pkAct',g.activeTurnUid,act),watch(a,tour),watch(b,tour)]);
+ assert.deepEqual(await get('tables/'+tour),before[1]);
+ assert.equal((await get('tables/'+cash)).gameState.__seq,g.__seq+1);
+ assert.equal(await bank(a),funds);
+});

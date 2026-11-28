@@ -13,7 +13,7 @@ function cards(list) {
 async function readSeatPreview(db, request, tableId) {
   const uid=authenticatedUid(request), clubId=key(request.data.previewClubId);
   if(uid==='_engine')return null;
-  const ref=db.doc('tables/'+tableId);
+  const ref=db.doc('tables/'+key(tableId,'table'));
   return db.runTransaction(async tx=>{
     const [member,table]=await tx.getAll(db.doc('memberships/'+uid+'_'+clubId),ref);
     const t=table.exists && table.data(), me=t?.players?.[uid];
